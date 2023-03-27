@@ -1,32 +1,34 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::io::BufRead;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use itertools::{Either, EitherOrBoth, Itertools};
 use crate::{parser, tokenize_and_parse_stub};
 use crate::common::util::integer_decode;
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{POSITION_BOGUS, Range, Token};
-use crate::parser::ast::{args_to_parameters, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, EnumDeclNode, ForLoopNode, FunctionDeclNode, IfNode, IndexingMode, IndexingNode, InvocationNode, MatchCase, MatchCaseArgument, MatchCaseType, MatchNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode};
+use crate::parser::ast::{args_to_parameters, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, EnumDeclNode, ForLoopNode, FunctionDeclNode, IfNode, ImportKind, ImportNode, IndexingMode, IndexingNode, InvocationNode, MatchCase, MatchCaseArgument, MatchCaseType, MatchNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode};
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
-    fn resolve_path(&self, module_id: &parser::ast::ModuleId) -> String;
+    fn resolve_path(&self, module_id: &parser::ast::ModuleId) -> Option<String>;
+    fn get_path(&self, module_id: &ModuleId) -> Option<String>;
     fn register(&mut self, m_id: &parser::ast::ModuleId, module_id: &ModuleId);
-    fn get_module_id(&self, module_id: &ModuleId) -> &parser::ast::ModuleId;
-    fn load_file(&self, file_name: &String) -> String;
-    fn load_untyped_ast(&self, module_id: &parser::ast::ModuleId) -> Result<(String, ParseResult), Either<LexerError, ParseError>> {
+    fn get_module_id(&self, m_id: &parser::ast::ModuleId) -> Option<&ModuleId>;
+    fn module_exists(&self, m_id: &parser::ast::ModuleId) -> bool;
+    fn load_file(&self, file_name: &String) -> Option<String>;
+    fn load_untyped_ast(&self, module_id: &parser::ast::ModuleId) -> Result<Option<(String, ParseResult)>, Either<LexerError, ParseError>> {
         use crate::{lexer::lexer, parser::parser};
 
-        let file_name = self.resolve_path(&module_id);
-        let file_contents = self.load_file(&file_name);
+        let Some(file_name) = self.resolve_path(&module_id) else { return Ok(None); };
+        let Some(file_contents) = self.load_file(&file_name) else { return Ok(None); };
 
         match lexer::tokenize(module_id, &file_contents) {
             Err(e) => Err(Either::Left(e)),
             Ok(tokens) => match parser::parse(module_id.clone(), tokens) {
                 Err(e) => Err(Either::Right(e)),
-                Ok(nodes) => Ok((file_name, nodes))
+                Ok(nodes) => Ok(Some((file_name, nodes)))
             }
         }
     }
@@ -35,6 +37,7 @@ pub trait LoadModule {
 pub struct ModuleLoader<'a> {
     program_root: &'a PathBuf,
     module_id_map: HashMap::<ModuleId, parser::ast::ModuleId>,
+    module_id_map_rev: HashMap::<parser::ast::ModuleId, ModuleId>,
     prelude_raw: &'static str,
 }
 
@@ -45,34 +48,51 @@ impl<'a> ModuleLoader<'a> {
         ModuleLoader {
             program_root,
             module_id_map: HashMap::new(),
+            module_id_map_rev: HashMap::new(),
             prelude_raw,
         }
     }
 }
 
 impl<'a> LoadModule for ModuleLoader<'a> {
-    fn resolve_path(&self, module_id: &parser::ast::ModuleId) -> String {
-        let path = PathBuf::from(module_id.get_path(&self.program_root)).with_extension("abra").canonicalize().unwrap();
-        path.to_str().unwrap().to_string()
+    fn resolve_path(&self, module_id: &parser::ast::ModuleId) -> Option<String> {
+        let mut path = PathBuf::new();
+
+        let path_buf = PathBuf::from(module_id.get_path(&self.program_root)).with_extension("abra");
+        for c in path_buf.components() {
+            path.push(c.as_os_str())
+        }
+
+        path.to_str().map(|s| s.to_string())
+    }
+
+    fn get_path(&self, module_id: &ModuleId) -> Option<String> {
+        let m_id = self.module_id_map.get(module_id).expect(&format!("Internal error: expected module for {:?}", module_id));
+        self.resolve_path(m_id)
     }
 
     fn register(&mut self, m_id: &parser::ast::ModuleId, module_id: &ModuleId) {
         self.module_id_map.insert(*module_id, m_id.clone());
+        self.module_id_map_rev.insert(m_id.clone(), *module_id);
     }
 
-    fn get_module_id(&self, module_id: &ModuleId) -> &parser::ast::ModuleId {
-        self.module_id_map.get(module_id).expect(&format!("Internal error: expected module for {:?}", module_id))
+    fn get_module_id(&self, m_id: &parser::ast::ModuleId) -> Option<&ModuleId> {
+        self.module_id_map_rev.get(m_id)
     }
 
-    fn load_file(&self, file_name: &String) -> String {
+    fn module_exists(&self, m_id: &parser::ast::ModuleId) -> bool {
+        if m_id.is_prelude() { return true; }
+
+        let Some(path) = self.resolve_path(m_id) else { return false; };
+        Path::try_exists(Path::new(&path)).unwrap_or(false)
+    }
+
+    fn load_file(&self, file_name: &String) -> Option<String> {
         if file_name == "prelude.stub.abra" {
-            return self.prelude_raw.to_string();
+            return Some(self.prelude_raw.to_string());
         }
 
-        std::fs::read_to_string(file_name).map_err(|err| {
-            eprintln!("Could not read file {}: {}", file_name, err);
-            std::process::exit(1);
-        }).unwrap()
+        std::fs::read_to_string(file_name).ok()
     }
 }
 
@@ -204,8 +224,10 @@ impl Project {
                 self.get_struct_by_id(struct_id)
             }
             Type::Type(_) => return None,
-            Type::Generic(_, _) |
-            Type::Function(_, _, _, _) => todo!(),
+            Type::Generic(_, _) | Type::Function(_, _, _, _) => {
+                debug_assert!(false, "Unimplemented");
+                return None;
+            }
         };
 
         Some((struct_, generic_substitutions))
@@ -357,11 +379,11 @@ impl Project {
     }
 
     pub fn struct_type(&self, struct_id: StructId) -> Type {
-        Type::Type(Either::Left(struct_id))
+        Type::Type(TypeKind::Struct(struct_id))
     }
 
     pub fn enum_type(&self, enum_id: EnumId) -> Type {
-        Type::Type(Either::Right(enum_id))
+        Type::Type(TypeKind::Enum(enum_id))
     }
 
     pub fn type_repr(&self, type_id: &TypeId) -> String {
@@ -420,13 +442,8 @@ impl Project {
                 let return_repr = self.type_repr(return_type_id);
                 format!("({}) => {}", param_reprs, return_repr)
             }
-            Type::Type(id) => {
-                let name = match id {
-                    Either::Left(struct_id) => &self.get_struct_by_id(struct_id).name,
-                    Either::Right(enum_id) => &self.get_enum_by_id(enum_id).name,
-                };
-                name.to_string()
-            }
+            Type::Type(TypeKind::Struct(struct_id)) => self.get_struct_by_id(struct_id).name.clone(),
+            Type::Type(TypeKind::Enum(enum_id)) => self.get_enum_by_id(enum_id).name.clone(),
         }
     }
 
@@ -575,6 +592,12 @@ pub enum PrimitiveType {
     String,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum TypeKind {
+    Struct(StructId),
+    Enum(EnumId),
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
     Primitive(PrimitiveType),
@@ -582,7 +605,7 @@ pub enum Type {
     GenericInstance(StructId, Vec<TypeId>),
     GenericEnumInstance(EnumId, Vec<TypeId>, /* variant_idx: */ Option<usize>),
     Function(/* parameter_type_ids: */ Vec<TypeId>, /* num_required_params: */ usize, /* is_variadic: */ bool, /* return_type_id: */ TypeId),
-    Type(Either<StructId, EnumId>),
+    Type(TypeKind),
 }
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
@@ -642,7 +665,7 @@ pub struct VarId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
 pub enum VariableAlias {
     None,
     Function(FuncId),
-    Type(Either<StructId, EnumId>),
+    Type(TypeKind),
 }
 
 #[derive(Debug, PartialEq)]
@@ -700,6 +723,13 @@ pub struct FunctionParam {
     pub is_incomplete: bool,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum ExportedValue {
+    Function(FuncId),
+    Type(TypeKind),
+    Variable(VarId),
+}
+
 #[derive(Debug, PartialEq)]
 pub struct TypedModule {
     pub id: ModuleId,
@@ -711,6 +741,8 @@ pub struct TypedModule {
     pub enums: Vec<Enum>,
     pub code: Vec<TypedNode>,
     pub scopes: Vec<Scope>,
+    pub exports: HashMap<String, ExportedValue>,
+    pub completed: bool,
 }
 
 #[derive(Debug, PartialEq)]
@@ -761,6 +793,7 @@ pub enum TypedNode {
     Break { token: Token },
     Continue { token: Token },
     Return { token: Token, expr: Option<Box<TypedNode>> },
+    Import { token: Token, kind: ImportKind, module_id: ModuleId },
 }
 
 impl TypedNode {
@@ -792,6 +825,7 @@ impl TypedNode {
             TypedNode::Break { .. } |
             TypedNode::Continue { .. } => &PRELUDE_UNIT_TYPE_ID,
             TypedNode::Return { expr, .. } => expr.as_ref().map_or(&PRELUDE_UNIT_TYPE_ID, |expr| expr.type_id()),
+            TypedNode::Import { .. } => &PRELUDE_UNIT_TYPE_ID,
         }
     }
 
@@ -896,6 +930,7 @@ impl TypedNode {
                     start
                 }
             }
+            TypedNode::Import { token, .. } => token.get_range(),
         }
     }
 }
@@ -1030,6 +1065,10 @@ pub enum TypeError {
     InvalidLoopTarget { span: Span, type_id: TypeId, kind: InvalidLoopTargetKind },
     InvalidControlFlowTerminator { span: Span, terminator: ControlFlowTerminator },
     UnreachableCode { span: Span },
+    InvalidExportScope { span: Span },
+    CircularModuleImport { span: Span },
+    UnknownModule { span: Span, module_path: Option<String> },
+    UnknownExport { span: Span, import_name: String },
 }
 
 impl TypeError {
@@ -1052,7 +1091,8 @@ impl TypeError {
                 .collect::<Result<Vec<_>, _>>()
                 .unwrap()
         } else {
-            let file_name = loader.resolve_path(loader.get_module_id(&span.module_id));
+            let file_name = loader.get_path(&span.module_id)
+                .expect("Internal error: cannot report on errors in a file that never existed in the first place");
             let file = std::fs::File::open(&file_name).unwrap();
             std::io::BufReader::new(file)
                 .lines()
@@ -1132,7 +1172,11 @@ impl TypeError {
             TypeError::NonExhaustiveMatch { span, .. } |
             TypeError::InvalidLoopTarget { span, .. } |
             TypeError::InvalidControlFlowTerminator { span, .. } |
-            TypeError::UnreachableCode { span } => span,
+            TypeError::UnreachableCode { span } |
+            TypeError::InvalidExportScope { span } |
+            TypeError::CircularModuleImport { span }|
+            TypeError::UnknownModule { span, .. } |
+            TypeError::UnknownExport { span, .. } => span
         };
         let cursor_line = Self::get_underlined_line(loader, span);
 
@@ -1598,9 +1642,42 @@ impl TypeError {
             TypeError::UnreachableCode { .. } => {
                 format!("Unreachable code\n{}", cursor_line)
             }
+            TypeError::InvalidExportScope { .. } => {
+                format!(
+                    "Invalid export modifier\n{}\n\
+                    Exported values may only appear at the top level scope",
+                    cursor_line
+                )
+            }
+            TypeError::CircularModuleImport { .. } => {
+                format!(
+                    "Could not import module due to circular dependency\n{}\n\
+                    The current module is imported by the desired module (or one of its imports), resulting in a cycle",
+                    cursor_line
+                )
+            }
+            TypeError::UnknownModule { module_path, .. } => {
+                let path_msg = if let Some(module_path) = module_path {
+                    format!(" at '{}'", module_path)
+                } else {
+                    "".to_string()
+                };
+
+                format!(
+                    "Could not import module\n{}\nNo such module exists{}",
+                    cursor_line, path_msg
+                )
+            }
+            TypeError::UnknownExport { import_name, .. } => {
+                format!(
+                    "Invalid import\n{}\nThis module does not export any value name '{}'",
+                    cursor_line, import_name
+                )
+            }
         };
 
-        let file_name = loader.resolve_path(loader.get_module_id(&span.module_id));
+        let file_name = loader.get_path(&span.module_id)
+            .expect("Internal error: cannot report on errors in a file that never existed in the first place");
         let error_line = format!("Error at {}:{}:{}", file_name, span.range.start.line, span.range.start.col);
         format!("{}\n{}", error_line, msg)
     }
@@ -1637,11 +1714,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     /* UTILITIES */
 
     fn current_module_mut(&mut self) -> &mut TypedModule {
-        self.project.modules.last_mut().expect("Internal error: there must always be a module being typechecked")
+        &mut self.project.modules[self.current_scope_id.0.0]
     }
 
     fn current_module(&self) -> &TypedModule {
-        self.project.modules.last().expect("Internal error: there must always be a module being typechecked")
+        &self.project.modules[self.current_scope_id.0.0]
     }
 
     fn make_span(&self, range: &Range) -> Span {
@@ -1942,8 +2019,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
                 Type::Type(id) => {
                     let generic_ids = match id {
-                        Either::Left(struct_id) => &zelf.project.get_struct_by_id(struct_id).generic_ids,
-                        Either::Right(enum_id) => &zelf.project.get_enum_by_id(enum_id).generic_ids,
+                        TypeKind::Struct(struct_id) => &zelf.project.get_struct_by_id(struct_id).generic_ids,
+                        TypeKind::Enum(enum_id) => &zelf.project.get_enum_by_id(enum_id).generic_ids,
                     };
                     for type_id in generic_ids {
                         extract_generic_slots_impl(zelf, type_id, generics);
@@ -2155,7 +2232,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let struct_type_id = self.add_or_find_type_id(self.project.struct_type(struct_id));
         let struct_var_id = self.add_variable_to_current_scope(name, struct_type_id, false, true, &span, false)?;
         let variable = self.project.get_var_by_id_mut(&struct_var_id);
-        variable.alias = VariableAlias::Type(Either::Left(struct_id));
+        variable.alias = VariableAlias::Type(TypeKind::Struct(struct_id));
 
         Ok(struct_id)
     }
@@ -2186,7 +2263,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let enum_type_id = self.add_or_find_type_id(self.project.enum_type(enum_id));
         let enum_var_id = self.add_variable_to_current_scope(name, enum_type_id, false, true, &span, false)?;
         let variable = self.project.get_var_by_id_mut(&enum_var_id);
-        variable.alias = VariableAlias::Type(Either::Right(enum_id));
+        variable.alias = VariableAlias::Type(TypeKind::Enum(enum_id));
 
         Ok(enum_id)
     }
@@ -2272,7 +2349,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         debug_assert!(self.project.modules.is_empty());
 
         self.module_loader.register(&parser::ast::ModuleId::prelude(), &PRELUDE_MODULE_ID);
-        let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), type_ids: vec![], functions: vec![], structs: vec![], enums: vec![], code: vec![], scopes: vec![] };
+        let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), type_ids: vec![], functions: vec![], structs: vec![], enums: vec![], code: vec![], scopes: vec![], exports: HashMap::new(), completed: false };
         let mut prelude_scope = Scope { label: "prelude.root".to_string(), kind: ScopeKind::Module(PRELUDE_MODULE_ID), terminator: None, id: PRELUDE_SCOPE_ID, parent: None, types: vec![], vars: vec![], funcs: vec![] };
 
         let primitives = [
@@ -2329,7 +2406,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.current_scope_id = PRELUDE_SCOPE_ID;
 
-        let prelude_stub_file = self.module_loader.load_file(&"prelude.stub.abra".to_string());
+        let prelude_stub_file = self.module_loader.load_file(&"prelude.stub.abra".to_string()).expect("Internal error: should always be able to load prelude");
         let parse_result = tokenize_and_parse_stub(&parser::ast::ModuleId::External("prelude".to_string()), &prelude_stub_file)
             .expect("There should not be a problem parsing the prelude file");
         self.typecheck_block(parse_result.nodes)
@@ -2345,22 +2422,17 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     }
 
     pub fn typecheck_module(&mut self, m_id: &parser::ast::ModuleId) -> Result<(), TypecheckError> {
-        debug_assert!(self.project.modules.len() == 1, "Prelude must be loaded in order to typecheck further modules");
+        debug_assert!(self.project.modules.len() >= 1 && self.project.modules[0].name == "prelude", "Prelude must be loaded in order to typecheck further modules");
 
-        let (file_name, parse_result) = self.module_loader.load_untyped_ast(&m_id).map_err(Either::Left)?;
-
-        if !parse_result.imports.is_empty() {
-            todo!("Typechecking imports");
-        }
-
-        let prelude_scope_id = ScopeId(PRELUDE_MODULE_ID, 0);
+        let (file_name, parse_result) = self.module_loader.load_untyped_ast(&m_id).map_err(Either::Left)?
+            .expect("Internal error");
 
         let module_id = ModuleId(self.project.modules.len());
         self.module_loader.register(m_id, &module_id);
 
         let scope_id = ScopeId(module_id, 0);
         let label = format!("{:?}.root", &module_id);
-        let root_scope = Scope { label, kind: ScopeKind::Module(module_id), terminator: None, id: scope_id, parent: Some(prelude_scope_id), types: vec![], vars: vec![], funcs: vec![] };
+        let root_scope = Scope { label, kind: ScopeKind::Module(module_id), terminator: None, id: scope_id, parent: Some(PRELUDE_SCOPE_ID), types: vec![], vars: vec![], funcs: vec![] };
         self.project.modules.push(TypedModule {
             id: module_id,
             name: file_name,
@@ -2370,11 +2442,31 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             enums: vec![],
             code: vec![],
             scopes: vec![root_scope],
+            exports: HashMap::new(),
+            completed: false,
         });
 
         self.current_scope_id = scope_id;
 
+        if !parse_result.imports.is_empty() {
+            for (_, import_m_id, module_token) in parse_result.imports {
+                if !self.module_loader.module_exists(&import_m_id) { continue; }
+                if let Some(m) = self.module_loader.get_module_id(&import_m_id).and_then(|module_id| self.project.modules.get(module_id.0)) {
+                    if m.completed { continue; }
+
+                    let span = self.make_span(&module_token.get_range());
+                    return Err(Either::Right(TypeError::CircularModuleImport { span }));
+                }
+
+                let mut tc = Typechecker2::new(self.module_loader, self.project);
+                tc.typecheck_module(&import_m_id)?;
+            }
+        }
+
+        self.current_scope_id = scope_id;
         self.typecheck_block(parse_result.nodes).map_err(Either::Right)?;
+
+        self.current_module_mut().completed = true;
 
         Ok(())
     }
@@ -2512,6 +2604,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(generic_ids)
     }
 
+    fn verify_export_scope(&self, export_token: &Token) -> Result<(), TypeError> {
+        let ScopeId(_, scope_idx) = self.current_scope_id;
+        if scope_idx == 0 {
+            Ok(())
+        } else {
+            Err(TypeError::InvalidExportScope { span: self.make_span(&export_token.get_range()) })
+        }
+    }
+
     fn typecheck_function_parameters_pass_1(&mut self, allow_self: bool, parameters: &Vec<(Parameter, Option<TypeId>)>, do_partial_completion: bool) -> Result<Vec<FunctionParam>, TypeError> {
         let mut seen_self = false;
         let mut seen_param_names = HashSet::new();
@@ -2645,7 +2746,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.function_pass = FunctionPass::Pass0;
 
         let FunctionDeclNode { export_token, name, type_args, args, ret_type, .. } = node;
-        if export_token.is_some() { todo!("Internal error: imports/exports") }
+        let is_exported = export_token.is_some();
+        if let Some(export_token) = export_token { self.verify_export_scope(export_token)?; }
 
         let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)), ScopeKind::Function(FuncId::BOGUS));
 
@@ -2658,10 +2760,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.end_child_scope();
 
+        let func_name = Token::get_ident_name(name);
         let func_id = self.add_function_to_current_scope(fn_scope_id, name, generic_ids, has_self, vec![], return_type_id)?;
         self.current_module_mut().functions.push(func_id);
         let ScopeKind::Function(id) = &mut self.project.get_scope_by_id_mut(&fn_scope_id).kind else { unreachable!() };
         *id = func_id;
+
+        if is_exported {
+            self.current_module_mut().exports.insert(func_name, ExportedValue::Function(func_id));
+        }
 
         Ok(func_id)
     }
@@ -2770,15 +2877,20 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
     fn typecheck_struct_pass_0(&mut self, node: &TypeDeclNode) -> Result<StructId, TypeError> {
         let TypeDeclNode { export_token, name, type_args, .. } = node;
+        let is_exported = export_token.is_some();
+        if let Some(export_token) = export_token { self.verify_export_scope(export_token)?; }
 
-        if export_token.is_some() { todo!("Internal error: imports/exports") }
-
-        let struct_scope_id = self.create_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&name)), ScopeKind::Type);
+        let struct_name = Token::get_ident_name(&name);
+        let struct_scope_id = self.create_child_scope(format!("{:?}.{}", &self.current_module().id, &struct_name), ScopeKind::Type);
 
         // A struct's generics are scoped to the struct declaration, but the instance type should be scoped to the outer scope.
         let generic_ids = self.add_generics_to_scope(&struct_scope_id, type_args)?;
         let struct_id = self.add_struct_to_current_module(struct_scope_id, name, generic_ids)?;
         debug_assert!(self.current_type_decl.is_none(), "At the moment, types cannot be nested within other types");
+
+        if is_exported {
+            self.current_module_mut().exports.insert(struct_name, ExportedValue::Type(TypeKind::Struct(struct_id)));
+        }
 
         Ok(struct_id)
     }
@@ -2867,15 +2979,20 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
     fn typecheck_enum_pass_0(&mut self, node: &EnumDeclNode) -> Result<EnumId, TypeError> {
         let EnumDeclNode { export_token, name, type_args, .. } = node;
+        let is_exported = export_token.is_some();
+        if let Some(export_token) = export_token { self.verify_export_scope(export_token)?; }
 
-        if export_token.is_some() { todo!("Internal error: imports/exports") }
-
-        let enum_scope_id = self.create_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&name)), ScopeKind::Type);
+        let enum_name = Token::get_ident_name(&name);
+        let enum_scope_id = self.create_child_scope(format!("{:?}.{}", &self.current_module().id, &enum_name), ScopeKind::Type);
 
         // An enum's generics are scoped to the enum declaration, but the instance type should be scoped to the outer scope.
         let generic_ids = self.add_generics_to_scope(&enum_scope_id, type_args)?;
         let enum_id = self.add_enum_to_current_module(enum_scope_id, name, generic_ids)?;
         debug_assert!(self.current_type_decl.is_none(), "At the moment, types cannot be nested within other types");
+
+        if is_exported {
+            self.current_module_mut().exports.insert(enum_name, ExportedValue::Type(TypeKind::Enum(enum_id)));
+        }
 
         Ok(enum_id)
     }
@@ -2992,7 +3109,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         match node {
             AstNode::BindingDecl(token, n) => {
                 let BindingDeclNode { export_token, binding, type_ann, expr, is_mutable } = n;
-                if export_token.is_some() { todo!("Internal error: imports/exports") }
+                let is_exported = export_token.is_some();
+                if let Some(export_token) = export_token { self.verify_export_scope(&export_token)?; }
 
                 let type_hint_id = if let Some(type_identifier) = type_ann {
                     Some(self.resolve_type_identifier(&type_identifier)?)
@@ -3040,6 +3158,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         Some(Box::new(typed_expr))
                     }
                 };
+
+                if is_exported {
+                    for var_id in &var_ids {
+                        let var = self.project.get_var_by_id(var_id);
+                        let var_name = var.name.clone();
+                        self.current_module_mut().exports.insert(var_name, ExportedValue::Variable(*var_id));
+                    }
+                }
 
                 Ok(TypedNode::BindingDeclaration { token, pattern: binding, vars: var_ids, expr: typed_expr })
             }
@@ -3182,7 +3308,60 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 Ok(TypedNode::Return { token, expr: typed_ret_expr })
             }
             AstNode::FunctionDecl(_, _) | AstNode::TypeDecl(_, _) | AstNode::EnumDecl(_, _) => unreachable!("Internal error: node should have been handled in typecheck_block"),
-            AstNode::ImportStatement(_, _) => unreachable!("Internal error: imports should have been handled before typechecking the body"),
+            AstNode::ImportStatement(token, import_node) => {
+                let ImportNode { kind, module_token, module_id } = import_node;
+                let Some(module_id) = self.module_loader.get_module_id(&module_id) else {
+                    let span = self.make_span(&module_token.get_range());
+                    let module_path = self.module_loader.resolve_path(&module_id);
+                    return Err(TypeError::UnknownModule { span, module_path });
+                };
+                let module_id = *module_id;
+                let ModuleId(module_idx) = module_id;
+
+                match &kind {
+                    ImportKind::ImportAll(_) => todo!(),
+                    ImportKind::ImportList(imports) => {
+                        for import_tok in imports {
+                            let span = self.make_span(&import_tok.get_range());
+                            let import_name = Token::get_ident_name(import_tok);
+                            let import_module = &self.project.modules[module_idx];
+                            let Some(export) = import_module.exports.get(&import_name) else {
+                                return Err(TypeError::UnknownExport { span, import_name });
+                            };
+
+                            match *export {
+                                ExportedValue::Function(func_id) => {
+                                    self.add_function_variable_alias_to_current_scope(import_tok, &func_id)?;
+                                }
+                                ExportedValue::Type(type_kind) => match type_kind {
+                                    TypeKind::Struct(struct_id) => {
+                                        let struct_type_id = self.add_or_find_type_id(self.project.struct_type(struct_id));
+                                        let struct_var_id = self.add_variable_to_current_scope(import_name, struct_type_id, false, true, &span, false)?;
+                                        let variable = self.project.get_var_by_id_mut(&struct_var_id);
+                                        variable.alias = VariableAlias::Type(TypeKind::Struct(struct_id));
+                                    }
+                                    TypeKind::Enum(enum_id) => {
+                                        let enum_type_id = self.add_or_find_type_id(self.project.enum_type(enum_id));
+                                        let enum_var_id = self.add_variable_to_current_scope(import_name, enum_type_id, false, true, &span, false)?;
+                                        let variable = self.project.get_var_by_id_mut(&enum_var_id);
+                                        variable.alias = VariableAlias::Type(TypeKind::Enum(enum_id));
+                                    }
+                                }
+                                ExportedValue::Variable(var_id) => {
+                                    let imported_var = self.project.get_var_by_id(&var_id);
+                                    let is_captured = imported_var.is_captured;
+                                    let var_id = self.add_variable_to_current_scope(import_name, imported_var.type_id, false, imported_var.is_initialized, &span, false)?;
+                                    let var = self.project.get_var_by_id_mut(&var_id);
+                                    var.is_captured = is_captured;
+                                }
+                            }
+                        }
+                    }
+                    ImportKind::Alias(_) => todo!()
+                }
+
+                Ok(TypedNode::Import { token, kind, module_id })
+            }
             n => self.typecheck_expression(n, type_hint)
         }
     }
@@ -4059,7 +4238,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 let function = self.project.get_func_by_id(func_id);
                                 return Err(TypeError::AssignmentToImmutable { span: target_span, var_name: function.name.clone(), defined_span: function.defined_span.clone(), kind: ImmutableAssignmentKind::StaticMethod(type_name) });
                             }
-                            (Type::Type(Either::Right(enum_id)), AccessorKind::EnumVariant) => {
+                            (Type::Type(TypeKind::Enum(enum_id)), AccessorKind::EnumVariant) => {
                                 let enum_ = self.project.get_enum_by_id(enum_id);
                                 let type_name = enum_.name.clone();
                                 let variant = &enum_.variants[member_idx];
@@ -4205,8 +4384,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let target_type = self.project.get_type_by_id(&target_type_id);
                 if let Type::Type(id) = target_type {
                     match id {
-                        Either::Left(_struct_id) => todo!("Static methods/fields not yet implemented"),
-                        Either::Right(enum_id) => {
+                        TypeKind::Struct(_struct_id) => todo!("Static methods/fields not yet implemented"),
+                        TypeKind::Enum(enum_id) => {
                             let enum_ = self.project.get_enum_by_id(enum_id);
 
                             for (idx, variant) in enum_.variants.iter().enumerate() {
@@ -4336,7 +4515,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             }
                             VariableAlias::Type(id) => {
                                 match id {
-                                    Either::Left(alias_struct_id) => {
+                                    TypeKind::Struct(alias_struct_id) => {
                                         let struct_ = self.project.get_struct_by_id(&alias_struct_id);
                                         // TODO: Struct fields default values
                                         generic_ids = &struct_.generic_ids;
@@ -4344,7 +4523,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                         return_type_id = struct_.self_type_id;
                                         is_instantiation = true;
                                     }
-                                    Either::Right(_alias_enum_id) => todo!("Should return an error, cannot construct enum directly"),
+                                    TypeKind::Enum(_alias_enum_id) => todo!("Should return an error, cannot construct enum directly"),
                                 }
                             }
                             VariableAlias::None => unreachable!("VariableAlias::None identifiers are excluded from this match case and are handled below"),
@@ -4436,8 +4615,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
                                 return_type_id = function.return_type_id;
                             }
-                            Type::Type(Either::Left(_struct_id)) => todo!("Static methods on types"),
-                            Type::Type(Either::Right(enum_id)) => {
+                            Type::Type(TypeKind::Struct(_struct_id)) => todo!("Static methods on types"),
+                            Type::Type(TypeKind::Enum(enum_id)) => {
                                 let enum_ = self.project.get_enum_by_id(enum_id);
                                 let variant = &enum_.variants[*member_idx];
                                 let EnumVariantKind::Container(func_id) = variant.kind else {

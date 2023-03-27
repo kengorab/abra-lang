@@ -1,6 +1,3 @@
-type Foo { name: String }
+import a from "./example2"
 
-val arr: Foo[] = []
-val _: String? = arr[0]?.name?.toLower()
-
-val _: String = "abc"?.toLower()
+export val b = "b"

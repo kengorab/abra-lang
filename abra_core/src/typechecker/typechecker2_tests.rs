@@ -1,64 +1,90 @@
 use std::collections::HashMap;
-use itertools::Either;
+use itertools::{Either, Itertools};
 use crate::lexer::tokens::{Position, POSITION_BOGUS, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BinaryOp, BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind, InvalidLoopTargetKind, ControlFlowTerminator, TerminatorKind};
+use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind, InvalidLoopTargetKind, ControlFlowTerminator, TerminatorKind, ExportedValue, TypeKind};
 
 const PRELUDE_STR: &str = include_str!("prelude.stub.abra");
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
+    module_id_map: HashMap::<ModuleId, parser::ast::ModuleId>,
+    module_id_map_rev: HashMap::<parser::ast::ModuleId, ModuleId>,
 }
 
 impl TestModuleLoader {
-    pub fn new(mod_contents: Vec<(&str, &str)>) -> Self {
+    pub fn new(mod_contents: Vec<(String, &str)>) -> Self {
         Self {
-            files: mod_contents.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+            files: mod_contents.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            module_id_map: HashMap::new(),
+            module_id_map_rev: HashMap::new(),
         }
     }
 }
 
 impl LoadModule for TestModuleLoader {
-    fn resolve_path(&self, module_id: &parser::ast::ModuleId) -> String {
-        module_id.get_path(".")
+    fn resolve_path(&self, module_id: &parser::ast::ModuleId) -> Option<String> {
+        Some(module_id.get_path(".").replace("././", "./"))
     }
 
-    fn register(&mut self, _m_id: &parser::ast::ModuleId, _module_id: &ModuleId) {}
+    fn get_path(&self, _module_id: &ModuleId) -> Option<String> { None }
 
-    fn get_module_id(&self, _module_id: &ModuleId) -> &parser::ast::ModuleId { unreachable!("Test code should not call this function") }
+    fn register(&mut self, m_id: &parser::ast::ModuleId, module_id: &ModuleId) {
+        self.module_id_map.insert(*module_id, m_id.clone());
+        self.module_id_map_rev.insert(m_id.clone(), *module_id);
+    }
 
-    fn load_file(&self, file_name: &String) -> String {
+    fn get_module_id(&self, m_id: &parser::ast::ModuleId) -> Option<&ModuleId> {
+        self.module_id_map_rev.get(m_id)
+    }
+
+    fn module_exists(&self, m_id: &parser::ast::ModuleId) -> bool {
+        self.resolve_path(&m_id).map_or(false, |path| self.files.contains_key(&path))
+    }
+
+    fn load_file(&self, file_name: &String) -> Option<String> {
         if file_name == "prelude.stub.abra" {
-            return PRELUDE_STR.to_string();
+            return Some(PRELUDE_STR.to_string());
         }
 
-        self.files.get(file_name)
-            .expect(&format!("Internal error: missing file {} from test module loader", file_name))
-            .clone()
+        self.files.get(file_name).map(|contents| contents.clone())
     }
 }
 
 const TEST_MODULE_NAME: &str = "test";
 
 fn test_typecheck(input: &str) -> Result<Project, (Project, TypecheckError)> {
-    let module_id = parser::ast::ModuleId::parse_module_path(&format!("{}", TEST_MODULE_NAME)).unwrap();
+    test_typecheck_with_modules(input, &[])
+}
 
-    let mut loader = TestModuleLoader::new(vec![
-        (module_id.get_path(".").as_str(), input)
-    ]);
+fn assert_typecheck_ok(input: &str) {
+    assert_typecheck_ok_modules(input, &[]);
+}
+
+fn test_typecheck_with_modules(entry_module: &str, other_modules: &[(&str, &str)]) -> Result<Project, (Project, TypecheckError)> {
+    let mut modules = other_modules.into_iter()
+        .map(|(path, contents)| {
+            let module_id = parser::ast::ModuleId::parse_module_path(path).unwrap();
+            (module_id.get_path(".").to_string(), *contents)
+        })
+        .collect_vec();
+    let entry_module_id = parser::ast::ModuleId::parse_module_path(&format!("{}", TEST_MODULE_NAME)).unwrap();
+    modules.push((entry_module_id.get_path(".").to_string(), entry_module));
+
+    let mut loader = TestModuleLoader::new(modules);
     let mut project = Project::default();
     let mut tc = Typechecker2::new(&mut loader, &mut project);
     tc.typecheck_prelude();
 
-    match tc.typecheck_module(&module_id) {
+    match tc.typecheck_module(&entry_module_id) {
         Ok(_) => Ok(project),
         Err(e) => Err((project, e))
     }
 }
 
-fn assert_typecheck_ok(input: &str) {
-    let res = test_typecheck(input);
+fn assert_typecheck_ok_modules(entry_module: &str, other_modules: &[(&str, &str)]) {
+    let res = test_typecheck_with_modules(entry_module, other_modules);
     if res.is_err() { dbg!(&res.as_ref().unwrap_err().1); }
     assert!(res.is_ok());
 }
@@ -393,6 +419,148 @@ fn typecheck_prelude() {
         let struct_ = &prelude_module.structs[idx];
         assert_eq!(name, &struct_.name);
     }
+}
+
+#[test]
+fn typecheck_exports() {
+    let project = test_typecheck(r#"
+      export func a() {}
+      export type B {}
+      export enum C {}
+      export val d = 1
+      export val (e, f) = (true, false)
+    "#).unwrap();
+    let exports = &project.modules[1].exports;
+    let expected = HashMap::from([
+        ("a".to_string(), ExportedValue::Function(FuncId(ScopeId(ModuleId(1), 0), 0))),
+        ("B".to_string(), ExportedValue::Type(TypeKind::Struct(StructId(ModuleId(1), 0)))),
+        ("C".to_string(), ExportedValue::Type(TypeKind::Enum(EnumId(ModuleId(1), 0)))),
+        ("d".to_string(), ExportedValue::Variable(VarId(ScopeId(ModuleId(1), 0), 3))),
+        ("e".to_string(), ExportedValue::Variable(VarId(ScopeId(ModuleId(1), 0), 4))),
+        ("f".to_string(), ExportedValue::Variable(VarId(ScopeId(ModuleId(1), 0), 5))),
+    ]);
+    assert_eq!(&expected, exports);
+}
+
+#[test]
+fn typecheck_failure_exports() {
+    let (_, Either::Right(err)) = test_typecheck("\
+      if true {\n\
+        export val x = 12\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidExportScope {
+        span: Span::new(ModuleId(1), (2, 1), (2, 6)),
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_imports() {
+    assert_typecheck_ok_modules(
+        r#"
+          import a, B, C, d from "./2"
+
+          d(a, B(b: a), C.C3)
+        "#,
+        &[
+            (
+                "2",
+                r#"
+                  export val a = "abc"
+                  export type B { b: String }
+                  export enum C { C1, C2, C3 }
+                  export func d(a: String, b: B, c: C) {}
+                "#
+            )
+        ],
+    );
+    assert_typecheck_ok_modules(
+        r#"
+          import a from "./2"
+          import b from "./3"
+
+          val _: ((String, String), String) = (a, b)
+        "#,
+        &[
+            (
+                "2",
+                r#"
+                  import b from "./3"
+                  export val a = ("a", b)
+                "#
+            ),
+            (
+                "3",
+                r#"
+                  export val b = "b"
+                "#
+            ),
+        ],
+    );
+}
+
+#[test]
+fn typecheck_failure_imports() {
+    let (_, Either::Right(err)) = test_typecheck_with_modules(
+        "import a from \"./3\"",
+        &[
+            ("2", "export val a = \"a\""),
+        ],
+    ).unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownModule {
+        span: Span::new(ModuleId(1), (1, 15), (1, 19)),
+        module_path: Some("./3".to_string()),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck_with_modules(
+        "import a from \"./2\"",
+        &[
+            ("2", "import b from \"./3\"\nexport val a = (\"a\", b)"),
+            ("3", "import x from \"./bogus\"\nexport val b = \"b\""),
+        ],
+    ).unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownModule {
+        span: Span::new(ModuleId(3), (1, 15), (1, 23)),
+        module_path: Some("./bogus".to_string()),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck_with_modules(
+        "import x from \"./2\"",
+        &[
+            ("2", "export val a = \"a\""),
+        ],
+    ).unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownExport {
+        span: Span::new(ModuleId(1), (1, 8), (1, 8)),
+        import_name: "x".to_string(),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck_with_modules(
+        "import a from \"./2\"",
+        &[
+            ("2", "import x from \"./3\"\nexport val a = \"a\""),
+            ("3", "export val b = \"b\""),
+        ],
+    ).unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownExport {
+        span: Span::new(ModuleId(2), (1, 8), (1, 8)),
+        import_name: "x".to_string(),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck_with_modules(
+        "import a from \"./2\"",
+        &[
+            ("2", "import b from \"./3\"\nexport val a = \"a\""),
+            ("3", "import a from \"./2\"\nexport val b = \"b\""),
+        ],
+    ).unwrap_err() else { unreachable!() };
+    let expected = TypeError::CircularModuleImport {
+        span: Span::new(ModuleId(3), (1, 15), (1, 19)),
+    };
+    assert_eq!(expected, err);
 }
 
 #[test]
@@ -1768,7 +1936,7 @@ fn typecheck_type_declaration() {
             is_initialized: true,
             defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
             is_captured: false,
-            alias: VariableAlias::Type(Either::Left(struct_id)),
+            alias: VariableAlias::Type(TypeKind::Struct(struct_id)),
             is_parameter: false,
         }
     ];
@@ -2014,7 +2182,7 @@ fn typecheck_enum_declaration() {
             is_initialized: true,
             defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
             is_captured: false,
-            alias: VariableAlias::Type(Either::Right(enum_id)),
+            alias: VariableAlias::Type(TypeKind::Enum(enum_id)),
             is_parameter: false,
         }
     ];
@@ -3209,7 +3377,7 @@ fn typecheck_invocation_instantiation() {
             token: Token::Ident(Position::new(2, 1), "Foo".to_string()),
             var_id: VarId(ScopeId(ModuleId(1), 0), 0),
             type_arg_ids: vec![],
-            type_id: project.find_type_id_by(&ScopeId(ModuleId(1), 0), |ty| if let Type::Type(Either::Left(s_id)) = ty { *s_id == struct_.id } else { false }).unwrap(),
+            type_id: project.find_type_id_by(&ScopeId(ModuleId(1), 0), |ty| if let Type::Type(TypeKind::Struct(s_id)) = ty { *s_id == struct_.id } else { false }).unwrap(),
         }),
         arguments: vec![
             Some(TypedNode::Literal {

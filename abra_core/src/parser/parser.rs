@@ -6,7 +6,7 @@ use crate::parser::parse_error::{ParseErrorKind, ParseError};
 use crate::parser::precedence::Precedence;
 
 pub struct ParseResult {
-    pub imports: Vec<(Token, ModuleId)>,
+    pub imports: Vec<(Token, ModuleId, Token)>,
     pub nodes: Vec<AstNode>,
 }
 
@@ -33,7 +33,7 @@ fn parse_impl(module_id: ModuleId, tokens: Vec<Token>, stub_mode: bool) -> Resul
                         Err(kind) => return Err(ParseError { module_id, kind })
                     };
                     if let AstNode::ImportStatement(import_tok, import_node) = &node {
-                        imports.push((import_tok.clone(), import_node.module_id.clone()))
+                        imports.push((import_tok.clone(), import_node.module_id.clone(), import_node.module_token.clone()))
                     }
                     node
                 } else {
@@ -773,11 +773,11 @@ impl Parser {
         Ok(AstNode::ReturnStatement(token, expr))
     }
 
-    fn parse_import_module(&mut self) -> Result<ModuleId, ParseErrorKind> {
+    fn parse_import_module(&mut self) -> Result<(Token, ModuleId), ParseErrorKind> {
         let import_path_tok = self.expect_next_token(TokenType::String)?;
         let import_path = if let Token::String(_, s) = &import_path_tok { s } else { unreachable!() };
         match ModuleId::parse_module_path(import_path) {
-            Some(module_id) => Ok(module_id),
+            Some(module_id) => Ok((import_path_tok, module_id)),
             None => Err(ParseErrorKind::InvalidImportPath(import_path_tok))
         }
     }
@@ -790,17 +790,17 @@ impl Parser {
             let star_token = self.expect_next()?; // Consume '*'
             let kind = ImportKind::ImportAll(star_token);
             self.expect_next_token(TokenType::From)?;
-            let module_id = self.parse_import_module()?;
+            let (module_token, module_id) = self.parse_import_module()?;
 
-            Ok(AstNode::ImportStatement(token, ImportNode { kind, module_id }))
+            Ok(AstNode::ImportStatement(token, ImportNode { kind, module_token, module_id }))
         } else if let Token::String(_, _) = self.expect_peek()? {
-            let module_id = self.parse_import_module()?;
+            let (module_token, module_id) = self.parse_import_module()?;
 
             self.expect_next_token(TokenType::As)?;
             let alias_token = self.expect_next_token(TokenType::Ident)?;
             let kind = ImportKind::Alias(alias_token);
 
-            Ok(AstNode::ImportStatement(token, ImportNode { kind, module_id }))
+            Ok(AstNode::ImportStatement(token, ImportNode { kind, module_token, module_id }))
         } else {
             let ident = self.expect_next_token(TokenType::Ident)?;
             match self.peek() {
@@ -821,16 +821,16 @@ impl Parser {
 
                     let kind = ImportKind::ImportList(imports);
                     self.expect_next_token(TokenType::From)?;
-                    let module_id = self.parse_import_module()?;
+                    let (module_token, module_id) = self.parse_import_module()?;
 
-                    Ok(AstNode::ImportStatement(token, ImportNode { kind, module_id }))
+                    Ok(AstNode::ImportStatement(token, ImportNode { kind, module_token, module_id }))
                 }
                 Some(Token::From(_)) => {
                     let kind = ImportKind::ImportList(vec![ident]);
                     self.expect_next_token(TokenType::From)?;
-                    let module_id = self.parse_import_module()?;
+                    let (module_token, module_id) = self.parse_import_module()?;
 
-                    Ok(AstNode::ImportStatement(token, ImportNode { kind, module_id }))
+                    Ok(AstNode::ImportStatement(token, ImportNode { kind, module_token, module_id }))
                 }
                 _ => {
                     let tok = self.expect_next()?;
@@ -4918,7 +4918,7 @@ mod tests {
             let module_id = ModuleId::parse_module_path("./test").unwrap();
             let tokens = tokenize(&module_id, &input.to_string()).unwrap();
             let mut parser = Parser::new(tokens, false);
-            parser.parse_import_module()
+            parser.parse_import_module().map(|(_, module_id)| module_id)
         }
 
         // Valid cases
@@ -4993,6 +4993,7 @@ mod tests {
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
                     kind: ImportKind::ImportAll(Token::Star(Position::new(1, 8))),
+                    module_token: Token::String(Position::new(1, 15), "./abc/def".to_string()),
                     module_id: ModuleId::Internal(vec![
                         ModulePathSegment::CurrentDir,
                         ModulePathSegment::Directory("abc".to_string()),
@@ -5009,6 +5010,7 @@ mod tests {
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
                     kind: ImportKind::ImportList(vec![ident_token!((1, 8), "Date")]),
+                    module_token: Token::String(Position::new(1, 18), "./time/date".to_string()),
                     module_id: ModuleId::Internal(vec![
                         ModulePathSegment::CurrentDir,
                         ModulePathSegment::Directory("time".to_string()),
@@ -5028,6 +5030,7 @@ mod tests {
                         ident_token!((1, 8), "SomeType"),
                         ident_token!((1, 18), "someFunc"),
                     ]),
+                    module_token: Token::String(Position::new(1, 32), "./local/module.ext".to_string()),
                     module_id: ModuleId::Internal(vec![
                         ModulePathSegment::CurrentDir,
                         ModulePathSegment::Directory("local".to_string()),
@@ -5044,6 +5047,7 @@ mod tests {
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
                     kind: ImportKind::Alias(ident_token!((1, 23), "date")),
+                    module_token: Token::String(Position::new(1, 8), "time.date".to_string()),
                     module_id: ModuleId::External("time.date".to_string()),
                 },
             )
@@ -5056,6 +5060,7 @@ mod tests {
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
                     kind: ImportKind::Alias(ident_token!((1, 28), "module")),
+                    module_token: Token::String(Position::new(1, 8), "./local.module".to_string()),
                     module_id: ModuleId::Internal(vec![
                         ModulePathSegment::CurrentDir,
                         ModulePathSegment::Module("local.module".to_string()),

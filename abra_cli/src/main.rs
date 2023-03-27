@@ -114,12 +114,14 @@ fn cmd_typecheck2(opts: RunOpts) -> Result<(), ()> {
         Err(e) => {
             match e {
                 Either::Left(Either::Left(e)) => {
-                    let file_name = module_loader.resolve_path(&module_id);
+                    let file_name = module_loader.resolve_path(&module_id)
+                        .expect("Internal error: cannot report on errors in a file that never existed in the first place");
                     let contents = std::fs::read_to_string(&file_name).unwrap();
                     eprintln!("{}", e.get_message(&file_name, &contents))
                 },
                 Either::Left(Either::Right(e)) => {
-                    let file_name = module_loader.resolve_path(&module_id);
+                    let file_name = module_loader.resolve_path(&module_id)
+                        .expect("Internal error: cannot report on errors in a file that never existed in the first place");
                     let contents = std::fs::read_to_string(&file_name).unwrap();
                     eprintln!("{}", e.get_message(&file_name, &contents))
                 },

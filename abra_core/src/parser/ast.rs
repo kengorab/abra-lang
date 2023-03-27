@@ -436,6 +436,7 @@ pub enum ImportKind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImportNode {
     pub kind: ImportKind,
+    pub module_token: Token,
     pub module_id: ModuleId,
 }
 
