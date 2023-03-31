@@ -1,1 +1,1 @@
-export val a = "a"
+export func f<T>(t: T): T = t

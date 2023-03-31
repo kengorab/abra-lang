@@ -150,6 +150,10 @@ impl Project {
     }
 
     pub fn get_type_by_id(&self, type_id: &TypeId) -> &Type {
+        if let Some(_) = type_id.as_module_type_alias() {
+            return &Type::ModuleAlias;
+        }
+
         let TypeId(ScopeId(ModuleId(module_idx), scope_idx), idx) = type_id;
         let scope = &self.modules[*module_idx].scopes[*scope_idx];
         &scope.types[*idx]
@@ -223,11 +227,7 @@ impl Project {
                 };
                 self.get_struct_by_id(struct_id)
             }
-            Type::Type(_) => return None,
-            Type::Generic(_, _) | Type::Function(_, _, _, _) => {
-                debug_assert!(false, "Unimplemented");
-                return None;
-            }
+            Type::Type(_) | Type::Generic(_, _) | Type::Function(_, _, _, _) | Type::ModuleAlias => return None,
         };
 
         Some((struct_, generic_substitutions))
@@ -321,6 +321,25 @@ impl Project {
                 }
             }
             None
+        })
+    }
+
+    pub fn find_var_id_by_alias(&self, alias: VariableAlias) -> Option<VarId> {
+        let scope_id = match alias {
+            VariableAlias::None => return None,
+            VariableAlias::Function(FuncId(scope_id, _)) => scope_id,
+            VariableAlias::Type(TypeKind::Struct(StructId(module_id, _))) |
+            VariableAlias::Type(TypeKind::Enum(EnumId(module_id, _))) => ScopeId(module_id, 0),
+        };
+
+        let ScopeId(module_id, scope_idx) = scope_id;
+        let scope = &self.modules[module_id.0].scopes[scope_idx];
+        scope.vars.iter().enumerate().find_map(|(idx, var)| {
+            if var.alias == alias {
+                Some(VarId(scope_id, idx))
+            } else {
+                None
+            }
         })
     }
 
@@ -444,6 +463,7 @@ impl Project {
             }
             Type::Type(TypeKind::Struct(struct_id)) => self.get_struct_by_id(struct_id).name.clone(),
             Type::Type(TypeKind::Enum(enum_id)) => self.get_enum_by_id(enum_id).name.clone(),
+            Type::ModuleAlias => "<module>".to_string(),
         }
     }
 
@@ -572,6 +592,7 @@ pub struct TypeId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
 
 impl TypeId {
     const PLACEHOLDER_SLOT_MARKER: ScopeId = ScopeId::BOGUS;
+    const MODULE_ALIAS_MARKER: ScopeId = ScopeId(ScopeId::BOGUS.0, ScopeId::BOGUS.1 - 1);
 
     fn placeholder_slot(idx: usize) -> TypeId {
         TypeId(Self::PLACEHOLDER_SLOT_MARKER, idx)
@@ -579,6 +600,15 @@ impl TypeId {
 
     fn is_placeholder_slot(&self) -> bool {
         self.0 == Self::PLACEHOLDER_SLOT_MARKER
+    }
+
+    fn module_type_alias(module_id: &ModuleId) -> TypeId {
+        let ModuleId(module_idx) = module_id;
+        TypeId(Self::MODULE_ALIAS_MARKER, *module_idx)
+    }
+
+    fn as_module_type_alias(&self) -> Option<ModuleId> {
+        if self.0 == Self::MODULE_ALIAS_MARKER { Some(ModuleId(self.1)) } else { None }
     }
 }
 
@@ -606,6 +636,7 @@ pub enum Type {
     GenericEnumInstance(EnumId, Vec<TypeId>, /* variant_idx: */ Option<usize>),
     Function(/* parameter_type_ids: */ Vec<TypeId>, /* num_required_params: */ usize, /* is_variadic: */ bool, /* return_type_id: */ TypeId),
     Type(TypeKind),
+    ModuleAlias,
 }
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
@@ -1068,7 +1099,7 @@ pub enum TypeError {
     InvalidExportScope { span: Span },
     CircularModuleImport { span: Span },
     UnknownModule { span: Span, module_path: Option<String> },
-    UnknownExport { span: Span, import_name: String },
+    UnknownExport { span: Span, module_id: ModuleId, import_name: String, is_aliased: bool },
 }
 
 impl TypeError {
@@ -1668,10 +1699,12 @@ impl TypeError {
                     cursor_line, path_msg
                 )
             }
-            TypeError::UnknownExport { import_name, .. } => {
+            TypeError::UnknownExport { module_id, import_name, is_aliased, .. } => {
+                let first_line = if *is_aliased { "Unknown member" } else { "Invalid import" };
+
                 format!(
-                    "Invalid import\n{}\nThis module does not export any value name '{}'",
-                    cursor_line, import_name
+                    "{}\n{}\nThere's no exported value named '{}' in module '{}'",
+                    first_line, cursor_line, import_name, project.modules[module_id.0].name,
                 )
             }
         };
@@ -1989,7 +2022,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let substituted_ret_type_id = self.substitute_generics_with_known(&ret_type_id, substitutions);
                 self.add_or_find_type_id(self.project.function_type(substituted_arg_type_ids, num_required_params, is_variadic, substituted_ret_type_id))
             }
-            Type::Primitive(_) | Type::Type(_) => *type_id,
+            Type::Primitive(_) | Type::Type(_) | Type::ModuleAlias => *type_id,
         }
     }
 
@@ -1997,7 +2030,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         #[inline]
         fn extract_generic_slots_impl<L: LoadModule>(zelf: &Typechecker2<L>, type_id: &TypeId, generics: &mut Vec<TypeId>) {
             match zelf.project.get_type_by_id(type_id) {
-                Type::Primitive(_) => {}
+                Type::Primitive(_) | Type::ModuleAlias => {}
                 Type::Generic(_, _) => {
                     generics.push(*type_id);
                 }
@@ -3333,13 +3366,18 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             let import_module = &self.project.modules[module_idx];
                             let Some(export) = import_module.exports.get(&import_name) else {
                                 let span = self.make_span(&import_tok.get_range());
-                                return Err(TypeError::UnknownExport { span, import_name });
+                                return Err(TypeError::UnknownExport { span, module_id, import_name, is_aliased: false });
                             };
 
                             self.add_imported_value(*export, import_tok)?;
                         }
                     }
-                    ImportKind::Alias(_) => todo!()
+                    ImportKind::Alias(alias_token) => {
+                        let alias_name = Token::get_ident_name(alias_token);
+                        let module_type_id = TypeId::module_type_alias(&module_id);
+                        let span = self.make_span(&alias_token.get_range());
+                        self.add_variable_to_current_scope(alias_name, module_type_id, false, true, &span, false)?;
+                    }
                 }
 
                 Ok(TypedNode::Import { token, kind, module_id })
@@ -4383,7 +4421,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 Ok(TypedNode::Indexing { target: Box::new(typed_target), index: typed_index, type_id: result_type_id })
             }
             AstNode::Accessor(_, n) => {
-                let AstNode::Identifier(field_ident, _) = *n.field else { unreachable!("Internal error: an accessor's `field` must be an identifier") };
+                let AstNode::Identifier(field_ident, type_args) = *n.field else { unreachable!("Internal error: an accessor's `field` must be an identifier") };
                 let field_name = Token::get_ident_name(&field_ident);
                 let field_span = self.make_span(&field_ident.get_range());
 
@@ -4395,6 +4433,30 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         target_type_id = inner_type_id;
                         target_is_option_type = true;
                     }
+                }
+
+                if let Some(alias_module_id) = target_type_id.as_module_type_alias() {
+                    let m = &self.project.modules[alias_module_id.0];
+                    let Some(export) = m.exports.iter().find_map(|(name, val)| if name == &field_name { Some(val) } else { None }) else {
+                        return Err(TypeError::UnknownExport { span: field_span, module_id: alias_module_id, import_name: field_name, is_aliased: true });
+                    };
+
+                    let var_id = match export {
+                        ExportedValue::Function(func_id) => self.project.find_var_id_by_alias(VariableAlias::Function(*func_id)).expect("Internal error: no aliased variable for function"),
+                        ExportedValue::Type(type_kind) => self.project.find_var_id_by_alias(VariableAlias::Type(*type_kind)).expect("Internal error: no aliased variable for type"),
+                        ExportedValue::Variable(var_id) => *var_id,
+                    };
+                    let type_id = self.project.get_var_by_id(&var_id).type_id;
+
+                    let mut type_arg_ids = Vec::with_capacity(type_args.as_ref().map(|args| args.len()).unwrap_or(0));
+                    if let Some(type_args) = type_args {
+                        for type_arg in type_args {
+                            let type_id = self.resolve_type_identifier(&type_arg)?;
+                            type_arg_ids.push((type_id, type_arg.get_ident().get_range()));
+                        }
+                    }
+
+                    return Ok(TypedNode::Identifier { token: field_ident, var_id, type_arg_ids, type_id });
                 }
 
                 let mut field_data = None;
@@ -4646,6 +4708,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             }
                             Type::Generic(_, _) |
                             Type::Function(_, _, _, _) => todo!(),
+                            Type::ModuleAlias => unreachable!(),
                         }
 
                         if *is_opt_safe && target_is_option_type {

@@ -1,4 +1,4 @@
-import * from "./example2"
-import a from "./example3"
+import "./example2" as example2
 
-export val b: (String, String) = (a, "b")
+val x = example2.f<Int[]>([])
+val _: Float[] = x

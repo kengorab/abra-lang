@@ -510,6 +510,37 @@ fn typecheck_imports() {
             ("3", "export val b = \"b\""),
         ],
     );
+    assert_typecheck_ok_modules(
+        r#"
+          import "./2" as two
+
+          two.f(two.Foo(s: two.s))
+          two.b(two.Bar.Bar1, two.Bar.Bar2(i: two.i))
+        "#,
+        &[
+            (
+                "2",
+                r#"
+                  export type Foo { s: String }
+                  export enum Bar { Bar1, Bar2(i: Int) }
+                  export val s = "String"
+                  export val i = 24
+                  export func f(foo: Foo) {}
+                  export func b(bar1: Bar, bar2: Bar) {}
+                "#
+            ),
+        ],
+    );
+    assert_typecheck_ok_modules(
+        r#"
+          import "./2" as two
+
+          val _: Int[] = two.f<Int[]>([])
+        "#,
+        &[
+            ("2", "export func f<T>(t: T): T = t"),
+        ],
+    );
 }
 
 #[test]
@@ -546,7 +577,9 @@ fn typecheck_failure_imports() {
     ).unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownExport {
         span: Span::new(ModuleId(1), (1, 8), (1, 8)),
+        module_id: ModuleId(2),
         import_name: "x".to_string(),
+        is_aliased: false,
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck_with_modules(
@@ -558,7 +591,9 @@ fn typecheck_failure_imports() {
     ).unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownExport {
         span: Span::new(ModuleId(2), (1, 8), (1, 8)),
+        module_id: ModuleId(3),
         import_name: "x".to_string(),
+        is_aliased: false,
     };
     assert_eq!(expected, err);
 
@@ -589,6 +624,39 @@ fn typecheck_failure_imports() {
         name: "a".to_string(),
         original_span: Some(Span::new(ModuleId(1), (1, 8), (1, 8))),
         kind: DuplicateNameKind::Variable,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck_with_modules(
+        "\
+          import \"./2\" as two\n\
+          println(two.xyz)\
+        ",
+        &[
+            ("2", "export val a = \"a\""),
+        ],
+    ).unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownExport {
+        span: Span::new(ModuleId(1), (2, 13), (2, 15)),
+        module_id: ModuleId(2),
+        import_name: "xyz".to_string(),
+        is_aliased: true,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck_with_modules(
+        "\
+          import \"./2\" as two\n\
+          val x = (two, 1)[0].xyz\
+        ",
+        &[
+            ("2", "export val a = \"a\""),
+        ],
+    ).unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownExport {
+        span: Span::new(ModuleId(1), (2, 21), (2, 23)),
+        module_id: ModuleId(2),
+        import_name: "xyz".to_string(),
+        is_aliased: true,
     };
     assert_eq!(expected, err);
 }
