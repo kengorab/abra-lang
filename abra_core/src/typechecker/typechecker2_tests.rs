@@ -240,6 +240,67 @@ fn test_type_assignability() {
 }
 
 #[test]
+fn typecheck_failure_type_identifier() {
+    let (_, Either::Right(err)) = test_typecheck("var _: Int<Int>").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidTypeArgumentArity {
+        span: Span::new(ModuleId(1), (1, 12), (1, 14)),
+        num_required_args: 0,
+        num_provided_args: 1,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("var _: Float<Int>").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidTypeArgumentArity {
+        span: Span::new(ModuleId(1), (1, 14), (1, 16)),
+        num_required_args: 0,
+        num_provided_args: 1,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("var _: Bool<Int>").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidTypeArgumentArity {
+        span: Span::new(ModuleId(1), (1, 13), (1, 15)),
+        num_required_args: 0,
+        num_provided_args: 1,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("var _: String<Int>").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidTypeArgumentArity {
+        span: Span::new(ModuleId(1), (1, 15), (1, 17)),
+        num_required_args: 0,
+        num_provided_args: 1,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("var _: Map<Int>").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidTypeArgumentArity {
+        span: Span::new(ModuleId(1), (1, 8), (1, 10)),
+        num_required_args: 2,
+        num_provided_args: 1,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("var _: Map<Int, String, Bool>").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidTypeArgumentArity {
+        span: Span::new(ModuleId(1), (1, 25), (1, 28)),
+        num_required_args: 2,
+        num_provided_args: 3,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("var _: Set").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidTypeArgumentArity {
+        span: Span::new(ModuleId(1), (1, 8), (1, 10)),
+        num_required_args: 1,
+        num_provided_args: 0,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("var _: Set<Int, String, Bool>").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidTypeArgumentArity {
+        span: Span::new(ModuleId(1), (1, 17), (1, 28)),
+        num_required_args: 1,
+        num_provided_args: 3,
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
 fn typecheck_prelude_int() {
     let result = test_typecheck(r#"
       val i = 24

@@ -2074,38 +2074,57 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     fn resolve_type_identifier(&mut self, type_identifier: &TypeIdentifier) -> Result<TypeId, TypeError> {
         match type_identifier {
             TypeIdentifier::Normal { ident, type_args } => {
+                let default_type_args = vec![];
+                let type_args = type_args.as_ref().unwrap_or(&default_type_args);
+                let mut generic_ids = Vec::with_capacity(type_args.len());
+                for type_arg_identifier in type_args {
+                    let type_id = self.resolve_type_identifier(&type_arg_identifier)?;
+                    generic_ids.push(type_id);
+                }
+
+                let assert_expected_type_args = |num_required_args: usize| -> Result<(), TypeError> {
+                    let num_provided_args = generic_ids.len();
+                    if num_required_args != num_provided_args {
+                        let range = if num_provided_args > num_required_args {
+                            type_args[num_required_args].get_ident().get_range().expand(&type_args[num_provided_args - 1].get_ident().get_range())
+                        } else {
+                            ident.get_range()
+                        };
+
+                        let span = self.make_span(&range);
+                        return Err(TypeError::InvalidTypeArgumentArity { span, num_required_args, num_provided_args });
+                    }
+
+                    Ok(())
+                };
+                let assert_no_type_args = || assert_expected_type_args(0);
+
                 let ident_name = Token::get_ident_name(ident);
                 match ident_name.as_str() {
-                    "Unit" => Ok(PRELUDE_UNIT_TYPE_ID),
-                    "Any" => Ok(PRELUDE_ANY_TYPE_ID),
-                    "Int" => Ok(PRELUDE_INT_TYPE_ID),
-                    "Float" => Ok(PRELUDE_FLOAT_TYPE_ID),
-                    "Bool" => Ok(PRELUDE_BOOL_TYPE_ID),
-                    "String" => Ok(PRELUDE_STRING_TYPE_ID),
+                    "Unit" => assert_no_type_args().and(Ok(PRELUDE_UNIT_TYPE_ID)),
+                    "Any" => assert_no_type_args().and(Ok(PRELUDE_ANY_TYPE_ID)),
+                    "Int" => assert_no_type_args().and(Ok(PRELUDE_INT_TYPE_ID)),
+                    "Float" => assert_no_type_args().and(Ok(PRELUDE_FLOAT_TYPE_ID)),
+                    "Bool" => assert_no_type_args().and(Ok(PRELUDE_BOOL_TYPE_ID)),
+                    "String" => assert_no_type_args().and(Ok(PRELUDE_STRING_TYPE_ID)),
                     _ => {
                         if let Some(generic_type_id) = self.project.find_type_id_for_generic(&self.current_scope_id, &ident_name) {
-                            if let Some(type_args) = type_args {
-                                if let Some(first) = type_args.get(0) {
-                                    let span = self.make_span(&first.get_ident().get_range());
-                                    return Err(TypeError::InvalidTypeArgumentArity { span, num_required_args: 0, num_provided_args: type_args.len() });
-                                }
+                            if let Some(first) = type_args.get(0) {
+                                let span = self.make_span(&first.get_ident().get_range());
+                                return Err(TypeError::InvalidTypeArgumentArity { span, num_required_args: 0, num_provided_args: type_args.len() });
                             }
 
                             return Ok(generic_type_id);
                         }
 
-                        let mut generic_ids = vec![];
-                        if let Some(type_args) = type_args { // TODO: verify that struct expects to receive type arguments
-                            for type_arg_identifier in type_args {
-                                let type_id = self.resolve_type_identifier(type_arg_identifier)?;
-                                generic_ids.push(type_id);
-                            }
-                        }
-
                         if let Some(struct_) = self.get_struct_by_name(&ident_name) {
+                            assert_expected_type_args(struct_.generic_ids.len())?;
+
                             let struct_id = struct_.id;
                             Ok(self.add_or_find_type_id(Type::GenericInstance(struct_id, generic_ids)))
                         } else if let Some(enum_) = self.get_enum_by_name(&ident_name) {
+                            assert_expected_type_args(enum_.generic_ids.len())?;
+
                             let enum_id = enum_.id;
                             Ok(self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids, None)))
                         } else {

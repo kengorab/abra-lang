@@ -1,4 +1,5 @@
-import "./example2" as example2
+//val x: Int<Int> = 1
 
-val x = example2.f<Int[]>([])
-val _: Float[] = x
+type Foo<T, U, V> {}
+
+var f: Foo<Int, Int>
