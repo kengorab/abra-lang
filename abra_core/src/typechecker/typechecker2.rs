@@ -553,12 +553,13 @@ pub struct Struct {
     pub static_methods: Vec<FuncId>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct StructField {
     pub name: String,
     pub type_id: TypeId,
     pub defined_span: Span,
     pub is_readonly: bool,
+    pub default_value: Option<TypedNode>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -1812,7 +1813,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             match (base_ty, target_ty) {
                 (_, Type::Primitive(PrimitiveType::Any)) => true,
                 (Type::Generic(_, _), Type::Generic(_, _)) => base_type_id == target_type_id,
-                (_, Type::Generic(_, _)) => unreachable!("Test: we shouldn't reach here because before any attempt to test types, we should substitute generics. See if this assumption is true (there will surely be a counterexample someday)"),
+                (_, Type::Generic(_, _)) => false, // unreachable!("Test: we shouldn't reach here because before any attempt to test types, we should substitute generics. See if this assumption is true (there will surely be a counterexample someday)"),
                 (Type::Primitive(idx1), Type::Primitive(idx2)) => idx1 == idx2,
                 (Type::GenericInstance(struct_id_1, generic_ids_1), Type::GenericInstance(struct_id_2, generic_ids_2)) => {
                     if struct_id_1 != struct_id_2 || generic_ids_1.len() != generic_ids_2.len() {
@@ -1905,8 +1906,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let var_struct_id = *var_struct_id;
                     let var_generic_ids = var_generic_ids.clone();
 
-                    let mut new_var_generic_ids = vec![];
-                    for (hint_generic_type_id, var_generic_type_id) in hint_generic_ids.iter().zip(var_generic_ids.iter()) {
+                    let iter = hint_generic_ids.iter().zip(var_generic_ids.iter());
+                    let mut new_var_generic_ids = Vec::with_capacity(iter.len());
+                    for (hint_generic_type_id, var_generic_type_id) in iter {
                         new_var_generic_ids.push(self.substitute_generics(hint_generic_type_id, var_generic_type_id));
                     }
                     self.add_or_find_type_id(Type::GenericInstance(var_struct_id, new_var_generic_ids))
@@ -1921,8 +1923,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let var_generic_ids = var_generic_ids.clone();
                     let var_variant_idx = *var_variant_idx;
 
-                    let mut new_var_generic_ids = vec![];
-                    for (hint_generic_type_id, var_generic_type_id) in hint_generic_ids.iter().zip(var_generic_ids.iter()) {
+                    let iter = hint_generic_ids.iter().zip(var_generic_ids.iter());
+                    let mut new_var_generic_ids = Vec::with_capacity(iter.len());
+                    for (hint_generic_type_id, var_generic_type_id) in iter {
                         new_var_generic_ids.push(self.substitute_generics(hint_generic_type_id, var_generic_type_id));
                     }
                     self.add_or_find_type_id(Type::GenericEnumInstance(var_enum_id, new_var_generic_ids, var_variant_idx))
@@ -2928,7 +2931,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     }
 
     fn typecheck_struct_pass_0(&mut self, node: &TypeDeclNode) -> Result<StructId, TypeError> {
-        let TypeDeclNode { export_token, name, type_args, .. } = node;
+        let TypeDeclNode { export_token, name, type_args, fields, .. } = node;
         let is_exported = export_token.is_some();
         if let Some(export_token) = export_token { self.verify_export_scope(export_token)?; }
 
@@ -2938,7 +2941,34 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         // A struct's generics are scoped to the struct declaration, but the instance type should be scoped to the outer scope.
         let generic_ids = self.add_generics_to_scope(&struct_scope_id, type_args)?;
         let struct_id = self.add_struct_to_current_module(struct_scope_id, name, generic_ids)?;
-        debug_assert!(self.current_type_decl.is_none(), "At the moment, types cannot be nested within other types");
+
+        let prev_scope_id = self.current_scope_id;
+        self.current_scope_id = struct_scope_id;
+
+        let mut seen_fields: HashMap<String, Token> = HashMap::new();
+        for TypeDeclField { ident, type_ident, readonly, .. } in fields {
+            let is_readonly = readonly.is_some();
+
+            let field_name = Token::get_ident_name(&ident);
+            if let Some(orig_field) = seen_fields.get(&field_name) {
+                let span = self.make_span(&ident.get_range());
+                let original_span = Some(self.make_span(&orig_field.get_range()));
+                return Err(TypeError::DuplicateName { span, name: field_name, original_span, kind: DuplicateNameKind::Field });
+            }
+            seen_fields.insert(field_name.clone(), ident.clone());
+
+            let field_type_id = self.resolve_type_identifier(&type_ident)?;
+            let field = StructField {
+                name: field_name,
+                type_id: field_type_id,
+                defined_span: self.make_span(&ident.get_range()),
+                is_readonly,
+                default_value: None,
+            };
+            self.project.get_struct_by_id_mut(&struct_id).fields.push(field);
+        }
+
+        self.current_scope_id = prev_scope_id;
 
         if is_exported {
             self.current_module_mut().exports.insert(struct_name, ExportedValue::Type(TypeKind::Struct(struct_id)));
@@ -2952,7 +2982,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let struct_ = self.project.get_struct_by_id(struct_id);
 
+        let prev_scope_id = self.current_scope_id;
         self.current_scope_id = struct_.struct_scope_id;
+        debug_assert!(self.current_type_decl.is_none(), "At the moment, types cannot be nested within other types");
         self.current_type_decl = Some(struct_.self_type_id);
 
         for method in methods {
@@ -2971,7 +3003,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.current_type_decl = None;
 
-        self.end_child_scope();
+        self.current_scope_id = prev_scope_id;
 
         Ok(())
     }
@@ -2983,27 +3015,24 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let prev_scope_id = self.current_scope_id;
         self.current_scope_id = struct_.struct_scope_id;
 
-        let mut seen_fields: HashMap<String, Token> = HashMap::new();
-        for TypeDeclField { ident, type_ident, default_value, readonly } in fields {
-            if default_value.is_some() { todo!("Internal error: field default values") }
-            let is_readonly = readonly.is_some();
+        for (idx, TypeDeclField { default_value, .. }) in fields.into_iter().enumerate() {
+            let Some(default_value_node) = default_value else { continue; };
+            let struct_ = self.project.get_struct_by_id(&struct_id);
+            let field_type_id = struct_.fields[idx].type_id;
+            let default_value = self.typecheck_expression(default_value_node, Some(field_type_id))?;
 
-            let field_name = Token::get_ident_name(&ident);
-            if let Some(orig_field) = seen_fields.get(&field_name) {
-                let span = self.make_span(&ident.get_range());
-                let original_span = Some(self.make_span(&orig_field.get_range()));
-                return Err(TypeError::DuplicateName { span, name: field_name, original_span, kind: DuplicateNameKind::Field });
+            let mut type_id = *default_value.type_id();
+
+            if self.type_contains_generics(&type_id) {
+                type_id = self.substitute_generics(&field_type_id, &type_id);
             }
-            seen_fields.insert(field_name.clone(), ident.clone());
+            if !self.type_satisfies_other(&type_id, &field_type_id) {
+                let span = self.make_span(&default_value.span());
+                return Err(TypeError::TypeMismatch { span, expected: vec![field_type_id], received: type_id });
+            }
 
-            let field_type_id = self.resolve_type_identifier(&type_ident)?;
-            let field = StructField {
-                name: field_name,
-                type_id: field_type_id,
-                defined_span: self.make_span(&ident.get_range()),
-                is_readonly,
-            };
-            self.project.get_struct_by_id_mut(&struct_id).fields.push(field);
+            let struct_ = self.project.get_struct_by_id_mut(&struct_id);
+            struct_.fields[idx].default_value = Some(default_value);
         }
 
         let mut method_func_id_idx = 0;
@@ -3343,12 +3372,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     if !self.type_satisfies_other(&expr_type_id, &return_type_id) {
                         let span = self.make_span(&typed_ret_expr.span());
                         return Err(TypeError::ReturnTypeMismatch { span, func_name, expected: return_type_id, received: expr_type_id });
-                    };
+                    }
                 } else {
                     if !self.type_satisfies_other(&PRELUDE_UNIT_TYPE_ID, &return_type_id) {
                         let span = self.make_span(&token.get_range());
                         return Err(TypeError::ReturnTypeMismatch { span, func_name, expected: return_type_id, received: PRELUDE_UNIT_TYPE_ID });
-                    };
+                    }
                 }
 
                 let parent_func = self.project.get_func_by_id_mut(&parent_func_id);
@@ -4615,9 +4644,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 match id {
                                     TypeKind::Struct(alias_struct_id) => {
                                         let struct_ = self.project.get_struct_by_id(&alias_struct_id);
-                                        // TODO: Struct fields default values
                                         generic_ids = &struct_.generic_ids;
-                                        params_data = struct_.fields.iter().enumerate().map(|(idx, f)| (idx, f.name.clone(), f.type_id, false, false)).collect_vec();
+                                        params_data = struct_.fields.iter().enumerate().map(|(idx, f)| (idx, f.name.clone(), f.type_id, f.default_value.is_some(), false)).collect_vec();
                                         return_type_id = struct_.self_type_id;
                                         is_instantiation = true;
                                     }

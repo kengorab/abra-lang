@@ -2077,8 +2077,8 @@ fn typecheck_type_declaration() {
             generic_ids: vec![],
             self_type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
             fields: vec![
-                StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID, is_readonly: false, defined_span: Span::new(ModuleId(1), (2, 1), (2, 1)) },
-                StructField { name: "b".to_string(), type_id: PRELUDE_INT_TYPE_ID, is_readonly: false, defined_span: Span::new(ModuleId(1), (3, 1), (3, 1)) },
+                StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID, is_readonly: false, defined_span: Span::new(ModuleId(1), (2, 1), (2, 1)), default_value: None },
+                StructField { name: "b".to_string(), type_id: PRELUDE_INT_TYPE_ID, is_readonly: false, defined_span: Span::new(ModuleId(1), (3, 1), (3, 1)), default_value: None },
             ],
             methods: vec![],
             static_methods: vec![],
@@ -2119,7 +2119,7 @@ fn typecheck_type_declaration() {
             generic_ids: vec![],
             self_type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
             fields: vec![
-                StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID, is_readonly: true, defined_span: Span::new(ModuleId(1), (2, 1), (2, 1)) },
+                StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID, is_readonly: true, defined_span: Span::new(ModuleId(1), (2, 1), (2, 1)), default_value: None },
             ],
             methods: vec![FuncId(ScopeId(ModuleId(1), 1), 0)],
             static_methods: vec![FuncId(ScopeId(ModuleId(1), 1), 1)],
@@ -2195,13 +2195,60 @@ fn typecheck_type_declaration() {
             generic_ids: vec![TypeId(struct_scope_id, 0)],
             self_type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
             fields: vec![
-                StructField { name: "value".to_string(), type_id: TypeId(struct_scope_id, 0), is_readonly: false, defined_span: Span::new(ModuleId(1), (2, 1), (2, 5)) },
+                StructField { name: "value".to_string(), type_id: TypeId(struct_scope_id, 0), is_readonly: false, defined_span: Span::new(ModuleId(1), (2, 1), (2, 5)), default_value: None },
             ],
             methods: vec![FuncId(ScopeId(ModuleId(1), 1), 0)],
             static_methods: vec![],
         }
     ];
     assert_eq!(expected, module.structs);
+
+    // Default-valued fields
+    let project = test_typecheck("\
+      type Foo {\n\
+        idx: Int = 0
+      }\
+    ").unwrap();
+    let module = &project.modules[1];
+    let struct_id = StructId(ModuleId(1), 0);
+    let struct_scope_id = ScopeId(ModuleId(1), 1);
+    let expected = vec![
+        Struct {
+            id: struct_id,
+            struct_scope_id,
+            name: "Foo".to_string(),
+            defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
+            generic_ids: vec![],
+            self_type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
+            fields: vec![
+                StructField {
+                    name: "idx".to_string(),
+                    type_id: PRELUDE_INT_TYPE_ID,
+                    is_readonly: false,
+                    defined_span: Span::new(ModuleId(1), (2, 1), (2, 3)),
+                    default_value: Some(TypedNode::Literal {
+                        token: Token::Int(Position::new(2, 12), 0),
+                        value: TypedLiteral::Int(0),
+                        type_id: PRELUDE_INT_TYPE_ID,
+                    }),
+                },
+            ],
+            methods: vec![],
+            static_methods: vec![],
+        }
+    ];
+    assert_eq!(expected, module.structs);
+    assert_typecheck_ok("\
+      type Foo<T> {\n\
+        a: T[] = []\n\
+      }\
+    ");
+    assert_typecheck_ok("\
+      func makeArray<U>(): U[] = []\n\
+      type Foo {\n\
+        a: Int[] = makeArray()\n\
+      }\
+    ");
 }
 
 #[test]
@@ -2301,6 +2348,25 @@ fn typecheck_failure_type_declaration() {
         kind: DuplicateNameKind::TypeArgument,
     };
     assert_eq!(expected, err);
+
+    // Default-valued fields
+    let (_, Either::Right(err)) = test_typecheck("\
+      type Foo {\n\
+        idx: Int = true\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Span::new(ModuleId(1), (2, 12), (2, 15)),
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+    let res = test_typecheck("\
+      type Foo<T> {\n\
+        idx: T[] = [1, 2]\n\
+      }\
+    ");
+    assert!(res.is_err());
 }
 
 #[test]
@@ -3591,6 +3657,32 @@ fn typecheck_invocation_instantiation() {
     let int_array_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
     let expected = project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_.id, vec![int_array_type_id])).unwrap();
     assert_eq!(expected, var_n.type_id);
+
+    // Test default-valued fields
+    let project = test_typecheck("\
+      type Foo { a: Int, b: Int = 123 }\n\
+      Foo(a: 24)\
+    ").unwrap();
+    let module = &project.modules[1];
+    let struct_ = &module.structs[0];
+    let expected = TypedNode::Invocation {
+        target: Box::new(TypedNode::Identifier {
+            token: Token::Ident(Position::new(2, 1), "Foo".to_string()),
+            var_id: VarId(ScopeId(ModuleId(1), 0), 0),
+            type_arg_ids: vec![],
+            type_id: project.find_type_id_by(&ScopeId(ModuleId(1), 0), |ty| if let Type::Type(TypeKind::Struct(s_id)) = ty { *s_id == struct_.id } else { false }).unwrap(),
+        }),
+        arguments: vec![
+            Some(TypedNode::Literal {
+                token: Token::Int(Position::new(2, 8), 24),
+                value: TypedLiteral::Int(24),
+                type_id: PRELUDE_INT_TYPE_ID,
+            }),
+            None,
+        ],
+        type_id: struct_.self_type_id,
+    };
+    assert_eq!(expected, module.code[0]);
 }
 
 #[test]

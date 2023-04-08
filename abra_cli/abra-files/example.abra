@@ -1,5 +1,14 @@
-//val x: Int<Int> = 1
+type Foo {
+  a: Int[] = []
+}
 
-type Foo<T, U, V> {}
+val f = Foo()
 
-var f: Foo<Int, Int>
+// TODO: This should work
+//func makeArray<U>(u: U): U[] = [u]
+//func f<T>(t: T): T[] = makeArray(t)
+// TODO: So should this
+//func makeArray<U>(): U[] = []
+//type Foo<T> {
+//  a: T[] = makeArray()
+//}
