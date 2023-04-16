@@ -3738,6 +3738,18 @@ fn typecheck_failure_invocation_instantiation() {
         received: PRELUDE_BOOL_TYPE_ID,
     };
     assert_eq!(expected, err);
+
+    // Test instantiating enum
+    let (project, Either::Right(err)) = test_typecheck("\
+      enum Foo { Bar }\n\
+      Foo()\
+    ").unwrap_err() else { unreachable!() };
+    let type_id = project.find_enum_by_name(&ModuleId(1), &"Foo".to_string()).unwrap().self_type_id;
+    let expected = TypeError::IllegalInvocation {
+        span: Span::new(ModuleId(1), (2, 1), (2, 3)),
+        type_id,
+    };
+    assert_eq!(expected, err);
 }
 
 #[test]

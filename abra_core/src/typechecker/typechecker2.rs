@@ -728,7 +728,6 @@ pub struct Function {
     pub name: String,
     pub generic_ids: Vec<TypeId>,
     pub has_self: bool,
-    // TODO: Could be a slice? we won't expand once they're known
     pub params: Vec<FunctionParam>,
     pub return_type_id: TypeId,
     // Functions with no defined_span are builtins or lambdas (since they can't have name collisions anyway)
@@ -1395,10 +1394,21 @@ impl TypeError {
                 )
             }
             TypeError::IllegalInvocation { type_id, .. } => {
+                let type_repr = project.type_repr(type_id);
+                let hint = if let Some((enum_, _, _)) = project.get_enum_by_type_id(type_id) {
+                    let example = if let Some(variant) = enum_.variants.first() {
+                        format!(" (eg. '{}.{}')", type_repr, variant.name)
+                    } else {
+                        "".to_string()
+                    };
+                    format!("Type '{}' is an enum and can only be constructed using a variant{}", type_repr, example)
+                } else {
+                    format!("Type '{}' is not callable", type_repr)
+                };
+
                 format!(
-                    "Cannot invoke target as function\n{}\n\
-                    Type {} is not callable",
-                    cursor_line, project.type_repr(type_id)
+                    "Cannot invoke target as function\n{}\n{}",
+                    cursor_line, hint
                 )
             }
             TypeError::IllegalEnumVariantConstruction { enum_id, variant_idx, .. } => {
@@ -4312,7 +4322,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     return Err(TypeError::AssignmentToImmutable { span: target_span, var_name: field.name.clone(), defined_span: Some(field.defined_span.clone()), kind: ImmutableAssignmentKind::Field(type_name) });
                                 }
                             }
-                            (Type::GenericEnumInstance(_, _, _), AccessorKind::Field) => todo!(),
+                            (Type::GenericEnumInstance(_, _, Some(_)), AccessorKind::Field) => {}
                             (Type::GenericInstance(_, _), AccessorKind::Method) => {
                                 let (struct_, _) = self.project.get_struct_by_type_id(target.type_id()).expect("Internal error: This should have been caught when typechecking the Accessor");
                                 let type_name = struct_.name.clone();
@@ -4649,7 +4659,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                         return_type_id = struct_.self_type_id;
                                         is_instantiation = true;
                                     }
-                                    TypeKind::Enum(_alias_enum_id) => todo!("Should return an error, cannot construct enum directly"),
+                                    TypeKind::Enum(alias_enum_id) => {
+                                        let type_id = self.project.get_enum_by_id(&alias_enum_id).self_type_id;
+                                        return Err(TypeError::IllegalInvocation { span: self.make_span(&typed_target.span()), type_id });
+                                    },
                                 }
                             }
                             VariableAlias::None => unreachable!("VariableAlias::None identifiers are excluded from this match case and are handled below"),
