@@ -32,7 +32,7 @@ jobs:
       with:
         version: "11.0"
     - name: Find LLVM
-      run: echo $LLVM_PATH && ls -la $LLVM_PATH && which llvm-config
+      run: echo $LLVM_PATH && ls -la $LLVM_PATH && which llvm-config && llvm-config
     - name: Build rust
       run: cargo build
     - name: Install ext dependencies (for C compilation)
