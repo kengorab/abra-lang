@@ -31,7 +31,6 @@ jobs:
       uses: KyleMayes/install-llvm-action@v1.4.1
       with:
         version: "11.0"
-        cached: true
     - name: Find LLVM
       run: echo $LLVM_PATH && ls -la $LLVM_PATH
     - name: Build rust
