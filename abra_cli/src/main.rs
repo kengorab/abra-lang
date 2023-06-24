@@ -18,6 +18,7 @@ use abra_llvm::compile_to_llvm_and_run;
 use std::path::PathBuf;
 use std::process::Command;
 use itertools::Either;
+use abra_core::transpile::genc2::CCompiler2;
 use abra_core::typechecker::typechecker2::{LoadModule, ModuleLoader, Project, Typechecker2};
 
 mod repl;
@@ -34,6 +35,7 @@ enum SubCommand {
     Typecheck(RunOpts),
     Run(RunOpts),
     Compile(CompileOpts),
+    Compile2(CompileOpts),
     Jit(JitOpts),
     Disassemble(DisassembleOpts),
     Test(TestOpts),
@@ -89,6 +91,7 @@ fn main() -> Result<(), ()> {
         SubCommand::Typecheck(opts) => cmd_typecheck2(opts),
         SubCommand::Run(opts) => cmd_compile_and_run(opts),
         SubCommand::Compile(opts) => cmd_compile_to_c_and_run(opts),
+        SubCommand::Compile2(opts) => cmd_compile_to_c_and_run2(opts),
         SubCommand::Jit(opts) => cmd_compile_llvm_and_run(opts),
         SubCommand::Disassemble(opts) => cmd_disassemble(opts),
         SubCommand::Test(opts) => cmd_test(opts),
@@ -129,6 +132,51 @@ fn cmd_typecheck2(opts: RunOpts) -> Result<(), ()> {
             }
             std::process::exit(1);
         }
+    }
+
+    Ok(())
+}
+
+fn cmd_compile_to_c_and_run2(opts: CompileOpts) -> Result<(), ()> {
+    let current_path = std::env::current_dir().unwrap();
+    let file_path = current_path.join(&opts.file_path);
+
+    let root = file_path.parent().unwrap().to_path_buf();
+    let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
+    let module_id = ModuleId::parse_module_path(&format!("./{}", module_name)).unwrap();
+
+    let mut module_loader = ModuleLoader::new(&root);
+    let mut project = Project::default();
+    let mut tc = Typechecker2::new(&mut module_loader, &mut project);
+    tc.typecheck_prelude();
+
+    match tc.typecheck_module(&module_id) {
+        Ok(_) => {}
+        Err(e) => {
+            match e {
+                Either::Left(Either::Left(e)) => {
+                    let file_name = module_loader.resolve_path(&module_id)
+                        .expect("Internal error: cannot report on errors in a file that never existed in the first place");
+                    let contents = std::fs::read_to_string(&file_name).unwrap();
+                    eprintln!("{}", e.get_message(&file_name, &contents))
+                },
+                Either::Left(Either::Right(e)) => {
+                    let file_name = module_loader.resolve_path(&module_id)
+                        .expect("Internal error: cannot report on errors in a file that never existed in the first place");
+                    let contents = std::fs::read_to_string(&file_name).unwrap();
+                    eprintln!("{}", e.get_message(&file_name, &contents))
+                },
+                Either::Right(e) => eprintln!("{}", e.message(&module_loader, &project)),
+            }
+
+            std::process::exit(1);
+        }
+    }
+
+    let mut genc = CCompiler2::new(project);
+    match genc.generate() {
+        Ok(_) => {}
+        Err(e) => eprintln!("{:?}", e),
     }
 
     Ok(())

@@ -1,8 +1,15 @@
-enum Color {
-  RGB(r: Int = 0, g: Int = 0, b: Int = 0)
+type Person {
+  name: String
+  age: Int
+
+  func greet(self): String {
+    self.name + self.age
+  }
 }
 
-val c = Color()
+func foo(i: Int): Int { i + 1 }
+
+func bar(x: Bool, y: String) { }
 
 // TODO: This should work
 //func makeArray<U>(u: U): U[] = [u]
