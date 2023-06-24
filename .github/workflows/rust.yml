@@ -31,10 +31,10 @@ jobs:
       uses: KyleMayes/install-llvm-action@v1.8.1
       with:
         version: "11.0"
-    - name: ncurses
+    - name: libtinfo
       run: sudo apt-get update && sudo apt-get -y install libtinfo5
-    - name: Find LLVM
-      run: echo $LLVM_PATH && ls -la $LLVM_PATH && ls -la $LLVM_PATH/lib && llvm-config
+#    - name: Find LLVM
+#      run: echo $LLVM_PATH && ls -la $LLVM_PATH && ls -la $LLVM_PATH/lib && llvm-config
     - name: Build rust
       run: cargo build
     - name: Install ext dependencies (for C compilation)
