@@ -33,7 +33,7 @@ jobs:
         version: "11.0"
         cached: true
     - name: Find LLVM
-      run: echo $LLVM_SYS_110_PREFIX
+      run: echo $LLVM_PATH && ls -la $LLVM_PATH
     - name: Build rust
       run: cargo build
     - name: Install ext dependencies (for C compilation)
