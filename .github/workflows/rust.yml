@@ -34,7 +34,7 @@ jobs:
     - name: ncurses
       run: sudo apt-get update && sudo apt-get -y install libncurses-dev
     - name: Find LLVM
-      run: echo $LLVM_PATH && ls -la $LLVM_PATH && which llvm-config && llvm-config
+      run: echo $LLVM_PATH && ls -la $LLVM_PATH && ls -la $LLVM_PATH/lib && llvm-config
     - name: Build rust
       run: cargo build
     - name: Install ext dependencies (for C compilation)
