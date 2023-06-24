@@ -6,12 +6,20 @@ use crate::parser::parse_error::{ParseErrorKind, ParseError};
 use crate::parser::precedence::Precedence;
 
 pub struct ParseResult {
-    pub imports: Vec<(Token, ModuleId)>,
+    pub imports: Vec<(Token, ModuleId, Token)>,
     pub nodes: Vec<AstNode>,
 }
 
 pub fn parse(module_id: ModuleId, tokens: Vec<Token>) -> Result<ParseResult, ParseError> {
-    let mut parser = Parser::new(tokens);
+    parse_impl(module_id, tokens, false)
+}
+
+pub fn parse_stub(module_id: ModuleId, tokens: Vec<Token>) -> Result<ParseResult, ParseError> {
+    parse_impl(module_id, tokens, true)
+}
+
+fn parse_impl(module_id: ModuleId, tokens: Vec<Token>, stub_mode: bool) -> Result<ParseResult, ParseError> {
+    let mut parser = Parser::new(tokens, stub_mode);
 
     let mut nodes = Vec::new();
     let mut imports = Vec::new();
@@ -25,7 +33,7 @@ pub fn parse(module_id: ModuleId, tokens: Vec<Token>) -> Result<ParseResult, Par
                         Err(kind) => return Err(ParseError { module_id, kind })
                     };
                     if let AstNode::ImportStatement(import_tok, import_node) = &node {
-                        imports.push((import_tok.clone(), import_node.module_id.clone()))
+                        imports.push((import_tok.clone(), import_node.module_id.clone(), import_node.module_token.clone()))
                     }
                     node
                 } else {
@@ -54,15 +62,16 @@ pub struct Parser {
     tokens: PeekMoreIterator<IntoIter<Token>>,
     last_token: Token,
     context: Vec<Context>,
+    stub_mode: bool,
 }
 
 type PrefixFn = dyn Fn(&mut Parser, Token) -> Result<AstNode, ParseErrorKind>;
 type InfixFn = dyn Fn(&mut Parser, Token, AstNode) -> Result<AstNode, ParseErrorKind>;
 
 impl Parser {
-    fn new(tokens: Vec<Token>) -> Self {
+    fn new(tokens: Vec<Token>, stub_mode: bool) -> Self {
         let tokens = tokens.into_iter().peekmore();
-        Parser { tokens, last_token: Token::None(Position::new(0, 0)), context: vec![] }
+        Parser { tokens, last_token: Token::None(Position::new(0, 0)), context: vec![], stub_mode }
     }
 
     fn is_context(&self, ctx: Context) -> bool {
@@ -539,13 +548,17 @@ impl Parser {
             _ => None
         };
 
-        let body = match self.expect_peek()? {
-            Token::Assign(_) => {
+        let stub_mode = self.stub_mode;
+        let body = match self.peek() {
+            None if stub_mode => Ok(vec![]),
+            None => Err(self.unexpected_eof()),
+            Some(Token::Assign(_)) => {
                 self.expect_next()?;
                 Ok(vec![self.parse_expr()?])
             }
-            Token::LBrace(_) => self.parse_expr_or_block(),
-            t => Err(ParseErrorKind::UnexpectedToken(t.clone()))
+            Some(Token::LBrace(_)) => self.parse_expr_or_block(),
+            Some(_) if stub_mode => Ok(vec![]),
+            Some(t) => Err(ParseErrorKind::UnexpectedToken(t.clone())),
         }?;
 
         Ok(AstNode::FunctionDecl(token, FunctionDeclNode { export_token, name, type_args, args, ret_type, body }))
@@ -760,11 +773,11 @@ impl Parser {
         Ok(AstNode::ReturnStatement(token, expr))
     }
 
-    fn parse_import_module(&mut self) -> Result<ModuleId, ParseErrorKind> {
+    fn parse_import_module(&mut self) -> Result<(Token, ModuleId), ParseErrorKind> {
         let import_path_tok = self.expect_next_token(TokenType::String)?;
-        let import_path= if let Token::String(_, s) = &import_path_tok { s } else { unreachable!() };
+        let import_path = if let Token::String(_, s) = &import_path_tok { s } else { unreachable!() };
         match ModuleId::parse_module_path(import_path) {
-            Some(module_id) => Ok(module_id),
+            Some(module_id) => Ok((import_path_tok, module_id)),
             None => Err(ParseErrorKind::InvalidImportPath(import_path_tok))
         }
     }
@@ -777,17 +790,17 @@ impl Parser {
             let star_token = self.expect_next()?; // Consume '*'
             let kind = ImportKind::ImportAll(star_token);
             self.expect_next_token(TokenType::From)?;
-            let module_id = self.parse_import_module()?;
+            let (module_token, module_id) = self.parse_import_module()?;
 
-            Ok(AstNode::ImportStatement(token, ImportNode { kind, module_id }))
+            Ok(AstNode::ImportStatement(token, ImportNode { kind, module_token, module_id }))
         } else if let Token::String(_, _) = self.expect_peek()? {
-            let module_id = self.parse_import_module()?;
+            let (module_token, module_id) = self.parse_import_module()?;
 
             self.expect_next_token(TokenType::As)?;
             let alias_token = self.expect_next_token(TokenType::Ident)?;
             let kind = ImportKind::Alias(alias_token);
 
-            Ok(AstNode::ImportStatement(token, ImportNode { kind, module_id }))
+            Ok(AstNode::ImportStatement(token, ImportNode { kind, module_token, module_id }))
         } else {
             let ident = self.expect_next_token(TokenType::Ident)?;
             match self.peek() {
@@ -808,16 +821,16 @@ impl Parser {
 
                     let kind = ImportKind::ImportList(imports);
                     self.expect_next_token(TokenType::From)?;
-                    let module_id = self.parse_import_module()?;
+                    let (module_token, module_id) = self.parse_import_module()?;
 
-                    Ok(AstNode::ImportStatement(token, ImportNode { kind, module_id }))
+                    Ok(AstNode::ImportStatement(token, ImportNode { kind, module_token, module_id }))
                 }
                 Some(Token::From(_)) => {
                     let kind = ImportKind::ImportList(vec![ident]);
                     self.expect_next_token(TokenType::From)?;
-                    let module_id = self.parse_import_module()?;
+                    let (module_token, module_id) = self.parse_import_module()?;
 
-                    Ok(AstNode::ImportStatement(token, ImportNode { kind, module_id }))
+                    Ok(AstNode::ImportStatement(token, ImportNode { kind, module_token, module_id }))
                 }
                 _ => {
                     let tok = self.expect_next()?;
@@ -970,7 +983,7 @@ impl Parser {
         let const_expr_tokens = vec![TokenType::None, TokenType::Int, TokenType::Float, TokenType::String, TokenType::Bool];
         let valid_case_start_tokens = vec![
             vec![TokenType::Ident, TokenType::LParen],
-            const_expr_tokens.clone()
+            const_expr_tokens.clone(),
         ].concat();
         match self.expect_peek()? {
             Token::Int(_, _) | Token::Float(_, _) | Token::String(_, _) | Token::Bool(_, _) => {
@@ -1456,7 +1469,7 @@ impl Parser {
                 Token::Ident(pos, name) => {
                     let tok = Token::String(pos, name.clone());
                     AstNode::Literal(tok, AstLiteralNode::StringLiteral(name))
-                },
+                }
                 tok @ Token::Int(_, _) |
                 tok @ Token::Float(_, _) |
                 tok @ Token::String(_, _) |
@@ -1621,7 +1634,7 @@ mod tests {
                     (None, AstNode::Literal(
                         Token::String(Position::new(1, 10), " ghi".to_string()),
                         AstLiteralNode::StringLiteral(" ghi".to_string()),
-                    ))
+                    )),
                 ],
             },
         );
@@ -1657,7 +1670,7 @@ mod tests {
                     (None, AstNode::Literal(
                         Token::String(Position::new(1, 14), " ghi".to_string()),
                         AstLiteralNode::StringLiteral(" ghi".to_string()),
-                    ))
+                    )),
                 ],
             },
         );
@@ -2181,7 +2194,7 @@ mod tests {
                                 int_literal!((1, 14), 4),
                             ]
                         },
-                    )
+                    ),
                 ]
             },
         );
@@ -2261,7 +2274,7 @@ mod tests {
                                 left: Box::new(int_literal!((1, 4), 12)),
                                 op: BinaryOp::Add,
                                 right: Box::new(int_literal!((1, 9), 34)),
-                            }
+                            },
                         ),
                         int_literal!((1, 14), 1)
                     )
@@ -2331,7 +2344,7 @@ mod tests {
                         SetNode {
                             items: vec![int_literal!((1, 14), 3), int_literal!((1, 17), 4)]
                         },
-                    )
+                    ),
                 ]
             },
         );
@@ -2542,7 +2555,7 @@ mod tests {
         fn parse_type_identifier(input: &str) -> TypeIdentifier {
             let module_id = ModuleId::parse_module_path("./test").unwrap();
             let tokens = tokenize(&module_id, &input.to_string()).unwrap();
-            let mut parser = Parser::new(tokens);
+            let mut parser = Parser::new(tokens, false);
             parser.parse_type_identifier(true).unwrap()
         }
 
@@ -2668,7 +2681,7 @@ mod tests {
                     },
                     TypeIdentifier::Array {
                         inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 20), "String"), type_args: None })
-                    }
+                    },
                 ]
             })
         };
@@ -2736,7 +2749,7 @@ mod tests {
                 },
                 TypeIdentifier::Array {
                     inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 19), "Int"), type_args: None })
-                }
+                },
             ],
             ret: Box::new(TypeIdentifier::Func {
                 args: vec![TypeIdentifier::Normal { ident: ident_token!((1, 30), "String"), type_args: None }],
@@ -2877,7 +2890,7 @@ mod tests {
                             expr: Some(Box::new(int_literal!((1, 22), 123))),
                         },
                     ),
-                    identifier!((1, 26), "a")
+                    identifier!((1, 26), "a"),
                 ],
             },
         );
@@ -2900,7 +2913,7 @@ mod tests {
         };
         let expected = vec![
             (ident_token!((1, 10), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int"), type_args: None }), false, None),
-            (ident_token!((1, 18), "b"), Some(TypeIdentifier::Option { inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 21), "Int"), type_args: None }) }), false, None)
+            (ident_token!((1, 18), "b"), Some(TypeIdentifier::Option { inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 21), "Int"), type_args: None }) }), false, None),
         ];
         assert_eq!(&expected, args);
 
@@ -3199,7 +3212,7 @@ mod tests {
                         int_literal!((1, 3), 1),
                         identifier!((1, 6), "a"),
                     ]),
-                string_literal!((1, 10), "abc")
+                string_literal!((1, 10), "abc"),
             ],
         );
         assert_eq!(expected, ast[0]);
@@ -3305,7 +3318,7 @@ mod tests {
                         type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 38), "Bool"), type_args: None },
                         default_value: Some(bool_literal!((1, 45), true)),
                         readonly: None,
-                    }
+                    },
                 ],
                 methods: vec![],
             },
@@ -3720,7 +3733,7 @@ mod tests {
                 ArrayNode {
                     items: vec![identifier!((6, 2), "a")]
                 },
-            )
+            ),
         ];
         Ok(assert_eq!(expected, ast))
     }
@@ -3881,7 +3894,7 @@ mod tests {
                             expr: Some(Box::new(string_literal!((1, 20), "hello"))),
                         },
                     ),
-                    identifier!((1, 28), "a")
+                    identifier!((1, 28), "a"),
                 ],
                 else_block: None,
             },
@@ -4351,7 +4364,7 @@ mod tests {
                             op: BinaryOp::Add,
                             right: Box::new(int_literal!((3, 5), 1)),
                         },
-                    )
+                    ),
                 ],
             },
         );
@@ -4424,7 +4437,7 @@ mod tests {
                     Token::LParen(Position::new(1, 5), false),
                     vec![
                         BindingPattern::Variable(ident_token!((1, 6), "x")),
-                        BindingPattern::Variable(ident_token!((1, 9), "y"))
+                        BindingPattern::Variable(ident_token!((1, 9), "y")),
                     ],
                 ),
                 index_ident: Some(ident_token!((1, 13), "i")),
@@ -4433,7 +4446,7 @@ mod tests {
                     ArrayNode {
                         items: vec![
                             identifier!((1, 19), "a"),
-                            identifier!((1, 22), "b")
+                            identifier!((1, 22), "b"),
                         ]
                     },
                 )),
@@ -4738,7 +4751,7 @@ mod tests {
                     (
                         MatchCase { token: ident_token!((14, 1), "_"), match_type: MatchCaseType::Wildcard(ident_token!((14, 1), "_")), case_binding: Some(ident_token!((14, 3), "x")) },
                         vec![int_literal!((15, 1), 0), identifier!((16, 1), "x")]
-                    )
+                    ),
                 ],
             },
         );
@@ -4852,7 +4865,7 @@ mod tests {
                 Token::Return(Position::new(2, 1), true),
                 None,
             ),
-            int_literal!((3, 1), 123)
+            int_literal!((3, 1), 123),
         ];
         assert_eq!(&expected, body);
 
@@ -4904,8 +4917,8 @@ mod tests {
         fn parse_import_path(input: &str) -> Result<ModuleId, ParseErrorKind> {
             let module_id = ModuleId::parse_module_path("./test").unwrap();
             let tokens = tokenize(&module_id, &input.to_string()).unwrap();
-            let mut parser = Parser::new(tokens);
-            parser.parse_import_module()
+            let mut parser = Parser::new(tokens, false);
+            parser.parse_import_module().map(|(_, module_id)| module_id)
         }
 
         // Valid cases
@@ -4925,7 +4938,7 @@ mod tests {
         let expected = ModuleId::Internal(vec![
             ModulePathSegment::UpDir,
             ModulePathSegment::Directory("a".to_string()),
-            ModulePathSegment::Module("b".to_string())
+            ModulePathSegment::Module("b".to_string()),
         ]);
         assert_eq!(expected, path);
 
@@ -4934,7 +4947,7 @@ mod tests {
             ModulePathSegment::CurrentDir,
             ModulePathSegment::UpDir,
             ModulePathSegment::Directory("a".to_string()),
-            ModulePathSegment::Module("b".to_string())
+            ModulePathSegment::Module("b".to_string()),
         ]);
         assert_eq!(expected, path);
 
@@ -4944,7 +4957,7 @@ mod tests {
             ModulePathSegment::UpDir,
             ModulePathSegment::Directory("a-b".to_string()),
             ModulePathSegment::Directory("c_d.e".to_string()),
-            ModulePathSegment::Module("f".to_string())
+            ModulePathSegment::Module("f".to_string()),
         ]);
         assert_eq!(expected, path);
 
@@ -4980,6 +4993,7 @@ mod tests {
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
                     kind: ImportKind::ImportAll(Token::Star(Position::new(1, 8))),
+                    module_token: Token::String(Position::new(1, 15), "./abc/def".to_string()),
                     module_id: ModuleId::Internal(vec![
                         ModulePathSegment::CurrentDir,
                         ModulePathSegment::Directory("abc".to_string()),
@@ -4996,6 +5010,7 @@ mod tests {
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
                     kind: ImportKind::ImportList(vec![ident_token!((1, 8), "Date")]),
+                    module_token: Token::String(Position::new(1, 18), "./time/date".to_string()),
                     module_id: ModuleId::Internal(vec![
                         ModulePathSegment::CurrentDir,
                         ModulePathSegment::Directory("time".to_string()),
@@ -5015,6 +5030,7 @@ mod tests {
                         ident_token!((1, 8), "SomeType"),
                         ident_token!((1, 18), "someFunc"),
                     ]),
+                    module_token: Token::String(Position::new(1, 32), "./local/module.ext".to_string()),
                     module_id: ModuleId::Internal(vec![
                         ModulePathSegment::CurrentDir,
                         ModulePathSegment::Directory("local".to_string()),
@@ -5031,6 +5047,7 @@ mod tests {
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
                     kind: ImportKind::Alias(ident_token!((1, 23), "date")),
+                    module_token: Token::String(Position::new(1, 8), "time.date".to_string()),
                     module_id: ModuleId::External("time.date".to_string()),
                 },
             )
@@ -5043,9 +5060,10 @@ mod tests {
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
                     kind: ImportKind::Alias(ident_token!((1, 28), "module")),
+                    module_token: Token::String(Position::new(1, 8), "./local.module".to_string()),
                     module_id: ModuleId::Internal(vec![
                         ModulePathSegment::CurrentDir,
-                        ModulePathSegment::Module("local.module".to_string())
+                        ModulePathSegment::Module("local.module".to_string()),
                     ]),
                 },
             )
@@ -5236,9 +5254,9 @@ mod tests {
             TryNode {
                 expr: Box::new(AstNode::Invocation(
                     Token::LParen(Position::new(1, 8), false),
-                    InvocationNode { target: Box::new(identifier!((1, 5), "foo")), args: vec![] }
+                    InvocationNode { target: Box::new(identifier!((1, 5), "foo")), args: vec![] },
                 ))
-            }
+            },
         );
         assert_eq!(expected, ast[0]);
 
@@ -5254,13 +5272,13 @@ mod tests {
                             AccessorNode {
                                 target: Box::new(identifier!((1, 5), "foo")),
                                 field: Box::new(identifier!((1, 9), "bar")),
-                                is_opt_safe: false
-                            }
+                                is_opt_safe: false,
+                            },
                         )),
-                        args: vec![]
-                    }
+                        args: vec![],
+                    },
                 ))
-            }
+            },
         );
         assert_eq!(expected, ast[0]);
 

@@ -1,4 +1,1 @@
-import c from .example4
-import * from .example2
-
-export func sayC() = println("C: $c")
+export val a = "a"

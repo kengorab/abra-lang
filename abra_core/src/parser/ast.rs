@@ -1,4 +1,4 @@
-use crate::lexer::tokens::Token;
+use crate::lexer::tokens::{Range, Token};
 use std::path::Path;
 use std::hash::{Hash, Hasher};
 
@@ -92,7 +92,7 @@ impl Hash for AstLiteralNode {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UnaryOp {
     Minus,
     Negate,
@@ -130,6 +130,37 @@ pub enum BinaryOp {
     Neq,
     Eq,
     Pow,
+}
+
+impl BinaryOp {
+    pub(crate) fn repr(&self) -> &str {
+        match self {
+            BinaryOp::Add => "+",
+            BinaryOp::AddEq => "+=",
+            BinaryOp::Sub => "-",
+            BinaryOp::SubEq => "-=",
+            BinaryOp::Mul => "*",
+            BinaryOp::MulEq => "*=",
+            BinaryOp::Div => "/",
+            BinaryOp::DivEq => "/=",
+            BinaryOp::Mod => "%",
+            BinaryOp::ModEq => "%=",
+            BinaryOp::And => "&&",
+            BinaryOp::AndEq => "&&=",
+            BinaryOp::Or => "||",
+            BinaryOp::OrEq => "||=",
+            BinaryOp::Xor => "^",
+            BinaryOp::Coalesce => "?:",
+            BinaryOp::CoalesceEq => "?:=",
+            BinaryOp::Lt => "<",
+            BinaryOp::Lte => "<=",
+            BinaryOp::Gt => ">",
+            BinaryOp::Gte => ">=",
+            BinaryOp::Neq => "!=",
+            BinaryOp::Eq => "==",
+            BinaryOp::Pow => "**",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -174,6 +205,28 @@ impl BindingPattern {
             BindingPattern::Array(lbrack_tok, _, _) => lbrack_tok,
         }
     }
+
+    pub fn get_span(&self) -> Range {
+        match self {
+            BindingPattern::Variable(ident_token) => ident_token.get_range(),
+            BindingPattern::Tuple(lparen_token, patterns) => {
+                let start = lparen_token.get_range();
+                if let Some(span) = patterns.last().map(|i| i.get_span()) {
+                    start.expand(&span)
+                } else {
+                    start
+                }
+            }
+            BindingPattern::Array(lbrack_token, patterns, _) => {
+                let start = lbrack_token.get_range();
+                if let Some(span) = patterns.last().map(|(p, _)| p.get_span()) {
+                    start.expand(&span)
+                } else {
+                    start
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -183,6 +236,19 @@ pub struct BindingDeclNode {
     pub type_ann: Option<TypeIdentifier>,
     pub expr: Option<Box<AstNode>>,
     pub is_mutable: bool,
+}
+
+#[derive(Debug)]
+pub struct Parameter<'a> {
+    pub ident: &'a Token,
+    pub type_ident: &'a Option<TypeIdentifier>,
+    pub is_vararg: bool,
+    pub default_value: &'a Option<AstNode>,
+}
+
+pub fn args_to_parameters(raw_arg_tuple: &(Token, Option<TypeIdentifier>, bool, Option<AstNode>)) -> Parameter {
+    let (arg_ident, type_ident, is_vararg, default_value) = raw_arg_tuple;
+    Parameter { ident: arg_ident, type_ident, is_vararg: *is_vararg, default_value }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -198,10 +264,22 @@ pub struct FunctionDeclNode {
     pub body: Vec<AstNode>,
 }
 
+impl FunctionDeclNode {
+    pub fn parameters(&self) -> Vec<Parameter> {
+        self.args.iter().map(args_to_parameters).collect()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct LambdaNode {
-    pub args: Vec<(Token, Option<TypeIdentifier>, bool, Option<AstNode>)>,
+    pub args: Vec<(/* arg_ident: */ Token, /* type_ident: */ Option<TypeIdentifier>, /* is_vararg: */ bool, /* default_value: */ Option<AstNode>)>,
     pub body: Vec<AstNode>,
+}
+
+impl LambdaNode {
+    pub fn parameters(&self) -> Vec<Parameter> {
+        self.args.iter().map(args_to_parameters).collect()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -231,7 +309,7 @@ pub struct EnumDeclNode {
     // Must be Token::Idents
     pub type_args: Vec<Token>,
     // Tokens represent arg idents, and must be Token::Ident
-    pub variants: Vec<(/* ident: */ Token, /* args: */ Option<Vec<(Token, Option<TypeIdentifier>, bool, Option<AstNode>)>>)>,
+    pub variants: Vec<(/* ident: */ Token, /* args: */ Option<Vec<(/* arg_ident: */ Token, /* type_ident: */ Option<TypeIdentifier>, /* is_varargs: */ bool, /* default_value */ Option<AstNode>)>>)>,
     pub methods: Vec<AstNode>,
 }
 
@@ -358,6 +436,7 @@ pub enum ImportKind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImportNode {
     pub kind: ImportKind,
+    pub module_token: Token,
     pub module_id: ModuleId,
 }
 

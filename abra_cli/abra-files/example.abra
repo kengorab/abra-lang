@@ -1,25 +1,14 @@
-func foo(s: String, i: Int) {
-  match i {
-    1 => {
-      println(s)
-      println(s.toUpper())
-    }
-    _ => {
-      val f = () => s
-      println(f())
-    }
-  }
-  match i {
-    1 => {
-      println(s)
-      println(s.toUpper())
-    }
-    _ => {
-      val f = () => s
-      println(f())
-    }
-  }
+enum Color {
+  RGB(r: Int = 0, g: Int = 0, b: Int = 0)
 }
 
-foo("hello", 1)
-//foo("hello", 1)
+val c = Color()
+
+// TODO: This should work
+//func makeArray<U>(u: U): U[] = [u]
+//func f<T>(t: T): T[] = makeArray(t)
+// TODO: So should this
+//func makeArray<U>(): U[] = []
+//type Foo<T> {
+//  a: T[] = makeArray()
+//}
