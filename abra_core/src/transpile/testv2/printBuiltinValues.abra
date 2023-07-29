@@ -1,0 +1,11 @@
+/// Expect: 1 2 3
+println(1, 2, 3)
+
+/// Expect: 0.1 2.34
+println(0.1, 2.34)
+
+/// Expect: true false
+println(true, false)
+
+/// Expect: hello world
+println("hello", "world")

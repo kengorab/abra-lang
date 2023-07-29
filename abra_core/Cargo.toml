@@ -13,6 +13,9 @@ strum = "0.15.0"
 strum_macros = "0.15.0"
 rand = "0.7.3"
 
+[dev-dependencies]
+assert_cmd = "2.0.10"
+
 [lib]
 name = "abra_core"
 path = "src/lib.rs"

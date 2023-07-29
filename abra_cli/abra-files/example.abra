@@ -1,15 +1,4 @@
-type Person {
-  name: String
-  age: Int
-
-  func greet(self): String {
-    self.name + self.age
-  }
-}
-
-func foo(i: Int): Int { i + 1 }
-
-func bar(x: Bool, y: String) { }
+println("hello", "world")
 
 // TODO: This should work
 //func makeArray<U>(u: U): U[] = [u]
