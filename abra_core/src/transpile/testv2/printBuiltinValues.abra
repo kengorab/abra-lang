@@ -9,3 +9,6 @@ println(true, false)
 
 /// Expect: hello world
 println("hello", "world")
+
+/// Expect: [] [1] [0.1, 2.3] [hello, world, !]
+println([], [1], [0.1, 2.3], ["hello", "world", "!"])

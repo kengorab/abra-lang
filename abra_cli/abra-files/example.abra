@@ -1,4 +1,4 @@
-println("hello", "world")
+println([0.1, 2.3, 4.56])
 
 // TODO: This should work
 //func makeArray<U>(u: U): U[] = [u]

@@ -1,5 +1,5 @@
-#ifndef __ABRA_PRELUDE_H
-#define __ABRA_PRELUDE_H
+#ifndef ABRA_PRELUDE_H
+#define ABRA_PRELUDE_H
 
 #include "stdio.h"
 #include "stdint.h"
@@ -70,9 +70,10 @@ AbraString* AbraString__toString(size_t nargs, AbraString* self);
 
 AbraArray* AbraArray_make_with_capacity(size_t length, size_t cap);
 AbraUnit AbraArray_set(AbraArray* self, size_t idx, AbraAny* item);
+AbraString* AbraArray__toString(size_t nargs, AbraArray* self);
 
 AbraUnit _0_0_0__println(size_t nargs, AbraArray* args);
 
 void entrypoint__0();
 
-#endif
+#endif // ABRA_PRELUDE_H
