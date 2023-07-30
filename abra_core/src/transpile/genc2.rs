@@ -1,5 +1,6 @@
 use itertools::Itertools;
-use crate::typechecker::typechecker2::{Enum, EnumId, FuncId, Function, ModuleId, PRELUDE_MODULE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedModule, TypedNode, TypeId, TypeKind, VariableAlias};
+use crate::parser::ast::UnaryOp;
+use crate::typechecker::typechecker2::{Enum, EnumId, FuncId, Function, ModuleId, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedModule, TypedNode, TypeId, TypeKind, VariableAlias};
 
 fn function_name(func: &Function) -> String {
     let FuncId(ScopeId(ModuleId(m_id), s_id), f_id) = func.id;
@@ -222,7 +223,29 @@ impl<W: std::io::Write> CCompiler2<W> {
                 TypedLiteral::Bool(b) => format!("AbraBool_make({})", b),
                 TypedLiteral::String(s) => format!("AbraString_make({}, \"{}\")", s.len(), s),
             }
-            TypedNode::Unary { .. } => unimplemented!(),
+            TypedNode::Unary { expr, op, .. } => {
+                let type_id = *expr.as_ref().type_id();
+
+                let fn_name = if type_id == PRELUDE_INT_TYPE_ID {
+                    "AbraInt_make"
+                } else if type_id == PRELUDE_FLOAT_TYPE_ID {
+                    "AbraFloat_make"
+                } else if type_id == PRELUDE_BOOL_TYPE_ID {
+                    "AbraBool_make"
+                } else {
+                    unreachable!()
+                };
+
+                let fn_arg = match (op, expr.as_ref()) {
+                    (UnaryOp::Minus, TypedNode::Literal { value: TypedLiteral::Int(value), .. }) => format!("-{}", value),
+                    (UnaryOp::Minus, TypedNode::Literal { value: TypedLiteral::Float(value), .. }) => format!("-{}", value),
+                    (UnaryOp::Negate, TypedNode::Literal { value: TypedLiteral::Bool(value), .. }) => format!("!{}", value),
+                    (UnaryOp::Minus, expr) => format!("-({})->value", self.compile_expression(project, expr)),
+                    (UnaryOp::Negate, expr) => format!("!({})->value", self.compile_expression(project, expr)),
+                };
+
+                format!("{}({})", fn_name, fn_arg)
+            }
             TypedNode::Binary { .. } => unimplemented!(),
             TypedNode::Grouped { .. } => unimplemented!(),
             TypedNode::Array { items, .. } => {
@@ -330,7 +353,12 @@ mod test {
     }
 
     #[test]
-    fn first_test() {
-        run_test_file("printBuiltinValues.abra");
+    fn builtin_values() {
+        run_test_file("builtinValues.abra");
+    }
+
+    #[test]
+    fn unary_ops() {
+        run_test_file("unaryOps.abra");
     }
 }

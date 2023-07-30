@@ -95,17 +95,38 @@ AbraString* AbraFloat__toString(size_t nargs, AbraFloat* self) {
 AbraFn BOOL_METHODS[] = {
     METHOD(AbraBool__toString, 1, 1)
 };
+static AbraBool* ABRA_BOOL_TRUE = NULL;
+static AbraBool* ABRA_BOOL_FALSE = NULL;
 AbraBool* AbraBool_make(bool value) {
-  AbraBool* self = malloc(sizeof(AbraBool));
-  self->_base = (AbraAny) { .type_id = TYPE_ID_BOOL };
-  self->value = value;
-  return self;
+  if (value) {
+    if (!ABRA_BOOL_TRUE) {
+      ABRA_BOOL_TRUE = malloc(sizeof(AbraBool));
+      ABRA_BOOL_TRUE->_base = (AbraAny) { .type_id = TYPE_ID_BOOL };
+      ABRA_BOOL_TRUE->value = true;
+    }
+    return ABRA_BOOL_TRUE;
+  } else {
+    if (!ABRA_BOOL_FALSE) {
+      ABRA_BOOL_FALSE = malloc(sizeof(AbraBool));
+      ABRA_BOOL_FALSE->_base = (AbraAny) { .type_id = TYPE_ID_BOOL };
+      ABRA_BOOL_FALSE->value = false;
+    }
+    return ABRA_BOOL_FALSE;
+  }
 }
 
+static AbraString* ABRA_BOOL_TRUE_STRING = NULL;
+static AbraString* ABRA_BOOL_FALSE_STRING = NULL;
 AbraString* AbraBool__toString(size_t nargs, AbraBool* self) {
   assert(nargs == 1);
 
-  return self->value ? AbraString_make(4, "true") : AbraString_make(5, "false");
+  if (self->value) {
+    if (!ABRA_BOOL_TRUE_STRING) ABRA_BOOL_TRUE_STRING = AbraString_make(4, "true");
+    return ABRA_BOOL_TRUE_STRING;
+  } else {
+    if (!ABRA_BOOL_FALSE_STRING) ABRA_BOOL_FALSE_STRING = AbraString_make(5, "false");
+    return ABRA_BOOL_FALSE_STRING;
+  }
 }
 
 // AbraString methods
