@@ -1,4 +1,6 @@
-println(-1, --1, -0.1, --2.3, true, !true)
+val x = [123]
+
+println(x)
 
 // TODO: This should work
 //func makeArray<U>(u: U): U[] = [u]

@@ -1,0 +1,5 @@
+val x = 1
+val y = 2
+val z = [x, y]
+/// Expect: [1, 2]
+println(z)

@@ -1,5 +1,6 @@
 use itertools::Itertools;
-use crate::parser::ast::UnaryOp;
+use crate::lexer::tokens::Token;
+use crate::parser::ast::{BindingPattern, UnaryOp};
 use crate::typechecker::typechecker2::{Enum, EnumId, FuncId, Function, ModuleId, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedModule, TypedNode, TypeId, TypeKind, VariableAlias};
 
 fn function_name(func: &Function) -> String {
@@ -34,7 +35,9 @@ impl<W: std::io::Write> CCompiler2<W> {
             Type::Primitive(PrimitiveType::String) => "AbraString".to_string(),
             Type::Generic(_, _) => todo!(),
             Type::GenericInstance(struct_id, generic_ids) => {
-                if generic_ids.is_empty() {
+                if *struct_id == project.prelude_array_struct_id {
+                    "AbraArray".to_string()
+                } else if generic_ids.is_empty() {
                     self.get_struct_enum_name(project, &TypeKind::Struct(*struct_id))
                 } else {
                     todo!()
@@ -202,7 +205,17 @@ impl<W: std::io::Write> CCompiler2<W> {
         match node {
             TypedNode::If { .. } => {}
             TypedNode::Match { .. } => {}
-            TypedNode::BindingDeclaration { .. } => {}
+            TypedNode::BindingDeclaration { expr, vars, pattern, .. } => {
+                if let Some(expr) = expr {
+                    let expr_handle = self.compile_expression(project, expr);
+                    self.compile_pattern_destructuring(project, &expr_handle,expr.as_ref().type_id(), pattern);
+                } else {
+                    for var_id in vars {
+                        let var = project.get_var_by_id(var_id);
+                        self.emit_line(format!("{} {};", self.get_type_name_by_id(project, &var.type_id), &var.name));
+                    }
+                }
+            }
             TypedNode::ForLoop { .. } => {}
             TypedNode::WhileLoop { .. } => {}
             TypedNode::Break { .. } => {}
@@ -212,6 +225,17 @@ impl<W: std::io::Write> CCompiler2<W> {
             n => {
                 self.compile_expression(project, n);
             }
+        }
+    }
+
+    fn compile_pattern_destructuring(&mut self, project: &Project, expr_handle: &String, expr_type: &TypeId, pattern: &BindingPattern) {
+        match pattern {
+            BindingPattern::Variable(tok) => {
+                let var_name = Token::get_ident_name(tok);
+                self.emit_line(format!("{}* {} = {};", self.get_type_name_by_id(project, expr_type), var_name, expr_handle));
+            }
+            BindingPattern::Tuple(_, _) |
+            BindingPattern::Array(_, _, _) => todo!(),
         }
     }
 
@@ -267,7 +291,7 @@ impl<W: std::io::Write> CCompiler2<W> {
             TypedNode::Identifier { var_id, .. } => {
                 let variable = project.get_var_by_id(var_id);
                 match variable.alias {
-                    VariableAlias::None => unimplemented!(),
+                    VariableAlias::None => variable.name.clone(),
                     VariableAlias::Function(func_id) => {
                         let function = project.get_func_by_id(&func_id);
                         function_name(function)
@@ -360,5 +384,10 @@ mod test {
     #[test]
     fn unary_ops() {
         run_test_file("unaryOps.abra");
+    }
+
+    #[test]
+    fn variables() {
+        run_test_file("variables.abra");
     }
 }
