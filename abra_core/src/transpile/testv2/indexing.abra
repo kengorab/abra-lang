@@ -1,0 +1,61 @@
+/// Strings
+
+val s = "hello"
+
+/// Expect: h e l l o
+println(s[0], s[1], s[2], s[3], s[4])
+
+/// Expect: o l l e h
+println(s[-1], s[-2], s[-3], s[-4], s[-5])
+
+/// Expect: None None
+println(s[5], s[-6])
+
+/// Expect: ell ell
+println(s[1:4], s[-4:4])
+
+/// Expect:  empty
+println(s[1:1], "empty")
+
+val a = 1
+val b = 4
+
+/// Expect: ell ell
+println(s[a:b], s[-b:b])
+
+/// Expect: ello h
+println(s[1:], s[:1])
+
+/// Expect: ello h
+println(s[a:], s[:a])
+
+/// Arrays
+
+val arr = [1, 2, 3, 4, 5]
+
+/// Expect: 1 2 3 4 5
+println(arr[0], arr[1], arr[2], arr[3], arr[4])
+
+/// Expect: 5 4 3 2 1
+println(arr[-1], arr[-2], arr[-3], arr[-4], arr[-5])
+
+/// Expect: None None
+println(arr[5], arr[-6])
+
+/// Expect: [2, 3, 4] [2, 3, 4]
+println(arr[1:4], arr[-4:4])
+
+/// Expect: []
+println(arr[1:1])
+
+val x = 1
+val y = 4
+
+/// Expect: [2, 3, 4] [2, 3, 4]
+println(arr[x:y], arr[-y:y])
+
+/// Expect: [2, 3, 4, 5] [1]
+println(arr[1:], arr[:1])
+
+/// Expect: [2, 3, 4, 5] [1]
+println(arr[x:], arr[:x])

@@ -22,7 +22,17 @@ void init_vtable(size_t num_types) {
   VTABLE = malloc(sizeof(VTableEntry) * num_types);
 }
 
+#define RANGE_ENDPOINTS(start, end, len) \
+  do {                                   \
+    if (start < 0) start += len;         \
+    else if (len == 0) start = 0;        \
+    if (end < 0) end += len;             \
+    else if (end < start) end = start;   \
+    else if (end >= len) end = len;      \
+  } while (0)
+
 #define INTRINSIC_TOSTRING_IDX  0
+
 AbraString* call_to_string(AbraAny* value) {
   VTableEntry entry = VTABLE[value->type_id];
   AbraFn tostring = entry.methods[INTRINSIC_TOSTRING_IDX];
@@ -38,6 +48,30 @@ AbraString* call_to_string(AbraAny* value) {
 
 #define METHOD(fn_name, min, max) \
     ((AbraFn) { .is_closure = false, .fn = (Fn) &fn_name, .min_arity = min, .max_arity = max, .captures = (void*) 0 })
+
+// AbraNone methods
+AbraFn NONE_METHODS[] = {
+    METHOD(AbraNone__toString, 1, 1)
+};
+
+static AbraAny* ABRA_NONE = NULL;
+
+AbraAny* AbraNone_make() {
+  if (!ABRA_NONE) {
+    ABRA_NONE = malloc(sizeof(AbraAny));
+    ABRA_NONE->type_id = TYPE_ID_NONE;
+  }
+  return ABRA_NONE;
+}
+
+static AbraString* ABRA_NONE_STRING = NULL;
+
+AbraString* AbraNone__toString(size_t nargs, AbraAny* _self) {
+  assert(nargs == 1);
+
+  if (!ABRA_NONE_STRING) ABRA_NONE_STRING = AbraString_make(4, "None");
+  return ABRA_NONE_STRING;
+}
 
 // AbraInt methods
 AbraFn INT_METHODS[] = {
@@ -95,8 +129,10 @@ AbraString* AbraFloat__toString(size_t nargs, AbraFloat* self) {
 AbraFn BOOL_METHODS[] = {
     METHOD(AbraBool__toString, 1, 1)
 };
+
 static AbraBool* ABRA_BOOL_TRUE = NULL;
 static AbraBool* ABRA_BOOL_FALSE = NULL;
+
 AbraBool* AbraBool_make(bool value) {
   if (value) {
     if (!ABRA_BOOL_TRUE) {
@@ -117,6 +153,7 @@ AbraBool* AbraBool_make(bool value) {
 
 static AbraString* ABRA_BOOL_TRUE_STRING = NULL;
 static AbraString* ABRA_BOOL_FALSE_STRING = NULL;
+
 AbraString* AbraBool__toString(size_t nargs, AbraBool* self) {
   assert(nargs == 1);
 
@@ -142,6 +179,31 @@ AbraString* AbraString_make(size_t len, char* chars) {
   return self;
 }
 
+AbraString* AbraString_get(AbraString* self, int64_t index) {
+  int64_t len = self->length;
+  if (index < -len || index >= len) return (AbraString*) AbraNone_make();
+
+  if (index < 0) index += len;
+
+  char* str = malloc(sizeof(char));
+  str[0] = self->chars[index];
+  return AbraString_make(1, str);
+}
+
+AbraString* AbraString_get_range(AbraString* self, int64_t start, int64_t end) {
+  int64_t len = self->length;
+  RANGE_ENDPOINTS(start, end, len);
+
+  if (start >= end) return AbraString_make(0, "");
+
+  int64_t slice_size = end - start;
+  char* str = malloc(slice_size);
+  memcpy(str, self->chars + start, slice_size);
+  str[slice_size] = 0;
+
+  return AbraString_make(slice_size, str);
+}
+
 AbraString* AbraString__toString(size_t nargs, AbraString* self) {
   return self;
 }
@@ -160,8 +222,30 @@ AbraArray* AbraArray_make_with_capacity(size_t length, size_t cap) {
   return self;
 }
 
-AbraUnit AbraArray_set(AbraArray* self, size_t idx, AbraAny* item) {
-  self->items[idx] = item;
+AbraUnit AbraArray_set(AbraArray* self, size_t index, AbraAny* item) {
+  self->items[index] = item;
+}
+
+AbraAny* AbraArray_get(AbraArray* self, int64_t index) {
+  int64_t len = self->length;
+  if (index < -len || index >= len) return AbraNone_make();
+
+  if (index < 0) index += len;
+  return self->items[index];
+}
+
+AbraArray* AbraArray_get_range(AbraArray* self, int64_t start, int64_t end) {
+  int64_t len = self->length;
+  RANGE_ENDPOINTS(start, end, len);
+
+  if (start >= end) return AbraArray_make_with_capacity(0, 1);
+
+  int64_t slice_size = end - start;
+  AbraArray* new_array = AbraArray_make_with_capacity(slice_size, slice_size);
+  for (int64_t i = start; i < end; ++i) {
+    new_array->items[i - start] = self->items[i];
+  }
+  return new_array;
 }
 
 AbraString* AbraArray__toString(size_t nargs, AbraArray* self) {
@@ -225,6 +309,7 @@ AbraUnit _0_0_0__println(size_t nargs, AbraArray* args) {
 }
 
 void entrypoint__0() {
+  VTABLE[TYPE_ID_NONE] = (VTableEntry) { .methods = NONE_METHODS };
   VTABLE[TYPE_ID_INT] = (VTableEntry) { .methods = INT_METHODS };
   VTABLE[TYPE_ID_FLOAT] = (VTableEntry) { .methods = FLOAT_METHODS };
   VTABLE[TYPE_ID_BOOL] = (VTableEntry) { .methods = BOOL_METHODS };

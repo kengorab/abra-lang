@@ -1,6 +1,7 @@
-val x = [123]
+val str = "hello"
 
-println(x)
+println(str[1:4], str[-4:4])
+println(str[1:], str[:1])
 
 // TODO: This should work
 //func makeArray<U>(u: U): U[] = [u]

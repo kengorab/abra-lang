@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use crate::lexer::tokens::Token;
-use crate::parser::ast::{BindingPattern, UnaryOp};
+use crate::parser::ast::{BindingPattern, IndexingMode, UnaryOp};
 use crate::typechecker::typechecker2::{Enum, EnumId, FuncId, Function, ModuleId, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedModule, TypedNode, TypeId, TypeKind, VariableAlias};
 
 fn function_name(func: &Function) -> String {
@@ -208,11 +208,12 @@ impl<W: std::io::Write> CCompiler2<W> {
             TypedNode::BindingDeclaration { expr, vars, pattern, .. } => {
                 if let Some(expr) = expr {
                     let expr_handle = self.compile_expression(project, expr);
-                    self.compile_pattern_destructuring(project, &expr_handle,expr.as_ref().type_id(), pattern);
+                    self.compile_pattern_destructuring(project, &expr_handle, expr.as_ref().type_id(), pattern);
                 } else {
                     for var_id in vars {
                         let var = project.get_var_by_id(var_id);
-                        self.emit_line(format!("{} {};", self.get_type_name_by_id(project, &var.type_id), &var.name));
+                        let type_name = self.get_type_name_by_id(project, &var.type_id);
+                        self.emit_line(format!("{}* {} = ({}*)AbraNone_make();", type_name, &var.name, type_name));
                     }
                 }
             }
@@ -299,7 +300,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                     VariableAlias::Type(_) => unimplemented!(),
                 }
             }
-            TypedNode::NoneValue { .. } => unimplemented!(),
+            TypedNode::NoneValue { .. } => "AbraNone_make()".to_string(),
             TypedNode::Invocation { target, arguments, type_id, .. } => {
                 let num_arguments = arguments.len();
                 let mut arg_values = Vec::with_capacity(num_arguments);
@@ -325,7 +326,51 @@ impl<W: std::io::Write> CCompiler2<W> {
                 handle.unwrap_or_default()
             }
             TypedNode::Accessor { .. } => unimplemented!(),
-            TypedNode::Indexing { .. } => unimplemented!(),
+            TypedNode::Indexing { target, index, .. } => {
+                let target_type_id = target.as_ref().type_id();
+                let target_type = project.get_type_by_id(target_type_id);
+
+                let target_handle = self.compile_expression(project, target);
+
+                let fn_name = match (target_type, &index) {
+                    (Type::Primitive(PrimitiveType::String), IndexingMode::Index(_)) => "AbraString_get",
+                    (Type::Primitive(PrimitiveType::String), IndexingMode::Range(_, _)) => "AbraString_get_range",
+                    (Type::GenericInstance(struct_id, _), IndexingMode::Index(_)) if *struct_id == project.prelude_array_struct_id => "AbraArray_get",
+                    (Type::GenericInstance(struct_id, _), IndexingMode::Range(_, _)) if *struct_id == project.prelude_array_struct_id => "AbraArray_get_range",
+                    _ => unimplemented!(),
+                };
+
+                let fn_args = match index {
+                    IndexingMode::Index(idx_expr) => {
+                        let idx_expr_handle = self.compile_expression(project, idx_expr);
+                        match target_type {
+                            Type::Primitive(PrimitiveType::String) => format!("{}->value", idx_expr_handle),
+                            Type::GenericInstance(struct_id, _) if *struct_id == project.prelude_array_struct_id => format!("{}->value", idx_expr_handle),
+                            _ => idx_expr_handle
+                        }
+                    }
+                    IndexingMode::Range(start_expr, end_expr) => {
+                        match (start_expr, end_expr) {
+                            (Some(start_expr), Some(end_expr)) => {
+                                let start_expr_handle = self.compile_expression(project, start_expr);
+                                let end_expr_handle = self.compile_expression(project, end_expr);
+                                format!("{}->value, {}->value", start_expr_handle, end_expr_handle)
+                            }
+                            (None, Some(end_expr)) => {
+                                let end_expr_handle = self.compile_expression(project, end_expr);
+                                format!("0, {}->value", end_expr_handle)
+                            }
+                            (Some(start_expr), None) => {
+                                let start_expr_handle = self.compile_expression(project, start_expr);
+                                format!("{}->value, {}->length", start_expr_handle, target_handle)
+                            }
+                            (None, None) => unreachable!("foo[:] is invalid syntax at the moment")
+                        }
+                    }
+                };
+
+                format!("{}({}, {})", fn_name, target_handle, fn_args)
+            }
             TypedNode::Lambda { .. } => unimplemented!(),
             TypedNode::Assignment { .. } => unimplemented!(),
             n => unreachable!("Internal error: node is not an expression: {:?}", n),
@@ -387,7 +432,12 @@ mod test {
     }
 
     #[test]
-    fn variables() {
-        run_test_file("variables.abra");
+    fn variable_declaration() {
+        run_test_file("variableDeclaration.abra");
+    }
+
+    #[test]
+    fn indexing() {
+        run_test_file("indexing.abra");
     }
 }
