@@ -7,6 +7,7 @@
 #include "stdlib.h"
 #include "assert.h"
 #include "string.h"
+#include "stdarg.h"
 
 // For consistency, these are provided by the generated code
 extern const size_t TYPE_ID_NONE;
@@ -15,6 +16,7 @@ extern const size_t TYPE_ID_FLOAT;
 extern const size_t TYPE_ID_BOOL;
 extern const size_t TYPE_ID_STRING;
 extern const size_t TYPE_ID_ARRAY;
+extern const size_t TYPE_ID_TUPLE;
 
 VTableEntry* VTABLE;
 
@@ -242,25 +244,35 @@ AbraArray* AbraArray_get_range(AbraArray* self, int64_t start, int64_t end) {
 
   int64_t slice_size = end - start;
   AbraArray* new_array = AbraArray_make_with_capacity(slice_size, slice_size);
-  for (int64_t i = start; i < end; ++i) {
+  for (int64_t i = start; i < end; i++) {
     new_array->items[i - start] = self->items[i];
   }
   return new_array;
 }
 
-AbraString* AbraArray__toString(size_t nargs, AbraArray* self) {
-  assert(nargs == 1);
+AbraString* sequence_to_string(int64_t length, AbraAny** items) {
+  if (length == 0) return AbraString_make(2, "[]");
 
-  if (self->length == 0) return AbraString_make(2, "[]");
+  typedef struct item_t {
+      AbraString* repr;
+      bool item_is_string;
+  } item_t;
 
-  AbraString** strings = malloc(sizeof(AbraString*) * self->length);
+  item_t strings[length];
   size_t total_length = 2; // account for "[]"
-  for (size_t i = 0; i < self->length; i++) {
-    AbraString* repr = call_to_string(self->items[i]);
+  for (size_t i = 0; i < length; i++) {
+    AbraAny* item = items[i];
+    AbraString* repr = call_to_string(item);
 
-    strings[i] = repr;
+    strings[i] = (item_t) {
+      .repr=repr,
+      .item_is_string=item->type_id == TYPE_ID_STRING
+    };
     total_length += repr->length;
-    if (i != self->length - 1) {
+    if (item->type_id == TYPE_ID_STRING) {
+      total_length += 2; // account for '""'
+    }
+    if (i != length - 1) {
       total_length += 2; // account for ", "
     }
   }
@@ -271,22 +283,62 @@ AbraString* AbraArray__toString(size_t nargs, AbraArray* self) {
   res_str[total_length] = 0;
 
   char* ptr = res_str + 1;
-  for (int i = 0; i < self->length; ++i) {
-    AbraString* item = strings[i];
-    char const* item_str = item->chars;
-    size_t len = item->length;
-    memcpy(ptr, item_str, len);
+  for (int i = 0; i < length; i++) {
+    bool item_is_string = strings[i].item_is_string;
+    AbraString* repr = strings[i].repr;
+    size_t len = repr->length;
+    if (item_is_string) memcpy(ptr++, "\"", 1);
+    memcpy(ptr, repr->chars, len);
     ptr += len;
-    if (i < self->length - 1) {
+    if (item_is_string) memcpy(ptr++, "\"", 1);
+
+    if (i < length - 1) {
       memcpy(ptr, ", ", 2);
       ptr += 2;
     }
-    free(item);
   }
 
-  free(strings);
-
   return AbraString_make(total_length, res_str);
+}
+
+AbraString* AbraArray__toString(size_t nargs, AbraArray* self) {
+  assert(nargs == 1);
+
+  return sequence_to_string(self->length, self->items);
+}
+
+// AbraTuple methods
+AbraFn TUPLE_METHODS[] = {
+    METHOD(AbraTuple__toString, 1, 1)
+};
+
+AbraTuple* AbraTuple_make(size_t length, ...) {
+  AbraTuple* tuple = malloc(sizeof(AbraTuple));
+  tuple->_base = (AbraAny) { .type_id=TYPE_ID_TUPLE };
+  tuple->length = length;
+  tuple->items = malloc(sizeof(AbraAny*) * length);
+
+  va_list items;
+  va_start(items, length);
+  for (size_t i = 0; i < length; i++) {
+    AbraAny* item = va_arg(items, AbraAny*);
+    tuple->items[i] = item;
+  }
+  va_end(items);
+  return tuple;
+}
+
+AbraAny* AbraTuple_get(AbraTuple* self, int64_t index) {
+  return self->items[index];
+}
+
+AbraString* AbraTuple__toString(size_t nargs, AbraTuple* self) {
+  assert(nargs == 1);
+
+  AbraString* repr = sequence_to_string(self->length, self->items);
+  repr->chars[0] = '(';
+  repr->chars[repr->length - 1] = ')';
+  return repr;
 }
 
 AbraUnit _0_0_0__println(size_t nargs, AbraArray* args) {
@@ -315,4 +367,5 @@ void entrypoint__0() {
   VTABLE[TYPE_ID_BOOL] = (VTableEntry) { .methods = BOOL_METHODS };
   VTABLE[TYPE_ID_STRING] = (VTableEntry) { .methods = STRING_METHODS };
   VTABLE[TYPE_ID_ARRAY] = (VTableEntry) { .methods = ARRAY_METHODS };
+  VTABLE[TYPE_ID_TUPLE] = (VTableEntry) { .methods = TUPLE_METHODS };
 }

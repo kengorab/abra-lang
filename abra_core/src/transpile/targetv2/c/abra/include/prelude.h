@@ -56,6 +56,12 @@ typedef struct AbraArray {
     int64_t _capacity;
 } AbraArray;
 
+typedef struct AbraTuple {
+    AbraAny _base;
+    AbraAny** items;
+    int64_t length;
+} AbraTuple;
+
 AbraAny* AbraNone_make();
 AbraString* AbraNone__toString(size_t nargs, AbraAny* self);
 
@@ -78,6 +84,10 @@ AbraUnit AbraArray_set(AbraArray* self, size_t index, AbraAny* item);
 AbraAny* AbraArray_get(AbraArray* self, int64_t index);
 AbraArray* AbraArray_get_range(AbraArray* self, int64_t start, int64_t end);
 AbraString* AbraArray__toString(size_t nargs, AbraArray* self);
+
+AbraTuple* AbraTuple_make(size_t length, ...);
+AbraAny* AbraTuple_get(AbraTuple* self, int64_t index);
+AbraString* AbraTuple__toString(size_t nargs, AbraTuple* self);
 
 AbraUnit _0_0_0__println(size_t nargs, AbraArray* args);
 

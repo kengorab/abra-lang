@@ -37,6 +37,8 @@ impl<W: std::io::Write> CCompiler2<W> {
             Type::GenericInstance(struct_id, generic_ids) => {
                 if *struct_id == project.prelude_array_struct_id {
                     "AbraArray".to_string()
+                } else if *struct_id == project.prelude_tuple_struct_id {
+                        "AbraTuple".to_string()
                 } else if generic_ids.is_empty() {
                     self.get_struct_enum_name(project, &TypeKind::Struct(*struct_id))
                 } else {
@@ -145,12 +147,13 @@ impl<W: std::io::Write> CCompiler2<W> {
         self.emit_line("#include \"prelude.h\"\n");
 
         self.emit_comment("Supply extern type_id constants for builtin prelude types");
-        self.emit_line("const size_t TYPE_ID_NONE = 0;");
+        self.emit_line(format!("const size_t TYPE_ID_TUPLE = {};", project.prelude_tuple_struct_id.1));
         self.emit_line(format!("const size_t TYPE_ID_INT = {};", project.prelude_int_struct_id.1));
         self.emit_line(format!("const size_t TYPE_ID_FLOAT = {};", project.prelude_float_struct_id.1));
         self.emit_line(format!("const size_t TYPE_ID_BOOL = {};", project.prelude_bool_struct_id.1));
         self.emit_line(format!("const size_t TYPE_ID_STRING = {};", project.prelude_string_struct_id.1));
         self.emit_line(format!("const size_t TYPE_ID_ARRAY = {};", project.prelude_array_struct_id.1));
+        self.emit_line(format!("const size_t TYPE_ID_NONE = {};", project.prelude_none_type_id.1));
         self.emit_newline();
 
         for module in &project.modules {
@@ -286,7 +289,10 @@ impl<W: std::io::Write> CCompiler2<W> {
 
                 handle
             }
-            TypedNode::Tuple { .. } => unimplemented!(),
+            TypedNode::Tuple { items, .. } => {
+                let item_handles = items.iter().map(|item| self.compile_expression(project, item)).join(", ");
+                format!("AbraTuple_make({}, {})", items.len(), item_handles)
+            }
             TypedNode::Set { .. } => unimplemented!(),
             TypedNode::Map { .. } => unimplemented!(),
             TypedNode::Identifier { var_id, .. } => {
@@ -337,6 +343,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                     (Type::Primitive(PrimitiveType::String), IndexingMode::Range(_, _)) => "AbraString_get_range",
                     (Type::GenericInstance(struct_id, _), IndexingMode::Index(_)) if *struct_id == project.prelude_array_struct_id => "AbraArray_get",
                     (Type::GenericInstance(struct_id, _), IndexingMode::Range(_, _)) if *struct_id == project.prelude_array_struct_id => "AbraArray_get_range",
+                    (Type::GenericInstance(struct_id, _), IndexingMode::Index(_)) if *struct_id == project.prelude_tuple_struct_id => "AbraTuple_get",
                     _ => unimplemented!(),
                 };
 
@@ -346,6 +353,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                         match target_type {
                             Type::Primitive(PrimitiveType::String) => format!("{}->value", idx_expr_handle),
                             Type::GenericInstance(struct_id, _) if *struct_id == project.prelude_array_struct_id => format!("{}->value", idx_expr_handle),
+                            Type::GenericInstance(struct_id, _) if *struct_id == project.prelude_tuple_struct_id => format!("{}->value", idx_expr_handle),
                             _ => idx_expr_handle
                         }
                     }
