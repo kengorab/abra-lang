@@ -1,5 +1,25 @@
+// Basic declaration (val)
+
 val x = 1
 val y = 2
 val z = [x, y]
 /// Expect: [1, 2]
 println(z)
+
+// Basic declaration (var)
+//   Note: an uninitialized var will hold value `None`, even though the type is `Bool` (and not `Bool?`). This will be
+//   fixed in future versions, but for now we capture the behavior here.
+var x_ = 3
+var y_: Bool
+/// Expect: 3 None
+println(x_, y_)
+
+// Destructuring
+
+val (a, b, c) = (1, ("a", "b"), 2)
+/// Expect: 1 ("a", "b") 2
+println(a, b, c)
+
+val (a_, (b1, b2), c_) = (1, ("a", "b"), 2)
+/// Expect: 1 a b 2
+println(a_, b1, b2, c_)

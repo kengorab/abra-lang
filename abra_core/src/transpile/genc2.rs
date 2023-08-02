@@ -238,7 +238,29 @@ impl<W: std::io::Write> CCompiler2<W> {
                 let var_name = Token::get_ident_name(tok);
                 self.emit_line(format!("{}* {} = {};", self.get_type_name_by_id(project, expr_type), var_name, expr_handle));
             }
-            BindingPattern::Tuple(_, _) |
+            BindingPattern::Tuple(_, patterns) => {
+                let Type::GenericInstance(struct_id, generic_ids) = project.get_type_by_id(expr_type) else {
+                    unreachable!("The expression must be a tuple to enter here");
+                };
+                debug_assert!(*struct_id == project.prelude_tuple_struct_id);
+                debug_assert!(generic_ids.len() == patterns.len());
+
+                for (idx, (pattern, tuple_item_type_id)) in patterns.iter().zip(generic_ids).enumerate() {
+                    let tuple_item_type_name = self.get_type_name_by_id(project, tuple_item_type_id);
+
+                    match pattern {
+                        BindingPattern::Variable(tok) => {
+                            let var_name = Token::get_ident_name(tok);
+                            self.emit_line(format!("{}* {} = ({}*)AbraTuple_get({}, {});", tuple_item_type_name, var_name, tuple_item_type_name, expr_handle, idx));
+                        }
+                        _ => {
+                            let item_handle = self.next_temp_variable();
+                            self.emit_line(format!("{}* {} = ({}*)AbraTuple_get({}, {});", tuple_item_type_name, item_handle, tuple_item_type_name, expr_handle, idx));
+                            self.compile_pattern_destructuring(project, &item_handle, tuple_item_type_id, pattern);
+                        }
+                    }
+                }
+            }
             BindingPattern::Array(_, _, _) => todo!(),
         }
     }

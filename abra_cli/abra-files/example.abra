@@ -1,6 +1,6 @@
-val t = (1, "hello", [1, 2], true)
+val (a, (b1, b2), c) = (1, ("a", "b"), 2)
 
-println(t, t[0], t[1], t[2], t[3])
+println(a, b1, b2, c)
 
 // TODO: This should work
 //func makeArray<U>(u: U): U[] = [u]
