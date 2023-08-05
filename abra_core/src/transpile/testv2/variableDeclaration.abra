@@ -23,3 +23,28 @@ println(a, b, c)
 val (a_, (b1, b2), c_) = (1, ("a", "b"), 2)
 /// Expect: 1 a b 2
 println(a_, b1, b2, c_)
+
+val [A, *B] = [(1, 2), (3, 4), (5, 6), (7, 8)]
+/// Expect: (1, 2) [(3, 4), (5, 6), (7, 8)]
+println(A, B)
+
+val [A2, *B2, C2] = [(1, 2), (3, 4), (5, 6), (7, 8)]
+/// Expect: (1, 2) [(3, 4), (5, 6)] (7, 8)
+println(A2, B2, C2)
+
+val [A3, *B3, (C3_1, C3_2), D, E, F] = [(1, 2), (3, 4), (5, 6), (7, 8)]
+/// Expect: (1, 2) [] 3 4 (5, 6) (7, 8) None
+println(A3, B3, C3_1, C3_2, D, E, F)
+
+val [h, e, *llowor, l, d] = "helloworld"
+/// Expect: h e llowor l d
+println(h, e, llowor, l, d)
+
+val [H, *i, foo] = "hi"
+/// Expect: h  i end
+println(H, i, foo, "end")
+
+val [H2, *i2, foo2, bar] = "hi"
+/// Expect: h  i  end
+println(H, i, foo, bar, "end")
+

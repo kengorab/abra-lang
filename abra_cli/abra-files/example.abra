@@ -1,6 +1,7 @@
-val (a, (b1, b2), c) = (1, ("a", "b"), 2)
+val [H2, *i2, foo2, bar] = "hi"
 
-println(a, b1, b2, c)
+val _: String = foo2
+val _: String = bar
 
 // TODO: This should work
 //func makeArray<U>(u: U): U[] = [u]

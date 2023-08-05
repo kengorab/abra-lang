@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use crate::lexer::tokens::Token;
 use crate::parser::ast::{BindingPattern, IndexingMode, UnaryOp};
-use crate::typechecker::typechecker2::{Enum, EnumId, FuncId, Function, ModuleId, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedModule, TypedNode, TypeId, TypeKind, VariableAlias};
+use crate::typechecker::typechecker2::{Enum, EnumId, FuncId, Function, ModuleId, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedModule, TypedNode, TypeId, TypeKind, VariableAlias};
 
 fn function_name(func: &Function) -> String {
     let FuncId(ScopeId(ModuleId(m_id), s_id), f_id) = func.id;
@@ -38,7 +38,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                 if *struct_id == project.prelude_array_struct_id {
                     "AbraArray".to_string()
                 } else if *struct_id == project.prelude_tuple_struct_id {
-                        "AbraTuple".to_string()
+                    "AbraTuple".to_string()
                 } else if generic_ids.is_empty() {
                     self.get_struct_enum_name(project, &TypeKind::Struct(*struct_id))
                 } else {
@@ -251,7 +251,9 @@ impl<W: std::io::Write> CCompiler2<W> {
                     match pattern {
                         BindingPattern::Variable(tok) => {
                             let var_name = Token::get_ident_name(tok);
-                            self.emit_line(format!("{}* {} = ({}*)AbraTuple_get({}, {});", tuple_item_type_name, var_name, tuple_item_type_name, expr_handle, idx));
+                            self.compile_opt_chaining(&var_name, &tuple_item_type_name, &expr_handle, |_| {
+                                format!("AbraTuple_get({}, {})", expr_handle, idx)
+                            })
                         }
                         _ => {
                             let item_handle = self.next_temp_variable();
@@ -261,8 +263,88 @@ impl<W: std::io::Write> CCompiler2<W> {
                     }
                 }
             }
-            BindingPattern::Array(_, _, _) => todo!(),
+            BindingPattern::Array(_, patterns, is_string) => {
+                let item_type_id;
+                let expr_type_name;
+                if *is_string {
+                    item_type_id = PRELUDE_STRING_TYPE_ID;
+                    expr_type_name = self.get_type_name_by_id(project, expr_type);
+                } else {
+                    let Type::GenericInstance(struct_id, generic_ids) = project.get_type_by_id(expr_type) else { unreachable!("The expression must be an array to enter here"); };
+                    debug_assert!(*struct_id == project.prelude_array_struct_id);
+                    item_type_id = *generic_ids.first().expect("The array must have a type");
+                    expr_type_name = self.get_type_name_by_id(project, expr_type);
+                }
+                let item_type_name = self.get_type_name_by_id(project, &item_type_id);
+
+                let num_patterns = patterns.len();
+                let mut expr_handle = expr_handle.to_string();
+                let mut idx = 0;
+                for (_, (pattern, is_splat)) in patterns.iter().enumerate() {
+                    match pattern {
+                        BindingPattern::Variable(tok) => {
+                            let var_name = Token::get_ident_name(tok);
+
+                            let dest_type_name = if *is_splat { &expr_type_name } else { &item_type_name };
+                            self.compile_opt_chaining(&var_name, &dest_type_name, &expr_handle, |_| {
+                                if *is_splat {
+                                    if *is_string {
+                                        format!("AbraString_get_range((AbraString*){}, {}, ((AbraString*){})->length)", &expr_handle, idx, &expr_handle)
+                                    } else {
+                                        format!("AbraArray_get_range((AbraArray*){}, {}, ((AbraArray*){})->length)", &expr_handle, idx, &expr_handle)
+                                    }
+                                } else {
+                                    if *is_string {
+                                        format!("AbraString_get((AbraString*){}, {})", &expr_handle, idx)
+                                    } else {
+                                        format!("AbraArray_get((AbraArray*){}, {})", &expr_handle, idx)
+                                    }
+                                }
+                            });
+
+                            if *is_splat {
+                                let tmp = self.next_temp_variable();
+                                let num_remaining = num_patterns - idx - 1;
+                                if *is_string {
+                                    self.emit_line(format!("AbraString* {} = AbraString_slice({}, {}->length - {});", &tmp, &var_name, &var_name, num_remaining));
+                                } else {
+                                    self.emit_line(format!("AbraArray* {} = AbraArray_slice({}, {}->length - {});", &tmp, &var_name, &var_name, num_remaining));
+                                }
+                                expr_handle = tmp;
+                                idx = 0;
+                                continue;
+                            }
+                        }
+                        _ => {
+                            let item_handle = self.next_temp_variable();
+                            self.compile_opt_chaining(&item_handle, &item_type_name, &expr_handle, |_| {
+                                if *is_string {
+                                    format!("AbraString_get((AbraString*){}, {})", &expr_handle, idx)
+                                } else {
+                                    format!("AbraArray_get((AbraArray*){}, {})", &expr_handle, idx)
+                                }
+                            });
+                            self.compile_pattern_destructuring(project, &item_handle, &item_type_id, pattern);
+                        }
+                    }
+
+                    idx += 1;
+                }
+            }
         }
+    }
+
+    fn compile_opt_chaining<F>(&mut self, var_handle: &String, var_type_name: &String, target_handle: &String, continuation: F)
+        where F: Fn(&mut CCompiler2<W>) -> String
+    {
+        self.emit_line(format!("{}* {};", var_type_name, var_handle));
+        self.emit_line(format!("if (IS_NONE({})) {{", target_handle));
+        self.emit_line(format!("  {} = ({}*)AbraNone_make();", var_handle, var_type_name));
+        self.emit_line("} else {");
+
+        let continuation_handle = continuation(self);
+        self.emit_line(format!("  {} = ({}*){};", var_handle, var_type_name, continuation_handle));
+        self.emit_line("}");
     }
 
     fn compile_expression(&mut self, project: &Project, node: &TypedNode) -> String {

@@ -10,3 +10,4 @@ abra_wasm/js-tests/node_modules
 
 **/.abra
 libgc
+a.out

@@ -62,6 +62,8 @@ typedef struct AbraTuple {
     int64_t length;
 } AbraTuple;
 
+#define IS_NONE(v) (((AbraAny*)v)->type_id == TYPE_ID_NONE)
+
 AbraAny* AbraNone_make();
 AbraString* AbraNone__toString(size_t nargs, AbraAny* self);
 
@@ -75,13 +77,16 @@ AbraBool* AbraBool_make(bool value);
 AbraString* AbraBool__toString(size_t nargs, AbraBool* self);
 
 AbraString* AbraString_make(size_t len, char* chars);
+AbraString* AbraString_empty_string();
 AbraString* AbraString_get(AbraString* self, int64_t index);
+AbraString* AbraString_slice(AbraString* self, int64_t index);
 AbraString* AbraString_get_range(AbraString* self, int64_t start, int64_t end);
 AbraString* AbraString__toString(size_t nargs, AbraString* self);
 
 AbraArray* AbraArray_make_with_capacity(size_t length, size_t cap);
 AbraUnit AbraArray_set(AbraArray* self, size_t index, AbraAny* item);
 AbraAny* AbraArray_get(AbraArray* self, int64_t index);
+AbraArray* AbraArray_slice(AbraArray* self, int64_t index);
 AbraArray* AbraArray_get_range(AbraArray* self, int64_t start, int64_t end);
 AbraString* AbraArray__toString(size_t nargs, AbraArray* self);
 

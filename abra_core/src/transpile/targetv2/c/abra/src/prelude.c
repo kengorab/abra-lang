@@ -181,9 +181,13 @@ AbraString* AbraString_make(size_t len, char* chars) {
   return self;
 }
 
+AbraString* AbraString_empty_string() {
+  return AbraString_make(0, "");
+}
+
 AbraString* AbraString_get(AbraString* self, int64_t index) {
   int64_t len = self->length;
-  if (index < -len || index >= len) return (AbraString*) AbraNone_make();
+  if (index < -len || index >= len) return AbraString_empty_string();
 
   if (index < 0) index += len;
 
@@ -192,11 +196,25 @@ AbraString* AbraString_get(AbraString* self, int64_t index) {
   return AbraString_make(1, str);
 }
 
+AbraString* AbraString_slice(AbraString* self, int64_t index) {
+  if (index >= self->length) return AbraString_empty_string();
+  if (index < 0) index = 0;
+
+  size_t len = self->length - index;
+  char* str = malloc(sizeof(char) * len + 1);
+  str[len] = 0;
+
+  memcpy(str, self->chars + index, len);
+  memset(self->chars + index, 0, len);
+
+  return AbraString_make(len, str);
+}
+
 AbraString* AbraString_get_range(AbraString* self, int64_t start, int64_t end) {
   int64_t len = self->length;
   RANGE_ENDPOINTS(start, end, len);
 
-  if (start >= end) return AbraString_make(0, "");
+  if (start >= end) return AbraString_empty_string();
 
   int64_t slice_size = end - start;
   char* str = malloc(slice_size);
@@ -224,6 +242,10 @@ AbraArray* AbraArray_make_with_capacity(size_t length, size_t cap) {
   return self;
 }
 
+AbraArray* AbraArray_empty_array() {
+  return AbraArray_make_with_capacity(0, 1);
+}
+
 AbraUnit AbraArray_set(AbraArray* self, size_t index, AbraAny* item) {
   self->items[index] = item;
 }
@@ -236,11 +258,28 @@ AbraAny* AbraArray_get(AbraArray* self, int64_t index) {
   return self->items[index];
 }
 
+AbraArray* AbraArray_slice(AbraArray* self, int64_t index) {
+  if (index >= self->length) return AbraArray_empty_array();
+  if (index < 0) index = 0;
+
+  size_t len = self->length - index;
+  AbraArray* slice = AbraArray_make_with_capacity(len, len);
+
+  size_t self_length = self->length;
+  for (size_t i = index; i < self_length; i++) {
+    slice->items[i - index] = self->items[i];
+    self->items[i] = NULL;
+    self->length -= 1;
+  }
+
+  return slice;
+}
+
 AbraArray* AbraArray_get_range(AbraArray* self, int64_t start, int64_t end) {
   int64_t len = self->length;
   RANGE_ENDPOINTS(start, end, len);
 
-  if (start >= end) return AbraArray_make_with_capacity(0, 1);
+  if (start >= end) return AbraArray_empty_array();
 
   int64_t slice_size = end - start;
   AbraArray* new_array = AbraArray_make_with_capacity(slice_size, slice_size);

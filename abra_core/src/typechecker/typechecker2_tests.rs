@@ -1946,7 +1946,7 @@ fn typecheck_binding_declaration() {
     assert_eq!(expected, module.scopes[0].vars);
 
     let project = test_typecheck(r#"
-      val (a, b, [c, *d], (e, f)) = (1, 2.3, [true, false], ("a", ("b", "c")))
+      val (a, b, [(c1, c2), *d], (e, f)) = (1, 2.3, [(true, false), (false, true)], ("a", ("b", "c")))
     "#).unwrap();
     let module = &project.modules[1];
     let expected = vec![
@@ -1974,44 +1974,55 @@ fn typecheck_binding_declaration() {
         },
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 2),
-            name: "c".to_string(),
+            name: "c1".to_string(),
             type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_BOOL_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Span::new(ModuleId(1), (2, 19), (2, 19))),
+            defined_span: Some(Span::new(ModuleId(1), (2, 20), (2, 21))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
         },
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 3),
-            name: "d".to_string(),
-            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_BOOL_TYPE_ID)).unwrap(),
+            name: "c2".to_string(),
+            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_BOOL_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Span::new(ModuleId(1), (2, 23), (2, 23))),
+            defined_span: Some(Span::new(ModuleId(1), (2, 24), (2, 25))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
         },
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 4),
-            name: "e".to_string(),
-            type_id: PRELUDE_STRING_TYPE_ID,
+            name: "d".to_string(),
+            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(project.find_type_id(&ScopeId(ModuleId(1), 0), &project.tuple_type(vec![PRELUDE_BOOL_TYPE_ID, PRELUDE_BOOL_TYPE_ID])).unwrap())).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Span::new(ModuleId(1), (2, 28), (2, 28))),
+            defined_span: Some(Span::new(ModuleId(1), (2, 30), (2, 30))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
         },
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 5),
+            name: "e".to_string(),
+            type_id: PRELUDE_STRING_TYPE_ID,
+            is_mutable: false,
+            is_initialized: true,
+            defined_span: Some(Span::new(ModuleId(1), (2, 35), (2, 35))),
+            is_captured: false,
+            alias: VariableAlias::None,
+            is_parameter: false,
+        },
+        Variable {
+            id: VarId(ScopeId(ModuleId(1), 0), 6),
             name: "f".to_string(),
             type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.tuple_type(vec![PRELUDE_STRING_TYPE_ID, PRELUDE_STRING_TYPE_ID])).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Span::new(ModuleId(1), (2, 31), (2, 31))),
+            defined_span: Some(Span::new(ModuleId(1), (2, 38), (2, 38))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
