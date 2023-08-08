@@ -95,7 +95,14 @@ impl<W: std::io::Write> CCompiler2<W> {
         let ret_type = if function.return_type_id == PRELUDE_UNIT_TYPE_ID { ret_type } else { format!("{}*", ret_type) };
         let fn_name = function_name(&function);
         let params = vec!["size_t nargs".to_string()].into_iter()
-            .chain(function.params.iter().map(|p| format!("{}* {}", self.get_type_name_by_id(project, &p.type_id), &p.name)))
+            .chain(function.params.iter().map(|p| {
+                let type_name = if p.is_variadic {
+                    "AbraArray".to_string()
+                } else {
+                    self.get_type_name_by_id(project, &p.type_id)
+                };
+                format!("{}* {}", type_name, &p.name)
+            }))
             .join(", ");
 
         write!(self.output, "{} {}({})", ret_type, fn_name, params).expect("Output should be able to be written to");
@@ -208,6 +215,14 @@ impl<W: std::io::Write> CCompiler2<W> {
 
         self.emit_fn_signature(project, func_id);
         self.emit_line("{");
+
+        for param in &function.params {
+            let Some(default_value) = &param.default_value else { continue };
+            self.emit_line(format!("if (IS_NONE({})) {{", &param.name));
+            let handle = self.compile_expression(project, default_value);
+            self.emit_line(format!("{} = {};", &param.name, handle));
+            self.emit_line("}");
+        }
 
         let body_len = function.body.len();
         for (idx, node) in function.body.iter().enumerate() {
@@ -438,26 +453,28 @@ impl<W: std::io::Write> CCompiler2<W> {
             }
             TypedNode::NoneValue { .. } => "AbraNone_make()".to_string(),
             TypedNode::Invocation { target, arguments, type_id, .. } => {
-                // dbg!(&target);
-                // dbg!(&arguments);
+                let Type::Function(parameter_type_ids , _, _, _) = project.get_type_by_id(&target.as_ref().type_id()) else { unreachable!() };
+                debug_assert!(parameter_type_ids.len() == arguments.len());
+
                 let num_arguments = arguments.len();
                 let mut arg_values = Vec::with_capacity(num_arguments);
-                for (_, argument) in arguments.iter().enumerate() {
-                    let argument = argument.as_ref().expect("TODO: handle optional arguments");
-                    let handle = self.compile_expression(project, &argument);
+                for (argument, parameter_type_id) in arguments.iter().zip(parameter_type_ids) {
+                    let handle = if let Some(argument) = argument {
+                        self.compile_expression(project, &argument)
+                    } else {
+                        format!("(({}*)AbraNone_make())", self.get_type_name_by_id(project, parameter_type_id))
+                    };
                     arg_values.push(handle);
                 }
-                let target_type_id = type_id;
 
-                let handle = if *target_type_id != PRELUDE_UNIT_TYPE_ID {
+                let handle = if *type_id != PRELUDE_UNIT_TYPE_ID {
                     let handle = self.next_temp_variable();
-                    self.emit(format!("{}* {} = ", self.get_type_name_by_id(project, target_type_id), handle));
+                    self.emit(format!("{}* {} = ", self.get_type_name_by_id(project, type_id), handle));
                     Some(handle)
                 } else { None };
                 let target_handle = self.compile_expression(project, &*target);
                 self.emit(target_handle);
                 self.emit("(");
-                // dbg!(&arg_values);
                 self.emit(vec![num_arguments.to_string()].into_iter().chain(arg_values).join(", "));
                 self.emit_line(");");
 
@@ -580,5 +597,10 @@ mod test {
     #[test]
     fn indexing() {
         run_test_file("indexing.abra");
+    }
+
+    #[test]
+    fn functions() {
+        run_test_file("functions.abra");
     }
 }

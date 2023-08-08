@@ -2768,7 +2768,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
                 None
             };
-            let mut type_id = match (param_type_id, &typed_default_value_expr) {
+            let type_id = match (param_type_id, &typed_default_value_expr) {
                 (None, None) => return Err(TypeError::UnknownTypeForParameter { span: ident_span, param_name }),
                 (Some(param_type_id), None) => param_type_id,
                 (None, Some(typed_default_value_expr)) => *typed_default_value_expr.type_id(),
@@ -2784,19 +2784,21 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     param_type_id
                 }
             };
-            if *is_vararg {
-                let Some(inner_type_id) = self.type_is_array(&type_id) else {
-                    return Err(TypeError::InvalidVarargType { span: ident_span, type_id });
-                };
-                type_id = inner_type_id;
-            }
 
             let is_incomplete = do_partial_completion && typed_default_value_expr.is_some();
             let default_value = if do_partial_completion { None } else { typed_default_value_expr };
             let var_id = self.add_variable_to_current_scope(param_name.clone(), type_id, false, true, &ident_span, true)?;
+
+            let mut param_type_id = type_id;
+            if *is_vararg {
+                let Some(inner_type_id) = self.type_is_array(&type_id) else {
+                    return Err(TypeError::InvalidVarargType { span: ident_span, type_id });
+                };
+                param_type_id = inner_type_id;
+            };
             params.push(FunctionParam {
                 name: param_name,
-                type_id,
+                type_id: param_type_id,
                 var_id,
                 defined_span: Some(ident_span),
                 default_value,
