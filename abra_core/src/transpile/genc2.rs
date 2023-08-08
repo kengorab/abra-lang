@@ -92,9 +92,10 @@ impl<W: std::io::Write> CCompiler2<W> {
     fn emit_fn_signature(&mut self, project: &Project, func_id: &FuncId) {
         let function = project.get_func_by_id(func_id);
         let ret_type = self.get_type_name_by_id(project, &function.return_type_id);
+        let ret_type = if function.return_type_id == PRELUDE_UNIT_TYPE_ID { ret_type } else { format!("{}*", ret_type) };
         let fn_name = function_name(&function);
-        let params = function.params.iter()
-            .map(|p| format!("{} {}", self.get_type_name_by_id(project, &p.type_id), &p.name))
+        let params = vec!["size_t nargs".to_string()].into_iter()
+            .chain(function.params.iter().map(|p| format!("{}* {}", self.get_type_name_by_id(project, &p.type_id), &p.name)))
             .join(", ");
 
         write!(self.output, "{} {}({})", ret_type, fn_name, params).expect("Output should be able to be written to");
@@ -189,11 +190,36 @@ impl<W: std::io::Write> CCompiler2<W> {
             self.emit_fn_predecl(project, func_id);
         }
         if !module.functions.is_empty() { self.emit_newline(); }
+        for func_id in &module.functions {
+            self.compile_function(project, func_id, false);
+        }
+        if !module.functions.is_empty() { self.emit_newline(); }
 
         for struct_ in &module.structs {
             self.emit_struct_decl(project, struct_);
             self.emit_newline();
         }
+    }
+
+    fn compile_function(&mut self, project: &Project, func_id: &FuncId, allow_method: bool) {
+        let function = project.get_func_by_id(func_id);
+        if function.has_self && !allow_method { return; }
+        debug_assert!(function.captured_vars.is_empty(), "Closures not yet implemented");
+
+        self.emit_fn_signature(project, func_id);
+        self.emit_line("{");
+
+        let body_len = function.body.len();
+        for (idx, node) in function.body.iter().enumerate() {
+            if idx == body_len - 1 && function.return_type_id != PRELUDE_UNIT_TYPE_ID {
+                let expr_handle = self.compile_expression(project, node);
+                self.emit_line(format!("return {};", expr_handle));
+            } else {
+                self.compile_statement(project, node);
+            }
+        }
+
+        self.emit_line("}");
     }
 
     fn compile_toplevel_code(&mut self, project: &Project, module: &TypedModule) {
@@ -412,6 +438,8 @@ impl<W: std::io::Write> CCompiler2<W> {
             }
             TypedNode::NoneValue { .. } => "AbraNone_make()".to_string(),
             TypedNode::Invocation { target, arguments, type_id, .. } => {
+                // dbg!(&target);
+                // dbg!(&arguments);
                 let num_arguments = arguments.len();
                 let mut arg_values = Vec::with_capacity(num_arguments);
                 for (_, argument) in arguments.iter().enumerate() {
@@ -423,14 +451,14 @@ impl<W: std::io::Write> CCompiler2<W> {
 
                 let handle = if *target_type_id != PRELUDE_UNIT_TYPE_ID {
                     let handle = self.next_temp_variable();
-                    self.emit(format!("{} {} = ", self.get_type_name_by_id(project, target_type_id), handle));
+                    self.emit(format!("{}* {} = ", self.get_type_name_by_id(project, target_type_id), handle));
                     Some(handle)
                 } else { None };
                 let target_handle = self.compile_expression(project, &*target);
                 self.emit(target_handle);
                 self.emit("(");
-                self.emit(format!("{}, ", num_arguments));
-                self.emit(arg_values.join(", "));
+                // dbg!(&arg_values);
+                self.emit(vec![num_arguments.to_string()].into_iter().chain(arg_values).join(", "));
                 self.emit_line(");");
 
                 handle.unwrap_or_default()
@@ -513,6 +541,7 @@ mod test {
 
         let prefix = "/// Expect: ";
         let expectations = test_file.lines()
+            .map(|line| line.trim())
             .enumerate()
             .filter(|(_, line)| line.starts_with(prefix))
             .map(|(line_num, line)| (line_num + 1, line.replace(prefix, "")))

@@ -1727,7 +1727,7 @@ impl TypeError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum FunctionPass {
     NotStarted,
     Pass0,
@@ -2617,6 +2617,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         // --- END PASS 1 for types, enums, and functions
+        self.function_pass = FunctionPass::Pass2;
 
         for node in nodes {
             match node {
@@ -2857,7 +2858,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     }
 
     fn typecheck_function_pass_2(&mut self, func_id: FuncId, node: FunctionDeclNode) -> Result<(), TypeError> {
-        self.function_pass = FunctionPass::Pass2;
+        debug_assert!(self.function_pass == FunctionPass::Pass2);
+
         let prev_func_id = self.current_function;
         self.current_function = Some(func_id);
 
@@ -4302,10 +4304,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                     if !self.scope_contains_other(&var_scope_id, &func_scope_id) {
                         let var = self.project.get_var_by_id_mut(&var_id);
-                        var.is_captured = true;
+                        if var.alias == VariableAlias::None {
+                            var.is_captured = true;
 
-                        let func = self.project.get_func_by_id_mut(&func_id);
-                        func.captured_vars.push(var_id);
+                            let func = self.project.get_func_by_id_mut(&func_id);
+                            func.captured_vars.push(var_id);
+                        }
                     }
                 }
 
@@ -4682,7 +4686,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     TypeKind::Enum(alias_enum_id) => {
                                         let type_id = self.project.get_enum_by_id(&alias_enum_id).self_type_id;
                                         return Err(TypeError::IllegalInvocation { span: self.make_span(&typed_target.span()), type_id });
-                                    },
+                                    }
                                 }
                             }
                             VariableAlias::None => unreachable!("VariableAlias::None identifiers are excluded from this match case and are handled below"),

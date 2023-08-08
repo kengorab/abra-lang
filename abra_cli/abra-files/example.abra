@@ -1,7 +1,11 @@
-val [H2, *i2, foo2, bar] = "hi"
+val x = 1
+println(x)
 
-val _: String = foo2
-val _: String = bar
+func tupleBasic() {
+  val a = 2
+  println(a)
+}
+tupleBasic()
 
 // TODO: This should work
 //func makeArray<U>(u: U): U[] = [u]
