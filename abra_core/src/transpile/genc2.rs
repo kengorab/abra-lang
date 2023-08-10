@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use crate::lexer::tokens::Token;
-use crate::parser::ast::{BindingPattern, IndexingMode, UnaryOp};
+use crate::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
 use crate::typechecker::typechecker2::{Enum, EnumId, FuncId, Function, ModuleId, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedModule, TypedNode, TypeId, TypeKind, VariableAlias};
 
 fn function_name(func: &Function) -> String {
@@ -152,6 +152,7 @@ impl<W: std::io::Write> CCompiler2<W> {
     // --- EMITTER LOGIC END ---
 
     pub fn generate(&mut self, project: Project) {
+        self.emit_line("#include \"math.h\"\n");
         self.emit_line("#include \"prelude.h\"\n");
 
         self.emit_comment("Supply extern type_id constants for builtin prelude types");
@@ -217,7 +218,7 @@ impl<W: std::io::Write> CCompiler2<W> {
         self.emit_line("{");
 
         for param in &function.params {
-            let Some(default_value) = &param.default_value else { continue };
+            let Some(default_value) = &param.default_value else { continue; };
             self.emit_line(format!("if (IS_NONE({})) {{", &param.name));
             let handle = self.compile_expression(project, default_value);
             self.emit_line(format!("{} = {};", &param.name, handle));
@@ -419,8 +420,79 @@ impl<W: std::io::Write> CCompiler2<W> {
 
                 format!("{}({})", fn_name, fn_arg)
             }
-            TypedNode::Binary { .. } => unimplemented!(),
-            TypedNode::Grouped { .. } => unimplemented!(),
+            TypedNode::Binary { left, right, op, .. } => {
+                let type_id = *node.type_id();
+
+                let left_handle = self.compile_expression(project, left);
+                match op {
+                    BinaryOp::And | BinaryOp::Or | BinaryOp::Coalesce => todo!(),
+                    _ => {}
+                }
+
+                let right_handle = self.compile_expression(project, right);
+
+                let compile_arithmetic_op = |op: &str| {
+                    if type_id == PRELUDE_INT_TYPE_ID {
+                        format!("AbraInt_make({}->value {} {}->value)", left_handle, op, right_handle)
+                    } else if type_id == PRELUDE_FLOAT_TYPE_ID {
+                        format!("AbraFloat_make((double){}->value {} (double){}->value)", left_handle, op, right_handle)
+                    } else {
+                        unreachable!("No other resultant types are possible for the {} operation", op);
+                    }
+                };
+
+                let compile_comparison_op = |op: &str| {
+                    format!("AbraBool_make({}->value {} {}->value)", left_handle, op, right_handle)
+                };
+
+                match op {
+                    BinaryOp::Add => {
+                        if type_id == PRELUDE_STRING_TYPE_ID {
+                            if *left.type_id() == PRELUDE_STRING_TYPE_ID {
+                                format!("AbraString__concat(2, {}, (AbraAny*){})", left_handle, right_handle)
+                            } else if *right.type_id() == PRELUDE_STRING_TYPE_ID {
+                                format!("AbraString__concat(2, prelude__tostring((AbraAny*){}), (AbraAny*){})", left_handle, right_handle)
+                            } else {
+                                unreachable!("Either the left or right node must be a string")
+                            }
+                        } else {
+                            compile_arithmetic_op("+")
+                        }
+                    }
+                    BinaryOp::Sub => compile_arithmetic_op("-"),
+                    BinaryOp::Mul => compile_arithmetic_op("*"),
+                    BinaryOp::Div => compile_arithmetic_op("/"),
+                    BinaryOp::Mod => {
+                        if *left.type_id() == PRELUDE_FLOAT_TYPE_ID || *right.type_id() == PRELUDE_FLOAT_TYPE_ID {
+                            format!("AbraFloat_make(fmod((double){}->value, (double){}->value))", left_handle, right_handle)
+                        } else {
+                            format!("AbraInt_make({}->value % {}->value)", left_handle, right_handle)
+                        }
+                    }
+                    BinaryOp::Pow => {
+                        format!("AbraFloat_make(pow((double){}->value, (double){}->value))", left_handle, right_handle)
+                    }
+                    BinaryOp::And |
+                    BinaryOp::Or |
+                    BinaryOp::Xor |
+                    BinaryOp::Coalesce |
+                    BinaryOp::Lt => compile_comparison_op("<"),
+                    BinaryOp::Lte => compile_comparison_op("<="),
+                    BinaryOp::Gt => compile_comparison_op(">"),
+                    BinaryOp::Gte => compile_comparison_op(">="),
+                    BinaryOp::Neq |
+                    BinaryOp::Eq |
+                    BinaryOp::AddEq |
+                    BinaryOp::SubEq |
+                    BinaryOp::MulEq |
+                    BinaryOp::DivEq |
+                    BinaryOp::ModEq |
+                    BinaryOp::AndEq |
+                    BinaryOp::OrEq |
+                    BinaryOp::CoalesceEq => todo!()
+                }
+            }
+            TypedNode::Grouped { expr, .. } => self.compile_expression(project, expr),
             TypedNode::Array { items, .. } => {
                 let capacity = if items.is_empty() { 0 } else { items.len().next_power_of_two() };
 
@@ -453,7 +525,7 @@ impl<W: std::io::Write> CCompiler2<W> {
             }
             TypedNode::NoneValue { .. } => "AbraNone_make()".to_string(),
             TypedNode::Invocation { target, arguments, type_id, .. } => {
-                let Type::Function(parameter_type_ids , _, _, _) = project.get_type_by_id(&target.as_ref().type_id()) else { unreachable!() };
+                let Type::Function(parameter_type_ids, _, _, _) = project.get_type_by_id(&target.as_ref().type_id()) else { unreachable!() };
                 debug_assert!(parameter_type_ids.len() == arguments.len());
 
                 let num_arguments = arguments.len();
@@ -587,6 +659,11 @@ mod test {
     #[test]
     fn unary_ops() {
         run_test_file("unaryOps.abra");
+    }
+
+    #[test]
+    fn binary_ops() {
+        run_test_file("binaryOps.abra");
     }
 
     #[test]

@@ -35,7 +35,7 @@ typedef struct AbraInt {
 
 typedef struct AbraFloat {
     AbraAny _base;
-    float value;
+    double value;
 } AbraFloat;
 
 typedef struct AbraBool {
@@ -62,6 +62,8 @@ typedef struct AbraTuple {
     int64_t length;
 } AbraTuple;
 
+AbraString* prelude__tostring(AbraAny* value);
+
 #define IS_NONE(v) (((AbraAny*)v)->type_id == TYPE_ID_NONE)
 
 AbraAny* AbraNone_make();
@@ -70,7 +72,7 @@ AbraString* AbraNone__toString(size_t nargs, AbraAny* self);
 AbraInt* AbraInt_make(int64_t value);
 AbraString* AbraInt__toString(size_t nargs, AbraInt* self);
 
-AbraFloat* AbraFloat_make(float value);
+AbraFloat* AbraFloat_make(double value);
 AbraString* AbraFloat__toString(size_t nargs, AbraFloat* self);
 
 AbraBool* AbraBool_make(bool value);
@@ -82,6 +84,7 @@ AbraString* AbraString_get(AbraString* self, int64_t index);
 AbraString* AbraString_slice(AbraString* self, int64_t index);
 AbraString* AbraString_get_range(AbraString* self, int64_t start, int64_t end);
 AbraString* AbraString__toString(size_t nargs, AbraString* self);
+AbraString* AbraString__concat(size_t nargs, AbraString* self, AbraAny* other);
 
 AbraArray* AbraArray_make_with_capacity(size_t length, size_t cap);
 AbraUnit AbraArray_set(AbraArray* self, size_t index, AbraAny* item);

@@ -35,7 +35,7 @@ void init_vtable(size_t num_types) {
 
 #define INTRINSIC_TOSTRING_IDX  0
 
-AbraString* call_to_string(AbraAny* value) {
+AbraString* prelude__tostring(AbraAny* value) {
   VTableEntry entry = VTABLE[value->type_id];
   AbraFn tostring = entry.methods[INTRINSIC_TOSTRING_IDX];
 
@@ -102,7 +102,7 @@ AbraFn FLOAT_METHODS[] = {
     METHOD(AbraFloat__toString, 1, 1)
 };
 
-AbraFloat* AbraFloat_make(float value) {
+AbraFloat* AbraFloat_make(double value) {
   AbraFloat* self = malloc(sizeof(AbraFloat));
   self->_base = (AbraAny) { .type_id = TYPE_ID_FLOAT };
   self->value = value;
@@ -228,6 +228,20 @@ AbraString* AbraString__toString(size_t nargs, AbraString* self) {
   return self;
 }
 
+AbraString* AbraString__concat(size_t nargs, AbraString* self, AbraAny* other) {
+  assert(nargs == 2);
+
+  AbraString* repr = prelude__tostring(other);
+
+  size_t len = repr->length + self->length;
+  char* concat = malloc(sizeof(char) * len + 1);
+  concat[len] = 0;
+
+  memcpy(concat, self->chars, self->length);
+  memcpy(concat + self->length, repr->chars, repr->length);
+  return AbraString_make(len, concat);
+}
+
 // AbraArray methods
 AbraFn ARRAY_METHODS[] = {
     METHOD(AbraArray__toString, 1, 1)
@@ -301,7 +315,7 @@ AbraString* sequence_to_string(int64_t length, AbraAny** items) {
   size_t total_length = 2; // account for "[]"
   for (size_t i = 0; i < length; i++) {
     AbraAny* item = items[i];
-    AbraString* repr = call_to_string(item);
+    AbraString* repr = prelude__tostring(item);
 
     strings[i] = (item_t) {
       .repr=repr,
@@ -389,7 +403,7 @@ AbraUnit _0_0_0__println(size_t nargs, AbraArray* args) {
   }
 
   for (size_t i = 0; i < args->length; i++) {
-    AbraString* repr = call_to_string(args->items[i]);
+    AbraString* repr = prelude__tostring(args->items[i]);
 
     printf("%s", repr->chars);
     if (i != args->length - 1) {

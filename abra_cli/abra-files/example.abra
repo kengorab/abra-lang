@@ -1,14 +1,5 @@
-func foo1(v: Int, x = 123): Int[] {
-  [v, x]
-}
-println(foo1(1))
-println(foo1(1, 2))
-
-func foo2(*args: Int[]) {
-  val [a, b, c] = args
-  println(a, b, c)
-}
-foo2(1, 2, 3, 4)
+// 4738381338321616896
+println(6 ** 24)
 
 // TODO: This should work
 //func makeArray<U>(u: U): U[] = [u]
