@@ -1,4 +1,4 @@
-println("123" == 123, "123" == 123.0, "123" == "123", "123" == true, "123" == [1, 2], "123" == ("a", 3))
+println(true ^ false)
 
 // TODO: This should work
 //func makeArray<U>(u: U): U[] = [u]

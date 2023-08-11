@@ -178,3 +178,41 @@ func equalityOps() {
   )
 }
 equalityOps()
+
+func returnTrue(): Bool {
+  println("returnTrue called")
+  true
+}
+func booleanOps() {
+  // Test And
+  /// Expect: true false false false
+  println(true && true, true && false, false && true, false && false)
+
+  // Test short-circuiting
+  /// Expect: false
+  println(false && returnTrue())
+  /// Expect: returnTrue called
+  /// Expect: true
+  println(true && returnTrue())
+
+  // Test Or
+  /// Expect: true true true false
+  println(true || true, true || false, false || true, false || false)
+  /// Expect: returnTrue called
+  /// Expect: true
+  println(false || returnTrue())
+  /// Expect: true
+  println(true || returnTrue())
+
+  // Test Xor
+  /// Expect: false true true false
+  println(true ^ true, true ^ false, false ^ true, false ^ false)
+}
+booleanOps()
+
+func testCoalesce() {
+  val arr = [1, 2, 3]
+  /// Expect: 1 16
+  println(arr[0] ?: 16, arr[8] ?: 16)
+}
+testCoalesce()

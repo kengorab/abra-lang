@@ -424,9 +424,30 @@ impl<W: std::io::Write> CCompiler2<W> {
                 let type_id = *node.type_id();
 
                 let left_handle = self.compile_expression(project, left);
-                match op {
-                    BinaryOp::And | BinaryOp::Or | BinaryOp::Coalesce => todo!(),
-                    _ => {}
+                if *op == BinaryOp::And || *op == BinaryOp::Or || *op == BinaryOp::Coalesce {
+                    let handle = self.next_temp_variable();
+
+                    if *op == BinaryOp::And {
+                        self.emit_line(format!("AbraBool* {};", handle));
+                        self.emit_line(format!("if (!{}->value) {{", left_handle));
+                        self.emit_line(format!("{} = {};", handle, left_handle));
+                        self.emit_line("} else {");
+                    } else if *op == BinaryOp::Or {
+                        self.emit_line(format!("AbraBool* {};", handle));
+                        self.emit_line(format!("if ({}->value) {{", left_handle));
+                        self.emit_line(format!("{} = {};", handle, left_handle));
+                        self.emit_line("} else {");
+                    } else {
+                        let type_name = self.get_type_name_by_id(project, &type_id);
+                        self.emit_line(format!("{}* {} = ({}*){};", type_name, handle, type_name, left_handle));
+                        self.emit_line(format!("if (IS_NONE({})) {{", handle));
+                    }
+
+                    let right_handle = self.compile_expression(project, right);
+                    self.emit_line(format!("{} = {};", handle, right_handle));
+                    self.emit_line("}");
+
+                    return handle;
                 }
 
                 let right_handle = self.compile_expression(project, right);
@@ -472,10 +493,10 @@ impl<W: std::io::Write> CCompiler2<W> {
                     BinaryOp::Pow => {
                         format!("AbraFloat_make(pow((double){}->value, (double){}->value))", left_handle, right_handle)
                     }
-                    BinaryOp::And |
-                    BinaryOp::Or |
-                    BinaryOp::Xor |
-                    BinaryOp::Coalesce |
+                    BinaryOp::And | BinaryOp::Or | BinaryOp::Coalesce => unreachable!("Handled above"),
+                    BinaryOp::Xor => {
+                        format!("AbraBool_make(!({}->value) != !({}->value))", left_handle, right_handle)
+                    }
                     BinaryOp::Lt => compile_comparison_op("<"),
                     BinaryOp::Lte => compile_comparison_op("<="),
                     BinaryOp::Gt => compile_comparison_op(">"),
