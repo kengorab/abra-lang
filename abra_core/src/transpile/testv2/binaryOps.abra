@@ -155,3 +155,26 @@ func comparisonOps() {
   println(6 >= 6, 6.0 >= 6, 6 >= 6.0, 6.0 >= 6.0)
 }
 comparisonOps()
+
+func equalityOps() {
+  /// Expect: true true false false false false
+  println(123 == 123, 123 == 123.0, 123 == "123", 123 == true, 123 == [1, 2], 123 == ("a", 3))
+  /// Expect: true true false false false false
+  println(123.0 == 123, 123.0 == 123.0, 123.0 == "123", 123.0 == true, 123.0 == [1, 2], 123.0 == ("a", 3))
+  /// Expect: false false true false false false
+  println("123" == 123, "123" == 123.0, "123" == "123", "123" == true, "123" == [1, 2], "123" == ("a", 3))
+  /// Expect: false false false true false false
+  println(true == 123, true == 123.0, true == "123", true == true, true == [1, 2], true == ("a", 3))
+  /// Expect: false false false false true false
+  println([1, 2] == 123, [1, 2] == 123.0, [1, 2] == "123", [1, 2] == true, [1, 2] == [1, 2], [1, 2] == ("a", 3))
+  /// Expect: false false false false false true
+  println(("a", 3) == 123, ("a", 3) == 123.0, ("a", 3) == "123", ("a", 3) == true, ("a", 3) == [1, 2], ("a", 3) == ("a", 3))
+
+  // Nested
+  /// Expect: false false
+  println(
+    [[1, 2], [3, 4], [5, 6]] == [[1, 2], [3, -4], [5, 6]],
+    ([1, 2], "a", 3) == ([1, 2], "a", -3)
+  )
+}
+equalityOps()

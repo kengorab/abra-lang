@@ -480,8 +480,9 @@ impl<W: std::io::Write> CCompiler2<W> {
                     BinaryOp::Lte => compile_comparison_op("<="),
                     BinaryOp::Gt => compile_comparison_op(">"),
                     BinaryOp::Gte => compile_comparison_op(">="),
-                    BinaryOp::Neq |
-                    BinaryOp::Eq |
+                    BinaryOp::Neq | BinaryOp::Eq => {
+                        format!("prelude__eq((AbraAny*)({}), (AbraAny*)({}), {})", left_handle, right_handle, *op == BinaryOp::Neq)
+                    }
                     BinaryOp::AddEq |
                     BinaryOp::SubEq |
                     BinaryOp::MulEq |

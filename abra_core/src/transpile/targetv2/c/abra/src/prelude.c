@@ -45,8 +45,14 @@ AbraString* prelude__tostring(AbraAny* value) {
   return tostring_method(1, value);
 }
 
-#define INTRINSIC_EQ_IDX        1
-#define INTRINSIC_HASH_IDX      2
+AbraBool* prelude__eq(AbraAny* value, AbraAny* other, bool neg) {
+  VTableEntry entry = VTABLE[value->type_id];
+  AbraBool* (* eq_fn)(size_t, AbraAny*, AbraAny*) = (AbraBool* (*)(size_t, AbraAny*, AbraAny*)) (entry.fn_eq.fn);
+
+  AbraBool* res = eq_fn(2, value, other);
+  if (neg) return AbraBool_make(!res->value);
+  return res;
+}
 
 #define METHOD(fn_name, min, max) \
     ((AbraFn) { .is_closure = false, .fn = (Fn) &fn_name, .min_arity = min, .max_arity = max, .captures = (void*) 0 })
@@ -75,6 +81,13 @@ AbraString* AbraNone__toString(size_t nargs, AbraAny* _self) {
   return ABRA_NONE_STRING;
 }
 
+AbraBool* AbraNone__eq(size_t nargs, AbraAny* _self, AbraAny* other) {
+  assert(nargs == 2);
+  (void) _self;
+
+  return AbraBool_make(IS_NONE(other));
+}
+
 // AbraInt methods
 AbraFn INT_METHODS[] = {
     METHOD(AbraInt__toString, 1, 1)
@@ -95,6 +108,15 @@ AbraString* AbraInt__toString(size_t nargs, AbraInt* self) {
   snprintf(str, len + 1, "%" PRId64, self->value);
 
   return AbraString_make(len, str);
+}
+
+AbraBool* AbraInt__eq(size_t nargs, AbraInt* self, AbraAny* other) {
+  assert(nargs == 2);
+
+  if (other->type_id == TYPE_ID_INT) return AbraBool_make(self->value == ((AbraInt*) other)->value);
+  if (other->type_id == TYPE_ID_FLOAT) return AbraBool_make((double) self->value == ((AbraFloat*) other)->value);
+
+  return AbraBool_make(false);
 }
 
 // AbraFloat methods
@@ -125,6 +147,15 @@ AbraString* AbraFloat__toString(size_t nargs, AbraFloat* self) {
     }
   }
   return AbraString_make(len, str);
+}
+
+AbraBool* AbraFloat__eq(size_t nargs, AbraFloat* self, AbraAny* other) {
+  assert(nargs == 2);
+
+  if (other->type_id == TYPE_ID_INT) return AbraBool_make(self->value == (double) ((AbraInt*) other)->value);
+  if (other->type_id == TYPE_ID_FLOAT) return AbraBool_make(self->value == ((AbraFloat*) other)->value);
+
+  return AbraBool_make(false);
 }
 
 // AbraBool methods
@@ -166,6 +197,11 @@ AbraString* AbraBool__toString(size_t nargs, AbraBool* self) {
     if (!ABRA_BOOL_FALSE_STRING) ABRA_BOOL_FALSE_STRING = AbraString_make(5, "false");
     return ABRA_BOOL_FALSE_STRING;
   }
+}
+
+AbraBool* AbraBool__eq(size_t nargs, AbraBool* self, AbraAny* other) {
+  assert(nargs == 2);
+  return AbraBool_make(other->type_id == TYPE_ID_BOOL && self->value == ((AbraBool*) other)->value);
 }
 
 // AbraString methods
@@ -226,6 +262,16 @@ AbraString* AbraString_get_range(AbraString* self, int64_t start, int64_t end) {
 
 AbraString* AbraString__toString(size_t nargs, AbraString* self) {
   return self;
+}
+
+AbraBool* AbraString__eq(size_t nargs, AbraString* self, AbraAny* other) {
+  assert(nargs == 2);
+
+  return AbraBool_make(
+      other->type_id == TYPE_ID_STRING &&
+      self->length == ((AbraString*) other)->length &&
+      (strcmp(self->chars, ((AbraString*) other)->chars) == 0)
+  );
 }
 
 AbraString* AbraString__concat(size_t nargs, AbraString* self, AbraAny* other) {
@@ -318,8 +364,8 @@ AbraString* sequence_to_string(int64_t length, AbraAny** items) {
     AbraString* repr = prelude__tostring(item);
 
     strings[i] = (item_t) {
-      .repr=repr,
-      .item_is_string=item->type_id == TYPE_ID_STRING
+        .repr=repr,
+        .item_is_string=item->type_id == TYPE_ID_STRING
     };
     total_length += repr->length;
     if (item->type_id == TYPE_ID_STRING) {
@@ -360,6 +406,18 @@ AbraString* AbraArray__toString(size_t nargs, AbraArray* self) {
   return sequence_to_string(self->length, self->items);
 }
 
+AbraBool* AbraArray__eq(size_t nargs, AbraArray* self, AbraAny* other) {
+  assert(nargs == 2);
+
+  if (self->length != ((AbraArray*) other)->length) return AbraBool_make(false);
+
+  for (size_t i = 0; i < self->length; i++) {
+    if (!prelude__eq(self->items[i], ((AbraArray*) other)->items[i], false)->value) return AbraBool_make(false);
+  }
+
+  return AbraBool_make(true);
+}
+
 // AbraTuple methods
 AbraFn TUPLE_METHODS[] = {
     METHOD(AbraTuple__toString, 1, 1)
@@ -394,6 +452,18 @@ AbraString* AbraTuple__toString(size_t nargs, AbraTuple* self) {
   return repr;
 }
 
+AbraBool* AbraTuple__eq(size_t nargs, AbraTuple* self, AbraAny* other) {
+  assert(nargs == 2);
+
+  if (self->length != ((AbraTuple*) other)->length) return AbraBool_make(false);
+
+  for (size_t i = 0; i < self->length; i++) {
+    if (!prelude__eq(self->items[i], ((AbraTuple*) other)->items[i], false)->value) return AbraBool_make(false);
+  }
+
+  return AbraBool_make(true);
+}
+
 AbraUnit _0_0_0__println(size_t nargs, AbraArray* args) {
   assert(nargs == 1);
 
@@ -414,11 +484,11 @@ AbraUnit _0_0_0__println(size_t nargs, AbraArray* args) {
 }
 
 void entrypoint__0() {
-  VTABLE[TYPE_ID_NONE] = (VTableEntry) { .methods = NONE_METHODS };
-  VTABLE[TYPE_ID_INT] = (VTableEntry) { .methods = INT_METHODS };
-  VTABLE[TYPE_ID_FLOAT] = (VTableEntry) { .methods = FLOAT_METHODS };
-  VTABLE[TYPE_ID_BOOL] = (VTableEntry) { .methods = BOOL_METHODS };
-  VTABLE[TYPE_ID_STRING] = (VTableEntry) { .methods = STRING_METHODS };
-  VTABLE[TYPE_ID_ARRAY] = (VTableEntry) { .methods = ARRAY_METHODS };
-  VTABLE[TYPE_ID_TUPLE] = (VTableEntry) { .methods = TUPLE_METHODS };
+  VTABLE[TYPE_ID_NONE] = (VTableEntry) { .fn_eq=METHOD(AbraNone__eq, 2, 2), .methods = NONE_METHODS };
+  VTABLE[TYPE_ID_INT] = (VTableEntry) { .fn_eq=METHOD(AbraInt__eq, 2, 2), .methods = INT_METHODS };
+  VTABLE[TYPE_ID_FLOAT] = (VTableEntry) { .fn_eq=METHOD(AbraFloat__eq, 2, 2), .methods = FLOAT_METHODS };
+  VTABLE[TYPE_ID_BOOL] = (VTableEntry) { .fn_eq=METHOD(AbraBool__eq, 2, 2), .methods = BOOL_METHODS };
+  VTABLE[TYPE_ID_STRING] = (VTableEntry) { .fn_eq=METHOD(AbraString__eq, 2, 2), .methods = STRING_METHODS };
+  VTABLE[TYPE_ID_ARRAY] = (VTableEntry) { .fn_eq=METHOD(AbraArray__eq, 2, 2), .methods = ARRAY_METHODS };
+  VTABLE[TYPE_ID_TUPLE] = (VTableEntry) { .fn_eq=METHOD(AbraTuple__eq, 2, 2), .methods = TUPLE_METHODS };
 }
