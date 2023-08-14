@@ -306,7 +306,26 @@ AbraArray* AbraArray_empty_array() {
   return AbraArray_make_with_capacity(0, 1);
 }
 
-AbraUnit AbraArray_set(AbraArray* self, size_t index, AbraAny* item) {
+AbraUnit AbraArray_set(AbraArray* self, int64_t index, AbraAny* item) {
+  int64_t len = self->length;
+  if (index < -len) return;
+  if (index < 0) index += len;
+
+  if (index >= len) {
+    while (index >= self->_capacity) {
+      self->_capacity *= 2;
+    }
+
+    AbraAny** new_items = (AbraAny**) realloc(self->items, sizeof(AbraAny*) * self->_capacity);
+    assert(new_items);
+    self->items = new_items;
+
+    for (size_t i = len; i <= index; i++) {
+      self->items[i] = AbraNone_make();
+      self->length += 1;
+    }
+  }
+
   self->items[index] = item;
 }
 

@@ -4152,6 +4152,11 @@ fn typecheck_assignment() {
         span: Range { start: Position::new(2, 1), end: Position::new(2, 6) },
         kind: AssignmentKind::Identifier { var_id: VarId(ScopeId(ModuleId(1), 0), 0) },
         type_id: PRELUDE_INT_TYPE_ID,
+        expr: Box::new(TypedNode::Literal {
+            token: Token::Int(Position::new(2, 5), 34),
+            type_id: PRELUDE_INT_TYPE_ID,
+            value: TypedLiteral::Int(34),
+        }),
     };
     assert_eq!(&expected, node);
 
@@ -4177,6 +4182,11 @@ fn typecheck_assignment() {
             member_idx: 0,
         },
         type_id: PRELUDE_INT_TYPE_ID,
+        expr: Box::new(TypedNode::Literal {
+            token: Token::Int(Position::new(3, 9), 24),
+            type_id: PRELUDE_INT_TYPE_ID,
+            value: TypedLiteral::Int(24),
+        }),
     };
     assert_eq!(&expected, node);
 

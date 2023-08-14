@@ -1,4 +1,6 @@
-println(true ^ false)
+val arr4 = [1, 2, 3, 4]
+val w = arr4[-1] = 16
+println(arr4, w)
 
 // TODO: This should work
 //func makeArray<U>(u: U): U[] = [u]

@@ -788,7 +788,7 @@ pub enum AccessorKind {
 pub enum AssignmentKind {
     Identifier { var_id: VarId },
     Accessor { target: Box<TypedNode>, kind: AccessorKind, member_idx: usize },
-    Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode> },
+    Indexing { target: Box<TypedNode>, index: Box<TypedNode> },
 }
 
 #[derive(Debug, PartialEq)]
@@ -813,7 +813,7 @@ pub enum TypedNode {
     Accessor { target: Box<TypedNode>, kind: AccessorKind, is_opt_safe: bool, member_idx: usize, member_span: Range, type_id: TypeId },
     Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId },
     Lambda { span: Range, func_id: FuncId, type_id: TypeId },
-    Assignment { span: Range, kind: AssignmentKind, type_id: TypeId },
+    Assignment { span: Range, kind: AssignmentKind, type_id: TypeId, expr: Box<TypedNode> },
     If { if_token: Token, condition: Box<TypedNode>, condition_binding: Option<BindingPattern>, if_block: Vec<TypedNode>, else_block: Vec<TypedNode>, is_statement: bool, type_id: TypeId },
     Match { match_token: Token, target: Box<TypedNode>, cases: Vec<TypedMatchCase>, is_statement: bool, type_id: TypeId },
 
@@ -4399,7 +4399,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             return Err(TypeError::InvalidAssignmentTarget { span: target_span, kind: InvalidAssignmentTargetKind::IndexingString });
                         }
 
-                        AssignmentKind::Indexing { target, index: IndexingMode::Index(index) }
+                        AssignmentKind::Indexing { target, index }
                     }
                     TypedNode::Indexing { index: IndexingMode::Range(_, _), .. } => return Err(TypeError::InvalidAssignmentTarget { span: target_span, kind: InvalidAssignmentTargetKind::IndexingRange }),
                     _ => return Err(TypeError::InvalidAssignmentTarget { span: target_span, kind: InvalidAssignmentTargetKind::UnsupportedAssignmentTarget })
@@ -4414,7 +4414,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
 
                 let span = target_span.range.expand(&typed_expr.span());
-                Ok(TypedNode::Assignment { span, kind, type_id })
+                Ok(TypedNode::Assignment { span, kind, type_id, expr: Box::new(typed_expr) })
             }
             AstNode::Indexing(_, n) => {
                 let IndexingNode { target, index } = n;

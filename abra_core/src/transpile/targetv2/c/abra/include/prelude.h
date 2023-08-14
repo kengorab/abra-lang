@@ -96,7 +96,7 @@ AbraBool* AbraString__eq(size_t nargs, AbraString* self, AbraAny* other);
 AbraString* AbraString__concat(size_t nargs, AbraString* self, AbraAny* other);
 
 AbraArray* AbraArray_make_with_capacity(size_t length, size_t cap);
-AbraUnit AbraArray_set(AbraArray* self, size_t index, AbraAny* item);
+AbraUnit AbraArray_set(AbraArray* self, int64_t index, AbraAny* item);
 AbraAny* AbraArray_get(AbraArray* self, int64_t index);
 AbraArray* AbraArray_slice(AbraArray* self, int64_t index);
 AbraArray* AbraArray_get_range(AbraArray* self, int64_t start, int64_t end);

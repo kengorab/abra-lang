@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use crate::lexer::tokens::Token;
 use crate::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
-use crate::typechecker::typechecker2::{Enum, EnumId, FuncId, Function, ModuleId, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedModule, TypedNode, TypeId, TypeKind, VariableAlias};
+use crate::typechecker::typechecker2::{AssignmentKind, Enum, EnumId, FuncId, Function, ModuleId, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedModule, TypedNode, TypeId, TypeKind, VariableAlias};
 
 fn function_name(func: &Function) -> String {
     let FuncId(ScopeId(ModuleId(m_id), s_id), f_id) = func.id;
@@ -623,7 +623,27 @@ impl<W: std::io::Write> CCompiler2<W> {
                 format!("{}({}, {})", fn_name, target_handle, fn_args)
             }
             TypedNode::Lambda { .. } => unimplemented!(),
-            TypedNode::Assignment { .. } => unimplemented!(),
+            TypedNode::Assignment { kind, expr, .. } => {
+                let expr_handle = self.compile_expression(project, expr);
+                match kind {
+                    AssignmentKind::Identifier { var_id } => {
+                        let variable = project.get_var_by_id(var_id);
+                        self.emit_line(format!("{} = {};", &variable.name, expr_handle));
+                        variable.name.clone()
+                    }
+                    AssignmentKind::Accessor { .. } => todo!(),
+                    AssignmentKind::Indexing { index, target } => {
+                        let target_type_id = target.as_ref().type_id();
+                        let target_type = project.get_type_by_id(target_type_id);
+                        let Type::GenericInstance(struct_id, _) = target_type else { unreachable!() };
+                        debug_assert!(*struct_id == project.prelude_array_struct_id);
+                        let target_handle = self.compile_expression(project, target);
+                        let index_handle = self.compile_expression(project, index);
+                        self.emit_line(format!("AbraArray_set(/*self:*/{}, /*idx:*/{}->value, /*item:*/(AbraAny*){});", target_handle, index_handle, expr_handle));
+                        expr_handle
+                    }
+                }
+            }
             n => unreachable!("Internal error: node is not an expression: {:?}", n),
         }
     }
@@ -691,6 +711,11 @@ mod test {
     #[test]
     fn variable_declaration() {
         run_test_file("variableDeclaration.abra");
+    }
+
+    #[test]
+    fn assignment() {
+        run_test_file("assignment.abra");
     }
 
     #[test]
