@@ -3086,6 +3086,7 @@ fn typecheck_invocation() {
     ").unwrap();
     let module = &project.modules[1];
     let expected = vec![
+        TypedNode::FuncDeclaration(FuncId(ScopeId(ModuleId(1), 0), 0)),
         TypedNode::Invocation {
             target: Box::new(TypedNode::Identifier {
                 token: Token::Ident(Position::new(2, 1), "foo".to_string()),
@@ -3130,7 +3131,7 @@ fn typecheck_invocation() {
     ").unwrap();
     let module = &project.modules[1];
     let expected = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.tuple_type(vec![PRELUDE_STRING_TYPE_ID, PRELUDE_BOOL_TYPE_ID])).unwrap();
-    assert_eq!(expected, *module.code[0].type_id());
+    assert_eq!(expected, *module.code[1].type_id());
 
     let project = test_typecheck("\
       func foo<T>(a: T[]): T[] = a\n\
@@ -3331,7 +3332,7 @@ fn typecheck_invocation() {
         ],
         type_id: PRELUDE_UNIT_TYPE_ID,
     };
-    assert_eq!(&expected, &module.code[0]);
+    assert_eq!(&expected, &module.code[1]);
     let project = test_typecheck(&format!("{}\nfoo(1, 2)", &foo_fn)).unwrap();
     let module = &project.modules[1];
     let expected = TypedNode::Invocation {
@@ -3348,7 +3349,7 @@ fn typecheck_invocation() {
         ],
         type_id: PRELUDE_UNIT_TYPE_ID,
     };
-    assert_eq!(&expected, &module.code[0]);
+    assert_eq!(&expected, &module.code[1]);
     let project = test_typecheck(&format!("{}\nfoo(1, 2, 3)", &foo_fn)).unwrap();
     let module = &project.modules[1];
     let expected = TypedNode::Invocation {
@@ -3366,7 +3367,7 @@ fn typecheck_invocation() {
         ],
         type_id: PRELUDE_UNIT_TYPE_ID,
     };
-    assert_eq!(&expected, &module.code[0]);
+    assert_eq!(&expected, &module.code[1]);
     // When an array literal is passed
     let project = test_typecheck(&format!("{}\nfoo(args: [2, 3], a: 1)", &foo_fn)).unwrap();
     let module = &project.modules[1];
@@ -3385,7 +3386,7 @@ fn typecheck_invocation() {
         ],
         type_id: PRELUDE_UNIT_TYPE_ID,
     };
-    assert_eq!(&expected, &module.code[0]);
+    assert_eq!(&expected, &module.code[1]);
     // When an array is passed
     assert!(test_typecheck(&format!("{}\nval a = [1, 2, 3]\nfoo(args: a, a: 1)", &foo_fn)).is_ok());
 

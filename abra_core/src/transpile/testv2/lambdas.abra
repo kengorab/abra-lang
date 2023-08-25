@@ -1,0 +1,45 @@
+func basicCases() {
+  val f1 = () => 123
+  /// Expect: 123
+  println(f1())
+
+  val f2 = (a: Int) => a + 1
+  /// Expect: 24
+  println(f2(23))
+
+  val f3 = (a: Int, b = 3) => a + b
+  /// Expect: 4 3
+  println(f3(1), f3(1, 2))
+}
+basicCases()
+
+func callFn(fn: (Int) => Int) = println(fn(6))
+
+func asValue() {
+  val f1 = () => 1
+  val f2 = () => 2
+  val tuple = (f1, f2)
+  /// Expect: 1 2
+  println(tuple[0](), tuple[1]())
+
+  val f3 = () => 123
+  /// Expect: 123
+  callFn(f3)
+
+  val f4 = (a: Int) => a
+  /// Expect: 6
+  callFn(f4)
+
+  val f5 = (a = 1) => a
+  /// Expect: 6
+  callFn(f5)
+
+  val f6 = (a: Int, b = 3) => a + b
+  /// Expect: 9
+  callFn(f6)
+
+  val f7 = (a = 1, b = 3) => a + b
+  /// Expect: 9
+  callFn(f7)
+}
+asValue()

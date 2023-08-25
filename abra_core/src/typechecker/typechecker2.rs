@@ -818,6 +818,7 @@ pub enum TypedNode {
     Match { match_token: Token, target: Box<TypedNode>, cases: Vec<TypedMatchCase>, is_statement: bool, type_id: TypeId },
 
     // Statements
+    FuncDeclaration(FuncId),
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
     ForLoop { token: Token, binding: BindingPattern, binding_var_ids: Vec<VarId>, index_var_id: Option<VarId>, iterator: Box<TypedNode>, body: Vec<TypedNode> },
     WhileLoop { token: Token, condition: Box<TypedNode>, condition_var_id: Option<VarId>, body: Vec<TypedNode> },
@@ -850,6 +851,7 @@ impl TypedNode {
             TypedNode::Match { type_id, .. } => type_id,
 
             // Statements
+            TypedNode::FuncDeclaration(_) |
             TypedNode::BindingDeclaration { .. } |
             TypedNode::ForLoop { .. } |
             TypedNode::WhileLoop { .. } |
@@ -929,6 +931,7 @@ impl TypedNode {
             }
 
             // Statements
+            TypedNode::FuncDeclaration(_) => todo!(),
             TypedNode::BindingDeclaration { token, pattern, expr, .. } => {
                 let start = token.get_range();
                 if let Some(expr) = expr {
@@ -2240,15 +2243,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         format!("{}{}_{}_{}", LAMBDA_FN_NAME_PREFIX, self.current_module().id.0, name.into_iter().join("_"), current_scope.funcs.len())
     }
 
-    fn add_lambda_function_to_current_scope(&mut self, fn_scope_id: ScopeId, params: Vec<FunctionParam>) -> Result<FuncId, TypeError> {
-        let current_scope = self.current_scope();
-
+    fn add_lambda_function_to_scope(&mut self, fn_decl_scope_id: &ScopeId, fn_scope_id: ScopeId, params: Vec<FunctionParam>) -> Result<FuncId, TypeError> {
         let name = self.new_lambda_fn_name();
-        let func_id = FuncId(current_scope.id, current_scope.funcs.len());
+
+        let fn_decl_scope = self.project.get_scope_by_id_mut(fn_decl_scope_id);
+
+        let func_id = FuncId(fn_decl_scope.id, fn_decl_scope.funcs.len());
         let func = Function { id: func_id, fn_scope_id, name, generic_ids: vec![], has_self: false, params, return_type_id: PRELUDE_ANY_TYPE_ID, defined_span: None, body: vec![], captured_vars: vec![] };
 
-        let current_scope = self.current_scope_mut();
-        current_scope.funcs.push(func);
+        fn_decl_scope.funcs.push(func);
 
         Ok(func_id)
     }
@@ -2628,6 +2631,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let func = self.project.get_func_by_id(&func_id);
                     let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
                     self.project.get_var_by_id_mut(&func_var_id).type_id = fn_type_id;
+
+                    let current_module = self.current_module_mut();
+                    current_module.code.push(TypedNode::FuncDeclaration(func_id));
                 }
                 AstNode::TypeDecl(_, decl_node) => {
                     let struct_id = struct_ids.pop_front().expect("There should be a struct_id for each type declaration in this block");
@@ -4310,7 +4316,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             var.is_captured = true;
 
                             let func = self.project.get_func_by_id_mut(&func_id);
-                            func.captured_vars.push(var_id);
+                            if !func.captured_vars.contains(&var_id) {
+                                func.captured_vars.push(var_id);
+                            }
                         }
                     }
                 }
@@ -4977,10 +4985,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     })
                     .collect();
 
+                let prev_scope_id = self.current_scope_id;
                 let fn_scope_id = self.begin_child_scope(format!("{:?}.lambda_{}", &self.current_module().id, self.new_lambda_fn_name()), ScopeKind::Function(FuncId::BOGUS));
                 let parameters = self.typecheck_function_parameters_pass_1(false, &parameters, false)?;
 
-                let lambda_func_id = self.add_lambda_function_to_current_scope(fn_scope_id, parameters)?;
+                let lambda_func_id = self.add_lambda_function_to_scope(&prev_scope_id, fn_scope_id, parameters)?;
                 let ScopeKind::Function(id) = &mut self.project.get_scope_by_id_mut(&fn_scope_id).kind else { unreachable!() };
                 *id = lambda_func_id;
                 let prev_func_id = self.current_function;
@@ -5021,7 +5030,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 self.end_child_scope();
                 self.current_function = prev_func_id;
-
 
                 Ok(TypedNode::Lambda { span, func_id: lambda_func_id, type_id: func_type_id })
             }

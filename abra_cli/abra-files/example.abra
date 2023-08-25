@@ -1,6 +1,23 @@
-val arr4 = [1, 2, 3, 4]
-val w = arr4[-1] = 16
-println(arr4, w)
+var A = "foo"
+func f2() {
+  A += "!"
+}
+println(A)
+f2()
+println(A)
+//func f3() {
+//  A += "?"
+//}
+//func f4(a: String) {
+//  val x = a + "!"
+//  println(x)
+//}
+//val arr = [A]
+//println(A, arr)
+//f2()
+//////f3()
+//////f4(A)
+//println(A, arr)    // foo!
 
 // TODO: This should work
 //func makeArray<U>(u: U): U[] = [u]

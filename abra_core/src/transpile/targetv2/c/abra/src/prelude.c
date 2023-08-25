@@ -36,6 +36,7 @@ void init_vtable(size_t num_types) {
 #define INTRINSIC_TOSTRING_IDX  0
 
 AbraString* prelude__tostring(AbraAny* value) {
+  value = HEAP_DEREF_IF_NEEDED(value, AbraAny*);
   VTableEntry entry = VTABLE[value->type_id];
   AbraFn tostring = entry.methods[INTRINSIC_TOSTRING_IDX];
 
@@ -52,6 +53,47 @@ AbraBool* prelude__eq(AbraAny* value, AbraAny* other, bool neg) {
   AbraBool* res = eq_fn(2, value, other);
   if (neg) return AbraBool_make(!res->value);
   return res;
+}
+
+AbraFn* AbraFn_make(Fn fn_ptr, size_t min_arity, size_t max_arity) {
+  AbraFn* fn = AbraFn_make_closure(fn_ptr, min_arity, max_arity, 0);
+  fn->is_closure = false;
+  return fn;
+}
+
+AbraFn* AbraFn_make_closure(Fn fn_ptr, size_t min_arity, size_t max_arity, size_t ncaptures, ...) {
+  AbraFn* fn = malloc(sizeof(AbraFn));
+  fn->is_closure = true;
+  fn->min_arity = min_arity;
+  fn->max_arity = max_arity;
+  fn->fn = fn_ptr;
+
+  fn->captures = malloc(sizeof(AbraAny*) * ncaptures);
+  va_list captures;
+  va_start(captures, ncaptures);
+  for (size_t i = 0; i < ncaptures; i++) {
+    AbraAny* capture = va_arg(captures, AbraAny*);
+    fn->captures[i] = capture;
+  }
+  va_end(captures);
+
+  return fn;
+}
+
+inline AbraAny* AbraFn_call_0(AbraFn* fn, size_t nargs) {
+  return (fn->is_closure)
+         ? ((AbraAny* (*)(size_t, AbraAny**)) (fn->fn))(nargs, fn->captures)
+         : ((AbraAny* (*)(size_t)) (fn->fn))(nargs);
+}
+
+inline AbraAny* AbraFn_call_1(AbraFn* fn, size_t nargs, AbraAny* arg1) {
+  if (fn->is_closure) {
+    AbraAny* (* f)(size_t, AbraAny**, AbraAny*) = (AbraAny* (*)(size_t, AbraAny**, AbraAny*)) (fn->fn);
+    return f(nargs, fn->captures, arg1);
+  }
+
+  AbraAny* (* f)(size_t, AbraAny*) = (AbraAny* (*)(size_t, AbraAny*)) (fn->fn);
+  return f(nargs, arg1);
 }
 
 #define METHOD(fn_name, min, max) \

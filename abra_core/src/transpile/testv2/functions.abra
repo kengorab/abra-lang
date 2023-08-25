@@ -54,3 +54,11 @@ f7(1, 2, 3, 4)
 f7(1)
 /// Expect: 1 None [] None
 f7(1)
+
+func callFn(fn: (Int) => Int) = println(fn(6))
+
+func f8(a: Int, b = 2, c = 3): Int = a + b + c
+/// Expect: 11
+callFn(f8)
+/// Expect: 8
+println(f8(a: 1, c: 5))

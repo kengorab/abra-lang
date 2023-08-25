@@ -1,11 +1,15 @@
 use itertools::Itertools;
 use crate::lexer::tokens::Token;
 use crate::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
-use crate::typechecker::typechecker2::{AssignmentKind, Enum, EnumId, FuncId, Function, ModuleId, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedModule, TypedNode, TypeId, TypeKind, VariableAlias};
+use crate::typechecker::typechecker2::{AssignmentKind, Enum, EnumId, FuncId, Function, ModuleId, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedModule, TypedNode, TypeId, TypeKind, Variable, VariableAlias};
 
 fn function_name(func: &Function) -> String {
     let FuncId(ScopeId(ModuleId(m_id), s_id), f_id) = func.id;
     format!("_{}_{}_{}__{}", m_id, s_id, f_id, func.name)
+}
+
+fn closure_name(func: &Function) -> String {
+    format!("{}_v_", function_name(func))
 }
 
 pub struct CCompiler2<W: std::io::Write> {
@@ -46,7 +50,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                 }
             }
             Type::GenericEnumInstance(_, _, _) |
-            Type::Function(_, _, _, _) => todo!(),
+            Type::Function(_, _, _, _) => "AbraFn".to_string(),
             Type::Type(kind) => self.get_struct_enum_name(project, kind),
             Type::ModuleAlias => todo!(),
         }
@@ -94,7 +98,12 @@ impl<W: std::io::Write> CCompiler2<W> {
         let ret_type = self.get_type_name_by_id(project, &function.return_type_id);
         let ret_type = if function.return_type_id == PRELUDE_UNIT_TYPE_ID { ret_type } else { format!("{}*", ret_type) };
         let fn_name = function_name(&function);
-        let params = vec!["size_t nargs".to_string()].into_iter()
+        let params = if function.captured_vars.is_empty() {
+            vec!["size_t nargs".to_string()]
+        } else {
+            vec!["size_t nargs".to_string(), "AbraAny** __captures".to_string()]
+        };
+        let params = params.into_iter()
             .chain(function.params.iter().map(|p| {
                 let type_name = if p.is_variadic {
                     "AbraArray".to_string()
@@ -190,18 +199,22 @@ impl<W: std::io::Write> CCompiler2<W> {
         }
         if !module.enums.is_empty() { self.emit_newline(); }
 
-        for func_id in &module.functions {
-            let function = project.get_func_by_id(func_id);
-            // Don't emit predecls for methods; let's organize it so those are next to the typedefs
-            if function.has_self { continue; }
+        for scope in &module.scopes {
+            for function in &scope.funcs {
+                if function.has_self { continue; }
 
-            self.emit_fn_predecl(project, func_id);
+                self.emit_fn_predecl(project, &function.id);
+                if !function.captured_vars.is_empty() {
+                    self.emit_comment(format!("Closure value for function {}", function_name(function)));
+                    self.emit_line(format!("AbraFn* {} = NULL;", closure_name(function)));
+                }
+            }
         }
-        if !module.functions.is_empty() { self.emit_newline(); }
-        for func_id in &module.functions {
-            self.compile_function(project, func_id, false);
+        for scope in &module.scopes {
+            for function in &scope.funcs {
+                self.compile_function(project, &function.id, false);
+            }
         }
-        if !module.functions.is_empty() { self.emit_newline(); }
 
         for struct_ in &module.structs {
             self.emit_struct_decl(project, struct_);
@@ -212,14 +225,23 @@ impl<W: std::io::Write> CCompiler2<W> {
     fn compile_function(&mut self, project: &Project, func_id: &FuncId, allow_method: bool) {
         let function = project.get_func_by_id(func_id);
         if function.has_self && !allow_method { return; }
-        debug_assert!(function.captured_vars.is_empty(), "Closures not yet implemented");
 
         self.emit_fn_signature(project, func_id);
         self.emit_line("{");
 
+        if !function.captured_vars.is_empty() {
+            for (idx, var_id) in function.captured_vars.iter().enumerate() {
+                let variable = project.get_var_by_id(var_id);
+                let var_type_name = self.get_type_name_by_id(project, &variable.type_id);
+                self.emit_line(format!("{}* {} = ({}*)__captures[{}];", var_type_name, variable.name, var_type_name, idx));
+            }
+        }
+
+        let mut param_idx = 0;
         for param in &function.params {
+            param_idx += 1;
             let Some(default_value) = &param.default_value else { continue; };
-            self.emit_line(format!("if (IS_NONE({})) {{", &param.name));
+            self.emit_line(format!("if (nargs < {} || IS_NONE({})) {{", param_idx, &param.name));
             let handle = self.compile_expression(project, default_value);
             self.emit_line(format!("{} = {};", &param.name, handle));
             self.emit_line("}");
@@ -250,15 +272,26 @@ impl<W: std::io::Write> CCompiler2<W> {
         match node {
             TypedNode::If { .. } => {}
             TypedNode::Match { .. } => {}
+            TypedNode::FuncDeclaration(func_id) => {
+                let function = project.get_func_by_id(func_id);
+                if function.captured_vars.is_empty() { return; }
+
+                let wrapped = self.wrap_function(project, &function.id);
+                self.emit_line(format!("{} = {};", closure_name(function), wrapped));
+            }
             TypedNode::BindingDeclaration { expr, vars, pattern, .. } => {
                 if let Some(expr) = expr {
                     let expr_handle = self.compile_expression(project, expr);
-                    self.compile_pattern_destructuring(project, &expr_handle, expr.as_ref().type_id(), pattern);
+                    let vars = vars.iter().map(|var_id| project.get_var_by_id(var_id)).collect_vec();
+                    self.compile_pattern_destructuring(project, &expr_handle, expr.as_ref().type_id(), pattern, &vars);
                 } else {
                     for var_id in vars {
                         let var = project.get_var_by_id(var_id);
                         let type_name = self.get_type_name_by_id(project, &var.type_id);
                         self.emit_line(format!("{}* {} = ({}*)AbraNone_make();", type_name, &var.name, type_name));
+                        if var.is_captured {
+                            self.emit_line(format!("MOVE_TO_HEAP({}, {}*)", &var.name, type_name));
+                        }
                     }
                 }
             }
@@ -274,11 +307,16 @@ impl<W: std::io::Write> CCompiler2<W> {
         }
     }
 
-    fn compile_pattern_destructuring(&mut self, project: &Project, expr_handle: &String, expr_type: &TypeId, pattern: &BindingPattern) {
+    fn compile_pattern_destructuring(&mut self, project: &Project, expr_handle: &String, expr_type: &TypeId, pattern: &BindingPattern, vars: &Vec<&Variable>) {
         match pattern {
             BindingPattern::Variable(tok) => {
                 let var_name = Token::get_ident_name(tok);
-                self.emit_line(format!("{}* {} = {};", self.get_type_name_by_id(project, expr_type), var_name, expr_handle));
+                let var = vars.iter().find(|var| var.name == var_name).expect("There should be a variable by this name in the vars list");
+                let type_name = self.get_type_name_by_id(project, expr_type);
+                self.emit_line(format!("{}* {} = {};", type_name, var_name, expr_handle));
+                if var.is_captured {
+                    self.emit_line(format!("MOVE_TO_HEAP({}, {}*);", var_name, type_name));
+                }
             }
             BindingPattern::Tuple(_, patterns) => {
                 let Type::GenericInstance(struct_id, generic_ids) = project.get_type_by_id(expr_type) else {
@@ -300,7 +338,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                         _ => {
                             let item_handle = self.next_temp_variable();
                             self.emit_line(format!("{}* {} = ({}*)AbraTuple_get({}, {});", tuple_item_type_name, item_handle, tuple_item_type_name, expr_handle, idx));
-                            self.compile_pattern_destructuring(project, &item_handle, tuple_item_type_id, pattern);
+                            self.compile_pattern_destructuring(project, &item_handle, tuple_item_type_id, pattern, vars);
                         }
                     }
                 }
@@ -366,7 +404,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                                     format!("AbraArray_get((AbraArray*){}, {})", &expr_handle, idx)
                                 }
                             });
-                            self.compile_pattern_destructuring(project, &item_handle, &item_type_id, pattern);
+                            self.compile_pattern_destructuring(project, &item_handle, &item_type_id, pattern, vars);
                         }
                     }
 
@@ -537,18 +575,29 @@ impl<W: std::io::Write> CCompiler2<W> {
             TypedNode::Identifier { var_id, .. } => {
                 let variable = project.get_var_by_id(var_id);
                 match variable.alias {
-                    VariableAlias::None => variable.name.clone(),
+                    VariableAlias::None => {
+                        if variable.is_captured {
+                            let var_type_name = self.get_type_name_by_id(project, &variable.type_id);
+                            format!("HEAP_DEREF({}, {}*)", &variable.name, var_type_name)
+                        } else {
+                            variable.name.clone()
+                        }
+                    },
                     VariableAlias::Function(func_id) => {
-                        let function = project.get_func_by_id(&func_id);
-                        function_name(function)
+                        // If a function is being referenced by identifier, it could be for the purpose of invocation, or simply for
+                        // passing around a function as a value. If the former, the underlying c function will simply be invoked (see
+                        // implementation in the TypedNode::Invocation compilation step); if the latter, then we need to wrap up the
+                        // c function in an AbraFn so it can be passed around as a value.
+                        self.wrap_function(project, &func_id)
                     }
                     VariableAlias::Type(_) => unimplemented!(),
                 }
             }
             TypedNode::NoneValue { .. } => "AbraNone_make()".to_string(),
             TypedNode::Invocation { target, arguments, type_id, .. } => {
-                let Type::Function(parameter_type_ids, _, _, _) = project.get_type_by_id(&target.as_ref().type_id()) else { unreachable!() };
+                let Type::Function(parameter_type_ids, _, _, return_type_id) = project.get_type_by_id(&target.as_ref().type_id()) else { unreachable!() };
                 debug_assert!(parameter_type_ids.len() == arguments.len());
+                let return_type_name = format!("{}*", self.get_type_name_by_id(project, return_type_id));
 
                 let num_arguments = arguments.len();
                 let mut arg_values = Vec::with_capacity(num_arguments);
@@ -561,15 +610,48 @@ impl<W: std::io::Write> CCompiler2<W> {
                     arg_values.push(handle);
                 }
 
+                if let TypedNode::Identifier { var_id, .. } = &**target {
+                    let variable = project.get_var_by_id(var_id);
+                    if let VariableAlias::Function(func_id) = &variable.alias {
+                        let handle = if *type_id != PRELUDE_UNIT_TYPE_ID {
+                            let handle = self.next_temp_variable();
+                            self.emit(format!("{}* {} = ", self.get_type_name_by_id(project, type_id), handle));
+                            Some(handle)
+                        } else {
+                            None
+                        };
+
+                        let function = project.get_func_by_id(func_id);
+                        if !function.captured_vars.is_empty() {
+                            self.emit(format!("ABRA_CL_CALL_{}({}, ", function.params.len(), closure_name(function)));
+                            self.emit(vec![num_arguments.to_string(), return_type_name].into_iter().chain(arg_values).join(", "));
+                        } else {
+                            self.emit(format!("{}(", function_name(function)));
+                            self.emit(vec![num_arguments.to_string()].into_iter().chain(arg_values).join(", "));
+                        }
+                        self.emit_line(");");
+
+                        return handle.unwrap_or_default();
+                    }
+                }
+
+                let target_handle = self.compile_expression(project, &*target);
+                let arg_types = parameter_type_ids.iter().map(|param_type_id| {
+                    format!("{}*", self.get_type_name_by_id(project, param_type_id))
+                }).collect_vec();
+
                 let handle = if *type_id != PRELUDE_UNIT_TYPE_ID {
                     let handle = self.next_temp_variable();
                     self.emit(format!("{}* {} = ", self.get_type_name_by_id(project, type_id), handle));
                     Some(handle)
-                } else { None };
-                let target_handle = self.compile_expression(project, &*target);
-                self.emit(target_handle);
-                self.emit("(");
-                self.emit(vec![num_arguments.to_string()].into_iter().chain(arg_values).join(", "));
+                } else {
+                    None
+                };
+                self.emit(format!("ABRA_FN_CALL_{}((AbraFn*){}, {}, ", num_arguments, target_handle, num_arguments));
+                self.emit(vec![return_type_name].into_iter()
+                    .chain(arg_values.iter().zip(arg_types).map(|(v, ty)| format!("{ty}, {v}")))
+                    .join(",")
+                );
                 self.emit_line(");");
 
                 handle.unwrap_or_default()
@@ -622,13 +704,20 @@ impl<W: std::io::Write> CCompiler2<W> {
 
                 format!("{}({}, {})", fn_name, target_handle, fn_args)
             }
-            TypedNode::Lambda { .. } => unimplemented!(),
+            TypedNode::Lambda { func_id, .. } => {
+                self.wrap_function(project, func_id)
+            }
             TypedNode::Assignment { kind, expr, .. } => {
                 let expr_handle = self.compile_expression(project, expr);
                 match kind {
                     AssignmentKind::Identifier { var_id } => {
                         let variable = project.get_var_by_id(var_id);
-                        self.emit_line(format!("{} = {};", &variable.name, expr_handle));
+                        if variable.is_captured {
+                            let var_type_name = self.get_type_name_by_id(project, &variable.type_id);
+                            self.emit_line(format!("HEAP_DEREF({}, {}*) = {};", &variable.name, var_type_name, expr_handle));
+                        } else {
+                            self.emit_line(format!("{} = {};", &variable.name, expr_handle));
+                        }
                         variable.name.clone()
                     }
                     AssignmentKind::Accessor { .. } => todo!(),
@@ -645,6 +734,25 @@ impl<W: std::io::Write> CCompiler2<W> {
                 }
             }
             n => unreachable!("Internal error: node is not an expression: {:?}", n),
+        }
+    }
+
+    fn wrap_function(&mut self, project: &Project, func_id: &FuncId) -> String {
+        let function = project.get_func_by_id(func_id);
+        let (opt_params, req_params): (Vec<_>, Vec<_>) = function.params.iter().partition(|p| p.default_value.is_some());
+        let min_arity = req_params.len();
+        let max_arity = opt_params.len() + req_params.len();
+
+        let fn_name = function_name(&function);
+        if !function.captured_vars.is_empty() {
+            let num_captures = function.captured_vars.len();
+            let captures = function.captured_vars.iter()
+                .map(|var_id| format!("(AbraAny**){}", &project.get_var_by_id(var_id).name))
+                .join(",");
+            // TODO: pre-allocate maybe, rather than passing captures as varargs?
+            format!("AbraFn_make_closure((Fn)&{}, {}, {}, {}, {})", fn_name, min_arity, max_arity, num_captures, captures)
+        } else {
+            format!("AbraFn_make((Fn)&{}, {}, {})", fn_name, min_arity, max_arity)
         }
     }
 }
@@ -726,5 +834,15 @@ mod test {
     #[test]
     fn functions() {
         run_test_file("functions.abra");
+    }
+
+    #[test]
+    fn lambdas() {
+        run_test_file("lambdas.abra");
+    }
+
+    #[test]
+    fn closures() {
+        run_test_file("closures.abra");
     }
 }

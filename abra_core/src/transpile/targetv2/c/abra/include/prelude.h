@@ -21,7 +21,7 @@ typedef struct AbraFn {
     Fn fn;
     size_t min_arity;
     size_t max_arity;
-    AbraAny* captures;
+    AbraAny** captures;
 } AbraFn;
 typedef struct VTableEntry {
     AbraFn fn_tostring;
@@ -67,6 +67,38 @@ typedef struct AbraTuple {
 
 AbraString* prelude__tostring(AbraAny* value);
 AbraBool* prelude__eq(AbraAny* value, AbraAny* other, bool neg);
+
+
+#define ABRA_CL_CALL_0(func, nargs, rty) \
+    ((rty (*)(size_t, AbraAny**)) ((AbraFn*)(func)->fn))(nargs, ((AbraFn*)func)->captures)
+#define ABRA_CL_CALL_1(func, nargs, rty, a1ty, arg1) \
+    ((rty (*)(size_t, AbraAny**, a1ty)) (((AbraFn*)func)->fn))(nargs, ((AbraFn*)func)->captures, arg1)
+#define ABRA_CL_CALL_2(func, nargs, rty, a1ty, arg1, a2ty, arg2) \
+    ((rty (*)(size_t, AbraAny**, a1ty, a2ty)) (((AbraFn*)func)->fn))(nargs, ((AbraFn*)func)->captures, arg1, arg2)
+
+#define ABRA_FN_CALL_0(func, nargs, rty) \
+  (((AbraFn*)func)->is_closure ? ABRA_CL_CALL_0(func, nargs, rty) : ((rty (*)(size_t)) (((AbraFn*)func)->fn))(nargs))
+#define ABRA_FN_CALL_1(func, nargs, rty, a1ty, arg1) \
+  (((AbraFn*)func)->is_closure ? ABRA_CL_CALL_1(func, nargs, rty, a1ty, arg1) : ((rty (*)(size_t, a1ty)) (((AbraFn*)func)->fn))(nargs, arg1))
+#define ABRA_FN_CALL_2(func, nargs, rty, a1ty, arg1, a2ty, arg2) \
+  (((AbraFn*)func)->is_closure ? ABRA_CL_CALL_2(func, nargs, rty, a1ty, arg1, a2ty, arg2) : ((rty (*)(size_t, a1ty, a2ty)) (((AbraFn*)func)->fn))(nargs, arg1, arg2))
+
+#define HEAP_TAG(p) ((int64_t)p | 1)
+#define HEAP_IS_TAGGED(p) ((int64_t)p & 1)
+#define HEAP_UNTAG(p) ((int64_t)p & 0xfffffffffffc)
+#define HEAP_DEREF(p, ty) (*(ty*)HEAP_UNTAG(p))
+#define HEAP_DEREF_IF_NEEDED(p, ty) (HEAP_IS_TAGGED(p) ? *(ty*)HEAP_UNTAG(p) : p)
+#define MOVE_TO_HEAP(v, ty)        \
+  do {                             \
+    ty* v##_ = malloc(sizeof(ty)); \
+    *v##_=v;                       \
+    v = (ty)HEAP_TAG(v##_);        \
+  } while (0)
+
+AbraFn* AbraFn_make(Fn fn_ptr, size_t min_arity, size_t max_arity);
+AbraFn* AbraFn_make_closure(Fn fn_ptr, size_t min_arity, size_t max_arity, size_t ncaptures, ...);
+inline AbraAny* AbraFn_call_0(AbraFn* fn, size_t nargs);
+inline AbraAny* AbraFn_call_1(AbraFn* fn, size_t nargs, AbraAny* arg1);
 
 #define IS_NONE(v) (((AbraAny*)v)->type_id == TYPE_ID_NONE)
 
