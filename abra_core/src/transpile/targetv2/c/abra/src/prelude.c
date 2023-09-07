@@ -35,34 +35,39 @@ void init_vtable(size_t num_types) {
 
 #define INTRINSIC_TOSTRING_IDX  0
 
-AbraString* prelude__tostring(AbraAny* value) {
-  value = HEAP_DEREF_IF_NEEDED(value, AbraAny*);
-  VTableEntry entry = VTABLE[value->type_id];
-  AbraFn tostring = entry.methods[INTRINSIC_TOSTRING_IDX];
+AbraString prelude__tostring(AbraAny value) {
+  VTableEntry entry = VTABLE[value.type_id];
+  AbraFnObj tostring = entry.methods[INTRINSIC_TOSTRING_IDX];
 
   // TODO: Support closures
   assert(!tostring.is_closure);
-  AbraString* (* tostring_method)(size_t, AbraAny*) = (AbraString* (*)(size_t, AbraAny*)) (tostring.fn);
+  AbraString (* tostring_method)(size_t, AbraAny) = (AbraString (*)(size_t, AbraAny)) (tostring.fn);
   return tostring_method(1, value);
 }
 
-AbraBool* prelude__eq(AbraAny* value, AbraAny* other, bool neg) {
-  VTableEntry entry = VTABLE[value->type_id];
-  AbraBool* (* eq_fn)(size_t, AbraAny*, AbraAny*) = (AbraBool* (*)(size_t, AbraAny*, AbraAny*)) (entry.fn_eq.fn);
+AbraBool prelude__eq(AbraAny value, AbraAny other, bool neg) {
+  VTableEntry entry = VTABLE[value.type_id];
+  AbraBool (* eq_fn)(size_t, AbraAny, AbraAny) = (AbraBool (*)(size_t, AbraAny, AbraAny)) (entry.fn_eq.fn);
 
-  AbraBool* res = eq_fn(2, value, other);
-  if (neg) return AbraBool_make(!res->value);
+  AbraBool res = eq_fn(2, value, other);
+  if (neg) return AbraBool_make(!res.value);
   return res;
 }
 
-AbraFn* AbraFn_make(Fn fn_ptr, size_t min_arity, size_t max_arity) {
-  AbraFn* fn = AbraFn_make_closure(fn_ptr, min_arity, max_arity, 0);
-  fn->is_closure = false;
+AbraAny* copy_to_heap(AbraAny* value) {
+  AbraAny* ref = malloc(sizeof(AbraAny));
+  memcpy(ref, value, sizeof(AbraAny));
+  return ref;
+}
+
+AbraFn AbraFn_make(Fn fn_ptr, size_t min_arity, size_t max_arity) {
+  AbraFn fn = AbraFn_make_closure(fn_ptr, min_arity, max_arity, 0);
+  fn.value->is_closure = false;
   return fn;
 }
 
-AbraFn* AbraFn_make_closure(Fn fn_ptr, size_t min_arity, size_t max_arity, size_t ncaptures, ...) {
-  AbraFn* fn = malloc(sizeof(AbraFn));
+AbraFn AbraFn_make_closure(Fn fn_ptr, size_t min_arity, size_t max_arity, size_t ncaptures, ...) {
+  AbraFnObj* fn = malloc(sizeof(AbraFnObj));
   fn->is_closure = true;
   fn->min_arity = min_arity;
   fn->max_arity = max_arity;
@@ -77,53 +82,47 @@ AbraFn* AbraFn_make_closure(Fn fn_ptr, size_t min_arity, size_t max_arity, size_
   }
   va_end(captures);
 
-  return fn;
+  return (AbraFn) { .type_id=TYPE_ID_STRING, .value=fn };
 }
 
-inline AbraAny* AbraFn_call_0(AbraFn* fn, size_t nargs) {
-  return (fn->is_closure)
-         ? ((AbraAny* (*)(size_t, AbraAny**)) (fn->fn))(nargs, fn->captures)
-         : ((AbraAny* (*)(size_t)) (fn->fn))(nargs);
+inline AbraAny AbraFn_call_0(AbraFn fn, size_t nargs) {
+  return (fn.value->is_closure)
+         ? ((AbraAny (*)(size_t, AbraAny**)) (fn.value->fn))(nargs, fn.value->captures)
+         : ((AbraAny (*)(size_t)) (fn.value->fn))(nargs);
 }
 
-inline AbraAny* AbraFn_call_1(AbraFn* fn, size_t nargs, AbraAny* arg1) {
-  if (fn->is_closure) {
-    AbraAny* (* f)(size_t, AbraAny**, AbraAny*) = (AbraAny* (*)(size_t, AbraAny**, AbraAny*)) (fn->fn);
-    return f(nargs, fn->captures, arg1);
+inline AbraAny AbraFn_call_1(AbraFn fn, size_t nargs, AbraAny arg1) {
+  if (fn.value->is_closure) {
+    AbraAny (* f)(size_t, AbraAny**, AbraAny) = (AbraAny (*)(size_t, AbraAny**, AbraAny)) (fn.value->fn);
+    return f(nargs, fn.value->captures, arg1);
   }
 
-  AbraAny* (* f)(size_t, AbraAny*) = (AbraAny* (*)(size_t, AbraAny*)) (fn->fn);
+  AbraAny (* f)(size_t, AbraAny) = (AbraAny (*)(size_t, AbraAny)) (fn.value->fn);
   return f(nargs, arg1);
 }
 
 #define METHOD(fn_name, min, max) \
-    ((AbraFn) { .is_closure = false, .fn = (Fn) &fn_name, .min_arity = min, .max_arity = max, .captures = (void*) 0 })
+    ((AbraFnObj) { .is_closure = false, .fn = (Fn) &fn_name, .min_arity = min, .max_arity = max, .captures = (void*) 0 })
+
+#define INITIALIZED_IN_ENTRYPOINT {0}
 
 // AbraNone methods
-AbraFn NONE_METHODS[] = {
+AbraFnObj NONE_METHODS[] = {
     METHOD(AbraNone__toString, 1, 1)
 };
 
-static AbraAny* ABRA_NONE = NULL;
+AbraAny AbraNone = INITIALIZED_IN_ENTRYPOINT;
 
-AbraAny* AbraNone_make() {
-  if (!ABRA_NONE) {
-    ABRA_NONE = malloc(sizeof(AbraAny));
-    ABRA_NONE->type_id = TYPE_ID_NONE;
-  }
-  return ABRA_NONE;
-}
+static AbraString ABRA_NONE_STRING = INITIALIZED_IN_ENTRYPOINT;
 
-static AbraString* ABRA_NONE_STRING = NULL;
-
-AbraString* AbraNone__toString(size_t nargs, AbraAny* _self) {
+AbraString AbraNone__toString(size_t nargs, AbraAny _self) {
   assert(nargs == 1);
+  (void) _self;
 
-  if (!ABRA_NONE_STRING) ABRA_NONE_STRING = AbraString_make(4, "None");
   return ABRA_NONE_STRING;
 }
 
-AbraBool* AbraNone__eq(size_t nargs, AbraAny* _self, AbraAny* other) {
+AbraBool AbraNone__eq(size_t nargs, AbraAny _self, AbraAny other) {
   assert(nargs == 2);
   (void) _self;
 
@@ -131,54 +130,40 @@ AbraBool* AbraNone__eq(size_t nargs, AbraAny* _self, AbraAny* other) {
 }
 
 // AbraInt methods
-AbraFn INT_METHODS[] = {
+AbraFnObj INT_METHODS[] = {
     METHOD(AbraInt__toString, 1, 1)
 };
 
-AbraInt* AbraInt_make(int64_t value) {
-  AbraInt* self = malloc(sizeof(AbraInt));
-  self->_base = (AbraAny) { .type_id = TYPE_ID_INT };
-  self->value = value;
-  return self;
-}
-
-AbraString* AbraInt__toString(size_t nargs, AbraInt* self) {
+AbraString AbraInt__toString(size_t nargs, AbraInt self) {
   assert(nargs == 1);
 
-  int len = snprintf(NULL, 0, "%" PRId64, self->value);
+  int len = snprintf(NULL, 0, "%" PRId64, self.value);
   char* str = malloc(len + 1);
-  snprintf(str, len + 1, "%" PRId64, self->value);
+  snprintf(str, len + 1, "%" PRId64, self.value);
 
   return AbraString_make(len, str);
 }
 
-AbraBool* AbraInt__eq(size_t nargs, AbraInt* self, AbraAny* other) {
+AbraBool AbraInt__eq(size_t nargs, AbraInt self, AbraAny other) {
   assert(nargs == 2);
 
-  if (other->type_id == TYPE_ID_INT) return AbraBool_make(self->value == ((AbraInt*) other)->value);
-  if (other->type_id == TYPE_ID_FLOAT) return AbraBool_make((double) self->value == ((AbraFloat*) other)->value);
+  if (other.type_id == TYPE_ID_INT) return AbraBool_make(self.value == REINTERPRET_CAST(other, AbraInt).value);
+  if (other.type_id == TYPE_ID_FLOAT) return AbraBool_make((double) self.value == REINTERPRET_CAST(other, AbraFloat).value);
 
-  return AbraBool_make(false);
+  return ABRA_BOOL_FALSE;
 }
 
 // AbraFloat methods
-AbraFn FLOAT_METHODS[] = {
+AbraFnObj FLOAT_METHODS[] = {
     METHOD(AbraFloat__toString, 1, 1)
 };
 
-AbraFloat* AbraFloat_make(double value) {
-  AbraFloat* self = malloc(sizeof(AbraFloat));
-  self->_base = (AbraAny) { .type_id = TYPE_ID_FLOAT };
-  self->value = value;
-  return self;
-}
-
-AbraString* AbraFloat__toString(size_t nargs, AbraFloat* self) {
+AbraString AbraFloat__toString(size_t nargs, AbraFloat self) {
   assert(nargs == 1);
 
-  int len = snprintf(NULL, 0, "%f", self->value);
+  int len = snprintf(NULL, 0, "%f", self.value);
   char* str = malloc(len + 1);
-  snprintf(str, len + 1, "%f", self->value);
+  snprintf(str, len + 1, "%f", self.value);
   // Trim trailing zeroes
   for (int i = len - 1; i >= 1; --i) {
     if (str[i] == '0' && str[i - 1] != '.') {
@@ -191,245 +176,218 @@ AbraString* AbraFloat__toString(size_t nargs, AbraFloat* self) {
   return AbraString_make(len, str);
 }
 
-AbraBool* AbraFloat__eq(size_t nargs, AbraFloat* self, AbraAny* other) {
+AbraBool AbraFloat__eq(size_t nargs, AbraFloat self, AbraAny other) {
   assert(nargs == 2);
 
-  if (other->type_id == TYPE_ID_INT) return AbraBool_make(self->value == (double) ((AbraInt*) other)->value);
-  if (other->type_id == TYPE_ID_FLOAT) return AbraBool_make(self->value == ((AbraFloat*) other)->value);
+  if (other.type_id == TYPE_ID_INT) return AbraBool_make(self.value == (double) (REINTERPRET_CAST(other, AbraInt).value));
+  if (other.type_id == TYPE_ID_FLOAT) return AbraBool_make(self.value == REINTERPRET_CAST(other, AbraFloat).value);
 
-  return AbraBool_make(false);
+  return ABRA_BOOL_FALSE;
 }
 
 // AbraBool methods
-AbraFn BOOL_METHODS[] = {
+AbraFnObj BOOL_METHODS[] = {
     METHOD(AbraBool__toString, 1, 1)
 };
 
-static AbraBool* ABRA_BOOL_TRUE = NULL;
-static AbraBool* ABRA_BOOL_FALSE = NULL;
+AbraBool ABRA_BOOL_TRUE = INITIALIZED_IN_ENTRYPOINT;
+AbraBool ABRA_BOOL_FALSE = INITIALIZED_IN_ENTRYPOINT;
 
-AbraBool* AbraBool_make(bool value) {
-  if (value) {
-    if (!ABRA_BOOL_TRUE) {
-      ABRA_BOOL_TRUE = malloc(sizeof(AbraBool));
-      ABRA_BOOL_TRUE->_base = (AbraAny) { .type_id = TYPE_ID_BOOL };
-      ABRA_BOOL_TRUE->value = true;
-    }
-    return ABRA_BOOL_TRUE;
-  } else {
-    if (!ABRA_BOOL_FALSE) {
-      ABRA_BOOL_FALSE = malloc(sizeof(AbraBool));
-      ABRA_BOOL_FALSE->_base = (AbraAny) { .type_id = TYPE_ID_BOOL };
-      ABRA_BOOL_FALSE->value = false;
-    }
-    return ABRA_BOOL_FALSE;
-  }
-}
+static AbraString ABRA_BOOL_TRUE_STRING = INITIALIZED_IN_ENTRYPOINT;
+static AbraString ABRA_BOOL_FALSE_STRING = INITIALIZED_IN_ENTRYPOINT;
 
-static AbraString* ABRA_BOOL_TRUE_STRING = NULL;
-static AbraString* ABRA_BOOL_FALSE_STRING = NULL;
-
-AbraString* AbraBool__toString(size_t nargs, AbraBool* self) {
+AbraString AbraBool__toString(size_t nargs, AbraBool self) {
   assert(nargs == 1);
-
-  if (self->value) {
-    if (!ABRA_BOOL_TRUE_STRING) ABRA_BOOL_TRUE_STRING = AbraString_make(4, "true");
-    return ABRA_BOOL_TRUE_STRING;
-  } else {
-    if (!ABRA_BOOL_FALSE_STRING) ABRA_BOOL_FALSE_STRING = AbraString_make(5, "false");
-    return ABRA_BOOL_FALSE_STRING;
-  }
+  return self.value ? ABRA_BOOL_TRUE_STRING : ABRA_BOOL_FALSE_STRING;
 }
 
-AbraBool* AbraBool__eq(size_t nargs, AbraBool* self, AbraAny* other) {
+AbraBool AbraBool__eq(size_t nargs, AbraBool self, AbraAny other) {
   assert(nargs == 2);
-  return AbraBool_make(other->type_id == TYPE_ID_BOOL && self->value == ((AbraBool*) other)->value);
+  return AbraBool_make(other.type_id == TYPE_ID_BOOL && self.value == REINTERPRET_CAST(other, AbraBool).value);
 }
 
 // AbraString methods
-AbraFn STRING_METHODS[] = {
+AbraFnObj STRING_METHODS[] = {
     METHOD(AbraString__toString, 1, 1)
 };
 
-AbraString* AbraString_make(size_t len, char* chars) {
-  AbraString* self = malloc(sizeof(AbraString));
-  self->_base = (AbraAny) { .type_id = TYPE_ID_STRING };
-  self->length = len;
-  self->chars = chars;
-  return self;
+AbraString AbraString_make(size_t len, char* chars) {
+  AbraString_Inner* value = malloc(sizeof(AbraString_Inner));
+  value->length = (int64_t) len;
+  value->chars = chars;
+  return (AbraString) { .type_id=TYPE_ID_STRING, .value=value };
 }
 
-AbraString* AbraString_empty_string() {
+AbraString AbraString_empty_string() {
   return AbraString_make(0, "");
 }
 
-AbraString* AbraString_get(AbraString* self, int64_t index) {
-  int64_t len = self->length;
+AbraString AbraString_get(AbraString self, int64_t index) {
+  int64_t len = self.value->length;
   if (index < -len || index >= len) return AbraString_empty_string();
 
   if (index < 0) index += len;
 
   char* str = malloc(sizeof(char));
-  str[0] = self->chars[index];
+  str[0] = self.value->chars[index];
   return AbraString_make(1, str);
 }
 
-AbraString* AbraString_slice(AbraString* self, int64_t index) {
-  if (index >= self->length) return AbraString_empty_string();
+AbraString AbraString_slice(AbraString self, int64_t index) {
+  if (index >= self.value->length) return AbraString_empty_string();
   if (index < 0) index = 0;
 
-  size_t len = self->length - index;
+  size_t len = self.value->length - index;
   char* str = malloc(sizeof(char) * len + 1);
   str[len] = 0;
 
-  memcpy(str, self->chars + index, len);
-  memset(self->chars + index, 0, len);
+  memcpy(str, self.value->chars + index, len);
+  memset(self.value->chars + index, 0, len);
 
   return AbraString_make(len, str);
 }
 
-AbraString* AbraString_get_range(AbraString* self, int64_t start, int64_t end) {
-  int64_t len = self->length;
+AbraString AbraString_get_range(AbraString self, int64_t start, int64_t end) {
+  int64_t len = self.value->length;
   RANGE_ENDPOINTS(start, end, len);
 
   if (start >= end) return AbraString_empty_string();
 
   int64_t slice_size = end - start;
   char* str = malloc(slice_size);
-  memcpy(str, self->chars + start, slice_size);
+  memcpy(str, self.value->chars + start, slice_size);
   str[slice_size] = 0;
 
   return AbraString_make(slice_size, str);
 }
 
-AbraString* AbraString__toString(size_t nargs, AbraString* self) {
+AbraString AbraString__toString(size_t nargs, AbraString self) {
   return self;
 }
 
-AbraBool* AbraString__eq(size_t nargs, AbraString* self, AbraAny* other) {
+AbraBool AbraString__eq(size_t nargs, AbraString self, AbraAny other) {
   assert(nargs == 2);
 
   return AbraBool_make(
-      other->type_id == TYPE_ID_STRING &&
-      self->length == ((AbraString*) other)->length &&
-      (strcmp(self->chars, ((AbraString*) other)->chars) == 0)
+      other.type_id == TYPE_ID_STRING &&
+      self.value->length == REINTERPRET_CAST(other, AbraString).value->length &&
+      (strcmp(self.value->chars, REINTERPRET_CAST(other, AbraString).value->chars) == 0)
   );
 }
 
-AbraString* AbraString__concat(size_t nargs, AbraString* self, AbraAny* other) {
+AbraString AbraString__concat(size_t nargs, AbraString self, AbraAny other) {
   assert(nargs == 2);
 
-  AbraString* repr = prelude__tostring(other);
+  AbraString repr = prelude__tostring(other);
 
-  size_t len = repr->length + self->length;
+  size_t len = repr.value->length + self.value->length;
   char* concat = malloc(sizeof(char) * len + 1);
   concat[len] = 0;
 
-  memcpy(concat, self->chars, self->length);
-  memcpy(concat + self->length, repr->chars, repr->length);
+  memcpy(concat, self.value->chars, self.value->length);
+  memcpy(concat + self.value->length, repr.value->chars, repr.value->length);
   return AbraString_make(len, concat);
 }
 
 // AbraArray methods
-AbraFn ARRAY_METHODS[] = {
+AbraFnObj ARRAY_METHODS[] = {
     METHOD(AbraArray__toString, 1, 1)
 };
 
-AbraArray* AbraArray_make_with_capacity(size_t length, size_t cap) {
-  AbraArray* self = malloc(sizeof(AbraArray));
-  self->_base = (AbraAny) { .type_id = TYPE_ID_ARRAY };
-  self->items = malloc(sizeof(AbraAny*) * cap);
-  self->length = length;
-  self->_capacity = cap;
-  return self;
+AbraArray AbraArray_make_with_capacity(size_t length, size_t cap) {
+  AbraArray_Inner* value = malloc(sizeof(AbraArray_Inner));
+  value->items = malloc(sizeof(AbraAny) * cap);
+  value->length = (int64_t) length;
+  value->_capacity = (int64_t) cap;
+  return (AbraArray) { .type_id=TYPE_ID_ARRAY, .value=value };
 }
 
-AbraArray* AbraArray_empty_array() {
+AbraArray AbraArray_empty_array() {
   return AbraArray_make_with_capacity(0, 1);
 }
 
-AbraUnit AbraArray_set(AbraArray* self, int64_t index, AbraAny* item) {
-  int64_t len = self->length;
+AbraUnit AbraArray_set(AbraArray self, int64_t index, AbraAny item) {
+  int64_t len = self.value->length;
   if (index < -len) return;
   if (index < 0) index += len;
 
   if (index >= len) {
-    while (index >= self->_capacity) {
-      self->_capacity *= 2;
+    while (index >= self.value->_capacity) {
+      self.value->_capacity *= 2;
     }
 
-    AbraAny** new_items = (AbraAny**) realloc(self->items, sizeof(AbraAny*) * self->_capacity);
+    AbraAny* new_items = (AbraAny*) realloc(self.value->items, sizeof(AbraAny) * self.value->_capacity);
     assert(new_items);
-    self->items = new_items;
+    self.value->items = new_items;
 
     for (size_t i = len; i <= index; i++) {
-      self->items[i] = AbraNone_make();
-      self->length += 1;
+      self.value->items[i] = AbraNone;
+      self.value->length += 1;
     }
   }
 
-  self->items[index] = item;
+  self.value->items[index] = item;
 }
 
-AbraAny* AbraArray_get(AbraArray* self, int64_t index) {
-  int64_t len = self->length;
-  if (index < -len || index >= len) return AbraNone_make();
+AbraAny AbraArray_get(AbraArray self, int64_t index) {
+  int64_t len = self.value->length;
+  if (index < -len || index >= len) return AbraNone;
 
   if (index < 0) index += len;
-  return self->items[index];
+  return self.value->items[index];
 }
 
-AbraArray* AbraArray_slice(AbraArray* self, int64_t index) {
-  if (index >= self->length) return AbraArray_empty_array();
+AbraArray AbraArray_slice(AbraArray self, int64_t index) {
+  if (index >= self.value->length) return AbraArray_empty_array();
   if (index < 0) index = 0;
 
-  size_t len = self->length - index;
-  AbraArray* slice = AbraArray_make_with_capacity(len, len);
+  size_t len = self.value->length - index;
+  AbraArray slice = AbraArray_make_with_capacity(len, len);
 
-  size_t self_length = self->length;
+  size_t self_length = self.value->length;
   for (size_t i = index; i < self_length; i++) {
-    slice->items[i - index] = self->items[i];
-    self->items[i] = NULL;
-    self->length -= 1;
+    slice.value->items[i - index] = self.value->items[i];
+    self.value->items[i] = AbraNone;
+    self.value->length -= 1;
   }
 
   return slice;
 }
 
-AbraArray* AbraArray_get_range(AbraArray* self, int64_t start, int64_t end) {
-  int64_t len = self->length;
+AbraArray AbraArray_get_range(AbraArray self, int64_t start, int64_t end) {
+  int64_t len = self.value->length;
   RANGE_ENDPOINTS(start, end, len);
 
   if (start >= end) return AbraArray_empty_array();
 
   int64_t slice_size = end - start;
-  AbraArray* new_array = AbraArray_make_with_capacity(slice_size, slice_size);
+  AbraArray new_array = AbraArray_make_with_capacity(slice_size, slice_size);
   for (int64_t i = start; i < end; i++) {
-    new_array->items[i - start] = self->items[i];
+    new_array.value->items[i - start] = self.value->items[i];
   }
   return new_array;
 }
 
-AbraString* sequence_to_string(int64_t length, AbraAny** items) {
+AbraString sequence_to_string(int64_t length, AbraAny* items) {
   if (length == 0) return AbraString_make(2, "[]");
 
   typedef struct item_t {
-      AbraString* repr;
+      AbraString repr;
       bool item_is_string;
   } item_t;
 
   item_t strings[length];
   size_t total_length = 2; // account for "[]"
   for (size_t i = 0; i < length; i++) {
-    AbraAny* item = items[i];
-    AbraString* repr = prelude__tostring(item);
+    AbraAny item = items[i];
+    AbraString repr = prelude__tostring(item);
 
     strings[i] = (item_t) {
         .repr=repr,
-        .item_is_string=item->type_id == TYPE_ID_STRING
+        .item_is_string=item.type_id == TYPE_ID_STRING
     };
-    total_length += repr->length;
-    if (item->type_id == TYPE_ID_STRING) {
+    total_length += repr.value->length;
+    if (item.type_id == TYPE_ID_STRING) {
       total_length += 2; // account for '""'
     }
     if (i != length - 1) {
@@ -445,10 +403,10 @@ AbraString* sequence_to_string(int64_t length, AbraAny** items) {
   char* ptr = res_str + 1;
   for (int i = 0; i < length; i++) {
     bool item_is_string = strings[i].item_is_string;
-    AbraString* repr = strings[i].repr;
-    size_t len = repr->length;
+    AbraString repr = strings[i].repr;
+    size_t len = repr.value->length;
     if (item_is_string) memcpy(ptr++, "\"", 1);
-    memcpy(ptr, repr->chars, len);
+    memcpy(ptr, repr.value->chars, len);
     ptr += len;
     if (item_is_string) memcpy(ptr++, "\"", 1);
 
@@ -461,90 +419,110 @@ AbraString* sequence_to_string(int64_t length, AbraAny** items) {
   return AbraString_make(total_length, res_str);
 }
 
-AbraString* AbraArray__toString(size_t nargs, AbraArray* self) {
+AbraString AbraArray__toString(size_t nargs, AbraArray self) {
   assert(nargs == 1);
 
-  return sequence_to_string(self->length, self->items);
+  return sequence_to_string(self.value->length, self.value->items);
 }
 
-AbraBool* AbraArray__eq(size_t nargs, AbraArray* self, AbraAny* other) {
+AbraBool AbraArray__eq(size_t nargs, AbraArray self, AbraAny other) {
   assert(nargs == 2);
 
-  if (self->length != ((AbraArray*) other)->length) return AbraBool_make(false);
+  if (other.type_id != TYPE_ID_ARRAY) return ABRA_BOOL_FALSE;
+  if (self.value->length != REINTERPRET_CAST(other, AbraArray).value->length) return ABRA_BOOL_FALSE;
 
-  for (size_t i = 0; i < self->length; i++) {
-    if (!prelude__eq(self->items[i], ((AbraArray*) other)->items[i], false)->value) return AbraBool_make(false);
+  for (size_t i = 0; i < self.value->length; i++) {
+    if (!prelude__eq(self.value->items[i], REINTERPRET_CAST(other, AbraArray).value->items[i], false).value)
+      return ABRA_BOOL_FALSE;
   }
 
-  return AbraBool_make(true);
+  return ABRA_BOOL_TRUE;
 }
 
 // AbraTuple methods
-AbraFn TUPLE_METHODS[] = {
+AbraFnObj TUPLE_METHODS[] = {
     METHOD(AbraTuple__toString, 1, 1)
 };
 
-AbraTuple* AbraTuple_make(size_t length, ...) {
-  AbraTuple* tuple = malloc(sizeof(AbraTuple));
-  tuple->_base = (AbraAny) { .type_id=TYPE_ID_TUPLE };
-  tuple->length = length;
-  tuple->items = malloc(sizeof(AbraAny*) * length);
+AbraTuple AbraTuple_make(size_t length, ...) {
+  AbraTuple_Inner* inner = malloc(sizeof(AbraTuple_Inner));
+  inner->length = (int64_t) length;
+  inner->items = malloc(sizeof(AbraAny) * length);
 
   va_list items;
   va_start(items, length);
   for (size_t i = 0; i < length; i++) {
-    AbraAny* item = va_arg(items, AbraAny*);
-    tuple->items[i] = item;
+    AbraAny item = va_arg(items, AbraAny);
+    inner->items[i] = item;
   }
   va_end(items);
-  return tuple;
+  return (AbraTuple) { .type_id=TYPE_ID_TUPLE, .value=inner };
 }
 
-AbraAny* AbraTuple_get(AbraTuple* self, int64_t index) {
-  return self->items[index];
+AbraAny AbraTuple_get(AbraTuple self, int64_t index) {
+  return self.value->items[index];
 }
 
-AbraString* AbraTuple__toString(size_t nargs, AbraTuple* self) {
+AbraString AbraTuple__toString(size_t nargs, AbraTuple self) {
   assert(nargs == 1);
 
-  AbraString* repr = sequence_to_string(self->length, self->items);
-  repr->chars[0] = '(';
-  repr->chars[repr->length - 1] = ')';
+  AbraString repr = sequence_to_string(self.value->length, self.value->items);
+  repr.value->chars[0] = '(';
+  repr.value->chars[repr.value->length - 1] = ')';
   return repr;
 }
 
-AbraBool* AbraTuple__eq(size_t nargs, AbraTuple* self, AbraAny* other) {
+AbraBool AbraTuple__eq(size_t nargs, AbraTuple self, AbraAny other) {
   assert(nargs == 2);
 
-  if (self->length != ((AbraTuple*) other)->length) return AbraBool_make(false);
+  if (other.type_id != TYPE_ID_TUPLE) return ABRA_BOOL_FALSE;
+  if (self.value->length != REINTERPRET_CAST(other, AbraTuple).value->length) return ABRA_BOOL_FALSE;
 
-  for (size_t i = 0; i < self->length; i++) {
-    if (!prelude__eq(self->items[i], ((AbraTuple*) other)->items[i], false)->value) return AbraBool_make(false);
+  for (size_t i = 0; i < self.value->length; i++) {
+    if (!prelude__eq(self.value->items[i], REINTERPRET_CAST(other, AbraTuple).value->items[i], false).value)
+      return ABRA_BOOL_FALSE;
   }
 
-  return AbraBool_make(true);
+  return ABRA_BOOL_TRUE;
 }
 
-AbraUnit _0_0_0__println(size_t nargs, AbraArray* args) {
+AbraUnit _0_0_0__println(size_t nargs, AbraArray args) {
   assert(nargs == 1);
 
-  if (args->length == 0) {
+  if (args.value->length == 0) {
     printf("\n");
     return;
   }
 
-  for (size_t i = 0; i < args->length; i++) {
-    AbraString* repr = prelude__tostring(args->items[i]);
+  for (size_t i = 0; i < args.value->length; i++) {
+    AbraString repr = prelude__tostring(args.value->items[i]);
 
-    printf("%s", repr->chars);
-    if (i != args->length - 1) {
+    printf("%s", repr.value->chars);
+    if (i != args.value->length - 1) {
       printf(" ");
     }
   }
   printf("\n");
 }
 
+#define ABRA_ANY_SIZE sizeof(AbraAny)
+
 void entrypoint__0() {
+  assert(sizeof(AbraInt) == ABRA_ANY_SIZE);
+  assert(sizeof(AbraFloat) == ABRA_ANY_SIZE);
+  assert(sizeof(AbraBool) == ABRA_ANY_SIZE);
+  assert(sizeof(AbraString) == ABRA_ANY_SIZE);
+  assert(sizeof(AbraArray) == ABRA_ANY_SIZE);
+  assert(sizeof(AbraTuple) == ABRA_ANY_SIZE);
+
+  // Pre-allocated cached values
+  AbraNone = (AbraAny) { .type_id=TYPE_ID_NONE, .data=NULL };
+  ABRA_NONE_STRING = AbraString_make(4, "None");
+  ABRA_BOOL_TRUE = (AbraBool) { .type_id=TYPE_ID_BOOL, .value=true };
+  ABRA_BOOL_FALSE = (AbraBool) { .type_id=TYPE_ID_BOOL, .value=false };
+  ABRA_BOOL_TRUE_STRING = AbraString_make(4, "true");
+  ABRA_BOOL_FALSE_STRING = AbraString_make(5, "false");
+
   VTABLE[TYPE_ID_NONE] = (VTableEntry) { .fn_eq=METHOD(AbraNone__eq, 2, 2), .methods = NONE_METHODS };
   VTABLE[TYPE_ID_INT] = (VTableEntry) { .fn_eq=METHOD(AbraInt__eq, 2, 2), .methods = INT_METHODS };
   VTABLE[TYPE_ID_FLOAT] = (VTableEntry) { .fn_eq=METHOD(AbraFloat__eq, 2, 2), .methods = FLOAT_METHODS };

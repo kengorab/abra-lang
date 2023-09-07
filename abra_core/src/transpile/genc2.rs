@@ -15,11 +15,12 @@ fn closure_name(func: &Function) -> String {
 pub struct CCompiler2<W: std::io::Write> {
     output: W,
     temp_idx: usize,
+    current_fn: Option<FuncId>,
 }
 
 impl<W: std::io::Write> CCompiler2<W> {
     pub fn new(output: W) -> Self {
-        CCompiler2 { output, temp_idx: 0 }
+        CCompiler2 { output, temp_idx: 0, current_fn: None }
     }
 
     fn next_temp_variable(&mut self) -> String {
@@ -43,10 +44,13 @@ impl<W: std::io::Write> CCompiler2<W> {
                     "AbraArray".to_string()
                 } else if *struct_id == project.prelude_tuple_struct_id {
                     "AbraTuple".to_string()
+                } else if *struct_id == project.prelude_option_struct_id {
+                    self.get_type_name_by_id(project, &generic_ids[0])
                 } else if generic_ids.is_empty() {
                     self.get_struct_enum_name(project, &TypeKind::Struct(*struct_id))
                 } else {
-                    todo!()
+                    let struct_ = project.get_struct_by_id(struct_id);
+                    todo!("Unimplemented for struct {struct_:?}")
                 }
             }
             Type::GenericEnumInstance(_, _, _) |
@@ -96,7 +100,6 @@ impl<W: std::io::Write> CCompiler2<W> {
     fn emit_fn_signature(&mut self, project: &Project, func_id: &FuncId) {
         let function = project.get_func_by_id(func_id);
         let ret_type = self.get_type_name_by_id(project, &function.return_type_id);
-        let ret_type = if function.return_type_id == PRELUDE_UNIT_TYPE_ID { ret_type } else { format!("{}*", ret_type) };
         let fn_name = function_name(&function);
         let params = if function.captured_vars.is_empty() {
             vec!["size_t nargs".to_string()]
@@ -110,7 +113,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                 } else {
                     self.get_type_name_by_id(project, &p.type_id)
                 };
-                format!("{}* {}", type_name, &p.name)
+                format!("{} {}", type_name, &p.name)
             }))
             .join(", ");
 
@@ -206,7 +209,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                 self.emit_fn_predecl(project, &function.id);
                 if !function.captured_vars.is_empty() {
                     self.emit_comment(format!("Closure value for function {}", function_name(function)));
-                    self.emit_line(format!("AbraFn* {} = NULL;", closure_name(function)));
+                    self.emit_line(format!("AbraFn {};", closure_name(function)));
                 }
             }
         }
@@ -223,6 +226,8 @@ impl<W: std::io::Write> CCompiler2<W> {
     }
 
     fn compile_function(&mut self, project: &Project, func_id: &FuncId, allow_method: bool) {
+        let prev_fn = self.current_fn.replace(*func_id);
+
         let function = project.get_func_by_id(func_id);
         if function.has_self && !allow_method { return; }
 
@@ -258,6 +263,7 @@ impl<W: std::io::Write> CCompiler2<W> {
         }
 
         self.emit_line("}");
+        self.current_fn = prev_fn;
     }
 
     fn compile_toplevel_code(&mut self, project: &Project, module: &TypedModule) {
@@ -288,9 +294,9 @@ impl<W: std::io::Write> CCompiler2<W> {
                     for var_id in vars {
                         let var = project.get_var_by_id(var_id);
                         let type_name = self.get_type_name_by_id(project, &var.type_id);
-                        self.emit_line(format!("{}* {} = ({}*)AbraNone_make();", type_name, &var.name, type_name));
+                        self.emit_line(format!("{} {} = REINTERPRET_CAST(AbraNone, {});", type_name, &var.name, type_name));
                         if var.is_captured {
-                            self.emit_line(format!("MOVE_TO_HEAP({}, {}*)", &var.name, type_name));
+                            self.emit_line(format!("{}* {}_ref = ({}*)copy_to_heap((AbraAny*)&{});", type_name, &var.name, type_name, &var.name));
                         }
                     }
                 }
@@ -313,9 +319,9 @@ impl<W: std::io::Write> CCompiler2<W> {
                 let var_name = Token::get_ident_name(tok);
                 let var = vars.iter().find(|var| var.name == var_name).expect("There should be a variable by this name in the vars list");
                 let type_name = self.get_type_name_by_id(project, expr_type);
-                self.emit_line(format!("{}* {} = {};", type_name, var_name, expr_handle));
+                self.emit_line(format!("{} {} = {};", type_name, &var.name, expr_handle));
                 if var.is_captured {
-                    self.emit_line(format!("MOVE_TO_HEAP({}, {}*);", var_name, type_name));
+                    self.emit_line(format!("{}* {}_ref = ({}*)copy_to_heap((AbraAny*)&{});", type_name, &var.name, type_name, &var.name));
                 }
             }
             BindingPattern::Tuple(_, patterns) => {
@@ -331,13 +337,19 @@ impl<W: std::io::Write> CCompiler2<W> {
                     match pattern {
                         BindingPattern::Variable(tok) => {
                             let var_name = Token::get_ident_name(tok);
-                            self.compile_opt_chaining(&var_name, &tuple_item_type_name, &expr_handle, |_| {
-                                format!("AbraTuple_get({}, {})", expr_handle, idx)
+                            self.compile_opt_chaining(&var_name, &tuple_item_type_name, &expr_handle, |zelf| {
+                                let temp_handle = zelf.next_temp_variable();
+                                zelf.emit_line(format!("AbraAny {} = AbraTuple_get({}, {});", temp_handle, expr_handle, idx));
+                                let handle = zelf.next_temp_variable();
+                                zelf.emit_line(format!("{} {} = REINTERPRET_CAST({}, {});", tuple_item_type_name, handle,  temp_handle, tuple_item_type_name));
+                                handle
                             })
                         }
                         _ => {
+                            let temp_handle = self.next_temp_variable();
+                            self.emit_line(format!("AbraAny {} = AbraTuple_get({}, {});", temp_handle, expr_handle, idx));
                             let item_handle = self.next_temp_variable();
-                            self.emit_line(format!("{}* {} = ({}*)AbraTuple_get({}, {});", tuple_item_type_name, item_handle, tuple_item_type_name, expr_handle, idx));
+                            self.emit_line(format!("{} {} = REINTERPRET_CAST({}, {});", tuple_item_type_name, item_handle, temp_handle, tuple_item_type_name));
                             self.compile_pattern_destructuring(project, &item_handle, tuple_item_type_id, pattern, vars);
                         }
                     }
@@ -366,29 +378,31 @@ impl<W: std::io::Write> CCompiler2<W> {
                             let var_name = Token::get_ident_name(tok);
 
                             let dest_type_name = if *is_splat { &expr_type_name } else { &item_type_name };
-                            self.compile_opt_chaining(&var_name, &dest_type_name, &expr_handle, |_| {
-                                if *is_splat {
+                            self.compile_opt_chaining(&var_name, &dest_type_name, &expr_handle, |zelf| {
+                                let handle = zelf.next_temp_variable();
+                                zelf.emit_line(if *is_splat {
                                     if *is_string {
-                                        format!("AbraString_get_range((AbraString*){}, {}, ((AbraString*){})->length)", &expr_handle, idx, &expr_handle)
+                                        format!("AbraString {} = AbraString_get_range(REINTERPRET_CAST({}, AbraString), {}, REINTERPRET_CAST({}, AbraString).value->length);", handle, &expr_handle, idx, &expr_handle)
                                     } else {
-                                        format!("AbraArray_get_range((AbraArray*){}, {}, ((AbraArray*){})->length)", &expr_handle, idx, &expr_handle)
+                                        format!("AbraArray {} = AbraArray_get_range(REINTERPRET_CAST({}, AbraArray), {}, REINTERPRET_CAST({}, AbraArray).value->length);", handle, &expr_handle, idx, &expr_handle)
                                     }
                                 } else {
                                     if *is_string {
-                                        format!("AbraString_get((AbraString*){}, {})", &expr_handle, idx)
+                                        format!("AbraString {} = AbraString_get(REINTERPRET_CAST({}, AbraString), {});", handle, &expr_handle, idx)
                                     } else {
-                                        format!("AbraArray_get((AbraArray*){}, {})", &expr_handle, idx)
+                                        format!("AbraAny {} = AbraArray_get(REINTERPRET_CAST({}, AbraArray), {});", handle, &expr_handle, idx)
                                     }
-                                }
+                                });
+                                handle
                             });
 
                             if *is_splat {
                                 let tmp = self.next_temp_variable();
                                 let num_remaining = num_patterns - idx - 1;
                                 if *is_string {
-                                    self.emit_line(format!("AbraString* {} = AbraString_slice({}, {}->length - {});", &tmp, &var_name, &var_name, num_remaining));
+                                    self.emit_line(format!("AbraString {} = AbraString_slice({}, {}.value->length - {});", &tmp, &var_name, &var_name, num_remaining));
                                 } else {
-                                    self.emit_line(format!("AbraArray* {} = AbraArray_slice({}, {}->length - {});", &tmp, &var_name, &var_name, num_remaining));
+                                    self.emit_line(format!("AbraArray {} = AbraArray_slice({}, {}.value->length - {});", &tmp, &var_name, &var_name, num_remaining));
                                 }
                                 expr_handle = tmp;
                                 idx = 0;
@@ -397,12 +411,14 @@ impl<W: std::io::Write> CCompiler2<W> {
                         }
                         _ => {
                             let item_handle = self.next_temp_variable();
-                            self.compile_opt_chaining(&item_handle, &item_type_name, &expr_handle, |_| {
-                                if *is_string {
-                                    format!("AbraString_get((AbraString*){}, {})", &expr_handle, idx)
+                            self.compile_opt_chaining(&item_handle, &item_type_name, &expr_handle, |zelf| {
+                                let handle = zelf.next_temp_variable();
+                                zelf.emit_line(if *is_string {
+                                    format!("AbraString {} = AbraString_get(REINTERPRET_CAST({}, AbraString), {});", handle, &expr_handle, idx)
                                 } else {
-                                    format!("AbraArray_get((AbraArray*){}, {})", &expr_handle, idx)
-                                }
+                                    format!("AbraAny {} = AbraArray_get(REINTERPRET_CAST({}, AbraArray), {});", handle, &expr_handle, idx)
+                                });
+                                handle
                             });
                             self.compile_pattern_destructuring(project, &item_handle, &item_type_id, pattern, vars);
                         }
@@ -417,23 +433,28 @@ impl<W: std::io::Write> CCompiler2<W> {
     fn compile_opt_chaining<F>(&mut self, var_handle: &String, var_type_name: &String, target_handle: &String, continuation: F)
         where F: Fn(&mut CCompiler2<W>) -> String
     {
-        self.emit_line(format!("{}* {};", var_type_name, var_handle));
+        self.emit_line(format!("{} {};", var_type_name, var_handle));
         self.emit_line(format!("if (IS_NONE({})) {{", target_handle));
-        self.emit_line(format!("  {} = ({}*)AbraNone_make();", var_handle, var_type_name));
+        self.emit_line(format!("  {} = REINTERPRET_CAST(AbraNone, {});", var_handle, var_type_name));
         self.emit_line("} else {");
 
         let continuation_handle = continuation(self);
-        self.emit_line(format!("  {} = ({}*){};", var_handle, var_type_name, continuation_handle));
+        self.emit_line(format!("  {} = REINTERPRET_CAST({}, {});", var_handle, continuation_handle, var_type_name));
         self.emit_line("}");
     }
 
     fn compile_expression(&mut self, project: &Project, node: &TypedNode) -> String {
         match node {
-            TypedNode::Literal { value, .. } => match value {
-                TypedLiteral::Int(i) => format!("AbraInt_make({})", i),
-                TypedLiteral::Float(f) => format!("AbraFloat_make({})", f),
-                TypedLiteral::Bool(b) => format!("AbraBool_make({})", b),
-                TypedLiteral::String(s) => format!("AbraString_make({}, \"{}\")", s.len(), s),
+            TypedNode::Literal { value, .. } => {
+                let handle = self.next_temp_variable();
+                let expr = match value {
+                    TypedLiteral::Int(i) => format!("AbraInt_make({})", i),
+                    TypedLiteral::Float(f) => format!("AbraFloat_make({})", f),
+                    TypedLiteral::Bool(b) => format!("AbraBool_make({})", b),
+                    TypedLiteral::String(s) => format!("AbraString_make({}, \"{}\")", s.len(), s),
+                };
+                self.emit_line(format!("{} {} = {};", self.get_type_name_by_id(project, node.type_id()), handle, expr));
+                handle
             }
             TypedNode::Unary { expr, op, .. } => {
                 let type_id = *expr.as_ref().type_id();
@@ -452,11 +473,13 @@ impl<W: std::io::Write> CCompiler2<W> {
                     (UnaryOp::Minus, TypedNode::Literal { value: TypedLiteral::Int(value), .. }) => format!("-{}", value),
                     (UnaryOp::Minus, TypedNode::Literal { value: TypedLiteral::Float(value), .. }) => format!("-{}", value),
                     (UnaryOp::Negate, TypedNode::Literal { value: TypedLiteral::Bool(value), .. }) => format!("!{}", value),
-                    (UnaryOp::Minus, expr) => format!("-({})->value", self.compile_expression(project, expr)),
-                    (UnaryOp::Negate, expr) => format!("!({})->value", self.compile_expression(project, expr)),
+                    (UnaryOp::Minus, expr) => format!("-({}).value", self.compile_expression(project, expr)),
+                    (UnaryOp::Negate, expr) => format!("!({}).value", self.compile_expression(project, expr)),
                 };
 
-                format!("{}({})", fn_name, fn_arg)
+                let handle = self.next_temp_variable();
+                self.emit_line(format!("{} {} = {}({});", self.get_type_name_by_id(project, &type_id), handle, fn_name, fn_arg));
+                handle
             }
             TypedNode::Binary { left, right, op, .. } => {
                 let type_id = *node.type_id();
@@ -466,19 +489,21 @@ impl<W: std::io::Write> CCompiler2<W> {
                     let handle = self.next_temp_variable();
 
                     if *op == BinaryOp::And {
-                        self.emit_line(format!("AbraBool* {};", handle));
-                        self.emit_line(format!("if (!{}->value) {{", left_handle));
+                        self.emit_line(format!("AbraBool {};", handle));
+                        self.emit_line(format!("if (!{}.value) {{", left_handle));
                         self.emit_line(format!("{} = {};", handle, left_handle));
                         self.emit_line("} else {");
                     } else if *op == BinaryOp::Or {
-                        self.emit_line(format!("AbraBool* {};", handle));
-                        self.emit_line(format!("if ({}->value) {{", left_handle));
+                        self.emit_line(format!("AbraBool {};", handle));
+                        self.emit_line(format!("if ({}.value) {{", left_handle));
                         self.emit_line(format!("{} = {};", handle, left_handle));
                         self.emit_line("} else {");
-                    } else {
+                    } else if *op == BinaryOp::Coalesce {
                         let type_name = self.get_type_name_by_id(project, &type_id);
-                        self.emit_line(format!("{}* {} = ({}*){};", type_name, handle, type_name, left_handle));
+                        self.emit_line(format!("{} {} = REINTERPRET_CAST({}, {});", type_name, handle, left_handle, type_name));
                         self.emit_line(format!("if (IS_NONE({})) {{", handle));
+                    } else {
+                        unreachable!()
                     }
 
                     let right_handle = self.compile_expression(project, right);
@@ -492,25 +517,25 @@ impl<W: std::io::Write> CCompiler2<W> {
 
                 let compile_arithmetic_op = |op: &str| {
                     if type_id == PRELUDE_INT_TYPE_ID {
-                        format!("AbraInt_make({}->value {} {}->value)", left_handle, op, right_handle)
+                        format!("AbraInt_make({}.value {} {}.value)", left_handle, op, right_handle)
                     } else if type_id == PRELUDE_FLOAT_TYPE_ID {
-                        format!("AbraFloat_make((double){}->value {} (double){}->value)", left_handle, op, right_handle)
+                        format!("AbraFloat_make((double){}.value {} (double){}.value)", left_handle, op, right_handle)
                     } else {
                         unreachable!("No other resultant types are possible for the {} operation", op);
                     }
                 };
 
                 let compile_comparison_op = |op: &str| {
-                    format!("AbraBool_make({}->value {} {}->value)", left_handle, op, right_handle)
+                    format!("AbraBool_make({}.value {} {}.value)", left_handle, op, right_handle)
                 };
 
-                match op {
+                let value = match op {
                     BinaryOp::Add => {
                         if type_id == PRELUDE_STRING_TYPE_ID {
                             if *left.type_id() == PRELUDE_STRING_TYPE_ID {
-                                format!("AbraString__concat(2, {}, (AbraAny*){})", left_handle, right_handle)
+                                format!("AbraString__concat(2, {}, REINTERPRET_CAST({}, AbraAny))", left_handle, right_handle)
                             } else if *right.type_id() == PRELUDE_STRING_TYPE_ID {
-                                format!("AbraString__concat(2, prelude__tostring((AbraAny*){}), (AbraAny*){})", left_handle, right_handle)
+                                format!("AbraString__concat(2, prelude__tostring(REINTERPRET_CAST({}, AbraAny)), REINTERPRET_CAST({}, AbraAny))", left_handle, right_handle)
                             } else {
                                 unreachable!("Either the left or right node must be a string")
                             }
@@ -523,24 +548,24 @@ impl<W: std::io::Write> CCompiler2<W> {
                     BinaryOp::Div => compile_arithmetic_op("/"),
                     BinaryOp::Mod => {
                         if *left.type_id() == PRELUDE_FLOAT_TYPE_ID || *right.type_id() == PRELUDE_FLOAT_TYPE_ID {
-                            format!("AbraFloat_make(fmod((double){}->value, (double){}->value))", left_handle, right_handle)
+                            format!("AbraFloat_make(fmod((double){}.value, (double){}.value))", left_handle, right_handle)
                         } else {
-                            format!("AbraInt_make({}->value % {}->value)", left_handle, right_handle)
+                            format!("AbraInt_make({}.value % {}.value)", left_handle, right_handle)
                         }
                     }
                     BinaryOp::Pow => {
-                        format!("AbraFloat_make(pow((double){}->value, (double){}->value))", left_handle, right_handle)
+                        format!("AbraFloat_make(pow((double){}.value, (double){}.value))", left_handle, right_handle)
                     }
                     BinaryOp::And | BinaryOp::Or | BinaryOp::Coalesce => unreachable!("Handled above"),
                     BinaryOp::Xor => {
-                        format!("AbraBool_make(!({}->value) != !({}->value))", left_handle, right_handle)
+                        format!("AbraBool_make(!({}.value) != !({}.value))", left_handle, right_handle)
                     }
                     BinaryOp::Lt => compile_comparison_op("<"),
                     BinaryOp::Lte => compile_comparison_op("<="),
                     BinaryOp::Gt => compile_comparison_op(">"),
                     BinaryOp::Gte => compile_comparison_op(">="),
                     BinaryOp::Neq | BinaryOp::Eq => {
-                        format!("prelude__eq((AbraAny*)({}), (AbraAny*)({}), {})", left_handle, right_handle, *op == BinaryOp::Neq)
+                        format!("prelude__eq(REINTERPRET_CAST({}, AbraAny), REINTERPRET_CAST({}, AbraAny), {})", left_handle, right_handle, *op == BinaryOp::Neq)
                     }
                     BinaryOp::AddEq |
                     BinaryOp::SubEq |
@@ -550,7 +575,11 @@ impl<W: std::io::Write> CCompiler2<W> {
                     BinaryOp::AndEq |
                     BinaryOp::OrEq |
                     BinaryOp::CoalesceEq => todo!()
-                }
+                };
+
+                let handle = self.next_temp_variable();
+                self.emit_line(format!("{} {} = {};", self.get_type_name_by_id(project, &type_id), handle, value));
+                handle
             }
             TypedNode::Grouped { expr, .. } => self.compile_expression(project, expr),
             TypedNode::Array { items, .. } => {
@@ -558,17 +587,19 @@ impl<W: std::io::Write> CCompiler2<W> {
 
                 let handle = self.next_temp_variable();
 
-                self.emit_line(format!("AbraArray* {} = AbraArray_make_with_capacity(/*length:*/ {}, /*capacity:*/{});", handle, items.len(), capacity));
+                self.emit_line(format!("AbraArray {} = AbraArray_make_with_capacity(/*length:*/ {}, /*capacity:*/{});", handle, items.len(), capacity));
                 for (idx, item) in items.iter().enumerate() {
                     let expr_handle = self.compile_expression(project, &item);
-                    self.emit_line(format!("AbraArray_set(/*self:*/{}, /*idx:*/{}, /*item:*/(AbraAny*){});", handle, idx, expr_handle));
+                    self.emit_line(format!("AbraArray_set(/*self:*/{}, /*idx:*/{}, /*item:*/REINTERPRET_CAST({}, AbraAny));", handle, idx, expr_handle));
                 }
 
                 handle
             }
             TypedNode::Tuple { items, .. } => {
                 let item_handles = items.iter().map(|item| self.compile_expression(project, item)).join(", ");
-                format!("AbraTuple_make({}, {})", items.len(), item_handles)
+                let handle = self.next_temp_variable();
+                self.emit_line(format!("AbraTuple {} = AbraTuple_make({}, {});", handle, items.len(), item_handles));
+                handle
             }
             TypedNode::Set { .. } => unimplemented!(),
             TypedNode::Map { .. } => unimplemented!(),
@@ -577,8 +608,11 @@ impl<W: std::io::Write> CCompiler2<W> {
                 match variable.alias {
                     VariableAlias::None => {
                         if variable.is_captured {
-                            let var_type_name = self.get_type_name_by_id(project, &variable.type_id);
-                            format!("HEAP_DEREF({}, {}*)", &variable.name, var_type_name)
+                            if self.current_fn.map(|func_id| project.get_func_by_id(&func_id).captured_vars.contains(var_id)).unwrap_or(false) {
+                                format!("(*{})", &variable.name)
+                            } else {
+                                format!("(*{}_ref)", &variable.name)
+                            }
                         } else {
                             variable.name.clone()
                         }
@@ -593,11 +627,11 @@ impl<W: std::io::Write> CCompiler2<W> {
                     VariableAlias::Type(_) => unimplemented!(),
                 }
             }
-            TypedNode::NoneValue { .. } => "AbraNone_make()".to_string(),
+            TypedNode::NoneValue { .. } => "AbraNone".to_string(),
             TypedNode::Invocation { target, arguments, type_id, .. } => {
                 let Type::Function(parameter_type_ids, _, _, return_type_id) = project.get_type_by_id(&target.as_ref().type_id()) else { unreachable!() };
                 debug_assert!(parameter_type_ids.len() == arguments.len());
-                let return_type_name = format!("{}*", self.get_type_name_by_id(project, return_type_id));
+                let return_type_name = self.get_type_name_by_id(project, return_type_id);
 
                 let num_arguments = arguments.len();
                 let mut arg_values = Vec::with_capacity(num_arguments);
@@ -605,7 +639,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                     let handle = if let Some(argument) = argument {
                         self.compile_expression(project, &argument)
                     } else {
-                        format!("(({}*)AbraNone_make())", self.get_type_name_by_id(project, parameter_type_id))
+                        format!("REINTERPRET_CAST(AbraNone, {})", self.get_type_name_by_id(project, parameter_type_id))
                     };
                     arg_values.push(handle);
                 }
@@ -615,7 +649,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                     if let VariableAlias::Function(func_id) = &variable.alias {
                         let handle = if *type_id != PRELUDE_UNIT_TYPE_ID {
                             let handle = self.next_temp_variable();
-                            self.emit(format!("{}* {} = ", self.get_type_name_by_id(project, type_id), handle));
+                            self.emit(format!("{} {} = ", self.get_type_name_by_id(project, type_id), handle));
                             Some(handle)
                         } else {
                             None
@@ -637,17 +671,17 @@ impl<W: std::io::Write> CCompiler2<W> {
 
                 let target_handle = self.compile_expression(project, &*target);
                 let arg_types = parameter_type_ids.iter().map(|param_type_id| {
-                    format!("{}*", self.get_type_name_by_id(project, param_type_id))
+                    format!("{}", self.get_type_name_by_id(project, param_type_id))
                 }).collect_vec();
 
                 let handle = if *type_id != PRELUDE_UNIT_TYPE_ID {
                     let handle = self.next_temp_variable();
-                    self.emit(format!("{}* {} = ", self.get_type_name_by_id(project, type_id), handle));
+                    self.emit(format!("{} {} = ", self.get_type_name_by_id(project, type_id), handle));
                     Some(handle)
                 } else {
                     None
                 };
-                self.emit(format!("ABRA_FN_CALL_{}((AbraFn*){}, {}, ", num_arguments, target_handle, num_arguments));
+                self.emit(format!("ABRA_FN_CALL_{}(REINTERPRET_CAST({}, AbraFn), {}, ", num_arguments, target_handle, num_arguments));
                 self.emit(vec![return_type_name].into_iter()
                     .chain(arg_values.iter().zip(arg_types).map(|(v, ty)| format!("{ty}, {v}")))
                     .join(",")
@@ -657,18 +691,18 @@ impl<W: std::io::Write> CCompiler2<W> {
                 handle.unwrap_or_default()
             }
             TypedNode::Accessor { .. } => unimplemented!(),
-            TypedNode::Indexing { target, index, .. } => {
+            TypedNode::Indexing { target, index, type_id,  .. } => {
                 let target_type_id = target.as_ref().type_id();
                 let target_type = project.get_type_by_id(target_type_id);
 
                 let target_handle = self.compile_expression(project, target);
 
-                let fn_name = match (target_type, &index) {
-                    (Type::Primitive(PrimitiveType::String), IndexingMode::Index(_)) => "AbraString_get",
-                    (Type::Primitive(PrimitiveType::String), IndexingMode::Range(_, _)) => "AbraString_get_range",
-                    (Type::GenericInstance(struct_id, _), IndexingMode::Index(_)) if *struct_id == project.prelude_array_struct_id => "AbraArray_get",
-                    (Type::GenericInstance(struct_id, _), IndexingMode::Range(_, _)) if *struct_id == project.prelude_array_struct_id => "AbraArray_get_range",
-                    (Type::GenericInstance(struct_id, _), IndexingMode::Index(_)) if *struct_id == project.prelude_tuple_struct_id => "AbraTuple_get",
+                let (fn_name, fn_return_type_name) = match (target_type, &index) {
+                    (Type::Primitive(PrimitiveType::String), IndexingMode::Index(_)) => ("AbraString_get", "AbraString"),
+                    (Type::Primitive(PrimitiveType::String), IndexingMode::Range(_, _)) => ("AbraString_get_range", "AbraString"),
+                    (Type::GenericInstance(struct_id, _), IndexingMode::Index(_)) if *struct_id == project.prelude_array_struct_id => ("AbraArray_get", "AbraAny"),
+                    (Type::GenericInstance(struct_id, _), IndexingMode::Range(_, _)) if *struct_id == project.prelude_array_struct_id => ("AbraArray_get_range", "AbraArray"),
+                    (Type::GenericInstance(struct_id, _), IndexingMode::Index(_)) if *struct_id == project.prelude_tuple_struct_id => ("AbraTuple_get", "AbraAny"),
                     _ => unimplemented!(),
                 };
 
@@ -676,9 +710,9 @@ impl<W: std::io::Write> CCompiler2<W> {
                     IndexingMode::Index(idx_expr) => {
                         let idx_expr_handle = self.compile_expression(project, idx_expr);
                         match target_type {
-                            Type::Primitive(PrimitiveType::String) => format!("{}->value", idx_expr_handle),
-                            Type::GenericInstance(struct_id, _) if *struct_id == project.prelude_array_struct_id => format!("{}->value", idx_expr_handle),
-                            Type::GenericInstance(struct_id, _) if *struct_id == project.prelude_tuple_struct_id => format!("{}->value", idx_expr_handle),
+                            Type::Primitive(PrimitiveType::String) => format!("{}.value", idx_expr_handle),
+                            Type::GenericInstance(struct_id, _) if *struct_id == project.prelude_array_struct_id => format!("{}.value", idx_expr_handle),
+                            Type::GenericInstance(struct_id, _) if *struct_id == project.prelude_tuple_struct_id => format!("{}.value", idx_expr_handle),
                             _ => idx_expr_handle
                         }
                     }
@@ -687,22 +721,28 @@ impl<W: std::io::Write> CCompiler2<W> {
                             (Some(start_expr), Some(end_expr)) => {
                                 let start_expr_handle = self.compile_expression(project, start_expr);
                                 let end_expr_handle = self.compile_expression(project, end_expr);
-                                format!("{}->value, {}->value", start_expr_handle, end_expr_handle)
+                                format!("{}.value, {}.value", start_expr_handle, end_expr_handle)
                             }
                             (None, Some(end_expr)) => {
                                 let end_expr_handle = self.compile_expression(project, end_expr);
-                                format!("0, {}->value", end_expr_handle)
+                                format!("0, {}.value", end_expr_handle)
                             }
                             (Some(start_expr), None) => {
                                 let start_expr_handle = self.compile_expression(project, start_expr);
-                                format!("{}->value, {}->length", start_expr_handle, target_handle)
+                                format!("{}.value, {}.value->length", start_expr_handle, target_handle)
                             }
                             (None, None) => unreachable!("foo[:] is invalid syntax at the moment")
                         }
                     }
                 };
 
-                format!("{}({}, {})", fn_name, target_handle, fn_args)
+                let temp_handle = self.next_temp_variable();
+                self.emit_line(format!("{} {} = {}({}, {});", fn_return_type_name, temp_handle, fn_name, target_handle, fn_args));
+                let handle = self.next_temp_variable();
+                let type_name = self.get_type_name_by_id(project, type_id);
+                self.emit_line(format!("{} {} = REINTERPRET_CAST({}, {});", type_name, handle, temp_handle, type_name));
+
+                handle
             }
             TypedNode::Lambda { func_id, .. } => {
                 self.wrap_function(project, func_id)
@@ -713,8 +753,11 @@ impl<W: std::io::Write> CCompiler2<W> {
                     AssignmentKind::Identifier { var_id } => {
                         let variable = project.get_var_by_id(var_id);
                         if variable.is_captured {
-                            let var_type_name = self.get_type_name_by_id(project, &variable.type_id);
-                            self.emit_line(format!("HEAP_DEREF({}, {}*) = {};", &variable.name, var_type_name, expr_handle));
+                            if self.current_fn.map(|func_id| project.get_func_by_id(&func_id).captured_vars.contains(var_id)).unwrap_or(false) {
+                                self.emit_line(format!("{}->value = ({}).value;", &variable.name, expr_handle));
+                            } else {
+                                self.emit_line(format!("{}_ref->value = ({}).value;", &variable.name, expr_handle));
+                            }
                         } else {
                             self.emit_line(format!("{} = {};", &variable.name, expr_handle));
                         }
@@ -728,7 +771,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                         debug_assert!(*struct_id == project.prelude_array_struct_id);
                         let target_handle = self.compile_expression(project, target);
                         let index_handle = self.compile_expression(project, index);
-                        self.emit_line(format!("AbraArray_set(/*self:*/{}, /*idx:*/{}->value, /*item:*/(AbraAny*){});", target_handle, index_handle, expr_handle));
+                        self.emit_line(format!("AbraArray_set(/*self:*/{}, /*idx:*/{}.value, /*item:*/REINTERPRET_CAST({}, AbraAny));", target_handle, index_handle, expr_handle));
                         expr_handle
                     }
                 }
@@ -747,7 +790,7 @@ impl<W: std::io::Write> CCompiler2<W> {
         if !function.captured_vars.is_empty() {
             let num_captures = function.captured_vars.len();
             let captures = function.captured_vars.iter()
-                .map(|var_id| format!("(AbraAny**){}", &project.get_var_by_id(var_id).name))
+                .map(|var_id| format!("(AbraAny*){}_ref", &project.get_var_by_id(var_id).name))
                 .join(",");
             // TODO: pre-allocate maybe, rather than passing captures as varargs?
             format!("AbraFn_make_closure((Fn)&{}, {}, {}, {}, {})", fn_name, min_arity, max_arity, num_captures, captures)
