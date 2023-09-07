@@ -101,7 +101,7 @@ AbraBool prelude__eq(AbraAny value, AbraAny other, bool neg);
 AbraAny* copy_to_heap(AbraAny* value);
 
 AbraFn AbraFn_make(Fn fn_ptr, size_t min_arity, size_t max_arity);
-AbraFn AbraFn_make_closure(Fn fn_ptr, size_t min_arity, size_t max_arity, size_t ncaptures, ...);
+AbraFn AbraFn_make_closure(Fn fn_ptr, size_t min_arity, size_t max_arity, size_t ncaptures);
 inline AbraAny AbraFn_call_0(AbraFn fn, size_t nargs);
 inline AbraAny AbraFn_call_1(AbraFn fn, size_t nargs, AbraAny arg1);
 

@@ -66,7 +66,7 @@ AbraFn AbraFn_make(Fn fn_ptr, size_t min_arity, size_t max_arity) {
   return fn;
 }
 
-AbraFn AbraFn_make_closure(Fn fn_ptr, size_t min_arity, size_t max_arity, size_t ncaptures, ...) {
+AbraFn AbraFn_make_closure(Fn fn_ptr, size_t min_arity, size_t max_arity, size_t ncaptures) {
   AbraFnObj* fn = malloc(sizeof(AbraFnObj));
   fn->is_closure = true;
   fn->min_arity = min_arity;
@@ -74,13 +74,6 @@ AbraFn AbraFn_make_closure(Fn fn_ptr, size_t min_arity, size_t max_arity, size_t
   fn->fn = fn_ptr;
 
   fn->captures = malloc(sizeof(AbraAny*) * ncaptures);
-  va_list captures;
-  va_start(captures, ncaptures);
-  for (size_t i = 0; i < ncaptures; i++) {
-    AbraAny* capture = va_arg(captures, AbraAny*);
-    fn->captures[i] = capture;
-  }
-  va_end(captures);
 
   return (AbraFn) { .type_id=TYPE_ID_STRING, .value=fn };
 }
@@ -147,8 +140,10 @@ AbraString AbraInt__toString(size_t nargs, AbraInt self) {
 AbraBool AbraInt__eq(size_t nargs, AbraInt self, AbraAny other) {
   assert(nargs == 2);
 
-  if (other.type_id == TYPE_ID_INT) return AbraBool_make(self.value == REINTERPRET_CAST(other, AbraInt).value);
-  if (other.type_id == TYPE_ID_FLOAT) return AbraBool_make((double) self.value == REINTERPRET_CAST(other, AbraFloat).value);
+  if (other.type_id == TYPE_ID_INT)
+    return AbraBool_make(self.value == REINTERPRET_CAST(other, AbraInt).value);
+  if (other.type_id == TYPE_ID_FLOAT)
+    return AbraBool_make((double) self.value == REINTERPRET_CAST(other, AbraFloat).value);
 
   return ABRA_BOOL_FALSE;
 }
@@ -179,8 +174,10 @@ AbraString AbraFloat__toString(size_t nargs, AbraFloat self) {
 AbraBool AbraFloat__eq(size_t nargs, AbraFloat self, AbraAny other) {
   assert(nargs == 2);
 
-  if (other.type_id == TYPE_ID_INT) return AbraBool_make(self.value == (double) (REINTERPRET_CAST(other, AbraInt).value));
-  if (other.type_id == TYPE_ID_FLOAT) return AbraBool_make(self.value == REINTERPRET_CAST(other, AbraFloat).value);
+  if (other.type_id == TYPE_ID_INT)
+    return AbraBool_make(self.value == (double) (REINTERPRET_CAST(other, AbraInt).value));
+  if (other.type_id == TYPE_ID_FLOAT)
+    return AbraBool_make(self.value == REINTERPRET_CAST(other, AbraFloat).value);
 
   return ABRA_BOOL_FALSE;
 }
