@@ -7,7 +7,6 @@
 #include "stdbool.h"
 #include "stdarg.h"
 #include "stdlib.h"
-#include "assert.h"
 
 typedef void AbraUnit;
 
@@ -74,15 +73,27 @@ typedef struct AbraArray {
 typedef struct AbraTuple_Inner {
     AbraAny* items;
     int64_t length;
-}AbraTuple_Inner;
+} AbraTuple_Inner;
 typedef struct AbraTuple {
     size_t type_id;
     AbraTuple_Inner * value;
 } AbraTuple;
 
+typedef struct hashmap_t hashmap_t;
+
+typedef struct AbraSet {
+    size_t type_id;
+    hashmap_t* value;
+} AbraSet;
+
+typedef struct AbraMap {
+    size_t type_id;
+    hashmap_t* value;
+} AbraMap;
+
 AbraString prelude__tostring(AbraAny value);
 AbraBool prelude__eq(AbraAny value, AbraAny other, bool neg);
-
+AbraInt prelude__hash(AbraAny value);
 
 #define ABRA_CL_CALL_0(func, nargs, rty) \
     ((rty (*)(size_t, AbraAny**)) ((*(AbraFn*)&(func)).value->fn))(nargs, (*(AbraFn*)&(func)).value->captures)
@@ -111,20 +122,24 @@ extern AbraAny AbraNone;
 
 AbraString AbraNone__toString(size_t nargs, AbraAny self);
 AbraBool AbraNone__eq(size_t nargs, AbraAny self, AbraAny other);
+AbraInt AbraNone__hash(size_t nargs, AbraAny self);
 
 #define AbraInt_make(v) ((AbraInt) { .type_id=TYPE_ID_INT, .value=v })
 AbraString AbraInt__toString(size_t nargs, AbraInt self);
 AbraBool AbraInt__eq(size_t nargs, AbraInt self, AbraAny other);
+AbraInt AbraInt__hash(size_t nargs, AbraInt self);
 
 #define AbraFloat_make(v) ((AbraFloat) { .type_id=TYPE_ID_FLOAT, .value=v })
 AbraString AbraFloat__toString(size_t nargs, AbraFloat self);
 AbraBool AbraFloat__eq(size_t nargs, AbraFloat self, AbraAny other);
+AbraInt AbraFloat__hash(size_t nargs, AbraFloat self);
 
 extern AbraBool ABRA_BOOL_TRUE;
 extern AbraBool ABRA_BOOL_FALSE;
 #define AbraBool_make(v) ((AbraBool)(v ? ABRA_BOOL_TRUE : ABRA_BOOL_FALSE))
 AbraString AbraBool__toString(size_t nargs, AbraBool self);
 AbraBool AbraBool__eq(size_t nargs, AbraBool self, AbraAny other);
+AbraInt AbraBool__hash(size_t nargs, AbraBool self);
 
 AbraString AbraString_make(size_t len, char* chars);
 AbraString AbraString_empty_string();
@@ -133,6 +148,7 @@ AbraString AbraString_slice(AbraString self, int64_t index);
 AbraString AbraString_get_range(AbraString self, int64_t start, int64_t end);
 AbraString AbraString__toString(size_t nargs, AbraString self);
 AbraBool AbraString__eq(size_t nargs, AbraString self, AbraAny other);
+AbraInt AbraString__hash(size_t nargs, AbraString self);
 AbraString AbraString__concat(size_t nargs, AbraString self, AbraAny other);
 
 AbraArray AbraArray_make_with_capacity(size_t length, size_t cap);
@@ -142,14 +158,32 @@ AbraArray AbraArray_slice(AbraArray self, int64_t index);
 AbraArray AbraArray_get_range(AbraArray self, int64_t start, int64_t end);
 AbraString AbraArray__toString(size_t nargs, AbraArray self);
 AbraBool AbraArray__eq(size_t nargs, AbraArray self, AbraAny other);
+AbraInt AbraArray__hash(size_t nargs, AbraArray self);
 
 AbraTuple AbraTuple_make(size_t length, ...);
 AbraAny AbraTuple_get(AbraTuple self, int64_t index);
 AbraString AbraTuple__toString(size_t nargs, AbraTuple self);
 AbraBool AbraTuple__eq(size_t nargs, AbraTuple self, AbraAny other);
+AbraInt AbraTuple__hash(size_t nargs, AbraTuple self);
 
-AbraUnit _0_0_0__println(size_t nargs, AbraArray args);
+AbraSet AbraSet_make();
+AbraUnit AbraSet_insert(AbraSet self, AbraAny value);
+AbraString AbraSet__toString(size_t nargs, AbraSet self);
+AbraBool AbraSet__eq(size_t nargs, AbraSet self, AbraAny other);
+AbraInt AbraSet__hash(size_t nargs, AbraSet self);
+
+AbraMap AbraMap_make();
+AbraUnit AbraMap_set(AbraMap self, AbraAny key, AbraAny value);
+AbraAny AbraMap_get(AbraMap self, AbraAny key);
+AbraString AbraMap__toString(size_t nargs, AbraMap self);
+AbraBool AbraMap__eq(size_t nargs, AbraMap self, AbraAny other);
+AbraInt AbraMap__hash(size_t nargs, AbraMap self);
+
+AbraUnit _0_0_0__print(size_t nargs, AbraArray args);
+AbraUnit _0_0_1__println(size_t nargs, AbraArray args);
 
 void entrypoint__0();
+
+#include "hashmap.h"
 
 #endif // ABRA_PRELUDE_H

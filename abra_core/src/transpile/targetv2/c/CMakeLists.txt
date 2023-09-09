@@ -7,4 +7,6 @@ include_directories(abra/include)
 
 add_executable(abra_lang
         abra/include/prelude.h
-        abra/src/prelude.c)
+        abra/src/prelude.c
+        abra/include/hashmap.h
+        abra/src/hashmap.c)

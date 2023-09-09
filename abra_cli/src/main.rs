@@ -201,6 +201,7 @@ fn cmd_compile_to_c_and_run2(opts: CompileOpts) -> Result<(), ()> {
 
     let clang_output = Command::new("clang")
         .arg(&c_src_dir.join("prelude.c"))
+        .arg(&c_src_dir.join("hashmap.c"))
         .arg(&output_file_path)
         .arg("-o").arg(&exec_path)
         .arg(format!("-I{}", c_include_dir.to_str().unwrap()))

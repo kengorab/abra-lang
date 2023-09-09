@@ -1,13 +1,7 @@
 #include "prelude.h"
 
-#include "stdio.h"
-#include "stdint.h"
-#include "inttypes.h"
-#include "stdbool.h"
-#include "stdlib.h"
 #include "assert.h"
 #include "string.h"
-#include "stdarg.h"
 
 // For consistency, these are provided by the generated code
 extern const size_t TYPE_ID_NONE;
@@ -17,6 +11,8 @@ extern const size_t TYPE_ID_BOOL;
 extern const size_t TYPE_ID_STRING;
 extern const size_t TYPE_ID_ARRAY;
 extern const size_t TYPE_ID_TUPLE;
+extern const size_t TYPE_ID_SET;
+extern const size_t TYPE_ID_MAP;
 
 VTableEntry* VTABLE;
 
@@ -52,6 +48,13 @@ AbraBool prelude__eq(AbraAny value, AbraAny other, bool neg) {
   AbraBool res = eq_fn(2, value, other);
   if (neg) return AbraBool_make(!res.value);
   return res;
+}
+
+AbraInt prelude__hash(AbraAny value) {
+  VTableEntry entry = VTABLE[value.type_id];
+  AbraInt (* hash_fn)(size_t, AbraAny) = (AbraInt (*)(size_t, AbraAny)) (entry.fn_hash.fn);
+
+  return hash_fn(1, value);
 }
 
 AbraAny* copy_to_heap(AbraAny* value) {
@@ -108,18 +111,25 @@ AbraAny AbraNone = INITIALIZED_IN_ENTRYPOINT;
 
 static AbraString ABRA_NONE_STRING = INITIALIZED_IN_ENTRYPOINT;
 
-AbraString AbraNone__toString(size_t nargs, AbraAny _self) {
+AbraString AbraNone__toString(size_t nargs, AbraAny self) {
+  assert(self.type_id == TYPE_ID_NONE);
   assert(nargs == 1);
-  (void) _self;
 
   return ABRA_NONE_STRING;
 }
 
-AbraBool AbraNone__eq(size_t nargs, AbraAny _self, AbraAny other) {
+AbraBool AbraNone__eq(size_t nargs, AbraAny self, AbraAny other) {
+  assert(self.type_id == TYPE_ID_NONE);
   assert(nargs == 2);
-  (void) _self;
 
   return AbraBool_make(IS_NONE(other));
+}
+
+AbraInt AbraNone__hash(size_t nargs, AbraAny self) {
+  assert(self.type_id == TYPE_ID_NONE);
+  assert(nargs == 1);
+
+  return AbraInt_make(INT64_MAX);
 }
 
 // AbraInt methods
@@ -128,6 +138,7 @@ AbraFnObj INT_METHODS[] = {
 };
 
 AbraString AbraInt__toString(size_t nargs, AbraInt self) {
+  assert(self.type_id == TYPE_ID_INT);
   assert(nargs == 1);
 
   int len = snprintf(NULL, 0, "%" PRId64, self.value);
@@ -138,6 +149,7 @@ AbraString AbraInt__toString(size_t nargs, AbraInt self) {
 }
 
 AbraBool AbraInt__eq(size_t nargs, AbraInt self, AbraAny other) {
+  assert(self.type_id == TYPE_ID_INT);
   assert(nargs == 2);
 
   if (other.type_id == TYPE_ID_INT)
@@ -148,12 +160,20 @@ AbraBool AbraInt__eq(size_t nargs, AbraInt self, AbraAny other) {
   return ABRA_BOOL_FALSE;
 }
 
+AbraInt AbraInt__hash(size_t nargs, AbraInt self) {
+  assert(self.type_id == TYPE_ID_INT);
+  assert(nargs == 1);
+
+  return AbraInt_make(self.value * 7781);
+}
+
 // AbraFloat methods
 AbraFnObj FLOAT_METHODS[] = {
     METHOD(AbraFloat__toString, 1, 1)
 };
 
 AbraString AbraFloat__toString(size_t nargs, AbraFloat self) {
+  assert(self.type_id == TYPE_ID_FLOAT);
   assert(nargs == 1);
 
   int len = snprintf(NULL, 0, "%f", self.value);
@@ -172,6 +192,7 @@ AbraString AbraFloat__toString(size_t nargs, AbraFloat self) {
 }
 
 AbraBool AbraFloat__eq(size_t nargs, AbraFloat self, AbraAny other) {
+  assert(self.type_id == TYPE_ID_FLOAT);
   assert(nargs == 2);
 
   if (other.type_id == TYPE_ID_INT)
@@ -180,6 +201,13 @@ AbraBool AbraFloat__eq(size_t nargs, AbraFloat self, AbraAny other) {
     return AbraBool_make(self.value == REINTERPRET_CAST(other, AbraFloat).value);
 
   return ABRA_BOOL_FALSE;
+}
+
+AbraInt AbraFloat__hash(size_t nargs, AbraFloat self) {
+  assert(self.type_id == TYPE_ID_FLOAT);
+  assert(nargs == 1);
+
+  return AbraInt_make((int64_t) (self.value * 1000000000000 * 839));
 }
 
 // AbraBool methods
@@ -194,13 +222,22 @@ static AbraString ABRA_BOOL_TRUE_STRING = INITIALIZED_IN_ENTRYPOINT;
 static AbraString ABRA_BOOL_FALSE_STRING = INITIALIZED_IN_ENTRYPOINT;
 
 AbraString AbraBool__toString(size_t nargs, AbraBool self) {
+  assert(self.type_id == TYPE_ID_BOOL);
   assert(nargs == 1);
   return self.value ? ABRA_BOOL_TRUE_STRING : ABRA_BOOL_FALSE_STRING;
 }
 
 AbraBool AbraBool__eq(size_t nargs, AbraBool self, AbraAny other) {
+  assert(self.type_id == TYPE_ID_BOOL);
   assert(nargs == 2);
   return AbraBool_make(other.type_id == TYPE_ID_BOOL && self.value == REINTERPRET_CAST(other, AbraBool).value);
+}
+
+AbraInt AbraBool__hash(size_t nargs, AbraBool self) {
+  assert(self.type_id == TYPE_ID_BOOL);
+  assert(nargs == 1);
+
+  return AbraInt_make(self.value ? 42643801 : 43112609);
 }
 
 // AbraString methods
@@ -220,6 +257,8 @@ AbraString AbraString_empty_string() {
 }
 
 AbraString AbraString_get(AbraString self, int64_t index) {
+  assert(self.type_id == TYPE_ID_STRING);
+
   int64_t len = self.value->length;
   if (index < -len || index >= len) return AbraString_empty_string();
 
@@ -231,6 +270,8 @@ AbraString AbraString_get(AbraString self, int64_t index) {
 }
 
 AbraString AbraString_slice(AbraString self, int64_t index) {
+  assert(self.type_id == TYPE_ID_STRING);
+
   if (index >= self.value->length) return AbraString_empty_string();
   if (index < 0) index = 0;
 
@@ -245,6 +286,8 @@ AbraString AbraString_slice(AbraString self, int64_t index) {
 }
 
 AbraString AbraString_get_range(AbraString self, int64_t start, int64_t end) {
+  assert(self.type_id == TYPE_ID_STRING);
+
   int64_t len = self.value->length;
   RANGE_ENDPOINTS(start, end, len);
 
@@ -259,10 +302,14 @@ AbraString AbraString_get_range(AbraString self, int64_t start, int64_t end) {
 }
 
 AbraString AbraString__toString(size_t nargs, AbraString self) {
+  assert(self.type_id == TYPE_ID_STRING);
+  assert(nargs == 1);
+
   return self;
 }
 
 AbraBool AbraString__eq(size_t nargs, AbraString self, AbraAny other) {
+  assert(self.type_id == TYPE_ID_STRING);
   assert(nargs == 2);
 
   return AbraBool_make(
@@ -272,7 +319,20 @@ AbraBool AbraString__eq(size_t nargs, AbraString self, AbraAny other) {
   );
 }
 
+AbraInt AbraString__hash(size_t nargs, AbraString self) {
+  assert(self.type_id == TYPE_ID_STRING);
+  assert(nargs == 1);
+
+  // Adapted from djb2 hashing algorithm
+  size_t hash = 5381;
+  for (size_t i = 0; i < self.value->length; ++i) {
+    hash = ((hash << 5) + hash) ^ self.value->chars[i];
+  }
+  return AbraInt_make((int64_t) hash);
+}
+
 AbraString AbraString__concat(size_t nargs, AbraString self, AbraAny other) {
+  assert(self.type_id == TYPE_ID_STRING);
   assert(nargs == 2);
 
   AbraString repr = prelude__tostring(other);
@@ -304,6 +364,8 @@ AbraArray AbraArray_empty_array() {
 }
 
 AbraUnit AbraArray_set(AbraArray self, int64_t index, AbraAny item) {
+  assert(self.type_id == TYPE_ID_ARRAY);
+
   int64_t len = self.value->length;
   if (index < -len) return;
   if (index < 0) index += len;
@@ -327,6 +389,8 @@ AbraUnit AbraArray_set(AbraArray self, int64_t index, AbraAny item) {
 }
 
 AbraAny AbraArray_get(AbraArray self, int64_t index) {
+  assert(self.type_id == TYPE_ID_ARRAY);
+
   int64_t len = self.value->length;
   if (index < -len || index >= len) return AbraNone;
 
@@ -335,6 +399,8 @@ AbraAny AbraArray_get(AbraArray self, int64_t index) {
 }
 
 AbraArray AbraArray_slice(AbraArray self, int64_t index) {
+  assert(self.type_id == TYPE_ID_ARRAY);
+
   if (index >= self.value->length) return AbraArray_empty_array();
   if (index < 0) index = 0;
 
@@ -352,6 +418,8 @@ AbraArray AbraArray_slice(AbraArray self, int64_t index) {
 }
 
 AbraArray AbraArray_get_range(AbraArray self, int64_t start, int64_t end) {
+  assert(self.type_id == TYPE_ID_ARRAY);
+
   int64_t len = self.value->length;
   RANGE_ENDPOINTS(start, end, len);
 
@@ -365,8 +433,18 @@ AbraArray AbraArray_get_range(AbraArray self, int64_t start, int64_t end) {
   return new_array;
 }
 
-AbraString sequence_to_string(int64_t length, AbraAny* items) {
-  if (length == 0) return AbraString_make(2, "[]");
+AbraString sequence_to_string(int64_t length, AbraAny* items, char pad_start, char start, char end) {
+  if (length == 0) {
+    size_t len = pad_start ? 3 : 2;
+    char* empty = malloc(sizeof(char) * len + 1);
+    memset(empty, 0, len + 1);
+    size_t cursor = 0;
+    if (pad_start != 0)
+      empty[cursor++] = (char)pad_start;
+    empty[cursor] = start;
+    empty[cursor + 1] = end;
+    return AbraString_make(len, empty);
+  }
 
   typedef struct item_t {
       AbraString repr;
@@ -374,7 +452,7 @@ AbraString sequence_to_string(int64_t length, AbraAny* items) {
   } item_t;
 
   item_t strings[length];
-  size_t total_length = 2; // account for "[]"
+  size_t total_length = pad_start ? 3 : 2; // account for "[]", or for leading "#" in sets
   for (size_t i = 0; i < length; i++) {
     AbraAny item = items[i];
     AbraString repr = prelude__tostring(item);
@@ -393,11 +471,17 @@ AbraString sequence_to_string(int64_t length, AbraAny* items) {
   }
 
   char* res_str = malloc(sizeof(char) * total_length + 1);
-  res_str[0] = '[';
-  res_str[total_length - 1] = ']';
+  res_str[total_length - 1] = end;
   res_str[total_length] = 0;
 
-  char* ptr = res_str + 1;
+  char* ptr = res_str;
+  if (pad_start) {
+    *ptr = pad_start;
+    ptr++;
+  }
+  *ptr = start;
+  ptr++;
+
   for (int i = 0; i < length; i++) {
     bool item_is_string = strings[i].item_is_string;
     AbraString repr = strings[i].repr;
@@ -417,12 +501,14 @@ AbraString sequence_to_string(int64_t length, AbraAny* items) {
 }
 
 AbraString AbraArray__toString(size_t nargs, AbraArray self) {
+  assert(self.type_id == TYPE_ID_ARRAY);
   assert(nargs == 1);
 
-  return sequence_to_string(self.value->length, self.value->items);
+  return sequence_to_string(self.value->length, self.value->items, false, '[', ']');
 }
 
 AbraBool AbraArray__eq(size_t nargs, AbraArray self, AbraAny other) {
+  assert(self.type_id == TYPE_ID_ARRAY);
   assert(nargs == 2);
 
   if (other.type_id != TYPE_ID_ARRAY) return ABRA_BOOL_FALSE;
@@ -434,6 +520,18 @@ AbraBool AbraArray__eq(size_t nargs, AbraArray self, AbraAny other) {
   }
 
   return ABRA_BOOL_TRUE;
+}
+
+AbraInt AbraArray__hash(size_t nargs, AbraArray self) {
+  assert(self.type_id == TYPE_ID_ARRAY);
+  assert(nargs == 1);
+
+  // Adapted from djb2 hashing algorithm
+  size_t hash = 5381;
+  for (int i = 0; i < self.value->length; ++i) {
+    hash = ((hash << 5) + hash) ^ prelude__hash(self.value->items[i]).value;
+  }
+  return AbraInt_make(hash);
 }
 
 // AbraTuple methods
@@ -461,15 +559,14 @@ AbraAny AbraTuple_get(AbraTuple self, int64_t index) {
 }
 
 AbraString AbraTuple__toString(size_t nargs, AbraTuple self) {
+  assert(self.type_id == TYPE_ID_TUPLE);
   assert(nargs == 1);
 
-  AbraString repr = sequence_to_string(self.value->length, self.value->items);
-  repr.value->chars[0] = '(';
-  repr.value->chars[repr.value->length - 1] = ')';
-  return repr;
+  return sequence_to_string(self.value->length, self.value->items, false, '(', ')');
 }
 
 AbraBool AbraTuple__eq(size_t nargs, AbraTuple self, AbraAny other) {
+  assert(self.type_id == TYPE_ID_TUPLE);
   assert(nargs == 2);
 
   if (other.type_id != TYPE_ID_TUPLE) return ABRA_BOOL_FALSE;
@@ -483,7 +580,211 @@ AbraBool AbraTuple__eq(size_t nargs, AbraTuple self, AbraAny other) {
   return ABRA_BOOL_TRUE;
 }
 
-AbraUnit _0_0_0__println(size_t nargs, AbraArray args) {
+AbraInt AbraTuple__hash(size_t nargs, AbraTuple self) {
+  assert(self.type_id == TYPE_ID_TUPLE);
+  assert(nargs == 1);
+
+  // Adapted from djb2 hashing algorithm
+  size_t hash = 4253;
+  for (int i = 0; i < self.value->length; ++i) {
+    hash = ((hash << 5) + hash) ^ prelude__hash(self.value->items[i]).value;
+  }
+  return AbraInt_make(hash);
+}
+
+// AbraSet methods
+AbraFnObj SET_METHODS[] = {
+    METHOD(AbraSet__toString, 1, 1)
+};
+
+AbraSet AbraSet_make() {
+  hashmap_t h = new_hashmap();
+  hashmap_t* hh = malloc(sizeof(hashmap_t));
+  memcpy(hh, &h, sizeof(hashmap_t));
+  return (AbraSet) {.type_id=TYPE_ID_SET, .value=hh};
+}
+
+AbraUnit AbraSet_insert(AbraSet self, AbraAny value) {
+  hashmap_insert(self.value, value, REINTERPRET_CAST(ABRA_BOOL_TRUE, AbraAny));
+}
+
+AbraString AbraSet__toString(size_t nargs, AbraSet self) {
+  assert(self.type_id == TYPE_ID_SET);
+  assert(nargs == 1);
+
+  return sequence_to_string((int64_t) self.value->size, hashmap_keys(self.value), '#', '{', '}');
+}
+
+AbraBool AbraSet__eq(size_t nargs, AbraSet self, AbraAny _other) {
+  assert(self.type_id == TYPE_ID_SET);
+  assert(nargs == 2);
+
+  if (_other.type_id != TYPE_ID_SET) return ABRA_BOOL_FALSE;
+  AbraSet other = REINTERPRET_CAST(_other, AbraSet);
+
+  if (self.value->size != other.value->size) return ABRA_BOOL_FALSE;
+  AbraAny* self_keys = hashmap_keys(self.value);
+  for (size_t i = 0; i < self.value->size; i++) {
+    AbraAny other_value = hashmap_get(other.value, self_keys[i]);
+    if (other_value.type_id != TYPE_ID_BOOL) {
+      return ABRA_BOOL_FALSE;
+    }
+  }
+
+  return ABRA_BOOL_TRUE;
+}
+
+AbraInt AbraSet__hash(size_t nargs, AbraSet self) {
+  assert(self.type_id == TYPE_ID_SET);
+  assert(nargs == 1);
+
+  // Adapted from djb2 hashing algorithm
+  size_t hash = 4253;
+  AbraAny* keys = hashmap_keys(self.value);
+  for (int i = 0; i < self.value->size; ++i) {
+    AbraAny key = keys[i];
+    hash = ((hash << 5) + hash) ^ prelude__hash(key).value;
+  }
+  return AbraInt_make(hash);
+}
+
+// AbraMap methods
+AbraFnObj MAP_METHODS[] = {
+    METHOD(AbraMap__toString, 1, 1)
+};
+
+AbraMap AbraMap_make() {
+  hashmap_t h = new_hashmap();
+  hashmap_t* hh = malloc(sizeof(hashmap_t));
+  memcpy(hh, &h, sizeof(hashmap_t));
+  return (AbraMap) {.type_id=TYPE_ID_MAP, .value=hh};
+}
+
+AbraUnit AbraMap_set(AbraMap self, AbraAny key, AbraAny value) {
+  hashmap_insert(self.value, key, value);
+}
+
+AbraAny AbraMap_get(AbraMap self, AbraAny key) {
+  return hashmap_get(self.value, key);
+}
+
+AbraString AbraMap__toString(size_t nargs, AbraMap self) {
+  assert(self.type_id == TYPE_ID_MAP);
+  assert(nargs == 1);
+
+  size_t length = self.value->size;
+  if (length == 0) return AbraString_make(2, "{}");
+
+  typedef struct item_t {
+      AbraString key_repr;
+      AbraString val_repr;
+      bool key_is_string;
+      bool val_is_string;
+  } item_t;
+
+  AbraAny* keys = hashmap_keys(self.value);
+  item_t strings[length];
+  size_t total_length = 4; // account for "{ [items here] }"
+  for (size_t i = 0; i < length; i++) {
+    AbraAny key = keys[i];
+    AbraString key_repr = prelude__tostring(key);
+    AbraAny val = hashmap_get(self.value, key);
+    AbraString val_repr = prelude__tostring(val);
+
+    strings[i] = (item_t) {
+        .key_repr=key_repr,
+        .key_is_string=key.type_id == TYPE_ID_STRING,
+        .val_repr=val_repr,
+        .val_is_string=val.type_id == TYPE_ID_STRING,
+    };
+    total_length += key_repr.value->length;
+    if (key.type_id == TYPE_ID_STRING) {
+      total_length += 2; // account for '""'
+    }
+    total_length += val_repr.value->length;
+    if (val.type_id == TYPE_ID_STRING) {
+      total_length += 2; // account for '""'
+    }
+    total_length += 2; // account for ": "
+    if (i != length - 1) {
+      total_length += 2; // account for ", "
+    }
+  }
+
+  char* res_str = malloc(sizeof(char) * total_length + 1);
+  res_str[0] = '{';
+  res_str[1] = ' ';
+  res_str[total_length - 2] = ' ';
+  res_str[total_length - 1] = '}';
+  res_str[total_length] = 0;
+
+  char* ptr = res_str + 2;
+  for (int i = 0; i < length; i++) {
+    bool key_is_string = strings[i].key_is_string;
+    AbraString key_repr = strings[i].key_repr;
+    size_t len = key_repr.value->length;
+    if (key_is_string) memcpy(ptr++, "\"", 1);
+    memcpy(ptr, key_repr.value->chars, len);
+    ptr += len;
+    if (key_is_string) memcpy(ptr++, "\"", 1);
+
+    memcpy(ptr, ": ", 2);
+    ptr += 2;
+
+    bool val_is_string = strings[i].val_is_string;
+    AbraString val_repr = strings[i].val_repr;
+    len = val_repr.value->length;
+    if (val_is_string) memcpy(ptr++, "\"", 1);
+    memcpy(ptr, val_repr.value->chars, len);
+    ptr += len;
+    if (val_is_string) memcpy(ptr++, "\"", 1);
+
+    if (i < length - 1) {
+      memcpy(ptr, ", ", 2);
+      ptr += 2;
+    }
+  }
+
+  return AbraString_make(total_length, res_str);
+}
+
+AbraBool AbraMap__eq(size_t nargs, AbraMap self, AbraAny _other) {
+  assert(self.type_id == TYPE_ID_MAP);
+  assert(nargs == 2);
+
+  if (_other.type_id != TYPE_ID_MAP) return ABRA_BOOL_FALSE;
+  AbraMap other = REINTERPRET_CAST(_other, AbraMap);
+
+  if (self.value->size != other.value->size) return ABRA_BOOL_FALSE;
+  AbraAny* self_keys = hashmap_keys(self.value);
+  for (size_t i = 0; i < self.value->size; i++) {
+    AbraAny self_value = hashmap_get(self.value, self_keys[i]);
+    AbraAny other_value = hashmap_get(other.value, self_keys[i]);
+    if (!prelude__eq(self_value, other_value, false).value) {
+      return ABRA_BOOL_FALSE;
+    }
+  }
+
+  return ABRA_BOOL_TRUE;
+}
+
+AbraInt AbraMap__hash(size_t nargs, AbraMap self) {
+  assert(self.type_id == TYPE_ID_MAP);
+  assert(nargs == 1);
+
+  // Adapted from djb2 hashing algorithm
+  size_t hash = 4253;
+  AbraAny* keys = hashmap_keys(self.value);
+  for (int i = 0; i < self.value->size; ++i) {
+    AbraAny key = keys[i];
+    AbraAny val = hashmap_get(self.value, key);
+    hash = ((hash << 5) + hash) ^ prelude__hash(key).value;
+    hash = ((hash << 5) + hash) ^ prelude__hash(val).value;
+  }
+  return AbraInt_make(hash);
+}
+
+AbraUnit _0_0_0__print(size_t nargs, AbraArray args) {
   assert(nargs == 1);
 
   if (args.value->length == 0) {
@@ -499,6 +800,10 @@ AbraUnit _0_0_0__println(size_t nargs, AbraArray args) {
       printf(" ");
     }
   }
+}
+
+AbraUnit _0_0_1__println(size_t nargs, AbraArray args) {
+  _0_0_0__print(nargs, args);
   printf("\n");
 }
 
@@ -511,6 +816,8 @@ void entrypoint__0() {
   assert(sizeof(AbraString) == ABRA_ANY_SIZE);
   assert(sizeof(AbraArray) == ABRA_ANY_SIZE);
   assert(sizeof(AbraTuple) == ABRA_ANY_SIZE);
+  assert(sizeof(AbraSet) == ABRA_ANY_SIZE);
+  assert(sizeof(AbraMap) == ABRA_ANY_SIZE);
 
   // Pre-allocated cached values
   AbraNone = (AbraAny) { .type_id=TYPE_ID_NONE, .data=NULL };
@@ -520,11 +827,13 @@ void entrypoint__0() {
   ABRA_BOOL_TRUE_STRING = AbraString_make(4, "true");
   ABRA_BOOL_FALSE_STRING = AbraString_make(5, "false");
 
-  VTABLE[TYPE_ID_NONE] = (VTableEntry) { .fn_eq=METHOD(AbraNone__eq, 2, 2), .methods = NONE_METHODS };
-  VTABLE[TYPE_ID_INT] = (VTableEntry) { .fn_eq=METHOD(AbraInt__eq, 2, 2), .methods = INT_METHODS };
-  VTABLE[TYPE_ID_FLOAT] = (VTableEntry) { .fn_eq=METHOD(AbraFloat__eq, 2, 2), .methods = FLOAT_METHODS };
-  VTABLE[TYPE_ID_BOOL] = (VTableEntry) { .fn_eq=METHOD(AbraBool__eq, 2, 2), .methods = BOOL_METHODS };
-  VTABLE[TYPE_ID_STRING] = (VTableEntry) { .fn_eq=METHOD(AbraString__eq, 2, 2), .methods = STRING_METHODS };
-  VTABLE[TYPE_ID_ARRAY] = (VTableEntry) { .fn_eq=METHOD(AbraArray__eq, 2, 2), .methods = ARRAY_METHODS };
-  VTABLE[TYPE_ID_TUPLE] = (VTableEntry) { .fn_eq=METHOD(AbraTuple__eq, 2, 2), .methods = TUPLE_METHODS };
+  VTABLE[TYPE_ID_NONE]   = (VTableEntry) { .fn_eq=METHOD(AbraNone__eq, 2, 2),   .fn_hash=METHOD(AbraNone__hash, 1, 1),   .methods=NONE_METHODS };
+  VTABLE[TYPE_ID_INT]    = (VTableEntry) { .fn_eq=METHOD(AbraInt__eq, 2, 2),    .fn_hash=METHOD(AbraInt__hash, 1, 1),    .methods=INT_METHODS };
+  VTABLE[TYPE_ID_FLOAT]  = (VTableEntry) { .fn_eq=METHOD(AbraFloat__eq, 2, 2),  .fn_hash=METHOD(AbraFloat__hash, 1, 1),  .methods=FLOAT_METHODS };
+  VTABLE[TYPE_ID_BOOL]   = (VTableEntry) { .fn_eq=METHOD(AbraBool__eq, 2, 2),   .fn_hash=METHOD(AbraBool__hash, 1, 1),   .methods=BOOL_METHODS };
+  VTABLE[TYPE_ID_STRING] = (VTableEntry) { .fn_eq=METHOD(AbraString__eq, 2, 2), .fn_hash=METHOD(AbraString__hash, 1, 1), .methods=STRING_METHODS };
+  VTABLE[TYPE_ID_ARRAY]  = (VTableEntry) { .fn_eq=METHOD(AbraArray__eq, 2, 2),  .fn_hash=METHOD(AbraArray__hash, 1, 1),  .methods=ARRAY_METHODS };
+  VTABLE[TYPE_ID_TUPLE]  = (VTableEntry) { .fn_eq=METHOD(AbraTuple__eq, 2, 2),  .fn_hash=METHOD(AbraTuple__hash, 1, 1),  .methods=TUPLE_METHODS };
+  VTABLE[TYPE_ID_SET]    = (VTableEntry) { .fn_eq=METHOD(AbraSet__eq, 2, 2),    .fn_hash=METHOD(AbraSet__hash, 1, 1),    .methods=SET_METHODS };
+  VTABLE[TYPE_ID_MAP]    = (VTableEntry) { .fn_eq=METHOD(AbraMap__eq, 2, 2),    .fn_hash=METHOD(AbraMap__hash, 1, 1),    .methods=MAP_METHODS };
 }

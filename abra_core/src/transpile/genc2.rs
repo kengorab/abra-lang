@@ -60,6 +60,10 @@ impl<W: std::io::Write> CCompiler2<W> {
                     "AbraArray".to_string()
                 } else if *struct_id == project.prelude_tuple_struct_id {
                     "AbraTuple".to_string()
+                } else if *struct_id == project.prelude_set_struct_id {
+                    "AbraSet".to_string()
+                } else if *struct_id == project.prelude_map_struct_id {
+                    "AbraMap".to_string()
                 } else if *struct_id == project.prelude_option_struct_id {
                     self.get_type_name_by_id(project, &generic_ids[0])
                 } else if generic_ids.is_empty() {
@@ -185,12 +189,14 @@ impl<W: std::io::Write> CCompiler2<W> {
 
         self.emit_comment("Supply extern type_id constants for builtin prelude types");
         self.emit_line(format!("const size_t TYPE_ID_TUPLE = {};", project.prelude_tuple_struct_id.1));
+        self.emit_line(format!("const size_t TYPE_ID_NONE = {};", project.prelude_option_struct_id.1));
         self.emit_line(format!("const size_t TYPE_ID_INT = {};", project.prelude_int_struct_id.1));
         self.emit_line(format!("const size_t TYPE_ID_FLOAT = {};", project.prelude_float_struct_id.1));
         self.emit_line(format!("const size_t TYPE_ID_BOOL = {};", project.prelude_bool_struct_id.1));
         self.emit_line(format!("const size_t TYPE_ID_STRING = {};", project.prelude_string_struct_id.1));
         self.emit_line(format!("const size_t TYPE_ID_ARRAY = {};", project.prelude_array_struct_id.1));
-        self.emit_line(format!("const size_t TYPE_ID_NONE = {};", project.prelude_none_type_id.1));
+        self.emit_line(format!("const size_t TYPE_ID_SET = {};", project.prelude_set_struct_id.1));
+        self.emit_line(format!("const size_t TYPE_ID_MAP = {};", project.prelude_map_struct_id.1));
         self.emit_newline();
 
         for module in &project.modules {
@@ -618,8 +624,27 @@ impl<W: std::io::Write> CCompiler2<W> {
                 self.emit_line(format!("AbraTuple {} = AbraTuple_make({}, {});", handle, items.len(), item_handles));
                 handle
             }
-            TypedNode::Set { .. } => unimplemented!(),
-            TypedNode::Map { .. } => unimplemented!(),
+            TypedNode::Set { items, .. } => {
+                let handle = self.next_ssa_handle();
+                self.emit_line(format!("AbraSet {} = AbraSet_make();", handle));
+                for item in items {
+                    let item_handle = self.compile_expression(project, item);
+                    self.emit_line(format!("AbraSet_insert({}, REINTERPRET_CAST({}, AbraAny));", handle, item_handle));
+                }
+
+                handle
+            }
+            TypedNode::Map { items, .. } => {
+                let handle = self.next_ssa_handle();
+                self.emit_line(format!("AbraMap {} = AbraMap_make();", handle));
+                for (key, value) in items {
+                    let key_handle = self.compile_expression(project, key);
+                    let value_handle = self.compile_expression(project, value);
+                    self.emit_line(format!("AbraMap_set({}, REINTERPRET_CAST({}, AbraAny), REINTERPRET_CAST({}, AbraAny));", handle, key_handle, value_handle));
+                }
+
+                handle
+            }
             TypedNode::Identifier { var_id, .. } => {
                 let variable = project.get_var_by_id(var_id);
                 match variable.alias {
@@ -721,6 +746,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                     (Type::GenericInstance(struct_id, _), IndexingMode::Index(_)) if *struct_id == project.prelude_array_struct_id => ("AbraArray_get", "AbraAny"),
                     (Type::GenericInstance(struct_id, _), IndexingMode::Range(_, _)) if *struct_id == project.prelude_array_struct_id => ("AbraArray_get_range", "AbraArray"),
                     (Type::GenericInstance(struct_id, _), IndexingMode::Index(_)) if *struct_id == project.prelude_tuple_struct_id => ("AbraTuple_get", "AbraAny"),
+                    (Type::GenericInstance(struct_id, _), IndexingMode::Index(_)) if *struct_id == project.prelude_map_struct_id => ("AbraMap_get", "AbraAny"),
                     _ => unimplemented!(),
                 };
 
@@ -731,6 +757,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                             Type::Primitive(PrimitiveType::String) => format!("{}.value", idx_expr_handle),
                             Type::GenericInstance(struct_id, _) if *struct_id == project.prelude_array_struct_id => format!("{}.value", idx_expr_handle),
                             Type::GenericInstance(struct_id, _) if *struct_id == project.prelude_tuple_struct_id => format!("{}.value", idx_expr_handle),
+                            Type::GenericInstance(struct_id, _) if *struct_id == project.prelude_map_struct_id => format!("REINTERPRET_CAST({}, AbraAny)", idx_expr_handle),
                             _ => idx_expr_handle.0
                         }
                     }
@@ -786,10 +813,17 @@ impl<W: std::io::Write> CCompiler2<W> {
                         let target_type_id = target.as_ref().type_id();
                         let target_type = project.get_type_by_id(target_type_id);
                         let Type::GenericInstance(struct_id, _) = target_type else { unreachable!() };
-                        debug_assert!(*struct_id == project.prelude_array_struct_id);
+
                         let target_handle = self.compile_expression(project, target);
                         let index_handle = self.compile_expression(project, index);
-                        self.emit_line(format!("AbraArray_set(/*self:*/{}, /*idx:*/{}.value, /*item:*/REINTERPRET_CAST({}, AbraAny));", target_handle, index_handle, expr_handle));
+
+                        if *struct_id == project.prelude_array_struct_id {
+                            self.emit_line(format!("AbraArray_set(/*self:*/{}, /*idx:*/{}.value, /*item:*/REINTERPRET_CAST({}, AbraAny));", target_handle, index_handle, expr_handle));
+                        } else if *struct_id == project.prelude_map_struct_id {
+                            self.emit_line(format!("AbraMap_set(/*self:*/{}, /*key:*/REINTERPRET_CAST({}, AbraAny), /*value:*/REINTERPRET_CAST({}, AbraAny));", target_handle, index_handle, expr_handle));
+                        } else {
+                            unreachable!("No other types are indexable")
+                        }
                         expr_handle
                     }
                 }
@@ -908,5 +942,15 @@ mod test {
     #[test]
     fn closures() {
         run_test_file("closures.abra");
+    }
+
+    #[test]
+    fn maps() {
+        run_test_file("maps.abra");
+    }
+
+    #[test]
+    fn sets() {
+        run_test_file("sets.abra");
     }
 }
