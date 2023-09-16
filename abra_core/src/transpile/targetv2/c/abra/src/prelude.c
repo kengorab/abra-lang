@@ -97,9 +97,6 @@ inline AbraAny AbraFn_call_1(AbraFn fn, size_t nargs, AbraAny arg1) {
   return f(nargs, arg1);
 }
 
-#define METHOD(fn_name, min, max) \
-    ((AbraFnObj) { .is_closure = false, .fn = (Fn) &fn_name, .min_arity = min, .max_arity = max, .captures = (void*) 0 })
-
 #define INITIALIZED_IN_ENTRYPOINT {0}
 
 // AbraNone methods
@@ -335,7 +332,7 @@ AbraString AbraString__concat(size_t nargs, AbraString self, AbraAny other) {
   assert(self.type_id == TYPE_ID_STRING);
   assert(nargs == 2);
 
-  AbraString repr = prelude__tostring(other);
+  AbraString repr = PRELUDE_TOSTRING(other);
 
   size_t len = repr.value->length + self.value->length;
   char* concat = malloc(sizeof(char) * len + 1);
@@ -455,7 +452,7 @@ AbraString sequence_to_string(int64_t length, AbraAny* items, char pad_start, ch
   size_t total_length = pad_start ? 3 : 2; // account for "[]", or for leading "#" in sets
   for (size_t i = 0; i < length; i++) {
     AbraAny item = items[i];
-    AbraString repr = prelude__tostring(item);
+    AbraString repr = PRELUDE_TOSTRING(item);
 
     strings[i] = (item_t) {
         .repr=repr,
@@ -515,7 +512,7 @@ AbraBool AbraArray__eq(size_t nargs, AbraArray self, AbraAny other) {
   if (self.value->length != REINTERPRET_CAST(other, AbraArray).value->length) return ABRA_BOOL_FALSE;
 
   for (size_t i = 0; i < self.value->length; i++) {
-    if (!prelude__eq(self.value->items[i], REINTERPRET_CAST(other, AbraArray).value->items[i], false).value)
+    if (!PRELUDE_EQ(self.value->items[i], REINTERPRET_CAST(other, AbraArray).value->items[i]).value)
       return ABRA_BOOL_FALSE;
   }
 
@@ -529,7 +526,7 @@ AbraInt AbraArray__hash(size_t nargs, AbraArray self) {
   // Adapted from djb2 hashing algorithm
   size_t hash = 5381;
   for (int i = 0; i < self.value->length; ++i) {
-    hash = ((hash << 5) + hash) ^ prelude__hash(self.value->items[i]).value;
+    hash = ((hash << 5) + hash) ^ PRELUDE_HASH(self.value->items[i]).value;
   }
   return AbraInt_make(hash);
 }
@@ -573,7 +570,7 @@ AbraBool AbraTuple__eq(size_t nargs, AbraTuple self, AbraAny other) {
   if (self.value->length != REINTERPRET_CAST(other, AbraTuple).value->length) return ABRA_BOOL_FALSE;
 
   for (size_t i = 0; i < self.value->length; i++) {
-    if (!prelude__eq(self.value->items[i], REINTERPRET_CAST(other, AbraTuple).value->items[i], false).value)
+    if (!PRELUDE_EQ(self.value->items[i], REINTERPRET_CAST(other, AbraTuple).value->items[i]).value)
       return ABRA_BOOL_FALSE;
   }
 
@@ -587,7 +584,7 @@ AbraInt AbraTuple__hash(size_t nargs, AbraTuple self) {
   // Adapted from djb2 hashing algorithm
   size_t hash = 4253;
   for (int i = 0; i < self.value->length; ++i) {
-    hash = ((hash << 5) + hash) ^ prelude__hash(self.value->items[i]).value;
+    hash = ((hash << 5) + hash) ^ PRELUDE_HASH(self.value->items[i]).value;
   }
   return AbraInt_make(hash);
 }
@@ -643,7 +640,7 @@ AbraInt AbraSet__hash(size_t nargs, AbraSet self) {
   AbraAny* keys = hashmap_keys(self.value);
   for (int i = 0; i < self.value->size; ++i) {
     AbraAny key = keys[i];
-    hash = ((hash << 5) + hash) ^ prelude__hash(key).value;
+    hash = ((hash << 5) + hash) ^ PRELUDE_HASH(key).value;
   }
   return AbraInt_make(hash);
 }
@@ -687,9 +684,9 @@ AbraString AbraMap__toString(size_t nargs, AbraMap self) {
   size_t total_length = 4; // account for "{ [items here] }"
   for (size_t i = 0; i < length; i++) {
     AbraAny key = keys[i];
-    AbraString key_repr = prelude__tostring(key);
+    AbraString key_repr = PRELUDE_TOSTRING(key);
     AbraAny val = hashmap_get(self.value, key);
-    AbraString val_repr = prelude__tostring(val);
+    AbraString val_repr = PRELUDE_TOSTRING(val);
 
     strings[i] = (item_t) {
         .key_repr=key_repr,
@@ -760,7 +757,7 @@ AbraBool AbraMap__eq(size_t nargs, AbraMap self, AbraAny _other) {
   for (size_t i = 0; i < self.value->size; i++) {
     AbraAny self_value = hashmap_get(self.value, self_keys[i]);
     AbraAny other_value = hashmap_get(other.value, self_keys[i]);
-    if (!prelude__eq(self_value, other_value, false).value) {
+    if (!PRELUDE_EQ(self_value, other_value).value) {
       return ABRA_BOOL_FALSE;
     }
   }
@@ -778,8 +775,8 @@ AbraInt AbraMap__hash(size_t nargs, AbraMap self) {
   for (int i = 0; i < self.value->size; ++i) {
     AbraAny key = keys[i];
     AbraAny val = hashmap_get(self.value, key);
-    hash = ((hash << 5) + hash) ^ prelude__hash(key).value;
-    hash = ((hash << 5) + hash) ^ prelude__hash(val).value;
+    hash = ((hash << 5) + hash) ^ PRELUDE_HASH(key).value;
+    hash = ((hash << 5) + hash) ^ PRELUDE_HASH(val).value;
   }
   return AbraInt_make(hash);
 }
@@ -793,7 +790,7 @@ AbraUnit _0_0_0__print(size_t nargs, AbraArray args) {
   }
 
   for (size_t i = 0; i < args.value->length; i++) {
-    AbraString repr = prelude__tostring(args.value->items[i]);
+    AbraString repr = PRELUDE_TOSTRING(args.value->items[i]);
 
     printf("%s", repr.value->chars);
     if (i != args.value->length - 1) {
@@ -807,17 +804,15 @@ AbraUnit _0_0_1__println(size_t nargs, AbraArray args) {
   printf("\n");
 }
 
-#define ABRA_ANY_SIZE sizeof(AbraAny)
-
 void entrypoint__0() {
-  assert(sizeof(AbraInt) == ABRA_ANY_SIZE);
-  assert(sizeof(AbraFloat) == ABRA_ANY_SIZE);
-  assert(sizeof(AbraBool) == ABRA_ANY_SIZE);
-  assert(sizeof(AbraString) == ABRA_ANY_SIZE);
-  assert(sizeof(AbraArray) == ABRA_ANY_SIZE);
-  assert(sizeof(AbraTuple) == ABRA_ANY_SIZE);
-  assert(sizeof(AbraSet) == ABRA_ANY_SIZE);
-  assert(sizeof(AbraMap) == ABRA_ANY_SIZE);
+  assert(sizeof(AbraInt) == REQUIRED_VALUE_SIZE);
+  assert(sizeof(AbraFloat) == REQUIRED_VALUE_SIZE);
+  assert(sizeof(AbraBool) == REQUIRED_VALUE_SIZE);
+  assert(sizeof(AbraString) == REQUIRED_VALUE_SIZE);
+  assert(sizeof(AbraArray) == REQUIRED_VALUE_SIZE);
+  assert(sizeof(AbraTuple) == REQUIRED_VALUE_SIZE);
+  assert(sizeof(AbraSet) == REQUIRED_VALUE_SIZE);
+  assert(sizeof(AbraMap) == REQUIRED_VALUE_SIZE);
 
   // Pre-allocated cached values
   AbraNone = (AbraAny) { .type_id=TYPE_ID_NONE, .data=NULL };

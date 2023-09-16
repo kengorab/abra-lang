@@ -67,7 +67,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                 } else if *struct_id == project.prelude_option_struct_id {
                     self.get_type_name_by_id(project, &generic_ids[0])
                 } else if generic_ids.is_empty() {
-                    self.get_struct_enum_name(project, &TypeKind::Struct(*struct_id))
+                    self.get_struct_or_enum_name(project, &TypeKind::Struct(*struct_id))
                 } else {
                     let struct_ = project.get_struct_by_id(struct_id);
                     todo!("Unimplemented for struct {struct_:?}")
@@ -75,12 +75,12 @@ impl<W: std::io::Write> CCompiler2<W> {
             }
             Type::GenericEnumInstance(_, _, _) |
             Type::Function(_, _, _, _) => "AbraFn".to_string(),
-            Type::Type(kind) => self.get_struct_enum_name(project, kind),
+            Type::Type(kind) => self.get_struct_or_enum_name(project, kind),
             Type::ModuleAlias => todo!(),
         }
     }
 
-    fn get_struct_enum_name(&self, project: &Project, kind: &TypeKind) -> String {
+    fn get_struct_or_enum_name(&self, project: &Project, kind: &TypeKind) -> String {
         match kind {
             TypeKind::Struct(struct_id) => {
                 let StructId(ModuleId(m_id), s_id) = struct_id;
@@ -93,6 +93,10 @@ impl<W: std::io::Write> CCompiler2<W> {
                 format!("_{}_0_{}__{}", m_id, e_id, enum_.name)
             }
         }
+    }
+
+    fn get_ctor_fn_name(&self, project: &Project, struct_id: &StructId) -> String {
+        format!("{}_make", self.get_struct_or_enum_name(project, &TypeKind::Struct(*struct_id)))
     }
 
     fn get_module_entrypoint_name(&self, module: &TypedModule) -> String {
@@ -142,19 +146,142 @@ impl<W: std::io::Write> CCompiler2<W> {
 
     fn emit_fn_predecl(&mut self, project: &Project, func_id: &FuncId) {
         self.emit_fn_signature(project, func_id);
-        writeln!(self.output, ";").expect("Output should be able to be written to");
+        self.emit_line(";");
     }
 
     fn emit_struct_predecl(&mut self, project: &Project, struct_: &Struct) {
-        writeln!(self.output, "struct {};", self.get_struct_enum_name(project, &TypeKind::Struct(struct_.id))).expect("Output should be able to be written to");
+        let type_kind = TypeKind::Struct(struct_.id);
+        let type_name = self.get_struct_or_enum_name(project, &type_kind);
+        let scalar_type_id = self.compute_scalar_type_id(project, &struct_.id);
+        self.emit_line(format!("const size_t TYPE_ID_{} = {};", &type_name, scalar_type_id));
+        self.emit_line(format!("struct {}_Inner;", &type_name));
+        self.emit_line(format!("typedef struct {} {{\nsize_t type_id;\nstruct {}_Inner* value;\n}} {};", &type_name, &type_name, &type_name));
+        self.emit_ctor_fn_signature(project, struct_);
+        self.emit_line(";");
+        self.emit_tostring_fn_signature(project, &type_kind);
+        self.emit_line(";");
+        self.emit_eq_fn_signature(project, &type_kind);
+        self.emit_line(";");
+        self.emit_hash_fn_signature(project, &type_kind);
+        self.emit_line(";");
+    }
+
+    fn compute_scalar_type_id(&self, project: &Project, struct_id: &StructId) -> usize {
+        let StructId(ModuleId(m_id), s_id) = struct_id;
+        let mut id = 0usize;
+        for i in 0..*m_id {
+            id += project.modules[i].structs.len();
+        }
+        id + s_id
+    }
+
+    fn emit_ctor_fn_signature(&mut self, project: &Project, struct_: &Struct) {
+        let struct_type_name = self.get_struct_or_enum_name(project, &TypeKind::Struct(struct_.id));
+        self.emit(format!("{} {}_make(", &struct_type_name, &struct_type_name));
+        for (idx, field) in struct_.fields.iter().enumerate() {
+            self.emit(format!("{} {}", self.get_type_name_by_id(project, &field.type_id), &field.name));
+            if idx != struct_.fields.len() - 1 {
+                self.emit(", ");
+            }
+        }
+        self.emit(")");
+    }
+
+    fn method_name<S: AsRef<str>>(&self, project: &Project, type_kind: &TypeKind, name: S) -> String {
+        let type_name = self.get_struct_or_enum_name(project, type_kind);
+        format!("{}__{}", type_name, name.as_ref())
+    }
+
+    fn emit_tostring_fn_signature(&mut self, project: &Project, type_kind: &TypeKind) {
+        let type_name = self.get_struct_or_enum_name(project, type_kind);
+        self.emit(format!("AbraString {}(size_t nargs, {} self)", self.method_name(project, type_kind, "toString"), &type_name));
+    }
+
+    fn emit_eq_fn_signature(&mut self, project: &Project, type_kind: &TypeKind) {
+        let type_name = self.get_struct_or_enum_name(project, type_kind);
+        self.emit(format!("AbraBool {}(size_t nargs, {} self, AbraAny _other)", self.method_name(project, type_kind, "eq"), &type_name));
+    }
+
+    fn emit_hash_fn_signature(&mut self, project: &Project, type_kind: &TypeKind) {
+        let type_name = self.get_struct_or_enum_name(project, type_kind);
+        self.emit(format!("AbraInt {}(size_t nargs, {} self)", self.method_name(project, type_kind, "hash"), &type_name));
     }
 
     fn emit_struct_decl(&mut self, project: &Project, struct_: &Struct) {
-        writeln!(self.output, "typedef struct {} {{", self.get_struct_enum_name(project, &TypeKind::Struct(struct_.id))).expect("Output should be able to be written to");
+        let type_kind = TypeKind::Struct(struct_.id);
+        let struct_type_name = self.get_struct_or_enum_name(project, &type_kind);
+        self.emit_line(format!("struct {}_Inner {{", struct_type_name));
         for field in &struct_.fields {
-            writeln!(self.output, "  {} {};", self.get_type_name_by_id(project, &field.type_id), &field.name).expect("Output should be able to be written to");
+            self.emit_line(format!("  {} {};", self.get_type_name_by_id(project, &field.type_id), &field.name));
         }
-        writeln!(self.output, "}} {};", self.get_struct_enum_name(project, &TypeKind::Struct(struct_.id))).expect("Output should be able to be written to");
+        self.emit_line("};");
+
+        self.emit_comment(format!("{} methods", &struct_.name));
+        self.emit_line(format!("AbraFnObj {}_METHODS[] = {{", &struct_type_name.to_uppercase()));
+        self.emit_line(format!("METHOD({}, 1, 1)", self.method_name(project, &type_kind, "toString")));
+        self.emit_line("};");
+
+        // Emit constructor
+        self.emit_ctor_fn_signature(project, struct_);
+        self.emit_line("{");
+        self.emit_line(format!("struct {}_Inner* value = malloc(sizeof(struct {}_Inner));", &struct_type_name, &struct_type_name));
+        for field in &struct_.fields {
+            if let Some(default_value_node) = &field.default_value {
+                self.emit_line(format!("if (!IS_NONE({})) {{\nvalue->{} = {};\n}}\nelse\n{{", &field.name, &field.name, &field.name));
+                let handle = self.compile_expression(project, default_value_node);
+                self.emit_line(format!("value->{} = {};\n}}", &field.name, &handle));
+            } else {
+                self.emit_line(format!("value->{} = {};", &field.name, &field.name));
+            }
+        }
+        self.emit_line(format!("return ({}){{ .type_id=TYPE_ID_{}, .value=value }};", &struct_type_name, &struct_type_name));
+        self.emit_line("}");
+
+        // Emit toString
+        self.emit_tostring_fn_signature(project, &type_kind);
+        self.emit_line("{");
+        self.emit_line(format!("assert(self.type_id == TYPE_ID_{});\nassert(nargs == 1);", &struct_type_name));
+        for field in &struct_.fields {
+            self.emit_line(format!("AbraString {}_repr = PRELUDE_TOSTRING(self.value->{});", &field.name, &field.name));
+        }
+        let repr_len = struct_.name.len()
+            + 2 // account for '(' and ')'
+            + struct_.fields.iter().map(|f| f.name.len() + 2 /* account for ": " */ + if f.type_id == PRELUDE_STRING_TYPE_ID { 2 /* account for '""' */} else { 0 }).sum::<usize>()
+            + (struct_.fields.len() - 1) * 2; // account for ", " between fields
+        self.emit_line(format!("size_t len = {} + {};", repr_len, struct_.fields.iter().map(|f| format!("{}_repr.value->length", &f.name)).join(" + ")));
+        self.emit_line("char* chars = malloc(len + 1);");
+        self.emit_line(format!(
+            "snprintf(chars, len + 1, \"{}({})\", {});",
+            &struct_.name,
+            struct_.fields.iter().map(|f| if f.type_id == PRELUDE_STRING_TYPE_ID { format!("{}: \\\"%s\\\"", &f.name) } else { format!("{}: %s", &f.name) }).join(", "),
+            struct_.fields.iter().map(|f| format!("{}_repr.value->chars", &f.name)).join(", ")
+        ));
+        self.emit_line("return AbraString_make(len, chars);");
+        self.emit_line("}");
+
+        // Emit eq
+        self.emit_eq_fn_signature(project, &type_kind);
+        self.emit_line("{");
+        self.emit_line(format!("assert(self.type_id == TYPE_ID_{});\nassert(nargs == 2);", &struct_type_name));
+        self.emit_line(format!("if (_other.type_id != TYPE_ID_{}) return ABRA_BOOL_FALSE;", &struct_type_name));
+        self.emit_line(format!("{} other = REINTERPRET_CAST(_other, {});", &struct_type_name, &struct_type_name));
+        for field in &struct_.fields {
+            self.emit_line(format!("if (!PRELUDE_EQ(self.value->{}, other.value->{}).value) return ABRA_BOOL_FALSE;", &field.name, &field.name));
+        }
+        self.emit_line("return ABRA_BOOL_TRUE;");
+        self.emit_line("}");
+
+        // Emit hash
+        self.emit_hash_fn_signature(project, &type_kind);
+        self.emit_line("{");
+        self.emit_line(format!("assert(self.type_id == TYPE_ID_{});\nassert(nargs == 1);", &struct_type_name));
+        self.emit_line("size_t hash = 5381;");
+        self.emit_line(format!("hash = ((hash << 5) + hash) ^ TYPE_ID_{};", &struct_type_name));
+        for field in &struct_.fields {
+            self.emit_line(format!("hash = ((hash << 5) + hash) ^ PRELUDE_HASH(self.value->{}).value;", &field.name));
+        }
+        self.emit_line("return AbraInt_make((int64_t) hash);");
+        self.emit_line("}");
 
         for func_id in &struct_.methods {
             let function = project.get_func_by_id(func_id);
@@ -164,7 +291,7 @@ impl<W: std::io::Write> CCompiler2<W> {
     }
 
     fn emit_enum_predecl(&mut self, project: &Project, enum_: &Enum) {
-        writeln!(self.output, "enum {};", self.get_struct_enum_name(project, &TypeKind::Enum(enum_.id))).expect("Output should be able to be written to");
+        self.emit_line(format!("enum {};", self.get_struct_or_enum_name(project, &TypeKind::Enum(enum_.id))));
     }
 
     fn emit_main_function(&mut self, project: &Project) {
@@ -184,7 +311,8 @@ impl<W: std::io::Write> CCompiler2<W> {
     // --- EMITTER LOGIC END ---
 
     pub fn generate(&mut self, project: Project) {
-        self.emit_line("#include \"math.h\"\n");
+        self.emit_line("#include \"math.h\"");
+        self.emit_line("#include \"assert.h\"\n");
         self.emit_line("#include \"prelude.h\"\n");
 
         self.emit_comment("Supply extern type_id constants for builtin prelude types");
@@ -290,6 +418,25 @@ impl<W: std::io::Write> CCompiler2<W> {
 
     fn compile_toplevel_code(&mut self, project: &Project, module: &TypedModule) {
         self.emit_line(&format!("void {}() {{", self.get_module_entrypoint_name(&module)));
+        self.emit_comment("Assert generated types are of the proper expected size");
+        for struct_ in &module.structs {
+            self.emit_line(format!("assert(sizeof({}) == REQUIRED_VALUE_SIZE);", self.get_struct_or_enum_name(project, &TypeKind::Struct(struct_.id))));
+        }
+        self.emit_line("");
+
+        for struct_ in &module.structs {
+            let type_kind = TypeKind::Struct(struct_.id);
+            let struct_type_name = self.get_struct_or_enum_name(project, &type_kind);
+            self.emit_line(format!(
+                "VTABLE[TYPE_ID_{}] = (VTableEntry){{ .fn_eq=METHOD({}, 2, 2), .fn_hash=METHOD({}, 1, 1), .methods={}_METHODS }};",
+                struct_type_name,
+                self.method_name(project, &type_kind, "eq"),
+                self.method_name(project, &type_kind, "hash"),
+                struct_type_name.to_uppercase(),
+            ))
+        }
+        self.emit_line("");
+
         for node in &module.code {
             self.compile_statement(project, node);
         }
@@ -590,14 +737,9 @@ impl<W: std::io::Write> CCompiler2<W> {
                     BinaryOp::Neq | BinaryOp::Eq => {
                         format!("prelude__eq(REINTERPRET_CAST({}, AbraAny), REINTERPRET_CAST({}, AbraAny), {})", left_handle, right_handle, *op == BinaryOp::Neq)
                     }
-                    BinaryOp::AddEq |
-                    BinaryOp::SubEq |
-                    BinaryOp::MulEq |
-                    BinaryOp::DivEq |
-                    BinaryOp::ModEq |
-                    BinaryOp::AndEq |
-                    BinaryOp::OrEq |
-                    BinaryOp::CoalesceEq => todo!()
+                    BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::AndEq | BinaryOp::OrEq | BinaryOp::CoalesceEq => {
+                        unreachable!("Assignment operators expressions are pre-transformed")
+                    }
                 };
 
                 let handle = self.next_ssa_handle();
@@ -672,19 +814,38 @@ impl<W: std::io::Write> CCompiler2<W> {
             }
             TypedNode::NoneValue { .. } => SSAHandle("AbraNone".to_string()),
             TypedNode::Invocation { target, arguments, type_id, .. } => {
-                let Type::Function(parameter_type_ids, _, _, return_type_id) = project.get_type_by_id(&target.as_ref().type_id()) else { unreachable!() };
+                let target_type_id = target.as_ref().type_id();
+                let ty = project.get_type_by_id(&target_type_id);
+                let mut instantiation_struct_id = None;
+                let (parameter_type_ids, return_type_id) = match ty {
+                    Type::Function(parameter_type_ids, _, _, return_type_id) => (parameter_type_ids.clone(), return_type_id),
+                    Type::Type(TypeKind::Struct(struct_id)) => {
+                        let struct_ = project.get_struct_by_id(struct_id);
+                        instantiation_struct_id = Some(*struct_id);
+                        let ctor_fn_parameter_type_ids = struct_.fields.iter().map(|f| f.type_id).collect_vec();
+                        (ctor_fn_parameter_type_ids, target_type_id)
+                    }
+                    _ => unimplemented!()
+                };
                 debug_assert!(parameter_type_ids.len() == arguments.len());
                 let return_type_name = self.get_type_name_by_id(project, return_type_id);
 
                 let num_arguments = arguments.len();
                 let mut arg_values = Vec::with_capacity(num_arguments);
-                for (argument, parameter_type_id) in arguments.iter().zip(parameter_type_ids) {
+                for (argument, parameter_type_id) in arguments.iter().zip(&parameter_type_ids) {
                     let handle = if let Some(argument) = argument {
                         self.compile_expression(project, &argument).0
                     } else {
-                        format!("REINTERPRET_CAST(AbraNone, {})", self.get_type_name_by_id(project, parameter_type_id))
+                        format!("REINTERPRET_CAST(AbraNone, {})", self.get_type_name_by_id(project, &parameter_type_id))
                     };
                     arg_values.push(handle);
+                }
+
+                if let Some(struct_id) = instantiation_struct_id {
+                    let handle = self.next_ssa_handle();
+                    let type_name = self.get_type_name_by_id(project, type_id);
+                    self.emit_line(format!("{} {} = {}({});", type_name, &handle, self.get_ctor_fn_name(project, &struct_id), arg_values.join(",")));
+                    return handle;
                 }
 
                 if let TypedNode::Identifier { var_id, .. } = &**target {
@@ -847,7 +1008,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                 let variable = project.get_var_by_id(var_id);
                 self.emit_line(format!("{}.value->captures[{}] = (AbraAny*){}_ref;", &handle, &idx, &variable.name));
             }
-            return handle
+            return handle;
         };
 
         self.emit_line(format!("AbraFn {} = AbraFn_make((Fn)&{}, {}, {});", &handle, fn_name, min_arity, max_arity));
@@ -952,5 +1113,10 @@ mod test {
     #[test]
     fn sets() {
         run_test_file("sets.abra");
+    }
+
+    #[test]
+    fn types() {
+        run_test_file("types.abra");
     }
 }

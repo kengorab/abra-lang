@@ -1,0 +1,37 @@
+type A {
+  i: Int
+  b: Bool
+  f: Float
+  s: String
+}
+
+val a1 = A(i: 1, b: true, f: 2.34, s: "hello")
+/// Expect: A(i: 1, b: true, f: 2.34, s: "hello")
+println(a1)
+
+val a2 = A(i: 2, b: true, f: 2.34, s: "hello")
+/// Expect: true false
+println(a1 == a1, a1 == a2)
+
+/// Expect: #{A(i: 1, b: true, f: 2.34, s: "hello"), A(i: 2, b: true, f: 2.34, s: "hello")}
+println(#{a1, a1, a2, a2})
+
+// Default field values
+func f1(): Int {
+  println("called f1")
+  4
+}
+type B {
+  i1: Int
+  i2: Int = f1()
+}
+
+val b1 = B(i1: 6)
+/// Expect: called f1
+
+val b2 = B(i2: 12, i1: 6)
+/// Expect: B(i1: 6, i2: 4) B(i1: 6, i2: 12)
+println(b1, b2)
+
+/// Expect: false
+println(a1 == b1)

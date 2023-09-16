@@ -15,6 +15,8 @@ typedef struct AbraAny {
     void* data;
 } AbraAny;
 
+#define REQUIRED_VALUE_SIZE sizeof(AbraAny)
+
 typedef void (*Fn)(void);
 typedef struct AbraFnObj {
     bool is_closure;
@@ -33,6 +35,10 @@ typedef struct VTableEntry {
     AbraFnObj* methods;
 } VTableEntry;
 void init_vtable(size_t num_types);
+extern VTableEntry* VTABLE;
+
+#define METHOD(fn_name, min, max) \
+    ((AbraFnObj) { .is_closure = false, .fn = (Fn) &fn_name, .min_arity = min, .max_arity = max, .captures = (void*) 0 })
 
 #define REINTERPRET_CAST(v, T) (*(T*)&(v))
 
@@ -94,6 +100,10 @@ typedef struct AbraMap {
 AbraString prelude__tostring(AbraAny value);
 AbraBool prelude__eq(AbraAny value, AbraAny other, bool neg);
 AbraInt prelude__hash(AbraAny value);
+
+#define PRELUDE_TOSTRING(v) (prelude__tostring(REINTERPRET_CAST((v), AbraAny)))
+#define PRELUDE_EQ(v, o) (prelude__eq(REINTERPRET_CAST((v), AbraAny), REINTERPRET_CAST((o), AbraAny), false))
+#define PRELUDE_HASH(v) (prelude__hash(REINTERPRET_CAST((v), AbraAny)))
 
 #define ABRA_CL_CALL_0(func, nargs, rty) \
     ((rty (*)(size_t, AbraAny**)) ((*(AbraFn*)&(func)).value->fn))(nargs, (*(AbraFn*)&(func)).value->captures)
