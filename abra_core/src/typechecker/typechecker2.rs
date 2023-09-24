@@ -640,6 +640,57 @@ pub enum Type {
     ModuleAlias,
 }
 
+impl Type {
+    pub fn get_field<'a>(&self, project: &'a Project, field_idx: usize) -> Option<(&'a String, &'a TypeId)> {
+        match self {
+            Type::Primitive(PrimitiveType::Unit) |
+            Type::Primitive(PrimitiveType::Any) => None,
+            Type::Primitive(PrimitiveType::Int) => {
+                let struct_field = &project.get_struct_by_id(&project.prelude_int_struct_id).fields[field_idx];
+                Some((&struct_field.name, &struct_field.type_id))
+            }
+            Type::Primitive(PrimitiveType::Float) => {
+                let struct_field = &project.get_struct_by_id(&project.prelude_float_struct_id).fields[field_idx];
+                Some((&struct_field.name, &struct_field.type_id))
+            }
+            Type::Primitive(PrimitiveType::Bool) => {
+                let struct_field = &project.get_struct_by_id(&project.prelude_bool_struct_id).fields[field_idx];
+                Some((&struct_field.name, &struct_field.type_id))
+            }
+            Type::Primitive(PrimitiveType::String) => {
+                let struct_field = &project.get_struct_by_id(&project.prelude_string_struct_id).fields[field_idx];
+                Some((&struct_field.name, &struct_field.type_id))
+            }
+            Type::Generic(_, _) => None,
+            Type::GenericInstance(struct_id, _) => {
+                let struct_field = &project.get_struct_by_id(struct_id).fields[field_idx];
+                Some((&struct_field.name, &struct_field.type_id))
+            }
+            Type::GenericEnumInstance(_, _, _) |
+            Type::Function(_, _, _, _) |
+            Type::Type(_) |
+            Type::ModuleAlias => todo!()
+        }
+    }
+
+    pub fn get_method<'a>(&self, project: &'a Project, method_idx: usize) -> Option<FuncId> {
+        match self {
+            Type::Primitive(PrimitiveType::Unit) |
+            Type::Primitive(PrimitiveType::Any) => None,
+            Type::Primitive(PrimitiveType::Int) => Some(project.get_struct_by_id(&project.prelude_int_struct_id).methods[method_idx]),
+            Type::Primitive(PrimitiveType::Float) => Some(project.get_struct_by_id(&project.prelude_float_struct_id).methods[method_idx]),
+            Type::Primitive(PrimitiveType::Bool) => Some(project.get_struct_by_id(&project.prelude_bool_struct_id).methods[method_idx]),
+            Type::Primitive(PrimitiveType::String) => Some(project.get_struct_by_id(&project.prelude_string_struct_id).methods[method_idx]),
+            Type::Generic(_, _) => None,
+            Type::GenericInstance(struct_id, _) => Some(project.get_struct_by_id(struct_id).methods[method_idx]),
+            Type::GenericEnumInstance(_, _, _) |
+            Type::Function(_, _, _, _) |
+            Type::Type(_) |
+            Type::ModuleAlias => todo!()
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ScopeId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 
@@ -819,6 +870,8 @@ pub enum TypedNode {
 
     // Statements
     FuncDeclaration(FuncId),
+    TypeDeclaration(StructId),
+    EnumDeclaration(EnumId),
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
     ForLoop { token: Token, binding: BindingPattern, binding_var_ids: Vec<VarId>, index_var_id: Option<VarId>, iterator: Box<TypedNode>, body: Vec<TypedNode> },
     WhileLoop { token: Token, condition: Box<TypedNode>, condition_var_id: Option<VarId>, body: Vec<TypedNode> },
@@ -852,6 +905,8 @@ impl TypedNode {
 
             // Statements
             TypedNode::FuncDeclaration(_) |
+            TypedNode::TypeDeclaration(_) |
+            TypedNode::EnumDeclaration(_) |
             TypedNode::BindingDeclaration { .. } |
             TypedNode::ForLoop { .. } |
             TypedNode::WhileLoop { .. } |
@@ -931,7 +986,9 @@ impl TypedNode {
             }
 
             // Statements
-            TypedNode::FuncDeclaration(_) => todo!(),
+            TypedNode::FuncDeclaration(_) |
+            TypedNode::TypeDeclaration(_) |
+            TypedNode::EnumDeclaration(_) => todo!(),
             TypedNode::BindingDeclaration { token, pattern, expr, .. } => {
                 let start = token.get_range();
                 if let Some(expr) = expr {
@@ -2638,10 +2695,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 AstNode::TypeDecl(_, decl_node) => {
                     let struct_id = struct_ids.pop_front().expect("There should be a struct_id for each type declaration in this block");
                     self.typecheck_struct_pass_2(struct_id, decl_node)?;
+
+                    let current_module = self.current_module_mut();
+                    current_module.code.push(TypedNode::TypeDeclaration(struct_id));
                 }
                 AstNode::EnumDecl(_, decl_node) => {
                     let enum_id = enum_ids.pop_front().expect("There should be an enum_id for each enum declaration in this block");
                     self.typecheck_enum_pass_2(enum_id, decl_node)?;
+
+                    let current_module = self.current_module_mut();
+                    current_module.code.push(TypedNode::EnumDeclaration(enum_id));
                 }
                 node => {
                     let typed_node = self.typecheck_statement(node, None)?;

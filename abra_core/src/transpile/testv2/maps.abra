@@ -55,3 +55,7 @@ println(m5[{ a: 1 }], m5[{ b:2 }])
 println({ a: 1, b: 2 } == { "b": 2, "a": 1})
 /// Expect: true
 println({ a: "1", b: "2" } != { b: 2, a: 1})
+
+// Fields
+/// Expect: 0 2
+println({}.size, { a: 2, b: 3 }.size)

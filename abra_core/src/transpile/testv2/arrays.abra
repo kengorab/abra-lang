@@ -1,35 +1,11 @@
-/// Strings
+/// Expect: []
+val empty: String[] = []
+println(empty)
 
-val s = "hello"
+/// Expect: ["a", "b"]
+println(["a", "b"])
 
-/// Expect: h e l l o
-println(s[0], s[1], s[2], s[3], s[4])
-
-/// Expect: o l l e h
-println(s[-1], s[-2], s[-3], s[-4], s[-5])
-
-/// Expect:   end
-println(s[5], s[-6], "end")
-
-/// Expect: ell ell
-println(s[1:4], s[-4:4])
-
-/// Expect:  end
-println(s[1:1], "end")
-
-val a = 1
-val b = 4
-
-/// Expect: ell ell
-println(s[a:b], s[-b:b])
-
-/// Expect: ello h
-println(s[1:], s[:1])
-
-/// Expect: ello h
-println(s[a:], s[:a])
-
-/// Arrays
+// Indexing
 
 val arr = [1, 2, 3, 4, 5]
 
@@ -59,3 +35,20 @@ println(arr[1:], arr[:1])
 
 /// Expect: [2, 3, 4, 5] [1]
 println(arr[x:], arr[:x])
+
+// Index assignment
+(() => {
+  val arr = ["one", "two"]
+  /// Expect: ["one", "two"]
+  println(arr)
+  /// Expect: three four ["three", "four"]
+  println(
+    arr[0] = "three",
+    arr[1] = "four",
+    arr
+  )
+})()
+
+// Fields
+/// Expect: 5
+println(arr.length)

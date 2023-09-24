@@ -1,3 +1,4 @@
+// Constructing
 type A {
   i: Int
   b: Bool
@@ -35,3 +36,29 @@ println(b1, b2)
 
 /// Expect: false
 println(a1 == b1)
+
+// Fields
+
+type C {
+  i: Int
+  s: String
+}
+
+val c1 = C(i: 123, s: "abc")
+/// Expect: 123 abc
+println(c1.i, c1.s)
+
+// Methods
+
+val capturedVal = "hello"
+type D {
+  s: String
+  i: Int
+
+  func f1(self): String = self.s + self.i
+  func f2(self, s: String): String = self.s + s
+  func f3(self): String = self.s + capturedVal
+}
+val d = D(s: "hey", i: 12)
+/// Expect: hey12 hey! heyhello
+println(d.f1(), d.f2("!"), d.f3())

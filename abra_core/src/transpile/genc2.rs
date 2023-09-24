@@ -2,16 +2,7 @@ use std::fmt::{Display, Formatter};
 use itertools::Itertools;
 use crate::lexer::tokens::Token;
 use crate::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
-use crate::typechecker::typechecker2::{AssignmentKind, Enum, EnumId, FuncId, Function, ModuleId, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedModule, TypedNode, TypeId, TypeKind, Variable, VariableAlias};
-
-fn function_name(func: &Function) -> String {
-    let FuncId(ScopeId(ModuleId(m_id), s_id), f_id) = func.id;
-    format!("_{}_{}_{}__{}", m_id, s_id, f_id, func.name)
-}
-
-fn closure_name(func: &Function) -> String {
-    format!("{}_v_", function_name(func))
-}
+use crate::typechecker::typechecker2::{AccessorKind, AssignmentKind, Enum, EnumId, FuncId, Function, ModuleId, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedModule, TypedNode, TypeId, TypeKind, Variable, VariableAlias};
 
 #[derive(Clone)]
 struct SSAHandle(String);
@@ -47,6 +38,10 @@ impl<W: std::io::Write> CCompiler2<W> {
 
     fn get_type_name_by_id(&self, project: &Project, type_id: &TypeId) -> String {
         let ty = project.get_type_by_id(type_id);
+        self.get_type_name(project, ty)
+    }
+
+    fn get_type_name(&self, project: &Project, ty: &Type) -> String {
         match ty {
             Type::Primitive(PrimitiveType::Unit) => "AbraUnit".to_string(),
             Type::Primitive(PrimitiveType::Any) => "AbraAny".to_string(),
@@ -95,6 +90,25 @@ impl<W: std::io::Write> CCompiler2<W> {
         }
     }
 
+    fn function_name(&self, project: &Project, func: &Function, container_type: Option<&Type>) -> String {
+        let FuncId(ScopeId(ModuleId(m_id), s_id), f_id) = func.id;
+
+        if let Some(ty) = container_type {
+            self.method_name(project, ty, &func.name)
+        } else {
+            format!("_{}_{}_{}__{}", m_id, s_id, f_id, func.name)
+        }
+    }
+
+    fn method_name<S: AsRef<str>>(&self, project: &Project, ty: &Type, name: S) -> String {
+        let type_name = self.get_type_name(project, ty);
+        format!("{}__{}", type_name, name.as_ref())
+    }
+
+    fn closure_name(&self, project: &Project, func: &Function, container_type: Option<&Type>) -> String {
+        format!("{}_v_", self.function_name(project, func, container_type))
+    }
+
     fn get_ctor_fn_name(&self, project: &Project, struct_id: &StructId) -> String {
         format!("{}_make", self.get_struct_or_enum_name(project, &TypeKind::Struct(*struct_id)))
     }
@@ -121,10 +135,9 @@ impl<W: std::io::Write> CCompiler2<W> {
         writeln!(self.output, "// {}", comment.as_ref()).expect("Output should be able to be written to");
     }
 
-    fn emit_fn_signature(&mut self, project: &Project, func_id: &FuncId) {
-        let function = project.get_func_by_id(func_id);
+    fn emit_fn_signature(&mut self, project: &Project, function: &Function, container_type: Option<&Type>) {
         let ret_type = self.get_type_name_by_id(project, &function.return_type_id);
-        let fn_name = function_name(&function);
+        let fn_name = self.function_name(project, &function, container_type);
         let params = if function.captured_vars.is_empty() {
             vec!["size_t nargs".to_string()]
         } else {
@@ -144,13 +157,20 @@ impl<W: std::io::Write> CCompiler2<W> {
         write!(self.output, "{} {}({})", ret_type, fn_name, params).expect("Output should be able to be written to");
     }
 
-    fn emit_fn_predecl(&mut self, project: &Project, func_id: &FuncId) {
-        self.emit_fn_signature(project, func_id);
+    fn emit_fn_predecl(&mut self, project: &Project, function: &Function, container_type: Option<&Type>) {
+        self.emit_fn_signature(project, function, container_type);
         self.emit_line(";");
+
+        if !function.captured_vars.is_empty() {
+            self.emit_comment(format!("Closure value for function {}", self.function_name(project, function, container_type)));
+            self.emit_line(format!("AbraFn {};", self.closure_name(project, function, container_type)));
+        }
     }
 
     fn emit_struct_predecl(&mut self, project: &Project, struct_: &Struct) {
         let type_kind = TypeKind::Struct(struct_.id);
+        let ty = Type::Type(type_kind);
+
         let type_name = self.get_struct_or_enum_name(project, &type_kind);
         let scalar_type_id = self.compute_scalar_type_id(project, &struct_.id);
         self.emit_line(format!("const size_t TYPE_ID_{} = {};", &type_name, scalar_type_id));
@@ -158,12 +178,16 @@ impl<W: std::io::Write> CCompiler2<W> {
         self.emit_line(format!("typedef struct {} {{\nsize_t type_id;\nstruct {}_Inner* value;\n}} {};", &type_name, &type_name, &type_name));
         self.emit_ctor_fn_signature(project, struct_);
         self.emit_line(";");
-        self.emit_tostring_fn_signature(project, &type_kind);
+        self.emit_tostring_fn_signature(project, &ty);
         self.emit_line(";");
-        self.emit_eq_fn_signature(project, &type_kind);
+        self.emit_eq_fn_signature(project, &ty);
         self.emit_line(";");
-        self.emit_hash_fn_signature(project, &type_kind);
+        self.emit_hash_fn_signature(project, &ty);
         self.emit_line(";");
+        for func_id in &struct_.methods {
+            let function = project.get_func_by_id(func_id);
+            self.emit_fn_predecl(project, function, Some(&ty));
+        }
     }
 
     fn compute_scalar_type_id(&self, project: &Project, struct_id: &StructId) -> usize {
@@ -187,28 +211,24 @@ impl<W: std::io::Write> CCompiler2<W> {
         self.emit(")");
     }
 
-    fn method_name<S: AsRef<str>>(&self, project: &Project, type_kind: &TypeKind, name: S) -> String {
-        let type_name = self.get_struct_or_enum_name(project, type_kind);
-        format!("{}__{}", type_name, name.as_ref())
+    fn emit_tostring_fn_signature(&mut self, project: &Project, ty: &Type) {
+        let type_name = self.get_type_name(project, ty);
+        self.emit(format!("AbraString {}(size_t nargs, {} self)", self.method_name(project, ty, "toString"), &type_name));
     }
 
-    fn emit_tostring_fn_signature(&mut self, project: &Project, type_kind: &TypeKind) {
-        let type_name = self.get_struct_or_enum_name(project, type_kind);
-        self.emit(format!("AbraString {}(size_t nargs, {} self)", self.method_name(project, type_kind, "toString"), &type_name));
+    fn emit_eq_fn_signature(&mut self, project: &Project, ty: &Type) {
+        let type_name = self.get_type_name(project, ty);
+        self.emit(format!("AbraBool {}(size_t nargs, {} self, AbraAny _other)", self.method_name(project, ty, "eq"), &type_name));
     }
 
-    fn emit_eq_fn_signature(&mut self, project: &Project, type_kind: &TypeKind) {
-        let type_name = self.get_struct_or_enum_name(project, type_kind);
-        self.emit(format!("AbraBool {}(size_t nargs, {} self, AbraAny _other)", self.method_name(project, type_kind, "eq"), &type_name));
-    }
-
-    fn emit_hash_fn_signature(&mut self, project: &Project, type_kind: &TypeKind) {
-        let type_name = self.get_struct_or_enum_name(project, type_kind);
-        self.emit(format!("AbraInt {}(size_t nargs, {} self)", self.method_name(project, type_kind, "hash"), &type_name));
+    fn emit_hash_fn_signature(&mut self, project: &Project, ty: &Type) {
+        let type_name = self.get_type_name(project, ty);
+        self.emit(format!("AbraInt {}(size_t nargs, {} self)", self.method_name(project, ty, "hash"), &type_name));
     }
 
     fn emit_struct_decl(&mut self, project: &Project, struct_: &Struct) {
         let type_kind = TypeKind::Struct(struct_.id);
+        let ty = Type::Type(type_kind);
         let struct_type_name = self.get_struct_or_enum_name(project, &type_kind);
         self.emit_line(format!("struct {}_Inner {{", struct_type_name));
         for field in &struct_.fields {
@@ -218,7 +238,7 @@ impl<W: std::io::Write> CCompiler2<W> {
 
         self.emit_comment(format!("{} methods", &struct_.name));
         self.emit_line(format!("AbraFnObj {}_METHODS[] = {{", &struct_type_name.to_uppercase()));
-        self.emit_line(format!("METHOD({}, 1, 1)", self.method_name(project, &type_kind, "toString")));
+        self.emit_line(format!("METHOD({}, 1, 1)", self.method_name(project, &ty, "toString")));
         self.emit_line("};");
 
         // Emit constructor
@@ -238,7 +258,7 @@ impl<W: std::io::Write> CCompiler2<W> {
         self.emit_line("}");
 
         // Emit toString
-        self.emit_tostring_fn_signature(project, &type_kind);
+        self.emit_tostring_fn_signature(project, &ty);
         self.emit_line("{");
         self.emit_line(format!("assert(self.type_id == TYPE_ID_{});\nassert(nargs == 1);", &struct_type_name));
         for field in &struct_.fields {
@@ -246,7 +266,7 @@ impl<W: std::io::Write> CCompiler2<W> {
         }
         let repr_len = struct_.name.len()
             + 2 // account for '(' and ')'
-            + struct_.fields.iter().map(|f| f.name.len() + 2 /* account for ": " */ + if f.type_id == PRELUDE_STRING_TYPE_ID { 2 /* account for '""' */} else { 0 }).sum::<usize>()
+            + struct_.fields.iter().map(|f| f.name.len() + 2 /* account for ": " */ + if f.type_id == PRELUDE_STRING_TYPE_ID { 2 /* account for '""' */ } else { 0 }).sum::<usize>()
             + (struct_.fields.len() - 1) * 2; // account for ", " between fields
         self.emit_line(format!("size_t len = {} + {};", repr_len, struct_.fields.iter().map(|f| format!("{}_repr.value->length", &f.name)).join(" + ")));
         self.emit_line("char* chars = malloc(len + 1);");
@@ -260,7 +280,7 @@ impl<W: std::io::Write> CCompiler2<W> {
         self.emit_line("}");
 
         // Emit eq
-        self.emit_eq_fn_signature(project, &type_kind);
+        self.emit_eq_fn_signature(project, &ty);
         self.emit_line("{");
         self.emit_line(format!("assert(self.type_id == TYPE_ID_{});\nassert(nargs == 2);", &struct_type_name));
         self.emit_line(format!("if (_other.type_id != TYPE_ID_{}) return ABRA_BOOL_FALSE;", &struct_type_name));
@@ -272,7 +292,7 @@ impl<W: std::io::Write> CCompiler2<W> {
         self.emit_line("}");
 
         // Emit hash
-        self.emit_hash_fn_signature(project, &type_kind);
+        self.emit_hash_fn_signature(project, &ty);
         self.emit_line("{");
         self.emit_line(format!("assert(self.type_id == TYPE_ID_{});\nassert(nargs == 1);", &struct_type_name));
         self.emit_line("size_t hash = 5381;");
@@ -284,9 +304,7 @@ impl<W: std::io::Write> CCompiler2<W> {
         self.emit_line("}");
 
         for func_id in &struct_.methods {
-            let function = project.get_func_by_id(func_id);
-            if !function.captured_vars.is_empty() { todo!("Need to implement closures") }
-            self.emit_fn_predecl(project, func_id);
+            self.compile_function(project, func_id, Some(&ty));
         }
     }
 
@@ -356,16 +374,16 @@ impl<W: std::io::Write> CCompiler2<W> {
             for function in &scope.funcs {
                 if function.has_self { continue; }
 
-                self.emit_fn_predecl(project, &function.id);
-                if !function.captured_vars.is_empty() {
-                    self.emit_comment(format!("Closure value for function {}", function_name(function)));
-                    self.emit_line(format!("AbraFn {};", closure_name(function)));
-                }
+                // Passing container_type=None since functions with `self` are skipped above
+                self.emit_fn_predecl(project, &function, None);
             }
         }
         for scope in &module.scopes {
             for function in &scope.funcs {
-                self.compile_function(project, &function.id, false);
+                if function.has_self { continue; }
+
+                // Passing container_type=None since functions with `self` are skipped above
+                self.compile_function(project, &function.id, None);
             }
         }
 
@@ -375,13 +393,11 @@ impl<W: std::io::Write> CCompiler2<W> {
         }
     }
 
-    fn compile_function(&mut self, project: &Project, func_id: &FuncId, allow_method: bool) {
+    fn compile_function(&mut self, project: &Project, func_id: &FuncId, container_type: Option<&Type>) {
+        let function = project.get_func_by_id(func_id);
         let prev_fn = self.current_fn.replace(*func_id);
 
-        let function = project.get_func_by_id(func_id);
-        if function.has_self && !allow_method { return; }
-
-        self.emit_fn_signature(project, func_id);
+        self.emit_fn_signature(project, function, container_type);
         self.emit_line("{");
 
         if !function.captured_vars.is_empty() {
@@ -427,11 +443,13 @@ impl<W: std::io::Write> CCompiler2<W> {
         for struct_ in &module.structs {
             let type_kind = TypeKind::Struct(struct_.id);
             let struct_type_name = self.get_struct_or_enum_name(project, &type_kind);
+
+            let ty = Type::Type(type_kind);
             self.emit_line(format!(
                 "VTABLE[TYPE_ID_{}] = (VTableEntry){{ .fn_eq=METHOD({}, 2, 2), .fn_hash=METHOD({}, 1, 1), .methods={}_METHODS }};",
                 struct_type_name,
-                self.method_name(project, &type_kind, "eq"),
-                self.method_name(project, &type_kind, "hash"),
+                self.method_name(project, &ty, "eq"),
+                self.method_name(project, &ty, "hash"),
                 struct_type_name.to_uppercase(),
             ))
         }
@@ -451,9 +469,22 @@ impl<W: std::io::Write> CCompiler2<W> {
                 let function = project.get_func_by_id(func_id);
                 if function.captured_vars.is_empty() { return; }
 
-                let wrapped = self.wrap_function(project, &function.id);
-                self.emit_line(format!("{} = {};", closure_name(function), wrapped));
+                let wrapped = self.wrap_function(project, &function.id, None);
+                self.emit_line(format!("{} = {};", self.closure_name(project, function, None), wrapped));
             }
+            TypedNode::TypeDeclaration(struct_id) => {
+                let struct_ = project.get_struct_by_id(struct_id);
+                let ty = Type::Type(TypeKind::Struct(*struct_id));
+                self.emit_comment("here");
+                for func_id in &struct_.methods {
+                    let function = project.get_func_by_id(func_id);
+                    if function.captured_vars.is_empty() { continue; }
+
+                    let wrapped = self.wrap_function(project, &function.id, Some(&ty));
+                    self.emit_line(format!("{} = {};", self.closure_name(project, function, Some(&ty)), wrapped));
+                }
+            }
+            TypedNode::EnumDeclaration(_enum_id) => todo!(),
             TypedNode::BindingDeclaration { expr, vars, pattern, .. } => {
                 if let Some(expr) = expr {
                     let expr_handle = self.compile_expression(project, expr);
@@ -807,7 +838,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                         // passing around a function as a value. If the former, the underlying c function will simply be invoked (see
                         // implementation in the TypedNode::Invocation compilation step); if the latter, then we need to wrap up the
                         // c function in an AbraFn so it can be passed around as a value.
-                        self.wrap_function(project, &func_id)
+                        self.wrap_function(project, &func_id, None)
                     }
                     VariableAlias::Type(_) => unimplemented!(),
                 }
@@ -829,6 +860,9 @@ impl<W: std::io::Write> CCompiler2<W> {
                 };
                 debug_assert!(parameter_type_ids.len() == arguments.len());
                 let return_type_name = self.get_type_name_by_id(project, return_type_id);
+                let arg_types = parameter_type_ids.iter().map(|param_type_id| {
+                    format!("{}", self.get_type_name_by_id(project, param_type_id))
+                }).collect_vec();
 
                 let num_arguments = arguments.len();
                 let mut arg_values = Vec::with_capacity(num_arguments);
@@ -848,35 +882,80 @@ impl<W: std::io::Write> CCompiler2<W> {
                     return handle;
                 }
 
-                if let TypedNode::Identifier { var_id, .. } = &**target {
-                    let variable = project.get_var_by_id(var_id);
-                    if let VariableAlias::Function(func_id) = &variable.alias {
-                        let handle = if *type_id != PRELUDE_UNIT_TYPE_ID {
+                match &**target {
+                    TypedNode::Identifier { var_id, .. } => {
+                        let variable = project.get_var_by_id(var_id);
+                        if let VariableAlias::Function(func_id) = &variable.alias {
+                            let handle = if *type_id != PRELUDE_UNIT_TYPE_ID {
+                                let handle = self.next_ssa_handle();
+                                self.emit(format!("{} {} = ", self.get_type_name_by_id(project, type_id), handle));
+                                Some(handle)
+                            } else {
+                                None
+                            };
+
+                            let function = project.get_func_by_id(func_id);
+                            if !function.captured_vars.is_empty() {
+                                self.emit(format!("ABRA_CL_CALL_{}({}, ", function.params.len(), self.closure_name(project, function, None)));
+                                self.emit(vec![num_arguments.to_string(), return_type_name]
+                                    .into_iter()
+                                    .chain(arg_values.iter().zip(arg_types).map(|(v, ty)| format!("{ty}, {v}")))
+                                    .join(", ")
+                                );
+                            } else {
+                                self.emit(format!("{}(", self.function_name(project, function, None)));
+                                self.emit(vec![num_arguments.to_string()].into_iter().chain(arg_values).join(", "));
+                            }
+                            self.emit_line(");");
+
+                            return handle.unwrap_or_default();
+                        }
+                    }
+                    TypedNode::Accessor { target, kind, member_idx, is_opt_safe, .. } => {
+                        debug_assert!(!*is_opt_safe, "todo");
+
+                        let target_type_id = target.type_id();
+                        let target_type = project.get_type_by_id(target_type_id);
+                        let target_handle = self.compile_expression(project, target);
+
+                        let func_id = match kind {
+                            AccessorKind::Field => unreachable!(),
+                            AccessorKind::Method => target_type.get_method(project, *member_idx),
+                            AccessorKind::StaticMethod |
+                            AccessorKind::EnumVariant => todo!()
+                        };
+                        let Some(func_id) = func_id else { unreachable!() };
+                        let function = project.get_func_by_id(&func_id);
+                        let return_type_id = function.return_type_id;
+
+                        let result_handle = if return_type_id != PRELUDE_UNIT_TYPE_ID {
                             let handle = self.next_ssa_handle();
-                            self.emit(format!("{} {} = ", self.get_type_name_by_id(project, type_id), handle));
+                            self.emit(format!("{} {} = ", self.get_type_name_by_id(project, &return_type_id), handle));
                             Some(handle)
                         } else {
                             None
                         };
 
-                        let function = project.get_func_by_id(func_id);
-                        if !function.captured_vars.is_empty() {
-                            self.emit(format!("ABRA_CL_CALL_{}({}, ", function.params.len(), closure_name(function)));
-                            self.emit(vec![num_arguments.to_string(), return_type_name].into_iter().chain(arg_values).join(", "));
+                        if !(function.captured_vars.is_empty()) {
+                            self.emit(format!("ABRA_CL_CALL_{}({}, ", function.params.len(), self.closure_name(project, function, Some(target_type))));
+                            // self.emit(vec![(num_arguments + 1).to_string(), return_type_name, target_handle.0].into_iter().chain(arg_values).join(", "));
+                            self.emit(vec![num_arguments.to_string(), return_type_name, self.get_type_name_by_id(project, target_type_id), target_handle.0]
+                                .into_iter()
+                                .chain(arg_values.iter().zip(arg_types).map(|(v, ty)| format!("{ty}, {v}")))
+                                .join(", ")
+                            );
                         } else {
-                            self.emit(format!("{}(", function_name(function)));
-                            self.emit(vec![num_arguments.to_string()].into_iter().chain(arg_values).join(", "));
+                            self.emit(format!("{}(", self.method_name(project, target_type, &function.name)));
+                            self.emit(vec![(num_arguments + 1).to_string(), target_handle.0].into_iter().chain(arg_values).join(", "));
                         }
                         self.emit_line(");");
 
-                        return handle.unwrap_or_default();
+                        return result_handle.unwrap_or_default();
                     }
+                    _ => {}
                 }
 
                 let target_handle = self.compile_expression(project, &*target);
-                let arg_types = parameter_type_ids.iter().map(|param_type_id| {
-                    format!("{}", self.get_type_name_by_id(project, param_type_id))
-                }).collect_vec();
 
                 let handle = if *type_id != PRELUDE_UNIT_TYPE_ID {
                     let handle = self.next_ssa_handle();
@@ -894,7 +973,37 @@ impl<W: std::io::Write> CCompiler2<W> {
 
                 handle.unwrap_or_default()
             }
-            TypedNode::Accessor { .. } => unimplemented!(),
+            TypedNode::Accessor { type_id, target, kind, is_opt_safe, member_idx, .. } => {
+                debug_assert!(!*is_opt_safe, "todo");
+
+                let result_type_name = self.get_type_name_by_id(project, type_id);
+                let target_type_id = target.type_id();
+                let target_type = project.get_type_by_id(&target_type_id);
+                let target_handle = self.compile_expression(project, target);
+                let result_handle = self.next_ssa_handle();
+                match kind {
+                    AccessorKind::Field => {
+                        let is_builtin = match target_type {
+                            Type::Primitive(_) => true,
+                            Type::GenericInstance(struct_id, _) if *struct_id == project.prelude_array_struct_id => true,
+                            Type::GenericInstance(struct_id, _) if *struct_id == project.prelude_map_struct_id => true,
+                            Type::GenericInstance(struct_id, _) if *struct_id == project.prelude_set_struct_id => true,
+                            _ => false
+                        };
+                        let Some((field_name, _)) = target_type.get_field(project, *member_idx) else { unreachable!() };
+                        if is_builtin {
+                            self.emit_line(format!("{} {} = {}_field_{}({});", &result_type_name, &result_handle, self.get_type_name_by_id(project, target_type_id), field_name, &target_handle));
+                        } else {
+                            self.emit_line(format!("{} {} = {}.value->{};", &result_type_name, &result_handle, &target_handle, field_name))
+                        }
+                    }
+                    AccessorKind::Method |
+                    AccessorKind::StaticMethod |
+                    AccessorKind::EnumVariant => todo!()
+                }
+
+                result_handle
+            }
             TypedNode::Indexing { target, index, type_id, .. } => {
                 let target_type_id = target.as_ref().type_id();
                 let target_type = project.get_type_by_id(target_type_id);
@@ -951,7 +1060,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                 handle
             }
             TypedNode::Lambda { func_id, .. } => {
-                self.wrap_function(project, func_id)
+                self.wrap_function(project, func_id, None)
             }
             TypedNode::Assignment { kind, expr, .. } => {
                 let expr_handle = self.compile_expression(project, expr);
@@ -993,14 +1102,14 @@ impl<W: std::io::Write> CCompiler2<W> {
         }
     }
 
-    fn wrap_function(&mut self, project: &Project, func_id: &FuncId) -> SSAHandle {
+    fn wrap_function(&mut self, project: &Project, func_id: &FuncId, container_type: Option<&Type>) -> SSAHandle {
         let function = project.get_func_by_id(func_id);
         let (opt_params, req_params): (Vec<_>, Vec<_>) = function.params.iter().partition(|p| p.default_value.is_some());
         let min_arity = req_params.len();
         let max_arity = opt_params.len() + req_params.len();
 
         let handle = self.next_ssa_handle();
-        let fn_name = function_name(&function);
+        let fn_name = self.function_name(project, function, container_type);
         if !function.captured_vars.is_empty() {
             let num_captures = function.captured_vars.len();
             self.emit_line(format!("AbraFn {} = AbraFn_make_closure((Fn)&{}, {}, {}, {});", &handle, fn_name, min_arity, max_arity, num_captures));
@@ -1086,11 +1195,6 @@ mod test {
     }
 
     #[test]
-    fn indexing() {
-        run_test_file("indexing.abra");
-    }
-
-    #[test]
     fn functions() {
         run_test_file("functions.abra");
     }
@@ -1103,6 +1207,16 @@ mod test {
     #[test]
     fn closures() {
         run_test_file("closures.abra");
+    }
+
+    #[test]
+    fn strings() {
+        run_test_file("strings.abra");
+    }
+
+    #[test]
+    fn arrays() {
+        run_test_file("arrays.abra");
     }
 
     #[test]

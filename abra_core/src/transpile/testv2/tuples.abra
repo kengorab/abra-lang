@@ -1,0 +1,14 @@
+val t1 = (1, 2)
+
+/// Expect: (1, 2)
+println(t1)
+
+val t2 = ("a", (t1, 0), [1, 2, 3])
+
+/// Expect: ("a", ((1, 2), 0), [1, 2, 3])
+println(t2)
+
+// Indexing
+
+/// Expect: [1, 2, 3]
+println(t2[2])

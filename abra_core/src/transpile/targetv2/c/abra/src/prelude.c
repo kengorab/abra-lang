@@ -305,6 +305,10 @@ AbraString AbraString__toString(size_t nargs, AbraString self) {
   return self;
 }
 
+inline AbraInt AbraString_field_length(AbraString self) {
+  return AbraInt_make(self.value->length);
+}
+
 AbraBool AbraString__eq(size_t nargs, AbraString self, AbraAny other) {
   assert(self.type_id == TYPE_ID_STRING);
   assert(nargs == 2);
@@ -504,6 +508,10 @@ AbraString AbraArray__toString(size_t nargs, AbraArray self) {
   return sequence_to_string(self.value->length, self.value->items, false, '[', ']');
 }
 
+AbraInt AbraArray_field_length(AbraArray self) {
+  return AbraInt_make(self.value->length);
+}
+
 AbraBool AbraArray__eq(size_t nargs, AbraArray self, AbraAny other) {
   assert(self.type_id == TYPE_ID_ARRAY);
   assert(nargs == 2);
@@ -612,6 +620,10 @@ AbraString AbraSet__toString(size_t nargs, AbraSet self) {
   return sequence_to_string((int64_t) self.value->size, hashmap_keys(self.value), '#', '{', '}');
 }
 
+AbraInt AbraSet_field_size(AbraSet self) {
+  return AbraInt_make(self.value->size);
+}
+
 AbraBool AbraSet__eq(size_t nargs, AbraSet self, AbraAny _other) {
   assert(self.type_id == TYPE_ID_SET);
   assert(nargs == 2);
@@ -663,6 +675,10 @@ AbraUnit AbraMap_set(AbraMap self, AbraAny key, AbraAny value) {
 
 AbraAny AbraMap_get(AbraMap self, AbraAny key) {
   return hashmap_get(self.value, key);
+}
+
+AbraInt AbraMap_field_size(AbraMap self) {
+  return AbraInt_make(self.value->size);
 }
 
 AbraString AbraMap__toString(size_t nargs, AbraMap self) {
