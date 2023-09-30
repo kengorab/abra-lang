@@ -1,5 +1,5 @@
-func println(*items: Any[])
 func print(*items: Any[])
+func println(*items: Any[])
 func range(start: Int, end: Int, stepBy = 1): Int[]
 
 type Int {

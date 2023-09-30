@@ -1946,7 +1946,7 @@ fn typecheck_binding_declaration() {
     assert_eq!(expected, module.scopes[0].vars);
 
     let project = test_typecheck(r#"
-      val (a, b, [c, *d], (e, f)) = (1, 2.3, [true, false], ("a", ("b", "c")))
+      val (a, b, [(c1, c2), *d], (e, f)) = (1, 2.3, [(true, false), (false, true)], ("a", ("b", "c")))
     "#).unwrap();
     let module = &project.modules[1];
     let expected = vec![
@@ -1974,44 +1974,55 @@ fn typecheck_binding_declaration() {
         },
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 2),
-            name: "c".to_string(),
+            name: "c1".to_string(),
             type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_BOOL_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Span::new(ModuleId(1), (2, 19), (2, 19))),
+            defined_span: Some(Span::new(ModuleId(1), (2, 20), (2, 21))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
         },
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 3),
-            name: "d".to_string(),
-            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_BOOL_TYPE_ID)).unwrap(),
+            name: "c2".to_string(),
+            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_BOOL_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Span::new(ModuleId(1), (2, 23), (2, 23))),
+            defined_span: Some(Span::new(ModuleId(1), (2, 24), (2, 25))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
         },
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 4),
-            name: "e".to_string(),
-            type_id: PRELUDE_STRING_TYPE_ID,
+            name: "d".to_string(),
+            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(project.find_type_id(&ScopeId(ModuleId(1), 0), &project.tuple_type(vec![PRELUDE_BOOL_TYPE_ID, PRELUDE_BOOL_TYPE_ID])).unwrap())).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Span::new(ModuleId(1), (2, 28), (2, 28))),
+            defined_span: Some(Span::new(ModuleId(1), (2, 30), (2, 30))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
         },
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 5),
+            name: "e".to_string(),
+            type_id: PRELUDE_STRING_TYPE_ID,
+            is_mutable: false,
+            is_initialized: true,
+            defined_span: Some(Span::new(ModuleId(1), (2, 35), (2, 35))),
+            is_captured: false,
+            alias: VariableAlias::None,
+            is_parameter: false,
+        },
+        Variable {
+            id: VarId(ScopeId(ModuleId(1), 0), 6),
             name: "f".to_string(),
             type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.tuple_type(vec![PRELUDE_STRING_TYPE_ID, PRELUDE_STRING_TYPE_ID])).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Span::new(ModuleId(1), (2, 31), (2, 31))),
+            defined_span: Some(Span::new(ModuleId(1), (2, 38), (2, 38))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
@@ -3075,6 +3086,7 @@ fn typecheck_invocation() {
     ").unwrap();
     let module = &project.modules[1];
     let expected = vec![
+        TypedNode::FuncDeclaration(FuncId(ScopeId(ModuleId(1), 0), 0)),
         TypedNode::Invocation {
             target: Box::new(TypedNode::Identifier {
                 token: Token::Ident(Position::new(2, 1), "foo".to_string()),
@@ -3119,7 +3131,7 @@ fn typecheck_invocation() {
     ").unwrap();
     let module = &project.modules[1];
     let expected = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.tuple_type(vec![PRELUDE_STRING_TYPE_ID, PRELUDE_BOOL_TYPE_ID])).unwrap();
-    assert_eq!(expected, *module.code[0].type_id());
+    assert_eq!(expected, *module.code[1].type_id());
 
     let project = test_typecheck("\
       func foo<T>(a: T[]): T[] = a\n\
@@ -3320,7 +3332,7 @@ fn typecheck_invocation() {
         ],
         type_id: PRELUDE_UNIT_TYPE_ID,
     };
-    assert_eq!(&expected, &module.code[0]);
+    assert_eq!(&expected, &module.code[1]);
     let project = test_typecheck(&format!("{}\nfoo(1, 2)", &foo_fn)).unwrap();
     let module = &project.modules[1];
     let expected = TypedNode::Invocation {
@@ -3337,7 +3349,7 @@ fn typecheck_invocation() {
         ],
         type_id: PRELUDE_UNIT_TYPE_ID,
     };
-    assert_eq!(&expected, &module.code[0]);
+    assert_eq!(&expected, &module.code[1]);
     let project = test_typecheck(&format!("{}\nfoo(1, 2, 3)", &foo_fn)).unwrap();
     let module = &project.modules[1];
     let expected = TypedNode::Invocation {
@@ -3355,7 +3367,7 @@ fn typecheck_invocation() {
         ],
         type_id: PRELUDE_UNIT_TYPE_ID,
     };
-    assert_eq!(&expected, &module.code[0]);
+    assert_eq!(&expected, &module.code[1]);
     // When an array literal is passed
     let project = test_typecheck(&format!("{}\nfoo(args: [2, 3], a: 1)", &foo_fn)).unwrap();
     let module = &project.modules[1];
@@ -3374,7 +3386,7 @@ fn typecheck_invocation() {
         ],
         type_id: PRELUDE_UNIT_TYPE_ID,
     };
-    assert_eq!(&expected, &module.code[0]);
+    assert_eq!(&expected, &module.code[1]);
     // When an array is passed
     assert!(test_typecheck(&format!("{}\nval a = [1, 2, 3]\nfoo(args: a, a: 1)", &foo_fn)).is_ok());
 
@@ -4141,6 +4153,11 @@ fn typecheck_assignment() {
         span: Range { start: Position::new(2, 1), end: Position::new(2, 6) },
         kind: AssignmentKind::Identifier { var_id: VarId(ScopeId(ModuleId(1), 0), 0) },
         type_id: PRELUDE_INT_TYPE_ID,
+        expr: Box::new(TypedNode::Literal {
+            token: Token::Int(Position::new(2, 5), 34),
+            type_id: PRELUDE_INT_TYPE_ID,
+            value: TypedLiteral::Int(34),
+        }),
     };
     assert_eq!(&expected, node);
 
@@ -4166,6 +4183,11 @@ fn typecheck_assignment() {
             member_idx: 0,
         },
         type_id: PRELUDE_INT_TYPE_ID,
+        expr: Box::new(TypedNode::Literal {
+            token: Token::Int(Position::new(3, 9), 24),
+            type_id: PRELUDE_INT_TYPE_ID,
+            value: TypedLiteral::Int(24),
+        }),
     };
     assert_eq!(&expected, node);
 

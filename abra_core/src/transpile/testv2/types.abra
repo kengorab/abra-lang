@@ -1,0 +1,64 @@
+// Constructing
+type A {
+  i: Int
+  b: Bool
+  f: Float
+  s: String
+}
+
+val a1 = A(i: 1, b: true, f: 2.34, s: "hello")
+/// Expect: A(i: 1, b: true, f: 2.34, s: "hello")
+println(a1)
+
+val a2 = A(i: 2, b: true, f: 2.34, s: "hello")
+/// Expect: true false
+println(a1 == a1, a1 == a2)
+
+/// Expect: #{A(i: 1, b: true, f: 2.34, s: "hello"), A(i: 2, b: true, f: 2.34, s: "hello")}
+println(#{a1, a1, a2, a2})
+
+// Default field values
+func f1(): Int {
+  println("called f1")
+  4
+}
+type B {
+  i1: Int
+  i2: Int = f1()
+}
+
+val b1 = B(i1: 6)
+/// Expect: called f1
+
+val b2 = B(i2: 12, i1: 6)
+/// Expect: B(i1: 6, i2: 4) B(i1: 6, i2: 12)
+println(b1, b2)
+
+/// Expect: false
+println(a1 == b1)
+
+// Fields
+
+type C {
+  i: Int
+  s: String
+}
+
+val c1 = C(i: 123, s: "abc")
+/// Expect: 123 abc
+println(c1.i, c1.s)
+
+// Methods
+
+val capturedVal = "hello"
+type D {
+  s: String
+  i: Int
+
+  func f1(self): String = self.s + self.i
+  func f2(self, s: String): String = self.s + s
+  func f3(self): String = self.s + capturedVal
+}
+val d = D(s: "hey", i: 12)
+/// Expect: hey12 hey! heyhello
+println(d.f1(), d.f2("!"), d.f3())

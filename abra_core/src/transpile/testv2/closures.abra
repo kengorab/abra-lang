@@ -1,0 +1,61 @@
+val TOP_LEVEL_STRING = "hello"
+val TOP_LEVEL_INT = 123
+
+val f1 = () => println(TOP_LEVEL_STRING, TOP_LEVEL_INT)
+/// Expect: hello 123
+f1()
+
+func outer(): (Int) => Int {
+  val a = 1
+  val inner = (b: Int) => a + b
+  inner
+}
+/// Expect: 3 3
+val f = outer()
+println(f(2), outer()(2))
+
+var A = "foo"
+func f2() { A += "!" }
+/// Expect: foo
+println(A)
+f2()
+/// Expect: foo!
+println(A)
+
+A = "hello"
+f2()
+/// Expect: hello!
+println(A)
+
+val tuple = ([1, 2], [3, 4], [5, 6])
+func f3() {
+  tuple[0][0] = 8
+}
+/// Expect: ([1, 2], [3, 4], [5, 6])
+println(tuple)
+f3()
+/// Expect: ([8, 2], [3, 4], [5, 6])
+println(tuple)
+
+var X = ["foo"]
+func f4() { X[0] += "!" }
+func f5() {
+  X[0] += "?"
+}
+val xArr = [X]
+/// Expect: ["foo"] [["foo"]]
+println(X, xArr)
+f4()
+f5()
+/// Expect: ["foo!?"] [["foo!?"]]
+println(X, xArr)
+
+var Z = 12
+func f6() {
+  Z += 6
+}
+/// Expect: 12
+println(Z)
+f6()
+/// Expect: 18
+println(Z)

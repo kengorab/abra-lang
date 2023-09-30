@@ -5,6 +5,7 @@ extern crate dirs;
 extern crate itertools;
 extern crate rustyline;
 
+use std::fs::File;
 use crate::repl::Repl;
 use abra_core::common::fs_module_reader::FsModuleReader;
 use abra_core::{compile, compile_and_disassemble, compile_to_c, Error};
@@ -14,10 +15,11 @@ use abra_core::module_loader::ModuleReader;
 use abra_core::parser::ast::ModuleId;
 use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VM, VMContext};
-use abra_llvm::compile_to_llvm_and_run;
+use abra_llvm::{compile_to_llvm_and_run, get_project_root};
 use std::path::PathBuf;
 use std::process::Command;
 use itertools::Either;
+use abra_core::transpile::genc2::CCompiler2;
 use abra_core::typechecker::typechecker2::{LoadModule, ModuleLoader, Project, Typechecker2};
 
 mod repl;
@@ -34,6 +36,7 @@ enum SubCommand {
     Typecheck(RunOpts),
     Run(RunOpts),
     Compile(CompileOpts),
+    Compile2(CompileOpts),
     Jit(JitOpts),
     Disassemble(DisassembleOpts),
     Test(TestOpts),
@@ -89,6 +92,7 @@ fn main() -> Result<(), ()> {
         SubCommand::Typecheck(opts) => cmd_typecheck2(opts),
         SubCommand::Run(opts) => cmd_compile_and_run(opts),
         SubCommand::Compile(opts) => cmd_compile_to_c_and_run(opts),
+        SubCommand::Compile2(opts) => cmd_compile_to_c_and_run2(opts),
         SubCommand::Jit(opts) => cmd_compile_llvm_and_run(opts),
         SubCommand::Disassemble(opts) => cmd_disassemble(opts),
         SubCommand::Test(opts) => cmd_test(opts),
@@ -118,17 +122,105 @@ fn cmd_typecheck2(opts: RunOpts) -> Result<(), ()> {
                         .expect("Internal error: cannot report on errors in a file that never existed in the first place");
                     let contents = std::fs::read_to_string(&file_name).unwrap();
                     eprintln!("{}", e.get_message(&file_name, &contents))
-                },
+                }
                 Either::Left(Either::Right(e)) => {
                     let file_name = module_loader.resolve_path(&module_id)
                         .expect("Internal error: cannot report on errors in a file that never existed in the first place");
                     let contents = std::fs::read_to_string(&file_name).unwrap();
                     eprintln!("{}", e.get_message(&file_name, &contents))
-                },
+                }
                 Either::Right(e) => eprintln!("{}", e.message(&module_loader, &project)),
             }
             std::process::exit(1);
         }
+    }
+
+    Ok(())
+}
+
+fn cmd_compile_to_c_and_run2(opts: CompileOpts) -> Result<(), ()> {
+    let current_path = std::env::current_dir().unwrap();
+    let file_path = current_path.join(&opts.file_path);
+
+    let working_dir = file_path.parent().unwrap();
+    let dotabra_dir = working_dir.join(".abra");
+    if !dotabra_dir.exists() {
+        if std::fs::create_dir(&dotabra_dir).is_err() {
+            eprintln!("{}", format!("Could not create .abra directory at {}", dotabra_dir.to_str().unwrap()));
+            std::process::exit(1);
+        }
+    }
+
+    let root = file_path.parent().unwrap().to_path_buf();
+    let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
+    let module_id = ModuleId::parse_module_path(&format!("./{}", &module_name)).unwrap();
+
+    let mut module_loader = ModuleLoader::new(&root);
+    let mut project = Project::default();
+    let mut tc = Typechecker2::new(&mut module_loader, &mut project);
+    tc.typecheck_prelude();
+
+    match tc.typecheck_module(&module_id) {
+        Ok(_) => {}
+        Err(e) => {
+            match e {
+                Either::Left(Either::Left(e)) => {
+                    let file_name = module_loader.resolve_path(&module_id)
+                        .expect("Internal error: cannot report on errors in a file that never existed in the first place");
+                    let contents = std::fs::read_to_string(&file_name).unwrap();
+                    eprintln!("{}", e.get_message(&file_name, &contents))
+                }
+                Either::Left(Either::Right(e)) => {
+                    let file_name = module_loader.resolve_path(&module_id)
+                        .expect("Internal error: cannot report on errors in a file that never existed in the first place");
+                    let contents = std::fs::read_to_string(&file_name).unwrap();
+                    eprintln!("{}", e.get_message(&file_name, &contents))
+                }
+                Either::Right(e) => eprintln!("{}", e.message(&module_loader, &project)),
+            }
+
+            std::process::exit(1);
+        }
+    }
+
+    let output_path = dotabra_dir.join(format!("{}.c", &module_name));
+    let exec_path = dotabra_dir.join(&module_name.replace(".abra", ""));
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).unwrap();
+    }
+    let output_file = File::create(&output_path).unwrap();
+    let output_file_path = output_path.to_str().unwrap();
+
+    let rust_project_root = get_project_root().unwrap();
+
+    let c_include_dir = rust_project_root.join("abra_core").join("src").join("transpile").join("targetv2").join("c").join("abra").join("include");
+    let c_src_dir = rust_project_root.join("abra_core").join("src").join("transpile").join("targetv2").join("c").join("abra").join("src");
+
+    let mut genc = CCompiler2::new(output_file);
+    genc.generate(project);
+
+    let clang_output = Command::new("clang")
+        .arg(&c_src_dir.join("prelude.c"))
+        .arg(&c_src_dir.join("hashmap.c"))
+        .arg(&output_file_path)
+        .arg("-o").arg(&exec_path)
+        .arg(format!("-I{}", c_include_dir.to_str().unwrap()))
+        .arg("-lm")
+        .output()
+        .unwrap();
+    if !clang_output.stderr.is_empty() {
+        eprintln!("{}", String::from_utf8(clang_output.stderr).unwrap());
+    }
+    if !clang_output.stdout.is_empty() {
+        print!("{}", String::from_utf8(clang_output.stdout).unwrap());
+    }
+
+    let run_output = Command::new(&exec_path).output().unwrap();
+    if !run_output.stderr.is_empty() {
+        eprintln!("Error: {}", String::from_utf8(run_output.stderr).unwrap());
+    }
+    if !run_output.stdout.is_empty() {
+        print!("{}", String::from_utf8(run_output.stdout).unwrap());
     }
 
     Ok(())

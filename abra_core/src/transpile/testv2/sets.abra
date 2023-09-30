@@ -1,0 +1,12 @@
+/// Expect: #{} #{24} #{1}
+println(#{}, #{24}, #{1, 1, 1, 1})
+
+// Test equality operators
+/// Expect: true
+println(#{} == #{})
+/// Expect: true
+println(#{1, 2, 4} != #{1, 2, 3})
+
+// Fields
+/// Expect: 0 2 2
+println(#{}.size, #{2, 3}.size, #{1, 1, 1, 2}.size)

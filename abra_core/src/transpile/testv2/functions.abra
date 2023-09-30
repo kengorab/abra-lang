@@ -1,0 +1,64 @@
+// Basic function calling
+
+func f1() = println("hello")
+/// Expect: hello
+f1()
+
+func f2(a: Int): Int = -a
+/// Expect: -24 -24
+println(f2(24), f2(a: 24))
+
+func f3(s1: String, s2: String): String[] {
+  val hello = "hello"
+  [hello, s1, s2]
+}
+/// Expect: ["hello", "world", "!"] ["hello", "world", "!"] ["hello", "world", "!"]
+println(f3("world", "!"), f3(s1: "world", s2: "!"), f3(s2: "!", s1: "world"))
+
+// Default-valued params
+
+func f4(a: Int, b = 6): Int[] = [a, b]
+/// Expect: [12, 6] [12, 6]
+println(f4(12), f4(a: 12))
+/// Expect: [12, 1] [12, 1] [12, 1]
+println(f4(12, 1), f4(a: 12, b: 1), f4(b: 1, a: 12))
+
+func neverCalled(): Int {
+  println("shouldn't be printed")
+  0
+}
+func f5(a = neverCalled()): Int = -a
+/// Expect: -24 -24
+println(f5(24), f5(a: 24))
+
+// Varargs functions
+
+func f6(*nums: Int[]) {
+  val [a, *b, c] = nums
+  println(a, b, c)
+}
+/// Expect: 1 [2, 3] 4
+f6(1, 2, 3, 4)
+/// Expect: 1 [] None
+f6(1)
+/// Expect: None [] None
+f6()
+
+func f7(first: Int, *nums: Int[]) {
+  val [a, *b, c] = nums
+  println(first, a, b, c)
+}
+/// Expect: 1 2 [3] 4
+f7(1, 2, 3, 4)
+/// Expect: 1 None [] None
+f7(1)
+/// Expect: 1 None [] None
+f7(1)
+
+func callFn(fn: (Int) => Int) = println(fn(6))
+
+func f8(a: Int, b = 2, c = 3): Int = a + b + c
+/// Expect: 11
+callFn(f8)
+/// Expect: 8
+println(f8(a: 1, c: 5))
