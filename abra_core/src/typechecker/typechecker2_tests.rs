@@ -2744,6 +2744,10 @@ fn typecheck_function_declaration() {
     // Misc other tests
     assert!(test_typecheck("func foo(x: Bool[] = []) {}").is_ok());
     assert!(test_typecheck("func foo(x = 12): Int = x").is_ok());
+    assert!(test_typecheck(r#"
+      type Foo<T> { t: T }
+      func f<T1>(t1: T1): Foo<T1> = Foo(t: t1)
+    "#).is_ok());
 }
 
 #[test]
@@ -3187,13 +3191,13 @@ fn typecheck_invocation() {
         is_parameter: false,
     };
     assert_eq!(&expected, foo_var);
-    let var_invocation = &module.code[2];
+    let var_invocation = &module.code[3];
     assert_eq!(PRELUDE_INT_TYPE_ID, *var_invocation.type_id());
-    let accessor_invocation = &module.code[3];
+    let accessor_invocation = &module.code[4];
     assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation.type_id());
-    let accessor_invocation_arg_label = &module.code[4];
+    let accessor_invocation_arg_label = &module.code[5];
     assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_label.type_id());
-    let accessor_invocation_arg_labels = &module.code[5];
+    let accessor_invocation_arg_labels = &module.code[6];
     assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_labels.type_id());
 
     // Invoking field of type
@@ -3220,7 +3224,7 @@ fn typecheck_invocation() {
         is_parameter: false,
     };
     assert_eq!(&expected, foo_var);
-    let accessor_invocation = &module.code[2];
+    let accessor_invocation = &module.code[3];
     assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation.type_id());
 
     // Invoking method of enum variant
@@ -3253,7 +3257,7 @@ fn typecheck_invocation() {
         is_parameter: false,
     };
     assert_eq!(&expected, foo_var);
-    let var_invocation = &module.code[2];
+    let var_invocation = &module.code[3];
     assert_eq!(PRELUDE_INT_TYPE_ID, *var_invocation.type_id());
     let accessor_invocation = &module.code[3];
     assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation.type_id());
@@ -3305,7 +3309,7 @@ fn typecheck_invocation() {
         is_parameter: false,
     };
     assert_eq!(&expected, foo_var);
-    let f_invocation = &module.code[2];
+    let f_invocation = &module.code[3];
     assert_eq!(project.find_type_id(&ScopeId(ModuleId(1), 2), &Type::GenericEnumInstance(enum_id, vec![], Some(0))).unwrap(), *f_invocation.type_id());
 
     // Invoking variadic functions
@@ -3630,7 +3634,7 @@ fn typecheck_invocation_instantiation() {
         ],
         type_id: struct_.self_type_id,
     };
-    assert_eq!(expected, module.code[0]);
+    assert_eq!(expected, module.code[1]);
 
     // Test generics
     let project = test_typecheck("\
@@ -3694,7 +3698,7 @@ fn typecheck_invocation_instantiation() {
         ],
         type_id: struct_.self_type_id,
     };
-    assert_eq!(expected, module.code[0]);
+    assert_eq!(expected, module.code[1]);
 }
 
 #[test]
@@ -3805,7 +3809,7 @@ fn typecheck_accessor() {
         member_span: Range { start: Position::new(3, 3), end: Position::new(3, 3) },
         type_id: PRELUDE_INT_TYPE_ID,
     };
-    assert_eq!(expected, module.code[1]);
+    assert_eq!(expected, module.code[2]);
 
     // Accessing method
     let project = test_typecheck("\
@@ -3834,7 +3838,7 @@ fn typecheck_accessor() {
             project.find_type_id(&ScopeId(ModuleId(1), 0), &project.function_type(vec![PRELUDE_INT_TYPE_ID], 1, false, int_array_type_id)).unwrap()
         },
     };
-    assert_eq!(expected, module.code[1]);
+    assert_eq!(expected, module.code[2]);
 
     // Option-chaining accessor
     assert_typecheck_ok(r#"
@@ -4169,7 +4173,7 @@ fn typecheck_assignment() {
     ").unwrap();
     let foo_struct = project.find_struct_by_name(&ModuleId(1), &"Foo".to_string()).unwrap();
     let foo_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(foo_struct.id, vec![])).unwrap();
-    let node = &project.modules[1].code[1];
+    let node = &project.modules[1].code[2];
     let expected = TypedNode::Assignment {
         span: Range { start: Position::new(3, 1), end: Position::new(3, 10) },
         kind: AssignmentKind::Accessor {

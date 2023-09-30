@@ -2039,13 +2039,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let ty_with_generics = self.project.get_type_by_id(type_id_containing_generics);
 
         match (ty_with_generics, hint_ty) {
-            (Type::Generic(_, _), Type::Generic(_, _)) => {}
             (Type::Generic(_, _), _) => {
-                if let Some(_) = substitutions.get(type_id_containing_generics) {
-                    // If we already have a substitution for this generic, don't overwrite. If the known value does not align with the hint
-                    // type, it should be reported by this function's caller.
-                    return;
-                }
                 substitutions.insert(*type_id_containing_generics, *hint_type_id);
             }
             (Type::GenericInstance(s_id1, g_ids1), Type::GenericInstance(s_id2, g_ids2)) if s_id1 == s_id2 => {
@@ -2078,9 +2072,30 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         match ty.clone() {
             Type::Generic(_, _) => {
-                substitutions.get(&type_id)
+                let mut resolved_type_id = substitutions.get(&type_id)
                     .map(|substituted_type_id| *substituted_type_id)
-                    .unwrap_or(*type_id)
+                    .unwrap_or(*type_id);
+                // The `substitutions` map is not flattened; it's possible that, in order to resolve
+                // a generic's substitution, it may point to another generic which also needs to have
+                // substitution applied (and so on). For example, consider this structure:
+                //   type A<AT> { x: AT }
+                //   type B<BT> { a: A<BT> }
+                //   val b = B(a: A(x: 12))
+                // When resolving ^^^^^^^^, the typechecker has the following as its known substitutions:
+                //   { AT -> BT, BT -> Int }
+                // In order to learn that AT -> Int, we need to flatten the map. In doing so, we bubble
+                // up the proper type, so the instantiation of B correctly typechecks to `B<Int>`.
+                // TODO: This could maybe be improved by flattening as it's being built (in `extract_values_for_generics`).
+                while self.type_contains_generics(&resolved_type_id) {
+                    if let Some(type_id) = substitutions.get(&resolved_type_id) {
+                        if resolved_type_id == *type_id { break; }
+                        resolved_type_id = *type_id;
+                    } else {
+                        break;
+                    }
+                }
+
+                resolved_type_id
             }
             Type::GenericInstance(struct_id, generic_ids) => {
                 let substituted_generic_ids = generic_ids.iter().map(|generic_type_id| self.substitute_generics_with_known(generic_type_id, substitutions)).collect();
