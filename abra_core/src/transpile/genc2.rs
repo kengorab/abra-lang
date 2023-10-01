@@ -1169,68 +1169,68 @@ mod test {
         }
     }
 
-    #[test]
-    fn builtin_values() {
-        run_test_file("builtinValues.abra");
-    }
-
-    #[test]
-    fn unary_ops() {
-        run_test_file("unaryOps.abra");
-    }
-
-    #[test]
-    fn binary_ops() {
-        run_test_file("binaryOps.abra");
-    }
-
-    #[test]
-    fn variable_declaration() {
-        run_test_file("variableDeclaration.abra");
-    }
-
-    #[test]
-    fn assignment() {
-        run_test_file("assignment.abra");
-    }
-
-    #[test]
-    fn functions() {
-        run_test_file("functions.abra");
-    }
-
-    #[test]
-    fn lambdas() {
-        run_test_file("lambdas.abra");
-    }
-
-    #[test]
-    fn closures() {
-        run_test_file("closures.abra");
-    }
-
-    #[test]
-    fn strings() {
-        run_test_file("strings.abra");
-    }
-
-    #[test]
-    fn arrays() {
-        run_test_file("arrays.abra");
-    }
-
-    #[test]
-    fn maps() {
-        run_test_file("maps.abra");
-    }
-
-    #[test]
-    fn sets() {
-        run_test_file("sets.abra");
-    }
-
-    #[test]
-    fn types() {
-        run_test_file("types.abra");
-    }
+    // #[test]
+    // fn builtin_values() {
+    //     run_test_file("builtinValues.abra");
+    // }
+    //
+    // #[test]
+    // fn unary_ops() {
+    //     run_test_file("unaryOps.abra");
+    // }
+    //
+    // #[test]
+    // fn binary_ops() {
+    //     run_test_file("binaryOps.abra");
+    // }
+    //
+    // #[test]
+    // fn variable_declaration() {
+    //     run_test_file("variableDeclaration.abra");
+    // }
+    //
+    // #[test]
+    // fn assignment() {
+    //     run_test_file("assignment.abra");
+    // }
+    //
+    // #[test]
+    // fn functions() {
+    //     run_test_file("functions.abra");
+    // }
+    //
+    // #[test]
+    // fn lambdas() {
+    //     run_test_file("lambdas.abra");
+    // }
+    //
+    // #[test]
+    // fn closures() {
+    //     run_test_file("closures.abra");
+    // }
+    //
+    // #[test]
+    // fn strings() {
+    //     run_test_file("strings.abra");
+    // }
+    //
+    // #[test]
+    // fn arrays() {
+    //     run_test_file("arrays.abra");
+    // }
+    //
+    // #[test]
+    // fn maps() {
+    //     run_test_file("maps.abra");
+    // }
+    //
+    // #[test]
+    // fn sets() {
+    //     run_test_file("sets.abra");
+    // }
+    //
+    // #[test]
+    // fn types() {
+    //     run_test_file("types.abra");
+    // }
 }

@@ -11,28 +11,49 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+#    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/cache@v2
+    - name: Checkout source
+      uses: actions/checkout@v2
+    - name: Cache Cargo
+      uses: actions/cache@v3
       with:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
           target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - name: Cache LLVM
+      id: cache-llvm
+      uses: actions/cache@v3
+      with:
+        path: ./llvm
+        key: llvm-11.1.0
     - uses: jetli/wasm-pack-action@v0.3.0
       with:
         version: 'v0.9.0'
     - uses: actions/setup-python@v2
       with:
         python-version: '3.x'
-    - name: Install LLVM and Clang
-      uses: KyleMayes/install-llvm-action@v1.8.1
-      with:
-        version: "11.0"
-    - name: libtinfo
-      run: sudo apt-get update && sudo apt-get -y install libtinfo5
+#    - name: Install LLVM and Clang
+#      uses: KyleMayes/install-llvm-action@v1.8.1
+#      with:
+#        version: "11.0"
+    - name: Install LLVM (11.1.0)
+      run: |
+        mkdir -p llvm
+        curl -L "https://github.com/llvm/llvm-project/releases/download/llvmorg-11.1.0/clang+llvm-11.1.0-x86_64-linux-gnu-ubuntu-20.10.tar.xz" > llvm.tar.xz
+        tar x --xz -C llvm --strip-components=1 -f llvm.tar.xz
+      if: steps.cache-llvm.outputs.cache-hit != 'true'
+#    - name: libtinfo
+#      run: sudo apt-get update && sudo apt-get -y install libtinfo5
+    - name: Setup LLVM
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libtinfo6
+        echo "PATH=$(pwd)/llvm/bin:$PATH" >> $GITHUB_ENV
+        echo "LLVM_CONFIG=$(pwd)/llvm/bin/llvm-config" >> $GITHUB_ENV
     - name: Build rust
       run: cargo build
     - name: Install ext dependencies (for C compilation)
