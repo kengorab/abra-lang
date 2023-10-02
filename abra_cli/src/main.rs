@@ -21,6 +21,7 @@ use std::process::Command;
 use itertools::Either;
 use abra_core::transpile::genc2::CCompiler2;
 use abra_core::typechecker::typechecker2::{LoadModule, ModuleLoader, Project, Typechecker2};
+use abra_llvm::compiler2::LLVMCompiler2;
 
 mod repl;
 
@@ -38,6 +39,7 @@ enum SubCommand {
     Compile(CompileOpts),
     Compile2(CompileOpts),
     Jit(JitOpts),
+    Build(BuildOpts),
     Disassemble(DisassembleOpts),
     Test(TestOpts),
     Repl,
@@ -62,6 +64,15 @@ struct CompileOpts {
 struct JitOpts {
     #[clap(help = "Path to an abra file to compile")]
     file_path: String,
+}
+
+#[derive(Clap)]
+struct BuildOpts {
+    #[clap(help = "Path to an abra file to compile")]
+    file_path: String,
+
+    #[clap(short = "r", long = "run", help = "Run after building")]
+    run: bool,
 }
 
 #[derive(Clap)]
@@ -94,6 +105,7 @@ fn main() -> Result<(), ()> {
         SubCommand::Compile(opts) => cmd_compile_to_c_and_run(opts),
         SubCommand::Compile2(opts) => cmd_compile_to_c_and_run2(opts),
         SubCommand::Jit(opts) => cmd_compile_llvm_and_run(opts),
+        SubCommand::Build(opts) => cmd_compile_llvm_and_run_2(opts),
         SubCommand::Disassemble(opts) => cmd_disassemble(opts),
         SubCommand::Test(opts) => cmd_test(opts),
         SubCommand::Repl => Ok(Repl::run()),
@@ -293,6 +305,65 @@ fn cmd_compile_llvm_and_run(opts: JitOpts) -> Result<(), ()> {
     let mut module_reader = FsModuleReader::new(module_id.clone(), &root);
     if let Err(e) = compile_to_llvm_and_run(module_id, &contents, &mut module_reader) {
         report_error(e, &module_reader);
+    }
+
+    Ok(())
+}
+
+fn cmd_compile_llvm_and_run_2(opts: BuildOpts) -> Result<(), ()> {
+    let current_path = std::env::current_dir().unwrap();
+    let file_path = current_path.join(&opts.file_path);
+
+    let working_dir = file_path.parent().unwrap();
+    let dotabra_dir = working_dir.join(".abra");
+    if !dotabra_dir.exists() {
+        if std::fs::create_dir(&dotabra_dir).is_err() {
+            eprintln!("{}", format!("Could not create .abra directory at {}", dotabra_dir.to_str().unwrap()));
+            std::process::exit(1);
+        }
+    }
+
+    let root = file_path.parent().unwrap().to_path_buf();
+    let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
+    let module_id = ModuleId::parse_module_path(&format!("./{}", &module_name)).unwrap();
+
+    let mut module_loader = ModuleLoader::new(&root);
+    let mut project = Project::default();
+    let mut tc = Typechecker2::new(&mut module_loader, &mut project);
+    tc.typecheck_prelude();
+
+    match tc.typecheck_module(&module_id) {
+        Ok(_) => {}
+        Err(e) => {
+            match e {
+                Either::Left(Either::Left(e)) => {
+                    let file_name = module_loader.resolve_path(&module_id)
+                        .expect("Internal error: cannot report on errors in a file that never existed in the first place");
+                    let contents = std::fs::read_to_string(&file_name).unwrap();
+                    eprintln!("{}", e.get_message(&file_name, &contents))
+                }
+                Either::Left(Either::Right(e)) => {
+                    let file_name = module_loader.resolve_path(&module_id)
+                        .expect("Internal error: cannot report on errors in a file that never existed in the first place");
+                    let contents = std::fs::read_to_string(&file_name).unwrap();
+                    eprintln!("{}", e.get_message(&file_name, &contents))
+                }
+                Either::Right(e) => eprintln!("{}", e.message(&module_loader, &project)),
+            }
+
+            std::process::exit(1);
+        }
+    }
+
+    if opts.run {
+        let exit_status = LLVMCompiler2::compile_and_run(&project, &dotabra_dir);
+        if let Some(status_code) = exit_status.code() {
+            std::process::exit(status_code)
+        } else {
+            // Process terminated by signal
+        }
+    } else {
+        LLVMCompiler2::compile(&project, &dotabra_dir);
     }
 
     Ok(())

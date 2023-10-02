@@ -14,6 +14,7 @@ use abra_core::common::util::random_string;
 mod compiler_tests;
 
 mod compiler;
+pub mod compiler2;
 
 const ADDL_PRELUDE_CONTENTS: &str = r#"
 type Process_ {

@@ -1,15 +1,17 @@
-val hello = "hello"
+24
 
-type Person {
-  firstName: String
-  lastName: String
-
-  func getFullName(self): String = self.firstName + " " + self.lastName
-  func foo(self): Int = hello.length
-}
-
-val p = Person(firstName: "Ken", lastName: "Gorab")
-println(p.foo())
+//val hello = "hello"
+//
+//type Person {
+//  firstName: String
+//  lastName: String
+//
+//  func getFullName(self): String = self.firstName + " " + self.lastName
+//  func foo(self): Int = hello.length
+//}
+//
+//val p = Person(firstName: "Ken", lastName: "Gorab")
+//println(p.foo())
 
 //func f(i: Int) {
 //  println(i + hello.length)
