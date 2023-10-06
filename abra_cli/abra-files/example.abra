@@ -1,4 +1,11 @@
-24
+type Foo<T> {
+  t: T
+
+  func foo(self): T = self.t
+}
+
+val foo = Foo(t: 1)
+val fn = foo.foo
 
 //val hello = "hello"
 //

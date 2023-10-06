@@ -142,13 +142,13 @@ fn test_type_assignability() {
         (
             "func f<T>(a: T): T[] = [a]\n\
              val x: (Int) => Int[] = f",
-            true
+            false
         ),
         (
             "func a<X>(x: X): X = x\n\
              func b<T>(fn: (T) => T, t: T): T = t\n\
              b(a, 12)",
-            true
+            false
         ),
         (
             "type Foo<T> {\n\
@@ -2859,6 +2859,22 @@ fn typecheck_failure_function_declaration() {
     let expected = TypeError::InvalidRequiredParamPosition {
         span: Span::new(ModuleId(1), (1, 18), (1, 18)),
         is_variadic: true,
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_failure_generic_function_usage() {
+    let (project, Either::Right(err)) = test_typecheck("\
+      func f<T>(t: T) {}\n\
+      func g(t: Int) {}\n\
+      val arr = [g, f]\n
+    ").unwrap_err() else { unreachable!() };
+    let t = project.find_type_id_for_generic(&ScopeId(ModuleId(1), 1), "T").unwrap();
+    let fn_type = project.function_type(vec![t], 1, false, PRELUDE_UNIT_TYPE_ID);
+    let expected = TypeError::IllegalGenericFunctionUsage {
+        span: Span::new(ModuleId(1), (3, 15), (3, 15)),
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &fn_type).unwrap(),
     };
     assert_eq!(expected, err);
 }

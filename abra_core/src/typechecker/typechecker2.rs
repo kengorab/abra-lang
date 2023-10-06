@@ -1160,6 +1160,7 @@ pub enum TypeError {
     CircularModuleImport { span: Span },
     UnknownModule { span: Span, module_path: Option<String> },
     UnknownExport { span: Span, module_id: ModuleId, import_name: String, is_aliased: bool },
+    IllegalGenericFunctionUsage { span: Span, type_id: TypeId },
 }
 
 impl TypeError {
@@ -1267,7 +1268,8 @@ impl TypeError {
             TypeError::InvalidExportScope { span } |
             TypeError::CircularModuleImport { span } |
             TypeError::UnknownModule { span, .. } |
-            TypeError::UnknownExport { span, .. } => span
+            TypeError::UnknownExport { span, .. } |
+            TypeError::IllegalGenericFunctionUsage { span, .. } => span,
         };
         let cursor_line = Self::get_underlined_line(loader, span);
 
@@ -1778,6 +1780,13 @@ impl TypeError {
                     first_line, cursor_line, import_name, project.modules[module_id.0].name,
                 )
             }
+            TypeError::IllegalGenericFunctionUsage { type_id, .. } => {
+                format!(
+                    "Illegal usage of generic function as value\n{}\n\
+                    Value has type '{}', which cannot be used in this context yet",
+                    cursor_line, project.type_repr(type_id),
+                )
+            }
         };
 
         let file_name = loader.get_path(&span.module_id)
@@ -1808,11 +1817,20 @@ pub struct Typechecker2<'a, L: LoadModule> {
     current_type_decl: Option<TypeId>,
     current_function: Option<FuncId>,
     function_pass: FunctionPass,
+    allow_generic_fn_values: bool,
 }
 
 impl<'a, L: LoadModule> Typechecker2<'a, L> {
     pub fn new(module_loader: &'a mut L, project: &'a mut Project) -> Typechecker2<'a, L> {
-        Typechecker2 { module_loader, project, current_scope_id: PRELUDE_SCOPE_ID, current_type_decl: None, current_function: None, function_pass: FunctionPass::NotStarted }
+        Typechecker2 {
+            module_loader,
+            project,
+            current_scope_id: PRELUDE_SCOPE_ID,
+            current_type_decl: None,
+            current_function: None,
+            function_pass: FunctionPass::NotStarted,
+            allow_generic_fn_values: false,
+        }
     }
 
     /* UTILITIES */
@@ -4369,8 +4387,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     return Err(TypeError::UnknownIdentifier { span, token });
                 };
                 let var_id = *id;
-                let mut var_type_id = *type_id;
 
+                if self.type_contains_generics(&type_id) &&
+                    !self.allow_generic_fn_values &&
+                    matches!(self.project.get_type_by_id(&type_id), Type::Function(_, _, _, _))
+                {
+                    return Err(TypeError::IllegalGenericFunctionUsage { span: self.make_span(&token.get_range()), type_id: *type_id });
+                }
+
+                let mut var_type_id = *type_id;
                 if let Some(type_hint) = type_hint {
                     var_type_id = self.substitute_generics(&type_hint, &var_type_id);
                 }
@@ -4734,7 +4759,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             AstNode::Invocation(token, n) => {
                 let InvocationNode { target, args } = n;
 
+                self.allow_generic_fn_values = true;
                 let typed_target = self.typecheck_expression(*target, None)?;
+                self.allow_generic_fn_values = false;
 
                 let mut filled_in_generic_types = HashMap::new();
 
