@@ -1,23 +1,36 @@
 24
-
-//val hello = "hello"
+//1.00
+//1.23
+//false
+//"hello"
+//println("hello")
+//println(123)
 //
-//type Person {
-//  firstName: String
-//  lastName: String
+//type Foo<T> {
+//  t: T
 //
-//  func getFullName(self): String = self.firstName + " " + self.lastName
-//  func foo(self): Int = hello.length
+//  func foo(self, i: Int) {}
+//  func bar<U, V>(self, u: U, v: V): (U, V) {
+//    self.foo(1)
+//    (u, v)
+//  }
 //}
 //
-//val p = Person(firstName: "Ken", lastName: "Gorab")
-//println(p.foo())
-
-//func f(i: Int) {
-//  println(i + hello.length)
-//}
+////func q<T>(i: T) {}
+////func a(i: Int) {}
+////val fns = [q, a] // should be an error: Cannot use generic function q in this context yet
 //
-//f(0)
+//val f = Foo(t: 1)
+////val f = Foo(t: 1)
+//
+////f.foo(1)
+////f.foo(2)
+//f.bar("f", "f")
+//f.bar("f", 134)
+//f.bar(1.23, "f")
+//f.bar(1.23, 123)
+
+//val arr: Int[][] = [[], []]
 
 // TODO: This should work
 //func makeArray<U>(u: U): U[] = [u]

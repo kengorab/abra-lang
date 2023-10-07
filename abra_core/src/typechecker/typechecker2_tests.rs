@@ -3,14 +3,14 @@ use itertools::{Either, Itertools};
 use crate::lexer::tokens::{Position, POSITION_BOGUS, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BinaryOp, BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind, InvalidLoopTargetKind, ControlFlowTerminator, TerminatorKind, ExportedValue, TypeKind};
+use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind, InvalidLoopTargetKind, ControlFlowTerminator, TerminatorKind, ExportedValue, TypeKind, FunctionKind};
 
 const PRELUDE_STR: &str = include_str!("prelude.stub.abra");
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
-    module_id_map: HashMap::<ModuleId, parser::ast::ModuleId>,
-    module_id_map_rev: HashMap::<parser::ast::ModuleId, ModuleId>,
+    module_id_map: HashMap<ModuleId, parser::ast::ModuleId>,
+    module_id_map_rev: HashMap<parser::ast::ModuleId, ModuleId>,
 }
 
 impl TestModuleLoader {
@@ -2079,6 +2079,8 @@ fn typecheck_type_declaration() {
     ").unwrap();
     let module = &project.modules[1];
     let struct_id = StructId(ModuleId(1), 0);
+    let self_instance_type_id = TypeId(ScopeId(ModuleId(1), 0), 0);
+    let tostring_func_id = FuncId(ScopeId(ModuleId(1), 1), 0);
     let expected = vec![
         Struct {
             id: StructId(ModuleId(1), 0),
@@ -2086,12 +2088,12 @@ fn typecheck_type_declaration() {
             name: "Foo".to_string(),
             defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
             generic_ids: vec![],
-            self_type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
+            self_type_id: self_instance_type_id,
             fields: vec![
                 StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID, is_readonly: false, defined_span: Span::new(ModuleId(1), (2, 1), (2, 1)), default_value: None },
                 StructField { name: "b".to_string(), type_id: PRELUDE_INT_TYPE_ID, is_readonly: false, defined_span: Span::new(ModuleId(1), (3, 1), (3, 1)), default_value: None },
             ],
-            methods: vec![],
+            methods: vec![tostring_func_id],
             static_methods: vec![],
         }
     ];
@@ -2111,6 +2113,30 @@ fn typecheck_type_declaration() {
         }
     ];
     assert_eq!(expected, module.scopes[0].vars);
+    // Verify tostring method
+    let expected = Function {
+        id: tostring_func_id,
+        fn_scope_id: ScopeId::BOGUS,
+        name: "toString".to_string(),
+        generic_ids: vec![],
+        kind: FunctionKind::Method(self_instance_type_id),
+        params: vec![
+            FunctionParam {
+                name: "self".to_string(),
+                type_id: self_instance_type_id,
+                var_id: VarId::BOGUS,
+                defined_span: None,
+                default_value: None,
+                is_variadic: false,
+                is_incomplete: false,
+            }
+        ],
+        return_type_id: PRELUDE_STRING_TYPE_ID,
+        defined_span: None,
+        body: vec![],
+        captured_vars: vec![],
+    };
+    assert_eq!(&expected, project.get_func_by_id(&tostring_func_id));
 
     let project = test_typecheck("\
       type Foo {\n\
@@ -2121,6 +2147,8 @@ fn typecheck_type_declaration() {
     ").unwrap();
     let module = &project.modules[1];
     let struct_id = StructId(ModuleId(1), 0);
+    let self_instance_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_id, vec![])).unwrap();
+    let tostring_func_id = FuncId(ScopeId(ModuleId(1), 1), 0);
     let expected = vec![
         Struct {
             id: struct_id,
@@ -2128,26 +2156,48 @@ fn typecheck_type_declaration() {
             name: "Foo".to_string(),
             defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
             generic_ids: vec![],
-            self_type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
+            self_type_id: self_instance_type_id,
             fields: vec![
                 StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID, is_readonly: true, defined_span: Span::new(ModuleId(1), (2, 1), (2, 1)), default_value: None },
             ],
-            methods: vec![FuncId(ScopeId(ModuleId(1), 1), 0)],
-            static_methods: vec![FuncId(ScopeId(ModuleId(1), 1), 1)],
+            methods: vec![tostring_func_id, FuncId(ScopeId(ModuleId(1), 1), 1)],
+            static_methods: vec![FuncId(ScopeId(ModuleId(1), 1), 2)],
         }
     ];
     assert_eq!(expected, module.structs);
     let expected = vec![
         Function {
-            id: FuncId(ScopeId(ModuleId(1), 1), 0),
-            fn_scope_id: ScopeId(ModuleId(1), 2),
-            name: "foo".to_string(),
+            id: tostring_func_id,
+            fn_scope_id: ScopeId::BOGUS,
+            name: "toString".to_string(),
             generic_ids: vec![],
-            has_self: true,
+            kind: FunctionKind::Method(self_instance_type_id),
             params: vec![
                 FunctionParam {
                     name: "self".to_string(),
-                    type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_id, vec![])).unwrap(),
+                    type_id: self_instance_type_id,
+                    var_id: VarId::BOGUS,
+                    defined_span: None,
+                    default_value: None,
+                    is_variadic: false,
+                    is_incomplete: false,
+                }
+            ],
+            return_type_id: PRELUDE_STRING_TYPE_ID,
+            defined_span: None,
+            body: vec![],
+            captured_vars: vec![],
+        },
+        Function {
+            id: FuncId(ScopeId(ModuleId(1), 1), 1),
+            fn_scope_id: ScopeId(ModuleId(1), 2),
+            name: "foo".to_string(),
+            generic_ids: vec![],
+            kind: FunctionKind::Method(self_instance_type_id),
+            params: vec![
+                FunctionParam {
+                    name: "self".to_string(),
+                    type_id: self_instance_type_id,
                     var_id: VarId(ScopeId(ModuleId(1), 2), 0),
                     defined_span: Some(Span::new(ModuleId(1), (3, 10), (3, 13))),
                     default_value: None,
@@ -2167,11 +2217,11 @@ fn typecheck_type_declaration() {
             captured_vars: vec![],
         },
         Function {
-            id: FuncId(ScopeId(ModuleId(1), 1), 1),
+            id: FuncId(ScopeId(ModuleId(1), 1), 2),
             fn_scope_id: ScopeId(ModuleId(1), 3),
             name: "fooStatic".to_string(),
             generic_ids: vec![],
-            has_self: false,
+            kind: FunctionKind::StaticMethod(self_instance_type_id), // TODO: This isn't right, it shouldn't be the instance type
             params: vec![],
             return_type_id: PRELUDE_INT_TYPE_ID,
             defined_span: Some(Span::new(ModuleId(1), (4, 6), (4, 14))),
@@ -2208,7 +2258,7 @@ fn typecheck_type_declaration() {
             fields: vec![
                 StructField { name: "value".to_string(), type_id: TypeId(struct_scope_id, 0), is_readonly: false, defined_span: Span::new(ModuleId(1), (2, 1), (2, 5)), default_value: None },
             ],
-            methods: vec![FuncId(ScopeId(ModuleId(1), 1), 0)],
+            methods: vec![FuncId(ScopeId(ModuleId(1), 1), 0), FuncId(ScopeId(ModuleId(1), 1), 1)],
             static_methods: vec![],
         }
     ];
@@ -2244,7 +2294,7 @@ fn typecheck_type_declaration() {
                     }),
                 },
             ],
-            methods: vec![],
+            methods: vec![FuncId(ScopeId(ModuleId(1), 1), 0)],
             static_methods: vec![],
         }
     ];
@@ -2429,7 +2479,7 @@ fn typecheck_enum_declaration() {
         fn_scope_id: ScopeId(ModuleId(1), 2),
         name: "Baz".to_string(),
         generic_ids: vec![],
-        has_self: false,
+        kind: FunctionKind::Freestanding, // TODO: Is this correct? should we model this as a FunctionKind::StaticMethod ?
         params: vec![
             FunctionParam {
                 name: "x".to_string(),
@@ -2509,7 +2559,7 @@ fn typecheck_function_declaration() {
             fn_scope_id: ScopeId(ModuleId(1), 1),
             name: "foo".to_string(),
             generic_ids: vec![],
-            has_self: false,
+            kind: FunctionKind::Freestanding,
             params: vec![],
             return_type_id: PRELUDE_INT_TYPE_ID,
             defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
@@ -2539,7 +2589,7 @@ fn typecheck_function_declaration() {
             fn_scope_id: ScopeId(ModuleId(1), 1),
             name: "foo".to_string(),
             generic_ids: vec![],
-            has_self: false,
+            kind: FunctionKind::Freestanding,
             params: vec![
                 FunctionParam {
                     name: "x".to_string(),
@@ -2595,7 +2645,7 @@ fn typecheck_function_declaration() {
             fn_scope_id: ScopeId(ModuleId(1), 1),
             name: "foo".to_string(),
             generic_ids: vec![],
-            has_self: false,
+            kind: FunctionKind::Freestanding,
             params: vec![],
             return_type_id: bool_bool_tuple_array_type_id,
             defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
@@ -2623,7 +2673,7 @@ fn typecheck_function_declaration() {
             fn_scope_id: ScopeId(ModuleId(1), 1),
             name: "foo".to_string(),
             generic_ids: vec![],
-            has_self: false,
+            kind: FunctionKind::Freestanding,
             params: vec![],
             return_type_id: PRELUDE_INT_TYPE_ID,
             defined_span: Some(Span::new(ModuleId(1), (2, 6), (2, 8))),
@@ -2678,7 +2728,7 @@ fn typecheck_function_declaration() {
             fn_scope_id,
             name: "foo".to_string(),
             generic_ids: vec![t_type_id],
-            has_self: false,
+            kind: FunctionKind::Freestanding,
             params: vec![
                 FunctionParam {
                     name: "a".to_string(),
@@ -2721,7 +2771,7 @@ fn typecheck_function_declaration() {
             fn_scope_id,
             name: "foo".to_string(),
             generic_ids: vec![],
-            has_self: false,
+            kind: FunctionKind::Freestanding,
             params: vec![
                 FunctionParam {
                     name: "a".to_string(),
@@ -3124,7 +3174,7 @@ fn typecheck_invocation() {
                 }),
             ],
             type_id: PRELUDE_INT_TYPE_ID,
-        }
+        },
     ];
     assert_eq!(expected, module.code);
 
@@ -3831,7 +3881,7 @@ fn typecheck_accessor() {
         }),
         kind: AccessorKind::Method,
         is_opt_safe: false,
-        member_idx: 0,
+        member_idx: 1,
         member_span: Range { start: Position::new(6, 3), end: Position::new(6, 3) },
         type_id: {
             let int_array_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();

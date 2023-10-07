@@ -46,6 +46,7 @@ name = "abra_llvm"
 version = "0.1.0"
 dependencies = [
  "abra_core",
+ "assert_cmd",
  "cty",
  "inkwell",
  "itertools 0.9.0",

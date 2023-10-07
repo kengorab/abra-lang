@@ -381,7 +381,7 @@ impl Project {
     pub fn function_type_for_function(&self, func: &Function, trim_self: bool) -> Type {
         let mut num_required = 0;
 
-        let iter = if func.has_self && trim_self {
+        let iter = if func.has_self() && trim_self {
             func.params.iter().skip(1)
         } else {
             func.params.iter().skip(0)
@@ -533,7 +533,7 @@ impl Span {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct StructId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -642,52 +642,45 @@ pub enum Type {
 
 impl Type {
     pub fn get_field<'a>(&self, project: &'a Project, field_idx: usize) -> Option<(&'a String, &'a TypeId)> {
+        let Some(struct_id) = self.get_struct_id(project) else { return None; };
+
+        let struct_field = &project.get_struct_by_id(&struct_id).fields[field_idx];
+        Some((&struct_field.name, &struct_field.type_id))
+    }
+
+    pub fn get_method(&self, project: &Project, method_idx: usize) -> Option<FuncId> {
+        let Some(struct_id) = self.get_struct_id(project) else { return None; };
+
+        Some(project.get_struct_by_id(&struct_id).methods[method_idx])
+    }
+
+    pub fn find_method_by_name<'a, S: AsRef<str>>(&self, project: &'a Project, method_name: S) -> Option<&'a FuncId> {
+        let Some(struct_id) = self.get_struct_id(project) else { return None; };
+
+        let method_name = method_name.as_ref();
+        project.get_struct_by_id(&struct_id).methods.iter().find(|m| &project.get_func_by_id(m).name == method_name)
+    }
+
+    fn get_struct_id(&self, project: &Project) -> Option<StructId> {
         match self {
-            Type::Primitive(PrimitiveType::Unit) |
-            Type::Primitive(PrimitiveType::Any) => None,
-            Type::Primitive(PrimitiveType::Int) => {
-                let struct_field = &project.get_struct_by_id(&project.prelude_int_struct_id).fields[field_idx];
-                Some((&struct_field.name, &struct_field.type_id))
-            }
-            Type::Primitive(PrimitiveType::Float) => {
-                let struct_field = &project.get_struct_by_id(&project.prelude_float_struct_id).fields[field_idx];
-                Some((&struct_field.name, &struct_field.type_id))
-            }
-            Type::Primitive(PrimitiveType::Bool) => {
-                let struct_field = &project.get_struct_by_id(&project.prelude_bool_struct_id).fields[field_idx];
-                Some((&struct_field.name, &struct_field.type_id))
-            }
-            Type::Primitive(PrimitiveType::String) => {
-                let struct_field = &project.get_struct_by_id(&project.prelude_string_struct_id).fields[field_idx];
-                Some((&struct_field.name, &struct_field.type_id))
-            }
-            Type::Generic(_, _) => None,
-            Type::GenericInstance(struct_id, _) => {
-                let struct_field = &project.get_struct_by_id(struct_id).fields[field_idx];
-                Some((&struct_field.name, &struct_field.type_id))
-            }
-            Type::GenericEnumInstance(_, _, _) |
-            Type::Function(_, _, _, _) |
-            Type::Type(_) |
-            Type::ModuleAlias => todo!()
+            Type::Primitive(PrimitiveType::Int) => Some(project.prelude_int_struct_id),
+            Type::Primitive(PrimitiveType::Float) => Some(project.prelude_float_struct_id),
+            Type::Primitive(PrimitiveType::Bool) => Some(project.prelude_bool_struct_id),
+            Type::Primitive(PrimitiveType::String) => Some(project.prelude_string_struct_id),
+            Type::GenericInstance(struct_id, _) => Some(*struct_id),
+            _ => None
         }
     }
 
-    pub fn get_method<'a>(&self, project: &'a Project, method_idx: usize) -> Option<FuncId> {
-        match self {
-            Type::Primitive(PrimitiveType::Unit) |
-            Type::Primitive(PrimitiveType::Any) => None,
-            Type::Primitive(PrimitiveType::Int) => Some(project.get_struct_by_id(&project.prelude_int_struct_id).methods[method_idx]),
-            Type::Primitive(PrimitiveType::Float) => Some(project.get_struct_by_id(&project.prelude_float_struct_id).methods[method_idx]),
-            Type::Primitive(PrimitiveType::Bool) => Some(project.get_struct_by_id(&project.prelude_bool_struct_id).methods[method_idx]),
-            Type::Primitive(PrimitiveType::String) => Some(project.get_struct_by_id(&project.prelude_string_struct_id).methods[method_idx]),
-            Type::Generic(_, _) => None,
-            Type::GenericInstance(struct_id, _) => Some(project.get_struct_by_id(struct_id).methods[method_idx]),
-            Type::GenericEnumInstance(_, _, _) |
-            Type::Function(_, _, _, _) |
-            Type::Type(_) |
-            Type::ModuleAlias => todo!()
-        }
+    pub fn find_static_method_by_name<'a, S: AsRef<str>>(&self, project: &'a Project, method_name: S) -> Option<&'a FuncId> {
+        let static_methods = match self {
+            Type::Type(TypeKind::Struct(struct_id)) => &project.get_struct_by_id(struct_id).static_methods,
+            Type::Type(TypeKind::Enum(enum_id)) => &project.get_enum_by_id(enum_id).static_methods,
+            _ => return None
+        };
+
+        let method_name = method_name.as_ref();
+        static_methods.iter().find(|m| &project.get_func_by_id(m).name == method_name)
     }
 }
 
@@ -744,6 +737,10 @@ pub struct Scope {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct VarId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
 
+impl VarId {
+    pub const BOGUS: VarId = VarId(ScopeId::BOGUS, usize::MAX);
+}
+
 #[derive(Debug, PartialEq)]
 pub enum VariableAlias {
     None,
@@ -765,11 +762,18 @@ pub struct Variable {
     pub is_parameter: bool,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct FuncId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
 
 impl FuncId {
     pub const BOGUS: FuncId = FuncId(ScopeId::BOGUS, usize::MAX);
+}
+
+#[derive(Debug, PartialEq)]
+pub enum FunctionKind {
+    Freestanding,
+    Method(TypeId),
+    StaticMethod(TypeId),
 }
 
 #[derive(Debug, PartialEq)]
@@ -778,7 +782,7 @@ pub struct Function {
     pub fn_scope_id: ScopeId,
     pub name: String,
     pub generic_ids: Vec<TypeId>,
-    pub has_self: bool,
+    pub kind: FunctionKind,
     pub params: Vec<FunctionParam>,
     pub return_type_id: TypeId,
     // Functions with no defined_span are builtins or lambdas (since they can't have name collisions anyway)
@@ -790,6 +794,10 @@ pub struct Function {
 impl Function {
     fn is_variadic(&self) -> bool {
         self.params.last().map(|p| p.is_variadic).unwrap_or(false)
+    }
+
+    pub fn has_self(&self) -> bool {
+        matches!(&self.kind, FunctionKind::Method(_))
     }
 }
 
@@ -2281,7 +2289,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
     fn add_function_to_current_scope(&mut self, fn_scope_id: ScopeId, name_token: &Token, generic_ids: Vec<TypeId>, has_self: bool, params: Vec<FunctionParam>, return_type_id: TypeId) -> Result<FuncId, TypeError> {
         let is_method = self.current_type_decl.is_some();
-        let current_scope = self.current_scope_mut();
+        let current_scope = self.current_scope();
 
         let name = Token::get_ident_name(name_token);
         let span = Span::from_range(current_scope.id.0, name_token.get_range());
@@ -2292,8 +2300,19 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
         }
 
+        let kind = if let Some(type_id) = self.current_type_decl.as_ref() {
+            if has_self {
+                FunctionKind::Method(*type_id)
+            } else {
+                FunctionKind::StaticMethod(*type_id)
+            }
+        } else {
+            FunctionKind::Freestanding
+        };
         let func_id = FuncId(current_scope.id, current_scope.funcs.len());
-        let func = Function { id: func_id, fn_scope_id, name: name.clone(), generic_ids, has_self, params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![] };
+        let func = Function { id: func_id, fn_scope_id, name: name.clone(), generic_ids, kind, params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![] };
+
+        let current_scope = self.current_scope_mut();
         current_scope.funcs.push(func);
 
         Ok(func_id)
@@ -2320,8 +2339,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let fn_decl_scope = self.project.get_scope_by_id_mut(fn_decl_scope_id);
 
+        let kind = FunctionKind::Freestanding;
         let func_id = FuncId(fn_decl_scope.id, fn_decl_scope.funcs.len());
-        let func = Function { id: func_id, fn_scope_id, name, generic_ids: vec![], has_self: false, params, return_type_id: PRELUDE_ANY_TYPE_ID, defined_span: None, body: vec![], captured_vars: vec![] };
+        let func = Function { id: func_id, fn_scope_id, name, generic_ids: vec![], kind, params, return_type_id: PRELUDE_ANY_TYPE_ID, defined_span: None, body: vec![], captured_vars: vec![] };
 
         fn_decl_scope.funcs.push(func);
 
@@ -3085,6 +3105,29 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         debug_assert!(self.current_type_decl.is_none(), "At the moment, types cannot be nested within other types");
         self.current_type_decl = Some(struct_.self_type_id);
 
+        let self_type_id = struct_.self_type_id;
+        let string_type_id = self.add_or_find_type_id(Type::Primitive(PrimitiveType::String));
+        let tostring_func_id = self.add_function_to_current_scope(
+            ScopeId::BOGUS,
+            &Token::Ident(POSITION_BOGUS, "toString".to_string()),
+            vec![],
+            true,
+            vec![
+                FunctionParam {
+                    name: "self".to_string(),
+                    type_id: self_type_id,
+                    var_id: VarId::BOGUS,
+                    defined_span: None,
+                    default_value: None,
+                    is_variadic: false,
+                    is_incomplete: false,
+                }
+            ],
+            string_type_id,
+        )?;
+        self.project.get_func_by_id_mut(&tostring_func_id).defined_span = None;
+        self.project.get_struct_by_id_mut(struct_id).methods.push(tostring_func_id);
+
         for method in methods {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
             let func_id = self.typecheck_function_pass_0(decl_node)?;
@@ -3133,7 +3176,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             struct_.fields[idx].default_value = Some(default_value);
         }
 
-        let mut method_func_id_idx = 0;
+        let mut method_func_id_idx = 1; // Skip builtin toString
         let mut static_method_func_id_idx = 0;
         for method in methods.into_iter() {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
@@ -5014,19 +5057,19 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 }
 
-                for (param_idx, _, param_type_id, param_is_optional, param_is_variadic) in params_data {
-                    if param_is_variadic {
-                        debug_assert!(param_idx == typed_arguments.len() - 1);
-                        if typed_arguments[param_idx].is_none() {
+                for (param_idx, _, param_type_id, param_is_optional, param_is_variadic) in &params_data {
+                    if *param_is_variadic {
+                        debug_assert!(*param_idx == typed_arguments.len() - 1);
+                        if typed_arguments[*param_idx].is_none() {
                             let start_pos = variadic_arguments.get(0).map(|a| a.span().start).unwrap_or(POSITION_BOGUS);
 
-                            typed_arguments[param_idx] = Some(TypedNode::Array {
+                            typed_arguments[*param_idx] = Some(TypedNode::Array {
                                 token: Token::LBrack(start_pos, false),
                                 items: variadic_arguments.drain(..).collect(),
-                                type_id: self.add_or_find_type_id(self.project.array_type(param_type_id)),
+                                type_id: self.add_or_find_type_id(self.project.array_type(*param_type_id)),
                             })
                         }
-                    } else if typed_arguments[param_idx].is_none() && !param_is_optional {
+                    } else if typed_arguments[*param_idx].is_none() && !*param_is_optional {
                         let span = self.make_span(&typed_target.span().expand(&token.get_range()));
                         return Err(TypeError::InvalidArity { span, num_possible_args, num_required_args, num_provided_args });
                     }

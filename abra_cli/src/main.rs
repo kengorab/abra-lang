@@ -16,7 +16,7 @@ use abra_core::parser::ast::ModuleId;
 use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VM, VMContext};
 use abra_llvm::{compile_to_llvm_and_run, get_project_root};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use itertools::Either;
 use abra_core::transpile::genc2::CCompiler2;
@@ -73,6 +73,12 @@ struct BuildOpts {
 
     #[clap(short = "r", long = "run", help = "Run after building")]
     run: bool,
+
+    #[clap(short = "o", help = "Where the resulting binary should be placed (default: '<build-dir>/.abra/main')")]
+    out_file_name: Option<String>,
+
+    #[clap(short = "b", help = "Where the .abra output dir should be placed (default: current directory)")]
+    build_dir: Option<String>,
 }
 
 #[derive(Clap)]
@@ -315,7 +321,11 @@ fn cmd_compile_llvm_and_run_2(opts: BuildOpts) -> Result<(), ()> {
     let file_path = current_path.join(&opts.file_path);
 
     let working_dir = file_path.parent().unwrap();
-    let dotabra_dir = working_dir.join(".abra");
+    let dotabra_dir = if let Some(build_dir_name) = opts.build_dir {
+        Path::new(&build_dir_name).join(".abra")
+    } else {
+        working_dir.join(".abra")
+    };
     if !dotabra_dir.exists() {
         if std::fs::create_dir(&dotabra_dir).is_err() {
             eprintln!("{}", format!("Could not create .abra directory at {}", dotabra_dir.to_str().unwrap()));
@@ -356,14 +366,14 @@ fn cmd_compile_llvm_and_run_2(opts: BuildOpts) -> Result<(), ()> {
     }
 
     if opts.run {
-        let exit_status = LLVMCompiler2::compile_and_run(&project, &dotabra_dir);
+        let exit_status = LLVMCompiler2::compile_and_run(&project, &dotabra_dir, opts.out_file_name);
         if let Some(status_code) = exit_status.code() {
             std::process::exit(status_code)
         } else {
             // Process terminated by signal
         }
     } else {
-        LLVMCompiler2::compile(&project, &dotabra_dir);
+        LLVMCompiler2::compile(&project, &dotabra_dir, opts.out_file_name);
     }
 
     Ok(())

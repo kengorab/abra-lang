@@ -7,7 +7,10 @@ use inkwell::module::Module;
 use inkwell::targets::TargetMachine;
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, FloatType, FunctionType, IntType, PointerType, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum, FloatValue, FunctionValue, IntValue, PointerValue};
-use abra_core::typechecker::typechecker2::{PRELUDE_MODULE_ID, PRELUDE_UNIT_TYPE_ID, Project, TypedLiteral, TypedNode};
+use itertools::Itertools;
+use abra_core::typechecker::typechecker2::{ModuleId, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Type, TypedLiteral, TypedNode, TypeId};
+
+const STRING_NEW_FN_NAME: &str = "String.new(Ptr<UInt8>,Int32):String";
 
 pub struct LLVMCompiler2<'a> {
     project: &'a Project,
@@ -21,15 +24,17 @@ pub struct LLVMCompiler2<'a> {
 }
 
 impl<'a> LLVMCompiler2<'a> {
-    pub fn compile(project: &Project, out_dir: &PathBuf) -> PathBuf {
+    pub fn compile(project: &Project, out_dir: &PathBuf, out_file_name: Option<String>) -> PathBuf {
         let context = Context::create();
         let compiler = LLVMCompiler2::new(project, &context);
         compiler.generate(project);
 
-        let llvm_module_out_file = out_dir.join("_main.ll");
+        let out_name = out_file_name.unwrap_or("main".into());
+
+        let llvm_module_out_file = out_dir.join(format!("_{}.ll", &out_name));
         compiler.main_module.print_to_file(&llvm_module_out_file).unwrap();
 
-        let exec_out_file = out_dir.join("main");
+        let exec_out_file = out_dir.join(&out_name);
         let cc_output = Command::new("cc")
             .arg(&llvm_module_out_file)
             .arg("-o")
@@ -47,8 +52,8 @@ impl<'a> LLVMCompiler2<'a> {
         exec_out_file
     }
 
-    pub fn compile_and_run(project: &Project, out_dir: &PathBuf) -> ExitStatus {
-        let exec_out_file = Self::compile(project, out_dir);
+    pub fn compile_and_run(project: &Project, out_dir: &PathBuf, out_file_name: Option<String>) -> ExitStatus {
+        let exec_out_file = Self::compile(project, out_dir, out_file_name);
 
         let run_output = Command::new(&exec_out_file).output().unwrap();
         if !run_output.stderr.is_empty() {
@@ -141,6 +146,66 @@ impl<'a> LLVMCompiler2<'a> {
         ret.fn_type(param_types, true)
     }
 
+    fn sizeof_struct<T: BasicType<'a>>(&self, t: T) -> IntValue<'a> {
+        let sizeof_struct = self.builder.build_struct_gep(self.null_ptr().const_cast(self.ptr(t)), 1, "").unwrap();
+        self.builder.build_ptr_to_int(sizeof_struct, self.i64(), "")
+    }
+
+    fn llvm_type_name_by_id(&self, type_id: &TypeId) -> String {
+        let TypeId(ScopeId(ModuleId(m_id), s_id), _) = type_id;
+        let prefix = if *m_id == PRELUDE_MODULE_ID.0 {
+            "".into()
+        } else {
+            format!("{}.{}.", m_id, s_id)
+        };
+
+        let ty = self.project.get_type_by_id(type_id);
+        let name = match ty {
+            Type::Primitive(PrimitiveType::Unit) => "Unit".into(),
+            Type::Primitive(PrimitiveType::Any) => "Any".into(),
+            Type::Primitive(PrimitiveType::Int) => "Int".into(),
+            Type::Primitive(PrimitiveType::Float) => "Float".into(),
+            Type::Primitive(PrimitiveType::Bool) => "Bool".into(),
+            Type::Primitive(PrimitiveType::String) => "String".into(),
+            Type::Generic(_, _) => todo!(),
+            Type::GenericInstance(struct_id, generic_ids) => {
+                let struct_ = self.project.get_struct_by_id(struct_id);
+                let generic_names = generic_ids.iter().map(|type_id| self.llvm_type_name_by_id(type_id)).join(",");
+                format!("{}<{}>", &struct_.name, generic_names)
+            }
+            Type::GenericEnumInstance(_, _, _) |
+            Type::Function(_, _, _, _) |
+            Type::Type(_) |
+            Type::ModuleAlias => todo!()
+        };
+
+        format!("{}{}", prefix, name)
+    }
+
+    fn llvm_function_name<S: AsRef<str>>(&self, name: S, container_type: Option<(&TypeId, /* is_method: */ bool)>) -> String {
+        if let Some((container_type_id, is_method)) = container_type {
+            let type_name = self.llvm_type_name_by_id(container_type_id);
+            let ty = self.project.get_type_by_id(container_type_id);
+            let (func_id, infix) = if is_method {
+                (ty.find_method_by_name(self.project, name.as_ref()), "#")
+            } else {
+                (ty.find_static_method_by_name(self.project, name.as_ref()), ".")
+            };
+            let func_id = func_id.expect(&format!("Method {} on type {} expected to exist", name.as_ref(), type_name));
+            let function = self.project.get_func_by_id(func_id);
+            let function_name = &function.name;
+
+            let params = function.params.iter().skip(if function.has_self() { 1 } else { 0 })
+                .map(|p| self.llvm_type_name_by_id(&p.type_id))
+                .join(",");
+            let ret_type_name = self.llvm_type_name_by_id(&function.return_type_id);
+
+            format!("{type_name}{infix}{function_name}({params}):{ret_type_name}")
+        } else {
+            todo!()
+        }
+    }
+
     // LLVM UTILS END
 
     fn start_abra_main(context: &'a Context, main_module: &Module<'a>, builder: &Builder<'a>) -> FunctionValue<'a> {
@@ -190,12 +255,15 @@ impl<'a> LLVMCompiler2<'a> {
             let num_nodes = m.code.len();
             for (idx, node) in m.code.iter().enumerate() {
                 let res = self.visit_statement(node);
-                if idx == num_nodes - 1 && *node.type_id() != PRELUDE_UNIT_TYPE_ID {
+                let node_type_id = node.type_id();
+                if idx == num_nodes - 1 && *node_type_id != PRELUDE_UNIT_TYPE_ID {
                     if let Some(res) = res {
-                        let to_string_fn = self.main_module.get_function("Int#toString(self):String").unwrap();
+                        let to_string_fn_name = self.llvm_function_name("toString", Some((node_type_id, true)));
+                        let to_string_fn = self.main_module.get_function(&to_string_fn_name).unwrap();
 
-                        let str_val = self.builder.build_call(to_string_fn, &[res.into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
-                        let chars_val = self.builder.build_struct_gep(str_val, 2, "String#chars").unwrap();
+                        let str_val = self.builder.build_call(to_string_fn, &[res.into()], "repr").try_as_basic_value().left().unwrap().into_pointer_value();
+                        let chars_val_ptr = self.builder.build_struct_gep(str_val.const_cast(self.ptr(self.string_type)), 2, "").unwrap();
+                        let chars_val = self.builder.build_load(chars_val_ptr, "repr.chars");
 
                         let fmt_str = self.builder.build_global_string_ptr("%s", "").as_basic_value_enum();
                         self.builder.build_call(printf, &[fmt_str.into(), chars_val.into()], "").try_as_basic_value().left().unwrap();
@@ -220,40 +288,140 @@ impl<'a> LLVMCompiler2<'a> {
         let snprintf = self.main_module.add_function("snprintf", self.fn_type_variadic(self.i64(), &[self.ptr(self.i8()).into(), self.i32().into(), self.ptr(self.i8()).into()]), None);
         let malloc = self.main_module.add_function("malloc", self.fn_type(self.ptr(self.i8()), &[self.i64().into()]), None);
 
-        // Int#toString(self):String
-        let fn_type = self.fn_type(self.ptr(self.string_type), &[self.i64().into()]);
-        let func = self.main_module.add_function("Int#toString(self):String", fn_type, None);
-        let block = self.context.append_basic_block(func, "");
-        self.builder.position_at_end(block);
-        let fmt_str = self.builder.build_global_string_ptr("%jd", "").as_basic_value_enum();
-        let self_param = func.get_nth_param(0).unwrap();
-        let len_val = self.builder.build_call(snprintf, &[self.null_ptr().into(), self.const_i32(0).into(), fmt_str.into(), self_param.into()], "len").try_as_basic_value().left().unwrap().into_int_value();
-        let len_plus_1 = self.builder.build_int_add::<IntValue<'a>>(len_val.into(), self.const_i64(1).into(), "len_plus_1");
-        let str_val = self.builder.build_call(malloc, &[len_plus_1.into()], "str").try_as_basic_value().left().unwrap();
-        let len_val_plus_1_i32 = self.builder.build_int_cast(len_plus_1, self.i32(), "");
-        self.builder.build_call(snprintf, &[str_val.into(), len_val_plus_1_i32.into(), fmt_str.into(), self_param.into()], "").try_as_basic_value().left().unwrap();
+        // String.new(Ptr<UInt8>,Int32):String
+        {
+            let fn_type = self.fn_type(self.ptr(self.string_type), &[self.ptr(self.i8()).into(), self.i32().into()]);
+            let func = self.main_module.add_function(STRING_NEW_FN_NAME, fn_type, None);
+            let mut func_params_iter = func.get_param_iter();
+            func_params_iter.next().unwrap().set_name("chars");
+            func_params_iter.next().unwrap().set_name("length");
 
-        let sizeof_string = unsafe { self.builder.build_gep(self.null_ptr().const_cast(self.ptr(self.string_type)), &[self.const_i32(1).into()], "sizeof(String)") };
-        let sizeof_string = self.builder.build_ptr_to_int(sizeof_string, self.i64(), "sizeof(String) as i64");
-        let str_mem = self.builder.build_pointer_cast(
-            self.builder.build_call(malloc, &[sizeof_string.into()], "").try_as_basic_value().left().unwrap().into_pointer_value(),
-            self.ptr(self.string_type),
-            "str_mem",
-        );
-        // let str_mem = self.builder.build_pointer_cast(str_mem, self.ptr(self.string_type), "str_mem");
-        let mem_cursor = unsafe { self.builder.build_struct_gep(str_mem, 0, "String#type_id") }.unwrap();
-        self.builder.build_store(mem_cursor, self.const_i32(self.project.prelude_string_struct_id.1 as u64));
-        let mem_cursor = unsafe { self.builder.build_struct_gep(str_mem, 1, "String#length") }.unwrap();
-        self.builder.build_store(mem_cursor, self.builder.build_int_cast::<IntValue<'a>>(len_val.into(), self.i32(), ""));
-        let mem_cursor = unsafe { self.builder.build_struct_gep(str_mem, 2, "String#chars") }.unwrap();
-        self.builder.build_store(mem_cursor, str_val);
+            let block = self.context.append_basic_block(func, "");
+            self.builder.position_at_end(block);
 
-        // let ret_val = self.context.const_struct(&[
-        //     self.const_i32(self.project.prelude_string_struct_id.1 as u64).into(),
-        //     self.builder.build_int_cast::<IntValue<'a>>(len_val.into(), self.i32(), "").into(),
-        //     str_val.into()
-        // ], false);
-        self.builder.build_return(Some(&str_mem.as_basic_value_enum()));
+            let sizeof_string = self.sizeof_struct(self.string_type);
+            let str_mem = self.builder.build_pointer_cast(
+                self.builder.build_call(malloc, &[sizeof_string.into()], "").try_as_basic_value().left().unwrap().into_pointer_value(),
+                self.ptr(self.string_type),
+                "str_mem",
+            );
+            let mem_cursor = self.builder.build_struct_gep(str_mem, 0, "String#type_id").unwrap();
+            self.builder.build_store(mem_cursor, self.const_i32(self.project.prelude_string_struct_id.1 as u64));
+            let mem_cursor = self.builder.build_struct_gep(str_mem, 1, "String#length").unwrap();
+            self.builder.build_store(mem_cursor, func.get_nth_param(1).unwrap());
+            let mem_cursor = self.builder.build_struct_gep(str_mem, 2, "String#chars").unwrap();
+            self.builder.build_store(mem_cursor, func.get_nth_param(0).unwrap());
+
+            self.builder.build_return(Some(&str_mem.as_basic_value_enum()));
+        }
+
+        // Int#toString():String
+        {
+            let fn_type = self.fn_type(self.ptr(self.string_type), &[self.i64().into()]);
+            let fn_name = self.llvm_function_name("toString", Some((&PRELUDE_INT_TYPE_ID, true)));
+            let func = self.main_module.add_function(&fn_name, fn_type, None);
+            func.get_param_iter().next().unwrap().set_name("self");
+            let block = self.context.append_basic_block(func, "");
+            self.builder.position_at_end(block);
+            let fmt_str = self.builder.build_global_string_ptr("%jd", "").as_basic_value_enum();
+            let self_param = func.get_nth_param(0).unwrap();
+            let len_val = self.builder.build_call(snprintf, &[self.null_ptr().into(), self.const_i32(0).into(), fmt_str.into(), self_param.into()], "len").try_as_basic_value().left().unwrap().into_int_value();
+            let len_val = self.builder.build_int_cast(len_val, self.i32(), "");
+            let len_plus_1 = self.builder.build_int_add::<IntValue<'a>>(len_val.into(), self.const_i32(1).into(), "len_plus_1");
+            let str_val = self.builder.build_call(malloc, &[self.builder.build_int_cast(len_plus_1, self.i64(), "").into()], "str").try_as_basic_value().left().unwrap();
+            self.builder.build_call(snprintf, &[str_val.into(), len_plus_1.into(), fmt_str.into(), self_param.into()], "").try_as_basic_value().left().unwrap();
+
+            let ret_val = self.builder.build_call(
+                self.main_module.get_function(STRING_NEW_FN_NAME).unwrap(),
+                &[str_val.into(), len_val.into()],
+                "",
+            ).try_as_basic_value().left().unwrap();
+
+            self.builder.build_return(Some(&ret_val));
+        }
+
+        // Float#toString():String
+        {
+            let fn_type = self.fn_type(self.ptr(self.string_type), &[self.f64().into()]);
+            let fn_name = self.llvm_function_name("toString", Some((&PRELUDE_FLOAT_TYPE_ID, true)));
+            let func = self.main_module.add_function(&fn_name, fn_type, None);
+            func.get_param_iter().next().unwrap().set_name("self");
+            let block = self.context.append_basic_block(func, "");
+            self.builder.position_at_end(block);
+            let fmt_str = self.builder.build_global_string_ptr("%g", "").as_basic_value_enum();
+            let self_param = func.get_nth_param(0).unwrap();
+            let len_val = self.builder.build_call(snprintf, &[self.null_ptr().into(), self.const_i32(0).into(), fmt_str.into(), self_param.into()], "len").try_as_basic_value().left().unwrap().into_int_value();
+            let len_val = self.builder.build_int_cast(len_val, self.i32(), "");
+            let len_plus_1 = self.builder.build_int_add::<IntValue<'a>>(len_val.into(), self.const_i32(1).into(), "len_plus_1");
+            let str_val = self.builder.build_call(malloc, &[self.builder.build_int_cast(len_plus_1, self.i64(), "").into()], "str").try_as_basic_value().left().unwrap();
+            self.builder.build_call(snprintf, &[str_val.into(), len_plus_1.into(), fmt_str.into(), self_param.into()], "").try_as_basic_value().left().unwrap();
+
+            let ret_val = self.builder.build_call(
+                self.main_module.get_function(STRING_NEW_FN_NAME).unwrap(),
+                &[str_val.into(), len_val.into()],
+                "",
+            ).try_as_basic_value().left().unwrap();
+
+            self.builder.build_return(Some(&ret_val));
+        }
+
+        // Bool#toString():String
+        {
+            let bool_true_str_global = self.main_module.add_global(self.string_type, None, "BOOL_TRUE_STR");
+            bool_true_str_global.set_constant(true);
+            let true_str = self.builder.build_global_string_ptr("true", "").as_basic_value_enum();
+            bool_true_str_global.set_initializer(&self.context.const_struct(&[
+                self.const_i32(self.project.prelude_string_struct_id.1 as u64).into(),
+                self.const_i32(4).into(),
+                true_str,
+            ], false));
+            let bool_false_str_global = self.main_module.add_global(self.string_type, None, "BOOL_FALSE_STR");
+            bool_false_str_global.set_constant(true);
+            let false_str = self.builder.build_global_string_ptr("false", "").as_basic_value_enum();
+            bool_false_str_global.set_initializer(&self.context.const_struct(&[
+                self.const_i32(self.project.prelude_string_struct_id.1 as u64).into(),
+                self.const_i32(5).into(),
+                false_str,
+            ], false));
+
+            let fn_type = self.fn_type(self.ptr(self.string_type), &[self.bool().into()]);
+            let fn_name = self.llvm_function_name("toString", Some((&PRELUDE_BOOL_TYPE_ID, true)));
+            let func = self.main_module.add_function(&fn_name, fn_type, None);
+            func.get_param_iter().next().unwrap().set_name("self");
+            let block = self.context.append_basic_block(func, "");
+            self.builder.position_at_end(block);
+
+            let cond = func.get_nth_param(0).unwrap().into_int_value();
+            let then_bb = self.context.append_basic_block(func, "then");
+            let else_bb = self.context.append_basic_block(func, "else");
+            let cont_bb = self.context.append_basic_block(func, "cont");
+            self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+            self.builder.position_at_end(then_bb);
+            let then_val = bool_true_str_global.as_pointer_value();
+            self.builder.build_unconditional_branch(cont_bb);
+
+            self.builder.position_at_end(else_bb);
+            let else_val = bool_false_str_global.as_pointer_value();
+            self.builder.build_unconditional_branch(cont_bb);
+
+            self.builder.position_at_end(cont_bb);
+            let phi = self.builder.build_phi(self.ptr(self.string_type), "");
+            phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
+
+            self.builder.build_return(Some(&phi.as_basic_value()));
+        }
+
+        // String#toString():String
+        {
+            let fn_type = self.fn_type(self.ptr(self.string_type), &[self.ptr(self.string_type).into()]);
+            let fn_name = self.llvm_function_name("toString", Some((&PRELUDE_STRING_TYPE_ID, true)));
+            let func = self.main_module.add_function(&fn_name, fn_type, None);
+            func.get_param_iter().next().unwrap().set_name("self");
+            let block = self.context.append_basic_block(func, "");
+            self.builder.position_at_end(block);
+            self.builder.build_return(Some(&func.get_nth_param(0).unwrap()));
+        }
     }
 
     fn visit_statement(&self, node: &TypedNode) -> Option<BasicValueEnum<'a>> {
@@ -290,7 +458,12 @@ impl<'a> LLVMCompiler2<'a> {
                         let b = self.const_bool(*b);
                         b.as_basic_value_enum()
                     }
-                    TypedLiteral::String(_) => todo!()
+                    TypedLiteral::String(s) => {
+                        let str = self.builder.build_global_string_ptr(&s, "").as_basic_value_enum();
+                        let str_len = self.const_i32(s.len() as u64);
+                        let string_new_fn = self.main_module.get_function(&STRING_NEW_FN_NAME).unwrap();
+                        self.builder.build_call(string_new_fn, &[str.into(), str_len.into()], "").try_as_basic_value().left().unwrap()
+                    }
                 }
             }
             TypedNode::Unary { .. } |
@@ -309,5 +482,81 @@ impl<'a> LLVMCompiler2<'a> {
             TypedNode::Assignment { .. } => todo!(),
             _ => unreachable!("Node is not an expression and should have been handled in visit_statement")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::env::temp_dir;
+    use std::process::Command;
+    use assert_cmd::cargo::CommandCargoExt;
+    use itertools::{EitherOrBoth, Itertools};
+    use crate::get_project_root;
+
+    fn run_test_file(file_name: &str) {
+        let rust_project_root = get_project_root().unwrap();
+
+        let tests_file_path = rust_project_root.join("abra_llvm").join("tests");
+        let test_file_path = tests_file_path.join(file_name);
+
+        let test_file = std::fs::read_to_string(&test_file_path).unwrap();
+        let build_dir = temp_dir();
+        eprintln!("running test {}, using build dir: {}", file_name, &build_dir.to_str().unwrap());
+        let output = Command::cargo_bin("abra").unwrap()
+            .arg("build")
+            .arg("--run")
+            .arg(&test_file_path)
+            .arg("-o")
+            .arg(file_name.replace(".abra", ""))
+            .arg("-b")
+            .arg(build_dir)
+            .output()
+            .unwrap();
+        assert!(output.stderr.is_empty(), "Compilation error: {}", String::from_utf8(output.stderr).unwrap());
+
+        let output = String::from_utf8(output.stdout).unwrap();
+        let output = output.lines();
+
+        let prefix = "/// Expect: ";
+        let expectations = test_file.lines()
+            .map(|line| line.trim())
+            .enumerate()
+            .filter(|(_, line)| line.starts_with(prefix))
+            .map(|(line_num, line)| (line_num + 1, line.replace(prefix, "")))
+            .collect_vec();
+
+        for pair in expectations.iter().zip_longest(output) {
+            match pair {
+                EitherOrBoth::Both((line_num, expected), actual) => {
+                    assert_eq!(expected, actual, "Expectation mismatch at {}:{}", test_file_path.to_str().unwrap(), line_num);
+                }
+                EitherOrBoth::Left((line_num, expected)) => {
+                    assert!(false, "Expected: {} (line {}), but reached end of output", expected, line_num);
+                }
+                EitherOrBoth::Right(actual) => {
+                    assert!(false, "Received line: {}, but there were no more expectations", actual);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_ints() {
+        run_test_file("ints.abra");
+    }
+
+    #[test]
+    fn test_floats() {
+        run_test_file("floats.abra");
+    }
+
+    #[test]
+    fn test_bools() {
+        run_test_file("bools.abra");
+    }
+
+    #[test]
+    fn test_strings() {
+        run_test_file("strings.abra");
     }
 }
