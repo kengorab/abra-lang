@@ -2733,13 +2733,20 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(())
     }
 
-    fn add_generics_to_scope(&mut self, scope_id: &ScopeId, type_args: &Vec<Token>) -> Result<Vec<TypeId>, TypeError> {
+    fn add_generics_to_scope(&mut self, scope_id: &ScopeId, type_args: &Vec<Token>, walk_scopes: bool) -> Result<Vec<TypeId>, TypeError> {
         let mut generic_ids = Vec::with_capacity(type_args.len());
         for generic_ident in type_args {
             let generic_name = Token::get_ident_name(generic_ident);
-            let possible_match = self.project
-                .find_type_id_for_generic(&scope_id, &generic_name)
-                .map(|type_id| self.project.get_type_by_id(&type_id));
+            let possible_match = if walk_scopes {
+                self.project
+                    .find_type_id_for_generic(&scope_id, &generic_name)
+                    .map(|type_id| self.project.get_type_by_id(&type_id))
+            } else {
+                self.project.get_scope_by_id(scope_id).types.iter().find(|ty| match ty {
+                    Type::Generic(_, name) if &generic_name == name => true,
+                    _ => false,
+                })
+            };
             if let Some(ty) = possible_match {
                 let span = self.make_span(&generic_ident.get_range());
                 let Type::Generic(orig_range, name) = ty.clone() else { unreachable!("We know it's a generic since it was identified as such") };
@@ -2903,8 +2910,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)), ScopeKind::Function(FuncId::BOGUS));
 
-        let generic_ids = self.add_generics_to_scope(&fn_scope_id, type_args)?;
         let has_self = args.first().map(|(tok, _, _, _)| matches!(tok, Token::Self_(_))).unwrap_or(false);
+        let generic_ids = self.add_generics_to_scope(&fn_scope_id, type_args, has_self)?;
         let mut return_type_id = PRELUDE_UNIT_TYPE_ID;
         if let Some(ret_type) = ret_type {
             return_type_id = self.resolve_type_identifier(ret_type)?;
@@ -3037,7 +3044,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let struct_scope_id = self.create_child_scope(format!("{:?}.{}", &self.current_module().id, &struct_name), ScopeKind::Type);
 
         // A struct's generics are scoped to the struct declaration, but the instance type should be scoped to the outer scope.
-        let generic_ids = self.add_generics_to_scope(&struct_scope_id, type_args)?;
+        let generic_ids = self.add_generics_to_scope(&struct_scope_id, type_args, false)?;
         let struct_id = self.add_struct_to_current_module(struct_scope_id, name, generic_ids)?;
 
         let prev_scope_id = self.current_scope_id;
@@ -3165,7 +3172,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let enum_scope_id = self.create_child_scope(format!("{:?}.{}", &self.current_module().id, &enum_name), ScopeKind::Type);
 
         // An enum's generics are scoped to the enum declaration, but the instance type should be scoped to the outer scope.
-        let generic_ids = self.add_generics_to_scope(&enum_scope_id, type_args)?;
+        let generic_ids = self.add_generics_to_scope(&enum_scope_id, type_args, false)?;
         let enum_id = self.add_enum_to_current_module(enum_scope_id, name, generic_ids)?;
         debug_assert!(self.current_type_decl.is_none(), "At the moment, types cannot be nested within other types");
 
@@ -4633,7 +4640,23 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let target_type = self.project.get_type_by_id(&target_type_id);
                 if let Type::Type(id) = target_type {
                     match id {
-                        TypeKind::Struct(_struct_id) => todo!("Static methods/fields not yet implemented"),
+                        TypeKind::Struct(struct_id) => {
+                            let struct_ = self.project.get_struct_by_id(struct_id);
+                            let method = struct_.static_methods.iter().enumerate().find_map(|(idx, func_id)| {
+                                let function = self.project.get_func_by_id(func_id);
+                                if function.name == field_name { Some((idx, function)) } else { None }
+                            });
+                            if let Some((idx, function)) = method {
+                                let mut type_id = self.add_or_find_type_id(self.project.function_type_for_function(function, false));
+                                if let Some(type_hint_id) = &type_hint {
+                                    let ty = self.project.get_type_by_id(type_hint_id);
+                                    if matches!(ty, Type::Function(_, _, _, _)) {
+                                        type_id = self.substitute_generics(type_hint_id, &type_id);
+                                    }
+                                }
+                                field_data = Some((AccessorKind::StaticMethod, idx, type_id));
+                            }
+                        }
                         TypeKind::Enum(enum_id) => {
                             let enum_ = self.project.get_enum_by_id(enum_id);
 
@@ -4866,7 +4889,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
                                 return_type_id = function.return_type_id;
                             }
-                            Type::Type(TypeKind::Struct(_struct_id)) => todo!("Static methods on types"),
+                            Type::Type(TypeKind::Struct(struct_id)) => {
+                                let struct_ = self.project.get_struct_by_id(struct_id);
+                                let function = self.project.get_func_by_id(&struct_.static_methods[*member_idx]);
+                                fn_is_variadic = function.is_variadic();
+                                params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
+                                return_type_id = function.return_type_id;
+                            }
                             Type::Type(TypeKind::Enum(enum_id)) => {
                                 let enum_ = self.project.get_enum_by_id(enum_id);
                                 let variant = &enum_.variants[*member_idx];
@@ -4909,6 +4938,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 if let FunctionPass::Pass1 { just_saw_function_call } = &mut self.function_pass {
                     *just_saw_function_call = true;
                     return Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: vec![], type_id: return_type_id });
+                }
+
+                if let Some(type_hint) = type_hint {
+                    if self.type_contains_generics(&return_type_id) {
+                        self.extract_values_for_generics(&type_hint, &return_type_id, &mut filled_in_generic_types);
+                    }
                 }
 
                 let num_possible_args = params_data.len();
@@ -4977,12 +5012,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             param_type_id = params_data[idx].2;
                         }
                     };
-
-                    if let Some(type_hint) = type_hint {
-                        if self.type_contains_generics(&return_type_id) {
-                            self.extract_values_for_generics(&type_hint, &return_type_id, &mut filled_in_generic_types);
-                        }
-                    }
 
                     // Fill in any known generics (ie. from the instance, for a method) before typechecking arg expression
                     if self.type_contains_generics(&param_type_id) && !filled_in_generic_types.is_empty() {

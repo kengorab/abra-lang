@@ -41,8 +41,36 @@ type String {
   func replaceAll(self, pattern: String, replacement: String): String
 }
 
+//type Pointer<T> {
+//  //@Intrinsic("pointer_null")
+//  func null<U>(): Pointer<U>
+//
+//  //@Intrinsic("pointer_malloc")
+//  func malloc<U>(size: Int): Pointer<U>
+//
+//  //@Intrinsic("pointer_realloc")
+//  func realloc<U>(ptr: Pointer<U>, size: Int): Pointer<U>
+//
+//  //@Intrinsic("pointer_offset")
+//  func offset<U>(ptr: Pointer<U>, offset: Int): Pointer<U>
+//
+//  //@Intrinsic("pointer_load")
+//  func load<U>(ptr: Pointer<U>): U
+//
+//  //@Intrinsic("pointer_store")
+//  func store<U>(ptr: Pointer<U>, value: U)
+//}
+
 type Array<T> {
   length: Int readonly
+
+//  _buffer: Pointer<T> = Pointer.null()
+//  _capacity: Int = 0
+//
+//  func withCapacity<U>(initialCapacity: Int): U[] {
+//    //val buffer = Pointer.malloc(initialCapacity)
+//    Array<U>(length: 0, _buffer: Pointer.malloc(initialCapacity), _capacity: initialCapacity)
+//  }
 
   func isEmpty(self): Bool
   func enumerate(self): (T, Int)[]
