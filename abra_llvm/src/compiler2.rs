@@ -33,6 +33,8 @@ impl<'a> LLVMCompiler2<'a> {
 
         let llvm_module_out_file = out_dir.join(format!("_{}.ll", &out_name));
         compiler.main_module.print_to_file(&llvm_module_out_file).unwrap();
+        eprintln!("Wrote to file {}", llvm_module_out_file.to_str().unwrap());
+        eprintln!("File contents: {}", std::fs::read_to_string(&llvm_module_out_file).unwrap());
 
         let exec_out_file = out_dir.join(&out_name);
         let cc_output = Command::new("cc")
@@ -468,8 +470,10 @@ impl<'a> LLVMCompiler2<'a> {
             }
             TypedNode::Unary { .. } |
             TypedNode::Binary { .. } |
-            TypedNode::Grouped { .. } |
-            TypedNode::Array { .. } |
+            TypedNode::Grouped { .. } => todo!(),
+            TypedNode::Array { type_id, items, .. } => {
+                todo!()
+            }
             TypedNode::Tuple { .. } |
             TypedNode::Set { .. } |
             TypedNode::Map { .. } |
