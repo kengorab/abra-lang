@@ -32,9 +32,6 @@
 
 //val arr: Int[][] = [[], []]
 
-// TODO: This should work
-//func makeArray<U>(u: U): U[] = [u]
-//func f<T>(t: T): T[] = makeArray(t)
 // TODO: So should this
 //func makeArray<U>(): U[] = []
 //type Foo<T> {

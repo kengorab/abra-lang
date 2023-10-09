@@ -2310,6 +2310,12 @@ fn typecheck_type_declaration() {
         a: Int[] = makeArray()\n\
       }\
     ");
+    assert_typecheck_ok("\
+      type Foo<T> { func makeFoo<T>(): Foo<T> = Foo() }\n\
+      type Bar<T> {\n\
+        a: Foo<T> = Foo.makeFoo()\n\
+      }\
+    ");
 }
 
 #[test]
@@ -2406,6 +2412,18 @@ fn typecheck_failure_type_declaration() {
         span: Span::new(ModuleId(1), (2, 10), (2, 10)),
         name: "T".to_string(),
         original_span: Some(Span::new(ModuleId(1), (1, 11), (1, 11))),
+        kind: DuplicateNameKind::TypeArgument,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      type Node<T> {\n\
+        func foo<T, T>(t: T) {}\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateName {
+        span: Span::new(ModuleId(1), (2, 13), (2, 13)),
+        name: "T".to_string(),
+        original_span: Some(Span::new(ModuleId(1), (2, 10), (2, 10))),
         kind: DuplicateNameKind::TypeArgument,
     };
     assert_eq!(expected, err);
@@ -3214,42 +3232,6 @@ fn typecheck_invocation() {
     ).unwrap();
     assert_eq!(expected, *type_id);
 
-    // Invoking method of type
-    let project = test_typecheck("\
-      type Foo { func foo(self, a: Int, b = 4): Int = a }\n\
-      val f = Foo()\n\
-      val foo = f.foo\n\
-      foo(1)\n\
-      f.foo(2)\n\
-      f.foo(a: 2)\n\
-      f.foo(b: 2, a: 6)\
-    ").unwrap();
-    let module = &project.modules[1];
-    let foo_var = &module.scopes[0].vars[2];
-    let expected = Variable {
-        id: VarId(ScopeId(ModuleId(1), 0), 2),
-        name: "foo".to_string(),
-        type_id: project.find_type_id(
-            &ScopeId(ModuleId(1), 0),
-            &project.function_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID], 1, false, PRELUDE_INT_TYPE_ID),
-        ).unwrap(),
-        is_mutable: false,
-        is_initialized: true,
-        defined_span: Some(Span::new(ModuleId(1), (3, 5), (3, 7))),
-        is_captured: false,
-        alias: VariableAlias::None,
-        is_parameter: false,
-    };
-    assert_eq!(&expected, foo_var);
-    let var_invocation = &module.code[3];
-    assert_eq!(PRELUDE_INT_TYPE_ID, *var_invocation.type_id());
-    let accessor_invocation = &module.code[4];
-    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation.type_id());
-    let accessor_invocation_arg_label = &module.code[5];
-    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_label.type_id());
-    let accessor_invocation_arg_labels = &module.code[6];
-    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_labels.type_id());
-
     // Invoking field of type
     let project = test_typecheck("\
       type Foo { foo: (Int) => Int }\n\
@@ -3276,45 +3258,6 @@ fn typecheck_invocation() {
     assert_eq!(&expected, foo_var);
     let accessor_invocation = &module.code[3];
     assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation.type_id());
-
-    // Invoking method of enum variant
-    let project = test_typecheck("\
-      enum Foo {\n\
-        Bar\n\
-        func foo(self, a: Int, b = 4): Int = a\n\
-      }\n\
-      val f = Foo.Bar\n\
-      val foo = f.foo\n\
-      foo(1)\n\
-      f.foo(2)\n\
-      f.foo(a: 2)\n\
-      f.foo(b: 2, a: 6)\
-    ").unwrap();
-    let module = &project.modules[1];
-    let foo_var = &module.scopes[0].vars[2];
-    let expected = Variable {
-        id: VarId(ScopeId(ModuleId(1), 0), 2),
-        name: "foo".to_string(),
-        type_id: project.find_type_id(
-            &ScopeId(ModuleId(1), 0),
-            &project.function_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID], 1, false, PRELUDE_INT_TYPE_ID),
-        ).unwrap(),
-        is_mutable: false,
-        is_initialized: true,
-        defined_span: Some(Span::new(ModuleId(1), (6, 5), (6, 7))),
-        is_captured: false,
-        alias: VariableAlias::None,
-        is_parameter: false,
-    };
-    assert_eq!(&expected, foo_var);
-    let var_invocation = &module.code[3];
-    assert_eq!(PRELUDE_INT_TYPE_ID, *var_invocation.type_id());
-    let accessor_invocation = &module.code[3];
-    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation.type_id());
-    let accessor_invocation_arg_label = &module.code[4];
-    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_label.type_id());
-    let accessor_invocation_arg_labels = &module.code[5];
-    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_labels.type_id());
 
     // Invoking enum variant constructor
     let project = test_typecheck("\
@@ -3453,6 +3396,129 @@ fn typecheck_invocation() {
       val arr: Foo[] = []
       val _: String? = arr[0]?.name?.toLower()
     "#);
+}
+
+#[test]
+fn typecheck_method_invocation() {
+    // Invoking method of type
+    let project = test_typecheck("\
+      type Foo { func foo(self, a: Int, b = 4): Int = a }\n\
+      val f = Foo()\n\
+      val foo = f.foo\n\
+      foo(1)\n\
+      f.foo(2)\n\
+      f.foo(a: 2)\n\
+      f.foo(b: 2, a: 6)\
+    ").unwrap();
+    let module = &project.modules[1];
+    let foo_var = &module.scopes[0].vars[2];
+    let expected = Variable {
+        id: VarId(ScopeId(ModuleId(1), 0), 2),
+        name: "foo".to_string(),
+        type_id: project.find_type_id(
+            &ScopeId(ModuleId(1), 0),
+            &project.function_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID], 1, false, PRELUDE_INT_TYPE_ID),
+        ).unwrap(),
+        is_mutable: false,
+        is_initialized: true,
+        defined_span: Some(Span::new(ModuleId(1), (3, 5), (3, 7))),
+        is_captured: false,
+        alias: VariableAlias::None,
+        is_parameter: false,
+    };
+    assert_eq!(&expected, foo_var);
+    let var_invocation = &module.code[3];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *var_invocation.type_id());
+    let accessor_invocation = &module.code[4];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation.type_id());
+    let accessor_invocation_arg_label = &module.code[5];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_label.type_id());
+    let accessor_invocation_arg_labels = &module.code[6];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_labels.type_id());
+
+    // Invoking static method of type
+    let project = test_typecheck("\
+      type Foo { func foo(a: Int, b = 4): Int = a }\n\
+      val foo = Foo.foo\n\
+      foo(1)\n\
+      Foo.foo(2)\n\
+      Foo.foo(a: 2)\n\
+      Foo.foo(b: 2, a: 6)\
+    ").unwrap();
+    let module = &project.modules[1];
+    let foo_var = &module.scopes[0].vars[1];
+    let expected = Variable {
+        id: VarId(ScopeId(ModuleId(1), 0), 1),
+        name: "foo".to_string(),
+        type_id: project.find_type_id(
+            &ScopeId(ModuleId(1), 0),
+            &project.function_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID], 1, false, PRELUDE_INT_TYPE_ID),
+        ).unwrap(),
+        is_mutable: false,
+        is_initialized: true,
+        defined_span: Some(Span::new(ModuleId(1), (2, 5), (2, 7))),
+        is_captured: false,
+        alias: VariableAlias::None,
+        is_parameter: false,
+    };
+    assert_eq!(&expected, foo_var);
+    let var_invocation = &module.code[2];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *var_invocation.type_id());
+    let accessor_invocation = &module.code[3];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation.type_id());
+    let accessor_invocation_arg_label = &module.code[4];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_label.type_id());
+    let accessor_invocation_arg_labels = &module.code[5];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_labels.type_id());
+
+    // Invoking static method of type (with generics)
+    let project = test_typecheck("\
+      type Foo<T> { func foo<T>(t: T): T = t }\n\
+      Foo.foo(2)\n\
+      Foo.foo(t: true)\
+    ").unwrap();
+    let module = &project.modules[1];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *module.code[1].type_id());
+    assert_eq!(PRELUDE_BOOL_TYPE_ID, *module.code[2].type_id());
+
+    // Invoking method of enum variant
+    let project = test_typecheck("\
+      enum Foo {\n\
+        Bar\n\
+        func foo(self, a: Int, b = 4): Int = a\n\
+      }\n\
+      val f = Foo.Bar\n\
+      val foo = f.foo\n\
+      foo(1)\n\
+      f.foo(2)\n\
+      f.foo(a: 2)\n\
+      f.foo(b: 2, a: 6)\
+    ").unwrap();
+    let module = &project.modules[1];
+    let foo_var = &module.scopes[0].vars[2];
+    let expected = Variable {
+        id: VarId(ScopeId(ModuleId(1), 0), 2),
+        name: "foo".to_string(),
+        type_id: project.find_type_id(
+            &ScopeId(ModuleId(1), 0),
+            &project.function_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID], 1, false, PRELUDE_INT_TYPE_ID),
+        ).unwrap(),
+        is_mutable: false,
+        is_initialized: true,
+        defined_span: Some(Span::new(ModuleId(1), (6, 5), (6, 7))),
+        is_captured: false,
+        alias: VariableAlias::None,
+        is_parameter: false,
+    };
+    assert_eq!(&expected, foo_var);
+    let var_invocation = &module.code[3];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *var_invocation.type_id());
+    let accessor_invocation = &module.code[3];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation.type_id());
+    let accessor_invocation_arg_label = &module.code[4];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_label.type_id());
+    let accessor_invocation_arg_labels = &module.code[5];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_labels.type_id());
 }
 
 #[test]
