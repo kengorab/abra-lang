@@ -488,9 +488,11 @@ impl<'a> LLVMCompiler2<'a> {
 #[cfg(test)]
 mod tests {
     use std::env::temp_dir;
+    use std::path::Path;
     use std::process::Command;
     use assert_cmd::cargo::CommandCargoExt;
     use itertools::{EitherOrBoth, Itertools};
+    use abra_core::common::util::random_string;
     use crate::get_project_root;
 
     fn run_test_file(file_name: &str) {
@@ -500,7 +502,13 @@ mod tests {
         let test_file_path = tests_file_path.join(file_name);
 
         let test_file = std::fs::read_to_string(&test_file_path).unwrap();
-        let build_dir = temp_dir();
+        let build_dir = if let Some(test_temp_dir) = std::env::var("TEST_TMP_DIR").ok() {
+            let dir = Path::new(&test_temp_dir).join(random_string(12));
+            std::fs::create_dir(&dir).unwrap();
+            dir
+        } else {
+            temp_dir()
+        };
         eprintln!("running test {}, using build dir: {}", file_name, &build_dir.to_str().unwrap());
         let output = Command::cargo_bin("abra").unwrap()
             .arg("build")
