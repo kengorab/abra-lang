@@ -1,24 +1,18 @@
-val hello = "hello"
-
-type Person {
-  firstName: String
-  lastName: String
-
-  func getFullName(self): String = self.firstName + " " + self.lastName
-  func foo(self): Int = hello.length
-}
-
-val p = Person(firstName: "Ken", lastName: "Gorab")
-println(p.foo())
-
-//func f(i: Int) {
-//  println(i + hello.length)
+//type Foo<T> {
+//  func make<T>(): Foo<T> = Foo()
 //}
-//
-//f(0)
+
+//val f: Foo<Float> = Foo.make<Int>()
+//val _: Int = f
+
+//func make<T>(): T[] = []
+//val arr: Float[] = make<Int>()
+
+//func make<T>(t: T): T[] = []
+//val arr = make<Int>("f")
 
 // TODO: So should this
-//func makeArray<U>(): U[] = []
-//type Foo<T> {
-//  a: T[] = makeArray()
-//}
+func makeArray<U>(): U[] = []
+type Foo<T> {
+  a: T[] = makeArray()
+}
