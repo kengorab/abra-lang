@@ -231,6 +231,7 @@ impl BindingPattern {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct BindingDeclNode {
+    pub decorators: Vec<DecoratorNode>,
     pub export_token: Option<Token>,
     pub binding: BindingPattern,
     pub type_ann: Option<TypeIdentifier>,
@@ -253,6 +254,7 @@ pub fn args_to_parameters(raw_arg_tuple: &(Token, Option<TypeIdentifier>, bool, 
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDeclNode {
+    pub decorators: Vec<DecoratorNode>,
     pub export_token: Option<Token>,
     // Must be a Token::Ident
     pub name: Token,
@@ -284,6 +286,7 @@ impl LambdaNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypeDeclNode {
+    pub decorators: Vec<DecoratorNode>,
     pub export_token: Option<Token>,
     // Must be a Token::Ident
     pub name: Token,
@@ -303,6 +306,7 @@ pub struct TypeDeclField {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct EnumDeclNode {
+    pub decorators: Vec<DecoratorNode>,
     pub export_token: Option<Token>,
     // Must be a Token::Ident
     pub name: Token,
@@ -438,6 +442,14 @@ pub struct ImportNode {
     pub kind: ImportKind,
     pub module_token: Token,
     pub module_id: ModuleId,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DecoratorNode {
+    pub at_token: Token,
+    // Must be a Token::Ident
+    pub name: Token,
+    pub args: Vec<(Option<Token>, AstNode)>,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]

@@ -3,7 +3,7 @@ use itertools::{Either, Itertools};
 use crate::lexer::tokens::{Position, POSITION_BOGUS, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BinaryOp, BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind, InvalidLoopTargetKind, ControlFlowTerminator, TerminatorKind, ExportedValue, TypeKind};
+use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind, InvalidLoopTargetKind, ControlFlowTerminator, TerminatorKind, ExportedValue, TypeKind, DecoratorInstance};
 
 const PRELUDE_STR: &str = include_str!("prelude.stub.abra");
 
@@ -2115,8 +2115,8 @@ fn typecheck_type_declaration() {
     let project = test_typecheck("\
       type Foo {\n\
         a: String readonly\n\
-        func foo(self): Int = 12\n\
-        func fooStatic(): Int = 24\n\
+        @Dec func foo(self): Int = 12\n\
+        @Dec(\"foo\") func fooStatic(): Int = 24\n\
       }\
     ").unwrap();
     let module = &project.modules[1];
@@ -2141,6 +2141,7 @@ fn typecheck_type_declaration() {
         Function {
             id: FuncId(ScopeId(ModuleId(1), 1), 0),
             fn_scope_id: ScopeId(ModuleId(1), 2),
+            decorators: vec![DecoratorInstance { name: "Dec".to_string(), args: vec![] }],
             name: "foo".to_string(),
             generic_ids: vec![],
             has_self: true,
@@ -2149,17 +2150,17 @@ fn typecheck_type_declaration() {
                     name: "self".to_string(),
                     type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_id, vec![])).unwrap(),
                     var_id: VarId(ScopeId(ModuleId(1), 2), 0),
-                    defined_span: Some(Span::new(ModuleId(1), (3, 10), (3, 13))),
+                    defined_span: Some(Span::new(ModuleId(1), (3, 15), (3, 18))),
                     default_value: None,
                     is_variadic: false,
                     is_incomplete: false,
                 }
             ],
             return_type_id: PRELUDE_INT_TYPE_ID,
-            defined_span: Some(Span::new(ModuleId(1), (3, 6), (3, 8))),
+            defined_span: Some(Span::new(ModuleId(1), (3, 11), (3, 13))),
             body: vec![
                 TypedNode::Literal {
-                    token: Token::Int(Position::new(3, 23), 12),
+                    token: Token::Int(Position::new(3, 28), 12),
                     value: TypedLiteral::Int(12),
                     type_id: PRELUDE_INT_TYPE_ID,
                 }
@@ -2169,15 +2170,16 @@ fn typecheck_type_declaration() {
         Function {
             id: FuncId(ScopeId(ModuleId(1), 1), 1),
             fn_scope_id: ScopeId(ModuleId(1), 3),
+            decorators: vec![DecoratorInstance { name: "Dec".to_string(), args: vec![TypedNode::Literal { type_id: PRELUDE_STRING_TYPE_ID, token: Token::String(Position::new(4, 6), "foo".to_string()), value: TypedLiteral::String("foo".to_string()) }] }],
             name: "fooStatic".to_string(),
             generic_ids: vec![],
             has_self: false,
             params: vec![],
             return_type_id: PRELUDE_INT_TYPE_ID,
-            defined_span: Some(Span::new(ModuleId(1), (4, 6), (4, 14))),
+            defined_span: Some(Span::new(ModuleId(1), (4, 18), (4, 26))),
             body: vec![
                 TypedNode::Literal {
-                    token: Token::Int(Position::new(4, 25), 24),
+                    token: Token::Int(Position::new(4, 37), 24),
                     value: TypedLiteral::Int(24),
                     type_id: PRELUDE_INT_TYPE_ID,
                 }
@@ -2445,6 +2447,7 @@ fn typecheck_enum_declaration() {
     let baz_variant_func = Function {
         id: baz_func_id,
         fn_scope_id: ScopeId(ModuleId(1), 2),
+        decorators: vec![],
         name: "Baz".to_string(),
         generic_ids: vec![],
         has_self: false,
@@ -2525,6 +2528,7 @@ fn typecheck_function_declaration() {
         Function {
             id: FuncId(ScopeId(ModuleId(1), 0), 0),
             fn_scope_id: ScopeId(ModuleId(1), 1),
+            decorators: vec![],
             name: "foo".to_string(),
             generic_ids: vec![],
             has_self: false,
@@ -2555,6 +2559,7 @@ fn typecheck_function_declaration() {
         Function {
             id: FuncId(ScopeId(ModuleId(1), 0), 0),
             fn_scope_id: ScopeId(ModuleId(1), 1),
+            decorators: vec![],
             name: "foo".to_string(),
             generic_ids: vec![],
             has_self: false,
@@ -2611,6 +2616,7 @@ fn typecheck_function_declaration() {
         Function {
             id: FuncId(ScopeId(ModuleId(1), 0), 0),
             fn_scope_id: ScopeId(ModuleId(1), 1),
+            decorators: vec![],
             name: "foo".to_string(),
             generic_ids: vec![],
             has_self: false,
@@ -2639,6 +2645,7 @@ fn typecheck_function_declaration() {
         Function {
             id: FuncId(ScopeId(ModuleId(1), 0), 0),
             fn_scope_id: ScopeId(ModuleId(1), 1),
+            decorators: vec![],
             name: "foo".to_string(),
             generic_ids: vec![],
             has_self: false,
@@ -2694,6 +2701,7 @@ fn typecheck_function_declaration() {
         Function {
             id: FuncId(ScopeId(ModuleId(1), 0), 0),
             fn_scope_id,
+            decorators: vec![],
             name: "foo".to_string(),
             generic_ids: vec![t_type_id],
             has_self: false,
@@ -2737,6 +2745,7 @@ fn typecheck_function_declaration() {
         Function {
             id: FuncId(ScopeId(ModuleId(1), 0), 0),
             fn_scope_id,
+            decorators: vec![],
             name: "foo".to_string(),
             generic_ids: vec![],
             has_self: false,
@@ -3142,7 +3151,7 @@ fn typecheck_invocation() {
                 }),
             ],
             type_id: PRELUDE_INT_TYPE_ID,
-        }
+        },
     ];
     assert_eq!(expected, module.code);
 

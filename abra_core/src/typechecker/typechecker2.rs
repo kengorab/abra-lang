@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use itertools::{Either, EitherOrBoth, Itertools};
-use crate::{parser, tokenize_and_parse_stub};
+use crate::{parser, tokenize_and_parse};
 use crate::common::util::integer_decode;
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
@@ -773,9 +773,16 @@ impl FuncId {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct DecoratorInstance {
+    pub name: String,
+    pub args: Vec<TypedNode>,
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Function {
     pub id: FuncId,
     pub fn_scope_id: ScopeId,
+    pub decorators: Vec<DecoratorInstance>,
     pub name: String,
     pub generic_ids: Vec<TypeId>,
     pub has_self: bool,
@@ -2293,7 +2300,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         let func_id = FuncId(current_scope.id, current_scope.funcs.len());
-        let func = Function { id: func_id, fn_scope_id, name: name.clone(), generic_ids, has_self, params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![] };
+        let func = Function { id: func_id, fn_scope_id, decorators: vec![], name: name.clone(), generic_ids, has_self, params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![] };
         current_scope.funcs.push(func);
 
         Ok(func_id)
@@ -2321,7 +2328,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let fn_decl_scope = self.project.get_scope_by_id_mut(fn_decl_scope_id);
 
         let func_id = FuncId(fn_decl_scope.id, fn_decl_scope.funcs.len());
-        let func = Function { id: func_id, fn_scope_id, name, generic_ids: vec![], has_self: false, params, return_type_id: PRELUDE_ANY_TYPE_ID, defined_span: None, body: vec![], captured_vars: vec![] };
+        let func = Function { id: func_id, fn_scope_id, decorators: vec![], name, generic_ids: vec![], has_self: false, params, return_type_id: PRELUDE_ANY_TYPE_ID, defined_span: None, body: vec![], captured_vars: vec![] };
 
         fn_decl_scope.funcs.push(func);
 
@@ -2547,7 +2554,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.current_scope_id = PRELUDE_SCOPE_ID;
 
         let prelude_stub_file = self.module_loader.load_file(&"prelude.stub.abra".to_string()).expect("Internal error: should always be able to load prelude");
-        let parse_result = tokenize_and_parse_stub(&parser::ast::ModuleId::External("prelude".to_string()), &prelude_stub_file)
+        let parse_result = tokenize_and_parse(&parser::ast::ModuleId::External("prelude".to_string()), &prelude_stub_file)
             .expect("There should not be a problem parsing the prelude file");
         self.typecheck_block(parse_result.nodes)
             .expect("There should not be a problem typechecking the prelude file");
@@ -2953,6 +2960,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     fn typecheck_function_pass_2(&mut self, func_id: FuncId, node: FunctionDeclNode) -> Result<(), TypeError> {
         debug_assert!(self.function_pass == FunctionPass::Pass2);
 
+        let mut decorators = Vec::with_capacity(node.decorators.len());
+        for dec in node.decorators {
+            let mut args = Vec::with_capacity(dec.args.len());
+            for (_, arg) in dec.args {
+                args.push(self.typecheck_expression(arg, None)?)
+            }
+            decorators.push(DecoratorInstance { name: Token::get_ident_name(&dec.name), args });
+        }
+        self.project.get_func_by_id_mut(&func_id).decorators = decorators;
+
         let prev_func_id = self.current_function;
         self.current_function = Some(func_id);
 
@@ -3294,7 +3311,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         match node {
             AstNode::BindingDecl(token, n) => {
-                let BindingDeclNode { export_token, mut binding, type_ann, expr, is_mutable } = n;
+                let BindingDeclNode { export_token, mut binding, type_ann, expr, is_mutable, .. } = n;
                 let is_exported = export_token.is_some();
                 if let Some(export_token) = export_token { self.verify_export_scope(&export_token)?; }
 
