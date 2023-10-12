@@ -1,7 +1,8 @@
 use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
+use itertools::Itertools;
 use crate::lexer::tokens::{Token, TokenType, Position, Range};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, ImportKind, TryNode};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, ImportKind, TryNode, DecoratorNode};
 use crate::parser::parse_error::{ParseErrorKind, ParseError};
 use crate::parser::precedence::Precedence;
 
@@ -11,15 +12,7 @@ pub struct ParseResult {
 }
 
 pub fn parse(module_id: ModuleId, tokens: Vec<Token>) -> Result<ParseResult, ParseError> {
-    parse_impl(module_id, tokens, false)
-}
-
-pub fn parse_stub(module_id: ModuleId, tokens: Vec<Token>) -> Result<ParseResult, ParseError> {
-    parse_impl(module_id, tokens, true)
-}
-
-fn parse_impl(module_id: ModuleId, tokens: Vec<Token>, stub_mode: bool) -> Result<ParseResult, ParseError> {
-    let mut parser = Parser::new(tokens, stub_mode);
+    let mut parser = Parser::new(tokens);
 
     let mut nodes = Vec::new();
     let mut imports = Vec::new();
@@ -62,16 +55,16 @@ pub struct Parser {
     tokens: PeekMoreIterator<IntoIter<Token>>,
     last_token: Token,
     context: Vec<Context>,
-    stub_mode: bool,
+    seen_decorators: Vec<DecoratorNode>,
 }
 
 type PrefixFn = dyn Fn(&mut Parser, Token) -> Result<AstNode, ParseErrorKind>;
 type InfixFn = dyn Fn(&mut Parser, Token, AstNode) -> Result<AstNode, ParseErrorKind>;
 
 impl Parser {
-    fn new(tokens: Vec<Token>, stub_mode: bool) -> Self {
+    fn new(tokens: Vec<Token>) -> Self {
         let tokens = tokens.into_iter().peekmore();
-        Parser { tokens, last_token: Token::None(Position::new(0, 0)), context: vec![], stub_mode }
+        Parser { tokens, last_token: Token::None(Position::new(0, 0)), context: vec![], seen_decorators: vec![] }
     }
 
     fn is_context(&self, ctx: Context) -> bool {
@@ -241,6 +234,10 @@ impl Parser {
 
     fn parse_stmt(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseErrorKind> {
         match self.expect_peek()? {
+            Token::At(_) => {
+                self.parse_decorator()?;
+                self.parse_stmt(export_token)
+            }
             Token::Func(_) => self.parse_func_decl(export_token),
             Token::Val(_) => self.parse_binding_decl(export_token),
             Token::Var(_) => self.parse_binding_decl(export_token),
@@ -531,7 +528,31 @@ impl Parser {
         Ok(type_args)
     }
 
+    fn parse_decorator(&mut self) -> Result<(), ParseErrorKind> {
+        let at_token = self.expect_next_token(TokenType::At)?;
+        let name = self.expect_next_token(TokenType::Ident)?;
+
+        let next_token = self.expect_peek()?;
+        let args = match next_token {
+            Token::Func(_) | Token::Val(_) | Token::Var(_) | Token::Type(_) | Token::Enum(_) | Token::At(_) | Token::Export(_) => vec![],
+            Token::LParen(_, _) => {
+                self.expect_next_token(TokenType::LParen)?;
+                self.parse_invocation_args()?
+            }
+            tok => {
+                let expected = vec![TokenType::Func, TokenType::Val, TokenType::Var, TokenType::Type, TokenType::Enum, TokenType::At, TokenType::Export];
+                return Err(ParseErrorKind::ExpectedOneOf(expected, tok.clone()));
+            }
+        };
+
+        self.seen_decorators.push(DecoratorNode { at_token, name, args });
+
+        Ok(())
+    }
+
     fn parse_func_decl(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseErrorKind> {
+        let decorators = self.seen_decorators.drain(..).collect_vec();
+
         let token = self.expect_next()?;
         let name = self.expect_next_token(TokenType::Ident)?;
 
@@ -548,7 +569,12 @@ impl Parser {
             _ => None
         };
 
-        let stub_mode = self.stub_mode;
+        let stub_mode = decorators.iter()
+            .find(|dec| {
+                let name = Token::get_ident_name(&dec.name);
+                name == "Stub" || name == "Intrinsic"
+            })
+            .is_some();
         let body = match self.peek() {
             None if stub_mode => Ok(vec![]),
             None => Err(self.unexpected_eof()),
@@ -561,10 +587,12 @@ impl Parser {
             Some(t) => Err(ParseErrorKind::UnexpectedToken(t.clone())),
         }?;
 
-        Ok(AstNode::FunctionDecl(token, FunctionDeclNode { export_token, name, type_args, args, ret_type, body }))
+        Ok(AstNode::FunctionDecl(token, FunctionDeclNode { decorators, export_token, name, type_args, args, ret_type, body }))
     }
 
     fn parse_binding_decl(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseErrorKind> {
+        let decorators = self.seen_decorators.drain(..).collect();
+
         let token = self.expect_next()?;
         let is_mutable = match &token {
             Token::Val(_) => false,
@@ -601,10 +629,12 @@ impl Parser {
             Some(Box::new(expr))
         } else { None };
 
-        Ok(AstNode::BindingDecl(token, BindingDeclNode { export_token, binding, is_mutable, type_ann, expr }))
+        Ok(AstNode::BindingDecl(token, BindingDeclNode { decorators, export_token, binding, is_mutable, type_ann, expr }))
     }
 
     fn parse_type_decl(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseErrorKind> {
+        let decorators = self.seen_decorators.drain(..).collect();
+
         let keyword_tok = self.expect_next()?;
         let is_enum = if let Token::Enum(_) = &keyword_tok { true } else { false };
 
@@ -659,6 +689,9 @@ impl Parser {
                     let method = self.parse_func_decl(None)?;
                     methods.push(method);
                 }
+                Token::At(_) => {
+                    self.parse_decorator()?;
+                }
                 _ => return Err(ParseErrorKind::UnexpectedToken(token.clone())),
             }
         }
@@ -666,9 +699,9 @@ impl Parser {
         self.expect_next_token(TokenType::RBrace)?;
 
         if is_enum {
-            Ok(AstNode::EnumDecl(keyword_tok, EnumDeclNode { export_token, name, variants, methods, type_args }))
+            Ok(AstNode::EnumDecl(keyword_tok, EnumDeclNode { decorators, export_token, name, variants, methods, type_args }))
         } else {
-            Ok(AstNode::TypeDecl(keyword_tok, TypeDeclNode { export_token, name, fields, methods, type_args }))
+            Ok(AstNode::TypeDecl(keyword_tok, TypeDeclNode { decorators, export_token, name, fields, methods, type_args }))
         }
     }
 
@@ -1350,6 +1383,12 @@ impl Parser {
 
     fn parse_invocation(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseErrorKind> {
         let lparen = token;
+        let args = self.parse_invocation_args()?;
+
+        Ok(AstNode::Invocation(lparen, InvocationNode { target: Box::new(left), args }))
+    }
+
+    fn parse_invocation_args(&mut self) -> Result<Vec<(Option<Token>, AstNode)>, ParseErrorKind> {
         let mut item_expected = true;
         let mut args = Vec::<(Option<Token>, AstNode)>::new();
         loop {
@@ -1388,7 +1427,7 @@ impl Parser {
             }
         }
 
-        Ok(AstNode::Invocation(lparen, InvocationNode { target: Box::new(left), args }))
+        Ok(args)
     }
 
     fn parse_accessor(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseErrorKind> {
@@ -2360,6 +2399,7 @@ mod tests {
             AstNode::BindingDecl(
                 Token::Val(Position::new(1, 1)),
                 BindingDeclNode {
+                    decorators: vec![],
                     export_token: None,
                     binding: BindingPattern::Variable(ident_token!((1, 5), "abc")),
                     is_mutable: false,
@@ -2370,6 +2410,7 @@ mod tests {
             AstNode::BindingDecl(
                 Token::Var(Position::new(2, 1)),
                 BindingDeclNode {
+                    decorators: vec![],
                     export_token: None,
                     binding: BindingPattern::Variable(ident_token!((2, 5), "abc")),
                     is_mutable: true,
@@ -2390,6 +2431,7 @@ mod tests {
             AstNode::BindingDecl(
                 Token::Val(Position::new(1, 1)),
                 BindingDeclNode {
+                    decorators: vec![],
                     export_token: None,
                     binding: BindingPattern::Variable(ident_token!((1, 5), "abc")),
                     is_mutable: false,
@@ -2409,6 +2451,7 @@ mod tests {
             AstNode::BindingDecl(
                 Token::Var(Position::new(2, 1)),
                 BindingDeclNode {
+                    decorators: vec![],
                     export_token: None,
                     binding: BindingPattern::Variable(ident_token!((2, 5), "abc")),
                     is_mutable: true,
@@ -2555,7 +2598,7 @@ mod tests {
         fn parse_type_identifier(input: &str) -> TypeIdentifier {
             let module_id = ModuleId::parse_module_path("./test").unwrap();
             let tokens = tokenize(&module_id, &input.to_string()).unwrap();
-            let mut parser = Parser::new(tokens, false);
+            let mut parser = Parser::new(tokens);
             parser.parse_type_identifier(true).unwrap()
         }
 
@@ -2858,6 +2901,7 @@ mod tests {
         let expected = AstNode::FunctionDecl(
             Token::Func(Position::new(1, 1)),
             FunctionDeclNode {
+                decorators: vec![],
                 export_token: None,
                 name: Token::Ident(Position::new(1, 6), "abc".to_string()),
                 type_args: vec![],
@@ -2874,6 +2918,7 @@ mod tests {
         let expected = AstNode::FunctionDecl(
             Token::Func(Position::new(1, 1)),
             FunctionDeclNode {
+                decorators: vec![],
                 export_token: None,
                 name: Token::Ident(Position::new(1, 6), "abc".to_string()),
                 type_args: vec![],
@@ -2883,6 +2928,7 @@ mod tests {
                     AstNode::BindingDecl(
                         Token::Val(Position::new(1, 14)),
                         BindingDeclNode {
+                            decorators: vec![],
                             export_token: None,
                             binding: BindingPattern::Variable(ident_token!((1, 18), "a")),
                             is_mutable: false,
@@ -3027,6 +3073,7 @@ mod tests {
                     AstNode::BindingDecl(
                         Token::Val(Position::new(2, 1)),
                         BindingDeclNode {
+                            decorators: vec![],
                             export_token: None,
                             binding: BindingPattern::Variable(ident_token!((2, 5), "a")),
                             type_ann: None,
@@ -3241,6 +3288,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
+                decorators: vec![],
                 export_token: None,
                 name: ident_token!((1, 6), "Person"),
                 type_args: vec![],
@@ -3254,6 +3302,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
+                decorators: vec![],
                 export_token: None,
                 name: ident_token!((1, 6), "Person"),
                 type_args: vec![],
@@ -3276,6 +3325,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
+                decorators: vec![],
                 export_token: None,
                 name: ident_token!((1, 6), "Person"),
                 type_args: vec![],
@@ -3303,6 +3353,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
+                decorators: vec![],
                 export_token: None,
                 name: ident_token!((1, 6), "Person"),
                 type_args: vec![],
@@ -3330,6 +3381,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
+                decorators: vec![],
                 export_token: None,
                 name: ident_token!((1, 6), "Person"),
                 type_args: vec![],
@@ -3356,6 +3408,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
+                decorators: vec![],
                 export_token: None,
                 name: ident_token!((1, 6), "List"),
                 type_args: vec![ident_token!((1, 11), "T")],
@@ -3370,6 +3423,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
+                decorators: vec![],
                 export_token: None,
                 name: ident_token!((1, 6), "List"),
                 type_args: vec![
@@ -3417,6 +3471,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
+                decorators: vec![],
                 export_token: None,
                 name: ident_token!((1, 6), "Person"),
                 type_args: vec![],
@@ -3425,6 +3480,7 @@ mod tests {
                     AstNode::FunctionDecl(
                         Token::Func(Position::new(2, 1)),
                         FunctionDeclNode {
+                            decorators: vec![],
                             export_token: None,
                             name: Token::Ident(Position::new(2, 6), "hello".to_string()),
                             type_args: vec![],
@@ -3486,6 +3542,7 @@ mod tests {
         let expected = AstNode::EnumDecl(
             Token::Enum(Position::new(1, 1)),
             EnumDeclNode {
+                decorators: vec![],
                 export_token: None,
                 name: ident_token!((1, 6), "Color"),
                 type_args: vec![],
@@ -3503,6 +3560,7 @@ mod tests {
         let expected = AstNode::EnumDecl(
             Token::Enum(Position::new(1, 1)),
             EnumDeclNode {
+                decorators: vec![],
                 export_token: None,
                 name: ident_token!((1, 6), "Direction"),
                 type_args: vec![],
@@ -3520,6 +3578,7 @@ mod tests {
         let expected = AstNode::EnumDecl(
             Token::Enum(Position::new(1, 1)),
             EnumDeclNode {
+                decorators: vec![],
                 export_token: None,
                 name: ident_token!((1, 6), "Direction"),
                 type_args: vec![],
@@ -3706,6 +3765,7 @@ mod tests {
         let ast = parse("val a = 1\n+\na\n[a]\nprintln(a)\n[a]")?;
         let expected = vec![
             AstNode::BindingDecl(Token::Val(Position::new(1, 1)), BindingDeclNode {
+                decorators: vec![],
                 export_token: None,
                 binding: BindingPattern::Variable(ident_token!((1, 5), "a")),
                 type_ann: None,
@@ -3887,6 +3947,7 @@ mod tests {
                     AstNode::BindingDecl(
                         Token::Val(Position::new(1, 12)),
                         BindingDeclNode {
+                            decorators: vec![],
                             export_token: None,
                             binding: BindingPattern::Variable(ident_token!((1, 16), "a")),
                             is_mutable: false,
@@ -3918,6 +3979,7 @@ mod tests {
         let expected = AstNode::BindingDecl(
             Token::Val(Position::new(1, 1)),
             BindingDeclNode {
+                decorators: vec![],
                 export_token: None,
                 binding: BindingPattern::Variable(ident_token!((1, 5), "str")),
                 is_mutable: false,
@@ -4350,6 +4412,7 @@ mod tests {
                     AstNode::BindingDecl(
                         Token::Val(Position::new(2, 1)),
                         BindingDeclNode {
+                            decorators: vec![],
                             export_token: None,
                             binding: BindingPattern::Variable(ident_token!((2, 5), "a")),
                             is_mutable: false,
@@ -4917,7 +4980,7 @@ mod tests {
         fn parse_import_path(input: &str) -> Result<ModuleId, ParseErrorKind> {
             let module_id = ModuleId::parse_module_path("./test").unwrap();
             let tokens = tokenize(&module_id, &input.to_string()).unwrap();
-            let mut parser = Parser::new(tokens, false);
+            let mut parser = Parser::new(tokens);
             parser.parse_import_module().map(|(_, module_id)| module_id)
         }
 
@@ -5127,6 +5190,7 @@ mod tests {
         let expected = AstNode::BindingDecl(
             Token::Val(Position::new(1, 8)),
             BindingDeclNode {
+                decorators: vec![],
                 export_token: Some(Token::Export(Position::new(1, 1))),
                 binding: BindingPattern::Variable(ident_token!((1, 12), "x")),
                 type_ann: None,
@@ -5141,6 +5205,7 @@ mod tests {
         let expected = AstNode::BindingDecl(
             Token::Var(Position::new(1, 8)),
             BindingDeclNode {
+                decorators: vec![],
                 export_token: Some(Token::Export(Position::new(1, 1))),
                 binding: BindingPattern::Variable(ident_token!((1, 12), "x")),
                 type_ann: None,
@@ -5155,6 +5220,7 @@ mod tests {
         let expected = AstNode::FunctionDecl(
             Token::Func(Position::new(1, 8)),
             FunctionDeclNode {
+                decorators: vec![],
                 export_token: Some(Token::Export(Position::new(1, 1))),
                 name: ident_token!((1, 13), "abc"),
                 type_args: vec![],
@@ -5170,6 +5236,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 8)),
             TypeDeclNode {
+                decorators: vec![],
                 export_token: Some(Token::Export(Position::new(1, 1))),
                 name: ident_token!((1, 13), "Person"),
                 type_args: vec![],
@@ -5184,6 +5251,7 @@ mod tests {
         let expected = AstNode::EnumDecl(
             Token::Enum(Position::new(1, 8)),
             EnumDeclNode {
+                decorators: vec![],
                 export_token: Some(Token::Export(Position::new(1, 1))),
                 name: ident_token!((1, 13), "Direction"),
                 type_args: vec![],
@@ -5278,6 +5346,182 @@ mod tests {
                         args: vec![],
                     },
                 ))
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_decorators() -> TestResult {
+        // Val binding
+        let ast = parse("@Foo val x = 14")?;
+        let expected = AstNode::BindingDecl(
+            Token::Val(Position::new(1, 6)),
+            BindingDeclNode {
+                decorators: vec![DecoratorNode { at_token: Token::At(Position::new(1, 1)), name: ident_token!((1, 2), "Foo"), args: vec![] }],
+                export_token: None,
+                binding: BindingPattern::Variable(ident_token!((1, 10), "x")),
+                type_ann: None,
+                expr: Some(Box::new(int_literal!((1, 14), 14))),
+                is_mutable: false,
+            },
+        );
+        assert_eq!(expected, ast[0]);
+        // Exported val binding
+        let ast = parse("@Foo(\"bar\", \"baz\")\nexport val x = 14")?;
+        let expected = AstNode::BindingDecl(
+            Token::Val(Position::new(2, 8)),
+            BindingDeclNode {
+                decorators: vec![
+                    DecoratorNode {
+                        at_token: Token::At(Position::new(1, 1)),
+                        name: ident_token!((1, 2),"Foo"),
+                        args: vec![
+                            (None, string_literal!((1, 6), "bar")),
+                            (None, string_literal!((1, 13), "baz")),
+                        ],
+                    }
+                ],
+                export_token: Some(Token::Export(Position::new(2, 1))),
+                binding: BindingPattern::Variable(ident_token!((2, 12), "x")),
+                type_ann: None,
+                expr: Some(Box::new(int_literal!((2, 16), 14))),
+                is_mutable: false,
+            },
+        );
+        assert_eq!(expected, ast[0]);
+        // Multiple decorators
+        let ast = parse("@Foo @Bar val x = 14")?;
+        let expected = AstNode::BindingDecl(
+            Token::Val(Position::new(1, 11)),
+            BindingDeclNode {
+                decorators: vec![
+                    DecoratorNode { at_token: Token::At(Position::new(1, 1)), name: ident_token!((1, 2), "Foo"), args: vec![] },
+                    DecoratorNode { at_token: Token::At(Position::new(1, 6)), name: ident_token!((1, 7), "Bar"), args: vec![] },
+                ],
+                export_token: None,
+                binding: BindingPattern::Variable(ident_token!((1, 15), "x")),
+                type_ann: None,
+                expr: Some(Box::new(int_literal!((1, 19), 14))),
+                is_mutable: false,
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        // Function declaration
+        let ast = parse("@Foo func abc() {}")?;
+        let expected = AstNode::FunctionDecl(
+            Token::Func(Position::new(1, 6)),
+            FunctionDeclNode {
+                decorators: vec![DecoratorNode { at_token: Token::At(Position::new(1, 1)), name: ident_token!((1, 2), "Foo"), args: vec![] }],
+                export_token: None,
+                name: ident_token!((1, 11), "abc"),
+                type_args: vec![],
+                args: vec![],
+                ret_type: None,
+                body: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+        // Exported function declaration
+        let ast = parse("@Foo\nexport func abc() {}")?;
+        let expected = AstNode::FunctionDecl(
+            Token::Func(Position::new(2, 8)),
+            FunctionDeclNode {
+                decorators: vec![DecoratorNode { at_token: Token::At(Position::new(1, 1)), name: ident_token!((1, 2), "Foo"), args: vec![] }],
+                export_token: Some(Token::Export(Position::new(2, 1))),
+                name: ident_token!((2, 13), "abc"),
+                type_args: vec![],
+                args: vec![],
+                ret_type: None,
+                body: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+        // Method declaration
+        let ast = parse("type Foo { @Foo func foo() {} }")?;
+        let expected = AstNode::TypeDecl(
+            Token::Type(Position::new(1, 1)),
+            TypeDeclNode {
+                decorators: vec![],
+                export_token: None,
+                name: ident_token!((1, 6), "Foo"),
+                type_args: vec![],
+                fields: vec![],
+                methods: vec![
+                    AstNode::FunctionDecl(
+                        Token::Func(Position::new(1, 17)),
+                        FunctionDeclNode {
+                            decorators: vec![DecoratorNode { at_token: Token::At(Position::new(1, 12)), name: ident_token!((1, 13), "Foo"), args: vec![] }],
+                            export_token: None,
+                            name: ident_token!((1, 22), "foo"),
+                            type_args: vec![],
+                            args: vec![],
+                            ret_type: None,
+                            body: vec![],
+                        },
+                    ),
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        // Type declaration
+        let ast = parse("@Foo type Person {}")?;
+        let expected = AstNode::TypeDecl(
+            Token::Type(Position::new(1, 6)),
+            TypeDeclNode {
+                decorators: vec![DecoratorNode { at_token: Token::At(Position::new(1, 1)), name: ident_token!((1, 2), "Foo"), args: vec![] }],
+                export_token: None,
+                name: ident_token!((1, 11), "Person"),
+                type_args: vec![],
+                fields: vec![],
+                methods: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+        // Exported type declaration
+        let ast = parse("@Foo\nexport type Person {}")?;
+        let expected = AstNode::TypeDecl(
+            Token::Type(Position::new(2, 8)),
+            TypeDeclNode {
+                decorators: vec![DecoratorNode { at_token: Token::At(Position::new(1, 1)), name: ident_token!((1, 2), "Foo"), args: vec![] }],
+                export_token: Some(Token::Export(Position::new(2, 1))),
+                name: ident_token!((2, 13), "Person"),
+                type_args: vec![],
+                fields: vec![],
+                methods: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        // Enum declaration
+        let ast = parse("@Foo enum Direction {}")?;
+        let expected = AstNode::EnumDecl(
+            Token::Enum(Position::new(1, 6)),
+            EnumDeclNode {
+                decorators: vec![DecoratorNode { at_token: Token::At(Position::new(1, 1)), name: ident_token!((1, 2), "Foo"), args: vec![] }],
+                export_token: None,
+                name: ident_token!((1, 11), "Direction"),
+                type_args: vec![],
+                variants: vec![],
+                methods: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+        // Exported enum declaration
+        let ast = parse("@Foo\nexport enum Direction {}")?;
+        let expected = AstNode::EnumDecl(
+            Token::Enum(Position::new(2, 8)),
+            EnumDeclNode {
+                decorators: vec![DecoratorNode { at_token: Token::At(Position::new(1, 1)), name: ident_token!((1, 2), "Foo"), args: vec![] }],
+                export_token: Some(Token::Export(Position::new(2, 1))),
+                name: ident_token!((2, 13), "Direction"),
+                type_args: vec![],
+                variants: vec![],
+                methods: vec![],
             },
         );
         assert_eq!(expected, ast[0]);

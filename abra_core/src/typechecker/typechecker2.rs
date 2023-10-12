@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use itertools::{Either, EitherOrBoth, Itertools};
-use crate::{parser, tokenize_and_parse_stub};
+use crate::{parser, tokenize_and_parse};
 use crate::common::util::integer_decode;
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
@@ -777,9 +777,16 @@ pub enum FunctionKind {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct DecoratorInstance {
+    pub name: String,
+    pub args: Vec<TypedNode>,
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Function {
     pub id: FuncId,
     pub fn_scope_id: ScopeId,
+    pub decorators: Vec<DecoratorInstance>,
     pub name: String,
     pub generic_ids: Vec<TypeId>,
     pub kind: FunctionKind,
@@ -869,7 +876,7 @@ pub enum TypedNode {
     Identifier { token: Token, var_id: VarId, type_arg_ids: Vec<(TypeId, Range)>, type_id: TypeId },
     NoneValue { token: Token, type_id: TypeId },
     Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId },
-    Accessor { target: Box<TypedNode>, kind: AccessorKind, is_opt_safe: bool, member_idx: usize, member_span: Range, type_id: TypeId },
+    Accessor { target: Box<TypedNode>, kind: AccessorKind, is_opt_safe: bool, member_idx: usize, member_span: Range, type_id: TypeId, type_arg_ids: Vec<(TypeId, Range)> },
     Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId },
     Lambda { span: Range, func_id: FuncId, type_id: TypeId },
     Assignment { span: Range, kind: AssignmentKind, type_id: TypeId, expr: Box<TypedNode> },
@@ -2310,10 +2317,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             FunctionKind::Freestanding
         };
         let func_id = FuncId(current_scope.id, current_scope.funcs.len());
-        let func = Function { id: func_id, fn_scope_id, name: name.clone(), generic_ids, kind, params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![] };
+        let func = Function { id: func_id, fn_scope_id, decorators: vec![], name: name.clone(), generic_ids, kind, params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![] };
 
-        let current_scope = self.current_scope_mut();
-        current_scope.funcs.push(func);
+        self.current_scope_mut().funcs.push(func);
 
         Ok(func_id)
     }
@@ -2341,7 +2347,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let kind = FunctionKind::Freestanding;
         let func_id = FuncId(fn_decl_scope.id, fn_decl_scope.funcs.len());
-        let func = Function { id: func_id, fn_scope_id, name, generic_ids: vec![], kind, params, return_type_id: PRELUDE_ANY_TYPE_ID, defined_span: None, body: vec![], captured_vars: vec![] };
+        let func = Function { id: func_id, fn_scope_id, decorators: vec![], name, generic_ids: vec![], kind, params, return_type_id: PRELUDE_ANY_TYPE_ID, defined_span: None, body: vec![], captured_vars: vec![] };
 
         fn_decl_scope.funcs.push(func);
 
@@ -2567,7 +2573,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.current_scope_id = PRELUDE_SCOPE_ID;
 
         let prelude_stub_file = self.module_loader.load_file(&"prelude.stub.abra".to_string()).expect("Internal error: should always be able to load prelude");
-        let parse_result = tokenize_and_parse_stub(&parser::ast::ModuleId::External("prelude".to_string()), &prelude_stub_file)
+        let parse_result = tokenize_and_parse(&parser::ast::ModuleId::External("prelude".to_string()), &prelude_stub_file)
             .expect("There should not be a problem parsing the prelude file");
         self.typecheck_block(parse_result.nodes)
             .expect("There should not be a problem typechecking the prelude file");
@@ -2973,6 +2979,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     fn typecheck_function_pass_2(&mut self, func_id: FuncId, node: FunctionDeclNode) -> Result<(), TypeError> {
         debug_assert!(self.function_pass == FunctionPass::Pass2);
 
+        let mut decorators = Vec::with_capacity(node.decorators.len());
+        for dec in node.decorators {
+            let mut args = Vec::with_capacity(dec.args.len());
+            for (_, arg) in dec.args {
+                args.push(self.typecheck_expression(arg, None)?)
+            }
+            decorators.push(DecoratorInstance { name: Token::get_ident_name(&dec.name), args });
+        }
+        self.project.get_func_by_id_mut(&func_id).decorators = decorators;
+
         let prev_func_id = self.current_function;
         self.current_function = Some(func_id);
 
@@ -3337,7 +3353,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         match node {
             AstNode::BindingDecl(token, n) => {
-                let BindingDeclNode { export_token, mut binding, type_ann, expr, is_mutable } = n;
+                let BindingDeclNode { export_token, mut binding, type_ann, expr, is_mutable, .. } = n;
                 let is_exported = export_token.is_some();
                 if let Some(export_token) = export_token { self.verify_export_scope(&export_token)?; }
 
@@ -4655,6 +4671,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 }
 
+                let mut type_arg_ids = Vec::with_capacity(type_args.as_ref().map(|args| args.len()).unwrap_or(0));
+                if let Some(type_args) = type_args {
+                    for type_arg in type_args {
+                        let type_id = self.resolve_type_identifier(&type_arg)?;
+                        type_arg_ids.push((type_id, type_arg.get_ident().get_range()));
+                    }
+                }
+
                 if let Some(alias_module_id) = target_type_id.as_module_type_alias() {
                     let m = &self.project.modules[alias_module_id.0];
                     let Some(export) = m.exports.iter().find_map(|(name, val)| if name == &field_name { Some(val) } else { None }) else {
@@ -4667,14 +4691,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         ExportedValue::Variable(var_id) => *var_id,
                     };
                     let type_id = self.project.get_var_by_id(&var_id).type_id;
-
-                    let mut type_arg_ids = Vec::with_capacity(type_args.as_ref().map(|args| args.len()).unwrap_or(0));
-                    if let Some(type_args) = type_args {
-                        for type_arg in type_args {
-                            let type_id = self.resolve_type_identifier(&type_arg)?;
-                            type_arg_ids.push((type_id, type_arg.get_ident().get_range()));
-                        }
-                    }
 
                     return Ok(TypedNode::Identifier { token: field_ident, var_id, type_arg_ids, type_id });
                 }
@@ -4792,7 +4808,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         type_id = self.add_or_find_type_id(self.project.option_type(type_id))
                     }
 
-                    Ok(TypedNode::Accessor { target: Box::new(typed_target), kind, is_opt_safe: n.is_opt_safe, member_idx, member_span: field_ident.get_range(), type_id })
+                    Ok(TypedNode::Accessor { target: Box::new(typed_target), kind, is_opt_safe: n.is_opt_safe, member_idx, member_span: field_ident.get_range(), type_id, type_arg_ids })
                 } else {
                     Err(TypeError::UnknownMember { span: field_span, field_name, type_id: target_type_id })
                 }
@@ -4811,20 +4827,22 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 };
 
                 let params_data;
+                let fn_generic_ids;
+                let provided_type_arg_ids;
                 let mut return_type_id;
                 let mut is_instantiation = false;
                 let mut fn_is_variadic = false;
                 let mut forbid_labels = false;
                 match &typed_target {
-                    TypedNode::Identifier { var_id, type_arg_ids: type_args, .. } if self.project.get_var_by_id(var_id).alias != VariableAlias::None => {
+                    TypedNode::Identifier { var_id, type_arg_ids, .. } if self.project.get_var_by_id(var_id).alias != VariableAlias::None => {
+                        provided_type_arg_ids = type_arg_ids.clone();
                         let var = self.project.get_var_by_id(var_id);
 
-                        let generic_ids;
                         match var.alias {
                             VariableAlias::Function(alias_func_id) => {
                                 let function = self.project.get_func_by_id(&alias_func_id);
                                 fn_is_variadic = function.is_variadic();
-                                generic_ids = &function.generic_ids;
+                                fn_generic_ids = function.generic_ids.clone();
                                 params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
                                 return_type_id = function.return_type_id;
                             }
@@ -4832,7 +4850,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 match id {
                                     TypeKind::Struct(alias_struct_id) => {
                                         let struct_ = self.project.get_struct_by_id(&alias_struct_id);
-                                        generic_ids = &struct_.generic_ids;
+                                        fn_generic_ids = struct_.generic_ids.clone();
                                         params_data = struct_.fields.iter().enumerate().map(|(idx, f)| (idx, f.name.clone(), f.type_id, f.default_value.is_some(), false)).collect_vec();
                                         return_type_id = struct_.self_type_id;
                                         is_instantiation = true;
@@ -4845,21 +4863,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             }
                             VariableAlias::None => unreachable!("VariableAlias::None identifiers are excluded from this match case and are handled below"),
                         }
-                        if !type_args.is_empty() && type_args.len() != generic_ids.len() {
-                            let span = if type_args.len() > generic_ids.len() {
-                                let (_, span) = &type_args[generic_ids.len()];
-                                span.clone()
-                            } else {
-                                typed_target.span()
-                            };
-                            let span = self.make_span(&span);
-                            return Err(TypeError::InvalidTypeArgumentArity { span, num_required_args: generic_ids.len(), num_provided_args: type_args.len() });
-                        }
-                        for (generic_id, (type_arg_id, _)) in generic_ids.iter().zip(type_args.iter()) {
-                            filled_in_generic_types.insert(*generic_id, *type_arg_id);
-                        }
                     }
-                    TypedNode::Accessor { target, kind, member_idx, is_opt_safe, .. } => {
+                    TypedNode::Accessor { target, kind, member_idx, is_opt_safe, type_arg_ids, .. } => {
+                        provided_type_arg_ids = type_arg_ids.clone();
+
                         let mut target_type_id = *target.type_id();
                         let mut target_is_option_type = false;
                         if *is_opt_safe {
@@ -4879,6 +4886,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                         let Type::Function(param_type_ids, num_required_args, is_variadic, ret_type_id) = field_ty else {
                                             return Err(TypeError::IllegalInvocation { span: self.make_span(&typed_target.span()), type_id: target_type_id });
                                         };
+                                        fn_generic_ids = vec![]; // Cannot determine whether a function accepts type args solely based on its type
                                         fn_is_variadic = *is_variadic;
                                         let num_param_type_ids = param_type_ids.len();
                                         params_data = param_type_ids.iter().enumerate()
@@ -4892,6 +4900,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     }
                                     AccessorKind::Method => {
                                         let function = self.project.get_func_by_id(&struct_.methods[*member_idx]);
+                                        fn_generic_ids = function.generic_ids.clone();
                                         fn_is_variadic = function.is_variadic();
                                         params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
                                         return_type_id = function.return_type_id;
@@ -4910,6 +4919,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     AccessorKind::Field => todo!(),
                                     AccessorKind::Method => {
                                         let function = self.project.get_func_by_id(&enum_.methods[*member_idx]);
+                                        fn_generic_ids = function.generic_ids.clone();
                                         fn_is_variadic = function.is_variadic();
                                         params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
                                         return_type_id = function.return_type_id;
@@ -4928,6 +4938,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 };
                                 let struct_ = self.project.get_struct_by_id(&struct_id);
                                 let function = self.project.get_func_by_id(&struct_.methods[*member_idx]);
+                                fn_generic_ids = function.generic_ids.clone();
                                 fn_is_variadic = function.is_variadic();
                                 params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
                                 return_type_id = function.return_type_id;
@@ -4935,6 +4946,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             Type::Type(TypeKind::Struct(struct_id)) => {
                                 let struct_ = self.project.get_struct_by_id(struct_id);
                                 let function = self.project.get_func_by_id(&struct_.static_methods[*member_idx]);
+                                fn_generic_ids = function.generic_ids.clone();
                                 fn_is_variadic = function.is_variadic();
                                 params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
                                 return_type_id = function.return_type_id;
@@ -4946,6 +4958,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     return Err(TypeError::IllegalEnumVariantConstruction { span: self.make_span(&typed_target.span()), enum_id: *enum_id, variant_idx: *member_idx });
                                 };
                                 let function = self.project.get_func_by_id(&func_id);
+                                fn_generic_ids = function.generic_ids.clone();
                                 fn_is_variadic = function.is_variadic();
                                 params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
                                 return_type_id = function.return_type_id;
@@ -4960,11 +4973,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         }
                     }
                     _ => {
+                        provided_type_arg_ids = vec![];
                         let target_type_id = typed_target.type_id();
                         let target_ty = self.project.get_type_by_id(target_type_id);
                         let Type::Function(param_type_ids, num_required_args, is_variadic, ret_type_id) = target_ty else {
                             return Err(TypeError::IllegalInvocation { span: self.make_span(&typed_target.span()), type_id: *target_type_id });
                         };
+                        fn_generic_ids = vec![];
                         fn_is_variadic = *is_variadic;
                         let num_param_type_ids = param_type_ids.len();
                         params_data = param_type_ids.iter().enumerate()
@@ -4983,6 +4998,23 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     return Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: vec![], type_id: return_type_id });
                 }
 
+                if !provided_type_arg_ids.is_empty() && provided_type_arg_ids.len() != fn_generic_ids.len() {
+                    let span = if provided_type_arg_ids.len() > fn_generic_ids.len() {
+                        let (_, span) = &provided_type_arg_ids[fn_generic_ids.len()];
+                        span.clone()
+                    } else {
+                        typed_target.span()
+                    };
+                    let span = self.make_span(&span);
+                    return Err(TypeError::InvalidTypeArgumentArity { span, num_required_args: fn_generic_ids.len(), num_provided_args: provided_type_arg_ids.len() });
+                }
+                for (generic_id, (type_arg_id, _)) in fn_generic_ids.iter().zip(provided_type_arg_ids.iter()) {
+                    filled_in_generic_types.insert(*generic_id, *type_arg_id);
+                }
+
+                if self.type_contains_generics(&return_type_id) {
+                    return_type_id = self.substitute_generics_with_known(&return_type_id, &filled_in_generic_types);
+                }
                 if let Some(type_hint) = type_hint {
                     if self.type_contains_generics(&return_type_id) {
                         self.extract_values_for_generics(&type_hint, &return_type_id, &mut filled_in_generic_types);

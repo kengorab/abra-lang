@@ -470,6 +470,7 @@ impl<'a> Lexer<'a> {
             ',' => Ok(Some(Token::Comma(pos))),
             ':' => Ok(Some(Token::Colon(pos))),
             '.' => Ok(Some(Token::Dot(pos))),
+            '@' => Ok(Some(Token::At(pos))),
             _ => Ok(None)
         }
     }
@@ -602,7 +603,7 @@ mod tests {
 
     #[test]
     fn test_tokenize_separators() {
-        let input = "( ) [ ] { } | , : ? #{";
+        let input = "( ) [ ] { } | , : ? #{ @";
         let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::LParen(Position::new(1, 1), false),
@@ -616,6 +617,7 @@ mod tests {
             Token::Colon(Position::new(1, 17)),
             Token::Question(Position::new(1, 19)),
             Token::LBraceHash(Position::new(1, 21)),
+            Token::At(Position::new(1, 24)),
         ];
         assert_eq!(expected, tokens);
     }

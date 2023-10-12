@@ -1,21 +1,21 @@
-func print(*items: Any[])
-func println(*items: Any[])
-func range(start: Int, end: Int, stepBy = 1): Int[]
+@Stub func print(*items: Any[])
+@Stub func println(*items: Any[])
+@Stub func range(start: Int, end: Int, stepBy = 1): Int[]
 
 type Int {
-  func abs(self): Int
-  func asBase(self, base: Int): String
-  func isEven(self): Bool
-  func isOdd(self): Bool
-  func isBetween(self, lower: Int, upper: Int, inclusive = false): Bool
+  @Stub func abs(self): Int
+  @Stub func asBase(self, base: Int): String
+  @Stub func isEven(self): Bool
+  @Stub func isOdd(self): Bool
+  @Stub func isBetween(self, lower: Int, upper: Int, inclusive = false): Bool
 }
 
 type Float {
-  func abs(self): Float
-  func floor(self): Int
-  func ceil(self): Int
-  func round(self): Int
-  func withPrecision(self, precision: Int): Float
+  @Stub func abs(self): Float
+  @Stub func floor(self): Int
+  @Stub func ceil(self): Int
+  @Stub func round(self): Int
+  @Stub func withPrecision(self, precision: Int): Float
 }
 
 type Bool {
@@ -25,39 +25,39 @@ type Bool {
 type String {
   length: Int readonly
 
-  func isEmpty(self): Bool
-  func toLower(self): String
-  func toUpper(self): String
-  func padLeft(self, totalSize: Int, padding = " "): String
-  func trim(self): String
-  func trimStart(self, pattern: String? = None): String
-  func trimEnd(self, pattern: String? = None): String
-  func split(self, by = ""): String[]
-  func splitAt(self, index: Int): (String, String)
-  func lines(self): String[]
-  func parseInt(self, radix = 10): Int?
-  func parseFloat(self): Float?
-  func concat(self, suffix: Any, *others: Any[]): String
-  func replaceAll(self, pattern: String, replacement: String): String
+  @Stub func isEmpty(self): Bool
+  @Stub func toLower(self): String
+  @Stub func toUpper(self): String
+  @Stub func padLeft(self, totalSize: Int, padding = " "): String
+  @Stub func trim(self): String
+  @Stub func trimStart(self, pattern: String? = None): String
+  @Stub func trimEnd(self, pattern: String? = None): String
+  @Stub func split(self, by = ""): String[]
+  @Stub func splitAt(self, index: Int): (String, String)
+  @Stub func lines(self): String[]
+  @Stub func parseInt(self, radix = 10): Int?
+  @Stub func parseFloat(self): Float?
+  @Stub func concat(self, suffix: Any, *others: Any[]): String
+  @Stub func replaceAll(self, pattern: String, replacement: String): String
 }
 
 //type Pointer<T> {
-//  //@Intrinsic("pointer_null")
+//  @Intrinsic("pointer_null")
 //  func null<U>(): Pointer<U>
 //
-//  //@Intrinsic("pointer_malloc")
+//  @Intrinsic("pointer_malloc")
 //  func malloc<U>(size: Int): Pointer<U>
 //
-//  //@Intrinsic("pointer_realloc")
+//  @Intrinsic("pointer_realloc")
 //  func realloc<U>(ptr: Pointer<U>, size: Int): Pointer<U>
 //
-//  //@Intrinsic("pointer_offset")
+//  @Intrinsic("pointer_offset")
 //  func offset<U>(ptr: Pointer<U>, offset: Int): Pointer<U>
 //
-//  //@Intrinsic("pointer_load")
+//  @Intrinsic("pointer_load")
 //  func load<U>(ptr: Pointer<U>): U
 //
-//  //@Intrinsic("pointer_store")
+//  @Intrinsic("pointer_store")
 //  func store<U>(ptr: Pointer<U>, value: U)
 //}
 
@@ -72,66 +72,66 @@ type Array<T> {
 //    Array<U>(length: 0, _buffer: Pointer.malloc(initialCapacity), _capacity: initialCapacity)
 //  }
 
-  func isEmpty(self): Bool
-  func enumerate(self): (T, Int)[]
-  func push(self, item: T, *others: T[])
-  func pop(self): T?
-  func popFront(self): T?
-  func splitAt(self, index: Int): (T[], T[])
-  func concat(self, other: T[]): T[]
-  func map<U>(self, fn: (T) => U): U[]
-  func filter(self, fn: (T) => Bool): T[]
-  func reduce<U>(self, initialValue: U, fn: (U, T) => U): U
-  func forEach(self, fn: (T) => Unit)
-  func join(self, joiner = ""): String
-  func contains(self, item: T): Bool
-  func find(self, fn: (T) => Bool): T?
-  func findIndex(self, fn: (T) => Bool): (T, Int)?
-  func any(self, fn: (T) => Bool): Bool
-  func all(self, fn: (T) => Bool): Bool
-  func none(self, fn: (T) => Bool): Bool
-  func sortBy(self, fn: (T) => Int, reverse = false): T[]
-  func dedupe(self): T[]
-  func dedupeBy<U>(self, fn: (T) => U): T[]
-  func partition<U>(self, fn: (T) => U): Map<U, T[]>
-  func tally(self): Map<T, Int>
-  func tallyBy<U>(self, fn: (T) => U): Map<U, Int>
-  func asSet(self): Set<T>
-  func getOr(self, index: Int, default: T): T
-  func getOrElse(self, index: Int, getDefault: () => T): T
-  func update(self, index: Int, updater: (T) => T)
-  func reverse(self): T[]
+  @Stub func isEmpty(self): Bool
+  @Stub func enumerate(self): (T, Int)[]
+  @Stub func push(self, item: T, *others: T[])
+  @Stub func pop(self): T?
+  @Stub func popFront(self): T?
+  @Stub func splitAt(self, index: Int): (T[], T[])
+  @Stub func concat(self, other: T[]): T[]
+  @Stub func map<U>(self, fn: (T) => U): U[]
+  @Stub func filter(self, fn: (T) => Bool): T[]
+  @Stub func reduce<U>(self, initialValue: U, fn: (U, T) => U): U
+  @Stub func forEach(self, fn: (T) => Unit)
+  @Stub func join(self, joiner = ""): String
+  @Stub func contains(self, item: T): Bool
+  @Stub func find(self, fn: (T) => Bool): T?
+  @Stub func findIndex(self, fn: (T) => Bool): (T, Int)?
+  @Stub func any(self, fn: (T) => Bool): Bool
+  @Stub func all(self, fn: (T) => Bool): Bool
+  @Stub func none(self, fn: (T) => Bool): Bool
+  @Stub func sortBy(self, fn: (T) => Int, reverse = false): T[]
+  @Stub func dedupe(self): T[]
+  @Stub func dedupeBy<U>(self, fn: (T) => U): T[]
+  @Stub func partition<U>(self, fn: (T) => U): Map<U, T[]>
+  @Stub func tally(self): Map<T, Int>
+  @Stub func tallyBy<U>(self, fn: (T) => U): Map<U, Int>
+  @Stub func asSet(self): Set<T>
+  @Stub func getOr(self, index: Int, default: T): T
+  @Stub func getOrElse(self, index: Int, getDefault: () => T): T
+  @Stub func update(self, index: Int, updater: (T) => T)
+  @Stub func reverse(self): T[]
 }
 
 type Set<T> {
   size: Int readonly
 
-  func isEmpty(self): Bool
-  func enumerate(self): (T, Int)[]
-  func contains(self, item: T): Bool
-  func insert(self, item: T)
-  func remove(self, item: T): T?
-  func map<U>(self, fn: (T) => U): U[]
-  func filter(self, fn: (T) => Bool): Set<T>
-  func reduce<U>(self, initialValue: U, fn: (U, T) => U): U
-  func asArray(self): T[]
-  func union(self, other: Set<T>): Set<T>
-  func difference(self, other: Set<T>): Set<T>
-  func intersection(self, other: Set<T>): Set<T>
+  @Stub func isEmpty(self): Bool
+  @Stub func enumerate(self): (T, Int)[]
+  @Stub func contains(self, item: T): Bool
+  @Stub func insert(self, item: T)
+  @Stub func remove(self, item: T): T?
+  @Stub func map<U>(self, fn: (T) => U): U[]
+  @Stub func filter(self, fn: (T) => Bool): Set<T>
+  @Stub func reduce<U>(self, initialValue: U, fn: (U, T) => U): U
+  @Stub func asArray(self): T[]
+  @Stub func union(self, other: Set<T>): Set<T>
+  @Stub func difference(self, other: Set<T>): Set<T>
+  @Stub func intersection(self, other: Set<T>): Set<T>
 }
 
 type Map<K, V> {
   size: Int readonly
 
-  func isEmpty(self): Bool
-  func enumerate(self): (K, V)[]
-  func keys(self): Set<K>
-  func values(self): V[]
-  func entries(self): Set<(K, V)>
-  func containsKey(self, key: K): Bool
-  func mapValues<U>(self, fn: (K, V) => U): Map<K, U>
-  func getOr(self, key: K, default: V): V
-  func getOrElse(self, key: K, getDefault: () => V): V
-  func update(self, key: K, updater: (V) => V)
-  func remove(self, key: K): V?
+  @Stub func isEmpty(self): Bool
+  @Stub func enumerate(self): (K, V)[]
+  @Stub func keys(self): Set<K>
+  @Stub func values(self): V[]
+  @Stub func entries(self): Set<(K, V)>
+  @Stub func containsKey(self, key: K): Bool
+  @Stub func mapValues<U>(self, fn: (K, V) => U): Map<K, U>
+  @Stub func getOr(self, key: K, default: V): V
+  @Stub func getOrElse(self, key: K, getDefault: () => V): V
+  @Stub func update(self, key: K, updater: (V) => V)
+  @Stub func remove(self, key: K): V?
 }

@@ -1586,7 +1586,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
     }
 
     fn visit_binding_decl(&mut self, token: Token, node: BindingDeclNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
-        let BindingDeclNode { export_token, is_mutable, mut binding, type_ann, expr } = node;
+        let BindingDeclNode { export_token, is_mutable, mut binding, type_ann, expr, .. } = node;
         if !is_mutable && expr.is_none() {
             if let BindingPattern::Variable(ident) = binding {
                 return Err(TypecheckerErrorKind::MissingRequiredAssignment { ident });
@@ -1938,7 +1938,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             return Err(TypecheckerErrorKind::InvalidTypeDeclDepth { token });
         }
 
-        let EnumDeclNode { export_token, name, variants, methods, type_args } = node;
+        let EnumDeclNode { export_token, name, variants, methods, type_args, .. } = node;
         let new_enum_name = Token::get_ident_name(&name);
         let is_exported = if let Some(token) = export_token {
             if self.scopes.len() != 1 {
