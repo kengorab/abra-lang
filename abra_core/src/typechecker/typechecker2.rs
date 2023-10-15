@@ -641,17 +641,26 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn get_field<'a>(&self, project: &'a Project, field_idx: usize) -> Option<(&'a String, &'a TypeId)> {
+    pub fn get_field<'a>(&self, project: &'a Project, field_idx: usize) -> Option<&'a StructField> {
         let Some(struct_id) = self.get_struct_id(project) else { return None; };
 
-        let struct_field = &project.get_struct_by_id(&struct_id).fields[field_idx];
-        Some((&struct_field.name, &struct_field.type_id))
+        Some(&project.get_struct_by_id(&struct_id).fields[field_idx])
     }
 
     pub fn get_method(&self, project: &Project, method_idx: usize) -> Option<FuncId> {
         let Some(struct_id) = self.get_struct_id(project) else { return None; };
 
         Some(project.get_struct_by_id(&struct_id).methods[method_idx])
+    }
+
+    pub fn get_static_method(&self, project: &Project, static_method_idx: usize) -> Option<FuncId> {
+        let static_methods = match self {
+            Type::Type(TypeKind::Struct(struct_id)) => &project.get_struct_by_id(struct_id).static_methods,
+            Type::Type(TypeKind::Enum(enum_id)) => &project.get_enum_by_id(enum_id).static_methods,
+            _ => return None
+        };
+
+        Some(static_methods[static_method_idx])
     }
 
     pub fn find_method_by_name<'a, S: AsRef<str>>(&self, project: &'a Project, method_name: S) -> Option<&'a FuncId> {
@@ -734,7 +743,7 @@ pub struct Scope {
     pub funcs: Vec<Function>,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct VarId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
 
 impl VarId {
@@ -842,6 +851,7 @@ pub struct TypedModule {
     pub completed: bool,
 }
 
+// TODO: AccessorKind should come with func_id when appropriate, why do func_id lookup again later?
 #[derive(Debug, PartialEq)]
 pub enum AccessorKind {
     Field,

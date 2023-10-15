@@ -41,25 +41,28 @@ type String {
   @Stub func replaceAll(self, pattern: String, replacement: String): String
 }
 
-//type Pointer<T> {
-//  @Intrinsic("pointer_null")
-//  func null<U>(): Pointer<U>
-//
-//  @Intrinsic("pointer_malloc")
-//  func malloc<U>(size: Int): Pointer<U>
-//
-//  @Intrinsic("pointer_realloc")
-//  func realloc<U>(ptr: Pointer<U>, size: Int): Pointer<U>
-//
-//  @Intrinsic("pointer_offset")
-//  func offset<U>(ptr: Pointer<U>, offset: Int): Pointer<U>
-//
-//  @Intrinsic("pointer_load")
-//  func load<U>(ptr: Pointer<U>): U
-//
-//  @Intrinsic("pointer_store")
-//  func store<U>(ptr: Pointer<U>, value: U)
-//}
+type Pointer<T> {
+  @Intrinsic("pointer_null")
+  func null<T>(): Pointer<T>
+
+  @Intrinsic("pointer_malloc")
+  func malloc<T>(count = 1): Pointer<T>
+
+  //@Intrinsic("pointer_realloc")
+  //func realloc(self, count: Int): Pointer<T>
+
+  @Intrinsic("pointer_address")
+  func address(self): Int
+
+  @Intrinsic("pointer_store")
+  func store(self, value: T)
+
+  @Intrinsic("pointer_load")
+  func load(self): T
+
+  @Intrinsic("pointer_offset")
+  func offset(self, offset: Int): Pointer<T>
+}
 
 type Array<T> {
   length: Int readonly

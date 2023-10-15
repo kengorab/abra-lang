@@ -990,11 +990,11 @@ impl<W: std::io::Write> CCompiler2<W> {
                             Type::GenericInstance(struct_id, _) if *struct_id == project.prelude_set_struct_id => true,
                             _ => false
                         };
-                        let Some((field_name, _)) = target_type.get_field(project, *member_idx) else { unreachable!() };
+                        let Some(field) = target_type.get_field(project, *member_idx) else { unreachable!() };
                         if is_builtin {
-                            self.emit_line(format!("{} {} = {}_field_{}({});", &result_type_name, &result_handle, self.get_type_name_by_id(project, target_type_id), field_name, &target_handle));
+                            self.emit_line(format!("{} {} = {}_field_{}({});", &result_type_name, &result_handle, self.get_type_name_by_id(project, target_type_id), &field.name, &target_handle));
                         } else {
-                            self.emit_line(format!("{} {} = {}.value->{};", &result_type_name, &result_handle, &target_handle, field_name))
+                            self.emit_line(format!("{} {} = {}.value->{};", &result_type_name, &result_handle, &target_handle, &field.name))
                         }
                     }
                     AccessorKind::Method |

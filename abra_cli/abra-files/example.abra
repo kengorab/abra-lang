@@ -1,1 +1,11 @@
-24
+//val null = Pointer.null<Int>()
+//null.address()
+//null.load()
+
+//val ptr = Pointer.malloc<Int>()
+//ptr.address()
+
+val ptr = Pointer.malloc<String>(2)
+ptr.store("abc")
+ptr.offset(1).store("def")
+ptr.offset(1).load()
