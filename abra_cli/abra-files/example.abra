@@ -1,11 +1,35 @@
-//val null = Pointer.null<Int>()
-//null.address()
-//null.load()
+//val arr1 = Array.withCapacity<String>(6)
+//val arr2 = Array.withCapacity<Bool>(6)
+//val arr3 = Array.withCapacity<Bool[]>(6)
 
-//val ptr = Pointer.malloc<Int>()
-//ptr.address()
+//arr1.push("a")
+//arr1.push("b")
+//arr1.push("c")
+//arr1.push("d")
+//arr1.push("e")
+//arr1.get(4)
 
-val ptr = Pointer.malloc<String>(2)
-ptr.store("abc")
-ptr.offset(1).store("def")
-ptr.offset(1).load()
+val arr1 = [1, 2, 3]
+//val arr2 = ["a", "b", "c"]
+//val arr3 = [true, false]
+//
+//0
+
+val p = Pointer.malloc<Int>(1)
+p.address()
+
+// // A value of an optional (nullable) type must be a 64-bit value. The value of None is 0x8000000000000000.
+// // If underlying type is a pointer (object), use pointer tag to denote None-ness by setting lowest bit to 1
+// val s: String = "abc"   // 0x0000600001AD4040 (ordinary String value)
+// val s: String? = "abc"  // 0x0000600001AD4040 <--- highest bit is set to 0
+// val s: String? = None   // 0x8000000000000000 <--- highest bit is set to 1 to denote `None`
+//
+// // If type is a primitive then we need to do some things differently.
+// // If value is Int (32-bit):
+// val i: Int = 123        // 0x0000007B (ordinary Int (32-bit) value)
+// val i: Int? = 123       // 0x000000000000007B <--- 32-bit value extended to 64-bits, highest bit 0
+// val i: Int? = None      // 0x8000000000000000 <--- 32-bit value extended to 64-bits, highest bit 1
+//
+// // If value is Float, we can use NaN boxing to encode a None value (alongside NaN, and +-Inf)
+// // If value is Bool (1-bit), we behave like Int - extend to 64 bits, set top bit to 1 if None
+

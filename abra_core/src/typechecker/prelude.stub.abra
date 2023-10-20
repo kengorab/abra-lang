@@ -65,19 +65,31 @@ type Pointer<T> {
 }
 
 type Array<T> {
-  length: Int readonly
+  length: Int
 
-//  _buffer: Pointer<T> = Pointer.null()
-//  _capacity: Int = 0
-//
-//  func withCapacity<U>(initialCapacity: Int): U[] {
-//    //val buffer = Pointer.malloc(initialCapacity)
-//    Array<U>(length: 0, _buffer: Pointer.malloc(initialCapacity), _capacity: initialCapacity)
-//  }
+  _buffer: Pointer<T> = Pointer.null<T>()
+  _capacity: Int = 0
+
+  func withCapacity<T>(initialCapacity: Int): T[] {
+    Array<T>(
+      length: 0,
+      _buffer: Pointer.malloc<T>(initialCapacity),
+      _capacity: initialCapacity
+    )
+  }
 
   @Stub func isEmpty(self): Bool
   @Stub func enumerate(self): (T, Int)[]
-  @Stub func push(self, item: T, *others: T[])
+
+  func push(self, item: T) {
+    self._buffer.offset(self.length).store(item)
+    self.length += 1
+  }
+
+  func get(self, index: Int): T {
+    self._buffer.offset(index).load()
+  }
+
   @Stub func pop(self): T?
   @Stub func popFront(self): T?
   @Stub func splitAt(self, index: Int): (T[], T[])

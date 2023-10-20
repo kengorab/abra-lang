@@ -677,6 +677,7 @@ impl Type {
             Type::Primitive(PrimitiveType::Bool) => Some(project.prelude_bool_struct_id),
             Type::Primitive(PrimitiveType::String) => Some(project.prelude_string_struct_id),
             Type::GenericInstance(struct_id, _) => Some(*struct_id),
+            Type::Type(TypeKind::Struct(struct_id)) => Some(*struct_id),
             _ => None
         }
     }
@@ -885,7 +886,7 @@ pub enum TypedNode {
     Map { token: Token, items: Vec<(TypedNode, TypedNode)>, type_id: TypeId },
     Identifier { token: Token, var_id: VarId, type_arg_ids: Vec<(TypeId, Range)>, type_id: TypeId },
     NoneValue { token: Token, type_id: TypeId },
-    Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId },
+    Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId }, // TODO: ::Invocation should have type_arg_ids: Vec<(TypeId, /* inferred: */ bool)>
     Accessor { target: Box<TypedNode>, kind: AccessorKind, is_opt_safe: bool, member_idx: usize, member_span: Range, type_id: TypeId, type_arg_ids: Vec<(TypeId, Range)> },
     Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId },
     Lambda { span: Range, func_id: FuncId, type_id: TypeId },
