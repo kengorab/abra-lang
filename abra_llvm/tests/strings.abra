@@ -1,2 +1,2 @@
 /// Expect: hello
-"hello"
+echo<String>("hello")

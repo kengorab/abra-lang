@@ -1,2 +1,8 @@
 /// Expect: 1.23
-1.23
+echo<Float>(1.23)
+
+/// Expect: 0.123
+echo<Float>(0.123)
+
+/// Expect: 1
+echo<Float>(1.0)

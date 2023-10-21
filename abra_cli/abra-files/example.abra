@@ -1,22 +1,11 @@
-//val arr1 = Array.withCapacity<String>(6)
-//val arr2 = Array.withCapacity<Bool>(6)
-//val arr3 = Array.withCapacity<Bool[]>(6)
+//val arr1 = [1, 2, 3]
+//arr1.get(0)
 
-//arr1.push("a")
-//arr1.push("b")
-//arr1.push("c")
-//arr1.push("d")
-//arr1.push("e")
-//arr1.get(4)
-
-val arr1 = [1, 2, 3]
-//val arr2 = ["a", "b", "c"]
-//val arr3 = [true, false]
-//
-//0
-
-val p = Pointer.malloc<Int>(1)
-p.address()
+//echo<Int>(123)
+//echo<Float>(12.3)
+//echo<Bool>(true)
+//echo<String>("hello")
+//echo<String[]>(["hello"])
 
 // // A value of an optional (nullable) type must be a 64-bit value. The value of None is 0x8000000000000000.
 // // If underlying type is a pointer (object), use pointer tag to denote None-ness by setting lowest bit to 1
@@ -33,3 +22,12 @@ p.address()
 // // If value is Float, we can use NaN boxing to encode a None value (alongside NaN, and +-Inf)
 // // If value is Bool (1-bit), we behave like Int - extend to 64 bits, set top bit to 1 if None
 
+type Person {
+  name: String
+  age: Int
+
+  //func toString(self): String = "todo"
+}
+
+val p = Person(name: "Ken", age: 31)
+echo<Person>(p)

@@ -1,2 +1,2 @@
 /// Expect: 24
-24
+echo<Int>(24)

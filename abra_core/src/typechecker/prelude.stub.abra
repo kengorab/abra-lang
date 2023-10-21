@@ -1,3 +1,8 @@
+@Intrinsic("stdout_write")
+func stdoutWrite(str: String)
+
+func echo<T>(value: T) = stdoutWrite(value.toString())
+
 @Stub func print(*items: Any[])
 @Stub func println(*items: Any[])
 @Stub func range(start: Int, end: Int, stepBy = 1): Int[]
@@ -77,6 +82,9 @@ type Array<T> {
       _capacity: initialCapacity
     )
   }
+
+  // TODO: custom toString implementations shouldn't need to be the first method declared
+  //func toString(self): String = "[ /* todo */ ]"
 
   @Stub func isEmpty(self): Bool
   @Stub func enumerate(self): (T, Int)[]

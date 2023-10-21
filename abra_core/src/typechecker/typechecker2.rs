@@ -886,7 +886,8 @@ pub enum TypedNode {
     Map { token: Token, items: Vec<(TypedNode, TypedNode)>, type_id: TypeId },
     Identifier { token: Token, var_id: VarId, type_arg_ids: Vec<(TypeId, Range)>, type_id: TypeId },
     NoneValue { token: Token, type_id: TypeId },
-    Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId }, // TODO: ::Invocation should have type_arg_ids: Vec<(TypeId, /* inferred: */ bool)>
+    Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId },
+    // TODO: ::Invocation should have type_arg_ids: Vec<(TypeId, /* inferred: */ bool)>
     Accessor { target: Box<TypedNode>, kind: AccessorKind, is_opt_safe: bool, member_idx: usize, member_span: Range, type_id: TypeId, type_arg_ids: Vec<(TypeId, Range)> },
     Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId },
     Lambda { span: Range, func_id: FuncId, type_id: TypeId },
@@ -3133,47 +3134,53 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let TypeDeclNode { methods, .. } = node;
 
         let struct_ = self.project.get_struct_by_id(struct_id);
+        let self_type_id = struct_.self_type_id;
 
         let prev_scope_id = self.current_scope_id;
         self.current_scope_id = struct_.struct_scope_id;
         debug_assert!(self.current_type_decl.is_none(), "At the moment, types cannot be nested within other types");
         self.current_type_decl = Some(struct_.self_type_id);
 
-        let self_type_id = struct_.self_type_id;
-        let string_type_id = self.add_or_find_type_id(Type::Primitive(PrimitiveType::String));
-        let tostring_func_id = self.add_function_to_current_scope(
-            ScopeId::BOGUS,
-            &Token::Ident(POSITION_BOGUS, "toString".to_string()),
-            vec![],
-            true,
-            vec![
-                FunctionParam {
-                    name: "self".to_string(),
-                    type_id: self_type_id,
-                    var_id: VarId::BOGUS,
-                    defined_span: None,
-                    default_value: None,
-                    is_variadic: false,
-                    is_incomplete: false,
-                }
-            ],
-            string_type_id,
-        )?;
-        self.project.get_func_by_id_mut(&tostring_func_id).defined_span = None;
-        self.project.get_struct_by_id_mut(struct_id).methods.push(tostring_func_id);
-
+        let mut saw_to_string = false;
         for method in methods {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
             let func_id = self.typecheck_function_pass_0(decl_node)?;
 
             let is_method = decl_node.args.get(0).map(|(token, _, _, _)| matches!(token, Token::Self_(_))).unwrap_or(false);
             if is_method {
+                if Token::get_ident_name(&decl_node.name) == "toString" {
+                    saw_to_string = true;
+                }
                 self.project.get_struct_by_id_mut(struct_id).methods.push(func_id);
             } else {
                 self.project.get_struct_by_id_mut(struct_id).static_methods.push(func_id);
             }
 
             self.typecheck_function_pass_1(&func_id, decl_node, true)?;
+        }
+
+        if !saw_to_string {
+            let string_type_id = self.add_or_find_type_id(Type::Primitive(PrimitiveType::String));
+            let tostring_func_id = self.add_function_to_current_scope(
+                ScopeId::BOGUS,
+                &Token::Ident(POSITION_BOGUS, "toString".to_string()),
+                vec![],
+                true,
+                vec![
+                    FunctionParam {
+                        name: "self".to_string(),
+                        type_id: self_type_id,
+                        var_id: VarId::BOGUS,
+                        defined_span: None,
+                        default_value: None,
+                        is_variadic: false,
+                        is_incomplete: false,
+                    }
+                ],
+                string_type_id,
+            )?;
+            self.project.get_func_by_id_mut(&tostring_func_id).defined_span = None;
+            self.project.get_struct_by_id_mut(struct_id).methods.insert(0, tostring_func_id);
         }
 
         self.current_type_decl = None;
@@ -3210,7 +3217,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             struct_.fields[idx].default_value = Some(default_value);
         }
 
-        let mut method_func_id_idx = 1; // Skip builtin toString
+        let mut method_func_id_idx = 1;
         let mut static_method_func_id_idx = 0;
         for method in methods.into_iter() {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
@@ -3218,8 +3225,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             let struct_ = self.project.get_struct_by_id(&struct_id);
             let func_id = if is_method {
-                method_func_id_idx += 1;
-                struct_.methods[method_func_id_idx - 1]
+                if Token::get_ident_name(&decl_node.name) == "toString" {
+                    struct_.methods[0]
+                } else {
+                    method_func_id_idx += 1;
+                    struct_.methods[method_func_id_idx - 1]
+                }
             } else {
                 static_method_func_id_idx += 1;
                 struct_.static_methods[static_method_func_id_idx - 1]
@@ -4791,6 +4802,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     if let Some((_, _, type_id)) = &mut field_data {
                         *type_id = self.substitute_generics_with_known(&type_id, &generic_substitutions);
                     }
+                } else if matches!(target_type, Type::Generic(_, _)) {
+                    match field_name.as_str() {
+                        "toString" => {
+                            let type_id = self.add_or_find_type_id(self.project.function_type(vec![], 0, false, PRELUDE_STRING_TYPE_ID));
+                            field_data = Some((AccessorKind::Method, 0, type_id));
+                        }
+                        _ => {}
+                    }
                 } else {
                     let Some((struct_, generic_substitutions)) = self.project.get_struct_by_type_id(&target_type_id) else {
                         return Err(TypeError::UnknownMember { span: field_span, field_name, type_id: target_type_id });
@@ -4889,6 +4908,19 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let target_ty = self.project.get_type_by_id(&target_type_id);
 
                         match target_ty {
+                            Type::Generic(_, _) => {
+                                debug_assert!(kind == &AccessorKind::Method, "Generic types are only known to have 'toString', 'eq', and 'hash' instance methods; no fields or static methods");
+                                match *member_idx {
+                                    0 => {
+                                        fn_generic_ids = vec![]; // Cannot determine whether a function accepts type args solely based on its type
+                                        fn_is_variadic = false;
+                                        params_data = vec![];
+                                        return_type_id = PRELUDE_STRING_TYPE_ID;
+                                        forbid_labels = true;
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            }
                             Type::GenericInstance(struct_id, generic_ids) => {
                                 let struct_ = self.project.get_struct_by_id(struct_id);
                                 match kind {
@@ -4974,7 +5006,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
                                 return_type_id = function.return_type_id;
                             }
-                            Type::Generic(_, _) |
                             Type::Function(_, _, _, _) => todo!(),
                             Type::ModuleAlias => unreachable!(),
                         }

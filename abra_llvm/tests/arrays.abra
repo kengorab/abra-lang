@@ -1,0 +1,24 @@
+// Test raw construction of array
+val a1 = Array<Int>(length: 0, _buffer: Pointer.malloc<Int>(1), _capacity: 1)
+a1.push(12)
+/// Expect: 12
+echo<Int>(a1.get(0))
+
+// Test array literal construction
+val a2 = [1, 2, 3, 4]
+/// Expect: 1
+echo<Int>(a2.get(0))
+/// Expect: 2
+echo<Int>(a2.get(1))
+/// Expect: 3
+echo<Int>(a2.get(2))
+/// Expect: 4
+echo<Int>(a2.get(3))
+
+val a3 = ["ab", "cd", "ef"]
+/// Expect: ab
+echo<String>(a3.get(0))
+/// Expect: cd
+echo<String>(a3.get(1))
+/// Expect: ef
+echo<String>(a3.get(2))

@@ -1,2 +1,5 @@
 /// Expect: true
-true
+echo<Bool>(true)
+
+/// Expect: false
+echo<Bool>(false)
