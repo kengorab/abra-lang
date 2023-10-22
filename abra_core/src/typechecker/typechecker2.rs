@@ -1912,6 +1912,19 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 (Type::Generic(_, _), Type::Generic(_, _)) => base_type_id == target_type_id,
                 (_, Type::Generic(_, _)) => false, // unreachable!("Test: we shouldn't reach here because before any attempt to test types, we should substitute generics. See if this assumption is true (there will surely be a counterexample someday)"),
                 (Type::Primitive(idx1), Type::Primitive(idx2)) => idx1 == idx2,
+                (Type::Primitive(PrimitiveType::Int), Type::GenericInstance(struct_id, _)) |
+                (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::Int)) if struct_id == &zelf.project.prelude_int_struct_id => true,
+                (Type::Primitive(PrimitiveType::Float), Type::GenericInstance(struct_id, _)) |
+                (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::Float)) if struct_id == &zelf.project.prelude_float_struct_id => true,
+                (Type::Primitive(PrimitiveType::Bool), Type::GenericInstance(struct_id, _)) |
+                (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::Bool)) if struct_id == &zelf.project.prelude_bool_struct_id => true,
+                (Type::Primitive(PrimitiveType::String), Type::GenericInstance(struct_id, _)) |
+                (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::String)) if struct_id == &zelf.project.prelude_string_struct_id => true,
+
+                (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::Int)) if struct_id == &zelf.project.prelude_int_struct_id => true,
+                (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::Float)) if struct_id == &zelf.project.prelude_float_struct_id => true,
+                (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::Bool)) if struct_id == &zelf.project.prelude_bool_struct_id => true,
+                (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::String)) if struct_id == &zelf.project.prelude_string_struct_id => true,
                 (Type::GenericInstance(struct_id_1, generic_ids_1), Type::GenericInstance(struct_id_2, generic_ids_2)) => {
                     if struct_id_1 != struct_id_2 || generic_ids_1.len() != generic_ids_2.len() {
                         return false;

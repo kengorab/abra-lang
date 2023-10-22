@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus};
-use inkwell::AddressSpace;
+use inkwell::{AddressSpace, IntPredicate};
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
@@ -13,7 +13,6 @@ use abra_core::lexer::tokens::{Range, Token};
 use abra_core::parser::ast::{BinaryOp, BindingPattern};
 use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, FuncId, FunctionKind, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_SCOPE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, StructId, Type, TypedLiteral, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
 
-const STRING_NEW_FN_NAME: &str = "String.new(Pointer<Byte>,Int32):String";
 const ABRA_MAIN_FN_NAME: &str = "_abra_main";
 
 #[derive(Debug, Default)]
@@ -94,10 +93,10 @@ impl<'a> LLVMCompiler2<'a> {
 
         let string_type = context.opaque_struct_type("String");
         string_type.set_body(&[
-            context.i32_type().into(), // type_id
+            // context.i32_type().into(), // type_id
             // context.i32_type().into(), // bytesize
-            context.i32_type().into(), // length
-            context.i8_type().ptr_type(AddressSpace::Generic).into(), // bytes
+            context.i64_type().into(), // length
+            context.i8_type().ptr_type(AddressSpace::Generic).into(), // _buffer
         ], false);
 
         let malloc = main_module.add_function(
@@ -252,8 +251,12 @@ impl<'a> LLVMCompiler2<'a> {
             Type::GenericInstance(_, generics) => {
                 let type_name = self.llvm_type_name_by_id(type_id, resolved_generics);
 
-                // Handle special case of the Pointer type, which is really just an alias for raw underlying pointers
-                if type_name.starts_with("Pointer<") {
+                // Handle special cases
+                if type_name == "Byte" {
+                    // `Byte` is an alias for 8-bit unsigned integer
+                    return Some(self.i8().as_basic_type_enum());
+                } else if type_name.starts_with("Pointer<") {
+                    // `Pointer<T>` is an alias for `*T`
                     let ptr_generic_id = &generics[0];
                     let Some(ptr_llvm_type) = self.llvm_underlying_type_by_id(ptr_generic_id, resolved_generics) else { todo!() };
                     let ptr_llvm_type = self.llvm_ptr_wrap_type_if_needed(ptr_llvm_type);
@@ -386,7 +389,6 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     pub fn generate(&mut self, project: &Project) {
-        self.generate_string_new_function();
         self.build_main_fn();
 
         let printf = self.main_module.add_function("printf", self.fn_type_variadic(self.i64(), &[self.ptr(self.i8()).into()]), None);
@@ -437,36 +439,6 @@ impl<'a> LLVMCompiler2<'a> {
         }
 
         self.end_abra_main();
-    }
-
-    fn generate_string_new_function(&mut self) {
-        // String.new(Pointer<Byte>,Int32):String
-        let llvm_fn_type = self.fn_type(self.ptr(self.string_type), &[self.ptr(self.i8()).into(), self.i32().into()]);
-        let llvm_fn = self.main_module.add_function(STRING_NEW_FN_NAME, llvm_fn_type, None);
-
-        let prev_fn = self.current_fn;
-        self.current_fn = llvm_fn;
-
-        let mut func_params_iter = llvm_fn.get_param_iter();
-        func_params_iter.next().unwrap().set_name("chars");
-        func_params_iter.next().unwrap().set_name("length");
-
-        let block = self.context.append_basic_block(llvm_fn, "");
-        self.builder.position_at_end(block);
-
-        let sizeof_string = self.sizeof_struct(self.string_type);
-        let str_mem = self.malloc(sizeof_string, self.ptr(self.string_type));
-        let mem_cursor = self.builder.build_struct_gep(str_mem, 0, "String#type_id").unwrap();
-        self.builder.build_store(mem_cursor, self.const_i32(self.project.prelude_string_struct_id.1 as u64));
-        let mem_cursor = self.builder.build_struct_gep(str_mem, 1, "String#length").unwrap();
-        self.builder.build_store(mem_cursor, llvm_fn.get_nth_param(1).unwrap());
-        let mem_cursor = self.builder.build_struct_gep(str_mem, 2, "String#chars").unwrap();
-        self.builder.build_store(mem_cursor, llvm_fn.get_nth_param(0).unwrap());
-
-        self.builder.build_return(Some(&str_mem.as_basic_value_enum()));
-
-        self.current_fn = prev_fn;
-        self.builder.position_at_end(self.current_fn.get_last_basic_block().expect("Each function is declared with at least 1 basic block"));
     }
 
     fn visit_statement(&mut self, node: &TypedNode) -> Option<BasicValueEnum<'a>> {
@@ -525,9 +497,9 @@ impl<'a> LLVMCompiler2<'a> {
                     }
                     TypedLiteral::String(s) => {
                         let str = self.builder.build_global_string_ptr(&s, "").as_basic_value_enum();
-                        let str_len = self.const_i32(s.len() as u64);
-                        let string_new_fn = self.main_module.get_function(&STRING_NEW_FN_NAME).unwrap();
-                        self.builder.build_call(string_new_fn, &[str.into(), str_len.into()], "").try_as_basic_value().left().unwrap()
+                        let str_len = self.const_i64(s.len() as u64);
+                        let string_new_fn = self.get_or_compile_type_initializer(&self.project.prelude_string_struct_id, &HashMap::new());
+                        self.builder.build_call(string_new_fn, &[str_len.into(), str.into()], "").try_as_basic_value().left().unwrap()
                     }
                 };
                 Some(value)
@@ -537,11 +509,19 @@ impl<'a> LLVMCompiler2<'a> {
                 let left_type_id = left.as_ref().type_id();
                 let right_type_id = right.as_ref().type_id();
 
-                if let BinaryOp::Add = op {
+                if op == &BinaryOp::Add {
                     if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
                         let left = self.visit_expression(left).unwrap().into_int_value();
                         let right = self.visit_expression(right).unwrap().into_int_value();
                         Some(self.builder.build_int_add(left, right, "").into())
+                    } else {
+                        todo!()
+                    }
+                } else if op == &BinaryOp::Eq {
+                    if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
+                        let left = self.visit_expression(left).unwrap().into_int_value();
+                        let right = self.visit_expression(right).unwrap().into_int_value();
+                        Some(self.builder.build_int_compare(IntPredicate::EQ, left, right, "").into())
                     } else {
                         todo!()
                     }
@@ -628,14 +608,7 @@ impl<'a> LLVMCompiler2<'a> {
                                     })
                                     .chain(self.ctx_stack.last().expect("There should always be a context in ctx_stack").resolved_generics.clone().into_iter())
                                     .collect();
-                                let init_fn_sig = self.llvm_initializer_signature(struct_id, &resolved_generics);
-                                if let Some(function_val) = self.main_module.get_function(&init_fn_sig) {
-                                    function_val
-                                } else {
-                                    let function_val = self.compile_type_initializer(&struct_id, &resolved_generics);
-                                    debug_assert!(function_val.get_name().to_str().unwrap() == &init_fn_sig);
-                                    function_val
-                                }
+                                self.get_or_compile_type_initializer(struct_id, &resolved_generics)
                             }
                         }
                     }
@@ -842,13 +815,20 @@ impl<'a> LLVMCompiler2<'a> {
             "stdout_write" => { // Freestanding function
                 let arg_node = arguments.first().expect("stdoutWrite has arity 1").as_ref().expect("stdoutWrite has 1 required argument");
                 let arg_value = self.visit_expression(arg_node).unwrap().into_pointer_value();
-                let arg_value_chars_ptr = self.builder.build_struct_gep(arg_value, 2, "chars_slot").unwrap();
+                let arg_value_chars_ptr = self.builder.build_struct_gep(arg_value, 1, "chars_slot").unwrap();
                 let arg_value_chars = self.builder.build_load(arg_value_chars_ptr, "chars");
 
                 let printf = self.main_module.get_function("printf").unwrap();
                 let fmt_str = self.builder.build_global_string_ptr("%s\n", "").as_basic_value_enum();
                 self.builder.build_call(printf, &[fmt_str.into(), arg_value_chars.into()], "").try_as_basic_value().left();
                 None
+            }
+            "byte_from_int" => { // Static method
+                let arg_node = arguments.first().expect("Byte.fromInt has arity 1").as_ref().expect("Byte.fromInt has 1 required argument");
+                let arg_value = self.visit_expression(arg_node).unwrap().into_int_value();
+                let i8_val = self.builder.build_int_cast(arg_value, self.i8(), "");
+                Some(i8_val.as_basic_value_enum())
+
             }
             _ => unimplemented!("Unimplemented intrinsic '{}'", name),
         }
@@ -938,6 +918,17 @@ impl<'a> LLVMCompiler2<'a> {
         llvm_type
     }
 
+    fn get_or_compile_type_initializer(&mut self, struct_id: &StructId, resolved_generics: &HashMap<String, TypeId>) -> FunctionValue<'a> {
+        let init_fn_sig = self.llvm_initializer_signature(struct_id, &resolved_generics);
+        if let Some(function_val) = self.main_module.get_function(&init_fn_sig) {
+            function_val
+        } else {
+            let function_val = self.compile_type_initializer(&struct_id, &resolved_generics);
+            debug_assert!(function_val.get_name().to_str().unwrap() == &init_fn_sig);
+            function_val
+        }
+    }
+
     fn compile_type_initializer(&mut self, struct_id: &StructId, resolved_generics: &HashMap<String, TypeId>) -> FunctionValue<'a> {
         let struct_ = self.project.get_struct_by_id(struct_id);
         let initializer_sig = self.llvm_initializer_signature(struct_id, resolved_generics);
@@ -1008,7 +999,7 @@ impl<'a> LLVMCompiler2<'a> {
             .join(", ");
         let to_string_fmt = format!("{}({})", struct_.name, fields_fmt);
         let fmt_str_val = self.builder.build_global_string_ptr(&to_string_fmt, "").as_basic_value_enum();
-        let mut len_val = self.const_i32(to_string_fmt.len() as u64);
+        let mut len_val = self.const_i64(to_string_fmt.len() as u64);
 
         let mut snprintf_args = Vec::with_capacity(struct_.fields.len());
         for (idx, field) in struct_.fields.iter().enumerate() {
@@ -1020,29 +1011,24 @@ impl<'a> LLVMCompiler2<'a> {
             let tostring_fn_val = self.get_or_compile_function(tostring_func_id, resolved_generics);
             let field_tostring_val = self.builder.build_call(tostring_fn_val, &[field_val.into()], &format!("{}_to_string", &field.name)).try_as_basic_value().left().unwrap().into_pointer_value();
 
-            let field_tostring_chars_slot = self.builder.build_struct_gep(field_tostring_val, 2, &format!("{}_to_string.chars slot", &field.name)).unwrap();
+            let field_tostring_chars_slot = self.builder.build_struct_gep(field_tostring_val, 1, &format!("{}_to_string.chars slot", &field.name)).unwrap();
             let field_tostring_chars = self.builder.build_load(field_tostring_chars_slot, &format!("{}_to_string.chars", &field.name));
             snprintf_args.push(field_tostring_chars.into());
 
-            let field_tostring_len_slot = self.builder.build_struct_gep(field_tostring_val, 1, &format!("{}_to_string.length slot", &field.name)).unwrap();
+            let field_tostring_len_slot = self.builder.build_struct_gep(field_tostring_val, 0, &format!("{}_to_string.length slot", &field.name)).unwrap();
             let field_tostring_len = self.builder.build_load(field_tostring_len_slot, &format!("{}_to_string.length", &field.name)).into_int_value();
             len_val = self.builder.build_int_add(len_val, field_tostring_len, "");
         }
 
-        let len_plus_1 = self.builder.build_int_add::<IntValue<'a>>(len_val.into(), self.const_i32(1).into(), "len_plus_1");
-        let str_val = self.malloc(
-            self.builder.build_int_cast(len_plus_1, self.i64(), ""),
-            self.ptr(self.i8()),
-        );
-        let mut args = vec![str_val.into(), len_plus_1.into(), fmt_str_val.into()];
+        let len_plus_1 = self.builder.build_int_add::<IntValue<'a>>(len_val.into(), self.const_i64(1).into(), "len_plus_1");
+        let str_val = self.malloc(len_plus_1, self.ptr(self.i8()));
+        let snprintf_len_val = self.builder.build_int_cast(len_plus_1, self.i32(), "");
+        let mut args = vec![str_val.into(), snprintf_len_val.into(), fmt_str_val.into()];
         args.append(&mut snprintf_args);
         self.builder.build_call(self.snprintf, args.as_slice(), "").try_as_basic_value().left().unwrap();
 
-        let ret_val = self.builder.build_call(
-            self.main_module.get_function(STRING_NEW_FN_NAME).unwrap(),
-            &[str_val.into(), len_val.into()],
-            "",
-        ).try_as_basic_value().left().unwrap();
+        let string_initializer = self.get_or_compile_type_initializer(&self.project.prelude_string_struct_id, &HashMap::new());
+        let ret_val = self.builder.build_call(string_initializer, &[len_val.into(), str_val.into()], "").try_as_basic_value().left().unwrap();
 
         self.builder.build_return(Some(&ret_val));
 
@@ -1066,19 +1052,13 @@ impl<'a> LLVMCompiler2<'a> {
         let fmt_str = self.builder.build_global_string_ptr("%jd", "").as_basic_value_enum();
         let self_param = llvm_fn.get_nth_param(0).unwrap();
         let len_val = self.builder.build_call(self.snprintf, &[self.null_ptr().into(), self.const_i32(0).into(), fmt_str.into(), self_param.into()], "len").try_as_basic_value().left().unwrap().into_int_value();
-        let len_val = self.builder.build_int_cast(len_val, self.i32(), "");
-        let len_plus_1 = self.builder.build_int_add::<IntValue<'a>>(len_val.into(), self.const_i32(1).into(), "len_plus_1");
-        let str_val = self.malloc(
-            self.builder.build_int_cast(len_plus_1, self.i64(), ""),
-            self.ptr(self.i8()),
-        );
-        self.builder.build_call(self.snprintf, &[str_val.into(), len_plus_1.into(), fmt_str.into(), self_param.into()], "").try_as_basic_value().left().unwrap();
+        let len_plus_1 = self.builder.build_int_add::<IntValue<'a>>(len_val.into(), self.const_i64(1).into(), "len_plus_1");
+        let str_val = self.malloc(len_plus_1, self.ptr(self.i8()));
+        let snprintf_len_val = self.builder.build_int_cast(len_plus_1, self.i32(), "");
+        self.builder.build_call(self.snprintf, &[str_val.into(), snprintf_len_val.into(), fmt_str.into(), self_param.into()], "").try_as_basic_value().left().unwrap();
 
-        let ret_val = self.builder.build_call(
-            self.main_module.get_function(STRING_NEW_FN_NAME).unwrap(),
-            &[str_val.into(), len_val.into()],
-            "",
-        ).try_as_basic_value().left().unwrap();
+        let string_initializer = self.get_or_compile_type_initializer(&self.project.prelude_string_struct_id, &HashMap::new());
+        let ret_val = self.builder.build_call(string_initializer, &[len_val.into(), str_val.into()], "").try_as_basic_value().left().unwrap();
 
         self.builder.build_return(Some(&ret_val));
 
@@ -1103,19 +1083,13 @@ impl<'a> LLVMCompiler2<'a> {
         let fmt_str = self.builder.build_global_string_ptr("%g", "").as_basic_value_enum();
         let self_param = llvm_fn.get_nth_param(0).unwrap();
         let len_val = self.builder.build_call(self.snprintf, &[self.null_ptr().into(), self.const_i32(0).into(), fmt_str.into(), self_param.into()], "len").try_as_basic_value().left().unwrap().into_int_value();
-        let len_val = self.builder.build_int_cast(len_val, self.i32(), "");
-        let len_plus_1 = self.builder.build_int_add::<IntValue<'a>>(len_val.into(), self.const_i32(1).into(), "len_plus_1");
-        let str_val = self.malloc(
-            self.builder.build_int_cast(len_plus_1, self.i64(), ""),
-            self.ptr(self.i8()),
-        );
-        self.builder.build_call(self.snprintf, &[str_val.into(), len_plus_1.into(), fmt_str.into(), self_param.into()], "").try_as_basic_value().left().unwrap();
+        let len_plus_1 = self.builder.build_int_add::<IntValue<'a>>(len_val.into(), self.const_i64(1).into(), "len_plus_1");
+        let str_val = self.malloc(len_plus_1, self.ptr(self.i8()));
+        let sprintf_len_val = self.builder.build_int_cast(len_plus_1, self.i32(), "");
+        self.builder.build_call(self.snprintf, &[str_val.into(), sprintf_len_val.into(), fmt_str.into(), self_param.into()], "").try_as_basic_value().left().unwrap();
 
-        let ret_val = self.builder.build_call(
-            self.main_module.get_function(STRING_NEW_FN_NAME).unwrap(),
-            &[str_val.into(), len_val.into()],
-            "",
-        ).try_as_basic_value().left().unwrap();
+        let string_initializer = self.get_or_compile_type_initializer(&self.project.prelude_string_struct_id, &HashMap::new());
+        let ret_val = self.builder.build_call(string_initializer, &[len_val.into(), str_val.into()], "").try_as_basic_value().left().unwrap();
 
         self.builder.build_return(Some(&ret_val));
 
@@ -1129,19 +1103,11 @@ impl<'a> LLVMCompiler2<'a> {
         let bool_true_str_global = self.main_module.add_global(self.string_type, None, "BOOL_TRUE_STR");
         bool_true_str_global.set_constant(true);
         let true_str = self.builder.build_global_string_ptr("true", "").as_basic_value_enum();
-        bool_true_str_global.set_initializer(&self.context.const_struct(&[
-            self.const_i32(self.project.prelude_string_struct_id.1 as u64).into(),
-            self.const_i32(4).into(),
-            true_str,
-        ], false));
+        bool_true_str_global.set_initializer(&self.context.const_struct(&[self.const_i64(4).into(), true_str], false));
         let bool_false_str_global = self.main_module.add_global(self.string_type, None, "BOOL_FALSE_STR");
         bool_false_str_global.set_constant(true);
         let false_str = self.builder.build_global_string_ptr("false", "").as_basic_value_enum();
-        bool_false_str_global.set_initializer(&self.context.const_struct(&[
-            self.const_i32(self.project.prelude_string_struct_id.1 as u64).into(),
-            self.const_i32(5).into(),
-            false_str,
-        ], false));
+        bool_false_str_global.set_initializer(&self.context.const_struct(&[self.const_i64(5).into(), false_str], false));
 
         let llvm_fn_sig = self.llvm_function_signature(func_id, &HashMap::new());
         let llvm_fn_type = self.llvm_function_type(func_id, &HashMap::new());

@@ -22,12 +22,14 @@
 // // If value is Float, we can use NaN boxing to encode a None value (alongside NaN, and +-Inf)
 // // If value is Bool (1-bit), we behave like Int - extend to 64 bits, set top bit to 1 if None
 
-type Person {
-  name: String
-  age: Int
+//val a = "hello"
+//echo<String>(a)
 
-  //func toString(self): String = "todo"
-}
+val s = String.withLength(3)
+s._buffer.offset(0).store(Byte.fromInt(65))
+s._buffer.offset(1).store(Byte.fromInt(66))
+s._buffer.offset(2).store(Byte.fromInt(67))
+echo<Bool>(s.isEmpty())
 
-val p = Person(name: "Ken", age: 31)
-echo<Person>(p)
+val s2 = ""
+echo<Bool>(s2.isEmpty())

@@ -7,43 +7,9 @@ func echo<T>(value: T) = stdoutWrite(value.toString())
 @Stub func println(*items: Any[])
 @Stub func range(start: Int, end: Int, stepBy = 1): Int[]
 
-type Int {
-  @Stub func abs(self): Int
-  @Stub func asBase(self, base: Int): String
-  @Stub func isEven(self): Bool
-  @Stub func isOdd(self): Bool
-  @Stub func isBetween(self, lower: Int, upper: Int, inclusive = false): Bool
-}
-
-type Float {
-  @Stub func abs(self): Float
-  @Stub func floor(self): Int
-  @Stub func ceil(self): Int
-  @Stub func round(self): Int
-  @Stub func withPrecision(self, precision: Int): Float
-}
-
-type Bool {
-  // No methods for Bool
-}
-
-type String {
-  length: Int readonly
-
-  @Stub func isEmpty(self): Bool
-  @Stub func toLower(self): String
-  @Stub func toUpper(self): String
-  @Stub func padLeft(self, totalSize: Int, padding = " "): String
-  @Stub func trim(self): String
-  @Stub func trimStart(self, pattern: String? = None): String
-  @Stub func trimEnd(self, pattern: String? = None): String
-  @Stub func split(self, by = ""): String[]
-  @Stub func splitAt(self, index: Int): (String, String)
-  @Stub func lines(self): String[]
-  @Stub func parseInt(self, radix = 10): Int?
-  @Stub func parseFloat(self): Float?
-  @Stub func concat(self, suffix: Any, *others: Any[]): String
-  @Stub func replaceAll(self, pattern: String, replacement: String): String
+type Byte {
+  @Intrinsic("byte_from_int")
+  func fromInt(value: Int): Byte
 }
 
 type Pointer<T> {
@@ -67,6 +33,54 @@ type Pointer<T> {
 
   @Intrinsic("pointer_offset")
   func offset(self, offset: Int): Pointer<T>
+}
+
+type Int {
+  @Stub func abs(self): Int
+  @Stub func asBase(self, base: Int): String
+  @Stub func isEven(self): Bool
+  @Stub func isOdd(self): Bool
+  @Stub func isBetween(self, lower: Int, upper: Int, inclusive = false): Bool
+}
+
+type Float {
+  @Stub func abs(self): Float
+  @Stub func floor(self): Int
+  @Stub func ceil(self): Int
+  @Stub func round(self): Int
+  @Stub func withPrecision(self, precision: Int): Float
+}
+
+type Bool {
+  // No methods for Bool
+}
+
+type String {
+  length: Int readonly
+  _buffer: Pointer<Byte> = Pointer.null<Byte>()
+
+  func withLength(length: Int): String {
+    String(
+      length: length,
+      _buffer: Pointer.malloc<Byte>(length),
+    )
+  }
+
+  func isEmpty(self): Bool = self.length == 0
+
+  @Stub func toLower(self): String
+  @Stub func toUpper(self): String
+  @Stub func padLeft(self, totalSize: Int, padding = " "): String
+  @Stub func trim(self): String
+  @Stub func trimStart(self, pattern: String? = None): String
+  @Stub func trimEnd(self, pattern: String? = None): String
+  @Stub func split(self, by = ""): String[]
+  @Stub func splitAt(self, index: Int): (String, String)
+  @Stub func lines(self): String[]
+  @Stub func parseInt(self, radix = 10): Int?
+  @Stub func parseFloat(self): Float?
+  @Stub func concat(self, suffix: Any, *others: Any[]): String
+  @Stub func replaceAll(self, pattern: String, replacement: String): String
 }
 
 type Array<T> {
