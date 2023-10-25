@@ -6,3 +6,78 @@ echo<Float>(0.123)
 
 /// Expect: 1
 echo<Float>(1.0)
+
+// Binary operations
+/// Expect: 32.1
+echo<Float>(17.1 + 15)
+/// Expect: 32.2
+echo<Float>(17.1 + 15.1)
+
+/// Expect: 2.1
+echo<Float>(17.1 - 15)
+/// Expect: 2.1
+echo<Float>(17.2 - 15.1)
+
+/// Expect: 2565
+echo<Float>(17.1 * 150)
+/// Expect: 2566.71
+echo<Float>(17.1 * 150.1)
+
+/// Expect: 1.14
+echo<Float>(17.1 / 15)
+/// Expect: 1.13245
+echo<Float>(17.1 / 15.1)
+
+/// Expect: true
+echo<Bool>(17.0 == (15 + 2))
+/// Expect: false
+echo<Bool>(17.1 == 15)
+/// Expect: true
+echo<Bool>(17.0 == (15 + 2.0))
+/// Expect: false
+echo<Bool>(17.1 == 15.1)
+
+/// Expect: false
+echo<Bool>(17.0 != (15 + 2))
+/// Expect: true
+echo<Bool>(17.1 != 15)
+/// Expect: false
+echo<Bool>(17.0 != (15 + 2.0))
+/// Expect: true
+echo<Bool>(17.1 != 15.1)
+
+/// Expect: true
+echo<Bool>(17.1 < 18)
+/// Expect: false
+echo<Bool>(17.1 < 15)
+/// Expect: true
+echo<Bool>(17.1 < 18.0)
+/// Expect: false
+echo<Bool>(17.1 < 15.1)
+
+/// Expect: false
+echo<Bool>(17.1 > 18)
+/// Expect: true
+echo<Bool>(17.1 > 15)
+/// Expect: false
+echo<Bool>(17.1 > 18.0)
+/// Expect: true
+echo<Bool>(17.1 > 15.1)
+
+/// Expect: true
+echo<Bool>(17.1 <= 18)
+/// Expect: false
+echo<Bool>(17.1 <= 15)
+/// Expect: true
+echo<Bool>(17.1 <= 18.0)
+/// Expect: false
+echo<Bool>(17.1 <= 15.1)
+
+/// Expect: false
+echo<Bool>(17.1 >= 18)
+/// Expect: true
+echo<Bool>(17.1 >= 15)
+/// Expect: false
+echo<Bool>(17.1 >= 18.0)
+/// Expect: true
+echo<Bool>(17.1 >= 15.1)

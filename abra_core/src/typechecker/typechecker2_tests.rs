@@ -25,7 +25,11 @@ impl TestModuleLoader {
 
 impl LoadModule for TestModuleLoader {
     fn resolve_path(&self, module_id: &parser::ast::ModuleId) -> Option<String> {
-        Some(module_id.get_path(".").replace("././", "./"))
+        if module_id.is_prelude() {
+            Some("prelude.stub.abra".to_string())
+        } else {
+            Some(module_id.get_path(".").replace("././", "./"))
+        }
     }
 
     fn get_path(&self, _module_id: &ModuleId) -> Option<String> { None }
@@ -75,7 +79,7 @@ fn test_typecheck_with_modules(entry_module: &str, other_modules: &[(&str, &str)
     let mut loader = TestModuleLoader::new(modules);
     let mut project = Project::default();
     let mut tc = Typechecker2::new(&mut loader, &mut project);
-    tc.typecheck_prelude();
+    tc.typecheck_prelude().unwrap();
 
     match tc.typecheck_module(&entry_module_id) {
         Ok(_) => Ok(project),

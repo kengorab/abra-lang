@@ -210,14 +210,14 @@ impl Parser {
 
     fn precedence_for_token(tok: &Token) -> Precedence {
         match tok {
-            Token::Plus(_) | Token::PlusEq(_) | Token::Minus(_) | Token::MinusEq(_) => Precedence::Addition,
-            Token::Star(_) | Token::StarEq(_) | Token::Slash(_) | Token::SlashEq(_) | Token::Percent(_) | Token::PercentEq(_) => Precedence::Multiplication,
+            Token::Plus(_) | Token::Minus(_) => Precedence::Addition,
+            Token::Star(_) | Token::Slash(_) | Token::Percent(_) => Precedence::Multiplication,
             Token::And(_) | Token::AndEq(_) => Precedence::And,
             Token::Or(_) | Token::OrEq(_) | Token::Caret(_) => Precedence::Or,
             Token::Elvis(_) | Token::ElvisEq(_) | Token::StarStar(_) => Precedence::Coalesce,
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
             Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
-            Token::Assign(_) => Precedence::Assignment,
+            Token::PlusEq(_) | Token::MinusEq(_) | Token::StarEq(_) | Token::SlashEq(_) | Token::PercentEq(_) | Token::Assign(_) => Precedence::Assignment,
             Token::Dot(_) | Token::QuestionDot(_) | Token::Arrow(_) => Precedence::Call,
             Token::LParen(_, is_preceded_by_newline) => {
                 if *is_preceded_by_newline { Precedence::None } else { Precedence::Call }

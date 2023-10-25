@@ -133,7 +133,7 @@ pub enum BinaryOp {
 }
 
 impl BinaryOp {
-    pub(crate) fn repr(&self) -> &str {
+    pub fn repr(&self) -> &str {
         match self {
             BinaryOp::Add => "+",
             BinaryOp::AddEq => "+=",

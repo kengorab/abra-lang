@@ -126,10 +126,21 @@ fn cmd_typecheck2(opts: RunOpts) -> Result<(), ()> {
     let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
     let module_id = ModuleId::parse_module_path(&format!("./{}", module_name)).unwrap();
 
-    let mut module_loader = ModuleLoader::new(&root);
+    let prelude_stub_abra_path = get_project_root().unwrap().join("abra_core/src/typechecker/prelude.stub.abra");
+    let mut module_loader = ModuleLoader::new(&root, &prelude_stub_abra_path);
     let mut project = Project::default();
     let mut tc = Typechecker2::new(&mut module_loader, &mut project);
-    tc.typecheck_prelude();
+    match tc.typecheck_prelude() {
+        Ok(_) => {}
+        Err(e) => {
+            match e {
+                Either::Left(Either::Left(e)) => eprintln!("{}", e.get_message(&"prelude.stub.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
+                Either::Left(Either::Right(e)) => eprintln!("{}", e.get_message(&"prelude.stub.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
+                Either::Right(e) => eprintln!("{}", e.message(&module_loader, &project)),
+            }
+            std::process::exit(1);
+        }
+    }
 
     match tc.typecheck_module(&module_id) {
         Ok(_) => {}
@@ -173,10 +184,21 @@ fn cmd_compile_to_c_and_run2(opts: CompileOpts) -> Result<(), ()> {
     let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
     let module_id = ModuleId::parse_module_path(&format!("./{}", &module_name)).unwrap();
 
-    let mut module_loader = ModuleLoader::new(&root);
+    let prelude_stub_abra_path = get_project_root().unwrap().join("abra_core/src/typechecker/prelude.stub.abra");
+    let mut module_loader = ModuleLoader::new(&root, &prelude_stub_abra_path);
     let mut project = Project::default();
     let mut tc = Typechecker2::new(&mut module_loader, &mut project);
-    tc.typecheck_prelude();
+    match tc.typecheck_prelude() {
+        Ok(_) => {}
+        Err(e) => {
+            match e {
+                Either::Left(Either::Left(e)) => eprintln!("{}", e.get_message(&"prelude.stub.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
+                Either::Left(Either::Right(e)) => eprintln!("{}", e.get_message(&"prelude.stub.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
+                Either::Right(e) => eprintln!("{}", e.message(&module_loader, &project)),
+            }
+            std::process::exit(1);
+        }
+    }
 
     match tc.typecheck_module(&module_id) {
         Ok(_) => {}
@@ -337,10 +359,21 @@ fn cmd_compile_llvm_and_run_2(opts: BuildOpts) -> Result<(), ()> {
     let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
     let module_id = ModuleId::parse_module_path(&format!("./{}", &module_name)).unwrap();
 
-    let mut module_loader = ModuleLoader::new(&root);
+    let prelude_stub_abra_path = get_project_root().unwrap().join("abra_core/src/typechecker/prelude.stub.abra");
+    let mut module_loader = ModuleLoader::new(&root, &prelude_stub_abra_path);
     let mut project = Project::default();
     let mut tc = Typechecker2::new(&mut module_loader, &mut project);
-    tc.typecheck_prelude();
+    match tc.typecheck_prelude() {
+        Ok(_) => {}
+        Err(e) => {
+            match e {
+                Either::Left(Either::Left(e)) => eprintln!("{}", e.get_message(&"prelude.stub.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
+                Either::Left(Either::Right(e)) => eprintln!("{}", e.get_message(&"prelude.stub.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
+                Either::Right(e) => eprintln!("{}", e.message(&module_loader, &project)),
+            }
+            std::process::exit(1);
+        }
+    }
 
     match tc.typecheck_module(&module_id) {
         Ok(_) => {}

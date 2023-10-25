@@ -33,6 +33,9 @@ type Pointer<T> {
 
   @Intrinsic("pointer_offset")
   func offset(self, offset: Int): Pointer<T>
+
+  @Intrinsic("pointer_copy_from")
+  func copyFrom(self, other: Pointer<T>, size: Int)
 }
 
 type Int {
@@ -60,10 +63,8 @@ type String {
   _buffer: Pointer<Byte> = Pointer.null<Byte>()
 
   func withLength(length: Int): String {
-    String(
-      length: length,
-      _buffer: Pointer.malloc<Byte>(length),
-    )
+    val buffer = Pointer.malloc<Byte>(length)
+    String(length: length, _buffer: buffer)
   }
 
   func isEmpty(self): Bool = self.length == 0
@@ -85,20 +86,55 @@ type String {
 
 type Array<T> {
   length: Int
-
   _buffer: Pointer<T> = Pointer.null<T>()
   _capacity: Int = 0
 
   func withCapacity<T>(initialCapacity: Int): T[] {
-    Array<T>(
-      length: 0,
-      _buffer: Pointer.malloc<T>(initialCapacity),
-      _capacity: initialCapacity
-    )
+    Array<T>(length: 0, _buffer: Pointer.malloc<T>(initialCapacity), _capacity: initialCapacity)
   }
 
   // TODO: custom toString implementations shouldn't need to be the first method declared
-  //func toString(self): String = "[ /* todo */ ]"
+  func toString(self): String {
+    val reprs = Array.withCapacity<String>(self.length)
+    var len = 2 // account for '[' and ']'
+    var i = 0
+    while i < self.length {
+      val item = self._buffer.offset(i).load()
+      val repr = item.toString()
+      reprs.push(repr)
+      len += repr.length
+      if i != self.length - 1 {
+        len += 2 // account for ", " unless last item
+      }
+      i += 1
+    }
+
+    // we have an extra 2 bytes for the trailing ", " but we need an extra 1 for the null termination anyway
+    val str = String.withLength(len)
+    var offset = 0
+    str._buffer.offset(offset).store(Byte.fromInt(91)) // '['
+    offset += 1
+
+    i = 0
+    while i < self.length {
+      val repr = reprs._buffer.offset(i).load()
+      str._buffer.offset(offset).copyFrom(repr._buffer, repr.length)
+      offset += repr.length
+
+      if i != self.length - 1 {
+        str._buffer.offset(offset).store(Byte.fromInt(44)) // ','
+        offset += 1
+        str._buffer.offset(offset).store(Byte.fromInt(32)) // ' '
+        offset += 1
+      }
+
+      i += 1
+    }
+
+    str._buffer.offset(offset).store(Byte.fromInt(93)) // ']'
+
+    str
+  }
 
   @Stub func isEmpty(self): Bool
   @Stub func enumerate(self): (T, Int)[]
@@ -106,10 +142,6 @@ type Array<T> {
   func push(self, item: T) {
     self._buffer.offset(self.length).store(item)
     self.length += 1
-  }
-
-  func get(self, index: Int): T {
-    self._buffer.offset(index).load()
   }
 
   @Stub func pop(self): T?

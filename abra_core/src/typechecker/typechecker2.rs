@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use itertools::{Either, EitherOrBoth, Itertools};
-use crate::{parser, tokenize_and_parse};
+use crate::parser;
 use crate::common::util::integer_decode;
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
@@ -36,26 +36,28 @@ pub trait LoadModule {
 
 pub struct ModuleLoader<'a> {
     program_root: &'a PathBuf,
+    prelude_path: &'a PathBuf,
     module_id_map: HashMap::<ModuleId, parser::ast::ModuleId>,
     module_id_map_rev: HashMap::<parser::ast::ModuleId, ModuleId>,
-    prelude_raw: &'static str,
 }
 
 impl<'a> ModuleLoader<'a> {
-    pub fn new(program_root: &'a PathBuf) -> ModuleLoader {
-        let prelude_raw = include_str!("prelude.stub.abra");
-
+    pub fn new(program_root: &'a PathBuf, prelude_path: &'a PathBuf) -> ModuleLoader<'a> {
         ModuleLoader {
             program_root,
+            prelude_path,
             module_id_map: HashMap::new(),
             module_id_map_rev: HashMap::new(),
-            prelude_raw,
         }
     }
 }
 
 impl<'a> LoadModule for ModuleLoader<'a> {
     fn resolve_path(&self, module_id: &parser::ast::ModuleId) -> Option<String> {
+        if module_id.is_prelude() {
+            return Some(self.prelude_path.to_str().unwrap().to_string());
+        }
+
         let mut path = PathBuf::new();
 
         let path_buf = PathBuf::from(module_id.get_path(&self.program_root)).with_extension("abra");
@@ -67,8 +69,12 @@ impl<'a> LoadModule for ModuleLoader<'a> {
     }
 
     fn get_path(&self, module_id: &ModuleId) -> Option<String> {
-        let m_id = self.module_id_map.get(module_id).expect(&format!("Internal error: expected module for {:?}", module_id));
-        self.resolve_path(m_id)
+        if module_id == &PRELUDE_MODULE_ID {
+            Some(self.prelude_path.to_str().unwrap().to_string())
+        } else {
+            let m_id = self.module_id_map.get(module_id).expect(&format!("Internal error: expected module for {:?}", module_id));
+            self.resolve_path(m_id)
+        }
     }
 
     fn register(&mut self, m_id: &parser::ast::ModuleId, module_id: &ModuleId) {
@@ -88,10 +94,6 @@ impl<'a> LoadModule for ModuleLoader<'a> {
     }
 
     fn load_file(&self, file_name: &String) -> Option<String> {
-        if file_name == "prelude.stub.abra" {
-            return Some(self.prelude_raw.to_string());
-        }
-
         std::fs::read_to_string(file_name).ok()
     }
 }
@@ -1201,24 +1203,15 @@ impl TypeError {
     }
 
     fn get_underlined_line(loader: &ModuleLoader, span: &Span) -> String {
-        let lines = if &span.module_id == &PRELUDE_MODULE_ID {
-            std::io::BufReader::new(loader.prelude_raw.as_bytes())
-                .lines()
-                .skip(span.range.start.line - 1)
-                .take(span.range.end.line - span.range.start.line + 1)
-                .collect::<Result<Vec<_>, _>>()
-                .unwrap()
-        } else {
-            let file_name = loader.get_path(&span.module_id)
-                .expect("Internal error: cannot report on errors in a file that never existed in the first place");
-            let file = std::fs::File::open(&file_name).unwrap();
-            std::io::BufReader::new(file)
-                .lines()
-                .skip(span.range.start.line - 1)
-                .take(span.range.end.line - span.range.start.line + 1)
-                .collect::<Result<Vec<_>, _>>()
-                .unwrap()
-        };
+        let file_name = loader.get_path(&span.module_id)
+            .expect("Internal error: cannot report on errors in a file that never existed in the first place");
+        let file = std::fs::File::open(&file_name).unwrap();
+        let lines = std::io::BufReader::new(file)
+            .lines()
+            .skip(span.range.start.line - 1)
+            .take(span.range.end.line - span.range.start.line + 1)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
 
         let num_lines = lines.len();
         if num_lines == 1 {
@@ -2536,7 +2529,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
     /* TYPECHECKING */
 
-    pub fn typecheck_prelude(&mut self) {
+    pub fn typecheck_prelude(&mut self) -> Result<(), TypecheckError> {
         debug_assert!(self.project.modules.is_empty());
 
         self.module_loader.register(&parser::ast::ModuleId::prelude(), &PRELUDE_MODULE_ID);
@@ -2597,11 +2590,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.current_scope_id = PRELUDE_SCOPE_ID;
 
-        let prelude_stub_file = self.module_loader.load_file(&"prelude.stub.abra".to_string()).expect("Internal error: should always be able to load prelude");
-        let parse_result = tokenize_and_parse(&parser::ast::ModuleId::External("prelude".to_string()), &prelude_stub_file)
-            .expect("There should not be a problem parsing the prelude file");
-        self.typecheck_block(parse_result.nodes)
-            .expect("There should not be a problem typechecking the prelude file");
+        let (_, parse_result) = self.module_loader.load_untyped_ast(&parser::ast::ModuleId::prelude()).map_err(Either::Left)?.unwrap();
+        self.typecheck_block(parse_result.nodes).map_err(Either::Right)?;
+
         debug_assert_ne!(self.project.prelude_none_type_id, PLACEHOLDER_TYPE_ID);
         debug_assert_ne!(self.project.prelude_int_struct_id, PLACEHOLDER_STRUCT_ID);
         debug_assert_ne!(self.project.prelude_float_struct_id, PLACEHOLDER_STRUCT_ID);
@@ -2610,6 +2601,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         debug_assert_ne!(self.project.prelude_array_struct_id, PLACEHOLDER_STRUCT_ID);
         debug_assert_ne!(self.project.prelude_set_struct_id, PLACEHOLDER_STRUCT_ID);
         debug_assert_ne!(self.project.prelude_map_struct_id, PLACEHOLDER_STRUCT_ID);
+
+        Ok(())
     }
 
     pub fn typecheck_module(&mut self, m_id: &parser::ast::ModuleId) -> Result<(), TypecheckError> {
@@ -3209,6 +3202,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let prev_scope_id = self.current_scope_id;
         self.current_scope_id = struct_.struct_scope_id;
+        let prev_type_decl_id = self.current_type_decl.replace(struct_.self_type_id);
 
         for (idx, TypeDeclField { default_value, .. }) in fields.into_iter().enumerate() {
             let Some(default_value_node) = default_value else { continue; };
@@ -3253,6 +3247,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         self.current_scope_id = prev_scope_id;
+        self.current_type_decl = prev_type_decl_id;
 
         Ok(())
     }
@@ -3414,9 +3409,29 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     (None, Some(expr)) => {
                         let typed_expr = self.typecheck_expression(*expr, None)?;
                         let type_id = typed_expr.type_id();
-                        if *type_id == PRELUDE_UNIT_TYPE_ID || self.type_contains_generics(type_id) {
+                        let generics_in_type = self.extract_generic_slots(type_id);
+                        if *type_id == PRELUDE_UNIT_TYPE_ID {
                             let span = self.make_span(&typed_expr.span());
                             return Err(TypeError::ForbiddenAssignment { span, type_id: *type_id, purpose: "assignment" });
+                        }
+                        if !generics_in_type.is_empty() {
+                            for generic_type_id in &generics_in_type {
+                                let is_generic_known = self.current_function
+                                    .and_then(|func_id| if self.project.get_func_by_id(&func_id).generic_ids.contains(generic_type_id) { Some(true) } else { None })
+                                    .unwrap_or_else(|| {
+                                        self.current_type_decl
+                                            .and_then(|type_id| {
+                                                self.project.get_struct_by_type_id(&type_id).map(|(struct_, _)| &struct_.generic_ids)
+                                                    .or_else(|| self.project.get_enum_by_type_id(&type_id).map(|(enum_, _, _)| &enum_.generic_ids) )
+                                            })
+                                            .map(|generic_ids| generic_ids.contains(generic_type_id))
+                                            .unwrap_or(false)
+                                    });
+                                if !is_generic_known {
+                                    let span = self.make_span(&typed_expr.span());
+                                    return Err(TypeError::ForbiddenAssignment { span, type_id: *type_id, purpose: "assignment" });
+                                }
+                            }
                         }
                         self.typecheck_binding_pattern(is_mutable, true, &mut binding, &type_id, &mut var_ids)?;
 

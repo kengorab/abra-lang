@@ -1,0 +1,10 @@
+var i = 0
+while i < 3 {
+  echo<Int>(i)
+  i += 1
+}
+/// Expect: 0
+/// Expect: 1
+/// Expect: 2
+/// Expect: done
+echo<String>("done")
