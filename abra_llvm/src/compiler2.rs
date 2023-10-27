@@ -7,7 +7,7 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::targets::TargetMachine;
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FloatType, FunctionType, IntType, PointerType, StructType};
-use inkwell::values::{BasicValue, BasicValueEnum, FloatValue, FunctionValue, IntValue, PointerValue};
+use inkwell::values::{BasicValue, BasicValueEnum, FloatValue, FunctionValue, IntValue, PointerValue, StructValue};
 use itertools::Itertools;
 use abra_core::lexer::tokens::{Range, Token};
 use abra_core::parser::ast::{BinaryOp, BindingPattern};
@@ -281,7 +281,19 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn llvm_ptr_wrap_type_if_needed(&self, llvm_type: BasicTypeEnum<'a>) -> BasicTypeEnum<'a> {
-        if llvm_type.is_struct_type() { self.ptr(llvm_type).as_basic_type_enum() } else { llvm_type }
+        if llvm_type.is_struct_type() {
+            let is_opt_type = llvm_type.into_struct_type().get_name()
+                .and_then(|name| name.to_str().ok())
+                .map_or(false, |name| name.starts_with("Option<"));
+
+            if is_opt_type {
+                llvm_type
+            } else {
+                self.ptr(llvm_type).as_basic_type_enum()
+            }
+        } else {
+            llvm_type
+        }
     }
 
     fn llvm_function_signature(&self, func_id: &FuncId, resolved_generics: &HashMap<String, TypeId>) -> String {
@@ -417,7 +429,6 @@ impl<'a> LLVMCompiler2<'a> {
             let block = self.context.append_basic_block(mod_fn, "");
             self.builder.position_at_end(block);
 
-            // dbg!(&m.code);
             let num_nodes = m.code.len();
             for (idx, node) in m.code.iter().enumerate() {
                 let res = self.visit_statement(node);
@@ -458,35 +469,7 @@ impl<'a> LLVMCompiler2<'a> {
 
     fn visit_statement(&mut self, node: &TypedNode) -> Option<BasicValueEnum<'a>> {
         match node {
-            TypedNode::If { is_statement, condition, condition_binding, if_block, else_block, .. } => {
-                debug_assert!(*is_statement, "If-expressions not yet implemented");
-                debug_assert!(condition_binding.is_none(), "Condition bindings not yet implemented");
-                debug_assert!(condition.type_id() == &PRELUDE_BOOL_TYPE_ID, "Only implement if-statements for boolean conditions for now (no Optionals yet)");
-
-                let then_bb = self.context.append_basic_block(self.current_fn, "then_block");
-                let else_bb = self.context.append_basic_block(self.current_fn, "else_block");
-                let end_bb = self.context.append_basic_block(self.current_fn, "if_end");
-
-                let cond_val = self.visit_expression(condition).unwrap().into_int_value();
-                let cmp = self.builder.build_int_compare(IntPredicate::EQ, cond_val, self.const_bool(true), "");
-                self.builder.build_conditional_branch(cmp, then_bb, else_bb);
-
-                self.builder.position_at_end(then_bb);
-                for node in if_block {
-                    self.visit_statement(node);
-                }
-                self.builder.build_unconditional_branch(end_bb);
-
-                self.builder.position_at_end(else_bb);
-                for node in else_block {
-                    self.visit_statement(node);
-                }
-                self.builder.build_unconditional_branch(end_bb);
-
-                self.builder.position_at_end(end_bb);
-
-                None
-            }
+            node @ TypedNode::If { .. } => self.visit_if_node(node),
             TypedNode::Match { .. } => todo!(),
             TypedNode::FuncDeclaration(_) => None,
             TypedNode::TypeDeclaration(_) => None,
@@ -515,7 +498,7 @@ impl<'a> LLVMCompiler2<'a> {
             TypedNode::ForLoop { .. } => todo!(),
             TypedNode::WhileLoop { condition, condition_var_id, body, .. } => {
                 debug_assert!(condition_var_id.is_none(), "Not implemented yet");
-                debug_assert!(condition.type_id() == &PRELUDE_BOOL_TYPE_ID, "Only implement while loops for boolean conditions for now (no Optionals yet)");
+                debug_assert!(condition.as_ref().type_id() == &PRELUDE_BOOL_TYPE_ID, "Only implement while loops for boolean conditions for now (no Optionals yet)");
 
                 let loop_cond_block = self.context.append_basic_block(self.current_fn, "while_loop_cond");
                 let loop_body_block = self.context.append_basic_block(self.current_fn, "while_loop_body");
@@ -547,7 +530,7 @@ impl<'a> LLVMCompiler2<'a> {
 
     fn visit_expression(&mut self, node: &TypedNode) -> Option<BasicValueEnum<'a>> {
         match node {
-            TypedNode::Literal { value, .. } => {
+            TypedNode::Literal { value, resolved_type_id, .. } => {
                 let value = match value {
                     TypedLiteral::Int(v) => {
                         let int = self.const_i64((*v) as u64);
@@ -568,18 +551,24 @@ impl<'a> LLVMCompiler2<'a> {
                         self.builder.build_call(string_new_fn, &[str_len.into(), str.into()], "").try_as_basic_value().left().unwrap()
                     }
                 };
+
+                if self.project.type_is_option(resolved_type_id).is_some() {
+                    let resolved_generics = &self.ctx_stack.last().unwrap().resolved_generics;
+                    return Some(self.make_option_instance(resolved_type_id, value, resolved_generics).into());
+                }
+
                 Some(value)
             }
             TypedNode::Unary { .. } => todo!(),
-            TypedNode::Binary { left, op, right, .. } => {
+            TypedNode::Binary { left, op, right, resolved_type_id, .. } => {
                 let left_type_id = left.as_ref().type_id();
                 let right_type_id = right.as_ref().type_id();
 
-                match op {
+                let value = match op {
                     BinaryOp::Add => {
                         let left = self.visit_expression(left).unwrap();
                         let right = self.visit_expression(right).unwrap();
-                        let result = if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
+                        if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
                             self.builder.build_int_add(left.into_int_value(), right.into_int_value(), "").into()
                         } else if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_FLOAT_TYPE_ID {
                             let left = self.builder.build_signed_int_to_float(left.into_int_value(), self.f64(), "");
@@ -591,14 +580,12 @@ impl<'a> LLVMCompiler2<'a> {
                             self.builder.build_float_add(left.into_float_value(), right.into_float_value(), "").into()
                         } else {
                             todo!()
-                        };
-
-                        Some(result)
+                        }
                     }
                     BinaryOp::Sub => {
                         let left = self.visit_expression(left).unwrap();
                         let right = self.visit_expression(right).unwrap();
-                        let result = if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
+                        if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
                             self.builder.build_int_sub(left.into_int_value(), right.into_int_value(), "").into()
                         } else {
                             let (left, right) = if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_FLOAT_TYPE_ID {
@@ -613,14 +600,12 @@ impl<'a> LLVMCompiler2<'a> {
                                 unreachable!("`-` operator not defined between types {} and {}", self.project.type_repr(left_type_id), self.project.type_repr(right_type_id))
                             };
                             self.builder.build_float_sub(left, right, "").into()
-                        };
-
-                        Some(result)
+                        }
                     }
                     BinaryOp::Mul => {
                         let left = self.visit_expression(left).unwrap();
                         let right = self.visit_expression(right).unwrap();
-                        let result = if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
+                        if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
                             self.builder.build_int_mul(left.into_int_value(), right.into_int_value(), "").into()
                         } else {
                             let (left, right) = if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_FLOAT_TYPE_ID {
@@ -635,9 +620,7 @@ impl<'a> LLVMCompiler2<'a> {
                                 unreachable!("`*` operator not defined between types {} and {}", self.project.type_repr(left_type_id), self.project.type_repr(right_type_id))
                             };
                             self.builder.build_float_mul(left, right, "").into()
-                        };
-
-                        Some(result)
+                        }
                     }
                     BinaryOp::Div => {
                         let left = self.visit_expression(left).unwrap();
@@ -657,7 +640,7 @@ impl<'a> LLVMCompiler2<'a> {
                         } else {
                             unreachable!("`/` operator not defined between types {} and {}", self.project.type_repr(left_type_id), self.project.type_repr(right_type_id))
                         };
-                        Some(self.builder.build_float_div(left, right, "").into())
+                        self.builder.build_float_div(left, right, "").into()
                     }
                     BinaryOp::Mod |
                     BinaryOp::And |
@@ -670,7 +653,7 @@ impl<'a> LLVMCompiler2<'a> {
 
                         let left = self.visit_expression(left).unwrap();
                         let right = self.visit_expression(right).unwrap();
-                        let result = if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
+                        if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
                             self.builder.build_int_compare(comp_op_int, left.into_int_value(), right.into_int_value(), "").into()
                         } else if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_FLOAT_TYPE_ID {
                             let left = self.builder.build_signed_int_to_float(left.into_int_value(), self.f64(), "");
@@ -682,9 +665,7 @@ impl<'a> LLVMCompiler2<'a> {
                             self.builder.build_float_compare(comp_op_float, left.into_float_value(), right.into_float_value(), "").into()
                         } else {
                             unreachable!("`{}` operator not defined between types {} and {}", op.repr(), self.project.type_repr(left_type_id), self.project.type_repr(right_type_id))
-                        };
-
-                        Some(result)
+                        }
                     }
                     op @ BinaryOp::Neq | op @ BinaryOp::Eq => {
                         let comp_op_int = if op == &BinaryOp::Neq { IntPredicate::NE } else { IntPredicate::EQ };
@@ -692,7 +673,7 @@ impl<'a> LLVMCompiler2<'a> {
 
                         let left = self.visit_expression(left).unwrap();
                         let right = self.visit_expression(right).unwrap();
-                        let result = if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
+                        if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
                             self.builder.build_int_compare(comp_op_int, left.into_int_value(), right.into_int_value(), "").into()
                         } else if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_FLOAT_TYPE_ID {
                             let left = self.builder.build_signed_int_to_float(left.into_int_value(), self.f64(), "");
@@ -704,9 +685,7 @@ impl<'a> LLVMCompiler2<'a> {
                             self.builder.build_float_compare(comp_op_float, left.into_float_value(), right.into_float_value(), "").into()
                         } else {
                             todo!()
-                        };
-
-                        Some(result)
+                        }
                     }
                     BinaryOp::Pow => todo!(),
                     BinaryOp::AddEq |
@@ -717,10 +696,17 @@ impl<'a> LLVMCompiler2<'a> {
                     BinaryOp::AndEq |
                     BinaryOp::OrEq |
                     BinaryOp::CoalesceEq => unreachable!("Handled in ::Assignment")
+                };
+
+                if self.project.type_is_option(resolved_type_id).is_some() {
+                    let resolved_generics = &self.ctx_stack.last().unwrap().resolved_generics;
+                    Some(self.make_option_instance(resolved_type_id, value, resolved_generics).into())
+                } else {
+                    Some(value)
                 }
             }
             TypedNode::Grouped { expr, .. } => self.visit_expression(expr),
-            TypedNode::Array { items, type_id, .. } => {
+            TypedNode::Array { items, type_id, resolved_type_id, .. } => {
                 let Type::GenericInstance(struct_id, generics) = self.project.get_type_by_id(type_id) else { unreachable!() };
                 debug_assert!(struct_id == &self.project.prelude_array_struct_id);
                 let array_struct = self.project.get_struct_by_id(struct_id);
@@ -748,12 +734,21 @@ impl<'a> LLVMCompiler2<'a> {
                     self.builder.build_call(array_push_llvm_fn, &[arr_val.into(), item.into()], "").try_as_basic_value().left();
                 }
 
+                if self.project.type_is_option(resolved_type_id).is_some() {
+                    let resolved_generics = &self.ctx_stack.last().unwrap().resolved_generics;
+
+                    let arr_val_local = self.builder.build_alloca(arr_val.get_type(), "");
+                    self.builder.build_store(arr_val_local, arr_val);
+                    let arr_val = self.builder.build_load(arr_val_local, "");
+                    return Some(self.make_option_instance(resolved_type_id, arr_val, resolved_generics).into());
+                }
+
                 Some(arr_val)
             }
             TypedNode::Tuple { .. } |
             TypedNode::Set { .. } |
             TypedNode::Map { .. } => todo!(),
-            TypedNode::Identifier { var_id, .. } => {
+            TypedNode::Identifier { var_id, resolved_type_id, .. } => {
                 let variable = self.project.get_var_by_id(var_id);
                 let llvm_var = self.ctx_stack.last().unwrap().variables.get(&variable.id).expect(&format!("No stored slot for variable {} ({:?})", &variable.name, &variable));
                 let value = match llvm_var {
@@ -761,10 +756,18 @@ impl<'a> LLVMCompiler2<'a> {
                     LLVMVar::Param(value) => *value,
                 };
 
-                Some(value)
+                if self.project.type_is_option(&variable.type_id).is_none() && self.project.type_is_option(resolved_type_id).is_some() {
+                    let resolved_generics = &self.ctx_stack.last().unwrap().resolved_generics;
+                    Some(self.make_option_instance(resolved_type_id, value, resolved_generics).into())
+                } else {
+                    Some(value)
+                }
             }
-            TypedNode::NoneValue { .. } => todo!(),
-            TypedNode::Invocation { target, arguments, .. } => {
+            TypedNode::NoneValue { resolved_type_id, .. } => {
+                let resolved_generics = &self.ctx_stack.last().unwrap().resolved_generics;
+                Some(self.make_none_option_instance(resolved_type_id, &resolved_generics).into())
+            }
+            TypedNode::Invocation { target, arguments, type_id, resolved_type_id, .. } => {
                 let mut args = Vec::with_capacity(arguments.len());
 
                 let llvm_fn_val = match &**target {
@@ -789,7 +792,7 @@ impl<'a> LLVMCompiler2<'a> {
                                     .collect();
                                 if let Some(dec) = function.decorators.iter().find(|dec| dec.name == "Intrinsic") {
                                     let TypedNode::Literal { value: TypedLiteral::String(intrinsic_name), .. } = &dec.args[0] else { unreachable!("@Intrinsic requires exactly 1 String argument") };
-                                    return self.compile_intrinsic_invocation(type_arg_ids, &resolved_generics, intrinsic_name, Some(&**target), arguments);
+                                    return self.compile_intrinsic_invocation(type_arg_ids, &resolved_generics, intrinsic_name, Some(&**target), arguments, resolved_type_id);
                                 }
 
                                 self.get_or_compile_function(func_id, &resolved_generics)
@@ -821,14 +824,21 @@ impl<'a> LLVMCompiler2<'a> {
 
                         match kind {
                             AccessorKind::Field => todo!(),
+                            AccessorKind::Method if self.project.type_is_option(target_type_id).is_some() => {
+                                let Some(inner_type_id) = self.project.type_is_option(target_type_id) else { unreachable!() };
+
+                                let target = self.visit_expression(target).unwrap();
+                                args.push(target.into());
+
+                                self.get_or_compile_option_method(&inner_type_id, member_idx)
+                            }
                             AccessorKind::Method => {
                                 let func_id = target_ty.get_method(self.project, *member_idx).unwrap();
                                 let function = self.project.get_func_by_id(&func_id);
                                 if let Some(dec) = function.decorators.iter().find(|dec| dec.name == "Intrinsic") {
                                     let TypedNode::Literal { value: TypedLiteral::String(intrinsic_name), .. } = &dec.args[0] else { unreachable!("@Intrinsic requires exactly 1 String argument") };
-                                    // So far, we do not have an intrinsic instance method which requires generic resolution (since all instance methods' generics are supplied by the instance type)
-                                    let resolved_generics = HashMap::new();
-                                    return self.compile_intrinsic_invocation(type_arg_ids, &resolved_generics, intrinsic_name, Some(&**target), arguments);
+                                    let resolved_generics = self.ctx_stack.last().unwrap().resolved_generics.clone();
+                                    return self.compile_intrinsic_invocation(type_arg_ids, &resolved_generics, intrinsic_name, Some(&**target), arguments, resolved_type_id);
                                 }
 
                                 let target = self.visit_expression(target).unwrap();
@@ -873,7 +883,7 @@ impl<'a> LLVMCompiler2<'a> {
 
                                 if let Some(dec) = function.decorators.iter().find(|dec| dec.name == "Intrinsic") {
                                     let TypedNode::Literal { value: TypedLiteral::String(intrinsic_name), .. } = &dec.args[0] else { unreachable!("@Intrinsic requires exactly 1 String argument") };
-                                    return self.compile_intrinsic_invocation(type_arg_ids, &resolved_generics, intrinsic_name, None, arguments);
+                                    return self.compile_intrinsic_invocation(type_arg_ids, &resolved_generics, intrinsic_name, None, arguments, resolved_type_id);
                                 }
 
                                 self.get_or_compile_function(&func_id, &resolved_generics)
@@ -889,7 +899,19 @@ impl<'a> LLVMCompiler2<'a> {
                     args.push(self.visit_expression(arg_node).expect("Unit cannot be a valid argument value").into());
                 }
 
-                self.builder.build_call(llvm_fn_val, args.as_slice(), "").try_as_basic_value().left()
+                let value = self.builder.build_call(llvm_fn_val, args.as_slice(), "").try_as_basic_value().left();
+                if let Some(value) = value {
+                    if !self.project.type_is_option(type_id).is_some() && self.project.type_is_option(resolved_type_id).is_some() {
+                        let resolved_generics = &self.ctx_stack.last().unwrap().resolved_generics;
+
+                        let value_local = self.builder.build_alloca(value.get_type(), "");
+                        self.builder.build_store(value_local, value);
+                        let value = self.builder.build_load(value_local, "");
+                        return Some(self.make_option_instance(resolved_type_id, value, resolved_generics).into());
+                    }
+                }
+
+                value
             }
             TypedNode::Accessor { target, kind, member_idx, is_opt_safe, .. } => {
                 debug_assert!(!*is_opt_safe);
@@ -942,40 +964,136 @@ impl<'a> LLVMCompiler2<'a> {
 
                 Some(expr_val)
             }
+            node @ TypedNode::If { .. } => self.visit_if_node(node),
             _ => unreachable!("Node {:?} is not an expression and should have been handled in visit_statement", node)
         }
     }
 
-    fn compile_intrinsic_invocation(&mut self, type_arg_ids: &Vec<(TypeId, Range)>, resolved_generics: &HashMap<String, TypeId>, name: &String, implicit_argument: Option<&TypedNode>, arguments: &Vec<Option<TypedNode>>) -> Option<BasicValueEnum<'a>> {
-        let get_ptr_size = |pointer_type_id: &TypeId| -> u64 {
-            let mut pointer_ty = self.project.get_type_by_id(pointer_type_id);
-            if let Type::Generic(_, name) = pointer_ty {
-                pointer_ty = self.project.get_type_by_id(resolved_generics.get(name).unwrap_or(pointer_type_id))
-            }
+    fn visit_if_node(&mut self, if_node: &TypedNode) -> Option<BasicValueEnum<'a>> {
+        let TypedNode::If { is_statement, condition, condition_binding, if_block, else_block, type_id, .. } = if_node else { unreachable!() };
 
-            match pointer_ty {
-                Type::Primitive(PrimitiveType::Int) => 8,
-                Type::GenericInstance(struct_id, _) if struct_id == &self.project.prelude_int_struct_id => 8,
-                Type::Primitive(PrimitiveType::Float) => 8,
-                Type::GenericInstance(struct_id, _) if struct_id == &self.project.prelude_float_struct_id => 8,
-                Type::Primitive(PrimitiveType::Bool) => 1,
-                Type::GenericInstance(struct_id, _) if struct_id == &self.project.prelude_bool_struct_id => 1,
-                _ => 8 // If not a primitive type, allocate enough space for a pointer (since non-primitive objects are pointers under the hood)
+        debug_assert!(condition_binding.is_none(), "Condition bindings not yet implemented");
+        debug_assert!(condition.as_ref().type_id() == &PRELUDE_BOOL_TYPE_ID, "Only implement if-statements for boolean conditions for now (no Optionals yet)");
+
+        let then_bb = self.context.append_basic_block(self.current_fn, "then_block");
+        let else_bb = self.context.append_basic_block(self.current_fn, "else_block");
+        let end_bb = self.context.append_basic_block(self.current_fn, "if_end");
+
+        let cond_val = self.visit_expression(&condition).unwrap().into_int_value();
+        let cmp = self.builder.build_int_compare(IntPredicate::EQ, cond_val, self.const_bool(true), "");
+        self.builder.build_conditional_branch(cmp, then_bb, else_bb);
+
+        self.builder.position_at_end(then_bb);
+        let mut if_block_value = None;
+        let if_block_len = if_block.len();
+        for (idx, node) in if_block.iter().enumerate() {
+            if idx == if_block_len - 1 {
+                if_block_value = self.visit_statement(node);
+            } else {
+                self.visit_statement(node);
             }
+        }
+        self.builder.build_unconditional_branch(end_bb);
+
+        self.builder.position_at_end(else_bb);
+        let mut else_block_value = None;
+        let else_block_len = else_block.len();
+        for (idx, node) in else_block.iter().enumerate() {
+            if idx == else_block_len - 1 {
+                else_block_value = self.visit_statement(node);
+            } else {
+                self.visit_statement(node);
+            }
+        }
+        self.builder.build_unconditional_branch(end_bb);
+
+        self.builder.position_at_end(end_bb);
+
+        if *is_statement {
+            None
+        } else {
+            let resolved_generics = &self.ctx_stack.last().unwrap().resolved_generics;
+            let Some(llvm_type) = self.llvm_underlying_type_by_id(type_id, resolved_generics) else { todo!() };
+            let llvm_type = self.llvm_ptr_wrap_type_if_needed(llvm_type);
+
+            let resolved_generics = &self.ctx_stack.last().unwrap().resolved_generics;
+            let if_block_value = if_block_value.unwrap_or_else(|| self.make_none_option_instance(type_id, &resolved_generics).into());
+            let else_block_value = else_block_value.unwrap_or_else(|| self.make_none_option_instance(type_id, &resolved_generics).into());
+
+            let phi = self.builder.build_phi(llvm_type, "");
+            phi.add_incoming(&[(&if_block_value, then_bb), (&else_block_value, else_bb)]);
+            Some(phi.as_basic_value().into())
+        }
+    }
+
+    fn make_option_instance<V: BasicValue<'a>>(&self, outer_type_id: &TypeId, value: V, resolved_generics: &HashMap<String, TypeId>) -> StructValue<'a> {
+        let Type::GenericInstance(struct_id, generics) = self.project.get_type_by_id(outer_type_id) else { unreachable!() };
+        debug_assert!(struct_id == &self.project.prelude_option_struct_id);
+
+        let mut inner_type_id = &generics[0];
+        if let Type::Generic(_, generic_name) = self.project.get_type_by_id(inner_type_id) {
+            inner_type_id = resolved_generics.get(generic_name).unwrap_or(inner_type_id);
+        }
+        let opt_struct = self.project.get_struct_by_id(&self.project.prelude_option_struct_id);
+        let resolved_generics = vec![(self.get_generic_name(&opt_struct.generic_ids[0]).clone(), *inner_type_id)].into_iter().collect();
+        let Some(llvm_type) = self.llvm_underlying_type_by_id(outer_type_id, &resolved_generics) else { todo!() };
+
+        let instance_ptr = self.builder.build_alloca(llvm_type, "opt_instance_ptr");
+        let is_set_slot = self.builder.build_struct_gep(instance_ptr, 0, "is_set_slot").unwrap();
+        self.builder.build_store(is_set_slot, self.const_bool(true));
+        let value_slot = self.builder.build_struct_gep(instance_ptr, 1, "value_slot").unwrap();
+        self.builder.build_store(value_slot, value.as_basic_value_enum());
+
+        self.builder.build_load(instance_ptr, "opt_instance").into_struct_value()
+    }
+
+    fn make_none_option_instance(&self, outer_type_id: &TypeId, resolved_generics: &HashMap<String, TypeId>) -> StructValue<'a> {
+        let Type::GenericInstance(struct_id, generics) = self.project.get_type_by_id(outer_type_id) else { unreachable!() };
+        debug_assert!(struct_id == &self.project.prelude_option_struct_id);
+        let mut inner_type_id = &generics[0];
+        if let Type::Generic(_, generic_name) = self.project.get_type_by_id(inner_type_id) {
+            inner_type_id = resolved_generics.get(generic_name).unwrap_or(inner_type_id);
+        }
+
+        let opt_struct = self.project.get_struct_by_id(&self.project.prelude_option_struct_id);
+        let resolved_generics = vec![(self.get_generic_name(&opt_struct.generic_ids[0]).clone(), *inner_type_id)].into_iter().collect();
+        let Some(llvm_type) = self.llvm_underlying_type_by_id(outer_type_id, &resolved_generics) else { todo!() };
+
+        llvm_type.into_struct_type().const_zero()
+    }
+
+    fn compile_intrinsic_invocation(
+        &mut self,
+        type_arg_ids: &Vec<(TypeId, Range)>,
+        resolved_generics: &HashMap<String, TypeId>,
+        name: &String,
+        implicit_argument: Option<&TypedNode>,
+        arguments: &Vec<Option<TypedNode>>,
+        resolved_type_id: &TypeId,
+    ) -> Option<BasicValueEnum<'a>> {
+        let get_ptr_size = |pointer_type_id: &TypeId| -> IntValue<'a> {
+            let pointer_type_id = if let Some(inner_type_id) = self.project.type_is_option(pointer_type_id) {
+                inner_type_id
+            } else {
+                *pointer_type_id
+            };
+
+            let Some(llvm_type) = self.llvm_underlying_type_by_id(&pointer_type_id, &resolved_generics) else { todo!() };
+            llvm_type.size_of().expect("We should only ever be working with sized types")
         };
 
-        match name.as_ref() {
+        let value = match name.as_ref() {
             "pointer_null" => { // Static method
                 let pointer_type = type_arg_ids[0].0;
-                let Some(llvm_type) = self.llvm_underlying_type_by_id(&pointer_type, resolved_generics) else { todo!() };
+                let Some(llvm_type) = self.llvm_underlying_type_by_id(&pointer_type, &resolved_generics) else { todo!() };
                 let llvm_type = self.llvm_ptr_wrap_type_if_needed(llvm_type);
 
-                Some(self.ptr(llvm_type).const_null().as_basic_value_enum())
+                self.ptr(llvm_type).const_null().as_basic_value_enum()
             }
             "pointer_malloc" => { // Static method
                 let pointer_type_id = type_arg_ids[0].0;
                 let ptr_size = get_ptr_size(&pointer_type_id);
-                let Some(llvm_type) = self.llvm_underlying_type_by_id(&pointer_type_id, resolved_generics) else { todo!() };
+                let Some(llvm_type) = self.llvm_underlying_type_by_id(&pointer_type_id, &resolved_generics) else { todo!() };
                 let llvm_type = self.llvm_ptr_wrap_type_if_needed(llvm_type);
 
                 let count_arg = arguments.first().expect("Pointer.malloc has arity 1");
@@ -984,17 +1102,17 @@ impl<'a> LLVMCompiler2<'a> {
                 } else {
                     self.const_i64(1).as_basic_value_enum()
                 };
-                let malloc_amount_val = self.builder.build_int_mul(count_arg_value.into_int_value(), self.const_i64(ptr_size), "malloc_amt");
+                let malloc_amount_val = self.builder.build_int_mul(count_arg_value.into_int_value(), ptr_size, "malloc_amt");
 
                 let ptr = self.malloc(malloc_amount_val, self.ptr(llvm_type));
-                Some(ptr.as_basic_value_enum())
+                ptr.as_basic_value_enum()
             }
             "pointer_address" => { // Instance method
                 let instance_node = implicit_argument.expect("pointer_address is an instance method and will have an implicit argument");
                 let instance_value = self.visit_expression(instance_node).expect("Instance is not of type Unit").into_pointer_value();
                 let pointer_address = self.builder.build_ptr_to_int(instance_value, self.i64(), "address");
 
-                Some(pointer_address.as_basic_value_enum())
+                pointer_address.as_basic_value_enum()
             }
             "pointer_store" => { // Instance method
                 let instance_node = implicit_argument.expect("pointer_store is an instance method and will have an implicit argument");
@@ -1004,13 +1122,13 @@ impl<'a> LLVMCompiler2<'a> {
                 let value = self.visit_expression(value_arg).expect("Instance is not of type Unit");
                 self.builder.build_store(ptr, value);
 
-                None
+                return None;
             }
             "pointer_load" => { // Instance method
                 let instance_node = implicit_argument.expect("pointer_load is an instance method and will have an implicit argument");
 
                 let ptr = self.visit_expression(instance_node).expect("Instance is not of type Unit").into_pointer_value();
-                Some(self.builder.build_load(ptr, "").as_basic_value_enum())
+                self.builder.build_load(ptr, "").as_basic_value_enum()
             }
             "pointer_offset" => { // Instance method
                 let instance_node = implicit_argument.expect("pointer_offset is an instance method and will have an implicit argument");
@@ -1020,7 +1138,7 @@ impl<'a> LLVMCompiler2<'a> {
                 let value = self.visit_expression(offset_arg).expect("Instance is not of type Unit").into_int_value();
 
                 let offset_ptr = unsafe { self.builder.build_gep(ptr, &[value], "offset") };
-                Some(offset_ptr.as_basic_value_enum())
+                offset_ptr.as_basic_value_enum()
             }
             "pointer_copy_from" => { // Instance method
                 let instance_node = implicit_argument.expect("pointer_copy_from is an instance method and will have an implicit argument");
@@ -1034,11 +1152,11 @@ impl<'a> LLVMCompiler2<'a> {
                 let ptr = self.visit_expression(instance_node).expect("Instance is not of type Unit").into_pointer_value();
                 let other_val = self.visit_expression(other_arg).expect("Instance is not of type Unit").into_pointer_value();
                 let size_val = self.visit_expression(size_arg).expect("Instance is not of type Unit").into_int_value();
-                let size_val = self.builder.build_int_mul(size_val, self.const_i64(ptr_size), "");
+                let size_val = self.builder.build_int_mul(size_val, ptr_size, "");
 
                 self.memcpy(ptr, other_val, size_val);
 
-                None
+                return None;
             }
             "stdout_write" => { // Freestanding function
                 let arg_node = arguments.first().expect("stdoutWrite has arity 1").as_ref().expect("stdoutWrite has 1 required argument");
@@ -1051,15 +1169,22 @@ impl<'a> LLVMCompiler2<'a> {
                 let printf = self.main_module.get_function("printf").unwrap();
                 let fmt_str = self.builder.build_global_string_ptr("%.*s\n", "").as_basic_value_enum();
                 self.builder.build_call(printf, &[fmt_str.into(), arg_value_len.into(), arg_value_chars.into()], "").try_as_basic_value().left();
-                None
+
+                return None;
             }
             "byte_from_int" => { // Static method
                 let arg_node = arguments.first().expect("Byte.fromInt has arity 1").as_ref().expect("Byte.fromInt has 1 required argument");
                 let arg_value = self.visit_expression(arg_node).unwrap().into_int_value();
                 let i8_val = self.builder.build_int_cast(arg_value, self.i8(), "");
-                Some(i8_val.as_basic_value_enum())
+                i8_val.as_basic_value_enum()
             }
             _ => unimplemented!("Unimplemented intrinsic '{}'", name),
+        };
+
+        if self.project.type_is_option(resolved_type_id).is_some() {
+            Some(self.make_option_instance(resolved_type_id, value, resolved_generics).into())
+        } else {
+            Some(value)
         }
     }
 
@@ -1077,6 +1202,81 @@ impl<'a> LLVMCompiler2<'a> {
             debug_assert!(function_val.get_name().to_str().unwrap() == &fn_sig);
             function_val
         };
+
+        llvm_fn
+    }
+
+    fn get_or_compile_option_method(&mut self, inner_type_id: &TypeId, member_idx: &usize) -> FunctionValue<'a> {
+        // The toString method is always member_idx = 0
+        if *member_idx != 0 {
+            unreachable!();
+        }
+
+        let resolved_generics = if let Type::GenericInstance(struct_id, generics) = self.project.get_type_by_id(inner_type_id) {
+            let struct_ = self.project.get_struct_by_id(struct_id);
+            struct_.generic_ids.iter().zip(generics)
+                .map(|(generic_id, type_arg_id)| {
+                    (self.get_generic_name(generic_id).clone(), *type_arg_id)
+                })
+                .collect()
+        } else {
+            HashMap::new()
+        };
+
+        let type_name = format!("Option<{}>", self.llvm_type_name_by_id(inner_type_id, &resolved_generics));
+        let fn_sig = format!("{}#toString({}):String", &type_name, &type_name);
+        let fn_type = self.fn_type(self.ptr(self.string_type), &[self.main_module.get_struct_type(&type_name).unwrap().into()]);
+        let llvm_fn = self.main_module.add_function(&fn_sig, fn_type, None);
+
+        let prev_bb = self.builder.get_insert_block().unwrap();
+        let prev_fn = self.current_fn;
+        self.current_fn = llvm_fn;
+        self.ctx_stack.push(CompilerContext { variables: HashMap::new(), resolved_generics: resolved_generics.clone() });
+
+        let block = self.context.append_basic_block(llvm_fn, "");
+        self.builder.position_at_end(block);
+
+        let self_ = llvm_fn.get_nth_param(0).unwrap();
+        let self_var = self.builder.build_alloca(self_.get_type(), "self");
+        self.builder.build_store(self_var, self_);
+
+        let is_none_block = self.context.append_basic_block(llvm_fn, "is_none");
+        let is_some_block = self.context.append_basic_block(llvm_fn, "is_some");
+        let end_block = self.context.append_basic_block(llvm_fn, "end");
+
+        let is_set_slot = self.builder.build_struct_gep(self_var, 0, "is_set_slot").unwrap();
+        let is_set_val = self.builder.build_load(is_set_slot, "is_set");
+        let cond = self.builder.build_int_compare(IntPredicate::NE, is_set_val.into_int_value(), self.const_bool(true), "cond");
+        self.builder.build_conditional_branch(cond, is_none_block, is_some_block);
+
+        self.builder.position_at_end(is_none_block);
+        let is_none_value = self.main_module.get_global("NONE_STRING_VALUE").unwrap_or_else(|| {
+            let global = self.main_module.add_global(self.string_type, None, "NONE_STRING_VALUE");
+            global.set_constant(true);
+            let str = self.builder.build_global_string_ptr("None", "").as_basic_value_enum();
+            global.set_initializer(&self.context.const_struct(&[self.const_i64(4).into(), str], false));
+            global
+        }).as_pointer_value();
+        self.builder.build_unconditional_branch(end_block);
+
+        self.builder.position_at_end(is_some_block);
+        let value_slot = self.builder.build_struct_gep(self_var, 1, "value_slot").unwrap();
+        let value_val = self.builder.build_load(value_slot, "value");
+        let inner_type = self.project.get_type_by_id(inner_type_id);
+        let inner_tostring_func_id = inner_type.find_method_by_name(self.project, "toString").unwrap();
+        let inner_tostring_llvm_fn = self.get_or_compile_function(&inner_tostring_func_id, &resolved_generics);
+        let is_some_value = self.builder.build_call(inner_tostring_llvm_fn, &[value_val.into()], "").try_as_basic_value().left().unwrap();
+        self.builder.build_unconditional_branch(end_block);
+
+        self.builder.position_at_end(end_block);
+
+        let phi = self.builder.build_phi(self.ptr(self.string_type), "");
+        phi.add_incoming(&[(&is_none_value, is_none_block), (&is_some_value, is_some_block)]);
+        self.builder.build_return(Some(&phi.as_basic_value()));
+
+        self.ctx_stack.pop();
+        self.current_fn = prev_fn;
+        self.builder.position_at_end(prev_bb);
 
         llvm_fn
     }
@@ -1125,6 +1325,10 @@ impl<'a> LLVMCompiler2<'a> {
 
     fn compile_struct_type(&self, type_id: &TypeId, generic_substitutions: &HashMap<String, TypeId>) -> StructType<'a> {
         let Type::GenericInstance(struct_id, generics) = self.project.get_type_by_id(type_id) else { todo!() };
+        if struct_id == &self.project.prelude_option_struct_id {
+            return self.compile_option_struct_type(type_id, generic_substitutions);
+        }
+
         let struct_ = self.project.get_struct_by_id(struct_id);
         let type_name = self.llvm_type_name_by_id(type_id, generic_substitutions);
         let llvm_type = self.context.opaque_struct_type(&type_name);
@@ -1148,6 +1352,21 @@ impl<'a> LLVMCompiler2<'a> {
             });
 
         llvm_type.set_body(field_types.collect_vec().as_slice(), false);
+
+        llvm_type
+    }
+
+    fn compile_option_struct_type(&self, type_id: &TypeId, generic_substitutions: &HashMap<String, TypeId>) -> StructType<'a> {
+        let Type::GenericInstance(struct_id, generics) = self.project.get_type_by_id(type_id) else { todo!() };
+        debug_assert!(struct_id == &self.project.prelude_option_struct_id);
+
+        let type_name = self.llvm_type_name_by_id(type_id, generic_substitutions);
+
+        let Some(inner_llvm_type) = self.llvm_underlying_type_by_id(&generics[0], generic_substitutions) else { todo!() };
+        let inner_llvm_type = self.llvm_ptr_wrap_type_if_needed(inner_llvm_type);
+
+        let llvm_type = self.context.opaque_struct_type(&type_name);
+        llvm_type.set_body(&[self.bool().into(), inner_llvm_type.into()], false);
 
         llvm_type
     }
@@ -1502,5 +1721,15 @@ mod tests {
     #[test]
     fn test_loops() {
         run_test_file("loops.abra");
+    }
+
+    #[test]
+    fn test_ifs() {
+        run_test_file("ifs.abra");
+    }
+
+    #[test]
+    fn test_optionals() {
+        run_test_file("optionals.abra");
     }
 }

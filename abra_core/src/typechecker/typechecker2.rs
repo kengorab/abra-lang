@@ -345,6 +345,13 @@ impl Project {
         })
     }
 
+    pub fn type_is_option(&self, type_id: &TypeId) -> Option<TypeId> {
+        match self.get_type_by_id(&type_id) {
+            Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.prelude_option_struct_id => Some(generic_ids[0]),
+            _ => None
+        }
+    }
+
     pub fn option_type(&self, mut inner_type_id: TypeId) -> Type {
         let mut inner = self.get_type_by_id(&inner_type_id);
         loop {
@@ -878,17 +885,17 @@ pub struct TypedMatchCase {
 #[derive(Debug, PartialEq)]
 pub enum TypedNode {
     // Expressions
-    Literal { token: Token, value: TypedLiteral, type_id: TypeId },
+    Literal { token: Token, value: TypedLiteral, type_id: TypeId, resolved_type_id: TypeId },
     Unary { token: Token, op: UnaryOp, expr: Box<TypedNode> },
-    Binary { op: BinaryOp, left: Box<TypedNode>, right: Box<TypedNode>, type_id: TypeId },
+    Binary { op: BinaryOp, left: Box<TypedNode>, right: Box<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
     Grouped { token: Token, expr: Box<TypedNode> },
-    Array { token: Token, items: Vec<TypedNode>, type_id: TypeId },
+    Array { token: Token, items: Vec<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
     Tuple { token: Token, items: Vec<TypedNode>, type_id: TypeId },
     Set { token: Token, items: Vec<TypedNode>, type_id: TypeId },
     Map { token: Token, items: Vec<(TypedNode, TypedNode)>, type_id: TypeId },
-    Identifier { token: Token, var_id: VarId, type_arg_ids: Vec<(TypeId, Range)>, type_id: TypeId },
-    NoneValue { token: Token, type_id: TypeId },
-    Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId },
+    Identifier { token: Token, var_id: VarId, type_arg_ids: Vec<(TypeId, Range)>, type_id: TypeId, resolved_type_id: TypeId },
+    NoneValue { token: Token, type_id: TypeId, resolved_type_id: TypeId },
+    Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId, resolved_type_id: TypeId },
     // TODO: ::Invocation should have type_arg_ids: Vec<(TypeId, /* inferred: */ bool)>
     Accessor { target: Box<TypedNode>, kind: AccessorKind, is_opt_safe: bool, member_idx: usize, member_span: Range, type_id: TypeId, type_arg_ids: Vec<(TypeId, Range)> },
     Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId },
@@ -943,6 +950,41 @@ impl TypedNode {
             TypedNode::Continue { .. } => &PRELUDE_UNIT_TYPE_ID,
             TypedNode::Return { expr, .. } => expr.as_ref().map_or(&PRELUDE_UNIT_TYPE_ID, |expr| expr.type_id()),
             TypedNode::Import { .. } => &PRELUDE_UNIT_TYPE_ID,
+        }
+    }
+
+    pub fn set_resolved_type_id(&mut self, new_type_id: TypeId) {
+        match self {
+            // Expressions
+            TypedNode::Literal { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::Unary { .. } => {}
+            TypedNode::Binary { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::Grouped { expr, .. } => expr.set_resolved_type_id(new_type_id),
+            TypedNode::Array { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::Tuple { .. } |
+            TypedNode::Set { .. } |
+            TypedNode::Map { .. } => todo!(),
+            TypedNode::Identifier { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::NoneValue { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::Invocation { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::Accessor { .. } => todo!(),
+            TypedNode::Lambda { .. } => todo!(),
+            TypedNode::Assignment { .. } => {}
+            TypedNode::Indexing { .. } => {}
+            TypedNode::If { .. } => {}
+            TypedNode::Match { .. } => {}
+
+            // Statements
+            TypedNode::FuncDeclaration(_) |
+            TypedNode::TypeDeclaration(_) |
+            TypedNode::EnumDeclaration(_) |
+            TypedNode::BindingDeclaration { .. } |
+            TypedNode::ForLoop { .. } |
+            TypedNode::WhileLoop { .. } |
+            TypedNode::Break { .. } |
+            TypedNode::Continue { .. } => {}
+            TypedNode::Return { expr, .. } => if let Some(expr) = expr { expr.set_resolved_type_id(new_type_id) },
+            TypedNode::Import { .. } => {}
         }
     }
 
@@ -1873,13 +1915,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.project.find_enum_by_name(&current_module_id, name)
     }
 
-    fn type_is_option(&self, type_id: &TypeId) -> Option<TypeId> {
-        match self.project.get_type_by_id(&type_id) {
-            Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_option_struct_id => Some(generic_ids[0]),
-            _ => None
-        }
-    }
-
     fn type_is_array(&self, type_id: &TypeId) -> Option<TypeId> {
         match self.project.get_type_by_id(&type_id) {
             Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_array_struct_id => Some(generic_ids[0]),
@@ -1914,10 +1949,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 (Type::Primitive(PrimitiveType::String), Type::GenericInstance(struct_id, _)) |
                 (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::String)) if struct_id == &zelf.project.prelude_string_struct_id => true,
 
-                (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::Int)) if struct_id == &zelf.project.prelude_int_struct_id => true,
-                (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::Float)) if struct_id == &zelf.project.prelude_float_struct_id => true,
-                (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::Bool)) if struct_id == &zelf.project.prelude_bool_struct_id => true,
-                (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::String)) if struct_id == &zelf.project.prelude_string_struct_id => true,
+                // Handlers for Option<T> types. Eg. attempting to assign an instance of `String?` to `String?` should be allowed, ...
+                (Type::GenericInstance(base_struct_id, base_generic_ids), Type::GenericInstance(target_struct_id, target_generic_ids)) if *base_struct_id == zelf.project.prelude_option_struct_id && *target_struct_id == zelf.project.prelude_option_struct_id => {
+                    type_satisfies_other_impl(zelf, &base_generic_ids[0], &target_generic_ids[0], substitutions)
+                }
+                // ... and assigning an instance of `String` to `String?` should _also_ be allowed.
+                (_, Type::GenericInstance(struct_id, generic_ids)) if *struct_id == zelf.project.prelude_option_struct_id => {
+                    type_satisfies_other_impl(zelf, base_type_id, &generic_ids[0], substitutions)
+                }
+
                 (Type::GenericInstance(struct_id_1, generic_ids_1), Type::GenericInstance(struct_id_2, generic_ids_2)) => {
                     if struct_id_1 != struct_id_2 || generic_ids_1.len() != generic_ids_2.len() {
                         return false;
@@ -1929,12 +1969,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
 
                     true
-                }
-                (Type::GenericInstance(struct_id, _), _) if *struct_id == zelf.project.prelude_option_struct_id => {
-                    false
-                }
-                (_, Type::GenericInstance(struct_id, generic_ids)) if *struct_id == zelf.project.prelude_option_struct_id => {
-                    type_satisfies_other_impl(zelf, base_type_id, &generic_ids[0], substitutions)
                 }
                 (Type::GenericEnumInstance(enum_id, generic_ids, _), Type::GenericEnumInstance(target_enum_id, target_generic_ids, _)) => {
                     if enum_id != target_enum_id || generic_ids.len() != target_generic_ids.len() { return false; }
@@ -3422,7 +3456,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                         self.current_type_decl
                                             .and_then(|type_id| {
                                                 self.project.get_struct_by_type_id(&type_id).map(|(struct_, _)| &struct_.generic_ids)
-                                                    .or_else(|| self.project.get_enum_by_type_id(&type_id).map(|(enum_, _, _)| &enum_.generic_ids) )
+                                                    .or_else(|| self.project.get_enum_by_type_id(&type_id).map(|(enum_, _, _)| &enum_.generic_ids))
                                             })
                                             .map(|generic_ids| generic_ids.contains(generic_type_id))
                                             .unwrap_or(false)
@@ -3508,13 +3542,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let typed_condition = self.typecheck_expression(*condition, None)?;
                 let condition_type_id = typed_condition.type_id();
-                if *condition_type_id != PRELUDE_BOOL_TYPE_ID && self.type_is_option(condition_type_id).is_none() {
+                if *condition_type_id != PRELUDE_BOOL_TYPE_ID && self.project.type_is_option(condition_type_id).is_none() {
                     return Err(TypeError::InvalidLoopTarget { span: self.make_span(&typed_condition.span()), type_id: *condition_type_id, kind: InvalidLoopTargetKind::While });
                 }
 
                 self.begin_child_scope("while_loop_block", ScopeKind::Loop);
                 let condition_var_id = if let Some(condition_binding) = condition_binding {
-                    let condition_type_id = self.type_is_option(condition_type_id).unwrap_or(PRELUDE_BOOL_TYPE_ID);
+                    let condition_type_id = self.project.type_is_option(condition_type_id).unwrap_or(PRELUDE_BOOL_TYPE_ID);
 
                     let var_name = Token::get_ident_name(&condition_binding);
                     let span = self.make_span(&condition_binding.get_range());
@@ -3771,7 +3805,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     let orig_span = self.make_span(&last_if_block_expr.span());
                                     Err(TypeError::BranchTypeMismatch { span, orig_span, expected: *hint_type_id, received: node_type_id })
                                 } else if !is_statement {
-                                    let hint_type_id = self.type_is_option(hint_type_id).unwrap_or(*hint_type_id);
+                                    let hint_type_id = self.project.type_is_option(hint_type_id).unwrap_or(*hint_type_id);
                                     Err(TypeError::TypeMismatch { span, expected: vec![hint_type_id], received: node_type_id })
                                 } else { unreachable!() };
                             };
@@ -3801,6 +3835,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         } else {
             type_id.unwrap_or(PRELUDE_UNIT_TYPE_ID)
         };
+
+        if let Some(node) = typed_if_block.last_mut() {
+            node.set_resolved_type_id(type_id);
+        }
+        if let Some(node) = typed_else_block.last_mut() {
+            node.set_resolved_type_id(type_id);
+        }
 
         Ok(TypedNode::If {
             if_token,
@@ -3834,14 +3875,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let mut seen_wildcard_token: Option<Token> = None;
         let mut seen_constant_values = HashMap::<TypedLiteral, Token>::new();
         let mut seen_none_token: Option<Token> = None;
-        let mut none_case_covered = self.type_is_option(&target_type_id).is_none();
+        let mut none_case_covered = self.project.type_is_option(&target_type_id).is_none();
         let mut seen_type_token: Option<Token> = None;
-        let mut type_case_covered = match self.project.get_type_by_id(&self.type_is_option(&target_type_id).unwrap_or(target_type_id)) {
+        let mut type_case_covered = match self.project.get_type_by_id(&self.project.type_is_option(&target_type_id).unwrap_or(target_type_id)) {
             Type::GenericInstance(_, _) | Type::Primitive(_) => false,
             _ => true
         };
         let mut seen_enum_variants = HashMap::<(EnumId, usize), Range>::new();
-        let mut enum_variants_covered = !matches!(self.project.get_type_by_id(&self.type_is_option(&target_type_id).unwrap_or(target_type_id)), Type::GenericEnumInstance(_, _, _));
+        let mut enum_variants_covered = !matches!(self.project.get_type_by_id(&self.project.type_is_option(&target_type_id).unwrap_or(target_type_id)), Type::GenericEnumInstance(_, _, _));
         let mut all_cases_covered = false;
 
         let mut typed_match_cases = Vec::<TypedMatchCase>::with_capacity(branches.len());
@@ -3857,11 +3898,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             let case_type_id;
             match match_type {
                 MatchCaseType::None(none_token) => {
-                    let Some(unwrapped_type) = self.type_is_option(&target_type_id) else {
+                    let Some(unwrapped_type) = self.project.type_is_option(&target_type_id) else {
                         let kind = UnreachableMatchCaseKind::NoTypeOverlap { case_type: None, target_type: target_type_id, target_span: self.make_span(&typed_target.span()) };
                         return Err(TypeError::UnreachableMatchCase { span: self.make_span(&none_token.get_range()), kind });
                     };
-                    debug_assert!(self.type_is_option(&unwrapped_type).is_none(), "A nested Option type should be fully unwrapped");
+                    debug_assert!(self.project.type_is_option(&unwrapped_type).is_none(), "A nested Option type should be fully unwrapped");
 
                     if let Some(orig_token) = seen_none_token {
                         return Err(TypeError::DuplicateMatchCase { span: self.make_span(&none_token.get_range()), orig_span: self.make_span(&orig_token.get_range()) });
@@ -3889,7 +3930,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let kind = UnreachableMatchCaseKind::NoTypeOverlap { case_type: Some(resolved_case_type_id), target_type: target_type_id, target_span: self.make_span(&typed_target.span()) };
                         return Err(TypeError::UnreachableMatchCase { span: self.make_span(&ident_token.get_range()), kind });
                     }
-                    if resolved_case_type_id == target_type_id || matches!(self.type_is_option(&target_type_id), Some(unwrapped_opt_type) if unwrapped_opt_type == resolved_case_type_id) {
+                    if resolved_case_type_id == target_type_id || matches!(self.project.type_is_option(&target_type_id), Some(unwrapped_opt_type) if unwrapped_opt_type == resolved_case_type_id) {
                         type_case_covered = true;
                     }
 
@@ -3911,7 +3952,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let Some((variant_idx, _variant)) = enum_.variants.iter().enumerate().find(|(_, v)| v.name == variant_name) else {
                         return Err(TypeError::UnknownMember { span: self.make_span(&variant_name_token.get_range()), field_name: variant_name, type_id: enum_.self_type_id });
                     };
-                    let inner_type_id = self.type_is_option(&target_type_id).unwrap_or(target_type_id);
+                    let inner_type_id = self.project.type_is_option(&target_type_id).unwrap_or(target_type_id);
                     let target_ty = self.project.get_type_by_id(&inner_type_id);
                     let generic_ids = match target_ty {
                         Type::GenericEnumInstance(enum_id, generic_ids, _) if *enum_id == enum_.id => generic_ids,
@@ -4017,7 +4058,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                         let orig_span = self.make_span(&last_match_block_expr.span());
                                         Err(TypeError::BranchTypeMismatch { span, orig_span, expected: *hint_type_id, received: node_type_id })
                                     } else {
-                                        let hint_type_id = self.type_is_option(hint_type_id).unwrap_or(*hint_type_id);
+                                        let hint_type_id = self.project.type_is_option(hint_type_id).unwrap_or(*hint_type_id);
                                         Err(TypeError::TypeMismatch { span, expected: vec![hint_type_id], received: node_type_id })
                                     };
                                 };
@@ -4075,7 +4116,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             BindingPattern::Tuple(_, patterns) => {
                 let mut err_kind = None;
                 let mut was_option = false;
-                let type_id = if let Some(wrapped_type_id) = self.type_is_option(&type_id) {
+                let type_id = if let Some(wrapped_type_id) = self.project.type_is_option(&type_id) {
                     was_option = true;
                     wrapped_type_id
                 } else {
@@ -4107,7 +4148,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             BindingPattern::Array(_, patterns, pattern_is_string) => {
                 let mut err_kind = None;
                 let mut inner_type_id = None;
-                let type_id = if let Some(wrapped_type_id) = self.type_is_option(&type_id) {
+                let type_id = if let Some(wrapped_type_id) = self.project.type_is_option(&type_id) {
                     wrapped_type_id
                 } else {
                     *type_id
@@ -4161,10 +4202,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     fn typecheck_expression(&mut self, node: AstNode, type_hint: Option<TypeId>) -> Result<TypedNode, TypeError> {
         match node {
             AstNode::Literal(token, n) => match n {
-                AstLiteralNode::IntLiteral(i) => Ok(TypedNode::Literal { token, value: TypedLiteral::Int(i), type_id: PRELUDE_INT_TYPE_ID }),
-                AstLiteralNode::FloatLiteral(f) => Ok(TypedNode::Literal { token, value: TypedLiteral::Float(f), type_id: PRELUDE_FLOAT_TYPE_ID }),
-                AstLiteralNode::BoolLiteral(b) => Ok(TypedNode::Literal { token, value: TypedLiteral::Bool(b), type_id: PRELUDE_BOOL_TYPE_ID }),
-                AstLiteralNode::StringLiteral(s) => Ok(TypedNode::Literal { token, value: TypedLiteral::String(s), type_id: PRELUDE_STRING_TYPE_ID })
+                AstLiteralNode::IntLiteral(i) => Ok(TypedNode::Literal { token, value: TypedLiteral::Int(i), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: type_hint.unwrap_or(PRELUDE_INT_TYPE_ID) }),
+                AstLiteralNode::FloatLiteral(f) => Ok(TypedNode::Literal { token, value: TypedLiteral::Float(f), type_id: PRELUDE_FLOAT_TYPE_ID, resolved_type_id: type_hint.unwrap_or(PRELUDE_FLOAT_TYPE_ID) }),
+                AstLiteralNode::BoolLiteral(b) => Ok(TypedNode::Literal { token, value: TypedLiteral::Bool(b), type_id: PRELUDE_BOOL_TYPE_ID, resolved_type_id: type_hint.unwrap_or(PRELUDE_BOOL_TYPE_ID) }),
+                AstLiteralNode::StringLiteral(s) => Ok(TypedNode::Literal { token, value: TypedLiteral::String(s), type_id: PRELUDE_STRING_TYPE_ID, resolved_type_id: type_hint.unwrap_or(PRELUDE_STRING_TYPE_ID) })
             }
             AstNode::Unary(token, n) => {
                 let UnaryNode { op, expr } = n;
@@ -4237,7 +4278,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         }
                     }
                     BinaryOp::Coalesce => {
-                        let Some(mut inner) = self.type_is_option(&l_type_id) else {
+                        let Some(mut inner) = self.project.type_is_option(&l_type_id) else {
                             // SHORT-CIRCUIT: If the LHS is not an Option, we can just return the LHS here.
                             return Ok(typed_left);
                         };
@@ -4275,7 +4316,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::AndEq | BinaryOp::OrEq | BinaryOp::CoalesceEq => unreachable!()
                 };
 
-                Ok(TypedNode::Binary { op, left: Box::new(typed_left), right: Box::new(typed_right), type_id })
+                Ok(TypedNode::Binary { op, left: Box::new(typed_left), right: Box::new(typed_right), type_id, resolved_type_id: type_id })
             }
             AstNode::Grouped(token, n) => {
                 let typed_expr = self.typecheck_expression(*n.expr, type_hint)?;
@@ -4322,7 +4363,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     Some(inner_type_id) => self.add_or_find_type_id(self.project.array_type(inner_type_id)),
                 };
 
-                Ok(TypedNode::Array { token, items: typed_items, type_id })
+                Ok(TypedNode::Array { token, items: typed_items, type_id, resolved_type_id: type_hint.unwrap_or(type_id) })
             }
             AstNode::Set(token, n) => {
                 let mut inner_type_id = None;
@@ -4475,7 +4516,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         type_id = self.substitute_generics(&type_hint, &type_id);
                     }
 
-                    return Ok(TypedNode::NoneValue { token, type_id });
+                    return Ok(TypedNode::NoneValue { token, type_id, resolved_type_id: type_id });
                 }
 
                 let name = Token::get_ident_name(&token);
@@ -4517,7 +4558,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 }
 
-                Ok(TypedNode::Identifier { token, var_id, type_arg_ids, type_id: var_type_id })
+                let resolved_type_id = type_hint.unwrap_or(var_type_id);
+                Ok(TypedNode::Identifier { token, var_id, type_arg_ids, type_id: var_type_id, resolved_type_id })
             }
             AstNode::Assignment(_, n) => {
                 let AssignmentNode { target, expr } = n;
@@ -4715,7 +4757,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let mut target_type_id = *typed_target.type_id();
                 let mut target_is_option_type = false;
                 if n.is_opt_safe {
-                    if let Some(inner_type_id) = self.type_is_option(&target_type_id) {
+                    if let Some(inner_type_id) = self.project.type_is_option(&target_type_id) {
                         target_type_id = inner_type_id;
                         target_is_option_type = true;
                     }
@@ -4742,7 +4784,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     };
                     let type_id = self.project.get_var_by_id(&var_id).type_id;
 
-                    return Ok(TypedNode::Identifier { token: field_ident, var_id, type_arg_ids, type_id });
+                    return Ok(TypedNode::Identifier { token: field_ident, var_id, type_arg_ids, type_id, resolved_type_id: type_id });
                 }
 
                 let mut field_data = None;
@@ -4928,7 +4970,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let mut target_type_id = *target.type_id();
                         let mut target_is_option_type = false;
                         if *is_opt_safe {
-                            if let Some(inner_type_id) = self.type_is_option(&target_type_id) {
+                            if let Some(inner_type_id) = self.project.type_is_option(&target_type_id) {
                                 target_type_id = inner_type_id;
                                 target_is_option_type = true;
                             }
@@ -5065,7 +5107,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 if let FunctionPass::Pass1 { just_saw_function_call } = &mut self.function_pass {
                     *just_saw_function_call = true;
-                    return Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: vec![], type_id: return_type_id });
+                    return Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: vec![], type_id: return_type_id, resolved_type_id: return_type_id });
                 }
 
                 if !provided_type_arg_ids.is_empty() && provided_type_arg_ids.len() != fn_generic_ids.len() {
@@ -5194,10 +5236,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         if typed_arguments[*param_idx].is_none() {
                             let start_pos = variadic_arguments.get(0).map(|a| a.span().start).unwrap_or(POSITION_BOGUS);
 
+                            let type_id = self.add_or_find_type_id(self.project.array_type(*param_type_id));
                             typed_arguments[*param_idx] = Some(TypedNode::Array {
                                 token: Token::LBrack(start_pos, false),
                                 items: variadic_arguments.drain(..).collect(),
-                                type_id: self.add_or_find_type_id(self.project.array_type(*param_type_id)),
+                                type_id,
+                                resolved_type_id: type_id,
                             })
                         }
                     } else if typed_arguments[*param_idx].is_none() && !*param_is_optional {
@@ -5215,7 +5259,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     return_type_id
                 };
 
-                Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: typed_arguments, type_id })
+                Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: typed_arguments, type_id, resolved_type_id: type_id })
             }
             AstNode::IfExpression(token, if_node) => self.typecheck_if_node(token, if_node, true, type_hint),
             AstNode::MatchExpression(token, match_node) => self.typecheck_match_node(token, match_node, true, type_hint),

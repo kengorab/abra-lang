@@ -24,3 +24,25 @@ echo<String[]>(a5)
 val a6 = [[1, 2], [3, 4], [5, 6]]
 /// Expect: [[1, 2], [3, 4], [5, 6]]
 echo<Int[][]>(a6)
+
+// Array#pop()
+val arr = [1, 2, 3]
+/// Expect: 3
+echo<Int?>(arr.pop())
+/// Expect: [1, 2]
+echo<Int[]>(arr)
+
+/// Expect: 2
+echo<Int?>(arr.pop())
+/// Expect: [1]
+echo<Int[]>(arr)
+
+/// Expect: 1
+echo<Int?>(arr.pop())
+/// Expect: []
+echo<Int[]>(arr)
+
+/// Expect: None
+echo<Int?>(arr.pop())
+/// Expect: []
+echo<Int[]>(arr)

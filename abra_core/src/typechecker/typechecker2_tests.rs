@@ -106,6 +106,8 @@ fn test_type_assignability() {
         ("val x: Bool[] = [true]", true),
         ("val x: Bool[] = [None]", false),
         ("val x: Bool?[] = [None]", true),
+        ("val x: Bool[]? = None", true),
+        ("val x: Bool[]? = [true]", true),
         ("val x: Map<Int, String> = { 1: \"asdf\" }", true),
         ("val x: Map<Int, String> = { 1: None }", false),
         (
@@ -734,10 +736,10 @@ fn typecheck_literal() {
     assert!(module.type_ids.is_empty());
 
     let expected: Vec<TypedNode> = vec![
-        TypedNode::Literal { token: Token::Int(Position::new(1, 1), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID },
-        TypedNode::Literal { token: Token::Float(Position::new(1, 3), 2.34), value: TypedLiteral::Float(2.34), type_id: PRELUDE_FLOAT_TYPE_ID },
-        TypedNode::Literal { token: Token::Bool(Position::new(2, 1), true), value: TypedLiteral::Bool(true), type_id: PRELUDE_BOOL_TYPE_ID },
-        TypedNode::Literal { token: Token::String(Position::new(2, 6), "hello".to_string()), value: TypedLiteral::String("hello".to_string()), type_id: PRELUDE_STRING_TYPE_ID },
+        TypedNode::Literal { token: Token::Int(Position::new(1, 1), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_INT_TYPE_ID },
+        TypedNode::Literal { token: Token::Float(Position::new(1, 3), 2.34), value: TypedLiteral::Float(2.34), type_id: PRELUDE_FLOAT_TYPE_ID, resolved_type_id: PRELUDE_FLOAT_TYPE_ID },
+        TypedNode::Literal { token: Token::Bool(Position::new(2, 1), true), value: TypedLiteral::Bool(true), type_id: PRELUDE_BOOL_TYPE_ID, resolved_type_id: PRELUDE_BOOL_TYPE_ID },
+        TypedNode::Literal { token: Token::String(Position::new(2, 6), "hello".to_string()), value: TypedLiteral::String("hello".to_string()), type_id: PRELUDE_STRING_TYPE_ID, resolved_type_id: PRELUDE_STRING_TYPE_ID },
     ];
     assert_eq!(expected, module.code);
 }
@@ -750,7 +752,7 @@ fn typecheck_unary() {
         TypedNode::Unary {
             token: Token::Minus(Position::new(1, 1)),
             op: UnaryOp::Minus,
-            expr: Box::new(TypedNode::Literal { token: Token::Int(Position::new(1, 2), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID }),
+            expr: Box::new(TypedNode::Literal { token: Token::Int(Position::new(1, 2), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_INT_TYPE_ID }),
         },
     ];
     assert_eq!(expected, module.code);
@@ -761,12 +763,12 @@ fn typecheck_unary() {
         TypedNode::Unary {
             token: Token::Minus(Position::new(1, 1)),
             op: UnaryOp::Minus,
-            expr: Box::new(TypedNode::Literal { token: Token::Float(Position::new(1, 2), 2.34), value: TypedLiteral::Float(2.34), type_id: PRELUDE_FLOAT_TYPE_ID }),
+            expr: Box::new(TypedNode::Literal { token: Token::Float(Position::new(1, 2), 2.34), value: TypedLiteral::Float(2.34), type_id: PRELUDE_FLOAT_TYPE_ID, resolved_type_id: PRELUDE_FLOAT_TYPE_ID }),
         },
         TypedNode::Unary {
             token: Token::Bang(Position::new(2, 1)),
             op: UnaryOp::Negate,
-            expr: Box::new(TypedNode::Literal { token: Token::Bool(Position::new(2, 2), true), value: TypedLiteral::Bool(true), type_id: PRELUDE_BOOL_TYPE_ID }),
+            expr: Box::new(TypedNode::Literal { token: Token::Bool(Position::new(2, 2), true), value: TypedLiteral::Bool(true), type_id: PRELUDE_BOOL_TYPE_ID, resolved_type_id: PRELUDE_BOOL_TYPE_ID }),
         },
     ];
     assert_eq!(expected, module.code);
@@ -1371,11 +1373,15 @@ fn typecheck_for_loop() {
         binding: BindingPattern::Variable(Token::Ident(Position::new(2, 5), "i".to_string())),
         binding_var_ids: vec![VarId(ScopeId(ModuleId(1), 1), 0)],
         index_var_id: None,
-        iterator: Box::new(TypedNode::Identifier {
-            token: Token::Ident(Position::new(2, 10), "arr".to_string()),
-            var_id: VarId(ScopeId(ModuleId(1), 0), 0),
-            type_arg_ids: vec![],
-            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+        iterator: Box::new({
+            let type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+            TypedNode::Identifier {
+                token: Token::Ident(Position::new(2, 10), "arr".to_string()),
+                var_id: VarId(ScopeId(ModuleId(1), 0), 0),
+                type_arg_ids: vec![],
+                type_id,
+                resolved_type_id: type_id,
+            }
         }),
         body: vec![
             TypedNode::BindingDeclaration {
@@ -1387,6 +1393,7 @@ fn typecheck_for_loop() {
                     var_id: VarId(ScopeId(ModuleId(1), 1), 0),
                     type_arg_ids: vec![],
                     type_id: PRELUDE_INT_TYPE_ID,
+                    resolved_type_id: PRELUDE_INT_TYPE_ID,
                 })),
             }
         ],
@@ -1449,6 +1456,7 @@ fn typecheck_while_loop() {
                 var_id: VarId(ScopeId(ModuleId(1), 0), 0),
                 type_arg_ids: vec![],
                 type_id: PRELUDE_BOOL_TYPE_ID,
+                resolved_type_id: PRELUDE_BOOL_TYPE_ID,
             }
         ),
         condition_var_id: Some(VarId(ScopeId(ModuleId(1), 1), 0)),
@@ -1462,6 +1470,7 @@ fn typecheck_while_loop() {
                     var_id: VarId(ScopeId(ModuleId(1), 1), 0),
                     type_arg_ids: vec![],
                     type_id: PRELUDE_BOOL_TYPE_ID,
+                    resolved_type_id: PRELUDE_BOOL_TYPE_ID,
                 })),
             }
         ],
@@ -2195,6 +2204,7 @@ fn typecheck_type_declaration() {
                     token: Token::Int(Position::new(3, 28), 12),
                     value: TypedLiteral::Int(12),
                     type_id: PRELUDE_INT_TYPE_ID,
+                    resolved_type_id: PRELUDE_INT_TYPE_ID,
                 }
             ],
             captured_vars: vec![],
@@ -2202,7 +2212,7 @@ fn typecheck_type_declaration() {
         Function {
             id: FuncId(ScopeId(ModuleId(1), 1), 1),
             fn_scope_id: ScopeId(ModuleId(1), 3),
-            decorators: vec![DecoratorInstance { name: "Dec".to_string(), args: vec![TypedNode::Literal { type_id: PRELUDE_STRING_TYPE_ID, token: Token::String(Position::new(4, 6), "foo".to_string()), value: TypedLiteral::String("foo".to_string()) }] }],
+            decorators: vec![DecoratorInstance { name: "Dec".to_string(), args: vec![TypedNode::Literal { type_id: PRELUDE_STRING_TYPE_ID, resolved_type_id: PRELUDE_STRING_TYPE_ID, token: Token::String(Position::new(4, 6), "foo".to_string()), value: TypedLiteral::String("foo".to_string()) }] }],
             name: "fooStatic".to_string(),
             generic_ids: vec![],
             kind: FunctionKind::StaticMethod(self_instance_type_id), // TODO: This isn't right, it shouldn't be the instance type
@@ -2214,6 +2224,7 @@ fn typecheck_type_declaration() {
                     token: Token::Int(Position::new(4, 37), 24),
                     value: TypedLiteral::Int(24),
                     type_id: PRELUDE_INT_TYPE_ID,
+                    resolved_type_id: PRELUDE_INT_TYPE_ID,
                 }
             ],
             captured_vars: vec![],
@@ -2298,6 +2309,7 @@ fn typecheck_type_declaration() {
                         token: Token::Int(Position::new(2, 12), 0),
                         value: TypedLiteral::Int(0),
                         type_id: PRELUDE_INT_TYPE_ID,
+                        resolved_type_id: PRELUDE_INT_TYPE_ID,
                     }),
                 },
             ],
@@ -2583,6 +2595,7 @@ fn typecheck_function_declaration() {
                     token: Token::Int(Position::new(1, 19), 24),
                     value: TypedLiteral::Int(24),
                     type_id: PRELUDE_INT_TYPE_ID,
+                    resolved_type_id: PRELUDE_INT_TYPE_ID,
                 }
             ],
             captured_vars: vec![],
@@ -2634,6 +2647,7 @@ fn typecheck_function_declaration() {
                             var_id: VarId(ScopeId(ModuleId(1), 1), 0),
                             type_arg_ids: vec![],
                             type_id: PRELUDE_BOOL_TYPE_ID,
+                            resolved_type_id: PRELUDE_BOOL_TYPE_ID,
                         }),
                     })),
                 },
@@ -2671,6 +2685,7 @@ fn typecheck_function_declaration() {
                     token: Token::LBrack(Position::new(1, 30), false),
                     items: vec![],
                     type_id: bool_bool_tuple_array_type_id,
+                    resolved_type_id: bool_bool_tuple_array_type_id,
                 },
             ],
             captured_vars: vec![],
@@ -2701,6 +2716,7 @@ fn typecheck_function_declaration() {
                     var_id: VarId(ScopeId(ModuleId(1), 0), 1),
                     type_arg_ids: vec![],
                     type_id: PRELUDE_INT_TYPE_ID,
+                    resolved_type_id: PRELUDE_INT_TYPE_ID,
                 }
             ],
             captured_vars: vec![
@@ -2762,17 +2778,22 @@ fn typecheck_function_declaration() {
             return_type_id: project.find_type_id(&fn_scope_id, &project.array_type(t_type_id)).unwrap(),
             defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
             body: vec![
-                TypedNode::Array {
-                    token: Token::LBrack(Position::new(1, 26), false),
-                    items: vec![
-                        TypedNode::Identifier {
-                            token: Token::Ident(Position::new(1, 27), "a".to_string()),
-                            var_id: VarId(fn_scope_id, 0),
-                            type_arg_ids: vec![],
-                            type_id: t_type_id,
-                        }
-                    ],
-                    type_id: project.find_type_id(&fn_scope_id, &project.array_type(t_type_id)).unwrap(),
+                {
+                    let array_type_id = project.find_type_id(&fn_scope_id, &project.array_type(t_type_id)).unwrap();
+                    TypedNode::Array {
+                        token: Token::LBrack(Position::new(1, 26), false),
+                        items: vec![
+                            TypedNode::Identifier {
+                                token: Token::Ident(Position::new(1, 27), "a".to_string()),
+                                var_id: VarId(fn_scope_id, 0),
+                                type_arg_ids: vec![],
+                                type_id: t_type_id,
+                                resolved_type_id: t_type_id,
+                            }
+                        ],
+                        type_id: array_type_id,
+                        resolved_type_id: array_type_id,
+                    }
                 }
             ],
             captured_vars: vec![],
@@ -3162,11 +3183,8 @@ fn typecheck_invocation() {
     let expected = vec![
         TypedNode::FuncDeclaration(FuncId(ScopeId(ModuleId(1), 0), 0)),
         TypedNode::Invocation {
-            target: Box::new(TypedNode::Identifier {
-                token: Token::Ident(Position::new(2, 1), "foo".to_string()),
-                var_id: VarId(ScopeId(ModuleId(1), 0), 0),
-                type_arg_ids: vec![],
-                type_id: project.find_type_id(
+            target: Box::new({
+                let type_id = project.find_type_id(
                     &ScopeId(ModuleId(1), 1),
                     &project.function_type(
                         vec![
@@ -3178,22 +3196,36 @@ fn typecheck_invocation() {
                         false,
                         PRELUDE_INT_TYPE_ID,
                     ),
-                ).unwrap(),
+                ).unwrap();
+                TypedNode::Identifier {
+                    token: Token::Ident(Position::new(2, 1), "foo".to_string()),
+                    var_id: VarId(ScopeId(ModuleId(1), 0), 0),
+                    type_arg_ids: vec![],
+                    type_id,
+                    resolved_type_id: type_id,
+                }
             }),
             arguments: vec![
-                Some(TypedNode::Array {
-                    token: Token::LBrack(Position::new(2, 8), false),
-                    items: vec![],
-                    type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+                Some({
+                    let type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+                    let resolved_type_id = project.find_type_id(&ScopeId(ModuleId(1), 1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+                    TypedNode::Array {
+                        token: Token::LBrack(Position::new(2, 8), false),
+                        items: vec![],
+                        type_id,
+                        resolved_type_id,
+                    }
                 }),
                 None,
                 Some(TypedNode::Literal {
                     token: Token::Int(Position::new(2, 15), 6),
                     value: TypedLiteral::Int(6),
                     type_id: PRELUDE_INT_TYPE_ID,
+                    resolved_type_id: PRELUDE_INT_TYPE_ID,
                 }),
             ],
             type_id: PRELUDE_INT_TYPE_ID,
+            resolved_type_id: PRELUDE_INT_TYPE_ID,
         },
     ];
     assert_eq!(expected, module.code);
@@ -3274,11 +3306,15 @@ fn typecheck_invocation() {
     // Invoking variadic functions
     // The interesting thing here is in the arguments, so let's pull out the function declaration to cut down on noise
     let foo_fn = "func foo(a: Int, *args: Int[]) {}";
-    let foo_fn_ident = |project: &Project| TypedNode::Identifier {
-        token: Token::Ident(Position::new(2, 1), "foo".to_string()),
-        var_id: VarId(ScopeId(ModuleId(1), 0), 0),
-        type_arg_ids: vec![],
-        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.function_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID], 1, true, PRELUDE_UNIT_TYPE_ID)).unwrap(),
+    let foo_fn_ident = |project: &Project| {
+        let type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.function_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID], 1, true, PRELUDE_UNIT_TYPE_ID)).unwrap();
+        TypedNode::Identifier {
+            token: Token::Ident(Position::new(2, 1), "foo".to_string()),
+            var_id: VarId(ScopeId(ModuleId(1), 0), 0),
+            type_arg_ids: vec![],
+            type_id,
+            resolved_type_id: type_id,
+        }
     };
 
     let project = test_typecheck(&format!("{}\nfoo(1)", &foo_fn)).unwrap();
@@ -3286,14 +3322,19 @@ fn typecheck_invocation() {
     let expected = TypedNode::Invocation {
         target: Box::new(foo_fn_ident(&project)),
         arguments: vec![
-            Some(TypedNode::Literal { token: Token::Int(Position::new(2, 5), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID }),
-            Some(TypedNode::Array {
-                token: Token::LBrack(POSITION_BOGUS, false),
-                items: vec![],
-                type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+            Some(TypedNode::Literal { token: Token::Int(Position::new(2, 5), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_INT_TYPE_ID }),
+            Some({
+                let type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+                TypedNode::Array {
+                    token: Token::LBrack(POSITION_BOGUS, false),
+                    items: vec![],
+                    type_id,
+                    resolved_type_id: type_id,
+                }
             }),
         ],
         type_id: PRELUDE_UNIT_TYPE_ID,
+        resolved_type_id: PRELUDE_UNIT_TYPE_ID,
     };
     assert_eq!(&expected, &module.code[1]);
     let project = test_typecheck(&format!("{}\nfoo(1, 2)", &foo_fn)).unwrap();
@@ -3301,16 +3342,21 @@ fn typecheck_invocation() {
     let expected = TypedNode::Invocation {
         target: Box::new(foo_fn_ident(&project)),
         arguments: vec![
-            Some(TypedNode::Literal { token: Token::Int(Position::new(2, 5), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID }),
-            Some(TypedNode::Array {
-                token: Token::LBrack(Position::new(2, 8), false),
-                items: vec![
-                    TypedNode::Literal { token: Token::Int(Position::new(2, 8), 2), value: TypedLiteral::Int(2), type_id: PRELUDE_INT_TYPE_ID }
-                ],
-                type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+            Some(TypedNode::Literal { token: Token::Int(Position::new(2, 5), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_INT_TYPE_ID }),
+            Some({
+                let type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+                TypedNode::Array {
+                    token: Token::LBrack(Position::new(2, 8), false),
+                    items: vec![
+                        TypedNode::Literal { token: Token::Int(Position::new(2, 8), 2), value: TypedLiteral::Int(2), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_INT_TYPE_ID }
+                    ],
+                    type_id,
+                    resolved_type_id: type_id,
+                }
             }),
         ],
         type_id: PRELUDE_UNIT_TYPE_ID,
+        resolved_type_id: PRELUDE_UNIT_TYPE_ID,
     };
     assert_eq!(&expected, &module.code[1]);
     let project = test_typecheck(&format!("{}\nfoo(1, 2, 3)", &foo_fn)).unwrap();
@@ -3318,17 +3364,22 @@ fn typecheck_invocation() {
     let expected = TypedNode::Invocation {
         target: Box::new(foo_fn_ident(&project)),
         arguments: vec![
-            Some(TypedNode::Literal { token: Token::Int(Position::new(2, 5), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID }),
-            Some(TypedNode::Array {
-                token: Token::LBrack(Position::new(2, 8), false),
-                items: vec![
-                    TypedNode::Literal { token: Token::Int(Position::new(2, 8), 2), value: TypedLiteral::Int(2), type_id: PRELUDE_INT_TYPE_ID },
-                    TypedNode::Literal { token: Token::Int(Position::new(2, 11), 3), value: TypedLiteral::Int(3), type_id: PRELUDE_INT_TYPE_ID },
-                ],
-                type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+            Some(TypedNode::Literal { token: Token::Int(Position::new(2, 5), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_INT_TYPE_ID }),
+            Some({
+                let type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+                TypedNode::Array {
+                    token: Token::LBrack(Position::new(2, 8), false),
+                    items: vec![
+                        TypedNode::Literal { token: Token::Int(Position::new(2, 8), 2), value: TypedLiteral::Int(2), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_INT_TYPE_ID },
+                        TypedNode::Literal { token: Token::Int(Position::new(2, 11), 3), value: TypedLiteral::Int(3), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_INT_TYPE_ID },
+                    ],
+                    type_id,
+                    resolved_type_id: type_id,
+                }
             }),
         ],
         type_id: PRELUDE_UNIT_TYPE_ID,
+        resolved_type_id: PRELUDE_UNIT_TYPE_ID,
     };
     assert_eq!(&expected, &module.code[1]);
     // When an array literal is passed
@@ -3337,17 +3388,22 @@ fn typecheck_invocation() {
     let expected = TypedNode::Invocation {
         target: Box::new(foo_fn_ident(&project)),
         arguments: vec![
-            Some(TypedNode::Literal { token: Token::Int(Position::new(2, 22), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID }),
-            Some(TypedNode::Array {
-                token: Token::LBrack(Position::new(2, 11), false),
-                items: vec![
-                    TypedNode::Literal { token: Token::Int(Position::new(2, 12), 2), value: TypedLiteral::Int(2), type_id: PRELUDE_INT_TYPE_ID },
-                    TypedNode::Literal { token: Token::Int(Position::new(2, 15), 3), value: TypedLiteral::Int(3), type_id: PRELUDE_INT_TYPE_ID },
-                ],
-                type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+            Some(TypedNode::Literal { token: Token::Int(Position::new(2, 22), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_INT_TYPE_ID }),
+            Some({
+                let type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+                TypedNode::Array {
+                    token: Token::LBrack(Position::new(2, 11), false),
+                    items: vec![
+                        TypedNode::Literal { token: Token::Int(Position::new(2, 12), 2), value: TypedLiteral::Int(2), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_INT_TYPE_ID },
+                        TypedNode::Literal { token: Token::Int(Position::new(2, 15), 3), value: TypedLiteral::Int(3), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_INT_TYPE_ID },
+                    ],
+                    type_id,
+                    resolved_type_id: type_id,
+                }
             }),
         ],
         type_id: PRELUDE_UNIT_TYPE_ID,
+        resolved_type_id: PRELUDE_UNIT_TYPE_ID,
     };
     assert_eq!(&expected, &module.code[1]);
     // When an array is passed
@@ -3840,25 +3896,32 @@ fn typecheck_invocation_instantiation() {
     let module = &project.modules[1];
     let struct_ = &module.structs[0];
     let expected = TypedNode::Invocation {
-        target: Box::new(TypedNode::Identifier {
-            token: Token::Ident(Position::new(2, 1), "Foo".to_string()),
-            var_id: VarId(ScopeId(ModuleId(1), 0), 0),
-            type_arg_ids: vec![],
-            type_id: project.find_type_id_by(&ScopeId(ModuleId(1), 0), |ty| if let Type::Type(TypeKind::Struct(s_id)) = ty { *s_id == struct_.id } else { false }).unwrap(),
+        target: Box::new({
+            let type_id = project.find_type_id_by(&ScopeId(ModuleId(1), 0), |ty| if let Type::Type(TypeKind::Struct(s_id)) = ty { *s_id == struct_.id } else { false }).unwrap();
+            TypedNode::Identifier {
+                token: Token::Ident(Position::new(2, 1), "Foo".to_string()),
+                var_id: VarId(ScopeId(ModuleId(1), 0), 0),
+                type_arg_ids: vec![],
+                type_id,
+                resolved_type_id: type_id,
+            }
         }),
         arguments: vec![
             Some(TypedNode::Literal {
                 token: Token::Int(Position::new(2, 8), 12),
                 value: TypedLiteral::Int(12),
                 type_id: PRELUDE_INT_TYPE_ID,
+                resolved_type_id: PRELUDE_INT_TYPE_ID,
             }),
             Some(TypedNode::Literal {
                 token: Token::Bool(Position::new(2, 15), true),
                 value: TypedLiteral::Bool(true),
                 type_id: PRELUDE_BOOL_TYPE_ID,
+                resolved_type_id: PRELUDE_BOOL_TYPE_ID,
             }),
         ],
         type_id: struct_.self_type_id,
+        resolved_type_id: struct_.self_type_id,
     };
     assert_eq!(expected, module.code[1]);
 
@@ -3908,21 +3971,27 @@ fn typecheck_invocation_instantiation() {
     let module = &project.modules[1];
     let struct_ = &module.structs[0];
     let expected = TypedNode::Invocation {
-        target: Box::new(TypedNode::Identifier {
-            token: Token::Ident(Position::new(2, 1), "Foo".to_string()),
-            var_id: VarId(ScopeId(ModuleId(1), 0), 0),
-            type_arg_ids: vec![],
-            type_id: project.find_type_id_by(&ScopeId(ModuleId(1), 0), |ty| if let Type::Type(TypeKind::Struct(s_id)) = ty { *s_id == struct_.id } else { false }).unwrap(),
+        target: Box::new({
+            let type_id = project.find_type_id_by(&ScopeId(ModuleId(1), 0), |ty| if let Type::Type(TypeKind::Struct(s_id)) = ty { *s_id == struct_.id } else { false }).unwrap();
+            TypedNode::Identifier {
+                token: Token::Ident(Position::new(2, 1), "Foo".to_string()),
+                var_id: VarId(ScopeId(ModuleId(1), 0), 0),
+                type_arg_ids: vec![],
+                type_id,
+                resolved_type_id: type_id,
+            }
         }),
         arguments: vec![
             Some(TypedNode::Literal {
                 token: Token::Int(Position::new(2, 8), 24),
                 value: TypedLiteral::Int(24),
                 type_id: PRELUDE_INT_TYPE_ID,
+                resolved_type_id: PRELUDE_INT_TYPE_ID,
             }),
             None,
         ],
         type_id: struct_.self_type_id,
+        resolved_type_id: struct_.self_type_id,
     };
     assert_eq!(expected, module.code[1]);
 }
@@ -4000,11 +4069,15 @@ fn typecheck_accessor() {
     let project = test_typecheck("val a = [1, 2, 3]\na.length").unwrap();
     let module = &project.modules[1];
     let expected = TypedNode::Accessor {
-        target: Box::new(TypedNode::Identifier {
-            token: Token::Ident(Position::new(2, 1), "a".to_string()),
-            var_id: VarId(ScopeId(ModuleId(1), 0), 0),
-            type_arg_ids: vec![],
-            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+        target: Box::new({
+            let type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+            TypedNode::Identifier {
+                token: Token::Ident(Position::new(2, 1), "a".to_string()),
+                var_id: VarId(ScopeId(ModuleId(1), 0), 0),
+                type_arg_ids: vec![],
+                type_id,
+                resolved_type_id: type_id,
+            }
         }),
         kind: AccessorKind::Field,
         is_opt_safe: false,
@@ -4024,11 +4097,15 @@ fn typecheck_accessor() {
     let module = &project.modules[1];
     let struct_ = &module.structs[0];
     let expected = TypedNode::Accessor {
-        target: Box::new(TypedNode::Identifier {
-            token: Token::Ident(Position::new(3, 1), "f".to_string()),
-            var_id: VarId(ScopeId(ModuleId(1), 0), 1),
-            type_arg_ids: vec![],
-            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_.id, vec![])).unwrap(),
+        target: Box::new({
+            let type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_.id, vec![])).unwrap();
+            TypedNode::Identifier {
+                token: Token::Ident(Position::new(3, 1), "f".to_string()),
+                var_id: VarId(ScopeId(ModuleId(1), 0), 1),
+                type_arg_ids: vec![],
+                type_id,
+                resolved_type_id: type_id,
+            }
         }),
         kind: AccessorKind::Field,
         is_opt_safe: false,
@@ -4051,11 +4128,15 @@ fn typecheck_accessor() {
     let module = &project.modules[1];
     let struct_ = &module.structs[0];
     let expected = TypedNode::Accessor {
-        target: Box::new(TypedNode::Identifier {
-            token: Token::Ident(Position::new(6, 1), "f".to_string()),
-            var_id: VarId(ScopeId(ModuleId(1), 0), 1),
-            type_arg_ids: vec![],
-            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_.id, vec![])).unwrap(),
+        target: Box::new({
+            let type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_.id, vec![])).unwrap();
+            TypedNode::Identifier {
+                token: Token::Ident(Position::new(6, 1), "f".to_string()),
+                var_id: VarId(ScopeId(ModuleId(1), 0), 1),
+                type_arg_ids: vec![],
+                type_id,
+                resolved_type_id: type_id,
+            }
         }),
         kind: AccessorKind::Method,
         is_opt_safe: false,
@@ -4388,8 +4469,9 @@ fn typecheck_assignment() {
         type_id: PRELUDE_INT_TYPE_ID,
         expr: Box::new(TypedNode::Literal {
             token: Token::Int(Position::new(2, 5), 34),
-            type_id: PRELUDE_INT_TYPE_ID,
             value: TypedLiteral::Int(34),
+            type_id: PRELUDE_INT_TYPE_ID,
+            resolved_type_id: PRELUDE_INT_TYPE_ID,
         }),
     };
     assert_eq!(&expected, node);
@@ -4411,6 +4493,7 @@ fn typecheck_assignment() {
                 var_id: VarId(ScopeId(ModuleId(1), 0), 1),
                 type_arg_ids: vec![],
                 type_id: foo_type_id,
+                resolved_type_id: foo_type_id,
             }),
             kind: AccessorKind::Field,
             member_idx: 0,
@@ -4418,8 +4501,9 @@ fn typecheck_assignment() {
         type_id: PRELUDE_INT_TYPE_ID,
         expr: Box::new(TypedNode::Literal {
             token: Token::Int(Position::new(3, 9), 24),
-            type_id: PRELUDE_INT_TYPE_ID,
             value: TypedLiteral::Int(24),
+            type_id: PRELUDE_INT_TYPE_ID,
+            resolved_type_id: PRELUDE_INT_TYPE_ID,
         }),
     };
     assert_eq!(&expected, node);
@@ -4608,10 +4692,11 @@ fn typecheck_if_statement() {
             token: Token::Bool(Position::new(1, 4), true),
             value: TypedLiteral::Bool(true),
             type_id: PRELUDE_BOOL_TYPE_ID,
+            resolved_type_id: PRELUDE_BOOL_TYPE_ID,
         }),
         condition_binding: None,
         if_block: vec![
-            TypedNode::Literal { token: Token::Int(Position::new(1, 11), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID }
+            TypedNode::Literal { token: Token::Int(Position::new(1, 11), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_UNIT_TYPE_ID }
         ],
         else_block: vec![],
         is_statement: true,
@@ -4627,6 +4712,7 @@ fn typecheck_if_statement() {
             token: Token::Bool(Position::new(1, 4), true),
             value: TypedLiteral::Bool(true),
             type_id: PRELUDE_BOOL_TYPE_ID,
+            resolved_type_id: PRELUDE_BOOL_TYPE_ID,
         }),
         condition_binding: Some(BindingPattern::Variable(Token::Ident(Position::new(1, 10), "v".to_string()))),
         if_block: vec![
@@ -4635,6 +4721,7 @@ fn typecheck_if_statement() {
                 var_id: VarId(ScopeId(ModuleId(1), 1), 0),
                 type_arg_ids: vec![],
                 type_id: PRELUDE_BOOL_TYPE_ID,
+                resolved_type_id: PRELUDE_UNIT_TYPE_ID,
             }
         ],
         else_block: vec![],
@@ -4651,13 +4738,14 @@ fn typecheck_if_statement() {
             token: Token::Bool(Position::new(1, 4), true),
             value: TypedLiteral::Bool(true),
             type_id: PRELUDE_BOOL_TYPE_ID,
+            resolved_type_id: PRELUDE_BOOL_TYPE_ID,
         }),
         condition_binding: None,
         if_block: vec![
-            TypedNode::Literal { token: Token::Int(Position::new(1, 11), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID }
+            TypedNode::Literal { token: Token::Int(Position::new(1, 11), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_UNIT_TYPE_ID }
         ],
         else_block: vec![
-            TypedNode::Literal { token: Token::Bool(Position::new(1, 22), false), value: TypedLiteral::Bool(false), type_id: PRELUDE_BOOL_TYPE_ID }
+            TypedNode::Literal { token: Token::Bool(Position::new(1, 22), false), value: TypedLiteral::Bool(false), type_id: PRELUDE_BOOL_TYPE_ID, resolved_type_id: PRELUDE_UNIT_TYPE_ID }
         ],
         is_statement: true,
         type_id: PRELUDE_UNIT_TYPE_ID,

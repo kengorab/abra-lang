@@ -1,31 +1,12 @@
-// // A value of an optional (nullable) type must be a 64-bit value. The value of None is 0x8000000000000000.
-// // If underlying type is a pointer (object), use pointer tag to denote None-ness by setting lowest bit to 1
-// val s: String = "abc"   // 0x0000600001AD4040 (ordinary String value)
-// val s: String? = "abc"  // 0x0000600001AD4040 <--- highest bit is set to 0
-// val s: String? = None   // 0x8000000000000000 <--- highest bit is set to 1 to denote `None`
-//
-// // If type is a primitive then we need to do some things differently.
-// // If value is Int (32-bit):
-// val i: Int = 123        // 0x0000007B (ordinary Int (32-bit) value)
-// val i: Int? = 123       // 0x000000000000007B <--- 32-bit value extended to 64-bits, highest bit 0
-// val i: Int? = None      // 0x8000000000000000 <--- 32-bit value extended to 64-bits, highest bit 1
-//
-// // If value is Float, we can use NaN boxing to encode a None value (alongside NaN, and +-Inf)
-// // If value is Bool (1-bit), we behave like Int - extend to 64 bits, set top bit to 1 if None
-
 // TODO: This shouldn't stackoverflow
 //echo<String>([].toString())
 
-//val arr = [[1, 2]]
-//echo<Int[][]>(arr)
+//val a = 123
+//val x: Int? = a
+//echo<Int?>(x)
 
-//val a5 = ["ab"]
-//echo<String[]>(a5)
-
-//var a = 1
-//val b = 1
-//a += b + 17
-//echo<Int>(a)
-
-enum Foo<T> { Bar, Baz }
-val f = Foo.Bar
+val x = if false { None } else {
+  val a = 1 + 2
+  a
+}
+echo<Int?>(x)

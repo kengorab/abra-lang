@@ -144,7 +144,15 @@ type Array<T> {
     self.length += 1
   }
 
-  @Stub func pop(self): T?
+  func pop(self): T? {
+    if self.length == 0 {
+      None
+    } else {
+      self.length -= 1
+      self._buffer.offset(self.length).load()
+    }
+  }
+
   @Stub func popFront(self): T?
   @Stub func splitAt(self, index: Int): (T[], T[])
   @Stub func concat(self, other: T[]): T[]

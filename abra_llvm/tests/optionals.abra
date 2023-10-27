@@ -1,0 +1,18 @@
+func f1(): Bool?[] = [None, true, false]
+/// Expect: [None, true, false]
+echo<Bool?[]>(f1())
+
+func f2(): String?[] = if true { ["one", None, "two"] } else []
+/// Expect: [one, None, two]
+echo<String?[]>(f2())
+
+val arr1: Int?[] = [1, None, 2, 3]
+/// Expect: [1, None, 2, 3]
+echo<Int?[]>(arr1)
+
+val arr2: Int[]? = [1, 2, 3]
+/// Expect: [1, 2, 3]
+echo<Int[]?>(arr2)
+val arr3: Int[]? = None
+/// Expect: None
+echo<Int[]?>(arr3)
