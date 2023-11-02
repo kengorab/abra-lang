@@ -1576,7 +1576,9 @@ impl Parser {
             self.tokens.advance_cursor();
             loop {
                 if self.peek().is_none() {
-                    return Err(self.unexpected_eof());
+                    types.clear();
+                    self.tokens.reset_cursor();
+                    break;
                 }
 
                 if let Some(Token::GT(_)) = self.peek() {
@@ -1590,6 +1592,7 @@ impl Parser {
                 let type_ident_res = self.parse_type_identifier(false);
                 match type_ident_res {
                     Err(_) => {
+                        types.clear();
                         self.tokens.reset_cursor();
                         break;
                     }
@@ -1604,6 +1607,7 @@ impl Parser {
             if let Some(Token::LParen(_, _)) = self.peek() {
                 self.tokens.truncate_iterator_to_cursor();
             } else {
+                types.clear();
                 self.tokens.reset_cursor();
             }
         }

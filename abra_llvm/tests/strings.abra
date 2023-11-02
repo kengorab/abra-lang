@@ -1,5 +1,5 @@
 /// Expect: hello
-echo<String>("hello")
+println("hello")
 
 // Test raw string construction
 val s = String.withLength(3)
@@ -7,10 +7,10 @@ s._buffer.offset(0).store(Byte.fromInt(65))
 s._buffer.offset(1).store(Byte.fromInt(66))
 s._buffer.offset(2).store(Byte.fromInt(67))
 /// Expect: ABC
-echo<String>(s)
+println(s)
 /// Expect: false
-echo<Bool>(s.isEmpty())
+println(s.isEmpty())
 
 val s2 = ""
 /// Expect: true
-echo<Bool>(s2.isEmpty())
+println(s2.isEmpty())

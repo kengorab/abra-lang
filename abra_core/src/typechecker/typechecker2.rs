@@ -37,8 +37,8 @@ pub trait LoadModule {
 pub struct ModuleLoader<'a> {
     program_root: &'a PathBuf,
     prelude_path: &'a PathBuf,
-    module_id_map: HashMap::<ModuleId, parser::ast::ModuleId>,
-    module_id_map_rev: HashMap::<parser::ast::ModuleId, ModuleId>,
+    module_id_map: HashMap<ModuleId, parser::ast::ModuleId>,
+    module_id_map_rev: HashMap<parser::ast::ModuleId, ModuleId>,
 }
 
 impl<'a> ModuleLoader<'a> {
@@ -343,6 +343,10 @@ impl Project {
                 None
             }
         })
+    }
+
+    pub fn type_is_trait(&self, type_id: &TypeId) -> bool {
+        type_id == &PRELUDE_ANY_TYPE_ID
     }
 
     pub fn type_is_option(&self, type_id: &TypeId) -> Option<TypeId> {
@@ -897,11 +901,11 @@ pub enum TypedNode {
     NoneValue { token: Token, type_id: TypeId, resolved_type_id: TypeId },
     Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId, resolved_type_id: TypeId },
     // TODO: ::Invocation should have type_arg_ids: Vec<(TypeId, /* inferred: */ bool)>
-    Accessor { target: Box<TypedNode>, kind: AccessorKind, is_opt_safe: bool, member_idx: usize, member_span: Range, type_id: TypeId, type_arg_ids: Vec<(TypeId, Range)> },
+    Accessor { target: Box<TypedNode>, kind: AccessorKind, is_opt_safe: bool, member_idx: usize, member_span: Range, type_id: TypeId, type_arg_ids: Vec<(TypeId, Range)>, resolved_type_id: TypeId },
     Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId },
     Lambda { span: Range, func_id: FuncId, type_id: TypeId },
     Assignment { span: Range, kind: AssignmentKind, type_id: TypeId, expr: Box<TypedNode> },
-    If { if_token: Token, condition: Box<TypedNode>, condition_binding: Option<BindingPattern>, if_block: Vec<TypedNode>, else_block: Vec<TypedNode>, is_statement: bool, type_id: TypeId },
+    If { if_token: Token, condition: Box<TypedNode>, condition_binding: Option<BindingPattern>, if_block: Vec<TypedNode>, else_block: Vec<TypedNode>, is_statement: bool, type_id: TypeId, resolved_type_id: TypeId },
     Match { match_token: Token, target: Box<TypedNode>, cases: Vec<TypedMatchCase>, is_statement: bool, type_id: TypeId },
 
     // Statements
@@ -3843,6 +3847,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             node.set_resolved_type_id(type_id);
         }
 
+        let resolved_type_id = type_hint.unwrap_or(type_id);
+
         Ok(TypedNode::If {
             if_token,
             condition: Box::new(typed_condition),
@@ -3851,6 +3857,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             else_block: typed_else_block,
             is_statement,
             type_id,
+            resolved_type_id,
         })
     }
 
@@ -4316,7 +4323,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::AndEq | BinaryOp::OrEq | BinaryOp::CoalesceEq => unreachable!()
                 };
 
-                Ok(TypedNode::Binary { op, left: Box::new(typed_left), right: Box::new(typed_right), type_id, resolved_type_id: type_id })
+                let resolved_type_id = type_hint.unwrap_or(type_id);
+                Ok(TypedNode::Binary { op, left: Box::new(typed_left), right: Box::new(typed_right), type_id, resolved_type_id })
             }
             AstNode::Grouped(token, n) => {
                 let typed_expr = self.typecheck_expression(*n.expr, type_hint)?;
@@ -4872,7 +4880,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     if let Some((_, _, type_id)) = &mut field_data {
                         *type_id = self.substitute_generics_with_known(&type_id, &generic_substitutions);
                     }
-                } else if matches!(target_type, Type::Generic(_, _)) {
+                } else if matches!(target_type, Type::Generic(_, _)) || matches!(target_type, Type::Primitive(PrimitiveType::Any)) {
                     match field_name.as_str() {
                         "toString" => {
                             let type_id = self.add_or_find_type_id(self.project.function_type(vec![], 0, false, PRELUDE_STRING_TYPE_ID));
@@ -4908,7 +4916,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         type_id = self.add_or_find_type_id(self.project.option_type(type_id))
                     }
 
-                    Ok(TypedNode::Accessor { target: Box::new(typed_target), kind, is_opt_safe: n.is_opt_safe, member_idx, member_span: field_ident.get_range(), type_id, type_arg_ids })
+                    let resolved_type_id = type_hint.unwrap_or(type_id);
+                    Ok(TypedNode::Accessor { target: Box::new(typed_target), kind, is_opt_safe: n.is_opt_safe, member_idx, member_span: field_ident.get_range(), type_id, type_arg_ids, resolved_type_id })
                 } else {
                     Err(TypeError::UnknownMember { span: field_span, field_name, type_id: target_type_id })
                 }
@@ -4978,7 +4987,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let target_ty = self.project.get_type_by_id(&target_type_id);
 
                         match target_ty {
-                            Type::Generic(_, _) => {
+                            Type::Generic(_, _) | Type::Primitive(PrimitiveType::Any) => {
                                 debug_assert!(kind == &AccessorKind::Method, "Generic types are only known to have 'toString', 'eq', and 'hash' instance methods; no fields or static methods");
                                 match *member_idx {
                                     0 => {
@@ -5043,7 +5052,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             }
                             Type::Primitive(primitive_type) => {
                                 let struct_id = match primitive_type {
-                                    PrimitiveType::Unit | PrimitiveType::Any => unreachable!("Internal error: accessor of these primitives should have been caught already"),
+                                    PrimitiveType::Unit => unreachable!("Internal error: accessor of Unit should have been caught already"),
+                                    PrimitiveType::Any => unreachable!("Internal error: accessor of Any should have been handled above"),
                                     PrimitiveType::Int => &self.project.prelude_int_struct_id,
                                     PrimitiveType::Float => &self.project.prelude_float_struct_id,
                                     PrimitiveType::Bool => &self.project.prelude_bool_struct_id,
@@ -5259,7 +5269,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     return_type_id
                 };
 
-                Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: typed_arguments, type_id, resolved_type_id: type_id })
+                let resolved_type_id = type_hint.unwrap_or(type_id);
+                Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: typed_arguments, type_id, resolved_type_id })
             }
             AstNode::IfExpression(token, if_node) => self.typecheck_if_node(token, if_node, true, type_hint),
             AstNode::MatchExpression(token, match_node) => self.typecheck_match_node(token, match_node, true, type_hint),

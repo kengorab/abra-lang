@@ -1,5 +1,5 @@
 /// Expect: true
-echo<Bool>(true)
+println(true)
 
 /// Expect: false
-echo<Bool>(false)
+println(false)

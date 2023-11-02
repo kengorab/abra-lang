@@ -1,10 +1,24 @@
 @Intrinsic("stdout_write")
 func stdoutWrite(str: String)
 
-func echo<T>(value: T) = stdoutWrite(value.toString())
-
 @Stub func print(*items: Any[])
-@Stub func println(*items: Any[])
+
+func println(*items: Any[]) {
+  var i = 0
+  while i < items.length {
+    val item = items._buffer.offset(i).load()
+    stdoutWrite(item.toString())
+
+    if i != items.length - 1 {
+      stdoutWrite(" ")
+    } else {
+      stdoutWrite("\n")
+    }
+
+    i += 1
+  }
+}
+
 @Stub func range(start: Int, end: Int, stepBy = 1): Int[]
 
 type Byte {

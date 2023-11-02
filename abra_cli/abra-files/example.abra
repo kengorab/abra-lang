@@ -1,12 +1,17 @@
 // TODO: This shouldn't stackoverflow
-//echo<String>([].toString())
 
-//val a = 123
-//val x: Int? = a
-//echo<Int?>(x)
+//println(1, true, "three")
 
-val x = if false { None } else {
-  val a = 1 + 2
-  a
+//println([1, 2, 3])
+
+//println(17.1 + 15.1)
+//println(if true { 1 + 2 } else { None })
+
+type Person {
+  name: String
+  age: Int
 }
-echo<Int?>(x)
+
+val p1 = Person(name: "Ken", age: 31)
+/// Expect: Ken
+println(p1.name)

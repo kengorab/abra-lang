@@ -1,18 +1,26 @@
 func f1(): Bool?[] = [None, true, false]
 /// Expect: [None, true, false]
-echo<Bool?[]>(f1())
+println(f1())
 
 func f2(): String?[] = if true { ["one", None, "two"] } else []
 /// Expect: [one, None, two]
-echo<String?[]>(f2())
+println(f2())
 
 val arr1: Int?[] = [1, None, 2, 3]
 /// Expect: [1, None, 2, 3]
-echo<Int?[]>(arr1)
+println(arr1)
 
 val arr2: Int[]? = [1, 2, 3]
 /// Expect: [1, 2, 3]
-echo<Int[]?>(arr2)
+println(arr2)
 val arr3: Int[]? = None
 /// Expect: None
-echo<Int[]?>(arr3)
+println(arr3)
+
+type Foo {
+  f: Int
+}
+
+val i: Int? = Foo(f: 178).f
+/// Expect: 178
+println(i)

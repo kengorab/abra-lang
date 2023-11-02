@@ -5,15 +5,15 @@ type Person {
 
 val p1 = Person(name: "Ken", age: 31)
 /// Expect: Ken
-echo<String>(p1.name)
+println(p1.name)
 /// Expect: 31
-echo<Int>(p1.age)
+println(p1.age)
 
 // Test default toString method
 /// Expect: Person(name: "Ken", age: 31)
-echo<Person>(p1)
+println(p1)
 /// Expect: Person(name: "Ken", age: 31)
-echo<String>(p1.toString())
+println(p1.toString())
 
 
 type Person2 {
@@ -27,6 +27,6 @@ val p2 = Person2(name: "Ken", age: 31)
 
 // Test custom toString method
 /// Expect: custom Person#toString method
-echo<Person2>(p2)
+println(p2)
 /// Expect: custom Person#toString method
-echo<String>(p2.toString())
+println(p2.toString())

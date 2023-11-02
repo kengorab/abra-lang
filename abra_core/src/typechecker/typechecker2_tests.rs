@@ -4085,6 +4085,7 @@ fn typecheck_accessor() {
         member_span: Range { start: Position::new(2, 3), end: Position::new(2, 8) },
         type_id: PRELUDE_INT_TYPE_ID,
         type_arg_ids: vec![],
+        resolved_type_id: PRELUDE_INT_TYPE_ID,
     };
     assert_eq!(expected, module.code[1]);
 
@@ -4113,6 +4114,7 @@ fn typecheck_accessor() {
         member_span: Range { start: Position::new(3, 3), end: Position::new(3, 3) },
         type_id: PRELUDE_INT_TYPE_ID,
         type_arg_ids: vec![],
+        resolved_type_id: PRELUDE_INT_TYPE_ID,
     };
     assert_eq!(expected, module.code[2]);
 
@@ -4147,6 +4149,10 @@ fn typecheck_accessor() {
             project.find_type_id(&ScopeId(ModuleId(1), 0), &project.function_type(vec![PRELUDE_INT_TYPE_ID], 1, false, int_array_type_id)).unwrap()
         },
         type_arg_ids: vec![],
+        resolved_type_id: {
+            let int_array_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+            project.find_type_id(&ScopeId(ModuleId(1), 0), &project.function_type(vec![PRELUDE_INT_TYPE_ID], 1, false, int_array_type_id)).unwrap()
+        },
     };
     assert_eq!(expected, module.code[2]);
 
@@ -4701,6 +4707,7 @@ fn typecheck_if_statement() {
         else_block: vec![],
         is_statement: true,
         type_id: PRELUDE_UNIT_TYPE_ID,
+        resolved_type_id: PRELUDE_UNIT_TYPE_ID,
     };
     assert_eq!(&expected, node);
 
@@ -4727,6 +4734,7 @@ fn typecheck_if_statement() {
         else_block: vec![],
         is_statement: true,
         type_id: PRELUDE_UNIT_TYPE_ID,
+        resolved_type_id: PRELUDE_UNIT_TYPE_ID,
     };
     assert_eq!(&expected, node);
 
@@ -4749,6 +4757,7 @@ fn typecheck_if_statement() {
         ],
         is_statement: true,
         type_id: PRELUDE_UNIT_TYPE_ID,
+        resolved_type_id: PRELUDE_UNIT_TYPE_ID,
     };
     assert_eq!(&expected, node);
 
