@@ -1,17 +1,12 @@
 // TODO: This shouldn't stackoverflow
+//println([])
 
-//println(1, true, "three")
+////val s = "hello".concat("world")
+//val s = 12 + "hello"
+//println(s)
 
-//println([1, 2, 3])
-
-//println(17.1 + 15.1)
-//println(if true { 1 + 2 } else { None })
-
-type Person {
-  name: String
-  age: Int
-}
-
-val p1 = Person(name: "Ken", age: 31)
-/// Expect: Ken
-println(p1.name)
+println("hello" + "world")
+println("hello" + 12, 12 + "hello")
+println("hello" + 1.23, 1.23 + "hello")
+println("hello" + true, true + "hello")
+println("hello" + [1, 2, 3], [1, 2, 3] + "hello")

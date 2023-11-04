@@ -391,10 +391,10 @@ impl Project {
         Type::Function(param_type_ids, num_required, is_variadic, return_type_id)
     }
 
-    pub fn function_type_for_function(&self, func: &Function, trim_self: bool) -> Type {
+    pub fn function_type_for_function(&self, func: &Function) -> Type {
         let mut num_required = 0;
 
-        let iter = if func.has_self() && trim_self {
+        let iter = if func.has_self()  {
             func.params.iter().skip(1)
         } else {
             func.params.iter().skip(0)
@@ -676,11 +676,11 @@ impl Type {
         Some(static_methods[static_method_idx])
     }
 
-    pub fn find_method_by_name<'a, S: AsRef<str>>(&self, project: &'a Project, method_name: S) -> Option<&'a FuncId> {
+    pub fn find_method_by_name<'a, S: AsRef<str>>(&self, project: &'a Project, method_name: S) -> Option<(usize, &'a FuncId)> {
         let Some(struct_id) = self.get_struct_id(project) else { return None; };
 
         let method_name = method_name.as_ref();
-        project.get_struct_by_id(&struct_id).methods.iter().find(|m| &project.get_func_by_id(m).name == method_name)
+        project.get_struct_by_id(&struct_id).methods.iter().enumerate().find(|(_, m)| &project.get_func_by_id(m).name == method_name)
     }
 
     fn get_struct_id(&self, project: &Project) -> Option<StructId> {
@@ -809,6 +809,7 @@ pub struct DecoratorInstance {
 pub struct Function {
     pub id: FuncId,
     pub fn_scope_id: ScopeId,
+    pub fn_type_id: TypeId,
     pub decorators: Vec<DecoratorInstance>,
     pub name: String,
     pub generic_ids: Vec<TypeId>,
@@ -866,7 +867,7 @@ pub struct TypedModule {
 }
 
 // TODO: AccessorKind should come with func_id when appropriate, why do func_id lookup again later?
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum AccessorKind {
     Field,
     Method,
@@ -874,19 +875,19 @@ pub enum AccessorKind {
     EnumVariant,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum AssignmentKind {
     Identifier { var_id: VarId },
     Accessor { target: Box<TypedNode>, kind: AccessorKind, member_idx: usize },
     Indexing { target: Box<TypedNode>, index: Box<TypedNode> },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TypedMatchCase {
     pub body: Vec<TypedNode>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TypedNode {
     // Expressions
     Literal { token: Token, value: TypedLiteral, type_id: TypeId, resolved_type_id: TypeId },
@@ -899,8 +900,7 @@ pub enum TypedNode {
     Map { token: Token, items: Vec<(TypedNode, TypedNode)>, type_id: TypeId },
     Identifier { token: Token, var_id: VarId, type_arg_ids: Vec<(TypeId, Range)>, type_id: TypeId, resolved_type_id: TypeId },
     NoneValue { token: Token, type_id: TypeId, resolved_type_id: TypeId },
-    Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId, resolved_type_id: TypeId },
-    // TODO: ::Invocation should have type_arg_ids: Vec<(TypeId, /* inferred: */ bool)>
+    Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_arg_ids: Vec<TypeId>, type_id: TypeId, resolved_type_id: TypeId },
     Accessor { target: Box<TypedNode>, kind: AccessorKind, is_opt_safe: bool, member_idx: usize, member_span: Range, type_id: TypeId, type_arg_ids: Vec<(TypeId, Range)>, resolved_type_id: TypeId },
     Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId },
     Lambda { span: Range, func_id: FuncId, type_id: TypeId },
@@ -992,7 +992,7 @@ impl TypedNode {
         }
     }
 
-    fn span(&self) -> Range {
+    pub fn span(&self) -> Range {
         match self {
             // Expressions
             TypedNode::Literal { token, .. } => token.get_range(),
@@ -1101,7 +1101,7 @@ impl TypedNode {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TypedLiteral {
     Int(i64),
     Float(f64),
@@ -2342,7 +2342,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let name = Token::get_ident_name(ident);
         let span = self.make_span(&ident.get_range());
 
-        let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
+        let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
         let fn_var_id = self.add_variable_to_current_scope(name, fn_type_id, false, true, &span, false)?;
         let variable = self.project.get_var_by_id_mut(&fn_var_id);
         variable.alias = VariableAlias::Function(*func_id);
@@ -2373,7 +2373,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             FunctionKind::Freestanding
         };
         let func_id = FuncId(current_scope.id, current_scope.funcs.len());
-        let func = Function { id: func_id, fn_scope_id, decorators: vec![], name: name.clone(), generic_ids, kind, params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![] };
+        let func = Function { id: func_id, fn_scope_id, fn_type_id: PRELUDE_ANY_TYPE_ID, decorators: vec![], name: name.clone(), generic_ids, kind, params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![] };
 
         self.current_scope_mut().funcs.push(func);
 
@@ -2403,7 +2403,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let kind = FunctionKind::Freestanding;
         let func_id = FuncId(fn_decl_scope.id, fn_decl_scope.funcs.len());
-        let func = Function { id: func_id, fn_scope_id, decorators: vec![], name, generic_ids: vec![], kind, params, return_type_id: PRELUDE_ANY_TYPE_ID, defined_span: None, body: vec![], captured_vars: vec![] };
+        let func = Function { id: func_id, fn_scope_id, fn_type_id: PRELUDE_ANY_TYPE_ID, decorators: vec![], name, generic_ids: vec![], kind, params, return_type_id: PRELUDE_ANY_TYPE_ID, defined_span: None, body: vec![], captured_vars: vec![] };
 
         fn_decl_scope.funcs.push(func);
 
@@ -2769,8 +2769,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.typecheck_function_pass_1(func_id, node, false)?;
 
             let func = self.project.get_func_by_id(func_id);
-            let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
-            self.project.get_var_by_id_mut(func_var_id).type_id = fn_type_id;
+            self.project.get_var_by_id_mut(func_var_id).type_id = func.fn_type_id;
         }
 
         // --- END PASS 1 for types, enums, and functions
@@ -2783,8 +2782,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     self.typecheck_function_pass_2(func_id, decl_node)?;
 
                     let func = self.project.get_func_by_id(&func_id);
-                    let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
-                    self.project.get_var_by_id_mut(&func_var_id).type_id = fn_type_id;
+                    self.project.get_var_by_id_mut(&func_var_id).type_id = func.fn_type_id;
 
                     let current_module = self.current_module_mut();
                     current_module.code.push(TypedNode::FuncDeclaration(func_id));
@@ -3029,6 +3027,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.current_scope_id = prev_scope_id;
 
+        let func = self.project.get_func_by_id(&func_id);
+        let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+        self.project.get_func_by_id_mut(&func_id).fn_type_id = fn_type_id;
+
         Ok(())
     }
 
@@ -3123,6 +3125,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.current_function = prev_func_id;
         self.current_scope_id = prev_scope_id;
+
+        let func = self.project.get_func_by_id(&func_id);
+        let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+        self.project.get_func_by_id_mut(&func_id).fn_type_id = fn_type_id;
 
         Ok(())
     }
@@ -3224,6 +3230,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 string_type_id,
             )?;
             self.project.get_func_by_id_mut(&tostring_func_id).defined_span = None;
+            let func = self.project.get_func_by_id(&tostring_func_id);
+            let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+            self.project.get_func_by_id_mut(&tostring_func_id).fn_type_id = fn_type_id;
             self.project.get_struct_by_id_mut(struct_id).methods.insert(0, tostring_func_id);
         }
 
@@ -3385,6 +3394,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 self.end_child_scope();
 
                 let variant_func_id = self.add_function_to_current_scope(fn_scope_id, variant_decl_token, vec![], false, params, return_type_id)?;
+                let func = self.project.get_func_by_id(&variant_func_id);
+                let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+                self.project.get_func_by_id_mut(&variant_func_id).fn_type_id = fn_type_id;
+
                 let EnumVariantKind::Container(func_id) = &mut self.project.get_enum_by_id_mut(&enum_id).variants[idx].kind else { unreachable!() };
                 *func_id = variant_func_id;
                 let ScopeKind::Function(id) = &mut self.project.get_scope_by_id_mut(&fn_scope_id).kind else { unreachable!() };
@@ -4806,7 +4819,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 if function.name == field_name { Some((idx, function)) } else { None }
                             });
                             if let Some((idx, function)) = method {
-                                let mut type_id = self.add_or_find_type_id(self.project.function_type_for_function(function, false));
+                                let mut type_id = function.fn_type_id;
                                 if let Some(type_hint_id) = &type_hint {
                                     let ty = self.project.get_type_by_id(type_hint_id);
                                     if matches!(ty, Type::Function(_, _, _, _)) {
@@ -4837,7 +4850,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                         }
                                         EnumVariantKind::Container(func_id) => {
                                             let function = self.project.get_func_by_id(&func_id);
-                                            let mut type_id = self.add_or_find_type_id(self.project.function_type_for_function(function, false));
+                                            let mut type_id = function.fn_type_id;
                                             if let Some(type_hint_id) = &type_hint {
                                                 let ty = self.project.get_type_by_id(type_hint_id);
                                                 if matches!(ty, Type::Function(_, _, _, _)) {
@@ -4871,7 +4884,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         for (idx, func_id) in enum_.methods.iter().enumerate() {
                             let func = self.project.get_func_by_id(func_id);
                             if func.name == field_name {
-                                let type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, true));
+                                let type_id = func.fn_type_id;
                                 field_data = Some((AccessorKind::Method, idx, type_id));
                                 break;
                             }
@@ -4900,7 +4913,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         for (idx, func_id) in struct_.methods.iter().enumerate() {
                             let func = self.project.get_func_by_id(func_id);
                             if func.name == field_name {
-                                let type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, true));
+                                let type_id = func.fn_type_id;
                                 field_data = Some((AccessorKind::Method, idx, type_id));
                                 break;
                             }
@@ -5117,7 +5130,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 if let FunctionPass::Pass1 { just_saw_function_call } = &mut self.function_pass {
                     *just_saw_function_call = true;
-                    return Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: vec![], type_id: return_type_id, resolved_type_id: return_type_id });
+                    return Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: vec![], type_arg_ids: vec![], type_id: return_type_id, resolved_type_id: return_type_id });
                 }
 
                 if !provided_type_arg_ids.is_empty() && provided_type_arg_ids.len() != fn_generic_ids.len() {
@@ -5269,8 +5282,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     return_type_id
                 };
 
+                let type_arg_ids = fn_generic_ids.iter().map(|generic_id| *filled_in_generic_types.get(&generic_id).unwrap()).collect();
                 let resolved_type_id = type_hint.unwrap_or(type_id);
-                Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: typed_arguments, type_id, resolved_type_id })
+                Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: typed_arguments, type_arg_ids, type_id, resolved_type_id })
             }
             AstNode::IfExpression(token, if_node) => self.typecheck_if_node(token, if_node, true, type_hint),
             AstNode::MatchExpression(token, match_node) => self.typecheck_match_node(token, match_node, true, type_hint),
@@ -5333,7 +5347,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let span = func.params.first()
                     .and_then(|p| p.defined_span.as_ref().map(|s| &s.range)).unwrap_or(&token.get_range())
                     .expand(&func.body.last().map(|n| n.span()).unwrap_or(token.get_range()));
-                let func_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
+                let func_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
 
                 self.end_child_scope();
                 self.current_function = prev_func_id;

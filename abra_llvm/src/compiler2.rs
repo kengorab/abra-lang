@@ -10,7 +10,7 @@ use inkwell::targets::TargetMachine;
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FloatType, FunctionType, IntType, PointerType, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum, CallableValue, FloatValue, FunctionValue, InstructionOpcode, IntValue, PointerValue, StructValue};
 use itertools::Itertools;
-use abra_core::lexer::tokens::{Range, Token};
+use abra_core::lexer::tokens::Token;
 use abra_core::parser::ast::{BinaryOp, BindingPattern};
 use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, FuncId, FunctionKind, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_SCOPE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, StructId, Type, TypedLiteral, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
 
@@ -463,7 +463,7 @@ impl<'a> LLVMCompiler2<'a> {
                 if idx == num_nodes - 1 && *node_type_id != PRELUDE_UNIT_TYPE_ID {
                     if let Some(res) = res {
                         let node_type = self.project.get_type_by_id(node_type_id);
-                        let tostring_func_id = node_type.find_method_by_name(self.project, "toString").unwrap();
+                        let (_, tostring_func_id) = node_type.find_method_by_name(self.project, "toString").unwrap();
                         let (_, generics) = self.project.get_struct_by_type_id(node_type_id).unwrap();
                         let resolved_generics = generics.iter().map(|(k, v)| (self.get_generic_name(k).clone(), *v)).collect();
                         let to_string_fn = self.get_or_compile_function(tostring_func_id, &resolved_generics);
@@ -596,20 +596,66 @@ impl<'a> LLVMCompiler2<'a> {
 
                 let value = match op {
                     BinaryOp::Add => {
-                        let left = self.visit_expression(left).unwrap();
-                        let right = self.visit_expression(right).unwrap();
+                        let left_val = self.visit_expression(left).unwrap();
+                        let right_val = self.visit_expression(right).unwrap();
                         if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
-                            self.builder.build_int_add(left.into_int_value(), right.into_int_value(), "").into()
+                            self.builder.build_int_add(left_val.into_int_value(), right_val.into_int_value(), "").into()
                         } else if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_FLOAT_TYPE_ID {
-                            let left = self.builder.build_signed_int_to_float(left.into_int_value(), self.f64(), "");
-                            self.builder.build_float_add(left, right.into_float_value(), "").into()
+                            let left = self.builder.build_signed_int_to_float(left_val.into_int_value(), self.f64(), "");
+                            self.builder.build_float_add(left, right_val.into_float_value(), "").into()
                         } else if left_type_id == &PRELUDE_FLOAT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
-                            let right = self.builder.build_signed_int_to_float(right.into_int_value(), self.f64(), "");
-                            self.builder.build_float_add(left.into_float_value(), right, "").into()
+                            let right = self.builder.build_signed_int_to_float(right_val.into_int_value(), self.f64(), "");
+                            self.builder.build_float_add(left_val.into_float_value(), right, "").into()
                         } else if left_type_id == &PRELUDE_FLOAT_TYPE_ID && right_type_id == &PRELUDE_FLOAT_TYPE_ID {
-                            self.builder.build_float_add(left.into_float_value(), right.into_float_value(), "").into()
+                            self.builder.build_float_add(left_val.into_float_value(), right_val.into_float_value(), "").into()
+                        } else if left_type_id == &PRELUDE_STRING_TYPE_ID || right_type_id == &PRELUDE_STRING_TYPE_ID {
+                            let string_ty = self.project.get_type_by_id(&PRELUDE_STRING_TYPE_ID);
+                            let (member_idx, func_id) = string_ty.find_method_by_name(self.project, "concat").unwrap();
+                            let function = self.project.get_func_by_id(func_id);
+
+                            let string_concat_target = if left_type_id == &PRELUDE_STRING_TYPE_ID {
+                                left.clone()
+                            } else {
+                                let right_ty = self.project.get_type_by_id(right_type_id);
+                                let (tostring_member_idx, tostring_func_id) = right_ty.find_method_by_name(self.project, "toString").unwrap();
+                                let tostring_func = self.project.get_func_by_id(tostring_func_id);
+
+                                Box::new(TypedNode::Invocation {
+                                    target: Box::new(TypedNode::Accessor {
+                                        target: left.clone(),
+                                        kind: AccessorKind::Method,
+                                        is_opt_safe: false,
+                                        member_idx: tostring_member_idx,
+                                        member_span: left.span(),
+                                        type_id: tostring_func.fn_type_id,
+                                        type_arg_ids: vec![],
+                                        resolved_type_id: tostring_func.fn_type_id,
+                                    }),
+                                    arguments: vec![],
+                                    type_arg_ids: vec![],
+                                    type_id: PRELUDE_STRING_TYPE_ID,
+                                    resolved_type_id: PRELUDE_STRING_TYPE_ID,
+                                })
+                            };
+
+                            return self.visit_expression(&TypedNode::Invocation {
+                                target: Box::new(TypedNode::Accessor {
+                                    target: string_concat_target,
+                                    kind: AccessorKind::Method,
+                                    is_opt_safe: false,
+                                    member_idx,
+                                    member_span: left.span(),
+                                    type_id: function.fn_type_id,
+                                    type_arg_ids: vec![(*right_type_id, left.span())],
+                                    resolved_type_id: function.fn_type_id,
+                                }),
+                                arguments: vec![Some(*right.clone())],
+                                type_arg_ids: vec![*right_type_id],
+                                type_id: PRELUDE_STRING_TYPE_ID,
+                                resolved_type_id: *resolved_type_id,
+                            });
                         } else {
-                            todo!()
+                            unreachable!("`+` operator not defined between types {} and {}", self.project.type_repr(left_type_id), self.project.type_repr(right_type_id))
                         }
                     }
                     BinaryOp::Sub => {
@@ -755,7 +801,7 @@ impl<'a> LLVMCompiler2<'a> {
                     self.get_or_compile_function(&array_with_capacity_func_id, &resolved_generics)
                 };
                 let array_push_llvm_fn = {
-                    let array_push_func_id = array_type.find_method_by_name(self.project, "push").unwrap();
+                    let (_, array_push_func_id) = array_type.find_method_by_name(self.project, "push").unwrap();
                     let mut resolved_generics = HashMap::new();
                     resolved_generics.insert(self.get_generic_name(&array_struct.generic_ids[0]).clone(), inner_type_id);
                     self.get_or_compile_function(&array_push_func_id, &resolved_generics)
@@ -819,13 +865,13 @@ impl<'a> LLVMCompiler2<'a> {
                 let resolved_generics = &self.ctx_stack.last().unwrap().resolved_generics;
                 Some(self.make_none_option_instance(resolved_type_id, &resolved_generics).into())
             }
-            TypedNode::Invocation { target, arguments, type_id, resolved_type_id, .. } => {
+            TypedNode::Invocation { target, arguments, type_arg_ids, type_id, resolved_type_id, .. } => {
                 let mut args = Vec::with_capacity(arguments.len());
 
                 let llvm_fn_val = match &**target {
                     // Handle invocation of identifiers which could be aliases for functions or types. Non-aliased variables (which could be function values)
                     // will be handled alongside other arbitrary expressions in the catchall block of this match.
-                    TypedNode::Identifier { var_id, type_arg_ids, .. } if self.project.get_var_by_id(var_id).alias != VariableAlias::None => {
+                    TypedNode::Identifier { var_id, .. } if self.project.get_var_by_id(var_id).alias != VariableAlias::None => {
                         let variable = self.project.get_var_by_id(var_id);
                         match &variable.alias {
                             VariableAlias::None => unreachable!(),
@@ -833,7 +879,7 @@ impl<'a> LLVMCompiler2<'a> {
                                 let function = self.project.get_func_by_id(func_id);
                                 let resolved_generics_in_scope = &self.ctx_stack.last().expect("There should always be a context in ctx_stack").resolved_generics;
                                 let resolved_generics = function.generic_ids.iter().zip(type_arg_ids)
-                                    .map(|(generic_id, (type_arg_id, _))| {
+                                    .map(|(generic_id, type_arg_id)| {
                                         if let Type::Generic(_, generic_name) = self.project.get_type_by_id(type_arg_id) {
                                             let type_arg_id = resolved_generics_in_scope.get(generic_name).unwrap_or(type_arg_id);
                                             (self.get_generic_name(generic_id).clone(), *type_arg_id)
@@ -854,7 +900,7 @@ impl<'a> LLVMCompiler2<'a> {
                                 let struct_ = self.project.get_struct_by_id(struct_id);
                                 let resolved_generics_in_scope = &self.ctx_stack.last().expect("There should always be a context in ctx_stack").resolved_generics;
                                 let resolved_generics = struct_.generic_ids.iter().zip(type_arg_ids)
-                                    .map(|(generic_id, (type_arg_id, _))| {
+                                    .map(|(generic_id, type_arg_id)| {
                                         if let Type::Generic(_, generic_name) = self.project.get_type_by_id(type_arg_id) {
                                             let type_arg_id = resolved_generics_in_scope.get(generic_name).unwrap_or(type_arg_id);
                                             (self.get_generic_name(generic_id).clone(), *type_arg_id)
@@ -867,7 +913,7 @@ impl<'a> LLVMCompiler2<'a> {
                             }
                         }
                     }
-                    TypedNode::Accessor { target, kind, member_idx, type_arg_ids, .. } => {
+                    TypedNode::Accessor { target, kind, member_idx, .. } => {
                         let mut target_type_id = target.type_id();
                         if let Type::Generic(_, generic_name) = self.project.get_type_by_id(target_type_id) {
                             target_type_id = self.ctx_stack.last().unwrap().resolved_generics.get(generic_name).unwrap_or(target_type_id)
@@ -927,14 +973,14 @@ impl<'a> LLVMCompiler2<'a> {
                                     struct_.generic_ids.iter().zip(instance_generics)
                                         .map(|(generic_id, type_arg_id)| (self.get_generic_name(generic_id).clone(), *type_arg_id))
                                         .chain(function.generic_ids.iter().zip(type_arg_ids)
-                                            .map(|(generic_id, (type_arg_id, _))| {
+                                            .map(|(generic_id, type_arg_id)| {
                                                 (self.get_generic_name(generic_id).clone(), *type_arg_id)
                                             })
                                         )
                                         .collect()
                                 } else {
                                     function.generic_ids.iter().zip(type_arg_ids)
-                                        .map(|(generic_id, (type_arg_id, _))| {
+                                        .map(|(generic_id, type_arg_id)| {
                                             (self.get_generic_name(generic_id).clone(), *type_arg_id)
                                         })
                                         .collect()
@@ -948,7 +994,7 @@ impl<'a> LLVMCompiler2<'a> {
 
                                 let resolved_generics_in_scope = &self.ctx_stack.last().expect("There should always be a context in ctx_stack").resolved_generics;
                                 let resolved_generics = function.generic_ids.iter().zip(type_arg_ids)
-                                    .map(|(generic_id, (type_arg_id, _))| {
+                                    .map(|(generic_id, type_arg_id)| {
                                         if let Type::Generic(_, generic_name) = self.project.get_type_by_id(type_arg_id) {
                                             let type_arg_id = resolved_generics_in_scope.get(generic_name).unwrap_or(type_arg_id);
                                             (self.get_generic_name(generic_id).clone(), *type_arg_id)
@@ -1220,7 +1266,7 @@ impl<'a> LLVMCompiler2<'a> {
                     self.get_or_compile_option_method(&inner_type_id, &0)
                 } else {
                     let value_ty = self.project.get_type_by_id(value_type_id);
-                    let tostring_func_id = value_ty.find_method_by_name(self.project, "toString").unwrap();
+                    let (_, tostring_func_id) = value_ty.find_method_by_name(self.project, "toString").unwrap();
                     self.get_or_compile_function(tostring_func_id, resolved_generics)
                 };
 
@@ -1279,7 +1325,7 @@ impl<'a> LLVMCompiler2<'a> {
 
     fn compile_intrinsic_invocation(
         &mut self,
-        type_arg_ids: &Vec<(TypeId, Range)>,
+        type_arg_ids: &Vec<TypeId>,
         resolved_generics: &HashMap<String, TypeId>,
         name: &String,
         implicit_argument: Option<&TypedNode>,
@@ -1299,14 +1345,14 @@ impl<'a> LLVMCompiler2<'a> {
 
         let value = match name.as_ref() {
             "pointer_null" => { // Static method
-                let pointer_type = type_arg_ids[0].0;
+                let pointer_type = type_arg_ids[0];
                 let Some(llvm_type) = self.llvm_underlying_type_by_id(&pointer_type, &resolved_generics) else { todo!() };
                 let llvm_type = self.llvm_ptr_wrap_type_if_needed(llvm_type);
 
                 self.ptr(llvm_type).const_null().as_basic_value_enum()
             }
             "pointer_malloc" => { // Static method
-                let pointer_type_id = type_arg_ids[0].0;
+                let pointer_type_id = type_arg_ids[0];
                 let ptr_size = get_ptr_size(&pointer_type_id);
                 let Some(llvm_type) = self.llvm_underlying_type_by_id(&pointer_type_id, &resolved_generics) else { todo!() };
                 let llvm_type = self.llvm_ptr_wrap_type_if_needed(llvm_type);
@@ -1506,7 +1552,7 @@ impl<'a> LLVMCompiler2<'a> {
         let value_slot = self.builder.build_struct_gep(self_var, 1, "value_slot").unwrap();
         let value_val = self.builder.build_load(value_slot, "value");
         let inner_type = self.project.get_type_by_id(inner_type_id);
-        let inner_tostring_func_id = inner_type.find_method_by_name(self.project, "toString").unwrap();
+        let (_, inner_tostring_func_id) = inner_type.find_method_by_name(self.project, "toString").unwrap();
         let inner_tostring_llvm_fn = self.get_or_compile_function(&inner_tostring_func_id, &resolved_generics);
         let is_some_value = self.builder.build_call(inner_tostring_llvm_fn, &[value_val.into()], "").try_as_basic_value().left().unwrap();
         self.builder.build_unconditional_branch(end_block);
@@ -1715,7 +1761,7 @@ impl<'a> LLVMCompiler2<'a> {
             let field_val = self.builder.build_load(field_slot, &field.name);
 
             let field_ty = self.project.get_type_by_id(&field.type_id);
-            let tostring_func_id = field_ty.find_method_by_name(self.project, "toString").unwrap();
+            let (_, tostring_func_id) = field_ty.find_method_by_name(self.project, "toString").unwrap();
             let tostring_fn_val = self.get_or_compile_function(tostring_func_id, resolved_generics);
             let field_tostring_val = self.builder.build_call(tostring_fn_val, &[field_val.into()], &format!("{}_to_string", &field.name)).try_as_basic_value().left().unwrap().into_pointer_value();
 

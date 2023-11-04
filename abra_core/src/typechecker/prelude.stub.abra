@@ -1,9 +1,7 @@
 @Intrinsic("stdout_write")
 func stdoutWrite(str: String)
 
-@Stub func print(*items: Any[])
-
-func println(*items: Any[]) {
+func print(*items: Any[]) {
   var i = 0
   while i < items.length {
     val item = items._buffer.offset(i).load()
@@ -11,12 +9,15 @@ func println(*items: Any[]) {
 
     if i != items.length - 1 {
       stdoutWrite(" ")
-    } else {
-      stdoutWrite("\n")
     }
 
     i += 1
   }
+}
+
+func println(*items: Any[]) {
+  print(items: items)
+  stdoutWrite("\n")
 }
 
 @Stub func range(start: Int, end: Int, stepBy = 1): Int[]
@@ -74,11 +75,10 @@ type Bool {
 
 type String {
   length: Int readonly
-  _buffer: Pointer<Byte> = Pointer.null<Byte>()
+  _buffer: Pointer<Byte> = Pointer.null()
 
   func withLength(length: Int): String {
-    val buffer = Pointer.malloc<Byte>(length)
-    String(length: length, _buffer: buffer)
+    String(length: length, _buffer: Pointer.malloc(length))
   }
 
   func isEmpty(self): Bool = self.length == 0
@@ -94,22 +94,30 @@ type String {
   @Stub func lines(self): String[]
   @Stub func parseInt(self, radix = 10): Int?
   @Stub func parseFloat(self): Float?
-  @Stub func concat(self, suffix: Any, *others: Any[]): String
+
+  func concat<T>(self, suffix: T): String {
+    val suffixStr = suffix.toString()
+    val newString = String.withLength(self.length + suffixStr.length)
+    newString._buffer.copyFrom(self._buffer, self.length)
+    newString._buffer.offset(self.length).copyFrom(suffixStr._buffer, suffixStr.length)
+    newString
+  }
+
   @Stub func replaceAll(self, pattern: String, replacement: String): String
 }
 
 type Array<T> {
   length: Int
-  _buffer: Pointer<T> = Pointer.null<T>()
+  _buffer: Pointer<T> = Pointer.null()
   _capacity: Int = 0
 
   func withCapacity<T>(initialCapacity: Int): T[] {
-    Array<T>(length: 0, _buffer: Pointer.malloc<T>(initialCapacity), _capacity: initialCapacity)
+    Array(length: 0, _buffer: Pointer.malloc(initialCapacity), _capacity: initialCapacity)
   }
 
   // TODO: custom toString implementations shouldn't need to be the first method declared
   func toString(self): String {
-    val reprs = Array.withCapacity<String>(self.length)
+    val reprs: String[] = Array.withCapacity(self.length)
     var len = 2 // account for '[' and ']'
     var i = 0
     while i < self.length {

@@ -11,6 +11,31 @@ println(s)
 /// Expect: false
 println(s.isEmpty())
 
+// + operator
+/// Expect: helloworld
+println("hello" + "world")
+/// Expect: hello12 12hello
+println("hello" + 12, 12 + "hello")
+/// Expect: hello1.23 1.23hello
+println("hello" + 1.23, 1.23 + "hello")
+/// Expect: hellotrue truehello
+println("hello" + true, true + "hello")
+/// Expect: hello[1, 2, 3] [1, 2, 3]hello
+println("hello" + [1, 2, 3], [1, 2, 3] + "hello")
+
+// String#isEmpty
 val s2 = ""
 /// Expect: true
 println(s2.isEmpty())
+
+// String#concat
+/// Expect: helloworld
+println("hello".concat("world"))
+/// Expect: hello12
+println("hello".concat(12))
+/// Expect: hello1.23
+println("hello".concat(1.23))
+/// Expect: hellotrue
+println("hello".concat(true))
+/// Expect: hello[1, 2, 3]
+println("hello".concat([1, 2, 3]))
