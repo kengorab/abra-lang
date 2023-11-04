@@ -182,7 +182,39 @@ type Array<T> {
   @Stub func filter(self, fn: (T) => Bool): T[]
   @Stub func reduce<U>(self, initialValue: U, fn: (U, T) => U): U
   @Stub func forEach(self, fn: (T) => Unit)
-  @Stub func join(self, joiner = ""): String
+
+  func join(self, joiner = ""): String {
+    val reprs: String[] = Array.withCapacity(self.length)
+    var length = 0
+    var i = 0
+    while i < self.length {
+      val item = self._buffer.offset(i).load()
+      val repr = item.toString()
+      reprs.push(repr)
+      length += repr.length
+      if i != self.length - 1 {
+        length += joiner.length
+      }
+      i += 1
+    }
+
+    val str = String.withLength(length)
+    i = 0
+    var offset = 0
+    while i < reprs.length {
+      val repr = reprs._buffer.offset(i).load()
+      str._buffer.offset(offset).copyFrom(repr._buffer, repr.length)
+      offset += repr.length
+      if i != reprs.length {
+        str._buffer.offset(offset).copyFrom(joiner._buffer, joiner.length)
+        offset += joiner.length
+      }
+      i += 1
+    }
+
+    str
+  }
+
   @Stub func contains(self, item: T): Bool
   @Stub func find(self, fn: (T) => Bool): T?
   @Stub func findIndex(self, fn: (T) => Bool): (T, Int)?

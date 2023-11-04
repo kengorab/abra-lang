@@ -5,8 +5,5 @@
 //val s = 12 + "hello"
 //println(s)
 
-println("hello" + "world")
-println("hello" + 12, 12 + "hello")
-println("hello" + 1.23, 1.23 + "hello")
-println("hello" + true, true + "hello")
-println("hello" + [1, 2, 3], [1, 2, 3] + "hello")
+val arr = ["hello", "there", "every", "one"]
+println(arr.join())
