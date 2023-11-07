@@ -1171,6 +1171,7 @@ impl Parser {
         let ParseResult { nodes: args, .. } = parse(dummy_module_id, chunks.collect())
             .map_err(|err| err.kind)?;
 
+        // TODO: don't use String#concat; we can avoid treating these varargs values as Any[] if we instead use Array#join, and call toString on each chunk
         Ok(AstNode::Invocation(
             Token::LParen(first_chunk.get_position(), false),
             InvocationNode {

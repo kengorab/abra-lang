@@ -367,8 +367,8 @@ fn typecheck_prelude_string() {
       val parseFloat: Float? = str.parseFloat()
       val concat1: String = str.concat("other")
       val concat2: String = str.concat([1, 2])
-      //val concat3: String = str.concat(1, 2.3, true, [1, 2, 3], ({ a: 1 }, false))
-      //val concat4: String = str.concat(suffix: 1, others: [2.3, true, [1, 2, 3], ({ a: 1 }, false)])
+      val concat3: String = str.concat(1, 2.3, true, [1, 2, 3], ({ a: 1 }, false))
+      val concat4: String = str.concat(suffix: 1, others: [2.3, true, [1, 2, 3], ({ a: 1 }, false)])
       val replaceAll: String = str.replaceAll("_", "-")
     "#);
     if let Err((_, e)) = &result { dbg!(e); }

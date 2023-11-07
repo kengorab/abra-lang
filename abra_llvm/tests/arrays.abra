@@ -51,3 +51,5 @@ println(a7)
 val a8 = [123, 456, 789]
 /// Expect: 123|456|789
 println(a8.join("|"))
+/// Expect: 123456789
+println(a8.join())

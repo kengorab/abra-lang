@@ -23,6 +23,11 @@ println("hello" + true, true + "hello")
 /// Expect: hello[1, 2, 3] [1, 2, 3]hello
 println("hello" + [1, 2, 3], [1, 2, 3] + "hello")
 
+// Interpolation
+val array = [1, 2, 3]
+/// Expect: length of [1, 2, 3] is 3
+println("length of $array is ${array.length}")
+
 // String#isEmpty
 val s2 = ""
 /// Expect: true
@@ -39,3 +44,5 @@ println("hello".concat(1.23))
 println("hello".concat(true))
 /// Expect: hello[1, 2, 3]
 println("hello".concat([1, 2, 3]))
+/// Expect: hello12.3true[1, 2, 3]
+println("hello".concat(1, 2.3, true, [1, 2, 3]))

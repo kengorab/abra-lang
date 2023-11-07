@@ -15,7 +15,6 @@ println(p1)
 /// Expect: Person(name: "Ken", age: 31)
 println(p1.toString())
 
-
 type Person2 {
   name: String
   age: Int
@@ -30,3 +29,14 @@ val p2 = Person2(name: "Ken", age: 31)
 println(p2)
 /// Expect: custom Person#toString method
 println(p2.toString())
+
+// Fields with default values
+type Foo {
+  a: Int = 12
+  b: String = ""
+  c: Int[] = [1, 2, 3]
+}
+
+val f = Foo()
+/// Expect: Foo(a: 12, b: "", c: [1, 2, 3])
+println(f)

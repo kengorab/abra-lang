@@ -1,9 +1,7 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-////val s = "hello".concat("world")
-//val s = 12 + "hello"
-//println(s)
-
-val arr = ["hello", "there", "every", "one"]
-println(arr.join())
+val a = "a"
+val b = "b"
+val s = "$a + $b = ${a + b}"
+println(s)
