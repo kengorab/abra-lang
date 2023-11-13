@@ -112,6 +112,27 @@ type String {
   }
 
   @Stub func replaceAll(self, pattern: String, replacement: String): String
+
+  func get(self, index: Int): String {
+    var idx = if index < 0 index + self.length else index
+    if idx >= self.length || idx < 0 {
+      ""
+    } else {
+      val str = String.withLength(1)
+      str._buffer.copyFrom(self._buffer.offset(idx), 1)
+      str
+    }
+  }
+
+  func getRange(self, startIndex = 0, endIndex = self.length): String {
+    val start = if startIndex < 0 startIndex + self.length else startIndex
+    val end = if endIndex > self.length self.length else endIndex
+    val length = end - start
+    val subString = String.withLength(length)
+    subString._buffer.copyFrom(self._buffer.offset(start), length)
+
+    subString
+  }
 }
 
 type Array<T> {
@@ -236,8 +257,30 @@ type Array<T> {
   @Stub func tally(self): Map<T, Int>
   @Stub func tallyBy<U>(self, fn: (T) => U): Map<U, Int>
   @Stub func asSet(self): Set<T>
+
+  func get(self, index: Int): T? {
+    val idx = if index < 0 index + self.length else index
+    if idx >= self.length || idx < 0 {
+      None
+    } else {
+      self._buffer.offset(idx).load()
+    }
+  }
+
   @Stub func getOr(self, index: Int, default: T): T
   @Stub func getOrElse(self, index: Int, getDefault: () => T): T
+
+  func getRange(self, startIndex = 0, endIndex = self.length): T[] {
+    val start = if startIndex < 0 startIndex + self.length else startIndex
+    val end = if endIndex > self.length self.length else endIndex
+    val length = end - start
+    val subArray: T[] = Array.withCapacity(length)
+    subArray.length = length
+    subArray._buffer.copyFrom(self._buffer.offset(start), length)
+
+    subArray
+  }
+
   @Stub func update(self, index: Int, updater: (T) => T)
   @Stub func reverse(self): T[]
 }

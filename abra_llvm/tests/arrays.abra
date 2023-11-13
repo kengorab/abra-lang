@@ -1,55 +1,99 @@
 // Test raw construction of array
-val a1 = Array<Int>(length: 0, _buffer: Pointer.malloc<Int>(1), _capacity: 1)
-a1.push(12)
-/// Expect: [12]
-println(a1)
+func testRawConstruction() {
+  val arr = Array<Int>(length: 0, _buffer: Pointer.malloc<Int>(1), _capacity: 1)
+  arr.push(12)
+  /// Expect: [12]
+  println(arr)
+}
+testRawConstruction()
 
 // Test array literal construction
-val a2: Int[] = []
-/// Expect: []
-println(a2)
+func testLiteralConstruction() {
+  val emptyArr: Int[] = []
+  /// Expect: []
+  println(emptyArr)
 
-val a3 = [1, 2, 3, 4]
-/// Expect: [1, 2, 3, 4]
-println(a3)
+  val intArr = [1, 2, 3, 4]
+  /// Expect: [1, 2, 3, 4]
+  println(intArr)
 
-val a4 = [0.12, 3.45, 6.0]
-/// Expect: [0.12, 3.45, 6]
-println(a4)
+  val floatArr = [0.12, 3.45, 6.0]
+  /// Expect: [0.12, 3.45, 6]
+  println(floatArr)
 
-val a5 = ["ab", "cd", "ef"]
-/// Expect: [ab, cd, ef]
-println(a5)
+  val stringArr = ["ab", "cd", "ef"]
+  /// Expect: [ab, cd, ef]
+  println(stringArr)
 
-val a6 = [[1, 2], [3, 4], [5, 6]]
-/// Expect: [[1, 2], [3, 4], [5, 6]]
-println(a6)
+  val nestedArr = [[1, 2], [3, 4], [5, 6]]
+  /// Expect: [[1, 2], [3, 4], [5, 6]]
+  println(nestedArr)
+}
+testLiteralConstruction()
+
+// Indexing (also Array#get(index: Int))
+func testIndexing() {
+  val arr = [1, 2, 3]
+  /// Expect: None 1 2 3 1 2 3 None
+  println(arr[-4], arr[-3], arr[-2], arr[-1], arr[0], arr[1], arr[2], arr[3])
+}
+testIndexing()
+
+// Range indexing (also Array#getRange(startIndex: Int, endIndex: Int))
+func testRangeIndexing() {
+  val arr = [1, 2, 3, 4, 5]
+
+  /// Expect: [2, 3, 4] [2, 3, 4]
+  println(arr[1:4], arr[-4:4])
+
+  /// Expect: []
+  println(arr[1:1])
+
+  val x = 1
+  val y = 4
+
+  /// Expect: [2, 3, 4] [2, 3, 4]
+  println(arr[x:y], arr[-y:y])
+
+  /// Expect: [2, 3, 4, 5] [1]
+  println(arr[1:], arr[:1])
+
+  /// Expect: [2, 3, 4, 5] [1]
+  println(arr[x:], arr[:x])
+}
+testRangeIndexing()
 
 // Array#pop()
-val a7 = [1, 2, 3]
-/// Expect: 3
-println(a7.pop())
-/// Expect: [1, 2]
-println(a7)
+func testArrayPop() {
+  val arr = [1, 2, 3]
+  /// Expect: 3
+  println(arr.pop())
+  /// Expect: [1, 2]
+  println(arr)
 
-/// Expect: 2
-println(a7.pop())
-/// Expect: [1]
-println(a7)
+  /// Expect: 2
+  println(arr.pop())
+  /// Expect: [1]
+  println(arr)
 
-/// Expect: 1
-println(a7.pop())
-/// Expect: []
-println(a7)
+  /// Expect: 1
+  println(arr.pop())
+  /// Expect: []
+  println(arr)
 
-/// Expect: None
-println(a7.pop())
-/// Expect: []
-println(a7)
+  /// Expect: None
+  println(arr.pop())
+  /// Expect: []
+  println(arr)
+}
+testArrayPop()
 
 // Array#join
-val a8 = [123, 456, 789]
-/// Expect: 123|456|789
-println(a8.join("|"))
-/// Expect: 123456789
-println(a8.join())
+func testArrayJoin() {
+  val arr = [123, 456, 789]
+  /// Expect: 123|456|789
+  println(arr.join("|"))
+  /// Expect: 123456789
+  println(arr.join())
+}
+testArrayJoin()

@@ -753,6 +753,7 @@ fn typecheck_unary() {
             token: Token::Minus(Position::new(1, 1)),
             op: UnaryOp::Minus,
             expr: Box::new(TypedNode::Literal { token: Token::Int(Position::new(1, 2), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_INT_TYPE_ID }),
+            resolved_type_id: PRELUDE_INT_TYPE_ID,
         },
     ];
     assert_eq!(expected, module.code);
@@ -764,11 +765,13 @@ fn typecheck_unary() {
             token: Token::Minus(Position::new(1, 1)),
             op: UnaryOp::Minus,
             expr: Box::new(TypedNode::Literal { token: Token::Float(Position::new(1, 2), 2.34), value: TypedLiteral::Float(2.34), type_id: PRELUDE_FLOAT_TYPE_ID, resolved_type_id: PRELUDE_FLOAT_TYPE_ID }),
+            resolved_type_id: PRELUDE_FLOAT_TYPE_ID,
         },
         TypedNode::Unary {
             token: Token::Bang(Position::new(2, 1)),
             op: UnaryOp::Negate,
             expr: Box::new(TypedNode::Literal { token: Token::Bool(Position::new(2, 2), true), value: TypedLiteral::Bool(true), type_id: PRELUDE_BOOL_TYPE_ID, resolved_type_id: PRELUDE_BOOL_TYPE_ID }),
+            resolved_type_id: PRELUDE_BOOL_TYPE_ID,
         },
     ];
     assert_eq!(expected, module.code);
@@ -2657,6 +2660,7 @@ fn typecheck_function_declaration() {
                             type_id: PRELUDE_BOOL_TYPE_ID,
                             resolved_type_id: PRELUDE_BOOL_TYPE_ID,
                         }),
+                        resolved_type_id: PRELUDE_BOOL_TYPE_ID,
                     })),
                 },
             ],

@@ -891,7 +891,7 @@ pub struct TypedMatchCase {
 pub enum TypedNode {
     // Expressions
     Literal { token: Token, value: TypedLiteral, type_id: TypeId, resolved_type_id: TypeId },
-    Unary { token: Token, op: UnaryOp, expr: Box<TypedNode> },
+    Unary { token: Token, op: UnaryOp, expr: Box<TypedNode>, resolved_type_id: TypeId },
     Binary { op: BinaryOp, left: Box<TypedNode>, right: Box<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
     Grouped { token: Token, expr: Box<TypedNode> },
     Array { token: Token, items: Vec<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
@@ -902,7 +902,7 @@ pub enum TypedNode {
     NoneValue { token: Token, type_id: TypeId, resolved_type_id: TypeId },
     Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_arg_ids: Vec<TypeId>, type_id: TypeId, resolved_type_id: TypeId },
     Accessor { target: Box<TypedNode>, kind: AccessorKind, is_opt_safe: bool, member_idx: usize, member_span: Range, type_id: TypeId, type_arg_ids: Vec<(TypeId, Range)>, resolved_type_id: TypeId },
-    Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId },
+    Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
     Lambda { span: Range, func_id: FuncId, type_id: TypeId },
     Assignment { span: Range, kind: AssignmentKind, type_id: TypeId, expr: Box<TypedNode> },
     If { if_token: Token, condition: Box<TypedNode>, condition_binding: Option<BindingPattern>, if_block: Vec<TypedNode>, else_block: Vec<TypedNode>, is_statement: bool, type_id: TypeId, resolved_type_id: TypeId },
@@ -971,7 +971,7 @@ impl TypedNode {
             TypedNode::Identifier { resolved_type_id, .. } => *resolved_type_id = new_type_id,
             TypedNode::NoneValue { resolved_type_id, .. } => *resolved_type_id = new_type_id,
             TypedNode::Invocation { resolved_type_id, .. } => *resolved_type_id = new_type_id,
-            TypedNode::Accessor { .. } => todo!(),
+            TypedNode::Accessor { resolved_type_id, .. } => *resolved_type_id = new_type_id,
             TypedNode::Lambda { .. } => todo!(),
             TypedNode::Assignment { .. } => {}
             TypedNode::Indexing { .. } => {}
@@ -4241,7 +4241,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     UnaryOp::Negate if *type_id != PRELUDE_BOOL_TYPE_ID => {
                         Err(TypeError::TypeMismatch { span, expected: vec![PRELUDE_BOOL_TYPE_ID], received: *type_id })
                     }
-                    _ => Ok(TypedNode::Unary { token, op, expr: Box::new(typed_expr) })
+                    _ => {
+                        let resolved_type_id = type_hint.unwrap_or(*type_id);
+                        Ok(TypedNode::Unary { token, op, expr: Box::new(typed_expr), resolved_type_id })
+                    }
                 }
             }
             AstNode::Binary(token, n) => {
@@ -4706,7 +4709,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             return Err(TypeError::InvalidTupleIndex { span: typed_idx_node_span, kind: InvalidTupleIndexKind::OutOfBounds(idx), type_id: target_type_id });
                         };
 
-                        return Ok(TypedNode::Indexing { target: Box::new(typed_target), index: IndexingMode::Index(Box::new(typed_idx_node)), type_id: *type_id });
+                        let resolved_type_id = type_hint.unwrap_or(*type_id);
+                        return Ok(TypedNode::Indexing { target: Box::new(typed_target), index: IndexingMode::Index(Box::new(typed_idx_node)), type_id: *type_id, resolved_type_id });
                     }
                 }
 
@@ -4767,7 +4771,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 };
 
-                Ok(TypedNode::Indexing { target: Box::new(typed_target), index: typed_index, type_id: result_type_id })
+                let resolved_type_id = type_hint.unwrap_or(result_type_id);
+                Ok(TypedNode::Indexing { target: Box::new(typed_target), index: typed_index, type_id: result_type_id, resolved_type_id })
             }
             AstNode::Accessor(_, n) => {
                 let AstNode::Identifier(field_ident, type_args) = *n.field else { unreachable!("Internal error: an accessor's `field` must be an identifier") };

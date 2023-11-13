@@ -1,7 +1,23 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-val a = "a"
-val b = "b"
-val s = "$a + $b = ${a + b}"
-println(s)
+val arr = [1, 2, 3, 4, 5]
+//println(arr[3:])
+
+/// Expect: [2, 3, 4] [2, 3, 4]
+println(arr[1:4], arr[-4:4])
+
+/// Expect: []
+println(arr[1:1])
+
+val x = 1
+val y = 4
+
+/// Expect: [2, 3, 4] [2, 3, 4]
+println(arr[x:y], arr[-y:y])
+
+/// Expect: [2, 3, 4, 5] [1]
+println(arr[1:], arr[:1])
+
+/// Expect: [2, 3, 4, 5] [1]
+println(arr[x:], arr[:x])

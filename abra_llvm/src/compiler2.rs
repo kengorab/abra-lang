@@ -11,7 +11,7 @@ use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FloatType,
 use inkwell::values::{BasicValue, BasicValueEnum, CallableValue, FloatValue, FunctionValue, InstructionOpcode, IntValue, PointerValue, StructValue};
 use itertools::Itertools;
 use abra_core::lexer::tokens::Token;
-use abra_core::parser::ast::{BinaryOp, BindingPattern};
+use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
 use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, FuncId, FunctionKind, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_SCOPE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, StructId, Type, TypedLiteral, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
 
 const ABRA_MAIN_FN_NAME: &str = "_abra_main";
@@ -554,7 +554,8 @@ impl<'a> LLVMCompiler2<'a> {
                 let Some(expr) = expr else { todo!() };
                 let expr_val = self.visit_expression(expr);
                 if let Some(expr_val) = expr_val {
-                    let llvm_type = self.llvm_underlying_type_by_id(&variable.type_id, &HashMap::new()).unwrap_or_else(|| expr_val.get_type().as_basic_type_enum());
+                    let resolved_generics = &self.ctx_stack.last().unwrap().resolved_generics;
+                    let llvm_type = self.llvm_underlying_type_by_id(&variable.type_id, resolved_generics).unwrap_or_else(|| expr_val.get_type().as_basic_type_enum());
                     let llvm_type = self.llvm_ptr_wrap_type_if_needed(llvm_type);
                     let slot = self.builder.build_alloca(llvm_type, &var_name);
                     self.ctx_stack.last_mut().unwrap().variables.insert(variable.id, LLVMVar::Slot(slot));
@@ -630,7 +631,40 @@ impl<'a> LLVMCompiler2<'a> {
 
                 Some(value)
             }
-            TypedNode::Unary { .. } => todo!(),
+            TypedNode::Unary { op, expr, resolved_type_id, .. } => {
+                let type_id = expr.as_ref().type_id();
+
+                let expr_val = self.visit_expression(expr).unwrap();
+
+                let value = match op {
+                    UnaryOp::Minus => {
+                        if type_id == &PRELUDE_INT_TYPE_ID {
+                            self.builder.build_int_neg(expr_val.into_int_value(), "").into()
+                        } else if type_id == &PRELUDE_FLOAT_TYPE_ID {
+                            self.builder.build_float_neg(expr_val.into_float_value(), "").into()
+                        } else {
+                            unreachable!("`-` unary operator not defined for type {}", self.project.type_repr(type_id))
+                        }
+                    }
+                    UnaryOp::Negate => {
+                        if type_id == &PRELUDE_BOOL_TYPE_ID {
+                            self.builder.build_not(expr_val.into_int_value(), "").into()
+                        } else {
+                            unreachable!("`!` unary operator not defined for type {}", self.project.type_repr(type_id))
+                        }
+                    }
+                };
+
+                let resolved_generics = &self.ctx_stack.last().unwrap().resolved_generics;
+                if self.project.type_is_option(resolved_type_id).is_some() {
+                    return Some(self.make_option_instance(resolved_type_id, value, resolved_generics).into());
+                } else if resolved_type_id == &PRELUDE_ANY_TYPE_ID {
+                    let resolved_generics = resolved_generics.clone();
+                    return Some(self.make_trait_instance(&PRELUDE_ANY_TYPE_ID, &type_id, value, &resolved_generics).into());
+                }
+
+                Some(value)
+            }
             TypedNode::Binary { left, op, right, type_id, resolved_type_id, .. } => {
                 let left_type_id = left.as_ref().type_id();
                 let right_type_id = right.as_ref().type_id();
@@ -777,9 +811,53 @@ impl<'a> LLVMCompiler2<'a> {
                         };
                         self.builder.build_float_div(left, right, "").into()
                     }
-                    BinaryOp::Mod |
-                    BinaryOp::And |
-                    BinaryOp::Or |
+                    BinaryOp::Mod => {
+                        let left = self.visit_expression(left).unwrap();
+                        let right = self.visit_expression(right).unwrap();
+                        if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
+                            self.builder.build_int_signed_rem(left.into_int_value(), right.into_int_value(), "").into()
+                        } else if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_FLOAT_TYPE_ID {
+                            let left = self.builder.build_signed_int_to_float(left.into_int_value(), self.f64(), "");
+                            self.builder.build_float_rem(left, right.into_float_value(), "").into()
+                        } else if left_type_id == &PRELUDE_FLOAT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
+                            let right = self.builder.build_signed_int_to_float(right.into_int_value(), self.f64(), "");
+                            self.builder.build_float_rem(left.into_float_value(), right, "").into()
+                        } else if left_type_id == &PRELUDE_FLOAT_TYPE_ID && right_type_id == &PRELUDE_FLOAT_TYPE_ID {
+                            self.builder.build_float_rem(left.into_float_value(), right.into_float_value(), "").into()
+                        } else {
+                            unreachable!("`%` operator not defined between types {} and {}", self.project.type_repr(left_type_id), self.project.type_repr(right_type_id))
+                        }
+                    }
+                    BinaryOp::And | BinaryOp::Or => {
+                        debug_assert!(left_type_id == &PRELUDE_BOOL_TYPE_ID);
+                        debug_assert!(right_type_id == &PRELUDE_BOOL_TYPE_ID);
+
+                        let left_val = self.visit_expression(left).unwrap();
+
+                        let op_name = if op == &BinaryOp::And { "and" } else { "or" };
+                        let then_bb = self.context.append_basic_block(self.current_fn, &format!("binary_{op_name}_then"));
+                        let else_bb = self.context.append_basic_block(self.current_fn, &format!("binary_{op_name}_else"));
+                        let cont_bb = self.context.append_basic_block(self.current_fn, &format!("binary_{op_name}_cont"));
+
+                        let cond = self.builder.build_int_compare(IntPredicate::EQ, left_val.into_int_value(), self.const_bool(true), "");
+                        self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+                        self.builder.position_at_end(then_bb);
+                        let then_value = if op == &BinaryOp::And { self.visit_expression(right).unwrap() } else { left_val };
+                        let then_bb = self.builder.get_insert_block().unwrap();
+                        self.builder.build_unconditional_branch(cont_bb);
+
+                        self.builder.position_at_end(else_bb);
+                        let else_value = if op == &BinaryOp::And { left_val } else { self.visit_expression(right).unwrap() };
+                        let else_bb = self.builder.get_insert_block().unwrap();
+                        self.builder.build_unconditional_branch(cont_bb);
+
+                        self.builder.position_at_end(cont_bb);
+                        let phi = self.builder.build_phi(self.bool(), &format!("{op_name}_value"));
+                        phi.add_incoming(&[(&then_value, then_bb), (&else_value, else_bb)]);
+
+                        phi.as_basic_value()
+                    }
                     BinaryOp::Xor |
                     BinaryOp::Coalesce => todo!(),
                     op @ BinaryOp::Lt | op @ BinaryOp::Lte | op @ BinaryOp::Gt | op @ BinaryOp::Gte => {
@@ -1181,7 +1259,119 @@ impl<'a> LLVMCompiler2<'a> {
 
                 Some(value.into())
             }
-            TypedNode::Indexing { .. } |
+            TypedNode::Indexing { target, index, type_id, resolved_type_id, .. } => {
+                let target_type_id = target.as_ref().type_id();
+                let target_ty = self.project.get_type_by_id(target_type_id);
+
+                let empty_generics = vec![];
+                let (target_struct_id, target_generics) = if let Type::GenericInstance(target_struct_id, target_generics) = target_ty {
+                    (target_struct_id, target_generics)
+                } else if target_type_id == &PRELUDE_STRING_TYPE_ID {
+                    (&self.project.prelude_string_struct_id, &empty_generics)
+                } else {
+                    unreachable!("All indexable types are struct instances")
+                };
+
+                match index {
+                    IndexingMode::Index(idx_expr) if target_struct_id == &self.project.prelude_array_struct_id => {
+                        let array_inner_type_id = &target_generics[0];
+                        let (array_get_member_idx, array_get_func_id) = target_ty.find_method_by_name(self.project, "get").unwrap();
+                        let array_get_function = self.project.get_func_by_id(array_get_func_id);
+
+                        return self.visit_expression(&TypedNode::Invocation {
+                            target: Box::new(TypedNode::Accessor {
+                                target: target.clone(),
+                                kind: AccessorKind::Method,
+                                is_opt_safe: false,
+                                member_idx: array_get_member_idx,
+                                member_span: target.span(),
+                                type_id: array_get_function.fn_type_id,
+                                type_arg_ids: vec![],
+                                resolved_type_id: array_get_function.fn_type_id,
+                            }),
+                            arguments: vec![
+                                Some(*idx_expr.clone()),
+                            ],
+                            type_arg_ids: vec![*array_inner_type_id],
+                            type_id: *type_id,
+                            resolved_type_id: *resolved_type_id,
+                        });
+                    }
+                    IndexingMode::Index(idx_expr) if target_struct_id == &self.project.prelude_string_struct_id => {
+                        let (string_get_member_idx, string_get_func_id) = target_ty.find_method_by_name(self.project, "get").unwrap();
+                        let string_get_function = self.project.get_func_by_id(string_get_func_id);
+
+                        return self.visit_expression(&TypedNode::Invocation {
+                            target: Box::new(TypedNode::Accessor {
+                                target: target.clone(),
+                                kind: AccessorKind::Method,
+                                is_opt_safe: false,
+                                member_idx: string_get_member_idx,
+                                member_span: target.span(),
+                                type_id: string_get_function.fn_type_id,
+                                type_arg_ids: vec![],
+                                resolved_type_id: string_get_function.fn_type_id,
+                            }),
+                            arguments: vec![
+                                Some(*idx_expr.clone()),
+                            ],
+                            type_arg_ids: vec![],
+                            type_id: *type_id,
+                            resolved_type_id: *resolved_type_id,
+                        });
+                    }
+                    IndexingMode::Range(start_expr, end_expr) if target_struct_id == &self.project.prelude_array_struct_id => {
+                        let array_inner_type_id = &target_generics[0];
+                        let (array_get_range_member_idx, array_get_range_func_id) = target_ty.find_method_by_name(self.project, "getRange").unwrap();
+                        let array_get_range_function = self.project.get_func_by_id(array_get_range_func_id);
+
+                        return self.visit_expression(&TypedNode::Invocation {
+                            target: Box::new(TypedNode::Accessor {
+                                target: target.clone(),
+                                kind: AccessorKind::Method,
+                                is_opt_safe: false,
+                                member_idx: array_get_range_member_idx,
+                                member_span: target.span(),
+                                type_id: array_get_range_function.fn_type_id,
+                                type_arg_ids: vec![],
+                                resolved_type_id: array_get_range_function.fn_type_id,
+                            }),
+                            arguments: vec![
+                                start_expr.as_ref().map(|e| *(e.clone())),
+                                end_expr.as_ref().map(|e| *(e.clone())),
+                            ],
+                            type_arg_ids: vec![*array_inner_type_id],
+                            type_id: *type_id,
+                            resolved_type_id: *resolved_type_id,
+                        });
+                    }
+                    IndexingMode::Range(start_expr, end_expr) if target_struct_id == &self.project.prelude_string_struct_id => {
+                        let (string_get_range_member_idx, string_get_range_func_id) = target_ty.find_method_by_name(self.project, "getRange").unwrap();
+                        let string_get_range_function = self.project.get_func_by_id(string_get_range_func_id);
+
+                        return self.visit_expression(&TypedNode::Invocation {
+                            target: Box::new(TypedNode::Accessor {
+                                target: target.clone(),
+                                kind: AccessorKind::Method,
+                                is_opt_safe: false,
+                                member_idx: string_get_range_member_idx,
+                                member_span: target.span(),
+                                type_id: string_get_range_function.fn_type_id,
+                                type_arg_ids: vec![],
+                                resolved_type_id: string_get_range_function.fn_type_id,
+                            }),
+                            arguments: vec![
+                                start_expr.as_ref().map(|e| *(e.clone())),
+                                end_expr.as_ref().map(|e| *(e.clone())),
+                            ],
+                            type_arg_ids: vec![],
+                            type_id: *type_id,
+                            resolved_type_id: *resolved_type_id,
+                        });
+                    }
+                    _ => unreachable!()
+                }
+            }
             TypedNode::Lambda { .. } => todo!(),
             TypedNode::Assignment { kind, expr, .. } => {
                 let expr_val = self.visit_expression(expr).unwrap();
@@ -1249,6 +1439,7 @@ impl<'a> LLVMCompiler2<'a> {
                 self.visit_statement(node);
             }
         }
+        let then_bb = self.builder.get_insert_block().unwrap();
         self.builder.build_unconditional_branch(end_bb);
 
         self.builder.position_at_end(else_bb);
@@ -1261,6 +1452,7 @@ impl<'a> LLVMCompiler2<'a> {
                 self.visit_statement(node);
             }
         }
+        let else_bb = self.builder.get_insert_block().unwrap();
         self.builder.build_unconditional_branch(end_bb);
 
         self.builder.position_at_end(end_bb);

@@ -7,6 +7,10 @@ println(0.123)
 /// Expect: 1
 println(1.0)
 
+// Unary operations
+/// Expect: -1.1 1.1 -0
+println(-1.1, --1.1, -0.0)
+
 // Binary operations
 /// Expect: 32.1
 println(17.1 + 15)
@@ -27,6 +31,11 @@ println(17.1 * 150.1)
 println(17.1 / 15)
 /// Expect: 1.13245
 println(17.1 / 15.1)
+
+/// Expect: 1.25
+println(5.25 % 2)
+/// Expect: 0.25
+println(5.25 % 2.5)
 
 /// Expect: true
 println(17.0 == (15 + 2))
