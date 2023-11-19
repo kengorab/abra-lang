@@ -10,3 +10,27 @@ func variadic(*items: Int[]) = println(items)
 variadic(1, 2, 3)
 /// Expect: []
 variadic()
+
+// Function as value
+func callFn(fn: (Int) => Int) = println(fn(16))
+
+func abc(): Int = 24
+val abcVal = abc
+/// Expect: 24
+println(abc())
+
+func f0(x: Int): Int = x
+/// Expect: 16
+callFn(f0)
+
+func f1(x = 12): Int = x
+/// Expect: 16
+callFn(f1)
+
+func f2(x: Int, y = 6): Int = x + y
+/// Expect: 22
+callFn(f2)
+
+func f3(x = 12, y = 6): Int = x + y
+/// Expect: 22
+callFn(f3)

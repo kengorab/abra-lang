@@ -1464,6 +1464,16 @@ impl TypeError {
                         Instances of type {} cannot be used as {} values",
                         cursor_line, type_repr, purpose
                     )
+                } else if let Type::Function(param_type_ids, num_required_params, _, _) = project.get_type_by_id(type_id) {
+                    let num_optional_params = param_type_ids.len() - *num_required_params;
+                    debug_assert!(num_optional_params > 0, "We shouldn't reach this error case otherwise");
+
+                    format!(
+                        "Cannot use function as value in this context\n{}\n\
+                        Expression is a function which has optional parameters. It will not be possible to \
+                        obtain enough information to call this variable as a function later on.",
+                        cursor_line
+                    )
                 } else {
                     format!(
                         "Could not determine type\n{}\n\
@@ -3464,6 +3474,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         if *type_id == PRELUDE_UNIT_TYPE_ID {
                             let span = self.make_span(&typed_expr.span());
                             return Err(TypeError::ForbiddenAssignment { span, type_id: *type_id, purpose: "assignment" });
+                        } else if let Type::Function(param_type_ids, num_required_params, _, _) = self.project.get_type_by_id(type_id) {
+                            // TODO: Also check for this case contained in arrays, optionals, tuples, etc; eg:
+                            //   func foo(x = 12) = ...
+                            //   val fns = [foo]
+                            if param_type_ids.len() != *num_required_params {
+                                let span = self.make_span(&typed_expr.span());
+                                return Err(TypeError::ForbiddenAssignment { span, type_id: *type_id, purpose: "assignment" });
+                            }
                         }
                         if !generics_in_type.is_empty() {
                             for generic_type_id in &generics_in_type {

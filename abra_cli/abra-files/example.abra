@@ -1,23 +1,7 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-val arr = [1, 2, 3, 4, 5]
-//println(arr[3:])
+func callFn(fn: (Int) => Int) = println(fn(16))
 
-/// Expect: [2, 3, 4] [2, 3, 4]
-println(arr[1:4], arr[-4:4])
-
-/// Expect: []
-println(arr[1:1])
-
-val x = 1
-val y = 4
-
-/// Expect: [2, 3, 4] [2, 3, 4]
-println(arr[x:y], arr[-y:y])
-
-/// Expect: [2, 3, 4, 5] [1]
-println(arr[1:], arr[:1])
-
-/// Expect: [2, 3, 4, 5] [1]
-println(arr[x:], arr[:x])
+func f2(x: Int, y = 6): Int = x + y
+callFn(f2)
