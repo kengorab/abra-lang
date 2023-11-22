@@ -903,7 +903,7 @@ pub enum TypedNode {
     Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_arg_ids: Vec<TypeId>, type_id: TypeId, resolved_type_id: TypeId },
     Accessor { target: Box<TypedNode>, kind: AccessorKind, is_opt_safe: bool, member_idx: usize, member_span: Range, type_id: TypeId, type_arg_ids: Vec<(TypeId, Range)>, resolved_type_id: TypeId },
     Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
-    Lambda { span: Range, func_id: FuncId, type_id: TypeId },
+    Lambda { span: Range, func_id: FuncId, type_id: TypeId, resolved_type_id: TypeId },
     Assignment { span: Range, kind: AssignmentKind, type_id: TypeId, expr: Box<TypedNode> },
     If { if_token: Token, condition: Box<TypedNode>, condition_binding: Option<BindingPattern>, if_block: Vec<TypedNode>, else_block: Vec<TypedNode>, is_statement: bool, type_id: TypeId, resolved_type_id: TypeId },
     Match { match_token: Token, target: Box<TypedNode>, cases: Vec<TypedMatchCase>, is_statement: bool, type_id: TypeId },
@@ -972,7 +972,7 @@ impl TypedNode {
             TypedNode::NoneValue { resolved_type_id, .. } => *resolved_type_id = new_type_id,
             TypedNode::Invocation { resolved_type_id, .. } => *resolved_type_id = new_type_id,
             TypedNode::Accessor { resolved_type_id, .. } => *resolved_type_id = new_type_id,
-            TypedNode::Lambda { .. } => todo!(),
+            TypedNode::Lambda { resolved_type_id, .. } => *resolved_type_id = new_type_id,
             TypedNode::Assignment { .. } => {}
             TypedNode::Indexing { .. } => {}
             TypedNode::If { .. } => {}
@@ -5384,7 +5384,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 self.end_child_scope();
                 self.current_function = prev_func_id;
 
-                Ok(TypedNode::Lambda { span, func_id: lambda_func_id, type_id: func_type_id })
+                let resolved_type_id = type_hint.unwrap_or(func_type_id);
+                Ok(TypedNode::Lambda { span, func_id: lambda_func_id, type_id: func_type_id, resolved_type_id })
             }
             AstNode::Try(_, _) => todo!(),
             n => unreachable!("Internal error: node is not an expression: {:?}", n),

@@ -1438,7 +1438,9 @@ impl<'a> LLVMCompiler2<'a> {
                     _ => unreachable!()
                 }
             }
-            TypedNode::Lambda { .. } => todo!(),
+            TypedNode::Lambda { func_id, resolved_type_id, .. } => {
+                Some(self.make_function_value(func_id, resolved_type_id, resolved_generics))
+            }
             TypedNode::Assignment { kind, expr, .. } => {
                 let expr_val = self.visit_expression(expr, resolved_generics).unwrap();
 

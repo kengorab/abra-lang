@@ -1,5 +1,5 @@
 // Test raw string construction
-func testRawStringConstruction() {
+(() => {
   val s = String.withLength(3)
   s._buffer.offset(0).store(Byte.fromInt(65))
   s._buffer.offset(1).store(Byte.fromInt(66))
@@ -8,17 +8,16 @@ func testRawStringConstruction() {
   println(s)
   /// Expect: false
   println(s.isEmpty())
-}
-testRawStringConstruction()
+})()
 
-func testLiteralConstruction() {
+// Test literal construction
+(() => {
   /// Expect: hello
   println("hello")
-}
-testLiteralConstruction()
+})()
 
 // + operator (also String#concat<T>(other: T, *others: Any[]), with no `others`)
-func testPlusOperator() {
+(() => {
   /// Expect: helloworld
   println("hello" + "world")
   /// Expect: hello12 12hello
@@ -29,27 +28,24 @@ func testPlusOperator() {
   println("hello" + true, true + "hello")
   /// Expect: hello[1, 2, 3] [1, 2, 3]hello
   println("hello" + [1, 2, 3], [1, 2, 3] + "hello")
-}
-testPlusOperator()
+})()
 
 // Interpolation (also String#concat<T>(other: T, *others: Any[]))
-func testInterpolation() {
+(() => {
   val array = [1, 2, 3]
   /// Expect: length of [1, 2, 3] is 3
   println("length of $array is ${array.length}")
-}
-testInterpolation()
+})()
 
 // Indexing (also String#get(index: Int))
-func testIndexing() {
+(() => {
   val s = "abc"
   /// Expect: |  a b c a b c  |
   println("|", s[-4], s[-3], s[-2], s[-1], s[0], s[1], s[2], s[3], "|")
-}
-testIndexing()
+})()
 
 // Range indexing (also String#getRange(startIndex: Int, endIndex: Int))
-func testRangeIndexing() {
+(() => {
   val s = "hello"
 
   /// Expect: h e l l o
@@ -78,11 +74,10 @@ func testRangeIndexing() {
 
   /// Expect: ello h
   println(s[a:], s[:a])
-}
-testRangeIndexing()
+})()
 
 // String#isEmpty
-func testIsEmpty() {
+(() => {
   val empty = ""
   /// Expect: true
   println(empty.isEmpty())
@@ -90,11 +85,10 @@ func testIsEmpty() {
   val nonEmpty = "hello"
   /// Expect: false
   println(nonEmpty.isEmpty())
-}
-testIsEmpty()
+})()
 
 // String#concat
-func testStringConcat() {
+(() => {
   /// Expect: helloworld
   println("hello".concat("world"))
   /// Expect: hello12
@@ -107,5 +101,4 @@ func testStringConcat() {
   println("hello".concat([1, 2, 3]))
   /// Expect: hello12.3true[1, 2, 3]
   println("hello".concat(1, 2.3, true, [1, 2, 3]))
-}
-testStringConcat()
+})()

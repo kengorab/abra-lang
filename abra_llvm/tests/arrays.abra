@@ -1,14 +1,13 @@
 // Test raw construction of array
-func testRawConstruction() {
+(() => {
   val arr = Array<Int>(length: 0, _buffer: Pointer.malloc<Int>(1), _capacity: 1)
   arr.push(12)
   /// Expect: [12]
   println(arr)
-}
-testRawConstruction()
+})()
 
 // Test array literal construction
-func testLiteralConstruction() {
+(() => {
   val emptyArr: Int[] = []
   /// Expect: []
   println(emptyArr)
@@ -28,19 +27,17 @@ func testLiteralConstruction() {
   val nestedArr = [[1, 2], [3, 4], [5, 6]]
   /// Expect: [[1, 2], [3, 4], [5, 6]]
   println(nestedArr)
-}
-testLiteralConstruction()
+})()
 
 // Indexing (also Array#get(index: Int))
-func testIndexing() {
+(() => {
   val arr = [1, 2, 3]
   /// Expect: None 1 2 3 1 2 3 None
   println(arr[-4], arr[-3], arr[-2], arr[-1], arr[0], arr[1], arr[2], arr[3])
-}
-testIndexing()
+})()
 
 // Range indexing (also Array#getRange(startIndex: Int, endIndex: Int))
-func testRangeIndexing() {
+(() => {
   val arr = [1, 2, 3, 4, 5]
 
   /// Expect: [2, 3, 4] [2, 3, 4]
@@ -60,11 +57,10 @@ func testRangeIndexing() {
 
   /// Expect: [2, 3, 4, 5] [1]
   println(arr[x:], arr[:x])
-}
-testRangeIndexing()
+})()
 
 // Array#pop
-func testArrayPop() {
+(() => {
   val arr = [1, 2, 3]
   /// Expect: 3
   println(arr.pop())
@@ -85,46 +81,50 @@ func testArrayPop() {
   println(arr.pop())
   /// Expect: []
   println(arr)
-}
-testArrayPop()
+})()
 
 // Array#map
 func addOne(i: Int): Int = i + 1
 func exclaim(i: Int, _: Int, x = "!"): String = "$i$x"
-func testArrayMap() {
+(() => {
   val arr = [1, 2, 3, 4]
 
   /// Expect: [2, 3, 4, 5]
   println(arr.map(addOne))
+  /// Expect: [2, 3, 4, 5]
+  println(arr.map(i => i + 1))
 
   /// Expect: [1!, 2!, 3!, 4!]
   println(arr.map(exclaim))
-}
-testArrayMap()
+  /// Expect: [1!, 2!, 3!, 4!]
+  println(arr.map((i, _, x = "!") => "$i$x"))
+})()
 
 // Array#filter
 func isEven(i: Int): Bool = i % 2 == 0
-func testArrayFilter() {
+(() => {
   val arr = [1, 2, 3, 4]
 
   /// Expect: [2, 4]
   println(arr.filter(isEven))
-}
-testArrayFilter()
+  /// Expect: [2, 4]
+  println(arr.filter(x => x % 2 == 0))
+})()
 
 // Array#reduce
 func doSum(acc: Int, i: Int): Int = acc + i
-func testArrayReduce() {
+(() => {
   val arr = [1, 2, 3, 4]
 
   /// Expect: 10
   println(arr.reduce(0, doSum))
-}
-testArrayReduce()
+  /// Expect: 10
+  println(arr.reduce(0, (acc, i) => acc + i))
+})()
 
 // Array#forEach
 func printItem(item: Int) = println(item)
-func testArrayForEach() {
+(() => {
   val arr = [1, 2, 3, 4]
 
   /// Expect: 1
@@ -132,15 +132,20 @@ func testArrayForEach() {
   /// Expect: 3
   /// Expect: 4
   arr.forEach(printItem)
-}
-testArrayForEach()
+  /// Expect: 1
+  /// Expect: 2
+  /// Expect: 3
+  /// Expect: 4
+  arr.forEach(i => {
+    println(i)
+  })
+})()
 
 // Array#join
-func testArrayJoin() {
+(() => {
   val arr = [123, 456, 789]
   /// Expect: 123|456|789
   println(arr.join("|"))
   /// Expect: 123456789
   println(arr.join())
-}
-testArrayJoin()
+})()
