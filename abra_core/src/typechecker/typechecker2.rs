@@ -5181,8 +5181,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     return_type_id = self.substitute_generics_with_known(&return_type_id, &filled_in_generic_types);
                 }
                 if let Some(type_hint) = type_hint {
-                    if self.type_contains_generics(&return_type_id) {
-                        self.extract_values_for_generics(&type_hint, &return_type_id, &mut filled_in_generic_types);
+                    if type_hint != PRELUDE_ANY_TYPE_ID {
+                        if self.type_contains_generics(&return_type_id) {
+                            self.extract_values_for_generics(&type_hint, &return_type_id, &mut filled_in_generic_types);
+                        }
                     }
                 }
 

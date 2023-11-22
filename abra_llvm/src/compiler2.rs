@@ -116,8 +116,7 @@ impl ResolvedGenerics {
 
     pub fn new_via_method_call(&self, target_ty: &Type, method: &Function, realized_generics: &Vec<TypeId>, project: &Project) -> ResolvedGenerics {
         // TODO: Rework this? It's a little inefficient because it collects twice (and clones the underlying map).
-        ResolvedGenerics::default()
-            .new_via_instance(target_ty, project)
+        self.new_via_instance(target_ty, project)
             .extend_via_func_call(method, realized_generics, project)
     }
 

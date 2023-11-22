@@ -4345,13 +4345,11 @@ fn typecheck_failure_lambda() {
         received: PRELUDE_STRING_TYPE_ID,
     };
     assert_eq!(expected, err);
-    let (project, Either::Right(err)) = test_typecheck("[1, 2, 3].map((x: Int, y: Int) => x)").unwrap_err() else { unreachable!() };
-    let expected_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.function_type(vec![PRELUDE_INT_TYPE_ID], 1, false, PRELUDE_INT_TYPE_ID)).unwrap();
-    let received_type_id = project.find_type_id(&ScopeId(ModuleId(1), 1), &project.function_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID], 2, false, PRELUDE_INT_TYPE_ID)).unwrap();
+    let (_, Either::Right(err)) = test_typecheck("[1, 2, 3].map((x: Int, y: String) => x)").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Span::new(ModuleId(1), (1, 16), (1, 35)),
-        expected: vec![expected_type_id],
-        received: received_type_id,
+        span: Span::new(ModuleId(1), (1, 24), (1, 24)),
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_STRING_TYPE_ID,
     };
     assert_eq!(expected, err);
 }

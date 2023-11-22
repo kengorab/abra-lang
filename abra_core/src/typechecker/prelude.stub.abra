@@ -207,10 +207,54 @@ type Array<T> {
   @Stub func popFront(self): T?
   @Stub func splitAt(self, index: Int): (T[], T[])
   @Stub func concat(self, other: T[]): T[]
-  @Stub func map<U>(self, fn: (T) => U): U[]
-  @Stub func filter(self, fn: (T) => Bool): T[]
-  @Stub func reduce<U>(self, initialValue: U, fn: (U, T) => U): U
-  @Stub func forEach(self, fn: (T) => Unit)
+
+  func map<U>(self, fn: (T, Int) => U): U[] {
+    val newArray: U[] = Array.withCapacity(self.length)
+    var i = 0
+    while i < self.length {
+      val item = self._buffer.offset(i).load()
+      val result = fn(item, i)
+      newArray.push(result)
+      i += 1
+    }
+
+    newArray
+  }
+
+  func filter(self, fn: (T, Int) => Bool): T[] {
+    val newArray: T[] = Array.withCapacity(self.length)
+    var i = 0
+    while i < self.length {
+      val item = self._buffer.offset(i).load()
+      if fn(item, i) {
+        newArray.push(item)
+      }
+      i += 1
+    }
+
+    newArray
+  }
+
+  func reduce<U>(self, initialValue: U, fn: (U, T, Int) => U): U {
+    var acc = initialValue
+    var i = 0
+    while i < self.length {
+      val item = self._buffer.offset(i).load()
+      acc = fn(acc, item, i)
+      i += 1
+    }
+
+    acc
+  }
+
+  func forEach(self, fn: (T, Int) => Unit) {
+    var i = 0
+    while i < self.length {
+      val item = self._buffer.offset(i).load()
+      fn(item, i)
+      i += 1
+    }
+  }
 
   func join(self, joiner = ""): String {
     val reprs: String[] = Array.withCapacity(self.length)

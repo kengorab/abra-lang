@@ -63,7 +63,7 @@ func testRangeIndexing() {
 }
 testRangeIndexing()
 
-// Array#pop()
+// Array#pop
 func testArrayPop() {
   val arr = [1, 2, 3]
   /// Expect: 3
@@ -87,6 +87,53 @@ func testArrayPop() {
   println(arr)
 }
 testArrayPop()
+
+// Array#map
+func addOne(i: Int): Int = i + 1
+func exclaim(i: Int, _: Int, x = "!"): String = "$i$x"
+func testArrayMap() {
+  val arr = [1, 2, 3, 4]
+
+  /// Expect: [2, 3, 4, 5]
+  println(arr.map(addOne))
+
+  /// Expect: [1!, 2!, 3!, 4!]
+  println(arr.map(exclaim))
+}
+testArrayMap()
+
+// Array#filter
+func isEven(i: Int): Bool = i % 2 == 0
+func testArrayFilter() {
+  val arr = [1, 2, 3, 4]
+
+  /// Expect: [2, 4]
+  println(arr.filter(isEven))
+}
+testArrayFilter()
+
+// Array#reduce
+func doSum(acc: Int, i: Int): Int = acc + i
+func testArrayReduce() {
+  val arr = [1, 2, 3, 4]
+
+  /// Expect: 10
+  println(arr.reduce(0, doSum))
+}
+testArrayReduce()
+
+// Array#forEach
+func printItem(item: Int) = println(item)
+func testArrayForEach() {
+  val arr = [1, 2, 3, 4]
+
+  /// Expect: 1
+  /// Expect: 2
+  /// Expect: 3
+  /// Expect: 4
+  arr.forEach(printItem)
+}
+testArrayForEach()
 
 // Array#join
 func testArrayJoin() {
