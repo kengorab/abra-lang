@@ -13,6 +13,8 @@ variadic()
 
 // Function as value
 func callFn(fn: (Int) => Int) = println(fn(16))
+func callFn2(fn: (Int, Int, Int) => Int) = println(fn(16, 17, 18))
+func callFn3(fn: (Int, Int, Int, Int) => Int) = println(fn(16, 17, 18, 19))
 
 func abc(): Int = 24
 val abcVal = abc
@@ -34,3 +36,19 @@ callFn(f2)
 func f3(x = 12, y = 6): Int = x + y
 /// Expect: 22
 callFn(f3)
+
+func f4(x: Int): Int = x
+/// Expect: 16
+callFn2(f4)
+
+func f5(x: Int, y: Int): Int = x + y
+/// Expect: 33
+callFn2(f5)
+
+func f6(x: Int, y = 12): Int = x + y
+/// Expect: 33
+callFn2(f6)
+
+func f7(x: Int, y = 12, z = 100): Int = x + y + z
+/// Expect: 51
+callFn3(f7)

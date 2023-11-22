@@ -2343,31 +2343,96 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn make_function_value(&mut self, func_id: &FuncId, target_type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> BasicValueEnum<'a> {
-        let Type::Function(target_param_type_ids, target_num_required_params, _target_is_variadic, target_return_type_id) = self.project.get_type_by_id(target_type_id) else { unreachable!() };
+        let Type::Function(target_param_type_ids, target_num_required_params, _, target_return_type_id) = self.project.get_type_by_id(target_type_id) else { unreachable!() };
         let target_arity = *target_num_required_params;
         debug_assert!(target_param_type_ids.len() == target_arity);
 
         let function = self.project.get_func_by_id(func_id);
 
-        let mut llvm_fn = self.get_or_compile_function(func_id, resolved_generics);
+        let llvm_fn = self.get_or_compile_function(func_id, resolved_generics);
 
+        let num_params = function.params.len();
         let num_required_params = function.params.iter().filter(|p| p.default_value.is_none()).count();
-        // Test if treating a function that has optional params as if they were required, eg:
+        let num_optional_params = function.params.iter().filter(|p| p.default_value.is_some()).count();
+        debug_assert!(num_required_params + num_optional_params == num_params);
+        // For the cases below, consider the function
         //   func callFn(fn: (Int) => Int) = ...
-        //   func foo(x = 12): Int = x
-        //   callFn(foo)
-        if target_arity >= num_required_params && target_arity <= function.params.len() {
-            // If so, create wrapper function with arity that satisfies the hole. Using the example above:
-            //   func foo$wrapper(optsRvcDef=0)(_1: Int): Int = foo(_1)
-            // The wrapper function handles passing in the optional-param flag to the underlying function.
+        let llvm_fn = if num_optional_params == 0 {
+            if target_arity == num_params {
+                // If the referenced function's arity matches the required arity, and it has no optional parameters,
+                // then we don't need to create a wrapper for it.
+                llvm_fn
+            } else if target_arity < num_params {
+                // In this case, consider the following example:
+                //   func foo(a: Int, b: Int): Int = ...
+                //   callFn(foo)
+                // In this case, typechecking fails since `callFn` won't provide a value for the parameter `b`.
+                unreachable!("This should be caught during typechecking")
+            } else {
+                // In this case, consider the following example:
+                //   func foo(): Int = ...
+                //   callFn(foo)
+                // Create a wrapper of higher arity which discards parameters.
+                let num_throwaway_params = target_arity - num_params;
+                let wrapper_fn_name = format!("{}$wrapper(discard={})", &function.name, num_throwaway_params);
+
+                let wrapper_params = target_param_type_ids.iter().map(|param_type_id| (*param_type_id, false)).collect();
+                let fn_sig = self.llvm_function_signature_by_parts(&wrapper_fn_name, None, &vec![], &wrapper_params, target_return_type_id, resolved_generics);
+                let fn_type = self.llvm_function_type_by_parts(target_param_type_ids, target_arity, false, target_return_type_id, &resolved_generics);
+                let wrapper_llvm_fn = self.main_module.add_function(&fn_sig, fn_type, None);
+
+                let prev_bb = self.builder.get_insert_block().unwrap();
+                let prev_fn = self.current_fn;
+                self.current_fn = wrapper_llvm_fn;
+                self.ctx_stack.push(CompilerContext { variables: HashMap::new() });
+
+                let block = self.context.append_basic_block(wrapper_llvm_fn, "");
+                self.builder.position_at_end(block);
+
+                let args = (0..num_params).map(|i| wrapper_llvm_fn.get_nth_param(i as u32).unwrap().into()).collect_vec();
+                let wrapped_fn_result = self.builder.build_call(llvm_fn, args.as_slice(), "").try_as_basic_value().left();
+                if let Some(result) = wrapped_fn_result {
+                    self.builder.build_return(Some(&result));
+                } else {
+                    self.builder.build_return(None);
+                }
+
+                self.ctx_stack.pop();
+                self.current_fn = prev_fn;
+                self.builder.position_at_end(prev_bb);
+
+                wrapper_llvm_fn
+            }
+        } else if target_arity < num_required_params {
+            // In this case, consider the following example:
+            //   func foo(a: Int, b: Int, c = 12): Int = ...
+            //   callFn(foo)
+            // In this case, typechecking fails since `callFn` won't provide a value for the parameter `b`.
+            // This is similar to the case above, except here we have an optional parameter.
+            unreachable!("This should be caught during typechecking")
+        } else if num_required_params <= target_arity && target_arity <= num_params {
+            // In this case, we need to "artificially (monotonically) shrink" the arity of the underlying function.
+            // It's "monotonically" because the arity itself might not actually shrink; consider this example:
+            //   func foo(x = 12): Int = ...
+            //   callFn(foo)
+            // In this case, the optional parameter `x` must be treated as if it's a required parameter, and so the
+            // arity of the wrapper function becomes 1.
+            // Nominally though, the arity must be artificially shrunk in these cases:
+            //   func foo1(x: Int, y = 12): Int = ...
+            //   callFn(foo1)
+            //   func foo2(x = 12, y = 16): Int = ...
+            //   callFn(foo2)
+            // In the case of `foo1`, the wrapper function has arity 1 and the parameter `y` will receive its default
+            // value. In the case of `foo2`, the wrapper function still has arity 1 and the parameter `y` will still
+            // receive its default value, but `x` will _not_.
             let num_orig_optional_params = function.params.len() - num_required_params;
-            debug_assert!(num_orig_optional_params > 0);
+            debug_assert!((target_arity - num_required_params) <= num_orig_optional_params, "Prevent against underflow");
             let num_optional_params_being_given_default_value = num_orig_optional_params - (target_arity - num_required_params);
             let wrapper_fn_name = format!("{}$wrapper(optsRvcDef={})", &function.name, num_optional_params_being_given_default_value);
 
             let wrapper_params = target_param_type_ids.iter().map(|param_type_id| (*param_type_id, false)).collect();
             let fn_sig = self.llvm_function_signature_by_parts(&wrapper_fn_name, None, &vec![], &wrapper_params, target_return_type_id, resolved_generics);
-            let fn_type = self.llvm_function_type_by_parts(target_param_type_ids, target_arity, false, target_return_type_id,  &resolved_generics);
+            let fn_type = self.llvm_function_type_by_parts(target_param_type_ids, target_arity, false, target_return_type_id, &resolved_generics);
             let wrapper_llvm_fn = self.main_module.add_function(&fn_sig, fn_type, None);
 
             let prev_bb = self.builder.get_insert_block().unwrap();
@@ -2404,8 +2469,48 @@ impl<'a> LLVMCompiler2<'a> {
             self.current_fn = prev_fn;
             self.builder.position_at_end(prev_bb);
 
-            llvm_fn = wrapper_llvm_fn;
-        }
+            wrapper_llvm_fn
+        } else if target_arity > num_params {
+            // In this case, consider the following example:
+            //   func callFn2(fn: (Int, Int, Int) => Int) = ...
+            //   func foo(x: Int, y = 12): Int = ...
+            //   callFn2(foo)
+            // Create a wrapper function of higher arity which discards parameters and _also_ passes 0 to the optional params flag; we know we can do this
+            // because in order to reach this case, it must be the case that all of the optional parameters are passed a value.
+            let num_throwaway_params = target_arity - num_params;
+            let wrapper_fn_name = format!("{}$wrapper(discard={})", &function.name, num_throwaway_params);
+
+            let wrapper_params = target_param_type_ids.iter().map(|param_type_id| (*param_type_id, false)).collect();
+            let fn_sig = self.llvm_function_signature_by_parts(&wrapper_fn_name, None, &vec![], &wrapper_params, target_return_type_id, resolved_generics);
+            let fn_type = self.llvm_function_type_by_parts(target_param_type_ids, target_arity, false, target_return_type_id, &resolved_generics);
+            let wrapper_llvm_fn = self.main_module.add_function(&fn_sig, fn_type, None);
+
+            let prev_bb = self.builder.get_insert_block().unwrap();
+            let prev_fn = self.current_fn;
+            self.current_fn = wrapper_llvm_fn;
+            self.ctx_stack.push(CompilerContext { variables: HashMap::new() });
+
+            let block = self.context.append_basic_block(wrapper_llvm_fn, "");
+            self.builder.position_at_end(block);
+
+            let mut args = (0..num_params).map(|i| wrapper_llvm_fn.get_nth_param(i as u32).unwrap()).collect_vec();
+            args.push(self.const_i16(0).as_basic_value_enum());
+            let args = args.into_iter().map(|a| a.into()).collect_vec();
+            let wrapped_fn_result = self.builder.build_call(llvm_fn, args.as_slice(), "").try_as_basic_value().left();
+            if let Some(result) = wrapped_fn_result {
+                self.builder.build_return(Some(&result));
+            } else {
+                self.builder.build_return(None);
+            }
+
+            self.ctx_stack.pop();
+            self.current_fn = prev_fn;
+            self.builder.position_at_end(prev_bb);
+
+            wrapper_llvm_fn
+        } else {
+            unreachable!("All prior cases should have been exhausted above")
+        };
 
         let fn_value_type = self.make_function_value_type_by_type_id(target_type_id, resolved_generics);
 
@@ -2444,7 +2549,6 @@ impl<'a> LLVMCompiler2<'a> {
             fn_val_type
         }
     }
-
 }
 
 #[cfg(test)]

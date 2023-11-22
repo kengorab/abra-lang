@@ -1348,6 +1348,11 @@ impl TypeError {
                         Cannot use instance of type {} as value",
                         cursor_line, project.type_repr(&PRELUDE_UNIT_TYPE_ID),
                     )
+                } else if matches!(project.get_type_by_id(received), Type::Function(_, _, true, _)) {
+                    format!(
+                        "Type mismatch\n{}\nCannot pass variadic function as value",
+                        cursor_line,
+                    )
                 } else {
                     let multiple_expected = expected.len() > 1;
                     let expected = expected.iter().map(|type_id| project.type_repr(type_id)).join(", ");
@@ -1993,7 +1998,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                     true
                 }
-                (Type::Function(base_param_type_ids, base_num_req, _, base_return_type_id), Type::Function(target_param_type_ids, _, _, target_return_type_id)) => {
+                (Type::Function(base_param_type_ids, base_num_req, base_is_variadic, base_return_type_id), Type::Function(target_param_type_ids, _, _, target_return_type_id)) => {
+                    if *base_is_variadic { return false; }
+
                     let mut base_generics = zelf.extract_generic_slots(base_type_id);
                     let mut target_generics = zelf.extract_generic_slots(target_type_id);
                     let mut new_substitutions = substitutions.clone();

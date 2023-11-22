@@ -1,7 +1,8 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-func callFn(fn: (Int) => Int) = println(fn(16))
+func callFn(fn: (Int, Int, Int, Int) => Int) = println(fn(1, 16, 1, 2))
 
-func f2(x: Int, y = 6): Int = x + y
-callFn(f2)
+func foo(*x: Int[]): Int = 12
+/// Expect: 22
+callFn(foo)
