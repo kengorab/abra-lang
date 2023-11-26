@@ -1,9 +1,19 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-val arr = [1, 2, 3, 4]
-//func sum(acc: Int, i: Int): Int = acc + i
-//println(arr.reduce(0, (acc, i) => acc + i))
+var a = 1.1
+val arr = [1, 2, 3]
+func foo(): Float {
+  //val x = a + 1
+  arr.pop()
+  a += 1.1
+  //x
+}
 
-val fn = (x: Int) => x + 1
-println(fn(123))
+a = 10.1
+
+println("arr:", arr)
+println("a:", a)
+println("foo():", foo())
+println("a:", a)
+println("arr:", arr)

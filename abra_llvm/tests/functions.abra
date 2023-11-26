@@ -52,3 +52,39 @@ callFn2(f6)
 func f7(x: Int, y = 12, z = 100): Int = x + y + z
 /// Expect: 51
 callFn3(f7)
+
+// Closures
+var capturedFloat = 1.1
+func closure1(): Float {
+  capturedFloat += 1.1
+  val x = capturedFloat + 1
+  x
+}
+/// Expect: 1.1
+println(capturedFloat)
+/// Expect: 3.2
+println(closure1())
+/// Expect: 2.2
+println(capturedFloat)
+
+capturedFloat = 10.1
+/// Expect: 10.1
+println(capturedFloat)
+/// Expect: 12.2
+println(closure1())
+/// Expect: 11.2
+println(capturedFloat)
+
+val capturedArray = [1, 2, 3]
+func closure2() {
+  capturedArray.pop()
+}
+/// Expect: [1, 2, 3]
+println(capturedArray)
+closure2()
+/// Expect: [1, 2]
+println(capturedArray)
+capturedArray.push(3)
+/// Expect: [1, 2, 3]
+println(capturedArray)
+
