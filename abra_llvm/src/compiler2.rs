@@ -133,6 +133,7 @@ pub struct LLVMCompiler2<'a> {
     main_module: Module<'a>,
     current_fn: (FunctionValue<'a>, Option<FuncId>),
     ctx_stack: Vec<CompilerContext<'a>>,
+    closure_captures: HashMap<FuncId, PointerValue<'a>>,
 
     // cached for convenience
     string_type: StructType<'a>,
@@ -217,6 +218,7 @@ impl<'a> LLVMCompiler2<'a> {
             main_module,
             current_fn: (abra_main_fn, None),
             ctx_stack: vec![CompilerContext::default()],
+            closure_captures: HashMap::new(),
 
             // cached values
             string_type,
@@ -504,7 +506,7 @@ impl<'a> LLVMCompiler2<'a> {
             if num_optional_params > 16 { unimplemented!("A function can have at most 16 optional parameters currently"); }
             params.push(self.i16().into());
         }
-        if !function.captured_vars.is_empty() {
+        if function.is_closure() {
             params.insert(0, self.closure_captures_t().into());
         }
 
@@ -686,7 +688,7 @@ impl<'a> LLVMCompiler2<'a> {
         // that pointer as an i64 which is stored in this chunk of memory. Upon retrieval, the value will be converted back into the appropriate
         // type, which is also known at compile-time. Using an `i64*` as the captures array helps simplify the model behind the scenes, and makes
         // calling functions/closures simpler.
-        let malloc_size = self.const_i64((function.captured_vars.len() * 8) as u64);
+        let malloc_size = self.const_i64((function.captured_vars.len() + function.captured_closures.len() * 8) as u64);
         let captured_vars_mem = self.malloc(malloc_size, self.closure_captures_t());
         for (idx, captured_var_id) in function.captured_vars.iter().enumerate() {
             let captured_var = self.project.get_var_by_id(captured_var_id);
@@ -701,6 +703,17 @@ impl<'a> LLVMCompiler2<'a> {
             };
             let slot = unsafe { self.builder.build_gep(captured_vars_mem, &[self.const_i32(idx as u64).into()], &format!("captured_var_{}_slot", &captured_var.name)) };
             self.builder.build_store(slot, captured_var_value);
+        }
+
+        for (idx, captured_func_id) in function.captured_closures.iter().enumerate() {
+            let idx = idx + function.captured_vars.len();
+            let captured_function = self.project.get_func_by_id(captured_func_id);
+            let Some(captures_slot) = self.closure_captures.get(&captured_func_id) else { unreachable!("Captured closure {} does not yet have initialized captures", &captured_function.name); };
+            let closure_captures = self.builder.build_load(*captures_slot, &format!("captures_{}", &captured_function.name)).into_pointer_value();
+
+            let encoded_closure_captures = self.builder.build_ptr_to_int(closure_captures, self.i64(), "");
+            let slot = unsafe { self.builder.build_gep(captured_vars_mem, &[self.const_i32(idx as u64).into()], &format!("captured_var_{}_slot", &captured_function.name)) };
+            self.builder.build_store(slot, encoded_closure_captures);
         }
 
         captured_vars_mem
@@ -738,22 +751,35 @@ impl<'a> LLVMCompiler2<'a> {
             TypedNode::Match { .. } => todo!(),
             TypedNode::FuncDeclaration(func_id) => {
                 let function = self.project.get_func_by_id(func_id);
-                if !function.captured_vars.is_empty() {
-                    // If a function captures variables, gather those captures into a captures array, and store as global (this works
-                    // for now because at the moment all functions are defined at the top-level, but this will need to change in order
-                    // to support nested functions, methods, and lambda expressions). This global is used later on to create a runtime
-                    // function value, when a function-aliased identifier is referenced in a non-invocation context.
+                if function.is_closure() {
+                    // If a function captures variables, gather those captures into a captures array, and store as a local. This local
+                    // is used later on to invoke a function (if the closure is known statically) or to create a runtime function
+                    // value (when a function-aliased identifier is referenced in a non-invocation context).
                     let captured_vars_mem = self.create_closure_captures(function);
                     let captures_name = format!("captures_{}_{}_{}_{}", func_id.0.0.0, func_id.0.1, func_id.1, &function.name);
-                    let global = self.main_module.add_global(self.ptr(self.i64()), None, &captures_name);
-                    global.set_constant(false);
-                    global.set_initializer(&self.closure_captures_t().const_null());
-                    self.builder.build_store(global.as_pointer_value(), captured_vars_mem);
+                    let captured_vars_slot = self.builder.build_alloca(self.closure_captures_t(), &captures_name);
+                    self.builder.build_store(captured_vars_slot, captured_vars_mem);
+                    self.closure_captures.insert(*func_id, captured_vars_slot);
                 }
 
                 None
             }
-            TypedNode::TypeDeclaration(_) => None,
+            TypedNode::TypeDeclaration(struct_id) => {
+                let struct_ = self.project.get_struct_by_id(struct_id);
+
+                for func_id in struct_.methods.iter().chain(&struct_.static_methods) {
+                    let function = self.project.get_func_by_id(func_id);
+                    if function.is_closure() {
+                        let captured_vars_mem = self.create_closure_captures(function);
+                        let captures_name = format!("captures_{}_{}_{}_{}", func_id.0.0.0, func_id.0.1, func_id.1, &function.name);
+                        let captured_vars_slot = self.builder.build_alloca(self.closure_captures_t(), &captures_name);
+                        self.builder.build_store(captured_vars_slot, captured_vars_mem);
+                        self.closure_captures.insert(*func_id, captured_vars_slot);
+                    }
+                }
+
+                None
+            }
             TypedNode::EnumDeclaration(_) => None,
             TypedNode::BindingDeclaration { vars, pattern, expr, .. } => {
                 let BindingPattern::Variable(token) = pattern else { todo!() };
@@ -1195,29 +1221,28 @@ impl<'a> LLVMCompiler2<'a> {
                         // their backing type uses pointer indirection. If we're currently in a function which closes over the
                         // variable, we handle it here...
                         if let Some(ptr) = self.get_captured_var_slot(var_id, resolved_generics) {
-                            let decoded_captured_val = self.builder.build_load(ptr, "");
-                            return Some(decoded_captured_val);
-                        }
-
-                        let llvm_var = self.ctx_stack.last().unwrap().variables.get(&variable.id).expect(&format!("No stored slot for variable {} ({:?})", &variable.name, &variable));
-                        match llvm_var {
-                            LLVMVar::Slot(slot) => {
-                                let val = self.builder.build_load(*slot, &variable.name);
-                                // ...otherwise, we need to handle it here. If the variable is captured by some closure, then it'll
-                                // be represented as a pointer value which needs to be dereferenced upon access.
-                                if variable.is_captured {
-                                    self.builder.build_load(val.into_pointer_value(), "")
-                                } else {
-                                    val
+                            self.builder.build_load(ptr, &format!("decoded_captured_var_{}", &variable.name))
+                        } else {
+                            let llvm_var = self.ctx_stack.last().unwrap().variables.get(&variable.id).expect(&format!("No stored slot for variable {} ({:?})", &variable.name, &variable));
+                            match llvm_var {
+                                LLVMVar::Slot(slot) => {
+                                    let val = self.builder.build_load(*slot, &variable.name);
+                                    // ...otherwise, we need to handle it here. If the variable is captured by some closure, then it'll
+                                    // be represented as a pointer value which needs to be dereferenced upon access.
+                                    if variable.is_captured {
+                                        self.builder.build_load(val.into_pointer_value(), "")
+                                    } else {
+                                        val
+                                    }
                                 }
+                                LLVMVar::Param(value) => *value,
                             }
-                            LLVMVar::Param(value) => *value,
                         }
                     }
                     VariableAlias::Function(func_id) => {
                         // todo: cache value to not create duplicate?
                         let function = self.project.get_func_by_id(&func_id);
-                        let captures = if !function.captured_vars.is_empty() {
+                        let captures = if function.is_closure() {
                             let captures_name = format!("captures_{}_{}_{}_{}", func_id.0.0.0, func_id.0.1, func_id.1, &function.name);
                             let captures_ptr = self.main_module.get_global(&captures_name).unwrap().as_pointer_value();
                             Some(self.builder.build_load(captures_ptr, "").into_pointer_value())
@@ -1245,6 +1270,48 @@ impl<'a> LLVMCompiler2<'a> {
             TypedNode::Invocation { target, arguments, type_arg_ids, type_id, resolved_type_id, .. } => {
                 let mut args = Vec::with_capacity(arguments.len());
 
+                // If a static function is known to be a closure, then in order to call it we must pass in its captures array, which by convention is
+                // the first parameter. This array will have already been allocated and populated with the closed-over variables ahead of time, when
+                // the TypedNode::FuncDeclaration node is visited (though not necessarily when the function is compiled; functions are compiled
+                // lazily so as to reduce the emitted code size via implicit dead-code removal, but it's more difficult to lazily capture variables
+                // since the function invocation might not be in the same scope as the variables that need to be captured at runtime).
+                let get_captures_for_closure = |function: &Function| {
+                    let call_is_at_defined_lexical_scope = self.current_fn.1.as_ref()
+                        .map(|func_id| {
+                            let current_function = self.project.get_func_by_id(func_id);
+                            function.id.0 == current_function.fn_scope_id
+                        })
+                        .unwrap_or(true);
+
+                    // If we're calling a closure and we're at the same lexical scope in which the closure was defined, then we should be able to grab
+                    // the captures array via its local, which we can assume to have already been created as per the above explanation. For example:
+                    //   var a = 1
+                    //   func foo() { a += 1 }
+                    //   foo()
+                    //
+                    // However, since we're using locals to store the captures array, if the call to the closure occurs at a _different_ lexical scope,
+                    // then that local will not be available to us within this new stack frame. So, functions which contain calls to closure functions
+                    // must _themselves_ become closures, and must capture the captures array of any closures called therein.
+                    let captures = if call_is_at_defined_lexical_scope {
+                        let Some(captures_slot) = self.closure_captures.get(&function.id) else { unreachable!("Closure {} does not have initialized captures", &function.name); };
+                        self.builder.build_load(*captures_slot, &format!("captures_{}", &function.name))
+                    } else {
+                        let current_function = self.project.get_func_by_id(&self.current_fn.1.expect("We cannot enter this block unless it's present in the above check"));
+                        dbg!(&current_function);
+                        let current_function_captures = self.current_fn.0.get_nth_param(0).unwrap().into_pointer_value();
+                        let Some((mut capture_idx, _)) = current_function.captured_closures.iter().find_position(|func_id| *func_id == &function.id) else { unreachable!() };
+                        capture_idx += current_function.captured_vars.len();
+
+                        let captures_slot = unsafe { self.builder.build_gep(current_function_captures, &[self.const_i32(capture_idx as u64).into()], "") };
+                        let encoded_captures = self.builder.build_load(captures_slot, "").into_int_value();
+                        let captures = self.builder.build_int_to_ptr(encoded_captures, self.closure_captures_t(), "");
+
+                        captures.into()
+                    };
+
+                    captures
+                };
+
                 let params_data;
                 let mut new_resolved_generics = ResolvedGenerics::default();
                 let llvm_fn_val = match &**target {
@@ -1265,37 +1332,12 @@ impl<'a> LLVMCompiler2<'a> {
                                     return self.compile_intrinsic_invocation(type_arg_ids, &new_resolved_generics, intrinsic_name, Some(&**target), arguments, resolved_type_id);
                                 }
 
-                                if !function.captured_vars.is_empty() {
-                                    let fn_obj = self.visit_expression(target, resolved_generics).unwrap().into_pointer_value();
-
-                                    let captures_slot = self.builder.build_struct_gep(fn_obj, 0, "captures_slot").unwrap();
-                                    let captures_arr = self.builder.build_load(captures_slot, "captures");
-                                    args.push(captures_arr.into());
-
-                                    let fn_ptr_slot = self.builder.build_struct_gep(fn_obj, 1, "fn_ptr_slot").unwrap();
-                                    let fn_ptr = self.builder.build_load(fn_ptr_slot, "fn_ptr").into_pointer_value();
-
-                                    // The fn_ptr of a Function value is typed in such a way that the `captures` parameter is lost. If we know it's a closure (which
-                                    // we can determine programmatically if necessary based on whether there's a non-NULL `captures` value), we need to programmatically
-                                    // cast this function pointer to a different type (namely, the same signature, but with an `i64*` as the first parameter). Here
-                                    // though, we don't need to do it programmatically since we know here at compile-time that the function is a closure. When all we
-                                    // have is a function value though (see wildcard case further on), this is where we'll need to do the programmatic check.
-                                    let underlying_fn_type = fn_ptr.get_type().get_element_type().into_function_type();
-                                    let underlying_fn_param_types = underlying_fn_type.get_param_types();
-                                    let mut new_fn_param_types = vec![self.closure_captures_t().into()];
-                                    new_fn_param_types.extend(underlying_fn_param_types);
-                                    let new_fn_param_types = new_fn_param_types.into_iter().map(|t| t.into()).collect_vec();
-                                    let new_fn_type = if let Some(ret_type) = underlying_fn_type.get_return_type() {
-                                        ret_type.fn_type(&new_fn_param_types.as_slice(), false)
-                                    } else {
-                                        self.context.void_type().fn_type(&new_fn_param_types.as_slice(), false)
-                                    };
-                                    let fn_ptr = self.builder.build_pointer_cast(fn_ptr, new_fn_type.ptr_type(AddressSpace::Generic), "");
-
-                                    CallableValue::try_from(fn_ptr).unwrap()
-                                } else {
-                                    self.get_or_compile_function(func_id, &new_resolved_generics).into()
+                                if function.is_closure() {
+                                    let captures = get_captures_for_closure(function);
+                                    args.push(captures.into());
                                 }
+
+                                self.get_or_compile_function(func_id, &new_resolved_generics).into()
                             }
                             VariableAlias::Type(TypeKind::Enum(_)) => unreachable!("Cannot invoke an enum directly"),
                             VariableAlias::Type(TypeKind::Struct(struct_id)) => {
@@ -1368,6 +1410,14 @@ impl<'a> LLVMCompiler2<'a> {
                                     return self.compile_intrinsic_invocation(type_arg_ids, &resolved_generics, intrinsic_name, Some(&**target), arguments, resolved_type_id);
                                 }
 
+                                if function.is_closure() {
+                                    let captures = get_captures_for_closure(function);
+                                    args.push(captures.into());
+                                    // let Some(captures_slot) = self.closure_captures.get(&func_id) else { unreachable!("Closure {} does not have initialized captures", &function.name); };
+                                    // let captures = self.builder.build_load(*captures_slot, &format!("captures_{}", &function.name));
+                                    // args.push(captures.into());
+                                }
+
                                 let target = self.visit_expression(target, &resolved_generics).unwrap();
                                 args.push(target.into());
 
@@ -1392,7 +1442,7 @@ impl<'a> LLVMCompiler2<'a> {
                         }
                     }
                     _ => {
-                        let Type::Function(parameter_type_ids, _num_required_params, _is_variadic, _return_type_id) = self.project.get_type_by_id(target.type_id()) else { unreachable!() };
+                        let Type::Function(parameter_type_ids, _, _, _) = self.project.get_type_by_id(target.type_id()) else { unreachable!() };
                         params_data = parameter_type_ids.iter().map(|type_id| (*type_id, false)).collect_vec();
                         new_resolved_generics = resolved_generics.clone();
 
@@ -2110,13 +2160,14 @@ impl<'a> LLVMCompiler2<'a> {
         self.builder.position_at_end(block);
 
         let mut params_iter = llvm_fn.get_param_iter();
-        if !function.captured_vars.is_empty() {
+        if function.is_closure() {
             params_iter.next().unwrap().set_name("captures");
         }
 
         let mut default_value_param_idx = 0;
         for (idx, param) in function.params.iter().enumerate() {
             params_iter.next().unwrap().set_name(&param.name);
+            let idx = if function.is_closure() { idx + 1 } else { idx };
             let llvm_param = llvm_fn.get_nth_param(idx as u32).unwrap();
             let variable = if let Some(default_value_node) = &param.default_value {
                 let param_local = self.builder.build_alloca(llvm_param.get_type(), &param.name);

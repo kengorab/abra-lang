@@ -1,19 +1,38 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-var a = 1.1
-val arr = [1, 2, 3]
-func foo(): Float {
-  //val x = a + 1
-  arr.pop()
-  a += 1.1
-  //x
+var a = 1
+
+type Foo {
+  i: Int
+
+  func foo(self): Int = a += self.i
 }
 
-a = 10.1
+func bar() {
+  val f = Foo(i: 11)
+  println(a)
+  println(f.foo())
+  println(a)
+}
 
-println("arr:", arr)
-println("a:", a)
-println("foo():", foo())
-println("a:", a)
-println("arr:", arr)
+bar()
+
+//func foo() {
+//  a += 1
+//}
+//
+//func bar() {
+//  foo()
+//  foo()
+//}
+//
+//func baz() {
+//  bar()
+//}
+//
+//println(a)
+//baz()
+//println(a)
+//baz()
+//println(a)

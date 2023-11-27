@@ -2152,6 +2152,7 @@ fn typecheck_type_declaration() {
         defined_span: None,
         body: vec![],
         captured_vars: vec![],
+        captured_closures: vec![],
     };
     assert_eq!(&expected, project.get_func_by_id(&tostring_func_id));
 
@@ -2213,6 +2214,7 @@ fn typecheck_type_declaration() {
                 }
             ],
             captured_vars: vec![],
+            captured_closures: vec![],
         },
         Function {
             id: FuncId(ScopeId(ModuleId(1), 1), 1),
@@ -2234,6 +2236,7 @@ fn typecheck_type_declaration() {
                 }
             ],
             captured_vars: vec![],
+            captured_closures: vec![],
         },
         Function {
             id: tostring_func_id,
@@ -2258,6 +2261,7 @@ fn typecheck_type_declaration() {
             defined_span: None,
             body: vec![],
             captured_vars: vec![],
+            captured_closures: vec![],
         },
     ];
     assert_eq!(expected, module.scopes[1].funcs);
@@ -2530,6 +2534,7 @@ fn typecheck_enum_declaration() {
         defined_span: Some(Span::new(ModuleId(1), (3, 1), (3, 3))),
         body: vec![],
         captured_vars: vec![],
+        captured_closures: vec![],
     };
     assert_eq!(baz_variant_func, module.scopes[1].funcs[0]);
 }
@@ -2609,6 +2614,7 @@ fn typecheck_function_declaration() {
                 }
             ],
             captured_vars: vec![],
+            captured_closures: vec![],
         }
     ];
     assert_eq!(expected, module.scopes[0].funcs);
@@ -2665,6 +2671,7 @@ fn typecheck_function_declaration() {
                 },
             ],
             captured_vars: vec![],
+            captured_closures: vec![],
         }
     ];
     assert_eq!(expected, module.scopes[0].funcs);
@@ -2702,6 +2709,7 @@ fn typecheck_function_declaration() {
                 },
             ],
             captured_vars: vec![],
+            captured_closures: vec![],
         }
     ];
     assert_eq!(expected, module.scopes[0].funcs);
@@ -2736,6 +2744,7 @@ fn typecheck_function_declaration() {
             captured_vars: vec![
                 VarId(ScopeId(ModuleId(1), 0), 1),
             ],
+            captured_closures: vec![],
         }
     ];
     assert_eq!(expected, module.scopes[0].funcs);
@@ -2810,6 +2819,7 @@ fn typecheck_function_declaration() {
                 }
             ],
             captured_vars: vec![],
+            captured_closures: vec![],
         }
     ];
     assert_eq!(expected, module.scopes[0].funcs);
@@ -2842,6 +2852,7 @@ fn typecheck_function_declaration() {
             defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
             body: vec![],
             captured_vars: vec![],
+            captured_closures: vec![],
         }
     ];
     assert_eq!(expected, module.scopes[0].funcs);

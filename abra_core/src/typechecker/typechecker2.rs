@@ -394,7 +394,7 @@ impl Project {
     pub fn function_type_for_function(&self, func: &Function) -> Type {
         let mut num_required = 0;
 
-        let iter = if func.has_self()  {
+        let iter = if func.has_self() {
             func.params.iter().skip(1)
         } else {
             func.params.iter().skip(0)
@@ -820,6 +820,7 @@ pub struct Function {
     pub defined_span: Option<Span>,
     pub body: Vec<TypedNode>,
     pub captured_vars: Vec<VarId>,
+    pub captured_closures: Vec<FuncId>,
 }
 
 impl Function {
@@ -829,6 +830,10 @@ impl Function {
 
     pub fn has_self(&self) -> bool {
         matches!(&self.kind, FunctionKind::Method(_))
+    }
+
+    pub fn is_closure(&self) -> bool {
+        !(self.captured_vars.is_empty() && self.captured_closures.is_empty())
     }
 }
 
@@ -2390,7 +2395,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             FunctionKind::Freestanding
         };
         let func_id = FuncId(current_scope.id, current_scope.funcs.len());
-        let func = Function { id: func_id, fn_scope_id, fn_type_id: PRELUDE_ANY_TYPE_ID, decorators: vec![], name: name.clone(), generic_ids, kind, params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![] };
+        let func = Function { id: func_id, fn_scope_id, fn_type_id: PRELUDE_ANY_TYPE_ID, decorators: vec![], name: name.clone(), generic_ids, kind, params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![], captured_closures: vec![] };
 
         self.current_scope_mut().funcs.push(func);
 
@@ -2420,7 +2425,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let kind = FunctionKind::Freestanding;
         let func_id = FuncId(fn_decl_scope.id, fn_decl_scope.funcs.len());
-        let func = Function { id: func_id, fn_scope_id, fn_type_id: PRELUDE_ANY_TYPE_ID, decorators: vec![], name, generic_ids: vec![], kind, params, return_type_id: PRELUDE_ANY_TYPE_ID, defined_span: None, body: vec![], captured_vars: vec![] };
+        let func = Function { id: func_id, fn_scope_id, fn_type_id: PRELUDE_ANY_TYPE_ID, decorators: vec![], name, generic_ids: vec![], kind, params, return_type_id: PRELUDE_ANY_TYPE_ID, defined_span: None, body: vec![], captured_vars: vec![], captured_closures: vec![] };
 
         fn_decl_scope.funcs.push(func);
 
@@ -4985,6 +4990,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let mut is_instantiation = false;
                 let mut fn_is_variadic = false;
                 let mut forbid_labels = false;
+                let mut func_id = None;
                 match &typed_target {
                     TypedNode::Identifier { var_id, type_arg_ids, .. } if self.project.get_var_by_id(var_id).alias != VariableAlias::None => {
                         provided_type_arg_ids = type_arg_ids.clone();
@@ -4993,6 +4999,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         match var.alias {
                             VariableAlias::Function(alias_func_id) => {
                                 let function = self.project.get_func_by_id(&alias_func_id);
+                                func_id = Some(alias_func_id);
                                 fn_is_variadic = function.is_variadic();
                                 fn_generic_ids = function.generic_ids.clone();
                                 params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
@@ -5065,6 +5072,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     }
                                     AccessorKind::Method => {
                                         let function = self.project.get_func_by_id(&struct_.methods[*member_idx]);
+                                        func_id = Some(function.id);
                                         fn_generic_ids = function.generic_ids.clone();
                                         fn_is_variadic = function.is_variadic();
                                         params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
@@ -5084,6 +5092,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     AccessorKind::Field => todo!(),
                                     AccessorKind::Method => {
                                         let function = self.project.get_func_by_id(&enum_.methods[*member_idx]);
+                                        func_id = Some(function.id);
                                         fn_generic_ids = function.generic_ids.clone();
                                         fn_is_variadic = function.is_variadic();
                                         params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
@@ -5104,6 +5113,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 };
                                 let struct_ = self.project.get_struct_by_id(&struct_id);
                                 let function = self.project.get_func_by_id(&struct_.methods[*member_idx]);
+                                func_id = Some(function.id);
                                 fn_generic_ids = function.generic_ids.clone();
                                 fn_is_variadic = function.is_variadic();
                                 params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
@@ -5112,6 +5122,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             Type::Type(TypeKind::Struct(struct_id)) => {
                                 let struct_ = self.project.get_struct_by_id(struct_id);
                                 let function = self.project.get_func_by_id(&struct_.static_methods[*member_idx]);
+                                func_id = Some(function.id);
                                 fn_generic_ids = function.generic_ids.clone();
                                 fn_is_variadic = function.is_variadic();
                                 params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
@@ -5120,10 +5131,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             Type::Type(TypeKind::Enum(enum_id)) => {
                                 let enum_ = self.project.get_enum_by_id(enum_id);
                                 let variant = &enum_.variants[*member_idx];
-                                let EnumVariantKind::Container(func_id) = variant.kind else {
+                                let EnumVariantKind::Container(enum_variant_func_id) = variant.kind else {
                                     return Err(TypeError::IllegalEnumVariantConstruction { span: self.make_span(&typed_target.span()), enum_id: *enum_id, variant_idx: *member_idx });
                                 };
-                                let function = self.project.get_func_by_id(&func_id);
+                                let function = self.project.get_func_by_id(&enum_variant_func_id);
+                                func_id = Some(function.id);
                                 fn_generic_ids = function.generic_ids.clone();
                                 fn_is_variadic = function.is_variadic();
                                 params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
@@ -5161,6 +5173,24 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 if let FunctionPass::Pass1 { just_saw_function_call } = &mut self.function_pass {
                     *just_saw_function_call = true;
                     return Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: vec![], type_arg_ids: vec![], type_id: return_type_id, resolved_type_id: return_type_id });
+                }
+
+                // Track closed-over closures for current function
+                if let Some(func_id) = func_id {
+                    let function = self.project.get_func_by_id(&func_id);
+                    if function.is_closure() {
+                        if let Some(containing_func_id) = self.current_function {
+                            let FuncId(func_scope_id, _) = func_id;
+                            let FuncId(containing_func_scope_id, _) = containing_func_id;
+
+                            if !self.scope_contains_other(&func_scope_id, &containing_func_scope_id) {
+                                let func = self.project.get_func_by_id_mut(&containing_func_id);
+                                if !func.captured_closures.contains(&func_id) {
+                                    func.captured_closures.push(func_id);
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if !provided_type_arg_ids.is_empty() && provided_type_arg_ids.len() != fn_generic_ids.len() {

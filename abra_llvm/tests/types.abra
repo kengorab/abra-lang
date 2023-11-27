@@ -40,3 +40,18 @@ type Foo {
 val f = Foo()
 /// Expect: Foo(a: 12, b: "", c: [1, 2, 3])
 println(f)
+
+// Methods that capture variables
+var capturedInt = 11
+type FooWithCaptures {
+  i: Int
+
+  func foo(self): Int = self.i + capturedInt
+}
+
+val fooWithCaptures = FooWithCaptures(i: 12)
+/// Expect: 23
+println(fooWithCaptures.foo())
+capturedInt = 17
+/// Expect: 29
+println(fooWithCaptures.foo())
