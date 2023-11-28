@@ -2953,6 +2953,20 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         });
                         continue;
                     }
+                    Err(TypeError::UnknownIdentifier { .. }) if do_partial_completion => {
+                        let type_id = PRELUDE_ANY_TYPE_ID;
+                        let var_id = self.add_variable_to_current_scope(param_name.clone(), type_id, false, true, &ident_span, true)?;
+                        params.push(FunctionParam {
+                            name: param_name,
+                            type_id,
+                            var_id,
+                            defined_span: Some(ident_span),
+                            default_value: None,
+                            is_variadic: *is_vararg,
+                            is_incomplete: true,
+                        });
+                        continue;
+                    }
                     Err(e) => return Err(e)
                 }
             } else {
@@ -4595,18 +4609,26 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
 
                 // Track closed-over variables for current function
-                if let Some(func_id) = self.current_function {
+                if let Some(current_func_id) = self.current_function {
                     let VarId(var_scope_id, _) = var_id;
-                    let FuncId(func_scope_id, _) = func_id;
+                    let FuncId(func_scope_id, _) = current_func_id;
 
                     if !self.scope_contains_other(&var_scope_id, &func_scope_id) {
                         let var = self.project.get_var_by_id_mut(&var_id);
                         if var.alias == VariableAlias::None {
                             var.is_captured = true;
 
-                            let func = self.project.get_func_by_id_mut(&func_id);
+                            let func = self.project.get_func_by_id_mut(&current_func_id);
                             if !func.captured_vars.contains(&var_id) {
                                 func.captured_vars.push(var_id);
+                            }
+                        } else if let VariableAlias::Function(func_id) = var.alias {
+                            let function = self.project.get_func_by_id(&func_id);
+                            if function.is_closure() {
+                                let func = self.project.get_func_by_id_mut(&current_func_id);
+                                if !func.captured_closures.contains(&func_id) {
+                                    func.captured_closures.push(func_id);
+                                }
                             }
                         }
                     }
@@ -5181,9 +5203,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     if function.is_closure() {
                         if let Some(containing_func_id) = self.current_function {
                             let FuncId(func_scope_id, _) = func_id;
-                            let FuncId(containing_func_scope_id, _) = containing_func_id;
+                            let containing_function = self.project.get_func_by_id(&containing_func_id);
 
-                            if !self.scope_contains_other(&func_scope_id, &containing_func_scope_id) {
+                            if !self.scope_contains_other(&func_scope_id, &containing_function.fn_scope_id) {
                                 let func = self.project.get_func_by_id_mut(&containing_func_id);
                                 if !func.captured_closures.contains(&func_id) {
                                     func.captured_closures.push(func_id);

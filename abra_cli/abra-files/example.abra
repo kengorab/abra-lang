@@ -1,38 +1,9 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-var a = 1
-
-type Foo {
-  i: Int
-
-  func foo(self): Int = a += self.i
+val one = 1
+func container() {
+  val arr = [1, 2, 3]
+  arr.map(i => i + one)
 }
-
-func bar() {
-  val f = Foo(i: 11)
-  println(a)
-  println(f.foo())
-  println(a)
-}
-
-bar()
-
-//func foo() {
-//  a += 1
-//}
-//
-//func bar() {
-//  foo()
-//  foo()
-//}
-//
-//func baz() {
-//  bar()
-//}
-//
-//println(a)
-//baz()
-//println(a)
-//baz()
-//println(a)
+container()

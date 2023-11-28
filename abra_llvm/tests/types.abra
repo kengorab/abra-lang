@@ -47,6 +47,8 @@ type FooWithCaptures {
   i: Int
 
   func foo(self): Int = self.i + capturedInt
+  func foo2(self, a = capturedInt): Int = self.i + a
+  func fooStatic(): Int = capturedInt
 }
 
 val fooWithCaptures = FooWithCaptures(i: 12)
@@ -55,3 +57,22 @@ println(fooWithCaptures.foo())
 capturedInt = 17
 /// Expect: 29
 println(fooWithCaptures.foo())
+
+capturedInt = 17
+/// Expect: 29
+println(fooWithCaptures.foo2())
+capturedInt = 17
+/// Expect: 15
+println(fooWithCaptures.foo2(3))
+/// Expect: 17
+println(FooWithCaptures.fooStatic())
+
+capturedInt = 11
+func wrapper() {
+  val f = FooWithCaptures(i: 12)
+  /// Expect: 23
+  println(f.foo())
+  /// Expect: 11
+  println(FooWithCaptures.fooStatic())
+}
+wrapper()
