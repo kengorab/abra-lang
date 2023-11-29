@@ -707,7 +707,7 @@ impl<'a> LLVMCompiler2<'a> {
             let val = if let Some(llvm_var) = self.ctx_stack.last().unwrap().variables.get(&captured_var_id) {
                 match llvm_var {
                     LLVMVar::Slot(slot) => self.builder.build_load(*slot, &captured_var.name).into_pointer_value(),
-                    LLVMVar::Param(_) => todo!(),
+                    LLVMVar::Param(param) => self.builder.build_load(param.into_pointer_value(), &captured_var.name).into_pointer_value(),
                 }
             } else {
                 self.get_captured_var_slot(captured_var_id, resolved_generics).unwrap()
@@ -2274,8 +2274,9 @@ impl<'a> LLVMCompiler2<'a> {
             params_iter.next().unwrap().set_name(&param.name);
             let idx = if function.is_closure() { idx + 1 } else { idx };
             let llvm_param = llvm_fn.get_nth_param(idx as u32).unwrap();
+            let llvm_param_type = llvm_param.get_type();
             let variable = if let Some(default_value_node) = &param.default_value {
-                let param_local = self.builder.build_alloca(llvm_param.get_type(), &param.name);
+                let param_local = self.builder.build_alloca(llvm_param_type, &param.name);
 
                 let default_value_block = self.context.append_basic_block(llvm_fn, &format!("param_{}_default_value", &param.name));
                 self.builder.build_unconditional_branch(default_value_block);
@@ -2309,7 +2310,18 @@ impl<'a> LLVMCompiler2<'a> {
                 default_value_param_idx += 1;
                 LLVMVar::Slot(param_local)
             } else {
-                LLVMVar::Param(llvm_param)
+                let var = self.project.get_var_by_id(&param.var_id);
+                if var.is_captured {
+                    let ptr_type = llvm_param_type.ptr_type(AddressSpace::Generic);
+                    let heap_mem = self.malloc(self.const_i64(8), ptr_type);
+                    self.builder.build_store(heap_mem, llvm_param);
+
+                    let param_local = self.builder.build_alloca(ptr_type, &param.name);
+                    self.builder.build_store(param_local, heap_mem);
+                    LLVMVar::Slot(param_local)
+                } else {
+                    LLVMVar::Param(llvm_param)
+                }
             };
             self.ctx_stack.last_mut().unwrap().variables.insert(param.var_id, variable);
         }

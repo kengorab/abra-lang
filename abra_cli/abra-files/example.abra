@@ -1,9 +1,18 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-func makeClosureCapturingParam(x: Int): (Int) => Int {
-  i => i + x
+val arr = [1, 2, 3]
+
+func makeAdder(x: Int[]): (Int) => Int {
+  val f = (i: Int) => i + x.length
+
+  println(x)
+
+  f
 }
-val closureCapturingParam = makeClosureCapturingParam(1)
+val addOne = makeAdder(arr)
+
+arr.pop()
+
 /// Expect: 12
-println(closureCapturingParam(11))
+println(addOne(11))

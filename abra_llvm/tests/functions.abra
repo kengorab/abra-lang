@@ -198,9 +198,24 @@ val closureCapturingOutside = makeClosureCapturingOutside()
 /// Expect: 12
 println(closureCapturingOutside(11))
 
-//func makeClosureCapturingParam(x: Int): (Int) => Int {
-//  i => i + x
-//}
-//val closureCapturingParam = makeClosureCapturingParam(1)
-///// Expect: 12
-//println(closureCapturingParam(11))
+func makeAdder(x: Int): (Int) => Int {
+  i => i + x
+}
+val addOne = makeAdder(1)
+/// Expect: 12
+println(addOne(11))
+
+val capturedArr = [1, 2, 3]
+func makeClosureCapturingOutsideAndParam(arr: Int[]): (Int) => Int {
+  val f = (i: Int) => i + arr.length + one
+  arr.pop()
+  f
+}
+val closureCapturingOutsideAndParam = makeClosureCapturingOutsideAndParam(capturedArr)
+/// Expect: [1, 2]
+println(capturedArr)
+capturedArr.push(3)
+/// Expect: [1, 2, 3]
+println(capturedArr)
+/// Expect: 15
+println(closureCapturingOutsideAndParam(11))
