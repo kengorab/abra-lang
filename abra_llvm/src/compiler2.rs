@@ -684,26 +684,35 @@ impl<'a> LLVMCompiler2<'a> {
         self.end_abra_main();
     }
 
-    fn create_closure_captures(&self, function: &Function) -> PointerValue<'a> {
+    fn create_closure_captures(&self, function: &Function, resolved_generics: &ResolvedGenerics) -> PointerValue<'a> {
         // Create array of captured variables for a closure. This is implemented as an `i64*`, where each `i64` item is an encoded representation
         // of the closed-over value. Variables are known to be captured at compile-time, so when they're initialized they're moved to the heap.
         // When constructing this array, allocate enough memory to hold all known captured variables (each of which will be a pointer), and treat
         // that pointer as an i64 which is stored in this chunk of memory. Upon retrieval, the value will be converted back into the appropriate
         // type, which is also known at compile-time. Using an `i64*` as the captures array helps simplify the model behind the scenes, and makes
         // calling functions/closures simpler.
+        //
+        // In addition to captured variables, the captures array _also_ includes any captures arrays of any closures that are closed-over within
+        // this function (these `i64*` values are encoded as `i64` in the same way as above). Also, it's possible that a closure captures a variable
+        // from _outside_ the current function scope. In this case, the containing functions must themselves become closures (if they're not already)
+        // and that captured variable must be carried through the call stack. For example:
+        //   val a = 1
+        //   func outer() {
+        //     func inner() { println(a) }
+        //   }
         let malloc_size = self.const_i64((function.captured_vars.len() + function.captured_closures.len() * 8) as u64);
         let captured_vars_mem = self.malloc(malloc_size, self.closure_captures_t());
         for (idx, captured_var_id) in function.captured_vars.iter().enumerate() {
             let captured_var = self.project.get_var_by_id(captured_var_id);
-            let llvm_var = self.ctx_stack.last().unwrap().variables.get(&captured_var_id).expect(&format!("No stored slot for variable {} ({:?})", &captured_var.name, &captured_var));
-            let captured_var_value = match llvm_var {
-                LLVMVar::Slot(slot) => {
-                    let val = self.builder.build_load(*slot, &captured_var.name);
-                    debug_assert!(val.is_pointer_value(), "Captured variables should be lifted to heap space upon initialization");
-                    self.builder.build_ptr_to_int(val.into_pointer_value(), self.i64(), &format!("capture_{}_ptr_as_value", &captured_var.name))
+            let val = if let Some(llvm_var) = self.ctx_stack.last().unwrap().variables.get(&captured_var_id) {
+                match llvm_var {
+                    LLVMVar::Slot(slot) => self.builder.build_load(*slot, &captured_var.name).into_pointer_value(),
+                    LLVMVar::Param(_) => todo!(),
                 }
-                LLVMVar::Param(_) => todo!(),
+            } else {
+                self.get_captured_var_slot(captured_var_id, resolved_generics).unwrap()
             };
+            let captured_var_value = self.builder.build_ptr_to_int(val, self.i64(), &format!("capture_{}_ptr_as_value", &captured_var.name));
             let slot = unsafe { self.builder.build_gep(captured_vars_mem, &[self.const_i32(idx as u64).into()], &format!("captured_var_{}_slot", &captured_var.name)) };
             self.builder.build_store(slot, captured_var_value);
         }
@@ -797,7 +806,7 @@ impl<'a> LLVMCompiler2<'a> {
                     // If a function captures variables, gather those captures into a captures array, and store as a local. This local
                     // is used later on to invoke a function (if the closure is known statically) or to create a runtime function
                     // value (when a function-aliased identifier is referenced in a non-invocation context).
-                    let captured_vars_mem = self.create_closure_captures(function);
+                    let captured_vars_mem = self.create_closure_captures(function, resolved_generics);
                     let captures_name = format!("captures_{}_{}_{}_{}", func_id.0.0.0, func_id.0.1, func_id.1, &function.name);
                     let captured_vars_slot = self.builder.build_alloca(self.closure_captures_t(), &captures_name);
                     self.builder.build_store(captured_vars_slot, captured_vars_mem);
@@ -812,7 +821,7 @@ impl<'a> LLVMCompiler2<'a> {
                 for func_id in struct_.methods.iter().chain(&struct_.static_methods) {
                     let function = self.project.get_func_by_id(func_id);
                     if function.is_closure() {
-                        let captured_vars_mem = self.create_closure_captures(function);
+                        let captured_vars_mem = self.create_closure_captures(function, resolved_generics);
                         let captures_name = format!("captures_{}_{}_{}_{}", func_id.0.0.0, func_id.0.1, func_id.1, &function.name);
                         let captured_vars_slot = self.builder.build_alloca(self.closure_captures_t(), &captures_name);
                         self.builder.build_store(captured_vars_slot, captured_vars_mem);
@@ -1730,7 +1739,7 @@ impl<'a> LLVMCompiler2<'a> {
                 let function = self.project.get_func_by_id(func_id);
 
                 let captures = if function.is_closure() {
-                    Some(self.create_closure_captures(function))
+                    Some(self.create_closure_captures(function, resolved_generics))
                 } else {
                     None
                 };

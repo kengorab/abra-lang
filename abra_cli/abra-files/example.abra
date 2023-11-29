@@ -1,9 +1,9 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-val one = 1
-func container() {
-  val arr = [1, 2, 3]
-  arr.map(i => i + one)
+func makeClosureCapturingParam(x: Int): (Int) => Int {
+  i => i + x
 }
-container()
+val closureCapturingParam = makeClosureCapturingParam(1)
+/// Expect: 12
+println(closureCapturingParam(11))

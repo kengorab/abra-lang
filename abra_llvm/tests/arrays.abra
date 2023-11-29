@@ -86,6 +86,7 @@
 // Array#map
 func addOne(i: Int): Int = i + 1
 func exclaim(i: Int, _: Int, x = "!"): String = "$i$x"
+val one = 1
 (() => {
   val arr = [1, 2, 3, 4]
 
@@ -93,6 +94,8 @@ func exclaim(i: Int, _: Int, x = "!"): String = "$i$x"
   println(arr.map(addOne))
   /// Expect: [2, 3, 4, 5]
   println(arr.map(i => i + 1))
+  /// Expect: [2, 3, 4, 5]
+  println(arr.map(i => i + one))
 
   /// Expect: [1!, 2!, 3!, 4!]
   println(arr.map(exclaim))

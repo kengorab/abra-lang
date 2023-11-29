@@ -183,3 +183,24 @@ println(capturedInt)
 containsClosures2()
 /// Expect: 5
 println(capturedInt)
+
+// Returning a function/closure value
+func makeNonClosure(): (Int) => Int = i => i + 1
+val nonClosure = makeNonClosure()
+/// Expect: 12
+println(nonClosure(11))
+
+val one = 1
+func makeClosureCapturingOutside(): (Int) => Int {
+  i => i + one
+}
+val closureCapturingOutside = makeClosureCapturingOutside()
+/// Expect: 12
+println(closureCapturingOutside(11))
+
+//func makeClosureCapturingParam(x: Int): (Int) => Int {
+//  i => i + x
+//}
+//val closureCapturingParam = makeClosureCapturingParam(1)
+///// Expect: 12
+//println(closureCapturingParam(11))

@@ -5436,6 +5436,29 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 self.end_child_scope();
                 self.current_function = prev_func_id;
 
+                let func = self.project.get_func_by_id(&lambda_func_id);
+                if func.is_closure() {
+                    if let Some(current_func_id) = self.current_function {
+                        let FuncId(func_scope_id, _) = current_func_id;
+
+                        let captured_vars = func.captured_vars.clone();
+                        for var_id in &captured_vars {
+                            let VarId(var_scope_id, _) = var_id;
+                            if !self.scope_contains_other(&var_scope_id, &func_scope_id) {
+                                let var = self.project.get_var_by_id_mut(&var_id);
+                                if var.alias == VariableAlias::None {
+                                    var.is_captured = true;
+
+                                    let func = self.project.get_func_by_id_mut(&current_func_id);
+                                    if !func.captured_vars.contains(&var_id) {
+                                        func.captured_vars.push(*var_id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 let resolved_type_id = type_hint.unwrap_or(func_type_id);
                 Ok(TypedNode::Lambda { span, func_id: lambda_func_id, type_id: func_type_id, resolved_type_id })
             }
