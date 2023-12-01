@@ -219,3 +219,33 @@ capturedArr.push(3)
 println(capturedArr)
 /// Expect: 15
 println(closureCapturingOutsideAndParam(11))
+
+// This is a pretty cool stress-test for closures and functions as values
+type JankInstance<A, B> {
+  a: A
+  b: B
+  setA: (A) => A
+  setB: (B) => B
+  toString: () => String
+}
+func makeJankClass(className: String, a: Int, b: Float[]): JankInstance<Int, Float[]> {
+  var selfA = a
+  var selfB = b
+
+  JankInstance(
+    a: a,
+    b: b,
+    setA: a => selfA = a,
+    setB: b => selfB = b,
+    toString: () => "$className(a: $selfA, b: $selfB)"
+  )
+}
+val jank = makeJankClass("Wow", 1, [2.3, 4.5])
+/// Expect: Wow(a: 1, b: [2.3, 4.5])
+println(jank.toString())
+
+jank.setA(0)
+jank.setB([1.2, 3.4])
+/// Expect: Wow(a: 0, b: [1.2, 3.4])
+println(jank.toString())
+

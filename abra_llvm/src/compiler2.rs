@@ -700,7 +700,7 @@ impl<'a> LLVMCompiler2<'a> {
         //   func outer() {
         //     func inner() { println(a) }
         //   }
-        let malloc_size = self.const_i64((function.captured_vars.len() + function.captured_closures.len() * 8) as u64);
+        let malloc_size = self.const_i64(((function.captured_vars.len() + function.captured_closures.len()) * 8) as u64);
         let captured_vars_mem = self.malloc(malloc_size, self.closure_captures_t());
         for (idx, captured_var_id) in function.captured_vars.iter().enumerate() {
             let captured_var = self.project.get_var_by_id(captured_var_id);
@@ -1357,7 +1357,7 @@ impl<'a> LLVMCompiler2<'a> {
                             }
                         }
                     }
-                    TypedNode::Accessor { target, kind, member_idx, .. } => {
+                    TypedNode::Accessor { target, kind, member_idx, .. } if kind != &AccessorKind::Field => {
                         let mut target_type_id = target.type_id();
                         if let Type::Generic(_, generic_name) = self.project.get_type_by_id(target_type_id) {
                             target_type_id = resolved_generics.resolve(generic_name).unwrap_or(target_type_id)
@@ -1365,7 +1365,7 @@ impl<'a> LLVMCompiler2<'a> {
                         let target_ty = self.project.get_type_by_id(target_type_id);
 
                         match kind {
-                            AccessorKind::Field => todo!(),
+                            AccessorKind::Field => unreachable!("Field accessor nodes should be handled in the catchall clause below"),
                             AccessorKind::Method if self.project.type_is_option(target_type_id).is_some() => {
                                 let Some(inner_type_id) = self.project.type_is_option(target_type_id) else { unreachable!() };
 

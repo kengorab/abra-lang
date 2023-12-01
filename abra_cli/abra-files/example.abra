@@ -1,18 +1,29 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-val arr = [1, 2, 3]
-
-func makeAdder(x: Int[]): (Int) => Int {
-  val f = (i: Int) => i + x.length
-
-  println(x)
-
-  f
+type Methods<A, B> {
+  a: A
+  b: B
+  setA: (A) => A
+  setB: (B) => B
+  toString: () => String
 }
-val addOne = makeAdder(arr)
 
-arr.pop()
+func makePseudoClass(className: String, a: Int, b: Float[]): Methods<Int, Float[]> {
+  var selfA = a
+  var selfB = b
 
-/// Expect: 12
-println(addOne(11))
+  Methods(
+    a: a,
+    b: b,
+    setA: a => selfA = a,
+    setB: b => selfB = b,
+    toString: () => "$className(a: $selfA, b: $selfB)"
+  )
+}
+val jank = makePseudoClass("Jank", 1, [2.3, 4.5])
+println(jank.toString())
+
+jank.setA(0)
+jank.setB([1.2, 3.4])
+println(jank.toString())
