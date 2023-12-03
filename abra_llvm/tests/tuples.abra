@@ -1,0 +1,17 @@
+// Instantiation
+val point = (0.5, 1.5, -0.75)
+/// Expect: (0.5, 1.5, -0.75)
+println(point)
+
+val y = (1, "two", ["three"])
+/// Expect: (1, two, [three])
+println(y)
+
+// Indexing
+val quad = (1, "two", ["three"], (2, 3))
+val two = quad[1]
+/// Expect: two
+println(two)
+
+/// Expect: 2
+println(quad[3][0])

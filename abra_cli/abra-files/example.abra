@@ -1,29 +1,9 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-type Methods<A, B> {
-  a: A
-  b: B
-  setA: (A) => A
-  setB: (B) => B
-  toString: () => String
-}
+//val x = (1, "two")
+//println(x)
 
-func makePseudoClass(className: String, a: Int, b: Float[]): Methods<Int, Float[]> {
-  var selfA = a
-  var selfB = b
-
-  Methods(
-    a: a,
-    b: b,
-    setA: a => selfA = a,
-    setB: b => selfB = b,
-    toString: () => "$className(a: $selfA, b: $selfB)"
-  )
-}
-val jank = makePseudoClass("Jank", 1, [2.3, 4.5])
-println(jank.toString())
-
-jank.setA(0)
-jank.setB([1.2, 3.4])
-println(jank.toString())
+val y = (1, "two", ["three"])
+val x = y[2][0]
+println(x)

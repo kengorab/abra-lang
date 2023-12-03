@@ -349,6 +349,13 @@ impl Project {
         type_id == &PRELUDE_ANY_TYPE_ID
     }
 
+    pub fn type_is_tuple(&self, type_id: &TypeId) -> Option<&Vec<TypeId>> {
+        match self.get_type_by_id(&type_id) {
+            Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.prelude_tuple_struct_id => Some(generic_ids),
+            _ => None
+        }
+    }
+
     pub fn type_is_option(&self, type_id: &TypeId) -> Option<TypeId> {
         match self.get_type_by_id(&type_id) {
             Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.prelude_option_struct_id => Some(generic_ids[0]),
@@ -900,7 +907,7 @@ pub enum TypedNode {
     Binary { op: BinaryOp, left: Box<TypedNode>, right: Box<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
     Grouped { token: Token, expr: Box<TypedNode> },
     Array { token: Token, items: Vec<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
-    Tuple { token: Token, items: Vec<TypedNode>, type_id: TypeId },
+    Tuple { token: Token, items: Vec<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
     Set { token: Token, items: Vec<TypedNode>, type_id: TypeId },
     Map { token: Token, items: Vec<(TypedNode, TypedNode)>, type_id: TypeId },
     Identifier { token: Token, var_id: VarId, type_arg_ids: Vec<(TypeId, Range)>, type_id: TypeId, resolved_type_id: TypeId },
@@ -970,7 +977,7 @@ impl TypedNode {
             TypedNode::Binary { resolved_type_id, .. } => *resolved_type_id = new_type_id,
             TypedNode::Grouped { expr, .. } => expr.set_resolved_type_id(new_type_id),
             TypedNode::Array { resolved_type_id, .. } => *resolved_type_id = new_type_id,
-            TypedNode::Tuple { .. } |
+            TypedNode::Tuple { resolved_type_id, .. } => *resolved_type_id = new_type_id,
             TypedNode::Set { .. } |
             TypedNode::Map { .. } => todo!(),
             TypedNode::Identifier { resolved_type_id, .. } => *resolved_type_id = new_type_id,
@@ -4575,7 +4582,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 }
 
-                Ok(TypedNode::Tuple { token, items: typed_items, type_id })
+                let resolved_type_id = type_hint.unwrap_or(type_id);
+                Ok(TypedNode::Tuple { token, items: typed_items, type_id, resolved_type_id })
             }
             AstNode::Identifier(token, type_args) => {
                 if let Token::None(_) = &token {
