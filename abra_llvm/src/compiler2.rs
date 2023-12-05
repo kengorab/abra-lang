@@ -154,6 +154,7 @@ impl<'a> LLVMCompiler2<'a> {
         let exec_out_file = out_dir.join(&out_name);
         let cc_output = Command::new("clang")
             .arg(&llvm_module_out_file)
+            .arg("-lm")
             .arg("-o")
             .arg(&exec_out_file)
             .arg("-Wno-override-module")
