@@ -845,6 +845,7 @@ fn typecheck_binary() {
         ("1 <= 2.1", PRELUDE_BOOL_TYPE_ID),
         ("1.1 <= 2.1", PRELUDE_BOOL_TYPE_ID),
         ("\"abc\" <= \"def\"", PRELUDE_BOOL_TYPE_ID),
+        ("12 << 34", PRELUDE_INT_TYPE_ID),
         // >
         ("1 > 2", PRELUDE_BOOL_TYPE_ID),
         ("1.1 > 2", PRELUDE_BOOL_TYPE_ID),
@@ -857,6 +858,7 @@ fn typecheck_binary() {
         ("1 >= 2.1", PRELUDE_BOOL_TYPE_ID),
         ("1.1 >= 2.1", PRELUDE_BOOL_TYPE_ID),
         ("\"abc\" >= \"def\"", PRELUDE_BOOL_TYPE_ID),
+        ("12 >> 34", PRELUDE_INT_TYPE_ID),
         // ==
         ("1 == \"2\"", PRELUDE_BOOL_TYPE_ID),
         ("[1, 2] == (2, 3)", PRELUDE_BOOL_TYPE_ID),
@@ -869,12 +871,15 @@ fn typecheck_binary() {
         // &&
         ("true && false", PRELUDE_BOOL_TYPE_ID),
         ("(1 < 3) && false", PRELUDE_BOOL_TYPE_ID),
+        ("0xff && 0x1", PRELUDE_INT_TYPE_ID),
         // ||
         ("true || false", PRELUDE_BOOL_TYPE_ID),
         ("(1 < 3) || false", PRELUDE_BOOL_TYPE_ID),
+        ("0xff || 0x1", PRELUDE_INT_TYPE_ID),
         // ^
         ("true ^ false", PRELUDE_BOOL_TYPE_ID),
         ("(1 < 3) ^ false", PRELUDE_BOOL_TYPE_ID),
+        ("0xff ^ 0x1", PRELUDE_INT_TYPE_ID),
     ];
 
     for (input, expected) in cases {

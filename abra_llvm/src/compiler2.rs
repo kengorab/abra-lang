@@ -1132,36 +1132,57 @@ impl<'a> LLVMCompiler2<'a> {
                         }
                     }
                     BinaryOp::And | BinaryOp::Or => {
-                        debug_assert!(left_type_id == &PRELUDE_BOOL_TYPE_ID);
-                        debug_assert!(right_type_id == &PRELUDE_BOOL_TYPE_ID);
+                        if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
+                            let left = self.visit_expression(left, resolved_generics).unwrap();
+                            let right = self.visit_expression(right, resolved_generics).unwrap();
 
-                        let left_val = self.visit_expression(left, resolved_generics).unwrap();
+                            let value = if op == &BinaryOp::And {
+                                self.builder.build_and(left.into_int_value(), right.into_int_value(), "")
+                            } else {
+                                self.builder.build_or(left.into_int_value(), right.into_int_value(), "")
+                            };
 
-                        let op_name = if op == &BinaryOp::And { "and" } else { "or" };
-                        let then_bb = self.context.append_basic_block(self.current_fn.0, &format!("binary_{op_name}_then"));
-                        let else_bb = self.context.append_basic_block(self.current_fn.0, &format!("binary_{op_name}_else"));
-                        let cont_bb = self.context.append_basic_block(self.current_fn.0, &format!("binary_{op_name}_cont"));
+                            value.into()
+                        } else {
+                            let left_val = self.visit_expression(left, resolved_generics).unwrap();
 
-                        let cond = self.builder.build_int_compare(IntPredicate::EQ, left_val.into_int_value(), self.const_bool(true), "");
-                        self.builder.build_conditional_branch(cond, then_bb, else_bb);
+                            let op_name = if op == &BinaryOp::And { "and" } else { "or" };
+                            let then_bb = self.context.append_basic_block(self.current_fn.0, &format!("binary_{op_name}_then"));
+                            let else_bb = self.context.append_basic_block(self.current_fn.0, &format!("binary_{op_name}_else"));
+                            let cont_bb = self.context.append_basic_block(self.current_fn.0, &format!("binary_{op_name}_cont"));
 
-                        self.builder.position_at_end(then_bb);
-                        let then_value = if op == &BinaryOp::And { self.visit_expression(right, resolved_generics).unwrap() } else { left_val };
-                        let then_bb = self.builder.get_insert_block().unwrap();
-                        self.builder.build_unconditional_branch(cont_bb);
+                            let cond = self.builder.build_int_compare(IntPredicate::EQ, left_val.into_int_value(), self.const_bool(true), "");
+                            self.builder.build_conditional_branch(cond, then_bb, else_bb);
 
-                        self.builder.position_at_end(else_bb);
-                        let else_value = if op == &BinaryOp::And { left_val } else { self.visit_expression(right, resolved_generics).unwrap() };
-                        let else_bb = self.builder.get_insert_block().unwrap();
-                        self.builder.build_unconditional_branch(cont_bb);
+                            self.builder.position_at_end(then_bb);
+                            let then_value = if op == &BinaryOp::And { self.visit_expression(right, resolved_generics).unwrap() } else { left_val };
+                            let then_bb = self.builder.get_insert_block().unwrap();
+                            self.builder.build_unconditional_branch(cont_bb);
 
-                        self.builder.position_at_end(cont_bb);
-                        let phi = self.builder.build_phi(self.bool(), &format!("{op_name}_value"));
-                        phi.add_incoming(&[(&then_value, then_bb), (&else_value, else_bb)]);
+                            self.builder.position_at_end(else_bb);
+                            let else_value = if op == &BinaryOp::And { left_val } else { self.visit_expression(right, resolved_generics).unwrap() };
+                            let else_bb = self.builder.get_insert_block().unwrap();
+                            self.builder.build_unconditional_branch(cont_bb);
 
-                        phi.as_basic_value()
+                            self.builder.position_at_end(cont_bb);
+                            let phi = self.builder.build_phi(self.bool(), &format!("{op_name}_value"));
+                            phi.add_incoming(&[(&then_value, then_bb), (&else_value, else_bb)]);
+
+                            phi.as_basic_value()
+                        }
                     }
-                    BinaryOp::Xor |
+                    BinaryOp::Xor => {
+                        let left = self.visit_expression(left, resolved_generics).unwrap();
+                        let right = self.visit_expression(right, resolved_generics).unwrap();
+
+                        if left_type_id == &PRELUDE_BOOL_TYPE_ID && right_type_id == &PRELUDE_BOOL_TYPE_ID {
+                            self.builder.build_xor(left.into_int_value(), right.into_int_value(), "").as_basic_value_enum()
+                        } else if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
+                            self.builder.build_xor(left.into_int_value(), right.into_int_value(), "").as_basic_value_enum()
+                        } else {
+                            unreachable!("`^` operator not defined between types {} and {}", self.project.type_repr(left_type_id), self.project.type_repr(right_type_id))
+                        }
+                    }
                     BinaryOp::Coalesce => todo!(),
                     op @ BinaryOp::Lt | op @ BinaryOp::Lte | op @ BinaryOp::Gt | op @ BinaryOp::Gte => {
                         let comp_op_int = if op == &BinaryOp::Lt { IntPredicate::SLT } else if op == &BinaryOp::Lte { IntPredicate::SLE } else if op == &BinaryOp::Gt { IntPredicate::SGT } else if op == &BinaryOp::Gte { IntPredicate::SGE } else { unreachable!() };
@@ -1203,7 +1224,79 @@ impl<'a> LLVMCompiler2<'a> {
                             todo!()
                         }
                     }
-                    BinaryOp::Pow => todo!(),
+                    BinaryOp::Pow => {
+                        let left_val = self.visit_expression(left, resolved_generics).unwrap();
+                        let right_val = self.visit_expression(right, resolved_generics).unwrap();
+                        if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
+                            let pow_fn = self.main_module.get_function("llvm.powi.f64.i64").unwrap_or_else(|| {
+                                self.main_module.add_function("llvm.powi.f64.i64", self.fn_type(self.f64(), &[self.f64().into(), self.i64().into()]), None)
+                            });
+
+                            let left = self.builder.build_signed_int_to_float(left_val.into_int_value(), self.f64(), "");
+                            self.builder.build_call(pow_fn, &[left.into(), right_val.into_int_value().into()], "").try_as_basic_value().left().unwrap()
+                        } else {
+                            let pow_fn = self.main_module.get_function("llvm.pow.f64").unwrap_or_else(|| {
+                                self.main_module.add_function("llvm.pow.f64", self.fn_type(self.f64(), &[self.f64().into(), self.f64().into()]), None)
+                            });
+
+                            let left;
+                            let right;
+                            if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_FLOAT_TYPE_ID {
+                                left = self.builder.build_signed_int_to_float(left_val.into_int_value(), self.f64(), "");
+                                right = right_val.into_float_value()
+                            } else if left_type_id == &PRELUDE_FLOAT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
+                                left = left_val.into_float_value();
+                                right = self.builder.build_signed_int_to_float(right_val.into_int_value(), self.f64(), "");
+                            } else if left_type_id == &PRELUDE_FLOAT_TYPE_ID && right_type_id == &PRELUDE_FLOAT_TYPE_ID {
+                                left = left_val.into_float_value();
+                                right = right_val.into_float_value();
+                            } else {
+                                unreachable!("`**` operator not defined between types {} and {}", self.project.type_repr(left_type_id), self.project.type_repr(right_type_id))
+                            };
+
+                            // if a < 0 { -(-a ** b) } else { a ** b }
+                            let cond = self.builder.build_float_compare(FloatPredicate::OLT, left, self.const_f64(0.0).into(), "cond");
+                            let then_bb = self.context.append_basic_block(self.current_fn.0, "then");
+                            let else_bb = self.context.append_basic_block(self.current_fn.0, "else");
+                            let cont_bb = self.context.append_basic_block(self.current_fn.0, "cont");
+                            self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+                            self.builder.position_at_end(then_bb);
+                            let neg_left = self.builder.build_float_mul(left, self.const_f64(-1.0), "");
+                            let then_val = self.builder.build_call(pow_fn, &[neg_left.into(), right.into()], "").try_as_basic_value().left().unwrap().into_float_value();
+                            let then_val = self.builder.build_float_mul(then_val, self.const_f64(-1.0), "");
+                            self.builder.build_unconditional_branch(cont_bb);
+                            let then_bb = self.builder.get_insert_block().unwrap();
+
+                            self.builder.position_at_end(else_bb);
+                            let else_val = self.builder.build_call(pow_fn, &[left.into(), right.into()], "").try_as_basic_value().left().unwrap();
+                            self.builder.build_unconditional_branch(cont_bb);
+                            let else_bb = self.builder.get_insert_block().unwrap();
+
+                            self.builder.position_at_end(cont_bb);
+                            let phi = self.builder.build_phi(self.f64(), "");
+                            phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
+                            phi.as_basic_value()
+                        }
+                    }
+                    BinaryOp::ShiftLeft => {
+                        let left = self.visit_expression(left, resolved_generics).unwrap();
+                        let right = self.visit_expression(right, resolved_generics).unwrap();
+                        if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
+                            self.builder.build_left_shift(left.into_int_value(), right.into_int_value(), "").into()
+                        } else {
+                            unreachable!("`<<` operator not defined between types {} and {}", self.project.type_repr(left_type_id), self.project.type_repr(right_type_id))
+                        }
+                    }
+                    BinaryOp::ShiftRight => {
+                        let left = self.visit_expression(left, resolved_generics).unwrap();
+                        let right = self.visit_expression(right, resolved_generics).unwrap();
+                        if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
+                            self.builder.build_right_shift(left.into_int_value(), right.into_int_value(), false, "").into()
+                        } else {
+                            unreachable!("`>>` operator not defined between types {} and {}", self.project.type_repr(left_type_id), self.project.type_repr(right_type_id))
+                        }
+                    },
                     BinaryOp::AddEq |
                     BinaryOp::SubEq |
                     BinaryOp::MulEq |
@@ -1211,7 +1304,7 @@ impl<'a> LLVMCompiler2<'a> {
                     BinaryOp::ModEq |
                     BinaryOp::AndEq |
                     BinaryOp::OrEq |
-                    BinaryOp::CoalesceEq => unreachable!("Handled in ::Assignment")
+                    BinaryOp::CoalesceEq => unreachable!("Handled in ::Assignment"),
                 };
 
                 self.cast_result_if_necessary(value, type_id, resolved_type_id, resolved_generics)

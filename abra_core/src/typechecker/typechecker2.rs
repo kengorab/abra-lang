@@ -4375,11 +4375,19 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             return Err(TypeError::IllegalOperator { span, op, left, right });
                         }
                     }
+                    BinaryOp::ShiftLeft | BinaryOp::ShiftRight => match (*l_type_id, *r_type_id) {
+                        (PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID) => PRELUDE_INT_TYPE_ID,
+                        (left, right) => {
+                            let span = self.make_span(&typed_left.span().expand(&typed_right.span()));
+                            return Err(TypeError::IllegalOperator { span, op, left, right });
+                        }
+                    }
                     BinaryOp::Eq | BinaryOp::Neq => PRELUDE_BOOL_TYPE_ID,
 
-                    // Boolean operators
+                    // Boolean/bitwise operators
                     BinaryOp::And | BinaryOp::Or | BinaryOp::Xor => match (*l_type_id, *r_type_id) {
                         (PRELUDE_BOOL_TYPE_ID, PRELUDE_BOOL_TYPE_ID) => PRELUDE_BOOL_TYPE_ID,
+                        (PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID) => PRELUDE_INT_TYPE_ID,
                         (left, right) => {
                             let span = self.make_span(&typed_left.span().expand(&typed_right.span()));
                             return Err(TypeError::IllegalOperator { span, op, left, right });

@@ -1302,6 +1302,15 @@ impl Parser {
 
     fn parse_binary(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseErrorKind> {
         let prec = Parser::precedence_for_token(&token);
+
+        let extra_token = if matches!(token, Token::GT(_)) && matches!(self.peek(), Some(Token::GT(_))) {
+            Some(self.expect_next_token(TokenType::GT)?)
+        } else if matches!(token, Token::LT(_)) && matches!(self.peek(), Some(Token::LT(_))) {
+            Some(self.expect_next_token(TokenType::LT)?)
+        } else {
+            None
+        };
+
         let right = self.parse_precedence(prec)?;
         let op = match token {
             Token::Plus(_) => BinaryOp::Add,
@@ -1320,9 +1329,21 @@ impl Parser {
             Token::OrEq(_) => BinaryOp::OrEq,
             Token::Elvis(_) => BinaryOp::Coalesce,
             Token::ElvisEq(_) => BinaryOp::CoalesceEq,
-            Token::GT(_) => BinaryOp::Gt,
+            Token::GT(_) => {
+                if let Some(Token::GT(_)) = extra_token {
+                    BinaryOp::ShiftRight
+                } else {
+                    BinaryOp::Gt
+                }
+            },
             Token::GTE(_) => BinaryOp::Gte,
-            Token::LT(_) => BinaryOp::Lt,
+            Token::LT(_) => {
+                if let Some(Token::LT(_)) = extra_token {
+                    BinaryOp::ShiftLeft
+                } else {
+                    BinaryOp::Lt
+                }
+            },
             Token::LTE(_) => BinaryOp::Lte,
             Token::Neq(_) => BinaryOp::Neq,
             Token::Eq(_) => BinaryOp::Eq,
@@ -1766,7 +1787,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_binary_numeric() -> TestResult {
+    fn parse_binary_plus() -> TestResult {
         let ast = parse("1.2 + 3")?;
         let expected = vec![
             Binary(
@@ -1816,6 +1837,57 @@ mod tests {
             )
         ];
         Ok(assert_eq!(expected, ast))
+    }
+
+    #[test]
+    fn parse_binary_shift_operators() -> TestResult {
+        let ast = parse("1 << 5")?;
+        let expected = vec![
+            Binary(
+                Token::LT(Position::new(1, 3)),
+                BinaryNode {
+                    left: Box::new(int_literal!((1, 1), 1)),
+                    op: BinaryOp::ShiftLeft,
+                    right: Box::new(int_literal!((1, 6), 5)),
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("1 >> 5")?;
+        let expected = vec![
+            Binary(
+                Token::GT(Position::new(1, 3)),
+                BinaryNode {
+                    left: Box::new(int_literal!((1, 1), 1)),
+                    op: BinaryOp::ShiftRight,
+                    right: Box::new(int_literal!((1, 6), 5)),
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("1 >> 5 + 1")?;
+        let expected = vec![
+            Binary(
+                Token::GT(Position::new(1, 3)),
+                BinaryNode {
+                    left: Box::new(int_literal!((1, 1), 1)),
+                    op: BinaryOp::ShiftRight,
+                    right: Box::new(Binary(
+                        Token::Plus(Position::new(1, 8)),
+                        BinaryNode {
+                            left: Box::new(int_literal!((1, 6), 5)),
+                            op: BinaryOp::Add,
+                            right: Box::new(int_literal!((1, 10), 1)),
+                        }
+                    )),
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        Ok(())
     }
 
     #[test]
@@ -2163,7 +2235,7 @@ mod tests {
     fn parse_binary_errors_eof() {
         let cases = vec![
             "-5 +", "-5 -", "-5 *", "-5 /",
-            "5  >", "5 >=", "5  <", "5 <=", "5 ==", "5 !=",
+            "5  >", "5 >=", "5  <", "5 <=", "5 ==", "5 !=", "5 <<", "5 >>"
         ];
 
         for input in cases {
@@ -2176,9 +2248,7 @@ mod tests {
     fn parse_binary_errors_unexpected_token() {
         let cases = vec![
             ("5 > + 4", ParseErrorKind::UnexpectedToken(Token::Plus(Position::new(1, 5)))),
-            ("5 >> 4", ParseErrorKind::UnexpectedToken(Token::GT(Position::new(1, 4)))),
             ("5 < + 4", ParseErrorKind::UnexpectedToken(Token::Plus(Position::new(1, 5)))),
-            ("5 << 4", ParseErrorKind::UnexpectedToken(Token::LT(Position::new(1, 4)))),
             ("5 <> 6", ParseErrorKind::UnexpectedToken(Token::GT(Position::new(1, 4)))),
         ];
 

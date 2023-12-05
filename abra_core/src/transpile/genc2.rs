@@ -771,6 +771,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                     BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::AndEq | BinaryOp::OrEq | BinaryOp::CoalesceEq => {
                         unreachable!("Assignment operators expressions are pre-transformed")
                     }
+                    _ => unimplemented!()
                 };
 
                 let handle = self.next_ssa_handle();

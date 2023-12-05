@@ -4,6 +4,8 @@
 //val x = (1, "two")
 //println(x)
 
-val y = (1, "two", ["three"])
-val x = y[2][0]
-println(x)
+//val x = 2 ** 5.1
+
+//0xfe >> 1 && 1
+
+0b01010101 ^ 0b10101010

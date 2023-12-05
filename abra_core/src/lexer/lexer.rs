@@ -117,6 +117,42 @@ impl<'a> Lexer<'a> {
             Some(ch) => ch
         };
 
+        if ch == '0' && self.peek() == Some(&'x') {
+            let pos = Position::new(self.line, self.col);
+            self.expect_next()?; // Consume 'x'
+
+            let mut val = 0i64;
+            while let Some(&ch) = self.peek() {
+                let v = match ch {
+                    '0'..='9' => (ch as u8) - b'0',
+                    'a'..='f' => (ch as u8) - b'a' + 10,
+                    _ => break
+                };
+
+                self.expect_next()?; // Consume char
+                val = val * 16 + (v as i64);
+            }
+
+            return Ok(Some(Token::Int(pos, val)));
+        } else if ch == '0' && self.peek() == Some(&'b') {
+            let pos = Position::new(self.line, self.col);
+            self.expect_next()?; // Consume 'x'
+
+            let mut val = 0i64;
+            while let Some(&ch) = self.peek() {
+                let v = match ch {
+                    '0' => 0,
+                    '1' => 1,
+                    _ => break
+                };
+
+                self.expect_next()?; // Consume char
+                val = val * 2 + (v as i64);
+            }
+
+            return Ok(Some(Token::Int(pos, val)));
+        }
+
         if ch.is_digit(10) {
             let pos = Position::new(self.line, self.col);
 
@@ -513,6 +549,20 @@ mod tests {
             Token::Ident(Position::new(1, 3), "a".to_string()),
         ];
         assert_eq!(expected, tokens);
+
+        let input = "0x1234abcd";
+        let tokens = tokenize(input).unwrap();
+        let expected = vec![
+            Token::Int(Position::new(1, 1), 305441741),
+        ];
+        assert_eq!(expected, tokens);
+
+        let input = "0b0101010";
+        let tokens = tokenize(input).unwrap();
+        let expected = vec![
+            Token::Int(Position::new(1, 1), 42),
+        ];
+        assert_eq!(expected, tokens);
     }
 
     #[test]
@@ -831,21 +881,21 @@ mod tests {
         let tokens = tokenize("return     123").unwrap();
         let expected = vec![
             Token::Return(Position::new(1, 1), false),
-            Token::Int(Position::new(1, 12), 123)
+            Token::Int(Position::new(1, 12), 123),
         ];
         assert_eq!(expected, tokens);
 
         let tokens = tokenize("return\n123").unwrap();
         let expected = vec![
             Token::Return(Position::new(1, 1), true),
-            Token::Int(Position::new(2, 1), 123)
+            Token::Int(Position::new(2, 1), 123),
         ];
         assert_eq!(expected, tokens);
 
         let tokens = tokenize("return  \t  \n123").unwrap();
         let expected = vec![
             Token::Return(Position::new(1, 1), true),
-            Token::Int(Position::new(2, 1), 123)
+            Token::Int(Position::new(2, 1), 123),
         ];
         assert_eq!(expected, tokens);
     }
