@@ -76,6 +76,17 @@
   println(s[a:], s[:a])
 })()
 
+// String#hash
+(() => {
+  val empty = ""
+  /// Expect: true
+  println(empty.hash() == "".hash())
+
+  val nonEmpty = "hello"
+  /// Expect: true
+  println(nonEmpty.hash() == "hello".hash())
+})()
+
 // String#isEmpty
 (() => {
   val empty = ""

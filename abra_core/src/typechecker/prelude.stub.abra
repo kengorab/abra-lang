@@ -25,6 +25,9 @@ func println(*items: Any[]) {
 type Byte {
   @Intrinsic("byte_from_int")
   func fromInt(value: Int): Byte
+
+  @Intrinsic("byte_as_int")
+  func asInt(self): Int
 }
 
 type Pointer<T> {
@@ -79,6 +82,17 @@ type String {
 
   func withLength(length: Int): String {
     String(length: length, _buffer: Pointer.malloc(length))
+  }
+
+  func hash(self): Int {
+    var hash = 31 * self.length
+    var i = 0
+    while i < self.length {
+      val byte = self._buffer.offset(i).load()
+      hash = hash + 31 * byte.asInt()
+      i += 1
+    }
+    hash
   }
 
   func isEmpty(self): Bool = self.length == 0
@@ -144,7 +158,6 @@ type Array<T> {
     Array(length: 0, _buffer: Pointer.malloc(initialCapacity), _capacity: initialCapacity)
   }
 
-  // TODO: custom toString implementations shouldn't need to be the first method declared
   func toString(self): String {
     val reprs: String[] = Array.withCapacity(self.length)
     var len = 2 // account for '[' and ']'
@@ -185,6 +198,17 @@ type Array<T> {
     str._buffer.offset(offset).store(Byte.fromInt(93)) // ']'
 
     str
+  }
+
+  func hash(self): Int {
+    var hash = 31 * self.length
+    var i = 0
+    while i < self.length {
+      val item = self._buffer.offset(i).load()
+      hash = hash + 31 * item.hash()
+      i += 1
+    }
+    hash
   }
 
   @Stub func isEmpty(self): Bool

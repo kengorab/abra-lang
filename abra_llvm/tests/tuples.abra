@@ -15,3 +15,6 @@ println(two)
 
 /// Expect: 2
 println(quad[3][0])
+
+/// Expect: true
+println(quad.hash() == (1, "two", ["three"], (2, 3)).hash())

@@ -24,3 +24,16 @@ type Foo {
 val i: Int? = Foo(f: 178).f
 /// Expect: 178
 println(i)
+
+// Workaround because optionals technically don't have _any_ directly-callable methods
+func hash<T>(t: T): Int = t.hash()
+// Hashes
+(() => {
+  val i: Int? = None
+  /// Expect: 0
+  println(hash(i))
+
+  val x: Int? = 17
+  /// Expect: true
+  println(hash(x) == (17).hash())
+})()

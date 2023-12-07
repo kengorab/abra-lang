@@ -14,12 +14,17 @@ println(p1.age)
 println(p1)
 /// Expect: Person(name: "Ken", age: 31)
 println(p1.toString())
+/// Expect: true
+println(p1.hash() == Person(name: "Ken", age: 31).hash())
+/// Expect: false
+println(p1.hash() == Person(name: "Ken", age: 32).hash())
 
 type Person2 {
   name: String
   age: Int
 
   func toString(self): String = "custom Person#toString method"
+  func hash(self): Int = 0
 }
 
 val p2 = Person2(name: "Ken", age: 31)
@@ -29,6 +34,8 @@ val p2 = Person2(name: "Ken", age: 31)
 println(p2)
 /// Expect: custom Person#toString method
 println(p2.toString())
+/// Expect: 0
+println(p2.hash())
 
 // Fields with default values
 type Foo {
@@ -40,6 +47,8 @@ type Foo {
 val f = Foo()
 /// Expect: Foo(a: 12, b: "", c: [1, 2, 3])
 println(f)
+/// Expect: true
+println(f.hash() == Foo().hash())
 
 // Methods that capture variables
 var capturedInt = 11

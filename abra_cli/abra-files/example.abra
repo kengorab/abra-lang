@@ -1,11 +1,2 @@
 // TODO: This shouldn't stackoverflow
 //println([])
-
-//val x = (1, "two")
-//println(x)
-
-//val x = 2 ** 5.1
-
-//0xfe >> 1 && 1
-
-0b01010101 ^ 0b10101010

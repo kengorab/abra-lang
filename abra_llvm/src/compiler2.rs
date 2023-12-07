@@ -13,7 +13,7 @@ use inkwell::values::{BasicValue, BasicValueEnum, CallableValue, FloatValue, Fun
 use itertools::Itertools;
 use abra_core::lexer::tokens::Token;
 use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
-use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, FuncId, Function, FunctionKind, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_SCOPE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, Struct, StructId, Type, TypedLiteral, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
+use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, FuncId, Function, FunctionKind, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_SCOPE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, Struct, StructId, Type, TypedLiteral, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
 
 const ABRA_MAIN_FN_NAME: &str = "_abra_main";
 
@@ -658,7 +658,7 @@ impl<'a> LLVMCompiler2<'a> {
                     if let Some(res) = res {
                         let node_type = self.project.get_type_by_id(node_type_id);
                         let resolved_generics = ResolvedGenerics::default().new_via_instance(node_type, &self.project);
-                        let to_string_fn = self.get_to_string_function_for_type(node_type_id, &resolved_generics);
+                        let to_string_fn = self.get_or_compile_to_string_method_for_type(node_type_id, &resolved_generics);
                         let str_val = self.builder.build_call(to_string_fn, &[res.into()], "repr").try_as_basic_value().left().unwrap().into_pointer_value();
                         let (len_val, chars_val) = self.destructure_string(str_val);
 
@@ -1459,9 +1459,9 @@ impl<'a> LLVMCompiler2<'a> {
                         let target_ty = self.project.get_type_by_id(target_type_id);
 
                         match kind {
-                            AccessorKind::Field => unreachable!("Field accessor nodes should be handled in the catchall clause below"),
+                            AccessorKind::Field => unreachable!("Field accessor nodes should be handled in the catchall case below"),
                             AccessorKind::Method if self.project.type_is_tuple(target_type_id).is_some() => {
-                                debug_assert!(*member_idx == 0, "Tuples don't have any methods aside from toString");
+                                debug_assert!(*member_idx == METHOD_IDX_TOSTRING || *member_idx == METHOD_IDX_HASH, "Tuples don't have any methods aside from toString/hash");
                                 params_data = vec![(*target_type_id, false)];
 
                                 let target = self.visit_expression(target, &resolved_generics).unwrap();
@@ -1499,13 +1499,19 @@ impl<'a> LLVMCompiler2<'a> {
                                 let method_val = self.builder.build_load(method_slot, "method").into_pointer_value();
 
                                 let fn_ptr_type = match *member_idx {
-                                    0 => {
+                                    METHOD_IDX_TOSTRING => {
                                         params_data = vec![(target_type_id, false)];
 
                                         let tostring_fn_type = self.fn_type(self.ptr(self.string_type), &[self.i64().into()]);
                                         tostring_fn_type.ptr_type(AddressSpace::Generic)
                                     }
-                                    _ => unimplemented!("For now, the only trait is `Any`, and only the `toString` method is implemented")
+                                    METHOD_IDX_HASH => {
+                                        params_data = vec![(target_type_id, false)];
+
+                                        let hash_fn_type = self.fn_type(self.i64(), &[self.i64().into()]);
+                                        hash_fn_type.ptr_type(AddressSpace::Generic)
+                                    }
+                                    _ => unimplemented!("For now, the only trait is `Any`, and only the `toString`/`hash` methods are implemented")
                                 };
                                 let callable = CallableValue::try_from(self.builder.build_pointer_cast(method_val, fn_ptr_type, "")).unwrap();
 
@@ -2047,7 +2053,7 @@ impl<'a> LLVMCompiler2<'a> {
                     }
                 };
 
-                let tostring_llvm_fn = self.get_to_string_function_for_type(value_type_id, resolved_generics);
+                let tostring_llvm_fn = self.get_or_compile_to_string_method_for_type(value_type_id, resolved_generics);
                 let tostring_ret = self.builder.build_call(tostring_llvm_fn, &[value.into()], "").try_as_basic_value().left().unwrap();
                 self.builder.build_return(Some(&tostring_ret));
 
@@ -2056,7 +2062,46 @@ impl<'a> LLVMCompiler2<'a> {
                 wrapper_llvm_fn.as_global_value().as_pointer_value()
             };
 
-            global.set_initializer(&self.context.const_struct(&[self.const_i32(value_type_id.1 as u64).into(), tostring_fn_ptr.into()], false));
+            let hash_fn_ptr = {
+                let prev_bb = self.builder.get_insert_block().unwrap();
+
+                let hash_fn_type = self.fn_type(self.i64(), &[self.i64().into()]);
+                let wrapper_llvm_fn = self.main_module.add_function(&format!("{value_type_name}@Any#hash(ValWrapper):Int"), hash_fn_type, None);
+                let block = self.context.append_basic_block(wrapper_llvm_fn, "");
+                self.builder.position_at_end(block);
+
+                let raw_value = wrapper_llvm_fn.get_nth_param(0).unwrap().into_int_value();
+                let value = if value_type_id == &PRELUDE_INT_TYPE_ID {
+                    raw_value.as_basic_value_enum()
+                } else if value_type_id == &PRELUDE_FLOAT_TYPE_ID {
+                    self.builder.build_cast(InstructionOpcode::BitCast, raw_value, self.f64(), "").as_basic_value_enum()
+                } else if value_type_id == &PRELUDE_BOOL_TYPE_ID {
+                    self.builder.build_cast(InstructionOpcode::Trunc, raw_value, self.bool(), "").as_basic_value_enum()
+                } else {
+                    let Some(value_type) = self.llvm_underlying_type_by_id(value_type_id, resolved_generics) else { todo!() };
+                    let value_type = self.llvm_ptr_wrap_type_if_needed(value_type);
+                    if self.project.type_is_option(value_type_id).is_some() {
+                        let ptr = self.builder.build_int_to_ptr(raw_value, self.ptr(value_type), "self");
+                        self.builder.build_load(ptr, "self").as_basic_value_enum()
+                    } else {
+                        self.builder.build_int_to_ptr(raw_value, value_type.into_pointer_type(), "self").as_basic_value_enum()
+                    }
+                };
+
+                let hash_llvm_fn = self.get_or_compile_hash_method_for_type(value_type_id, resolved_generics);
+                let hash_ret = self.builder.build_call(hash_llvm_fn, &[value.into()], "").try_as_basic_value().left().unwrap();
+                self.builder.build_return(Some(&hash_ret));
+
+                self.builder.position_at_end(prev_bb);
+
+                wrapper_llvm_fn.as_global_value().as_pointer_value()
+            };
+
+            global.set_initializer(&self.context.const_struct(&[
+                self.const_i32(value_type_id.1 as u64).into(),
+                tostring_fn_ptr.into(),
+                hash_fn_ptr.into(),
+            ], false));
             global
         };
         let vtable_slot = self.builder.build_struct_gep(trait_instance, 0, "vtable_slot").unwrap();
@@ -2217,6 +2262,12 @@ impl<'a> LLVMCompiler2<'a> {
                 let i8_val = self.builder.build_int_cast(arg_value, self.i8(), "");
                 i8_val.as_basic_value_enum()
             }
+            "byte_as_int" => { // Instance method
+                let instance_node = implicit_argument.expect("Byte#asInt is an instance method and will have an implicit argument");
+                let i8_val = self.visit_expression(instance_node, resolved_generics).unwrap().into_int_value();
+                let i64_val = self.builder.build_int_cast(i8_val, self.i64(), "");
+                i64_val.as_basic_value_enum()
+            }
             _ => unimplemented!("Unimplemented intrinsic '{}'", name),
         };
 
@@ -2246,24 +2297,41 @@ impl<'a> LLVMCompiler2<'a> {
         if trait_type_id == &PRELUDE_ANY_TYPE_ID {
             let tostring_fn_type = self.fn_type(self.ptr(self.string_type), &[self.i64().into()]);
             let tostring_fn_ptr_type = tostring_fn_type.ptr_type(AddressSpace::Generic);
+
+            let hash_fn_type = self.fn_type(self.i64(), &[self.i64().into()]);
+            let hash_fn_ptr_type = hash_fn_type.ptr_type(AddressSpace::Generic);
+
             self.context.struct_type(&[
                 self.i32().into(), // type_id
                 tostring_fn_ptr_type.into(), // toString_wrapper fn pointer
+                hash_fn_ptr_type.into(), // hash_wrapper fn pointer
             ], false)
         } else {
             unimplemented!("No traits other than `Any` are implemented yet")
         }
     }
 
-    fn get_to_string_function_for_type(&mut self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
+    fn get_or_compile_to_string_method_for_type(&mut self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
         if let Some(inner_type_id) = self.project.type_is_option(type_id) {
-            self.get_or_compile_option_method(resolved_generics, &inner_type_id, &0)
+            self.get_or_compile_option_method(resolved_generics, &inner_type_id, &METHOD_IDX_TOSTRING)
         } else if self.project.type_is_tuple(type_id).is_some() {
-            self.get_or_compile_tuple_method(&type_id, resolved_generics, &0)
+            self.get_or_compile_tuple_method(&type_id, resolved_generics, &METHOD_IDX_TOSTRING)
         } else {
             let value_ty = self.project.get_type_by_id(type_id);
             let (_, tostring_func_id) = value_ty.find_method_by_name(self.project, "toString").unwrap();
             self.get_or_compile_function(tostring_func_id, resolved_generics)
+        }
+    }
+
+    fn get_or_compile_hash_method_for_type(&mut self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
+        if let Some(inner_type_id) = self.project.type_is_option(type_id) {
+            self.get_or_compile_option_method(resolved_generics, &inner_type_id, &METHOD_IDX_HASH)
+        } else if self.project.type_is_tuple(type_id).is_some() {
+            self.get_or_compile_tuple_method(&type_id, resolved_generics, &METHOD_IDX_HASH)
+        } else {
+            let value_ty = self.project.get_type_by_id(type_id);
+            let (_, hash_func_id) = value_ty.find_method_by_name(self.project, "hash").unwrap();
+            self.get_or_compile_function(hash_func_id, resolved_generics)
         }
     }
 
@@ -2273,8 +2341,12 @@ impl<'a> LLVMCompiler2<'a> {
             function_val
         } else {
             let function = self.project.get_func_by_id(func_id);
-            let function_val = if matches!(function.kind, FunctionKind::Method(_)) && function.name == "toString" && function.body.is_empty() {
-                self.compile_to_string_function(&func_id, &resolved_generics)
+            let function_val = if function.body.is_empty() && matches!(function.kind, FunctionKind::Method(_)) {
+                match function.name.as_str() {
+                    "toString" => self.compile_to_string_method(&func_id, &resolved_generics),
+                    "hash" => self.compile_hash_method(&func_id, &resolved_generics),
+                    _ => unreachable!("Method {} without body", &function.name)
+                }
             } else {
                 self.compile_function(&func_id, &resolved_generics)
             };
@@ -2286,15 +2358,23 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn get_or_compile_option_method(&mut self, resolved_generics: &ResolvedGenerics, inner_type_id: &TypeId, member_idx: &usize) -> FunctionValue<'a> {
-        // The toString method is always member_idx = 0
-        if *member_idx != 0 {
-            unreachable!();
+        let resolved_generics = resolved_generics.new_via_instance(&self.project.get_type_by_id(inner_type_id), &self.project);
+
+        match *member_idx {
+            METHOD_IDX_TOSTRING => self.get_or_compile_option_tostring_method(inner_type_id, &resolved_generics),
+            METHOD_IDX_HASH => self.get_or_compile_option_hash_method(inner_type_id, &resolved_generics),
+            _ => unreachable!("Method idx {} for option instance", *member_idx),
+        }
+    }
+
+    fn get_or_compile_option_tostring_method(&mut self, inner_type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
+        let type_name = format!("Option<{}>", self.llvm_type_name_by_id(inner_type_id, &resolved_generics));
+        let fn_sig = format!("{}#toString({}):String", &type_name, &type_name);
+
+        if let Some(llvm_fn) = self.main_module.get_function(&fn_sig) {
+            return llvm_fn;
         }
 
-        let new_resolved_generics = resolved_generics.new_via_instance(&self.project.get_type_by_id(inner_type_id), &self.project);
-
-        let type_name = format!("Option<{}>", self.llvm_type_name_by_id(inner_type_id, &new_resolved_generics));
-        let fn_sig = format!("{}#toString({}):String", &type_name, &type_name);
         let fn_type = self.fn_type(self.ptr(self.string_type), &[self.main_module.get_struct_type(&type_name).unwrap().into()]);
         let llvm_fn = self.main_module.add_function(&fn_sig, fn_type, None);
 
@@ -2332,9 +2412,7 @@ impl<'a> LLVMCompiler2<'a> {
         self.builder.position_at_end(is_some_block);
         let value_slot = self.builder.build_struct_gep(self_var, 1, "value_slot").unwrap();
         let value_val = self.builder.build_load(value_slot, "value");
-        let inner_type = self.project.get_type_by_id(inner_type_id);
-        let (_, inner_tostring_func_id) = inner_type.find_method_by_name(self.project, "toString").unwrap();
-        let inner_tostring_llvm_fn = self.get_or_compile_function(&inner_tostring_func_id, &new_resolved_generics);
+        let inner_tostring_llvm_fn = self.get_or_compile_to_string_method_for_type(inner_type_id, resolved_generics);
         let is_some_value = self.builder.build_call(inner_tostring_llvm_fn, &[value_val.into()], "").try_as_basic_value().left().unwrap();
         self.builder.build_unconditional_branch(end_block);
 
@@ -2351,25 +2429,84 @@ impl<'a> LLVMCompiler2<'a> {
         llvm_fn
     }
 
-    fn get_or_compile_tuple_method(&mut self, type_id: &TypeId, resolved_generics: &ResolvedGenerics, member_idx: &usize) -> FunctionValue<'a> {
-        // The toString method is always member_idx = 0
-        if *member_idx != 0 {
-            unreachable!();
+    fn get_or_compile_option_hash_method(&mut self, inner_type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
+        let type_name = format!("Option<{}>", self.llvm_type_name_by_id(inner_type_id, &resolved_generics));
+        let fn_sig = format!("{}#hash({}):Int", &type_name, &type_name);
+
+        if let Some(llvm_fn) = self.main_module.get_function(&fn_sig) {
+            return llvm_fn;
         }
 
+        let fn_type = self.fn_type(self.i64(), &[self.main_module.get_struct_type(&type_name).unwrap().into()]);
+        let llvm_fn = self.main_module.add_function(&fn_sig, fn_type, None);
+
+        let prev_bb = self.builder.get_insert_block().unwrap();
+        let prev_fn = self.current_fn;
+        self.current_fn = (llvm_fn, None);
+        self.ctx_stack.push(CompilerContext { variables: HashMap::new() });
+
+        let block = self.context.append_basic_block(llvm_fn, "");
+        self.builder.position_at_end(block);
+
+        let self_ = llvm_fn.get_nth_param(0).unwrap();
+        let self_var = self.builder.build_alloca(self_.get_type(), "self");
+        self.builder.build_store(self_var, self_);
+
+        let is_none_block = self.context.append_basic_block(llvm_fn, "is_none");
+        let is_some_block = self.context.append_basic_block(llvm_fn, "is_some");
+        let end_block = self.context.append_basic_block(llvm_fn, "end");
+
+        let is_set_slot = self.builder.build_struct_gep(self_var, 0, "is_set_slot").unwrap();
+        let is_set_val = self.builder.build_load(is_set_slot, "is_set");
+        let cond = self.builder.build_int_compare(IntPredicate::NE, is_set_val.into_int_value(), self.const_bool(true), "cond");
+        self.builder.build_conditional_branch(cond, is_none_block, is_some_block);
+
+        self.builder.position_at_end(is_none_block);
+        let is_none_value = self.const_i64(0);
+        self.builder.build_unconditional_branch(end_block);
+
+        self.builder.position_at_end(is_some_block);
+        let value_slot = self.builder.build_struct_gep(self_var, 1, "value_slot").unwrap();
+        let value_val = self.builder.build_load(value_slot, "value");
+        let inner_type_hash_fn = self.get_or_compile_hash_method_for_type(inner_type_id, resolved_generics);
+        let is_some_value = self.builder.build_call(inner_type_hash_fn, &[value_val.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+        self.builder.build_unconditional_branch(end_block);
+
+        self.builder.position_at_end(end_block);
+
+        let phi = self.builder.build_phi(self.i64(), "");
+        phi.add_incoming(&[(&is_none_value, is_none_block), (&is_some_value, is_some_block)]);
+        self.builder.build_return(Some(&phi.as_basic_value()));
+
+        self.ctx_stack.pop();
+        self.current_fn = prev_fn;
+        self.builder.position_at_end(prev_bb);
+
+        llvm_fn
+    }
+
+    fn get_or_compile_tuple_method(&mut self, type_id: &TypeId, resolved_generics: &ResolvedGenerics, member_idx: &usize) -> FunctionValue<'a> {
         let Type::GenericInstance(struct_id, generic_ids) = self.project.get_type_by_id(type_id) else { unreachable!(); };
         debug_assert!(struct_id == &self.project.prelude_tuple_struct_id);
 
         let resolved_generics = resolved_generics.extend_via_instance(type_id, &self.project);
 
+        match *member_idx {
+            METHOD_IDX_TOSTRING => self.get_or_compile_tuple_tostring_method(type_id, &generic_ids, &resolved_generics),
+            METHOD_IDX_HASH => self.get_or_compile_tuple_hash_method(type_id, &generic_ids, &resolved_generics),
+            _ => unreachable!("Method idx {} for option instance", *member_idx),
+        }
+    }
+
+    fn get_or_compile_tuple_tostring_method(&mut self, type_id: &TypeId, generic_ids: &Vec<TypeId>, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
         let type_name = self.llvm_type_name_by_id(type_id, &resolved_generics);
-        let Some(llvm_type) = self.llvm_underlying_type_by_id(type_id, &resolved_generics) else { todo!() };
         let fn_sig = format!("{}#toString({}):String", &type_name, &type_name);
 
         if let Some(llvm_fn) = self.main_module.get_function(&fn_sig) {
             return llvm_fn;
         }
 
+        let Some(llvm_type) = self.llvm_underlying_type_by_id(type_id, &resolved_generics) else { todo!() };
         let fn_type = self.fn_type(self.ptr(self.string_type), &[self.ptr(llvm_type).into()]);
         let llvm_fn = self.main_module.add_function(&fn_sig, fn_type, None);
 
@@ -2388,7 +2525,7 @@ impl<'a> LLVMCompiler2<'a> {
         let mut reprs_len = self.const_i64(0);
         for (idx, generic_id) in generic_ids.iter().enumerate() {
             let resolved_generics = resolved_generics.extend_via_instance(generic_id, &self.project);
-            let item_tostring_llvm_fn = self.get_to_string_function_for_type(generic_id, &resolved_generics);
+            let item_tostring_llvm_fn = self.get_or_compile_to_string_method_for_type(generic_id, &resolved_generics);
             let item_val_slot = self.builder.build_struct_gep(self_val, idx as u32, &format!("tuple_item_{}_slot", idx)).unwrap();
             let item_val = self.builder.build_load(item_val_slot, &format!("tuple_item_{}", idx));
 
@@ -2411,6 +2548,56 @@ impl<'a> LLVMCompiler2<'a> {
 
         let ret_val = self.construct_string(str_len, mem);
         self.builder.build_return(Some(&ret_val));
+
+        self.ctx_stack.pop();
+        self.current_fn = prev_fn;
+        self.builder.position_at_end(prev_bb);
+
+        llvm_fn
+    }
+
+    fn get_or_compile_tuple_hash_method(&mut self, type_id: &TypeId, generic_ids: &Vec<TypeId>, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
+        let type_name = self.llvm_type_name_by_id(type_id, &resolved_generics);
+        let fn_sig = format!("{}#hash({}):Int", &type_name, &type_name);
+
+        if let Some(llvm_fn) = self.main_module.get_function(&fn_sig) {
+            return llvm_fn;
+        }
+
+        let Some(llvm_type) = self.llvm_underlying_type_by_id(type_id, &resolved_generics) else { todo!() };
+        let fn_type = self.fn_type(self.i64(), &[self.ptr(llvm_type).into()]);
+        let llvm_fn = self.main_module.add_function(&fn_sig, fn_type, None);
+
+        let prev_bb = self.builder.get_insert_block().unwrap();
+        let prev_fn = self.current_fn;
+        self.current_fn = (llvm_fn, None);
+        self.ctx_stack.push(CompilerContext { variables: HashMap::new() });
+
+        let block = self.context.append_basic_block(llvm_fn, "");
+        self.builder.position_at_end(block);
+
+        let self_val = llvm_fn.get_nth_param(0).unwrap().into_pointer_value();
+
+        let result = self.builder.build_alloca(self.i64(), "result");
+        self.builder.build_store(result, self.const_i64(1));
+
+        for (idx, generic_id) in generic_ids.iter().enumerate() {
+            let resolved_generics = resolved_generics.extend_via_instance(generic_id, &self.project);
+            let item_hash_llvm_fn = self.get_or_compile_hash_method_for_type(generic_id, &resolved_generics);
+            let item_val_slot = self.builder.build_struct_gep(self_val, idx as u32, &format!("tuple_item_{}_slot", idx)).unwrap();
+            let item_val = self.builder.build_load(item_val_slot, &format!("tuple_item_{}", idx));
+            let hash = self.builder.build_call(item_hash_llvm_fn, &[item_val.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+
+            let new_result = self.builder.build_int_add(
+                self.builder.build_load(result, "result").into_int_value(),
+                self.builder.build_int_mul(self.const_i64(31), hash, ""),
+                ""
+            );
+            self.builder.build_store(result, new_result);
+        }
+
+        let result = self.builder.build_load(result, "final_result");
+        self.builder.build_return(Some(&result));
 
         self.ctx_stack.pop();
         self.current_fn = prev_fn;
@@ -2668,7 +2855,7 @@ impl<'a> LLVMCompiler2<'a> {
         llvm_fn
     }
 
-    fn compile_to_string_function(&mut self, func_id: &FuncId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
+    fn compile_to_string_method(&mut self, func_id: &FuncId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
         let initializer_sig = self.llvm_function_signature(func_id, resolved_generics);
         let function = self.project.get_func_by_id(func_id);
         let FunctionKind::Method(type_id) = &function.kind else { unreachable!() };
@@ -2716,9 +2903,8 @@ impl<'a> LLVMCompiler2<'a> {
             let field_val = self.builder.build_load(field_slot, &field.name);
 
             let field_ty = self.project.get_type_by_id(&field.type_id);
-            let (_, tostring_func_id) = field_ty.find_method_by_name(self.project, "toString").unwrap();
             let resolved_generics = resolved_generics.new_via_instance(field_ty, &self.project);
-            let tostring_fn_val = self.get_or_compile_function(tostring_func_id, &resolved_generics);
+            let tostring_fn_val = self.get_or_compile_to_string_method_for_type(&field.type_id, &resolved_generics);
             let field_tostring_val = self.builder.build_call(tostring_fn_val, &[field_val.into()], &format!("{}_to_string", &field.name)).try_as_basic_value().left().unwrap().into_pointer_value();
 
             let field_tostring_chars_slot = self.builder.build_struct_gep(field_tostring_val, 1, &format!("{}_to_string.chars slot", &field.name)).unwrap();
@@ -2869,6 +3055,127 @@ impl<'a> LLVMCompiler2<'a> {
         let block = self.context.append_basic_block(llvm_fn, "");
         self.builder.position_at_end(block);
         self.builder.build_return(Some(&llvm_fn.get_nth_param(0).unwrap()));
+
+        self.current_fn = prev_fn;
+        self.builder.position_at_end(prev_bb);
+
+        llvm_fn
+    }
+
+    fn compile_hash_method(&mut self, func_id: &FuncId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
+        let fn_sig = self.llvm_function_signature(func_id, resolved_generics);
+        let function = self.project.get_func_by_id(func_id);
+        let FunctionKind::Method(type_id) = &function.kind else { unreachable!() };
+        let Some((struct_, _)) = self.project.get_struct_by_type_id(type_id) else { todo!() };
+
+        if struct_.id == self.project.prelude_int_struct_id {
+            return self.compile_int_hash_method(func_id);
+        } else if struct_.id == self.project.prelude_float_struct_id {
+            return self.compile_float_hash_method(func_id);
+        } else if struct_.id == self.project.prelude_bool_struct_id {
+            return self.compile_bool_hash_method(func_id);
+        }
+
+        let fn_type = self.llvm_function_type(func_id, resolved_generics);
+        let llvm_fn = self.main_module.add_function(&fn_sig, fn_type, None);
+        let prev_bb = self.builder.get_insert_block().unwrap();
+        let prev_fn = self.current_fn;
+        self.current_fn = (llvm_fn, Some(*func_id));
+
+        let mut params_iter = llvm_fn.get_param_iter();
+        params_iter.next().unwrap().set_name("self");
+        let llvm_self_param = llvm_fn.get_nth_param(0).unwrap().into_pointer_value();
+
+        let block = self.context.append_basic_block(llvm_fn, "");
+        self.builder.position_at_end(block);
+
+        let result = self.builder.build_alloca(self.i64(), "result");
+        self.builder.build_store(result, self.const_i64(1));
+
+        for (idx, field) in struct_.fields.iter().enumerate() {
+            let field_slot = self.builder.build_struct_gep(llvm_self_param, idx as u32, &format!("{}_slot", &field.name)).unwrap();
+            let field_val = self.builder.build_load(field_slot, &field.name);
+
+            let field_ty = self.project.get_type_by_id(&field.type_id);
+            let resolved_generics = resolved_generics.new_via_instance(field_ty, &self.project);
+
+            let hash_fn = self.get_or_compile_hash_method_for_type(&field.type_id, &resolved_generics);
+            let hash = self.builder.build_call(hash_fn, &[field_val.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+
+            let new_result = self.builder.build_int_add(
+                self.builder.build_load(result, "result").into_int_value(),
+                self.builder.build_int_mul(self.const_i64(31), hash, ""),
+                ""
+            );
+            self.builder.build_store(result, new_result);
+        }
+
+        let result = self.builder.build_load(result, "final_result");
+        self.builder.build_return(Some(&result));
+
+        self.current_fn = prev_fn;
+        self.builder.position_at_end(prev_bb);
+
+        llvm_fn
+    }
+
+    fn compile_int_hash_method(&mut self, func_id: &FuncId) -> FunctionValue<'a> {
+        let llvm_fn_sig = self.llvm_function_signature(func_id, &ResolvedGenerics::default());
+        let llvm_fn_type = self.llvm_function_type(func_id, &ResolvedGenerics::default());
+        let llvm_fn = self.main_module.add_function(&llvm_fn_sig, llvm_fn_type, None);
+
+        let prev_bb = self.builder.get_insert_block().unwrap();
+        let prev_fn = self.current_fn;
+        self.current_fn = (llvm_fn, Some(*func_id));
+
+        llvm_fn.get_param_iter().next().unwrap().set_name("self");
+        let block = self.context.append_basic_block(llvm_fn, "");
+        self.builder.position_at_end(block);
+        self.builder.build_return(Some(&llvm_fn.get_nth_param(0).unwrap()));
+
+        self.current_fn = prev_fn;
+        self.builder.position_at_end(prev_bb);
+
+        llvm_fn
+    }
+
+    fn compile_float_hash_method(&mut self, func_id: &FuncId) -> FunctionValue<'a> {
+        let llvm_fn_sig = self.llvm_function_signature(func_id, &ResolvedGenerics::default());
+        let llvm_fn_type = self.llvm_function_type(func_id, &ResolvedGenerics::default());
+        let llvm_fn = self.main_module.add_function(&llvm_fn_sig, llvm_fn_type, None);
+
+        let prev_bb = self.builder.get_insert_block().unwrap();
+        let prev_fn = self.current_fn;
+        self.current_fn = (llvm_fn, Some(*func_id));
+
+        llvm_fn.get_param_iter().next().unwrap().set_name("self");
+        let block = self.context.append_basic_block(llvm_fn, "");
+        self.builder.position_at_end(block);
+        let self_val = llvm_fn.get_nth_param(0).unwrap().into_float_value();
+        let self_as_int = self.builder.build_cast(InstructionOpcode::BitCast, self_val, self.i64(), "").as_basic_value_enum();
+        self.builder.build_return(Some(&self_as_int));
+
+        self.current_fn = prev_fn;
+        self.builder.position_at_end(prev_bb);
+
+        llvm_fn
+    }
+
+    fn compile_bool_hash_method(&mut self, func_id: &FuncId) -> FunctionValue<'a> {
+        let llvm_fn_sig = self.llvm_function_signature(func_id, &ResolvedGenerics::default());
+        let llvm_fn_type = self.llvm_function_type(func_id, &ResolvedGenerics::default());
+        let llvm_fn = self.main_module.add_function(&llvm_fn_sig, llvm_fn_type, None);
+
+        let prev_bb = self.builder.get_insert_block().unwrap();
+        let prev_fn = self.current_fn;
+        self.current_fn = (llvm_fn, Some(*func_id));
+
+        llvm_fn.get_param_iter().next().unwrap().set_name("self");
+        let block = self.context.append_basic_block(llvm_fn, "");
+        self.builder.position_at_end(block);
+        let self_val = llvm_fn.get_nth_param(0).unwrap().into_int_value();
+        let self_as_int = self.builder.build_int_cast(self_val, self.i64(), "");
+        self.builder.build_return(Some(&self_as_int));
 
         self.current_fn = prev_fn;
         self.builder.position_at_end(prev_bb);

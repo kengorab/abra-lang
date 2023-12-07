@@ -559,6 +559,9 @@ pub struct StructId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct EnumId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 
+pub const METHOD_IDX_TOSTRING: usize = 0;
+pub const METHOD_IDX_HASH: usize = 1;
+
 #[derive(Debug, PartialEq)]
 pub struct Struct {
     pub id: StructId,
@@ -3234,7 +3237,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         debug_assert!(self.current_type_decl.is_none(), "At the moment, types cannot be nested within other types");
         self.current_type_decl = Some(struct_.self_type_id);
 
-        let mut saw_to_string = false;
+        let mut tostring_func_id = None;
+        let mut hash_func_id = None;
         for method in methods {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
             let func_id = self.typecheck_function_pass_0(decl_node)?;
@@ -3242,8 +3246,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             let is_method = decl_node.args.get(0).map(|(token, _, _, _)| matches!(token, Token::Self_(_))).unwrap_or(false);
             if is_method {
                 if Token::get_ident_name(&decl_node.name) == "toString" {
-                    saw_to_string = true;
+                    tostring_func_id = Some(func_id);
+                } else if Token::get_ident_name(&decl_node.name) == "hash" {
+                    hash_func_id = Some(func_id);
                 }
+
                 self.project.get_struct_by_id_mut(struct_id).methods.push(func_id);
             } else {
                 self.project.get_struct_by_id_mut(struct_id).static_methods.push(func_id);
@@ -3252,7 +3259,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.typecheck_function_pass_1(&func_id, decl_node, true)?;
         }
 
-        if !saw_to_string {
+        let tostring_func_id = if let Some(func_id) = tostring_func_id {
+            let tostring_func_idx = self.project.get_struct_by_id(struct_id).methods.iter().find_position(|m| m == &&func_id).unwrap().0;
+            self.project.get_struct_by_id_mut(struct_id).methods.remove(tostring_func_idx);
+            func_id
+        } else {
             let string_type_id = self.add_or_find_type_id(Type::Primitive(PrimitiveType::String));
             let tostring_func_id = self.add_function_to_current_scope(
                 ScopeId::BOGUS,
@@ -3260,15 +3271,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 vec![],
                 true,
                 vec![
-                    FunctionParam {
-                        name: "self".to_string(),
-                        type_id: self_type_id,
-                        var_id: VarId::BOGUS,
-                        defined_span: None,
-                        default_value: None,
-                        is_variadic: false,
-                        is_incomplete: false,
-                    }
+                    FunctionParam { name: "self".to_string(), type_id: self_type_id, var_id: VarId::BOGUS, defined_span: None, default_value: None, is_variadic: false, is_incomplete: false }
                 ],
                 string_type_id,
             )?;
@@ -3276,11 +3279,35 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             let func = self.project.get_func_by_id(&tostring_func_id);
             let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
             self.project.get_func_by_id_mut(&tostring_func_id).fn_type_id = fn_type_id;
-            self.project.get_struct_by_id_mut(struct_id).methods.insert(0, tostring_func_id);
-        }
+            tostring_func_id
+        };
+        self.project.get_struct_by_id_mut(struct_id).methods.insert(METHOD_IDX_TOSTRING, tostring_func_id);
+
+        let hash_func_id = if let Some(func_id) = hash_func_id {
+            let hash_func_idx = self.project.get_struct_by_id(struct_id).methods.iter().find_position(|m| m == &&func_id).unwrap().0;
+            self.project.get_struct_by_id_mut(struct_id).methods.remove(hash_func_idx);
+            func_id
+        } else {
+            let int_type_id = self.add_or_find_type_id(Type::Primitive(PrimitiveType::Int));
+            let hash_func_id = self.add_function_to_current_scope(
+                ScopeId::BOGUS,
+                &Token::Ident(POSITION_BOGUS, "hash".to_string()),
+                vec![],
+                true,
+                vec![
+                    FunctionParam { name: "self".to_string(), type_id: self_type_id, var_id: VarId::BOGUS, defined_span: None, default_value: None, is_variadic: false, is_incomplete: false }
+                ],
+                int_type_id,
+            )?;
+            self.project.get_func_by_id_mut(&hash_func_id).defined_span = None;
+            let func = self.project.get_func_by_id(&hash_func_id);
+            let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+            self.project.get_func_by_id_mut(&hash_func_id).fn_type_id = fn_type_id;
+            hash_func_id
+        };
+        self.project.get_struct_by_id_mut(struct_id).methods.insert(METHOD_IDX_HASH, hash_func_id);
 
         self.current_type_decl = None;
-
         self.current_scope_id = prev_scope_id;
 
         Ok(())
@@ -3314,7 +3341,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             struct_.fields[idx].default_value = Some(default_value);
         }
 
-        let mut method_func_id_idx = 1;
+        let mut method_func_id_idx = 2;
         let mut static_method_func_id_idx = 0;
         for method in methods.into_iter() {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
@@ -3323,7 +3350,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             let struct_ = self.project.get_struct_by_id(&struct_id);
             let func_id = if is_method {
                 if Token::get_ident_name(&decl_node.name) == "toString" {
-                    struct_.methods[0]
+                    struct_.methods[METHOD_IDX_TOSTRING]
+                } else if Token::get_ident_name(&decl_node.name) == "hash" {
+                    struct_.methods[METHOD_IDX_HASH]
                 } else {
                     method_func_id_idx += 1;
                     struct_.methods[method_func_id_idx - 1]
@@ -4966,11 +4995,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     if let Some((_, _, type_id)) = &mut field_data {
                         *type_id = self.substitute_generics_with_known(&type_id, &generic_substitutions);
                     }
-                } else if matches!(target_type, Type::Generic(_, _)) || matches!(target_type, Type::Primitive(PrimitiveType::Any)) {
+                } else if matches!(target_type, Type::Generic(_, _)) || self.project.type_is_tuple(&target_type_id).is_some() || matches!(target_type, Type::Primitive(PrimitiveType::Any)) {
                     match field_name.as_str() {
                         "toString" => {
                             let type_id = self.add_or_find_type_id(self.project.function_type(vec![], 0, false, PRELUDE_STRING_TYPE_ID));
-                            field_data = Some((AccessorKind::Method, 0, type_id));
+                            field_data = Some((AccessorKind::Method, METHOD_IDX_TOSTRING, type_id));
+                        }
+                        "hash" => {
+                            let type_id = self.add_or_find_type_id(self.project.function_type(vec![], 1, false, PRELUDE_INT_TYPE_ID));
+                            field_data = Some((AccessorKind::Method, METHOD_IDX_HASH, type_id));
                         }
                         _ => {}
                     }
@@ -5075,14 +5108,42 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let target_ty = self.project.get_type_by_id(&target_type_id);
 
                         match target_ty {
-                            Type::Generic(_, _) | Type::Primitive(PrimitiveType::Any) => {
-                                debug_assert!(kind == &AccessorKind::Method, "Generic types are only known to have 'toString', 'eq', and 'hash' instance methods; no fields or static methods");
+                            // This case and the one below it are meant to be the same, but if-clauses can't be used alongside |'s in matches
+                            Type::GenericInstance(struct_id, _) if struct_id == &self.project.prelude_tuple_struct_id => {
+                                debug_assert!(kind == &AccessorKind::Method, "Tuple types are only known to have 'toString', 'eq', and 'hash' instance methods; no fields or static methods");
                                 match *member_idx {
-                                    0 => {
+                                    METHOD_IDX_TOSTRING => {
                                         fn_generic_ids = vec![]; // Cannot determine whether a function accepts type args solely based on its type
                                         fn_is_variadic = false;
                                         params_data = vec![];
                                         return_type_id = PRELUDE_STRING_TYPE_ID;
+                                        forbid_labels = true;
+                                    }
+                                    METHOD_IDX_HASH => {
+                                        fn_generic_ids = vec![]; // Cannot determine whether a function accepts type args solely based on its type
+                                        fn_is_variadic = false;
+                                        params_data = vec![];
+                                        return_type_id = PRELUDE_INT_TYPE_ID;
+                                        forbid_labels = true;
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            }
+                            Type::Generic(_, _) | Type::Primitive(PrimitiveType::Any) => {
+                                debug_assert!(kind == &AccessorKind::Method, "Generic types are only known to have 'toString', 'eq', and 'hash' instance methods; no fields or static methods");
+                                match *member_idx {
+                                    METHOD_IDX_TOSTRING => {
+                                        fn_generic_ids = vec![]; // Cannot determine whether a function accepts type args solely based on its type
+                                        fn_is_variadic = false;
+                                        params_data = vec![];
+                                        return_type_id = PRELUDE_STRING_TYPE_ID;
+                                        forbid_labels = true;
+                                    }
+                                    METHOD_IDX_HASH => {
+                                        fn_generic_ids = vec![]; // Cannot determine whether a function accepts type args solely based on its type
+                                        fn_is_variadic = false;
+                                        params_data = vec![];
+                                        return_type_id = PRELUDE_INT_TYPE_ID;
                                         forbid_labels = true;
                                     }
                                     _ => unreachable!(),
