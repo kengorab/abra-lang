@@ -3,7 +3,7 @@ use itertools::{Either, Itertools};
 use crate::lexer::tokens::{Position, POSITION_BOGUS, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BinaryOp, BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind, InvalidLoopTargetKind, ControlFlowTerminator, TerminatorKind, ExportedValue, TypeKind, DecoratorInstance, FunctionKind};
+use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind, InvalidControlFlowTargetKind, ControlFlowTerminator, TerminatorKind, ExportedValue, TypeKind, DecoratorInstance, FunctionKind};
 
 const PRELUDE_STR: &str = include_str!("prelude.stub.abra");
 
@@ -1441,10 +1441,10 @@ fn typecheck_failure_for_loop() {
     let (_, Either::Right(err)) = test_typecheck("\
       for _ in \"abc\" {}
     ").unwrap_err() else { unreachable!() };
-    let expected = TypeError::InvalidLoopTarget {
+    let expected = TypeError::InvalidControlFlowTarget {
         span: Span::new(ModuleId(1), (1, 10), (1, 14)),
         type_id: PRELUDE_STRING_TYPE_ID,
-        kind: InvalidLoopTargetKind::For,
+        kind: InvalidControlFlowTargetKind::ForLoop,
     };
     assert_eq!(expected, err);
 }
@@ -1482,6 +1482,7 @@ fn typecheck_while_loop() {
                 })),
             }
         ],
+        block_terminator: None,
     };
     assert_eq!(expected, module.code[1]);
 
@@ -1497,10 +1498,10 @@ fn typecheck_failure_while_loop() {
     let (_, Either::Right(err)) = test_typecheck("\
       while \"abc\" { }
     ").unwrap_err() else { unreachable!() };
-    let expected = TypeError::InvalidLoopTarget {
+    let expected = TypeError::InvalidControlFlowTarget {
         span: Span::new(ModuleId(1), (1, 7), (1, 11)),
         type_id: PRELUDE_STRING_TYPE_ID,
-        kind: InvalidLoopTargetKind::While,
+        kind: InvalidControlFlowTargetKind::WhileLoop,
     };
     assert_eq!(expected, err);
 }
@@ -4807,7 +4808,9 @@ fn typecheck_if_statement() {
         if_block: vec![
             TypedNode::Literal { token: Token::Int(Position::new(1, 11), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_UNIT_TYPE_ID }
         ],
+        if_block_terminator: None,
         else_block: vec![],
+        else_block_terminator: None,
         is_statement: true,
         type_id: PRELUDE_UNIT_TYPE_ID,
         resolved_type_id: PRELUDE_UNIT_TYPE_ID,
@@ -4816,6 +4819,7 @@ fn typecheck_if_statement() {
 
     let project = test_typecheck("if true |v| { v }").unwrap();
     let node = &project.modules[1].code[0];
+    let condition_binding_var_id = VarId(ScopeId(ModuleId(1), 1), 0);
     let expected = TypedNode::If {
         if_token: Token::If(Position::new(1, 1)),
         condition: Box::new(TypedNode::Literal {
@@ -4824,17 +4828,24 @@ fn typecheck_if_statement() {
             type_id: PRELUDE_BOOL_TYPE_ID,
             resolved_type_id: PRELUDE_BOOL_TYPE_ID,
         }),
-        condition_binding: Some(BindingPattern::Variable(Token::Ident(Position::new(1, 10), "v".to_string()))),
+        condition_binding: Some(
+            (
+                BindingPattern::Variable(Token::Ident(Position::new(1, 10), "v".to_string())),
+                vec![condition_binding_var_id]
+            )
+        ),
         if_block: vec![
             TypedNode::Identifier {
                 token: Token::Ident(Position::new(1, 15), "v".to_string()),
-                var_id: VarId(ScopeId(ModuleId(1), 1), 0),
+                var_id: condition_binding_var_id,
                 type_arg_ids: vec![],
                 type_id: PRELUDE_BOOL_TYPE_ID,
                 resolved_type_id: PRELUDE_UNIT_TYPE_ID,
             }
         ],
+        if_block_terminator: None,
         else_block: vec![],
+        else_block_terminator: None,
         is_statement: true,
         type_id: PRELUDE_UNIT_TYPE_ID,
         resolved_type_id: PRELUDE_UNIT_TYPE_ID,
@@ -4855,9 +4866,11 @@ fn typecheck_if_statement() {
         if_block: vec![
             TypedNode::Literal { token: Token::Int(Position::new(1, 11), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_UNIT_TYPE_ID }
         ],
+        if_block_terminator: None,
         else_block: vec![
             TypedNode::Literal { token: Token::Bool(Position::new(1, 22), false), value: TypedLiteral::Bool(false), type_id: PRELUDE_BOOL_TYPE_ID, resolved_type_id: PRELUDE_UNIT_TYPE_ID }
         ],
+        else_block_terminator: None,
         is_statement: true,
         type_id: PRELUDE_UNIT_TYPE_ID,
         resolved_type_id: PRELUDE_UNIT_TYPE_ID,
@@ -4878,10 +4891,10 @@ fn typecheck_if_statement() {
 #[test]
 fn typecheck_failure_if_statement() {
     let (_, Either::Right(err)) = test_typecheck("if 123 { }").unwrap_err() else { unreachable!() };
-    let expected = TypeError::TypeMismatch {
+    let expected = TypeError::InvalidControlFlowTarget {
         span: Span::new(ModuleId(1), (1, 4), (1, 6)),
-        expected: vec![PRELUDE_BOOL_TYPE_ID],
-        received: PRELUDE_INT_TYPE_ID,
+        type_id: PRELUDE_INT_TYPE_ID,
+        kind: InvalidControlFlowTargetKind::IfCondition,
     };
     assert_eq!(expected, err);
 

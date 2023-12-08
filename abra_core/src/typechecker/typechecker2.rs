@@ -523,7 +523,7 @@ impl ModuleId {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Span {
     module_id: ModuleId,
-    range: Range,
+    pub range: Range,
 }
 
 impl Span {
@@ -920,7 +920,7 @@ pub enum TypedNode {
     Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
     Lambda { span: Range, func_id: FuncId, type_id: TypeId, resolved_type_id: TypeId },
     Assignment { span: Range, kind: AssignmentKind, type_id: TypeId, expr: Box<TypedNode> },
-    If { if_token: Token, condition: Box<TypedNode>, condition_binding: Option<BindingPattern>, if_block: Vec<TypedNode>, else_block: Vec<TypedNode>, is_statement: bool, type_id: TypeId, resolved_type_id: TypeId },
+    If { if_token: Token, condition: Box<TypedNode>, condition_binding: Option<(BindingPattern, Vec<VarId>)>, if_block: Vec<TypedNode>, if_block_terminator: Option<TerminatorKind>, else_block: Vec<TypedNode>, else_block_terminator: Option<TerminatorKind>, is_statement: bool, type_id: TypeId, resolved_type_id: TypeId },
     Match { match_token: Token, target: Box<TypedNode>, cases: Vec<TypedMatchCase>, is_statement: bool, type_id: TypeId },
 
     // Statements
@@ -929,7 +929,7 @@ pub enum TypedNode {
     EnumDeclaration(EnumId),
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
     ForLoop { token: Token, binding: BindingPattern, binding_var_ids: Vec<VarId>, index_var_id: Option<VarId>, iterator: Box<TypedNode>, body: Vec<TypedNode> },
-    WhileLoop { token: Token, condition: Box<TypedNode>, condition_var_id: Option<VarId>, body: Vec<TypedNode> },
+    WhileLoop { token: Token, condition: Box<TypedNode>, condition_var_id: Option<VarId>, body: Vec<TypedNode>, block_terminator: Option<TerminatorKind> },
     Break { token: Token },
     Continue { token: Token },
     Return { token: Token, expr: Option<Box<TypedNode>> },
@@ -1064,7 +1064,7 @@ impl TypedNode {
                     start.expand(&end)
                 } else if let Some(end) = if_block.last().map(|n| n.span()) {
                     start.expand(&end)
-                } else if let Some(binding) = condition_binding {
+                } else if let Some((binding, _)) = condition_binding {
                     start.expand(&binding.get_span())
                 } else {
                     start.expand(&condition.span())
@@ -1199,9 +1199,10 @@ pub enum UnreachableMatchCaseKind {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum InvalidLoopTargetKind {
-    For,
-    While,
+pub enum InvalidControlFlowTargetKind {
+    ForLoop,
+    WhileLoop,
+    IfCondition,
 }
 
 #[derive(Debug, PartialEq)]
@@ -1243,7 +1244,7 @@ pub enum TypeError {
     EmptyMatchBlock { span: Span },
     UnreachableMatchCase { span: Span, kind: UnreachableMatchCaseKind },
     NonExhaustiveMatch { span: Span, type_id: TypeId },
-    InvalidLoopTarget { span: Span, type_id: TypeId, kind: InvalidLoopTargetKind },
+    InvalidControlFlowTarget { span: Span, type_id: TypeId, kind: InvalidControlFlowTargetKind },
     InvalidControlFlowTerminator { span: Span, terminator: ControlFlowTerminator },
     UnreachableCode { span: Span },
     InvalidExportScope { span: Span },
@@ -1342,7 +1343,7 @@ impl TypeError {
             TypeError::EmptyMatchBlock { span } |
             TypeError::UnreachableMatchCase { span, .. } |
             TypeError::NonExhaustiveMatch { span, .. } |
-            TypeError::InvalidLoopTarget { span, .. } |
+            TypeError::InvalidControlFlowTarget { span, .. } |
             TypeError::InvalidControlFlowTerminator { span, .. } |
             TypeError::UnreachableCode { span } |
             TypeError::InvalidExportScope { span } |
@@ -1812,15 +1813,16 @@ impl TypeError {
                     cursor_line, project.type_repr(type_id),
                 )
             }
-            TypeError::InvalidLoopTarget { type_id, kind, .. } => {
+            TypeError::InvalidControlFlowTarget { type_id, kind, .. } => {
                 let type_repr = project.type_repr(type_id);
                 let (loop_type, message) = match kind {
-                    InvalidLoopTargetKind::For => ("for", format!("Type '{}' is not iterable", type_repr)),
-                    InvalidLoopTargetKind::While => ("while", format!("Expected Bool or Option type, got '{}'", type_repr)),
+                    InvalidControlFlowTargetKind::ForLoop => ("for-loop target", format!("Type '{}' is not iterable", type_repr)),
+                    InvalidControlFlowTargetKind::WhileLoop => ("while-loop target", format!("Expected Bool or Option type, got '{}'", type_repr)),
+                    InvalidControlFlowTargetKind::IfCondition => ("if-condition value", format!("Expected Bool or Option type, got '{}'", type_repr)),
                 };
 
                 format!(
-                    "Invalid type for {}-loop target\n{}\n{}",
+                    "Invalid type for {}\n{}\n{}",
                     loop_type, cursor_line,
                     message
                 )
@@ -3606,7 +3608,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_array_struct_id => (generic_ids[0], PRELUDE_INT_TYPE_ID),
                     Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_set_struct_id => (generic_ids[0], PRELUDE_INT_TYPE_ID),
                     Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_map_struct_id => (generic_ids[0], generic_ids[1]),
-                    _ => return Err(TypeError::InvalidLoopTarget { span: self.make_span(&typed_iterator.span()), type_id: *iterator_type_id, kind: InvalidLoopTargetKind::For }),
+                    _ => return Err(TypeError::InvalidControlFlowTarget { span: self.make_span(&typed_iterator.span()), type_id: *iterator_type_id, kind: InvalidControlFlowTargetKind::ForLoop }),
                 };
 
                 self.begin_child_scope("for_loop_block", ScopeKind::Loop);
@@ -3640,7 +3642,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let typed_condition = self.typecheck_expression(*condition, None)?;
                 let condition_type_id = typed_condition.type_id();
                 if *condition_type_id != PRELUDE_BOOL_TYPE_ID && self.project.type_is_option(condition_type_id).is_none() {
-                    return Err(TypeError::InvalidLoopTarget { span: self.make_span(&typed_condition.span()), type_id: *condition_type_id, kind: InvalidLoopTargetKind::While });
+                    return Err(TypeError::InvalidControlFlowTarget { span: self.make_span(&typed_condition.span()), type_id: *condition_type_id, kind: InvalidControlFlowTargetKind::WhileLoop });
                 }
 
                 self.begin_child_scope("while_loop_block", ScopeKind::Loop);
@@ -3666,7 +3668,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     self.current_scope_mut().terminator = Some(TerminatorKind::Returning);
                 }
 
-                Ok(TypedNode::WhileLoop { token, condition: Box::new(typed_condition), condition_var_id, body: typed_body })
+                Ok(TypedNode::WhileLoop { token, condition: Box::new(typed_condition), condition_var_id, body: typed_body, block_terminator: loop_scope_terminator })
             }
             AstNode::Break(token) => {
                 let Some(_) = self.project.find_parent_scope_of_kind(&self.current_scope_id, &ScopeKind::Loop) else {
@@ -3817,13 +3819,20 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     fn typecheck_if_node(&mut self, if_token: Token, if_node: IfNode, is_expr: bool, type_hint: Option<TypeId>) -> Result<TypedNode, TypeError> {
         let is_statement = if let Some(type_hint) = &type_hint { *type_hint == PRELUDE_UNIT_TYPE_ID } else { !is_expr };
 
-        let IfNode { condition, mut condition_binding, if_block, else_block } = if_node;
+        let IfNode { condition, condition_binding, if_block, else_block } = if_node;
 
         let typed_condition = self.typecheck_expression(*condition, None)?;
-        let condition_type_id = typed_condition.type_id();
-        if !self.type_satisfies_other(condition_type_id, &PRELUDE_BOOL_TYPE_ID) {
+        let mut condition_type_id = *typed_condition.type_id();
+        let cond_is_bool = self.type_satisfies_other(&condition_type_id, &PRELUDE_BOOL_TYPE_ID);
+        let cond_is_opt = if let Some(inner_type_id) = self.project.type_is_option(&condition_type_id) {
+            condition_type_id = inner_type_id;
+            true
+        } else {
+            false
+        };
+        if !cond_is_bool && !cond_is_opt {
             let span = self.make_span(&typed_condition.span());
-            return Err(TypeError::TypeMismatch { span, expected: vec![PRELUDE_BOOL_TYPE_ID], received: *condition_type_id });
+            return Err(TypeError::InvalidControlFlowTarget { span, type_id: condition_type_id, kind: InvalidControlFlowTargetKind::IfCondition });
         }
 
         let mut type_id = None;
@@ -3834,9 +3843,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         let if_block_scope_id = self.begin_child_scope("if_block", ScopeKind::If);
-        if let Some(ref mut condition_binding) = &mut condition_binding {
-            self.typecheck_binding_pattern(false, true, condition_binding, condition_type_id, &mut vec![])?;
-        }
+        let condition_binding = if let Some(mut condition_binding) = condition_binding {
+            let mut var_ids = vec![];
+            self.typecheck_binding_pattern(false, true, &mut condition_binding, &condition_type_id, &mut var_ids)?;
+            Some((condition_binding, var_ids))
+        } else {
+            None
+        };
         let if_block_len = if_block.len();
         let mut typed_if_block = Vec::with_capacity(if_block_len);
         if if_block_len != 0 {
@@ -3947,7 +3960,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             condition: Box::new(typed_condition),
             condition_binding,
             if_block: typed_if_block,
+            if_block_terminator,
             else_block: typed_else_block,
+            else_block_terminator,
             is_statement,
             type_id,
             resolved_type_id,

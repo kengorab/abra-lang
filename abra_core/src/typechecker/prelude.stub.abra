@@ -370,8 +370,28 @@ type Set<T> {
   @Stub func intersection(self, other: Set<T>): Set<T>
 }
 
+type MapEntry<K, V> {
+  key: K
+  value: V
+  //hash: Int
+  next: MapEntry<K, V>? = None
+}
+
 type Map<K, V> {
-  size: Int readonly
+  size: Int
+  _entries: MapEntry<K, V>[] = []
+  _loadFactor: Float = 0.75
+
+  func withCapacity<K, V>(initialCapacity: Int): Map<K, V> {
+    // Find a power of 2 >= initialCapacity
+    var capacity = 1
+    while capacity < initialCapacity {
+      capacity = capacity << 1
+    }
+
+    val entries: MapEntry<K, V>[] = Array.withCapacity(capacity)
+    Map(size: 0, _entries: entries)
+  }
 
   @Stub func isEmpty(self): Bool
   @Stub func enumerate(self): (K, V)[]
@@ -380,6 +400,32 @@ type Map<K, V> {
   @Stub func entries(self): Set<(K, V)>
   @Stub func containsKey(self, key: K): Bool
   @Stub func mapValues<U>(self, fn: (K, V) => U): Map<K, U>
+
+  //func insert(self, key: K, value: V): V? {
+  //  println("hello " + key)
+  //  val hash = key.hash() && (self._entries._capacity - 1)
+
+  //  var ret: V? = None
+  //  if self._entries[hash] |entry| {
+  //    var cursor: MapEntry<K, V>? = entry
+  //    while cursor |cur| {
+  //      if cur.key == key {
+  //        ret = cur.value
+  //        cur.value = value
+  //        break
+  //      } else if cur.next |next| {
+  //        cursor = next
+  //      } else {
+  //        cur.next = MapEntry(key: key, value: value)
+  //      }
+  //    }
+  //  } else {
+  //    self._entries[hash] = MapEntry(key: key, value: value)
+  //  }
+
+  //  ret
+  //}
+
   @Stub func getOr(self, key: K, default: V): V
   @Stub func getOrElse(self, key: K, getDefault: () => V): V
   @Stub func update(self, key: K, updater: (V) => V)

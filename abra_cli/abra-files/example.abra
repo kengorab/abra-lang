@@ -1,2 +1,13 @@
 // TODO: This shouldn't stackoverflow
 //println([])
+
+val m = Map.withCapacity<Int, String>(3)
+m.insert(24, "hello")
+m._entries
+
+//while true {
+//  println("first loop")
+//  break
+//}
+//
+//println("done")

@@ -51,3 +51,10 @@ println(if false { 123 })
 //println(if true { None } else { 1 + 2 }) // TODO: Make this work
 /// Expect: 3
 println(if true { 1 + 2 } else { None })
+
+// Condition bindings
+val arr = [1, 2, 3, 4]
+/// Expect: 101
+println(if arr[0] |item| { item + 100 } else { 0 })
+/// Expect: 0
+println(if arr[5] |item| { item + 100 } else { 0 })

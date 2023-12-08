@@ -4,6 +4,7 @@ use std::fmt::Debug;
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus};
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate};
+use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
@@ -32,10 +33,6 @@ enum LLVMVar<'ctx> {
 struct ResolvedGenerics(HashMap<String, TypeId>);
 
 impl ResolvedGenerics {
-    pub fn from_pairs(pairs: Vec<(String, TypeId)>) -> ResolvedGenerics {
-        ResolvedGenerics(pairs.into_iter().collect())
-    }
-
     // pub fn dump(&self, project: &Project) {
     //     println!("resolved_generics:");
     //     for (key, type_id) in &self.0 {
@@ -45,6 +42,14 @@ impl ResolvedGenerics {
 
     pub fn resolve(&self, name: &String) -> Option<&TypeId> {
         self.0.get(name)
+    }
+
+    pub fn extend_via_struct(&self, struct_: &Struct, realized_generics: &Vec<TypeId>, project: &Project) -> ResolvedGenerics {
+        let mut map = self.clone().0;
+        for (generic_id, type_arg_id) in struct_.generic_ids.iter().zip(realized_generics) {
+            map.insert(Self::get_generic_name(generic_id, project), self.resolve_chase_generic(type_arg_id, project));
+        }
+        ResolvedGenerics(map)
     }
 
     pub fn extend_via_instance(&self, type_id: &TypeId, project: &Project) -> ResolvedGenerics {
@@ -58,7 +63,7 @@ impl ResolvedGenerics {
             } else {
                 let struct_ = project.get_struct_by_id(struct_id);
                 for (generic_type_id, type_id) in struct_.generic_ids.iter().zip(generics) {
-                    map.insert(self.get_generic_name(generic_type_id, project), *type_id);
+                    map.insert(Self::get_generic_name(generic_type_id, project), self.resolve_chase_generic(type_id, project));
                 }
             }
         }
@@ -68,7 +73,21 @@ impl ResolvedGenerics {
     pub fn extend_via_func_call(&self, invokee: &Function, realized_generics: &Vec<TypeId>, project: &Project) -> ResolvedGenerics {
         let mut map = self.clone().0;
         for (generic_type_id, type_id) in invokee.generic_ids.iter().zip(realized_generics) {
-            map.insert(self.get_generic_name(generic_type_id, project), self.resolve_chase_generic(type_id, project));
+            map.insert(Self::get_generic_name(generic_type_id, project), self.resolve_chase_generic(type_id, project));
+        }
+        ResolvedGenerics(map)
+    }
+
+    pub fn extend_via_method_call(&self, target_type_id: &TypeId, method: &Function, realized_generics: &Vec<TypeId>, project: &Project) -> ResolvedGenerics {
+        // TODO: Rework this? It's a little inefficient because it collects twice (and clones the underlying map).
+        self.extend_via_instance(target_type_id, project)
+            .extend_via_func_call(method, realized_generics, project)
+    }
+
+    pub fn extend_via_pairs(&self, pairs: Vec<(String, TypeId)>) -> ResolvedGenerics {
+        let mut map = self.clone().0;
+        for (generic_name, type_id) in pairs {
+            map.insert(generic_name, type_id);
         }
         ResolvedGenerics(map)
     }
@@ -81,30 +100,12 @@ impl ResolvedGenerics {
         }
     }
 
-    pub fn new_via_func_call(&self, invokee: &Function, realized_generics: &Vec<TypeId>, project: &Project) -> ResolvedGenerics {
-        let map = invokee.generic_ids.iter().zip(realized_generics)
-            .map(|(generic_id, type_arg_id)| {
-                (self.get_generic_name(generic_id, project), self.resolve_chase_generic(type_arg_id, project))
-            })
-            .collect();
-        ResolvedGenerics(map)
-    }
-
-    pub fn new_via_struct(&self, struct_: &Struct, realized_generics: &Vec<TypeId>, project: &Project) -> ResolvedGenerics {
-        let map = struct_.generic_ids.iter().zip(realized_generics)
-            .map(|(generic_id, type_arg_id)| {
-                (self.get_generic_name(generic_id, project), self.resolve_chase_generic(type_arg_id, project))
-            })
-            .collect();
-        ResolvedGenerics(map)
-    }
-
-    pub fn new_via_instance(&self, ty: &Type, project: &Project) -> ResolvedGenerics {
+    pub fn new_via_instance(ty: &Type, project: &Project) -> ResolvedGenerics {
         if let Type::GenericInstance(struct_id, generics) = ty {
             let struct_ = project.get_struct_by_id(struct_id);
             let map = struct_.generic_ids.iter().zip(generics)
                 .map(|(generic_id, type_arg_id)| {
-                    (self.get_generic_name(generic_id, project), self.resolve_chase_generic(type_arg_id, project))
+                    (Self::get_generic_name(generic_id, project), *type_arg_id)
                 })
                 .collect();
             ResolvedGenerics(map)
@@ -113,13 +114,7 @@ impl ResolvedGenerics {
         }
     }
 
-    pub fn new_via_method_call(&self, target_ty: &Type, method: &Function, realized_generics: &Vec<TypeId>, project: &Project) -> ResolvedGenerics {
-        // TODO: Rework this? It's a little inefficient because it collects twice (and clones the underlying map).
-        self.new_via_instance(target_ty, project)
-            .extend_via_func_call(method, realized_generics, project)
-    }
-
-    fn get_generic_name(&self, type_id: &TypeId, project: &Project) -> String {
+    fn get_generic_name(type_id: &TypeId, project: &Project) -> String {
         let Type::Generic(_, generic_name) = project.get_type_by_id(type_id) else { unreachable!("TypeId {:?} represents a type that is not a generic", type_id) };
         generic_name.clone()
     }
@@ -132,6 +127,7 @@ pub struct LLVMCompiler2<'a> {
     main_module: Module<'a>,
     current_fn: (FunctionValue<'a>, Option<FuncId>),
     ctx_stack: Vec<CompilerContext<'a>>,
+    loop_stack: Vec<(/* loop_start: */ BasicBlock<'a>, /* loop_end: */ BasicBlock<'a>)>,
     closure_captures: HashMap<FuncId, PointerValue<'a>>,
 
     // cached for convenience
@@ -218,6 +214,7 @@ impl<'a> LLVMCompiler2<'a> {
             main_module,
             current_fn: (abra_main_fn, None),
             ctx_stack: vec![CompilerContext::default()],
+            loop_stack: vec![],
             closure_captures: HashMap::new(),
 
             // cached values
@@ -393,7 +390,7 @@ impl<'a> LLVMCompiler2<'a> {
                 return resolved_generics.resolve(name)
                     .and_then(|resolved_type_id| {
                         if let Type::Generic(_, other_name) = self.project.get_type_by_id(resolved_type_id) {
-                            if other_name == name { panic!("Self-referential generic type; stackoverflow detected"); }
+                            if other_name == name { panic!("Self-referential generic type {}; stackoverflow detected", &name); }
                         }
                         self.llvm_underlying_type_by_id(resolved_type_id, resolved_generics)
                     });
@@ -657,7 +654,7 @@ impl<'a> LLVMCompiler2<'a> {
                 if idx == num_nodes - 1 && *node_type_id != PRELUDE_UNIT_TYPE_ID {
                     if let Some(res) = res {
                         let node_type = self.project.get_type_by_id(node_type_id);
-                        let resolved_generics = ResolvedGenerics::default().new_via_instance(node_type, &self.project);
+                        let resolved_generics = ResolvedGenerics::new_via_instance(node_type, &self.project);
                         let to_string_fn = self.get_or_compile_to_string_method_for_type(node_type_id, &resolved_generics);
                         let str_val = self.builder.build_call(to_string_fn, &[res.into()], "repr").try_as_basic_value().left().unwrap().into_pointer_value();
                         let (len_val, chars_val) = self.destructure_string(str_val);
@@ -795,6 +792,38 @@ impl<'a> LLVMCompiler2<'a> {
         captures
     }
 
+    fn compile_binding_declaration(&mut self, pattern: &BindingPattern, vars: &Vec<VarId>, expr_val: Option<BasicValueEnum<'a>>, resolved_generics: &ResolvedGenerics) {
+        let BindingPattern::Variable(token) = pattern else { todo!() };
+        let var_name = Token::get_ident_name(token);
+        let Some(variable) = vars.iter().find_map(|var_id| {
+            let var = self.project.get_var_by_id(var_id);
+            if var.name == var_name { Some(var) } else { None }
+        }) else { unreachable!() };
+
+        if let Some(expr_val) = expr_val {
+            let llvm_type = self.llvm_underlying_type_by_id(&variable.type_id, resolved_generics).unwrap_or_else(|| expr_val.get_type().as_basic_type_enum());
+            let llvm_type = self.llvm_ptr_wrap_type_if_needed(llvm_type);
+
+            // If variable is captured, move value to heap so its lifetime extends beyond the current stack frame. There is specific logic
+            // to handle references to the variable later on (see TypedNode::Identifier and TypedNode::Assignment logic).
+            if variable.is_captured {
+                let ptr_type = llvm_type.ptr_type(AddressSpace::Generic);
+                let heap_mem = self.malloc(self.const_i64(8), ptr_type);
+                self.builder.build_store(heap_mem, expr_val);
+
+                let slot = self.builder.build_alloca(ptr_type, &var_name);
+                self.ctx_stack.last_mut().unwrap().variables.insert(variable.id, LLVMVar::Slot(slot));
+
+                self.builder.build_store(slot, heap_mem);
+            } else {
+                let slot = self.builder.build_alloca(llvm_type, &var_name);
+                self.ctx_stack.last_mut().unwrap().variables.insert(variable.id, LLVMVar::Slot(slot));
+
+                self.builder.build_store(slot, expr_val);
+            }
+        }
+    }
+
     fn visit_statement(&mut self, node: &TypedNode, resolved_generics: &ResolvedGenerics) -> Option<BasicValueEnum<'a>> {
         match node {
             node @ TypedNode::If { .. } => self.visit_if_node(node, resolved_generics),
@@ -832,67 +861,79 @@ impl<'a> LLVMCompiler2<'a> {
             }
             TypedNode::EnumDeclaration(_) => None,
             TypedNode::BindingDeclaration { vars, pattern, expr, .. } => {
-                let BindingPattern::Variable(token) = pattern else { todo!() };
-                let var_name = Token::get_ident_name(token);
-                let Some(variable) = vars.iter().find_map(|var_id| {
-                    let var = self.project.get_var_by_id(var_id);
-                    if var.name == var_name { Some(var) } else { None }
-                }) else { unreachable!() };
-
                 let Some(expr) = expr else { todo!() };
                 let expr_val = self.visit_expression(expr, resolved_generics);
-                if let Some(expr_val) = expr_val {
-                    let llvm_type = self.llvm_underlying_type_by_id(&variable.type_id, resolved_generics).unwrap_or_else(|| expr_val.get_type().as_basic_type_enum());
-                    let llvm_type = self.llvm_ptr_wrap_type_if_needed(llvm_type);
 
-                    // If variable is captured, move value to heap so its lifetime extends beyond the current stack frame. There is specific logic
-                    // to handle references to the variable later on (see TypedNode::Identifier and TypedNode::Assignment logic).
-                    if variable.is_captured {
-                        let ptr_type = llvm_type.ptr_type(AddressSpace::Generic);
-                        let heap_mem = self.malloc(self.const_i64(8), ptr_type);
-                        self.builder.build_store(heap_mem, expr_val);
-
-                        let slot = self.builder.build_alloca(ptr_type, &var_name);
-                        self.ctx_stack.last_mut().unwrap().variables.insert(variable.id, LLVMVar::Slot(slot));
-
-                        self.builder.build_store(slot, heap_mem);
-                    } else {
-                        let slot = self.builder.build_alloca(llvm_type, &var_name);
-                        self.ctx_stack.last_mut().unwrap().variables.insert(variable.id, LLVMVar::Slot(slot));
-
-                        self.builder.build_store(slot, expr_val);
-                    }
-                }
+                self.compile_binding_declaration(pattern, vars, expr_val, resolved_generics);
 
                 None
             }
             TypedNode::ForLoop { .. } => todo!(),
-            TypedNode::WhileLoop { condition, condition_var_id, body, .. } => {
-                debug_assert!(condition_var_id.is_none(), "Not implemented yet");
-                debug_assert!(condition.as_ref().type_id() == &PRELUDE_BOOL_TYPE_ID, "Only implement while loops for boolean conditions for now (no Optionals yet)");
-
+            TypedNode::WhileLoop { condition, condition_var_id, body, block_terminator, .. } => {
                 let loop_cond_block = self.context.append_basic_block(self.current_fn.0, "while_loop_cond");
                 let loop_body_block = self.context.append_basic_block(self.current_fn.0, "while_loop_body");
                 let loop_end_block = self.context.append_basic_block(self.current_fn.0, "while_loop_end");
 
+                self.loop_stack.push((loop_cond_block, loop_end_block));
+
                 self.builder.build_unconditional_branch(loop_cond_block);
                 self.builder.position_at_end(loop_cond_block);
-                let cond_val = self.visit_expression(condition, resolved_generics).unwrap().into_int_value();
+
+                let condition_type_id = *condition.type_id();
+                let cond_is_opt = self.project.type_is_option(&condition_type_id).is_some();
+                let cond_val = self.visit_expression(condition, resolved_generics).unwrap();
+                let (cond_val, opt_cond_local) = if cond_is_opt {
+                    let cond_local = self.builder.build_alloca(cond_val.get_type(), "");
+                    self.builder.build_store(cond_local, cond_val);
+                    let opt_is_set_slot = self.builder.build_struct_gep(cond_local, 0, "is_set_slot").unwrap();
+                    let cond_val = self.builder.build_load(opt_is_set_slot, "is_set").into_int_value();
+                    (cond_val, Some(cond_local))
+                } else {
+                    (cond_val.into_int_value(), None)
+                };
                 let comp = self.builder.build_int_compare(IntPredicate::EQ, cond_val, self.const_bool(true), "");
+
                 self.builder.build_conditional_branch(comp, loop_body_block, loop_end_block);
 
                 self.builder.position_at_end(loop_body_block);
+                if let Some(condition_var_id) = condition_var_id {
+                    let expr_val = if let Some(opt_cond_local) = opt_cond_local {
+                        let opt_value_slot = self.builder.build_struct_gep(opt_cond_local, 1, "value_slot").unwrap();
+                        self.builder.build_load(opt_value_slot, "")
+                    } else {
+                        self.const_bool(true).into()
+                    };
+                    // TODO: While loops should support BindingPattern as conditional_binding rather than just a single var. When that's done, this can go away.
+                    let var = self.project.get_var_by_id(condition_var_id);
+                    let pat = BindingPattern::Variable(Token::Ident(var.defined_span.as_ref().unwrap().range.start.clone(), var.name.clone()));
+                    self.compile_binding_declaration(&pat, &vec![*condition_var_id], Some(expr_val), resolved_generics);
+                }
                 for node in body {
                     self.visit_statement(node, resolved_generics);
                 }
-                self.builder.build_unconditional_branch(loop_cond_block);
+                if block_terminator.is_none() {
+                    self.builder.build_unconditional_branch(loop_cond_block);
+                }
 
                 self.builder.position_at_end(loop_end_block);
+                self.loop_stack.pop();
 
                 None
             }
-            TypedNode::Break { .. } |
-            TypedNode::Continue { .. } |
+            TypedNode::Break { .. } => {
+                let Some((_loop_start, loop_end)) = self.loop_stack.last() else { unreachable!("A break statement must be contained within a loop") };
+
+                self.builder.build_unconditional_branch(*loop_end);
+
+                None
+            }
+            TypedNode::Continue { .. } => {
+                let Some((loop_start, _loop_end)) = self.loop_stack.last() else { unreachable!("A break statement must be contained within a loop") };
+
+                self.builder.build_unconditional_branch(*loop_start);
+
+                None
+            }
             TypedNode::Return { .. } => todo!(),
             TypedNode::Import { .. } => None,
             _ => self.visit_expression(node, resolved_generics),
@@ -1209,6 +1250,21 @@ impl<'a> LLVMCompiler2<'a> {
                         let comp_op_int = if op == &BinaryOp::Neq { IntPredicate::NE } else { IntPredicate::EQ };
                         let comp_op_float = if op == &BinaryOp::Neq { FloatPredicate::ONE } else { FloatPredicate::OEQ };
 
+                        // resolved_generics.dump(&self.project);
+                        // dbg!(&self.project.type_repr(left_type_id));
+                        // dbg!(&self.project.type_repr(right_type_id));
+
+                        let left_type_id = if let Type::Generic(_, name) = self.project.get_type_by_id(left_type_id) {
+                            resolved_generics.resolve(name).unwrap_or(left_type_id)
+                        } else {
+                            left_type_id
+                        };
+                        let right_type_id = if let Type::Generic(_, name) = self.project.get_type_by_id(right_type_id) {
+                            resolved_generics.resolve(name).unwrap_or(right_type_id)
+                        } else {
+                            right_type_id
+                        };
+
                         let left = self.visit_expression(left, resolved_generics).unwrap();
                         let right = self.visit_expression(right, resolved_generics).unwrap();
                         if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
@@ -1297,7 +1353,7 @@ impl<'a> LLVMCompiler2<'a> {
                         } else {
                             unreachable!("`>>` operator not defined between types {} and {}", self.project.type_repr(left_type_id), self.project.type_repr(right_type_id))
                         }
-                    },
+                    }
                     BinaryOp::AddEq |
                     BinaryOp::SubEq |
                     BinaryOp::MulEq |
@@ -1323,12 +1379,12 @@ impl<'a> LLVMCompiler2<'a> {
                     let array_with_capacity_func_id = array_type.find_static_method_by_name(self.project, "withCapacity").unwrap();
                     let array_with_capacity_fn = self.project.get_func_by_id(array_with_capacity_func_id);
 
-                    let resolved_generics = ResolvedGenerics::from_pairs(vec![(self.get_generic_name(&array_with_capacity_fn.generic_ids[0]), inner_type_id)]);
+                    let resolved_generics = resolved_generics.extend_via_pairs(vec![(self.get_generic_name(&array_with_capacity_fn.generic_ids[0]), inner_type_id)]);
                     self.get_or_compile_function(&array_with_capacity_func_id, &resolved_generics)
                 };
                 let array_push_llvm_fn = {
                     let (_, array_push_func_id) = array_type.find_method_by_name(self.project, "push").unwrap();
-                    let resolved_generics = ResolvedGenerics::from_pairs(vec![(self.get_generic_name(&array_struct.generic_ids[0]), inner_type_id)]);
+                    let resolved_generics = resolved_generics.extend_via_pairs(vec![(self.get_generic_name(&array_struct.generic_ids[0]), inner_type_id)]);
                     self.get_or_compile_function(&array_push_func_id, &resolved_generics)
                 };
 
@@ -1427,7 +1483,7 @@ impl<'a> LLVMCompiler2<'a> {
                                 let function = self.project.get_func_by_id(func_id);
                                 params_data = function.params.iter().map(|p| (p.type_id, p.default_value.is_some())).collect_vec();
 
-                                new_resolved_generics = resolved_generics.new_via_func_call(function, type_arg_ids, &self.project);
+                                new_resolved_generics = resolved_generics.extend_via_func_call(function, type_arg_ids, &self.project);
 
                                 if let Some(dec) = function.decorators.iter().find(|dec| dec.name == "Intrinsic") {
                                     let TypedNode::Literal { value: TypedLiteral::String(intrinsic_name), .. } = &dec.args[0] else { unreachable!("@Intrinsic requires exactly 1 String argument") };
@@ -1446,7 +1502,7 @@ impl<'a> LLVMCompiler2<'a> {
                                 let struct_ = self.project.get_struct_by_id(struct_id);
                                 params_data = struct_.fields.iter().map(|f| (f.type_id, f.default_value.is_some())).collect_vec();
 
-                                new_resolved_generics = resolved_generics.new_via_struct(struct_, type_arg_ids, &self.project);
+                                new_resolved_generics = resolved_generics.extend_via_struct(struct_, type_arg_ids, &self.project);
                                 self.get_or_compile_type_initializer(struct_id, &new_resolved_generics).into()
                             }
                         }
@@ -1535,7 +1591,7 @@ impl<'a> LLVMCompiler2<'a> {
                                 let target = self.visit_expression(target, &resolved_generics).unwrap();
                                 args.push(target.into());
 
-                                new_resolved_generics = resolved_generics.new_via_method_call(target_ty, function, type_arg_ids, &self.project);
+                                new_resolved_generics = resolved_generics.extend_via_method_call(target_type_id, function, type_arg_ids, &self.project);
                                 self.get_or_compile_function(&func_id, &new_resolved_generics).into()
                             }
                             AccessorKind::StaticMethod => {
@@ -1543,7 +1599,7 @@ impl<'a> LLVMCompiler2<'a> {
                                 let function = self.project.get_func_by_id(&func_id);
                                 params_data = function.params.iter().map(|p| (p.type_id, p.default_value.is_some())).collect_vec();
 
-                                new_resolved_generics = resolved_generics.new_via_func_call(function, type_arg_ids, &self.project);
+                                new_resolved_generics = resolved_generics.extend_via_func_call(function, type_arg_ids, &self.project);
 
                                 if let Some(dec) = function.decorators.iter().find(|dec| dec.name == "Intrinsic") {
                                     let TypedNode::Literal { value: TypedLiteral::String(intrinsic_name), .. } = &dec.args[0] else { unreachable!("@Intrinsic requires exactly 1 String argument") };
@@ -1912,20 +1968,39 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn visit_if_node(&mut self, if_node: &TypedNode, resolved_generics: &ResolvedGenerics) -> Option<BasicValueEnum<'a>> {
-        let TypedNode::If { is_statement, condition, condition_binding, if_block, else_block, type_id, resolved_type_id, .. } = if_node else { unreachable!() };
-
-        debug_assert!(condition_binding.is_none(), "Condition bindings not yet implemented");
-        debug_assert!(condition.as_ref().type_id() == &PRELUDE_BOOL_TYPE_ID, "Only implement if-statements for boolean conditions for now (no Optionals yet)");
+        let TypedNode::If { is_statement, condition, condition_binding, if_block, if_block_terminator, else_block, else_block_terminator, type_id, resolved_type_id, .. } = if_node else { unreachable!() };
 
         let then_bb = self.context.append_basic_block(self.current_fn.0, "then_block");
         let else_bb = self.context.append_basic_block(self.current_fn.0, "else_block");
         let end_bb = self.context.append_basic_block(self.current_fn.0, "if_end");
 
-        let cond_val = self.visit_expression(&condition, resolved_generics).unwrap().into_int_value();
+        let condition_type_id = *condition.type_id();
+        let cond_is_opt = self.project.type_is_option(&condition_type_id).is_some();
+
+        let cond_val = self.visit_expression(&condition, resolved_generics).unwrap();
+        let (cond_val, opt_cond_local) = if cond_is_opt {
+            let cond_local = self.builder.build_alloca(cond_val.get_type(), "");
+            self.builder.build_store(cond_local, cond_val);
+            let opt_is_set_slot = self.builder.build_struct_gep(cond_local, 0, "is_set_slot").unwrap();
+            let cond_val = self.builder.build_load(opt_is_set_slot, "is_set").into_int_value();
+            (cond_val, Some(cond_local))
+        } else {
+            (cond_val.into_int_value(), None)
+        };
+
         let cmp = self.builder.build_int_compare(IntPredicate::EQ, cond_val, self.const_bool(true), "");
         self.builder.build_conditional_branch(cmp, then_bb, else_bb);
 
         self.builder.position_at_end(then_bb);
+        if let Some((condition_binding, condition_binding_var_ids)) = condition_binding {
+            let expr_val = if let Some(opt_cond_local) = opt_cond_local {
+                let opt_value_slot = self.builder.build_struct_gep(opt_cond_local, 1, "value_slot").unwrap();
+                self.builder.build_load(opt_value_slot, "")
+            } else {
+                self.const_bool(true).into()
+            };
+            self.compile_binding_declaration(condition_binding, condition_binding_var_ids, Some(expr_val), resolved_generics);
+        }
         let mut if_block_value = None;
         let if_block_len = if_block.len();
         for (idx, node) in if_block.iter().enumerate() {
@@ -1936,7 +2011,9 @@ impl<'a> LLVMCompiler2<'a> {
             }
         }
         let then_bb = self.builder.get_insert_block().unwrap();
-        self.builder.build_unconditional_branch(end_bb);
+        if if_block_terminator.is_none() {
+            self.builder.build_unconditional_branch(end_bb);
+        }
 
         self.builder.position_at_end(else_bb);
         let mut else_block_value = None;
@@ -1949,7 +2026,9 @@ impl<'a> LLVMCompiler2<'a> {
             }
         }
         let else_bb = self.builder.get_insert_block().unwrap();
-        self.builder.build_unconditional_branch(end_bb);
+        if else_block_terminator.is_none() {
+            self.builder.build_unconditional_branch(end_bb);
+        }
 
         self.builder.position_at_end(end_bb);
 
@@ -1984,7 +2063,7 @@ impl<'a> LLVMCompiler2<'a> {
             inner_type_id = resolved_generics.resolve(generic_name).unwrap_or(inner_type_id);
         }
         let opt_struct = self.project.get_struct_by_id(&self.project.prelude_option_struct_id);
-        let resolved_generics = ResolvedGenerics::from_pairs(vec![(self.get_generic_name(&opt_struct.generic_ids[0]), *inner_type_id)]);
+        let resolved_generics = resolved_generics.extend_via_pairs(vec![(self.get_generic_name(&opt_struct.generic_ids[0]), *inner_type_id)]);
         let Some(llvm_type) = self.llvm_underlying_type_by_id(outer_type_id, &resolved_generics) else { todo!() };
 
         let instance_ptr = self.builder.build_alloca(llvm_type, "opt_instance_ptr");
@@ -2005,7 +2084,7 @@ impl<'a> LLVMCompiler2<'a> {
         }
 
         let opt_struct = self.project.get_struct_by_id(&self.project.prelude_option_struct_id);
-        let resolved_generics = ResolvedGenerics::from_pairs(vec![(self.get_generic_name(&opt_struct.generic_ids[0]), *inner_type_id)]);
+        let resolved_generics = resolved_generics.extend_via_pairs(vec![(self.get_generic_name(&opt_struct.generic_ids[0]), *inner_type_id)]);
         let Some(llvm_type) = self.llvm_underlying_type_by_id(outer_type_id, &resolved_generics) else { todo!() };
 
         llvm_type.into_struct_type().const_zero()
@@ -2358,7 +2437,7 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn get_or_compile_option_method(&mut self, resolved_generics: &ResolvedGenerics, inner_type_id: &TypeId, member_idx: &usize) -> FunctionValue<'a> {
-        let resolved_generics = resolved_generics.new_via_instance(&self.project.get_type_by_id(inner_type_id), &self.project);
+        let resolved_generics = resolved_generics.extend_via_instance(inner_type_id, &self.project);
 
         match *member_idx {
             METHOD_IDX_TOSTRING => self.get_or_compile_option_tostring_method(inner_type_id, &resolved_generics),
@@ -2591,7 +2670,7 @@ impl<'a> LLVMCompiler2<'a> {
             let new_result = self.builder.build_int_add(
                 self.builder.build_load(result, "result").into_int_value(),
                 self.builder.build_int_mul(self.const_i64(31), hash, ""),
-                ""
+                "",
             );
             self.builder.build_store(result, new_result);
         }
@@ -2721,7 +2800,7 @@ impl<'a> LLVMCompiler2<'a> {
         let type_name = self.llvm_type_name_by_type(ty, resolved_generics);
         let llvm_type = self.context.opaque_struct_type(&type_name);
 
-        let resolved_generics = resolved_generics.new_via_struct(struct_, generics, &self.project);
+        let resolved_generics = resolved_generics.extend_via_struct(struct_, generics, &self.project);
 
         let struct_ = self.project.get_struct_by_id(struct_id);
         let field_types = struct_.fields.iter()
@@ -2823,7 +2902,7 @@ impl<'a> LLVMCompiler2<'a> {
                 self.builder.build_conditional_branch(cond, then_bb, else_bb);
 
                 self.builder.position_at_end(then_bb);
-                let field_resolved_generics = resolved_generics.new_via_instance(self.project.get_type_by_id(&field.type_id), &self.project);
+                let field_resolved_generics = resolved_generics.extend_via_instance(&field.type_id, &self.project);
                 self.ctx_stack.push(CompilerContext { variables: HashMap::new() });
                 let then_value = self.visit_expression(default_value_node, &field_resolved_generics).unwrap();
                 self.ctx_stack.pop();
@@ -2902,8 +2981,7 @@ impl<'a> LLVMCompiler2<'a> {
             let field_slot = self.builder.build_struct_gep(llvm_self_param, idx as u32, &format!("{}_slot", &field.name)).unwrap();
             let field_val = self.builder.build_load(field_slot, &field.name);
 
-            let field_ty = self.project.get_type_by_id(&field.type_id);
-            let resolved_generics = resolved_generics.new_via_instance(field_ty, &self.project);
+            let resolved_generics = resolved_generics.extend_via_instance(&field.type_id, &self.project);
             let tostring_fn_val = self.get_or_compile_to_string_method_for_type(&field.type_id, &resolved_generics);
             let field_tostring_val = self.builder.build_call(tostring_fn_val, &[field_val.into()], &format!("{}_to_string", &field.name)).try_as_basic_value().left().unwrap().into_pointer_value();
 
@@ -3096,8 +3174,7 @@ impl<'a> LLVMCompiler2<'a> {
             let field_slot = self.builder.build_struct_gep(llvm_self_param, idx as u32, &format!("{}_slot", &field.name)).unwrap();
             let field_val = self.builder.build_load(field_slot, &field.name);
 
-            let field_ty = self.project.get_type_by_id(&field.type_id);
-            let resolved_generics = resolved_generics.new_via_instance(field_ty, &self.project);
+            let resolved_generics = resolved_generics.extend_via_instance(&field.type_id, &self.project);
 
             let hash_fn = self.get_or_compile_hash_method_for_type(&field.type_id, &resolved_generics);
             let hash = self.builder.build_call(hash_fn, &[field_val.into()], "").try_as_basic_value().left().unwrap().into_int_value();
@@ -3105,7 +3182,7 @@ impl<'a> LLVMCompiler2<'a> {
             let new_result = self.builder.build_int_add(
                 self.builder.build_load(result, "result").into_int_value(),
                 self.builder.build_int_mul(self.const_i64(31), hash, ""),
-                ""
+                "",
             );
             self.builder.build_store(result, new_result);
         }
