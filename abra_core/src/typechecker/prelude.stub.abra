@@ -22,6 +22,8 @@ func println(*items: Any[]) {
 
 @Stub func range(start: Int, end: Int, stepBy = 1): Int[]
 
+func flattenOption<T>(value: T??): T? = if value |v| v else None
+
 type Byte {
   @Intrinsic("byte_from_int")
   func fromInt(value: Int): Byte
@@ -156,6 +158,29 @@ type Array<T> {
 
   func withCapacity<T>(initialCapacity: Int): T[] {
     Array(length: 0, _buffer: Pointer.malloc(initialCapacity), _capacity: initialCapacity)
+  }
+
+  func fill<T>(length: Int, value: T): T[] {
+    val buffer = Pointer.malloc<T>(length)
+    var i = 0
+    while i < length {
+      buffer.offset(i).store(value)
+      i += 1
+    }
+
+    Array(length: length, _buffer: buffer, _capacity: length)
+  }
+
+  func fillBy<T>(length: Int, fn: (Int) => T): T[] {
+    val buffer = Pointer.malloc<T>(length)
+    var i = 0
+    while i < length {
+      val item = fn(i)
+      buffer.offset(i).store(item)
+      i += 1
+    }
+
+    Array(length: length, _buffer: buffer, _capacity: length)
   }
 
   func toString(self): String {
@@ -302,7 +327,7 @@ type Array<T> {
       val repr = reprs._buffer.offset(i).load()
       str._buffer.offset(offset).copyFrom(repr._buffer, repr.length)
       offset += repr.length
-      if i != reprs.length {
+      if i != reprs.length - 1 {
         str._buffer.offset(offset).copyFrom(joiner._buffer, joiner.length)
         offset += joiner.length
       }
@@ -349,6 +374,17 @@ type Array<T> {
     subArray
   }
 
+  func set(self, index: Int, value: T): T? {
+    val idx = if index < 0 index + self.length else index
+    if idx >= self.length || idx < 0 {
+      None
+    } else {
+      val old = self.get(index)
+      self._buffer.offset(idx).store(value)
+      old
+    }
+  }
+
   @Stub func update(self, index: Int, updater: (T) => T)
   @Stub func reverse(self): T[]
 }
@@ -379,55 +415,165 @@ type MapEntry<K, V> {
 
 type Map<K, V> {
   size: Int
-  _entries: MapEntry<K, V>[] = []
+  _entries: MapEntry<K, V>?[] = []
+  _capacity: Int = 16
   _loadFactor: Float = 0.75
 
-  func withCapacity<K, V>(initialCapacity: Int): Map<K, V> {
-    // Find a power of 2 >= initialCapacity
-    var capacity = 1
-    while capacity < initialCapacity {
-      capacity = capacity << 1
+  func new<K, V>(initialCapacity = 16): Map<K, V> {
+    // Find a power of 2 >= initialCapacity, if non-default value provided
+    val capacity = if initialCapacity != 16 {
+      var cap = 1
+      while cap < initialCapacity {
+        cap = cap << 1
+      }
+      cap
+    } else {
+      initialCapacity
     }
 
-    val entries: MapEntry<K, V>[] = Array.withCapacity(capacity)
-    Map(size: 0, _entries: entries)
+    val entries: MapEntry<K, V>?[] = Array.fillBy(capacity, () => None)
+    Map(size: 0, _capacity: capacity, _entries: entries)
   }
 
-  @Stub func isEmpty(self): Bool
+  func toString(self): String {
+    if self.isEmpty() {
+      "{}"
+    } else {
+      val reprs: String[] = Array.withCapacity(self.size)
+      var i = 0
+      while i < self._entries.length {
+        if self._entries[i] |bucket| {
+          var cursor = bucket
+          while cursor |cur| {
+            val item = "${cur.key}: ${cur.value}"
+            reprs.push(item)
+            cursor = cur.next
+          }
+        }
+        i += 1
+      }
+
+      val items = reprs.join(", ")
+      "{ ${items} }"
+    }
+  }
+
+  func isEmpty(self): Bool = self.size == 0
+
   @Stub func enumerate(self): (K, V)[]
   @Stub func keys(self): Set<K>
   @Stub func values(self): V[]
   @Stub func entries(self): Set<(K, V)>
-  @Stub func containsKey(self, key: K): Bool
-  @Stub func mapValues<U>(self, fn: (K, V) => U): Map<K, U>
 
-  //func insert(self, key: K, value: V): V? {
-  //  println("hello " + key)
-  //  val hash = key.hash() && (self._entries._capacity - 1)
+  func _getKeyHash(self, key: K): Int = key.hash() && (self._entries._capacity - 1)
 
-  //  var ret: V? = None
-  //  if self._entries[hash] |entry| {
-  //    var cursor: MapEntry<K, V>? = entry
-  //    while cursor |cur| {
-  //      if cur.key == key {
-  //        ret = cur.value
-  //        cur.value = value
-  //        break
-  //      } else if cur.next |next| {
-  //        cursor = next
-  //      } else {
-  //        cur.next = MapEntry(key: key, value: value)
-  //      }
-  //    }
-  //  } else {
-  //    self._entries[hash] = MapEntry(key: key, value: value)
-  //  }
+  func containsKey(self, key: K): Bool = if self._getEntry(key) true else false
 
-  //  ret
-  //}
+  func mapValues<U>(self, fn: (K, V) => U): Map<K, U> {
+    val newMap: Map<K, U> = Map.new()
 
-  @Stub func getOr(self, key: K, default: V): V
-  @Stub func getOrElse(self, key: K, getDefault: () => V): V
-  @Stub func update(self, key: K, updater: (V) => V)
+    var i = 0
+    while i < self._entries.length {
+      if self._entries[i] |bucket| {
+        var cursor = bucket
+        while cursor |cur| {
+          newMap.insert(cur.key, fn(cur.key, cur.value))
+          cursor = cur.next
+        }
+      }
+      i += 1
+    }
+
+    newMap
+  }
+
+  func insert(self, key: K, value: V): V? {
+    val hash = self._getKeyHash(key)
+
+    var ret: V? = None
+    if flattenOption(self._entries[hash]) |slot| {
+      var cursor: MapEntry<K, V>? = slot
+      while cursor |cur| {
+        if cur.key == key {
+          ret = cur.value
+          cur.value = value
+          break // todo: just return ret here when early returns are a thing
+        } else if cur.next |next| {
+          cursor = next
+        } else {
+          cur.next = MapEntry(key: key, value: value)
+          break
+        }
+      }
+    } else {
+      self._entries[hash] = MapEntry(key: key, value: value)
+    }
+
+    self.size += 1
+    // resize if self.size > self._capacity * self._loadFactor
+
+    ret
+  }
+
+  func _getEntry(self, key: K): MapEntry<K, V>? {
+    val hash = self._getKeyHash(key)
+
+    if flattenOption(self._entries[hash]) |bucket| {
+      var ret: MapEntry<K, V>? = None
+
+      var cursor: MapEntry<K, V>? = bucket
+      while cursor |entry| {
+        if entry.key == key {
+          ret = entry
+          break
+        } else {
+          cursor = entry.next
+        }
+      }
+
+      ret
+    } else {
+      None
+    }
+  }
+
+  func get(self, key: K): V? {
+    if self._getEntry(key) |entry| {
+      entry.value
+    } else {
+      None
+    }
+  }
+
+  func getOr(self, key: K, default: V): V {
+    //self.get(key) ?: default
+
+    if self.get(key) |value| {
+      value
+    } else {
+      default
+    }
+  }
+
+  func getOrElse(self, key: K, getDefault: () => V): V {
+    //self.get(key) ?: getDefault()
+
+    if self.get(key) |value| {
+      value
+    } else {
+      getDefault()
+    }
+  }
+
+  func update(self, key: K, updater: (V) => V): V? {
+    if self._getEntry(key) |entry| {
+      val oldVal = entry.value
+      entry.value = updater(oldVal)
+      oldVal
+    } else {
+      None
+    }
+  }
+
   @Stub func remove(self, key: K): V?
 }

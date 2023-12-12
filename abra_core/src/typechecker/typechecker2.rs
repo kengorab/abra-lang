@@ -363,15 +363,37 @@ impl Project {
         }
     }
 
-    pub fn option_type(&self, mut inner_type_id: TypeId) -> Type {
-        let mut inner = self.get_type_by_id(&inner_type_id);
-        loop {
-            match inner {
-                Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.prelude_option_struct_id => {
-                    inner_type_id = generic_ids[0];
-                    inner = self.get_type_by_id(&inner_type_id);
+    pub fn option_type_depth(&self, type_id: &TypeId) -> usize {
+        match self.get_type_by_id(type_id) {
+            Type::GenericInstance(struct_id, generics) if struct_id == &self.prelude_option_struct_id => {
+                let mut depth = 1;
+                let mut inner = self.get_type_by_id(&generics[0]);
+                loop {
+                    match inner {
+                        Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.prelude_option_struct_id => {
+                            depth += 1;
+                            inner = self.get_type_by_id(&generic_ids[0]);
+                        }
+                        _ => break
+                    }
                 }
-                _ => break
+                depth
+            }
+            _ => 0
+        }
+    }
+
+    pub fn option_type(&self, mut inner_type_id: TypeId, flatten: bool) -> Type {
+        if flatten {
+            let mut inner = self.get_type_by_id(&inner_type_id);
+            loop {
+                match inner {
+                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.prelude_option_struct_id => {
+                        inner_type_id = generic_ids[0];
+                        inner = self.get_type_by_id(&inner_type_id);
+                    }
+                    _ => break
+                }
             }
         }
 
@@ -912,7 +934,7 @@ pub enum TypedNode {
     Array { token: Token, items: Vec<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
     Tuple { token: Token, items: Vec<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
     Set { token: Token, items: Vec<TypedNode>, type_id: TypeId },
-    Map { token: Token, items: Vec<(TypedNode, TypedNode)>, type_id: TypeId },
+    Map { token: Token, items: Vec<(TypedNode, TypedNode)>, type_id: TypeId, resolved_type_id: TypeId },
     Identifier { token: Token, var_id: VarId, type_arg_ids: Vec<(TypeId, Range)>, type_id: TypeId, resolved_type_id: TypeId },
     NoneValue { token: Token, type_id: TypeId, resolved_type_id: TypeId },
     Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_arg_ids: Vec<TypeId>, type_id: TypeId, resolved_type_id: TypeId },
@@ -2072,7 +2094,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             (_, Type::GenericInstance(var_struct_id, var_generic_ids)) if *var_struct_id == self.project.prelude_option_struct_id => {
                 let generic_id = var_generic_ids[0];
                 let inner = self.substitute_generics(&hint_type_id, &generic_id);
-                self.add_or_find_type_id(self.project.option_type(inner))
+                self.add_or_find_type_id(self.project.option_type(inner, true))
             }
             (Type::GenericInstance(hint_struct_id, hint_generic_ids), Type::GenericInstance(var_struct_id, var_generic_ids)) => {
                 if var_struct_id == hint_struct_id && hint_generic_ids.len() == var_generic_ids.len() {
@@ -2341,7 +2363,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
             TypeIdentifier::Option { inner } => {
                 let inner = self.resolve_type_identifier(&*inner)?;
-                let ty = self.project.option_type(inner);
+                let ty = self.project.option_type(inner, false);
                 Ok(self.add_or_find_type_id(ty))
             }
             TypeIdentifier::Union { .. } => todo!(),
@@ -2657,7 +2679,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             prelude_module.scopes.push(scope);
             let generic_t_type_id = self.project.add_type_id(&scope_id, Type::Generic(None, "T".to_string()));
 
-            self.project.prelude_none_type_id = self.project.add_type_id(&PRELUDE_SCOPE_ID, self.project.option_type(generic_t_type_id));
+            self.project.prelude_none_type_id = self.project.add_type_id(&PRELUDE_SCOPE_ID, self.project.option_type(generic_t_type_id, true));
         }
 
         self.current_scope_id = PRELUDE_SCOPE_ID;
@@ -3885,7 +3907,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         } else if let Some(hint_type_id) = &type_id {
             // If there is no if-block body and there is a provided type_hint, then the working type for
             // the expression becomes the hint type wrapped in an option.
-            type_id = Some(self.add_or_find_type_id(self.project.option_type(*hint_type_id)));
+            type_id = Some(self.add_or_find_type_id(self.project.option_type(*hint_type_id, true)));
         } else if !is_statement {
             // If there is no if-block body and there is also no provided type_hint, we can't make any
             // assumptions about what the type should be, so we default to the type of the `None` builtin.
@@ -3935,7 +3957,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.end_child_scope();
             else_block_terminator = self.project.get_scope_by_id(&else_block_scope_id).terminator;
         } else if let Some(hint_type_id) = &type_id {
-            type_id = Some(self.add_or_find_type_id(self.project.option_type(*hint_type_id)));
+            type_id = Some(self.add_or_find_type_id(self.project.option_type(*hint_type_id, true)));
         }
 
         self.current_scope_mut().terminator = compound_terminator_kinds(if_block_terminator, else_block_terminator);
@@ -4246,7 +4268,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let generic_ids = generic_ids.clone();
                         for (mut pattern, type_id) in patterns.iter_mut().zip(generic_ids.iter()) {
                             let type_id = if was_option {
-                                self.add_or_find_type_id(self.project.option_type(*type_id))
+                                self.add_or_find_type_id(self.project.option_type(*type_id, true))
                             } else {
                                 *type_id
                             };
@@ -4303,7 +4325,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     } else if *pattern_is_string {
                         inner_type_id
                     } else {
-                        self.add_or_find_type_id(self.project.option_type(inner_type_id))
+                        self.add_or_find_type_id(self.project.option_type(inner_type_id, true))
                     };
 
                     self.typecheck_binding_pattern(is_mutable, is_initialized, pattern, &type_id, var_ids)?;
@@ -4589,7 +4611,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 };
 
-                Ok(TypedNode::Map { token, items: typed_items, type_id })
+                let resolved_type_id = type_hint.unwrap_or(type_id);
+                Ok(TypedNode::Map { token, items: typed_items, type_id, resolved_type_id })
             }
             AstNode::Tuple(token, items) => {
                 let mut inner_type_ids = None;
@@ -4642,6 +4665,23 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let mut type_id = self.project.prelude_none_type_id;
                     if let Some(type_hint) = type_hint {
                         type_id = self.substitute_generics(&type_hint, &type_id);
+
+                        let hint_opt_depth = self.project.option_type_depth(&type_hint);
+                        if hint_opt_depth != 0 {
+                            let type_opt_depth = self.project.option_type_depth(&type_id);
+
+                            if hint_opt_depth > type_opt_depth {
+                                for _ in 0..(hint_opt_depth - type_opt_depth) {
+                                    type_id = self.add_or_find_type_id(self.project.option_type(type_id, false));
+                                }
+                            }
+                            if type_opt_depth > hint_opt_depth {
+                                for _ in 0..(type_opt_depth - hint_opt_depth) {
+                                    let Some(inner) = self.project.type_is_option(&type_id) else { unreachable!() };
+                                    type_id = inner;
+                                }
+                            }
+                        }
                     }
 
                     return Ok(TypedNode::NoneValue { token, type_id, resolved_type_id: type_id });
@@ -4702,8 +4742,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let typed_target = self.typecheck_expression(*target, type_hint)?;
                 let target_span = self.make_span(&typed_target.span());
-                let target_type_id = *typed_target.type_id();
-                let typed_expr = self.typecheck_expression(*expr, Some(target_type_id))?;
+                let mut target_type_id = *typed_target.type_id();
 
                 let kind = match typed_target {
                     TypedNode::Identifier { var_id, .. } => {
@@ -4770,7 +4809,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                     TypedNode::Indexing { target, index: IndexingMode::Index(index), .. } => {
                         let index_target_type_id = target.type_id();
-                        if let Type::GenericInstance(struct_id, _) = self.project.get_type_by_id(index_target_type_id) {
+                        let index_target_ty = self.project.get_type_by_id(index_target_type_id);
+                        if let Type::GenericInstance(struct_id, _) = index_target_ty {
                             if struct_id == &self.project.prelude_tuple_struct_id {
                                 return Err(TypeError::InvalidAssignmentTarget { span: target_span, kind: InvalidAssignmentTargetKind::IndexingTuple });
                             }
@@ -4779,11 +4819,22 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             return Err(TypeError::InvalidAssignmentTarget { span: target_span, kind: InvalidAssignmentTargetKind::IndexingString });
                         }
 
+                        let Type::GenericInstance(struct_id, generics) = &index_target_ty else { unreachable!() };
+                        if struct_id == &self.project.prelude_array_struct_id {
+                            target_type_id = generics[0];
+                        } else if struct_id == &self.project.prelude_map_struct_id {
+                            target_type_id = generics[1];
+                        } else {
+                            unreachable!()
+                        }
+
                         AssignmentKind::Indexing { target, index }
                     }
                     TypedNode::Indexing { index: IndexingMode::Range(_, _), .. } => return Err(TypeError::InvalidAssignmentTarget { span: target_span, kind: InvalidAssignmentTargetKind::IndexingRange }),
                     _ => return Err(TypeError::InvalidAssignmentTarget { span: target_span, kind: InvalidAssignmentTargetKind::UnsupportedAssignmentTarget })
                 };
+
+                let typed_expr = self.typecheck_expression(*expr, Some(target_type_id))?;
 
                 let mut type_id = *typed_expr.type_id();
                 if self.type_contains_generics(&type_id) {
@@ -4828,7 +4879,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let (required_index_type_id, result_type_id) = match (&index, target_ty) {
                     (IndexingMode::Index(_), Type::GenericInstance(struct_id, generic_ids)) if struct_id == &self.project.prelude_array_struct_id => {
-                        let opt = self.add_or_find_type_id(self.project.option_type(generic_ids[0]));
+                        let opt = self.add_or_find_type_id(self.project.option_type(generic_ids[0], false));
                         (PRELUDE_INT_TYPE_ID, opt)
                     }
                     (IndexingMode::Range(_, _), Type::GenericInstance(struct_id, _)) if struct_id == &self.project.prelude_array_struct_id => (PRELUDE_INT_TYPE_ID, target_type_id),
@@ -4836,7 +4887,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     (IndexingMode::Range(_, _), Type::Primitive(PrimitiveType::String)) => (PRELUDE_INT_TYPE_ID, PRELUDE_STRING_TYPE_ID),
                     (IndexingMode::Index(_), Type::GenericInstance(struct_id, generic_ids)) if struct_id == &self.project.prelude_map_struct_id => {
                         let key_type_id = generic_ids[0];
-                        let val_type_id = self.add_or_find_type_id(self.project.option_type(generic_ids[1]));
+                        let val_type_id = self.add_or_find_type_id(self.project.option_type(generic_ids[1], false));
                         (key_type_id, val_type_id)
                     }
                     (index, _) => {
@@ -5047,7 +5098,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 if let Some((kind, member_idx, mut type_id)) = field_data {
                     if n.is_opt_safe && target_is_option_type {
-                        type_id = self.add_or_find_type_id(self.project.option_type(type_id))
+                        type_id = self.add_or_find_type_id(self.project.option_type(type_id, true))
                     }
 
                     let resolved_type_id = type_hint.unwrap_or(type_id);
@@ -5260,7 +5311,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         }
 
                         if *is_opt_safe && target_is_option_type {
-                            return_type_id = self.add_or_find_type_id(self.project.option_type(return_type_id));
+                            return_type_id = self.add_or_find_type_id(self.project.option_type(return_type_id, true));
                         }
                     }
                     _ => {

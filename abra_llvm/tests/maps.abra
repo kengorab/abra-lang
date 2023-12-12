@@ -1,0 +1,133 @@
+// Test raw construction of map
+(() => {
+  val m0: Map<Int, String> = Map.new()
+  /// Expect: {}
+  println(m0)
+
+  val m1: Map<Int, String> = Map.new()
+  m1.insert(24, "hello")
+  /// Expect: { 24: hello }
+  println(m1)
+
+  val m2: Map<Int, String> = Map.new()
+  m2.insert(24, "hello")
+  m2.insert(17, "bonjour")
+  /// Expect: { 17: bonjour, 24: hello }
+  println(m2)
+
+  // Forcing a hash-collision
+  val m3: Map<Int, String> = Map.new()
+  m3.insert(1, "hello")
+  m3.insert(m3._capacity + 1, "world")
+  /// Expect: { 1: hello, 17: world }
+  println(m3)
+})()
+
+// Test map literal construction
+(() => {
+  val m0: Map<Int, String> = {}
+  /// Expect: {}
+  println(m0)
+
+  val m1 = { (24): "hello" }
+  /// Expect: { 24: hello }
+  println(m1)
+
+  val m2 = { (24): "hello", (17): "bonjour" }
+  /// Expect: { 17: bonjour, 24: hello }
+  println(m2)
+
+  // Forcing a hash-collision (16 initial buckets by default)
+  val m3 = { (1): "hello", (17): "world" }
+  /// Expect: { 1: hello, 17: world }
+  println(m3)
+})()
+
+// Map#containsKey
+(() => {
+  val m = { (1): "a", (2): "b" }
+
+  /// Expect: true
+  println(m.containsKey(1))
+  /// Expect: false
+  println(m.containsKey(3))
+})()
+
+// Map#mapValues
+(() => {
+  val m1 = { (1): "abc", (2): "defg" }
+
+  val m2 = m1.mapValues((_, v) => v + "!")
+  /// Expect: { 1: abc!, 2: defg! }
+  println(m2)
+
+  val m3 = m1.mapValues((_, v) => v.length)
+  /// Expect: { 1: 3, 2: 4 }
+  println(m3)
+})()
+
+// Map#get
+(() => {
+  val m = { (1): "a", (2): "b" }
+
+  /// Expect: a
+  println(m.get(1))
+  /// Expect: b
+  println(m.get(2))
+  /// Expect: None
+  println(m.get(3))
+})()
+
+// Map#getOr
+(() => {
+  val m = { (1): "a", (2): "b" }
+
+  /// Expect: a
+  println(m.getOr(1, "c"))
+  /// Expect: b
+  println(m.getOr(2, "c"))
+  /// Expect: c
+  println(m.getOr(3, "c"))
+})()
+
+// Map#getOrElse
+(() => {
+  val m = { (1): "a", (2): "b" }
+
+  /// Expect: a
+  println(m.getOrElse(1, () => {
+    println("calling default fn")
+    "c"
+  }))
+  /// Expect: b
+  println(m.getOrElse(2, () => {
+    println("calling default fn")
+    "c"
+  }))
+  /// Expect: calling default fn
+  /// Expect: c
+  println(m.getOrElse(3, () => {
+    println("calling default fn")
+    "c"
+  }))
+})()
+
+// Map#update
+(() => {
+  val m = { (1): "a", (2): "b" }
+
+  /// Expect: { 1: a, 2: b }
+  println(m)
+
+  val old1 = m.update(1, () => "A")
+  /// Expect: { 1: A, 2: b }
+  println(m)
+  /// Expect: a
+  println(old1)
+
+  val old2 = m.update(4, () => "???")
+  /// Expect: { 1: A, 2: b }
+  println(m)
+  /// Expect: None
+  println(old2)
+})()
