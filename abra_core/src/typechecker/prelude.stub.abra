@@ -546,23 +546,11 @@ type Map<K, V> {
   }
 
   func getOr(self, key: K, default: V): V {
-    //self.get(key) ?: default
-
-    if self.get(key) |value| {
-      value
-    } else {
-      default
-    }
+    self.get(key) ?: default
   }
 
   func getOrElse(self, key: K, getDefault: () => V): V {
-    //self.get(key) ?: getDefault()
-
-    if self.get(key) |value| {
-      value
-    } else {
-      getDefault()
-    }
+    self.get(key) ?: getDefault()
   }
 
   func update(self, key: K, updater: (V) => V): V? {

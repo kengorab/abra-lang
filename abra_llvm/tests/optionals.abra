@@ -37,3 +37,14 @@ func hash<T>(t: T): Int = t.hash()
   /// Expect: true
   println(hash(x) == (17).hash())
 })()
+
+// Coalescing (?:)
+(() => {
+  val i1: Int? = None
+  /// Expect: 17
+  println(i1 ?: 17)
+
+  val i2: Int? = 9
+  /// Expect: 9
+  println(i2 ?: 17)
+})()

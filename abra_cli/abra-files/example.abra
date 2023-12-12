@@ -1,49 +1,10 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-//val m1: Map<Int, Int> = Map.new()
-//m1.insert(1, 3)//"abc")
-//m1.insert(2, 4)//"defg")
-val m1 = { (1): 3, (2): 4 }
-m1
+val arr = [1, 2, 3]
 
-//val m3: Map<Int, Int> = m1.mapValues((_, v) => v.length)
-///// Expect: { 1: 3, 2: 4 }
-//println(m3)
-
-//val m1: Map<Int, String> = Map.new()
-//m1.insert(100, "one hundred")
-//println(m1)
-//
-//val m: Map<Int, String> = Map.new()
-//val r1 = m.insert(24, "hello")
-//val r2 = m.insert(12, "world")
-//val r3 = m.insert(12, "mundo")
-//val r4 = m.insert(17, "hola")
-////val r5 = m.insert(33, "bonjour")
-//val r6 = m.insert(19, "konichiwa")
-//val r7 = m.insert(19*2+1, "nihao")
-//m._entries
-////(m.size, m._loadFactor * m._capacity)
-////r3
-//m.get(17)
-//m.getOrElse(17 + 16, () => "foobar")
-
-//val i: Int?? = None
-//
-//val arr: Int?[] = Array.withCapacity(3)
-//arr.push(1)
-//arr.push(None)
-//arr
-
-//if arr[0] |item| {
-//  if item |v| {
-//    println(v)
-//  }
-//}
-//
-//if flattenOpt(arr[0]) |v| {
-//  println(v)
-//}
-//
-//println("done")
+func get17(): Int {
+  println("here")
+  17
+}
+arr[7] ?: get17()

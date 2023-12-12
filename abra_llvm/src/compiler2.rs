@@ -1233,7 +1233,36 @@ impl<'a> LLVMCompiler2<'a> {
                             unreachable!("`^` operator not defined between types {} and {}", self.project.type_repr(left_type_id), self.project.type_repr(right_type_id))
                         }
                     }
-                    BinaryOp::Coalesce => todo!(),
+                    BinaryOp::Coalesce => {
+                        let left = self.visit_expression(left, resolved_generics).unwrap();
+                        let left_local = self.builder.build_alloca(left.get_type(), "");
+                        self.builder.build_store(left_local, left);
+                        let opt_is_set_slot = self.builder.build_struct_gep(left_local, 0, "is_set_slot").unwrap();
+                        let cond_val = self.builder.build_load(opt_is_set_slot, "is_set").into_int_value();
+                        let cmp = self.builder.build_int_compare(IntPredicate::EQ, cond_val, self.const_bool(true), "");
+
+                        let then_bb = self.context.append_basic_block(self.current_fn.0, "then");
+                        let else_bb = self.context.append_basic_block(self.current_fn.0, "else");
+                        let cont_bb = self.context.append_basic_block(self.current_fn.0, "cont");
+                        self.builder.build_conditional_branch(cmp, then_bb, else_bb);
+
+                        self.builder.position_at_end(then_bb);
+                        let value_slot = self.builder.build_struct_gep(left_local, 1, "value_slot").unwrap();
+                        let then_value = self.builder.build_load(value_slot, "value");
+                        let then_bb = self.builder.get_insert_block().unwrap();
+                        self.builder.build_unconditional_branch(cont_bb);
+
+                        self.builder.position_at_end(else_bb);
+                        let else_value = self.visit_expression(right, resolved_generics).unwrap();
+                        let else_bb = self.builder.get_insert_block().unwrap();
+                        self.builder.build_unconditional_branch(cont_bb);
+
+                        self.builder.position_at_end(cont_bb);
+                        let phi = self.builder.build_phi(else_value.get_type(), "");
+                        phi.add_incoming(&[(&then_value, then_bb), (&else_value, else_bb)]);
+
+                        phi.as_basic_value()
+                    }
                     op @ BinaryOp::Lt | op @ BinaryOp::Lte | op @ BinaryOp::Gt | op @ BinaryOp::Gte => {
                         let comp_op_int = if op == &BinaryOp::Lt { IntPredicate::SLT } else if op == &BinaryOp::Lte { IntPredicate::SLE } else if op == &BinaryOp::Gt { IntPredicate::SGT } else if op == &BinaryOp::Gte { IntPredicate::SGE } else { unreachable!() };
                         let comp_op_float = if op == &BinaryOp::Lt { FloatPredicate::OLT } else if op == &BinaryOp::Lte { FloatPredicate::OLE } else if op == &BinaryOp::Gt { FloatPredicate::OGT } else if op == &BinaryOp::Gte { FloatPredicate::OGE } else { unreachable!() };
