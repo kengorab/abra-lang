@@ -933,7 +933,7 @@ pub enum TypedNode {
     Grouped { token: Token, expr: Box<TypedNode> },
     Array { token: Token, items: Vec<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
     Tuple { token: Token, items: Vec<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
-    Set { token: Token, items: Vec<TypedNode>, type_id: TypeId },
+    Set { token: Token, items: Vec<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
     Map { token: Token, items: Vec<(TypedNode, TypedNode)>, type_id: TypeId, resolved_type_id: TypeId },
     Identifier { token: Token, var_id: VarId, type_arg_ids: Vec<(TypeId, Range)>, type_id: TypeId, resolved_type_id: TypeId },
     NoneValue { token: Token, type_id: TypeId, resolved_type_id: TypeId },
@@ -2819,6 +2819,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.typecheck_enum_pass_1(node, &enum_id)?;
         }
 
+        for (node, struct_id) in type_decls.iter().zip(&struct_ids) {
+            self.typecheck_struct_pass_2(node, &struct_id)?;
+        }
+
         let mut func_ids = VecDeque::from(func_ids);
         debug_assert!(func_decls.len() == func_ids.len());
         for (node, (func_id, func_var_id)) in func_decls.iter().zip(&func_ids) {
@@ -2845,7 +2849,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
                 AstNode::TypeDecl(_, decl_node) => {
                     let struct_id = struct_ids.pop_front().expect("There should be a struct_id for each type declaration in this block");
-                    self.typecheck_struct_pass_2(struct_id, decl_node)?;
+                    self.typecheck_struct_pass_3(struct_id, decl_node)?;
 
                     let current_module = self.current_module_mut();
                     current_module.code.push(TypedNode::TypeDeclaration(struct_id));
@@ -3204,7 +3208,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     }
 
     fn typecheck_struct_pass_0(&mut self, node: &TypeDeclNode) -> Result<StructId, TypeError> {
-        let TypeDeclNode { export_token, name, type_args, fields, .. } = node;
+        let TypeDeclNode { export_token, name, type_args, .. } = node;
         let is_exported = export_token.is_some();
         if let Some(export_token) = export_token { self.verify_export_scope(export_token)?; }
 
@@ -3215,11 +3219,21 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let generic_ids = self.add_generics_to_scope(&struct_scope_id, type_args, false)?;
         let struct_id = self.add_struct_to_current_module(struct_scope_id, name, generic_ids)?;
 
+        if is_exported {
+            self.current_module_mut().exports.insert(struct_name, ExportedValue::Type(TypeKind::Struct(struct_id)));
+        }
+
+        Ok(struct_id)
+    }
+
+    fn typecheck_struct_pass_1(&mut self, node: &TypeDeclNode, struct_id: &StructId) -> Result<(), TypeError> {
+        let struct_ = self.project.get_struct_by_id(struct_id);
+
         let prev_scope_id = self.current_scope_id;
-        self.current_scope_id = struct_scope_id;
+        self.current_scope_id = struct_.struct_scope_id;
 
         let mut seen_fields: HashMap<String, Token> = HashMap::new();
-        for TypeDeclField { ident, type_ident, readonly, .. } in fields {
+        for TypeDeclField { ident, type_ident, readonly, .. } in &node.fields {
             let is_readonly = readonly.is_some();
 
             let field_name = Token::get_ident_name(&ident);
@@ -3243,14 +3257,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.current_scope_id = prev_scope_id;
 
-        if is_exported {
-            self.current_module_mut().exports.insert(struct_name, ExportedValue::Type(TypeKind::Struct(struct_id)));
-        }
-
-        Ok(struct_id)
+        Ok(())
     }
 
-    fn typecheck_struct_pass_1(&mut self, node: &TypeDeclNode, struct_id: &StructId) -> Result<(), TypeError> {
+    fn typecheck_struct_pass_2(&mut self, node: &TypeDeclNode, struct_id: &StructId) -> Result<(), TypeError> {
         let TypeDeclNode { methods, .. } = node;
 
         let struct_ = self.project.get_struct_by_id(struct_id);
@@ -3337,7 +3347,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(())
     }
 
-    fn typecheck_struct_pass_2(&mut self, struct_id: StructId, node: TypeDeclNode) -> Result<(), TypeError> {
+    fn typecheck_struct_pass_3(&mut self, struct_id: StructId, node: TypeDeclNode) -> Result<(), TypeError> {
         let TypeDeclNode { fields, methods, .. } = node;
         let struct_ = self.project.get_struct_by_id(&struct_id);
 
@@ -4553,7 +4563,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     Some(inner_type_id) => self.add_or_find_type_id(self.project.set_type(inner_type_id)),
                 };
 
-                Ok(TypedNode::Set { token, items: typed_items, type_id })
+                let resolved_type_id = type_hint.unwrap_or(type_id);
+                Ok(TypedNode::Set { token, items: typed_items, type_id, resolved_type_id })
             }
             AstNode::Map(token, n) => {
                 let mut key_type_id = None;

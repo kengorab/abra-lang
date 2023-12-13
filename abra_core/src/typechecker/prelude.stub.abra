@@ -389,27 +389,64 @@ type Array<T> {
   @Stub func reverse(self): T[]
 }
 
-type Set<T> {
-  size: Int readonly
+type Set<S> {
+  size: Int
+  _map: Map<S, Bool> = Map.new()
 
-  @Stub func isEmpty(self): Bool
-  @Stub func enumerate(self): (T, Int)[]
-  @Stub func contains(self, item: T): Bool
-  @Stub func insert(self, item: T)
-  @Stub func remove(self, item: T): T?
-  @Stub func map<U>(self, fn: (T) => U): U[]
-  @Stub func filter(self, fn: (T) => Bool): Set<T>
-  @Stub func reduce<U>(self, initialValue: U, fn: (U, T) => U): U
-  @Stub func asArray(self): T[]
-  @Stub func union(self, other: Set<T>): Set<T>
-  @Stub func difference(self, other: Set<T>): Set<T>
-  @Stub func intersection(self, other: Set<T>): Set<T>
+  func new<S>(initialCapacity = 16): Set<S> {
+    Set<S>(size: 0, _map: Map.new(initialCapacity))
+  }
+
+  func toString(self): String {
+    if self.isEmpty() {
+      "#{}"
+    } else {
+      val reprs: String[] = Array.withCapacity(self._map.size)
+      var i = 0
+      while i < self._map._entries.length {
+        if self._map._entries[i] |bucket| {
+          var cursor = bucket
+          while cursor |cur| {
+            reprs.push(cur.key.toString())
+            cursor = cur.next
+          }
+        }
+        i += 1
+      }
+
+      val items = reprs.join(", ")
+      "#{${items}}"
+    }
+  }
+
+  func isEmpty(self): Bool {
+    self._map.isEmpty()
+  }
+
+  @Stub func enumerate(self): (S, Int)[]
+
+  func contains(self, item: S): Bool {
+    self._map.containsKey(item)
+  }
+
+  func insert(self, item: S) {
+    self._map.insert(item, true)
+    self.size = self._map.size
+  }
+
+  @Stub func remove(self, item: S): S?
+  @Stub func map<U>(self, fn: (S) => U): U[]
+  @Stub func filter(self, fn: (S) => Bool): Set<S>
+  @Stub func reduce<U>(self, initialValue: U, fn: (U, S) => U): U
+  @Stub func asArray(self): S[]
+  @Stub func union(self, other: Set<S>): Set<S>
+  @Stub func difference(self, other: Set<S>): Set<S>
+  @Stub func intersection(self, other: Set<S>): Set<S>
 }
 
 type MapEntry<K, V> {
   key: K
   value: V
-  //hash: Int
   next: MapEntry<K, V>? = None
 }
 
@@ -502,14 +539,15 @@ type Map<K, V> {
           cursor = next
         } else {
           cur.next = MapEntry(key: key, value: value)
+          self.size += 1
           break
         }
       }
     } else {
       self._entries[hash] = MapEntry(key: key, value: value)
+      self.size += 1
     }
 
-    self.size += 1
     // resize if self.size > self._capacity * self._loadFactor
 
     ret

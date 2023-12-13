@@ -48,3 +48,48 @@ func hash<T>(t: T): Int = t.hash()
   /// Expect: 9
   println(i2 ?: 17)
 })()
+
+val xyz = "abc"
+type TestOptChainingMethodInvocation {
+  func unitMethod(self) = println("TestOptChainingMethodInvocation#unitMethod")
+  func closure(self): Int = xyz.length
+}
+
+// Optional-chaining accessor
+(() => {
+  val arr = ["a", "b", "c", "d"]
+
+  // Getting field of known-non-None value
+  /// Expect: 4
+  println(arr?.length)
+  // Calling method of known-non-None value
+  /// Expect: [a, b, c, d]
+  println(arr?.toString())
+
+  // Getting field of Option value
+  /// Expect: 1
+  println(arr[0]?.length)
+  /// Expect: None
+  println(arr[6]?.length)
+
+  // Calling method of Option value
+  /// Expect: false
+  println(arr[0]?.isEmpty())
+  /// Expect: None
+  println(arr[6]?.isEmpty())
+
+  // Calling unit method of Option value
+  val t1: TestOptChainingMethodInvocation? = None
+  t1?.unitMethod()
+  val t2: TestOptChainingMethodInvocation? = TestOptChainingMethodInvocation()
+  /// Expect: TestOptChainingMethodInvocation#unitMethod
+  t2?.unitMethod()
+
+  // Calling closure method of Option value
+  val t3: TestOptChainingMethodInvocation? = None
+  /// Expect: None
+  println(t3?.closure())
+  val t4: TestOptChainingMethodInvocation? = TestOptChainingMethodInvocation()
+  /// Expect: 3
+  println(t4?.closure())
+})()

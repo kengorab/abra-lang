@@ -1,0 +1,23 @@
+// Test raw construction of set
+(() => {
+  val set: Set<Int> = Set.new()
+  set.insert(1)
+  set.insert(2)
+  set.insert(3)
+  set.insert(3)
+
+  /// Expect: 3
+  println(set.size)
+  /// Expect: #{1, 2, 3}
+  println(set)
+})()
+
+// Test set literal construction
+(() => {
+  val set = #{1, 2, 3, 3}
+
+  /// Expect: 3
+  println(set.size)
+  /// Expect: #{1, 2, 3}
+  println(set)
+})()

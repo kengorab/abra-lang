@@ -1,10 +1,13 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-val arr = [1, 2, 3]
+//val set: Set<Int> = Set.new()
+//set.insert(1)
+//set.insert(2)
+//set.insert(3)
+//set.insert(3)
+//set.size
 
-func get17(): Int {
-  println("here")
-  17
-}
-arr[7] ?: get17()
+val set = #{1, 2, 3}
+    println("here")
+set

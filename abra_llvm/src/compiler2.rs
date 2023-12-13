@@ -1441,7 +1441,35 @@ impl<'a> LLVMCompiler2<'a> {
                 self.cast_result_if_necessary(tuple_val, type_id, resolved_type_id, &resolved_generics)
                     .or(Some(tuple_val))
             }
-            TypedNode::Set { .. } => todo!(),
+            TypedNode::Set { items, type_id, resolved_type_id, .. } => {
+                let Type::GenericInstance(struct_id, generics) = self.project.get_type_by_id(type_id) else { unreachable!() };
+                debug_assert!(struct_id == &self.project.prelude_set_struct_id);
+                let set_struct = self.project.get_struct_by_id(struct_id);
+                let inner_type_id = generics[0];
+                let set_type = self.project.get_type_by_id(&self.project.find_type_id(&PRELUDE_SCOPE_ID, &Type::Type(TypeKind::Struct(*struct_id))).unwrap());
+
+                let set_new_llvm_fn = {
+                    let set_new_func_id = set_type.find_static_method_by_name(self.project, "new").unwrap();
+                    let set_new_fn = self.project.get_func_by_id(set_new_func_id);
+
+                    let resolved_generics = resolved_generics.extend_via_pairs(vec![(self.get_generic_name(&set_new_fn.generic_ids[0]), inner_type_id)]);
+                    self.get_or_compile_function(&set_new_func_id, &resolved_generics)
+                };
+                let set_insert_llvm_fn = {
+                    let (_, set_insert_func_id) = set_type.find_method_by_name(self.project, "insert").unwrap();
+                    let resolved_generics = resolved_generics.extend_via_pairs(vec![(self.get_generic_name(&set_struct.generic_ids[0]), inner_type_id)]);
+                    self.get_or_compile_function(&set_insert_func_id, &resolved_generics)
+                };
+
+                let set_val = self.builder.build_call(set_new_llvm_fn, &[self.const_i64(0).into(), self.const_i16(1).into()], "").try_as_basic_value().left().unwrap();
+                for  val in items {
+                    let val = self.visit_expression(val, resolved_generics).unwrap();
+                    self.builder.build_call(set_insert_llvm_fn, &[set_val.into(), val.into()], "").try_as_basic_value().left();
+                }
+
+                self.cast_result_if_necessary(set_val, type_id, resolved_type_id, resolved_generics)
+                    .or(Some(set_val))
+            }
             TypedNode::Map { items, type_id, resolved_type_id, .. } => {
                 let Type::GenericInstance(struct_id, generics) = self.project.get_type_by_id(type_id) else { unreachable!() };
                 debug_assert!(struct_id == &self.project.prelude_map_struct_id);
@@ -1529,9 +1557,11 @@ impl<'a> LLVMCompiler2<'a> {
                 Some(self.make_none_option_instance(resolved_type_id, resolved_generics).into())
             }
             TypedNode::Invocation { target, arguments, type_arg_ids, type_id, resolved_type_id, .. } => {
+                let mut method_self_arg = None;
                 let mut args = Vec::with_capacity(arguments.len());
 
                 let params_data;
+                let mut is_opt_safe_accessor = false;
                 let mut new_resolved_generics = ResolvedGenerics::default();
                 let llvm_fn_val = match &**target {
                     // Handle invocation of identifiers which could be aliases for functions or types. Non-aliased variables (which could be function values)
@@ -1568,39 +1598,47 @@ impl<'a> LLVMCompiler2<'a> {
                             }
                         }
                     }
-                    TypedNode::Accessor { target, kind, member_idx, .. } if kind != &AccessorKind::Field => {
-                        let mut target_type_id = target.type_id();
-                        if let Type::Generic(_, generic_name) = self.project.get_type_by_id(target_type_id) {
-                            target_type_id = resolved_generics.resolve(generic_name).unwrap_or(target_type_id)
+                    TypedNode::Accessor { target, kind, member_idx, is_opt_safe, .. } if kind != &AccessorKind::Field => {
+                        let mut target_type_id = *target.type_id();
+                        if let Type::Generic(_, generic_name) = self.project.get_type_by_id(&target_type_id) {
+                            target_type_id = *resolved_generics.resolve(generic_name).unwrap_or(&target_type_id)
                         };
-                        let target_ty = self.project.get_type_by_id(target_type_id);
+
+                        if *is_opt_safe {
+                            if let Some(inner_type_id) = self.project.type_is_option(&target_type_id) {
+                                target_type_id = inner_type_id;
+                                is_opt_safe_accessor = true;
+                            }
+                        }
+
+                        let target_ty = self.project.get_type_by_id(&target_type_id);
 
                         match kind {
                             AccessorKind::Field => unreachable!("Field accessor nodes should be handled in the catchall case below"),
-                            AccessorKind::Method if self.project.type_is_tuple(target_type_id).is_some() => {
+                            AccessorKind::Method if self.project.type_is_tuple(&target_type_id).is_some() => {
                                 debug_assert!(*member_idx == METHOD_IDX_TOSTRING || *member_idx == METHOD_IDX_HASH, "Tuples don't have any methods aside from toString/hash");
-                                params_data = vec![(*target_type_id, false)];
+                                params_data = vec![(target_type_id, false)];
 
                                 let target = self.visit_expression(target, &resolved_generics).unwrap();
-                                args.push(target.into());
+                                method_self_arg = Some((0, target));
 
-                                self.get_or_compile_tuple_method(target_type_id, &resolved_generics, member_idx).into()
+                                self.get_or_compile_tuple_method(&target_type_id, &resolved_generics, member_idx).into()
                             }
-                            AccessorKind::Method if self.project.type_is_option(target_type_id).is_some() => {
-                                let Some(inner_type_id) = self.project.type_is_option(target_type_id) else { unreachable!() };
+                            AccessorKind::Method if self.project.type_is_option(&target_type_id).is_some() => {
+                                let Some(inner_type_id) = self.project.type_is_option(&target_type_id) else { unreachable!() };
 
                                 let func_id = self.project.get_type_by_id(&inner_type_id).get_method(self.project, *member_idx).unwrap();
                                 let function = self.project.get_func_by_id(&func_id);
                                 params_data = function.params.iter().skip(1).map(|p| (p.type_id, p.default_value.is_some())).collect_vec();
 
                                 let target = self.visit_expression(target, &resolved_generics).unwrap();
-                                args.push(target.into());
+                                method_self_arg = Some((0, target));
 
                                 self.get_or_compile_option_method(&resolved_generics, &inner_type_id, member_idx).into()
                             }
-                            AccessorKind::Method if self.project.type_is_trait(target_type_id) => {
+                            AccessorKind::Method if self.project.type_is_trait(&target_type_id) => {
+                                debug_assert!(!*is_opt_safe, "What does it even mean to have an option-safe accessor for a trait method at this point?");
                                 debug_assert!(arguments.iter().all(|a| a.is_some()), "Trait methods with default-valued parameters not yet supported");
-                                let target_type_id = *target_type_id;
 
                                 let instance = self.visit_expression(target, &resolved_generics).unwrap();
                                 let instance_local = self.builder.build_alloca(instance.get_type(), "instance_local");
@@ -1608,7 +1646,7 @@ impl<'a> LLVMCompiler2<'a> {
 
                                 let value_slot = self.builder.build_struct_gep(instance_local, 1, "value_slot").unwrap();
                                 let underlying_value = self.builder.build_load(value_slot, "underlying_value");
-                                args.push(underlying_value.into());
+                                method_self_arg = Some((0, underlying_value));
 
                                 let vtable_slot = self.builder.build_struct_gep(instance_local, 0, "vtable_slot").unwrap();
                                 let vtable_value = self.builder.build_load(vtable_slot, "vtable").into_pointer_value();
@@ -1650,9 +1688,9 @@ impl<'a> LLVMCompiler2<'a> {
                                 }
 
                                 let target = self.visit_expression(target, &resolved_generics).unwrap();
-                                args.push(target.into());
+                                method_self_arg = Some((if function.is_closure() { 1 } else { 0 }, target));
 
-                                new_resolved_generics = resolved_generics.extend_via_method_call(target_type_id, function, type_arg_ids, &self.project);
+                                new_resolved_generics = resolved_generics.extend_via_method_call(&target_type_id, function, type_arg_ids, &self.project);
                                 self.get_or_compile_function(&func_id, &new_resolved_generics).into()
                             }
                             AccessorKind::StaticMethod => {
@@ -1768,6 +1806,30 @@ impl<'a> LLVMCompiler2<'a> {
                     }
                 };
 
+                let opt_safe_blocks = if is_opt_safe_accessor {
+                    let Some((method_self_arg_idx, method_self_arg_value)) = method_self_arg else { unreachable!("How did we end up performing an optional safe invocation without a self argument?") };
+
+                    let self_local = self.builder.build_alloca(method_self_arg_value.get_type(), "");
+                    self.builder.build_store(self_local, method_self_arg_value);
+                    let opt_is_set_slot = self.builder.build_struct_gep(self_local, 0, "is_set_slot").unwrap();
+                    let cond_val = self.builder.build_load(opt_is_set_slot, "is_set").into_int_value();
+
+                    let then_bb = self.context.append_basic_block(self.current_fn.0, "then");
+                    let else_bb = self.context.append_basic_block(self.current_fn.0, "else");
+                    let cont_bb = self.context.append_basic_block(self.current_fn.0, "cont");
+                    self.builder.build_conditional_branch(cond_val, then_bb, else_bb);
+
+                    self.builder.position_at_end(then_bb);
+                    let value_slot = self.builder.build_struct_gep(self_local, 1, "value_slot").unwrap();
+                    let self_arg_value = self.builder.build_load(value_slot, "value");
+
+                    method_self_arg = Some((method_self_arg_idx, self_arg_value));
+
+                    Some((else_bb, cont_bb))
+                } else {
+                    None
+                };
+
                 let num_optional_params = params_data.iter().filter(|(_, has_default)| *has_default).count();
 
                 let mut default_value_flags = 0i16;
@@ -1796,7 +1858,42 @@ impl<'a> LLVMCompiler2<'a> {
                     args.push(self.const_i16(default_value_flags).into());
                 }
 
+                if let Some((idx, arg)) = method_self_arg {
+                    args.insert(idx, arg.into());
+                }
+
                 let value = self.builder.build_call(llvm_fn_val, args.as_slice(), "").try_as_basic_value().left();
+                let value = if let Some((else_bb, cont_bb)) = opt_safe_blocks {
+                    if let Some(value) = value {
+                        let then_value = self.make_option_instance(type_id, value, resolved_generics);
+                        let then_bb = self.builder.get_insert_block().unwrap();
+                        self.builder.build_unconditional_branch(cont_bb);
+
+                        self.builder.position_at_end(else_bb);
+                        let else_value = self.make_none_option_instance(type_id, resolved_generics);
+                        let else_bb = self.builder.get_insert_block().unwrap();
+                        self.builder.build_unconditional_branch(cont_bb);
+
+                        self.builder.position_at_end(cont_bb);
+                        let Some(llvm_type) = self.llvm_underlying_type_by_id(&type_id, resolved_generics) else { todo!() };
+                        let llvm_type = self.llvm_ptr_wrap_type_if_needed(llvm_type);
+                        let phi = self.builder.build_phi(llvm_type, "");
+                        phi.add_incoming(&[(&then_value, then_bb), (&else_value, else_bb)]);
+
+                        Some(phi.as_basic_value())
+                    } else {
+                        self.builder.build_unconditional_branch(cont_bb);
+
+                        self.builder.position_at_end(else_bb);
+                        self.builder.build_unconditional_branch(cont_bb);
+
+                        self.builder.position_at_end(cont_bb);
+                        None
+                    }
+                } else {
+                    value
+                };
+
                 if let Some(value) = value {
                     self.cast_result_if_necessary(value, &type_id, resolved_type_id, &resolved_generics)
                         .or(Some(value))
@@ -1805,20 +1902,63 @@ impl<'a> LLVMCompiler2<'a> {
                 }
             }
             TypedNode::Accessor { target, kind, member_idx, is_opt_safe, type_id, resolved_type_id, .. } => {
-                debug_assert!(!*is_opt_safe);
-
-                let target_ty = self.project.get_type_by_id(target.type_id());
+                let mut target_type_id = *target.type_id();
                 let target = self.visit_expression(target, resolved_generics).unwrap();
+
+                let opt_inner_type_id = self.project.type_is_option(&target_type_id);
+                let (target_value, opt_safe_blocks) = if *is_opt_safe && opt_inner_type_id.is_some() {
+                    target_type_id = opt_inner_type_id.unwrap();
+
+                    let target_local = self.builder.build_alloca(target.get_type(), "");
+                    self.builder.build_store(target_local, target);
+                    let opt_is_set_slot = self.builder.build_struct_gep(target_local, 0, "is_set_slot").unwrap();
+                    let cond_val = self.builder.build_load(opt_is_set_slot, "is_set").into_int_value();
+
+                    let then_bb = self.context.append_basic_block(self.current_fn.0, "then");
+                    let else_bb = self.context.append_basic_block(self.current_fn.0, "else");
+                    let cont_bb = self.context.append_basic_block(self.current_fn.0, "cont");
+                    self.builder.build_conditional_branch(cond_val, then_bb, else_bb);
+
+                    self.builder.position_at_end(then_bb);
+                    let value_slot = self.builder.build_struct_gep(target_local, 1, "value_slot").unwrap();
+                    let target_value = self.builder.build_load(value_slot, "value").into_pointer_value();
+                    (target_value, Some((else_bb, cont_bb)))
+                } else {
+                    (target.into_pointer_value(), None)
+                };
+
+                let target_ty = self.project.get_type_by_id(&target_type_id);
 
                 let value = match kind {
                     AccessorKind::Field => {
                         let field = target_ty.get_field(self.project, *member_idx).unwrap();
-                        let field_slot = self.builder.build_struct_gep(target.into_pointer_value(), *member_idx as u32, &field.name).unwrap();
+                        let field_slot = self.builder.build_struct_gep(target_value, *member_idx as u32, &field.name).unwrap();
                         self.builder.build_load(field_slot, "")
                     }
                     AccessorKind::Method |
                     AccessorKind::StaticMethod |
                     AccessorKind::EnumVariant => todo!()
+                };
+
+                let value = if let Some((else_bb, cont_bb)) = opt_safe_blocks {
+                    let then_value = self.make_option_instance(type_id, value, resolved_generics);
+                    let then_bb = self.builder.get_insert_block().unwrap();
+                    self.builder.build_unconditional_branch(cont_bb);
+
+                    self.builder.position_at_end(else_bb);
+                    let else_value = self.make_none_option_instance(type_id, resolved_generics);
+                    let else_bb = self.builder.get_insert_block().unwrap();
+                    self.builder.build_unconditional_branch(cont_bb);
+
+                    self.builder.position_at_end(cont_bb);
+                    let Some(llvm_type) = self.llvm_underlying_type_by_id(&type_id, resolved_generics) else { todo!() };
+                    let llvm_type = self.llvm_ptr_wrap_type_if_needed(llvm_type);
+                    let phi = self.builder.build_phi(llvm_type, "");
+                    phi.add_incoming(&[(&then_value, then_bb), (&else_value, else_bb)]);
+
+                    phi.as_basic_value()
+                } else {
+                    value
                 };
 
                 self.cast_result_if_necessary(value, &type_id, resolved_type_id, &resolved_generics)
@@ -2914,7 +3054,7 @@ impl<'a> LLVMCompiler2<'a> {
 
         let type_name = self.llvm_type_name_by_type(ty, resolved_generics);
         if let Some(llvm_type) = self.main_module.get_struct_type(&type_name) {
-            return llvm_type
+            return llvm_type;
         }
         let llvm_type = self.context.opaque_struct_type(&type_name);
 
@@ -3669,6 +3809,11 @@ mod tests {
     #[test]
     fn test_maps() {
         run_test_file("maps.abra");
+    }
+
+    #[test]
+    fn test_sets() {
+        run_test_file("sets.abra");
     }
 
     #[test]
