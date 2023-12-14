@@ -640,6 +640,8 @@ impl TypeId {
     const PLACEHOLDER_SLOT_MARKER: ScopeId = ScopeId::BOGUS;
     const MODULE_ALIAS_MARKER: ScopeId = ScopeId(ScopeId::BOGUS.0, ScopeId::BOGUS.1 - 1);
 
+    pub const BOGUS: TypeId = TypeId(ScopeId::BOGUS, usize::MAX);
+
     fn placeholder_slot(idx: usize) -> TypeId {
         TypeId(Self::PLACEHOLDER_SLOT_MARKER, idx)
     }

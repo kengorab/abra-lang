@@ -30,23 +30,23 @@ enum LLVMVar<'ctx> {
 }
 
 #[derive(Clone, Default)]
-struct ResolvedGenerics(HashMap<String, TypeId>);
+struct ResolvedGenerics(HashMap<TypeId, TypeId>);
 
 impl ResolvedGenerics {
     // pub fn dump(&self, project: &Project) {
     //     println!("resolved_generics:");
     //     for (key, type_id) in &self.0 {
-    //         println!("  {key}: {}", project.type_repr(type_id))
+    //         println!("  {}({:?}): {}", project.type_repr(key), key, project.type_repr(type_id))
     //     }
     // }
 
-    pub fn resolve(&self, name: &String) -> Option<&TypeId> {
-        self.0.get(name)
+    pub fn resolve(&self, type_id: &TypeId) -> Option<&TypeId> {
+        self.0.get(type_id)
     }
 
     pub fn resolve_if_generic<'a>(&'a self, type_id: &'a TypeId, project: &Project) -> &'a TypeId {
-        if let Type::Generic(_, name) = project.get_type_by_id(type_id) {
-            self.resolve(name).unwrap_or(type_id)
+        if let Type::Generic(_, _) = project.get_type_by_id(type_id) {
+            self.resolve(type_id).unwrap_or(type_id)
         } else {
             type_id
         }
@@ -55,7 +55,7 @@ impl ResolvedGenerics {
     pub fn extend_via_struct(&self, struct_: &Struct, realized_generics: &Vec<TypeId>, project: &Project) -> ResolvedGenerics {
         let mut map = self.clone().0;
         for (generic_id, type_arg_id) in struct_.generic_ids.iter().zip(realized_generics) {
-            map.insert(Self::get_generic_name(generic_id, project), self.resolve_chase_generic(type_arg_id, project));
+            map.insert(*generic_id, *self.resolve_if_generic(type_arg_id, project));
         }
         ResolvedGenerics(map)
     }
@@ -63,15 +63,14 @@ impl ResolvedGenerics {
     pub fn extend_via_instance(&self, type_id: &TypeId, project: &Project) -> ResolvedGenerics {
         let mut map = self.clone().0;
         if let Type::GenericInstance(struct_id, generics) = project.get_type_by_id(type_id) {
-            if struct_id == &project.prelude_tuple_struct_id {
-                for (idx, type_id) in generics.iter().enumerate() {
-                    let tuple_item_generic_name = (((65 + idx) as u8) as char).to_string();
-                    map.insert(tuple_item_generic_name, *type_id);
-                }
-            } else {
+            // For tuples, we shouldn't ever be looking up generics by id since tuples don't have any
+            // instance methods aside from those programmatically generated (see `get_or_compile_tuple_method`),
+            // and in that generation logic, we use the given realized generics of the tuple items themselves
+            // rather than deriving them from resolved_generics.
+            if struct_id != &project.prelude_tuple_struct_id {
                 let struct_ = project.get_struct_by_id(struct_id);
                 for (generic_type_id, type_id) in struct_.generic_ids.iter().zip(generics) {
-                    map.insert(Self::get_generic_name(generic_type_id, project), self.resolve_chase_generic(type_id, project));
+                    map.insert(*generic_type_id, *self.resolve_if_generic(type_id, project));
                 }
             }
         }
@@ -81,7 +80,7 @@ impl ResolvedGenerics {
     pub fn extend_via_func_call(&self, invokee: &Function, realized_generics: &Vec<TypeId>, project: &Project) -> ResolvedGenerics {
         let mut map = self.clone().0;
         for (generic_type_id, type_id) in invokee.generic_ids.iter().zip(realized_generics) {
-            map.insert(Self::get_generic_name(generic_type_id, project), self.resolve_chase_generic(type_id, project));
+            map.insert(*generic_type_id, *self.resolve_if_generic(type_id, project));
         }
         ResolvedGenerics(map)
     }
@@ -92,20 +91,12 @@ impl ResolvedGenerics {
             .extend_via_func_call(method, realized_generics, project)
     }
 
-    pub fn extend_via_pairs(&self, pairs: Vec<(String, TypeId)>) -> ResolvedGenerics {
+    pub fn extend_via_pairs(&self, pairs: Vec<(TypeId, TypeId)>) -> ResolvedGenerics {
         let mut map = self.clone().0;
-        for (generic_name, type_id) in pairs {
-            map.insert(generic_name, type_id);
+        for (generic_id, type_id) in pairs {
+            map.insert(generic_id, type_id);
         }
         ResolvedGenerics(map)
-    }
-
-    fn resolve_chase_generic(&self, realized_generic_id: &TypeId, project: &Project) -> TypeId {
-        if let Type::Generic(_, generic_name) = project.get_type_by_id(realized_generic_id) {
-            *self.resolve(generic_name).unwrap_or(realized_generic_id)
-        } else {
-            *realized_generic_id
-        }
     }
 
     pub fn new_via_instance(ty: &Type, project: &Project) -> ResolvedGenerics {
@@ -113,18 +104,13 @@ impl ResolvedGenerics {
             let struct_ = project.get_struct_by_id(struct_id);
             let map = struct_.generic_ids.iter().zip(generics)
                 .map(|(generic_id, type_arg_id)| {
-                    (Self::get_generic_name(generic_id, project), *type_arg_id)
+                    (*generic_id, *type_arg_id)
                 })
                 .collect();
             ResolvedGenerics(map)
         } else {
             ResolvedGenerics::default()
         }
-    }
-
-    fn get_generic_name(type_id: &TypeId, project: &Project) -> String {
-        let Type::Generic(_, generic_name) = project.get_type_by_id(type_id) else { unreachable!("TypeId {:?} represents a type that is not a generic", type_id) };
-        generic_name.clone()
     }
 }
 
@@ -313,7 +299,7 @@ impl<'a> LLVMCompiler2<'a> {
             Type::Primitive(PrimitiveType::Bool) => "Bool".into(),
             Type::Primitive(PrimitiveType::String) => "String".into(),
             Type::Generic(_, name) => {
-                resolved_generics.resolve(name)
+                resolved_generics.resolve(type_id)
                     .map(|type_id| {
                         if let Type::Generic(_, other_name) = self.project.get_type_by_id(type_id) {
                             if other_name == name { panic!("Self-referential generic type named {}; stackoverflow detected", other_name); }
@@ -356,7 +342,7 @@ impl<'a> LLVMCompiler2<'a> {
                     let generic_names = struct_.generic_ids.iter()
                         .map(|type_id| {
                             let generic_name = self.get_generic_name(type_id);
-                            if let Some(sub_type_id) = resolved_generics.resolve(&generic_name) {
+                            if let Some(sub_type_id) = resolved_generics.resolve(type_id) {
                                 self.llvm_type_name_by_id(sub_type_id, resolved_generics)
                             } else {
                                 generic_name.clone()
@@ -387,7 +373,7 @@ impl<'a> LLVMCompiler2<'a> {
             Type::GenericInstance(struct_id, _) if struct_id == &self.project.prelude_bool_struct_id => self.bool().as_basic_type_enum(),
             Type::Primitive(PrimitiveType::String) => self.string_type.as_basic_type_enum(),
             Type::Generic(_, name) => {
-                return resolved_generics.resolve(name)
+                return resolved_generics.resolve(type_id)
                     .and_then(|resolved_type_id| {
                         if let Type::Generic(_, other_name) = self.project.get_type_by_id(resolved_type_id) {
                             if other_name == name { panic!("Self-referential generic type {}; stackoverflow detected", &name); }
@@ -1394,12 +1380,12 @@ impl<'a> LLVMCompiler2<'a> {
                     let array_with_capacity_func_id = array_type.find_static_method_by_name(self.project, "withCapacity").unwrap();
                     let array_with_capacity_fn = self.project.get_func_by_id(array_with_capacity_func_id);
 
-                    let resolved_generics = resolved_generics.extend_via_pairs(vec![(self.get_generic_name(&array_with_capacity_fn.generic_ids[0]), inner_type_id)]);
+                    let resolved_generics = resolved_generics.extend_via_pairs(vec![(array_with_capacity_fn.generic_ids[0], inner_type_id)]);
                     self.get_or_compile_function(&array_with_capacity_func_id, &resolved_generics)
                 };
                 let array_push_llvm_fn = {
                     let (_, array_push_func_id) = array_type.find_method_by_name(self.project, "push").unwrap();
-                    let resolved_generics = resolved_generics.extend_via_pairs(vec![(self.get_generic_name(&array_struct.generic_ids[0]), inner_type_id)]);
+                    let resolved_generics = resolved_generics.extend_via_pairs(vec![(array_struct.generic_ids[0], inner_type_id)]);
                     self.get_or_compile_function(&array_push_func_id, &resolved_generics)
                 };
 
@@ -1442,17 +1428,17 @@ impl<'a> LLVMCompiler2<'a> {
                     let set_new_func_id = set_type.find_static_method_by_name(self.project, "new").unwrap();
                     let set_new_fn = self.project.get_func_by_id(set_new_func_id);
 
-                    let resolved_generics = resolved_generics.extend_via_pairs(vec![(self.get_generic_name(&set_new_fn.generic_ids[0]), inner_type_id)]);
+                    let resolved_generics = resolved_generics.extend_via_pairs(vec![(set_new_fn.generic_ids[0], inner_type_id)]);
                     self.get_or_compile_function(&set_new_func_id, &resolved_generics)
                 };
                 let set_insert_llvm_fn = {
                     let (_, set_insert_func_id) = set_type.find_method_by_name(self.project, "insert").unwrap();
-                    let resolved_generics = resolved_generics.extend_via_pairs(vec![(self.get_generic_name(&set_struct.generic_ids[0]), inner_type_id)]);
+                    let resolved_generics = resolved_generics.extend_via_pairs(vec![(set_struct.generic_ids[0], inner_type_id)]);
                     self.get_or_compile_function(&set_insert_func_id, &resolved_generics)
                 };
 
                 let set_val = self.builder.build_call(set_new_llvm_fn, &[self.const_i64(0).into(), self.const_i16(1).into()], "").try_as_basic_value().left().unwrap();
-                for  val in items {
+                for val in items {
                     let val = self.visit_expression(val, resolved_generics).unwrap();
                     self.builder.build_call(set_insert_llvm_fn, &[set_val.into(), val.into()], "").try_as_basic_value().left();
                 }
@@ -1473,16 +1459,16 @@ impl<'a> LLVMCompiler2<'a> {
                     let map_new_fn = self.project.get_func_by_id(map_new_func_id);
 
                     let resolved_generics = resolved_generics.extend_via_pairs(vec![
-                        (self.get_generic_name(&map_new_fn.generic_ids[0]), key_type_id),
-                        (self.get_generic_name(&map_new_fn.generic_ids[1]), val_type_id),
+                        (map_new_fn.generic_ids[0], key_type_id),
+                        (map_new_fn.generic_ids[1], val_type_id),
                     ]);
                     self.get_or_compile_function(&map_new_func_id, &resolved_generics)
                 };
                 let map_insert_llvm_fn = {
                     let (_, map_insert_func_id) = map_type.find_method_by_name(self.project, "insert").unwrap();
                     let resolved_generics = resolved_generics.extend_via_pairs(vec![
-                        (self.get_generic_name(&map_struct.generic_ids[0]), key_type_id),
-                        (self.get_generic_name(&map_struct.generic_ids[1]), val_type_id),
+                        (map_struct.generic_ids[0], key_type_id),
+                        (map_struct.generic_ids[1], val_type_id),
                     ]);
                     self.get_or_compile_function(&map_insert_func_id, &resolved_generics)
                 };
@@ -1589,10 +1575,11 @@ impl<'a> LLVMCompiler2<'a> {
                         }
                     }
                     TypedNode::Accessor { target, kind, member_idx, is_opt_safe, .. } if kind != &AccessorKind::Field => {
-                        let mut target_type_id = *target.type_id();
-                        if let Type::Generic(_, generic_name) = self.project.get_type_by_id(&target_type_id) {
-                            target_type_id = *resolved_generics.resolve(generic_name).unwrap_or(&target_type_id)
-                        };
+                        // let mut target_type_id = *target.type_id();
+                        // if let Type::Generic(_, _) = self.project.get_type_by_id(&target_type_id) {
+                        //     target_type_id = *resolved_generics.resolve(&target_type_id).unwrap_or(&target_type_id)
+                        // };
+                        let mut target_type_id = *resolved_generics.resolve_if_generic(&target.type_id(), &self.project);
 
                         if *is_opt_safe {
                             if let Some(inner_type_id) = self.project.type_is_option(&target_type_id) {
@@ -2276,12 +2263,13 @@ impl<'a> LLVMCompiler2<'a> {
         let Type::GenericInstance(struct_id, generics) = self.project.get_type_by_id(outer_type_id) else { unreachable!() };
         debug_assert!(struct_id == &self.project.prelude_option_struct_id);
 
-        let mut inner_type_id = &generics[0];
-        if let Type::Generic(_, generic_name) = self.project.get_type_by_id(inner_type_id) {
-            inner_type_id = resolved_generics.resolve(generic_name).unwrap_or(inner_type_id);
-        }
+        // let mut inner_type_id = &generics[0];
+        // if let Type::Generic(_, _) = self.project.get_type_by_id(inner_type_id) {
+        //     inner_type_id = resolved_generics.resolve(inner_type_id).unwrap_or(inner_type_id);
+        // }
+        let inner_type_id = resolved_generics.resolve_if_generic(&generics[0], &self.project);
         let opt_struct = self.project.get_struct_by_id(&self.project.prelude_option_struct_id);
-        let resolved_generics = resolved_generics.extend_via_pairs(vec![(self.get_generic_name(&opt_struct.generic_ids[0]), *inner_type_id)]);
+        let resolved_generics = resolved_generics.extend_via_pairs(vec![(opt_struct.generic_ids[0], *inner_type_id)]);
         let Some(llvm_type) = self.llvm_underlying_type_by_id(outer_type_id, &resolved_generics) else { todo!() };
 
         let instance_ptr = self.builder.build_alloca(llvm_type, "opt_instance_ptr");
@@ -2296,13 +2284,10 @@ impl<'a> LLVMCompiler2<'a> {
     fn make_none_option_instance(&self, outer_type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> StructValue<'a> {
         let Type::GenericInstance(struct_id, generics) = self.project.get_type_by_id(outer_type_id) else { unreachable!() };
         debug_assert!(struct_id == &self.project.prelude_option_struct_id);
-        let mut inner_type_id = &generics[0];
-        if let Type::Generic(_, generic_name) = self.project.get_type_by_id(inner_type_id) {
-            inner_type_id = resolved_generics.resolve(generic_name).unwrap_or(inner_type_id);
-        }
+        let inner_type_id = resolved_generics.resolve_if_generic(&generics[0], &self.project);
 
         let opt_struct = self.project.get_struct_by_id(&self.project.prelude_option_struct_id);
-        let resolved_generics = resolved_generics.extend_via_pairs(vec![(self.get_generic_name(&opt_struct.generic_ids[0]), *inner_type_id)]);
+        let resolved_generics = resolved_generics.extend_via_pairs(vec![(opt_struct.generic_ids[0], *inner_type_id)]);
         let Some(llvm_type) = self.llvm_underlying_type_by_id(outer_type_id, &resolved_generics) else { todo!() };
 
         llvm_type.into_struct_type().const_zero()
