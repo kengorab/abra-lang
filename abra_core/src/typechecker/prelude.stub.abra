@@ -402,17 +402,7 @@ type Set<T> {
       "#{}"
     } else {
       val reprs: String[] = Array.withCapacity(self._map.size)
-      var i = 0
-      while i < self._map._entries.length {
-        if self._map._entries[i] |bucket| {
-          var cursor = bucket
-          while cursor |cur| {
-            reprs.push(cur.key.toString())
-            cursor = cur.next
-          }
-        }
-        i += 1
-      }
+      self.forEach(item => reprs.push(item.toString()))
 
       val items = reprs.join(", ")
       "#{${items}}"
@@ -434,14 +424,56 @@ type Set<T> {
     self.size = self._map.size
   }
 
+  func forEach(self, fn: (T) => Unit) {
+    self._map.forEach(key => fn(key))
+  }
+
   @Stub func remove(self, item: T): T?
-  @Stub func map<U>(self, fn: (T) => U): U[]
-  @Stub func filter(self, fn: (T) => Bool): Set<T>
+
+  func map<U>(self, fn: (T) => U): U[] {
+    val arr: U[] = Array.withCapacity(self.size)
+    self.forEach(item => arr.push(fn(item)))
+
+    arr
+  }
+
+  func filter(self, fn: (T) => Bool): Set<T> {
+    val newSet: Set<T> = Set.new()
+    self.forEach(item => if fn(item) newSet.insert(item))
+
+    newSet
+  }
+
   @Stub func reduce<U>(self, initialValue: U, fn: (U, T) => U): U
-  @Stub func asArray(self): T[]
-  @Stub func union(self, other: Set<T>): Set<T>
-  @Stub func difference(self, other: Set<T>): Set<T>
-  @Stub func intersection(self, other: Set<T>): Set<T>
+
+  func asArray(self): T[] {
+    val arr: T[] = Array.withCapacity(self.size)
+    self.forEach(item => arr.push(item))
+
+    arr
+  }
+
+  func union(self, other: Set<T>): Set<T> {
+    val newSet: Set<T> = Set.new()
+    self.forEach(item => newSet.insert(item))
+    other.forEach(item => newSet.insert(item))
+
+    newSet
+  }
+
+  func difference(self, other: Set<T>): Set<T> {
+    val newSet: Set<T> = Set.new()
+    self.forEach(item => if !other.contains(item) newSet.insert(item))
+
+    newSet
+  }
+
+  func intersection(self, other: Set<T>): Set<T> {
+    val newSet: Set<T> = Set.new()
+    self.forEach(item => if other.contains(item) newSet.insert(item))
+
+    newSet
+  }
 }
 
 type MapEntry<K, V> {
@@ -497,10 +529,31 @@ type Map<K, V> {
 
   func isEmpty(self): Bool = self.size == 0
 
+  func forEach(self, fn: (K, V) => Unit) {
+    var i = 0
+    while i < self._entries.length {
+      if self._entries[i] |bucket| {
+        var cursor = bucket
+        while cursor |cur| {
+          fn(cur.key, cur.value)
+          cursor = cur.next
+        }
+      }
+      i += 1
+    }
+  }
+
   @Stub func enumerate(self): (K, V)[]
   @Stub func keys(self): Set<K>
   @Stub func values(self): V[]
-  @Stub func entries(self): Set<(K, V)>
+
+  // TODO: can't do this until `eq` methods are supported for non-primitives
+  func entries(self): Set<(K, V)> {
+    val entries: Set<(K, V)> = Set.new()
+    //self.forEach((k, v) => entries.insert((k, v)))
+
+    entries
+  }
 
   func _getKeyHash(self, key: K): Int = key.hash() && (self._entries._capacity - 1)
 
@@ -508,7 +561,6 @@ type Map<K, V> {
 
   func mapValues<U>(self, fn: (K, V) => U): Map<K, U> {
     val newMap: Map<K, U> = Map.new()
-
     var i = 0
     while i < self._entries.length {
       if self._entries[i] |bucket| {

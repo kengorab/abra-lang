@@ -8,6 +8,5 @@
 //set.insert(3)
 //set.size
 
-val set = #{1, 2, 3}
-    println("here")
-set
+val map = { (1): "a", (2): "bc" }
+map.entries()
