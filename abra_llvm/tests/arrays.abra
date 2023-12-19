@@ -29,6 +29,31 @@
   println(nestedArr)
 })()
 
+// == operator (also Array#eq)
+(() => {
+  val arr = [1, 2]
+
+  /// Expect: true
+  println(arr == [1, 2])
+  /// Expect: true
+  println([[1, 2], [3, 4]] == [[1, 2], [3, 4]])
+
+  /// Expect: false
+  println(arr == ["a", "b"])
+  /// Expect: false
+  println(arr == "ab")
+  /// Expect: false
+  println(arr == 123)
+  /// Expect: false
+  println(arr == 12.3)
+  /// Expect: false
+  println(arr == [1, 2, 3])
+  /// Expect: false
+  println(arr == #{1, 2, 3})
+  /// Expect: false
+  println(arr == { (1): "a", (2): "b" })
+})()
+
 // Indexing (also Array#get(index: Int))
 (() => {
   val arr = [1, 2, 3]

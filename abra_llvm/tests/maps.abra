@@ -43,6 +43,31 @@
   println(m3)
 })()
 
+// == operator (also Map#eq)
+(() => {
+  val map = { a: "abc", b: "def" }
+
+  /// Expect: true
+  println(map == { b: "def", a: "abc" })
+  /// Expect: true
+  println({ (1): { (1): ["a"], (2): ["b"] } } == { (1): { (1): ["a"], (2): ["b"] } })
+
+  /// Expect: false
+  println(map == ["a", "b"])
+  /// Expect: false
+  println(map == "ab")
+  /// Expect: false
+  println(map == 123)
+  /// Expect: false
+  println(map == 12.3)
+  /// Expect: false
+  println(map == [1, 2, 3])
+  /// Expect: false
+  println(map == #{1, 2, 3})
+  /// Expect: false
+  println(map == { (1): "a", (2): "b" })
+})()
+
 // Map#containsKey
 (() => {
   val m = { (1): "a", (2): "b" }

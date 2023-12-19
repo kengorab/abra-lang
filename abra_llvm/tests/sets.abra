@@ -1,3 +1,8 @@
+type Person {
+  name: String
+  age: Int
+}
+
 // Test raw construction of set
 (() => {
   val set: Set<Int> = Set.new()
@@ -14,12 +19,50 @@
 
 // Test set literal construction
 (() => {
-  val set = #{1, 2, 3, 3}
+  // Primitives
+  val set1 = #{1, 2, 3, 3}
 
   /// Expect: 3
-  println(set.size)
+  println(set1.size)
   /// Expect: #{1, 2, 3}
-  println(set)
+  println(set1)
+
+  // Objects
+  val set2 = #{
+    Person(name: "Foo", age: 100),
+    Person(name: "Boo", age: 101),
+    Person(name: "Goo", age: 102),
+    Person(name: "Boo", age: 101),
+  }
+  /// Expect: 3
+  println(set2.size)
+  /// Expect: #{Person(name: "Goo", age: 102), Person(name: "Foo", age: 100), Person(name: "Boo", age: 101)}
+  println(set2)
+})()
+
+// == operator (also Set#eq)
+(() => {
+  val set = #{1, 2, 3}
+
+  /// Expect: true
+  println(set == #{1, 2, 3})
+  /// Expect: true
+  println(#{[1, 2], [3, 4]} == #{[3, 4], [1, 2]})
+
+  /// Expect: false
+  println(set == ["a", "b"])
+  /// Expect: false
+  println(set == "ab")
+  /// Expect: false
+  println(set == 123)
+  /// Expect: false
+  println(set == 12.3)
+  /// Expect: false
+  println(set == [1, 2, 3])
+  /// Expect: false
+  println(set == #{1, 2, 3, 4})
+  /// Expect: false
+  println(set == { (1): "a", (2): "b" })
 })()
 
 // Set#isEmpty

@@ -583,6 +583,7 @@ pub struct EnumId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 
 pub const METHOD_IDX_TOSTRING: usize = 0;
 pub const METHOD_IDX_HASH: usize = 1;
+pub const METHOD_IDX_EQ: usize = 2;
 
 #[derive(Debug, PartialEq)]
 pub struct Struct {
@@ -3275,6 +3276,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let mut tostring_func_id = None;
         let mut hash_func_id = None;
+        let mut eq_func_id = None;
         for method in methods {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
             let func_id = self.typecheck_function_pass_0(decl_node)?;
@@ -3285,6 +3287,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     tostring_func_id = Some(func_id);
                 } else if Token::get_ident_name(&decl_node.name) == "hash" {
                     hash_func_id = Some(func_id);
+                } else if Token::get_ident_name(&decl_node.name) == "eq" {
+                    eq_func_id = Some(func_id);
                 }
 
                 self.project.get_struct_by_id_mut(struct_id).methods.push(func_id);
@@ -3343,6 +3347,31 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         };
         self.project.get_struct_by_id_mut(struct_id).methods.insert(METHOD_IDX_HASH, hash_func_id);
 
+        let eq_func_id = if let Some(func_id) = eq_func_id {
+            let eq_func_idx = self.project.get_struct_by_id(struct_id).methods.iter().find_position(|m| m == &&func_id).unwrap().0;
+            self.project.get_struct_by_id_mut(struct_id).methods.remove(eq_func_idx);
+            func_id
+        } else {
+            let bool_type_id = self.add_or_find_type_id(Type::Primitive(PrimitiveType::Bool));
+            let eq_func_id = self.add_function_to_current_scope(
+                ScopeId::BOGUS,
+                &Token::Ident(POSITION_BOGUS, "eq".to_string()),
+                vec![],
+                true,
+                vec![
+                    FunctionParam { name: "self".to_string(), type_id: self_type_id, var_id: VarId::BOGUS, defined_span: None, default_value: None, is_variadic: false, is_incomplete: false },
+                    FunctionParam { name: "other".to_string(), type_id: self_type_id, var_id: VarId::BOGUS, defined_span: None, default_value: None, is_variadic: false, is_incomplete: false },
+                ],
+                bool_type_id,
+            )?;
+            self.project.get_func_by_id_mut(&eq_func_id).defined_span = None;
+            let func = self.project.get_func_by_id(&eq_func_id);
+            let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+            self.project.get_func_by_id_mut(&eq_func_id).fn_type_id = fn_type_id;
+            eq_func_id
+        };
+        self.project.get_struct_by_id_mut(struct_id).methods.insert(METHOD_IDX_EQ, eq_func_id);
+
         self.current_type_decl = None;
         self.current_scope_id = prev_scope_id;
 
@@ -3377,7 +3406,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             struct_.fields[idx].default_value = Some(default_value);
         }
 
-        let mut method_func_id_idx = 2;
+        let mut method_func_id_idx = 3;
         let mut static_method_func_id_idx = 0;
         for method in methods.into_iter() {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
@@ -3389,6 +3418,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     struct_.methods[METHOD_IDX_TOSTRING]
                 } else if Token::get_ident_name(&decl_node.name) == "hash" {
                     struct_.methods[METHOD_IDX_HASH]
+                } else if Token::get_ident_name(&decl_node.name) == "eq" {
+                    struct_.methods[METHOD_IDX_EQ]
                 } else {
                     method_func_id_idx += 1;
                     struct_.methods[method_func_id_idx - 1]

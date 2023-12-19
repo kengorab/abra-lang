@@ -18,3 +18,28 @@ println(quad[3][0])
 
 /// Expect: true
 println(quad.hash() == (1, "two", ["three"], (2, 3)).hash())
+
+// == operator
+(() => {
+  val t1 = (1, "abc", [true, false])
+
+  /// Expect: true
+  println(t1 == (1, "abc", [true, false]))
+  /// Expect: true
+  println((1, "two", [3]) == (1, "tw" + "o", [2 + 1]))
+
+  /// Expect: false
+  println(t1 == ["a", "b"])
+  /// Expect: false
+  println(t1 == "ab")
+  /// Expect: false
+  println(t1 == 123)
+  /// Expect: false
+  println(t1 == 12.3)
+  /// Expect: false
+  println(t1 == [1, 2, 3])
+  /// Expect: false
+  println(t1 == #{1, 2, 3})
+  /// Expect: false
+  println(t1 == { (1): "a", (2): "b" })
+})()

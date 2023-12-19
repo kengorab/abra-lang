@@ -25,3 +25,12 @@ println(true || returnsFalse())
 /// Expect: boolFunc called
 /// Expect: false
 println(false || returnsFalse())
+
+/// Expect: true
+println(true == true)
+/// Expect: false
+println(true != true)
+/// Expect: false
+println(false == true)
+/// Expect: true
+println(true != false)

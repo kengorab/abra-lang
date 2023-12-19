@@ -97,6 +97,25 @@ type String {
     hash
   }
 
+  func eq(self, other: String): Bool {
+    if self.length != other.length {
+      false
+    } else {
+      var ret = true
+      var i = 0
+      while i < self.length {
+        val selfCh = self._buffer.offset(i).load().asInt()
+        val otherCh = other._buffer.offset(i).load().asInt()
+        if selfCh != otherCh {
+          ret = false
+          break
+        }
+        i += 1
+      }
+      ret
+    }
+  }
+
   func isEmpty(self): Bool = self.length == 0
 
   @Stub func toLower(self): String
@@ -234,6 +253,26 @@ type Array<T> {
       i += 1
     }
     hash
+  }
+
+  func eq(self, other: Array<T>): Bool {
+    if self.length != other.length {
+      false
+    } else {
+      var ret = true
+      var i = 0
+      while i < self.length {
+        val selfItem = self._buffer.offset(i).load()
+        val otherItem = other._buffer.offset(i).load()
+
+        if selfItem != otherItem {
+          ret = false
+          break
+        }
+        i += 1
+      }
+      ret
+    }
   }
 
   @Stub func isEmpty(self): Bool
@@ -409,6 +448,10 @@ type Set<T> {
     }
   }
 
+  func eq(self, other: Set<T>): Bool {
+    self._map == other._map
+  }
+
   func isEmpty(self): Bool {
     self._map.isEmpty()
   }
@@ -524,6 +567,38 @@ type Map<K, V> {
 
       val items = reprs.join(", ")
       "{ ${items} }"
+    }
+  }
+
+  func eq(self, other: Map<K, V>): Bool {
+    if self.size != other.size {
+      false
+    } else {
+      var ret = true
+      var i = 0
+      while i < self._entries.length {
+        if self._entries[i] |bucket| {
+          var cursor = bucket
+
+          while cursor |cur| {
+            if other.get(cur.key) |otherValue| {
+              if otherValue != cur.value {
+                ret = false
+                break
+              }
+            } else {
+              ret = false
+              break
+            }
+            cursor = cur.next
+          }
+          if !ret {
+            break
+          }
+        }
+        i += 1
+      }
+      ret
     }
   }
 

@@ -30,6 +30,26 @@
   println("hello" + [1, 2, 3], [1, 2, 3] + "hello")
 })()
 
+// == operator (also String#eq)
+(() => {
+  val s1 = "string"
+  /// Expect: true
+  println(s1 == s1)
+  /// Expect: true
+  println(s1 == "string")
+
+  /// Expect: false
+  println(s1 == 123)
+  /// Expect: false
+  println(s1 == 12.3)
+  /// Expect: false
+  println(s1 == [1, 2, 3])
+  /// Expect: false
+  println(s1 == #{1, 2, 3})
+  /// Expect: false
+  println(s1 == { (1): "a", (2): "b" })
+})()
+
 // Interpolation (also String#concat<T>(other: T, *others: Any[]))
 (() => {
   val array = [1, 2, 3]
