@@ -2117,6 +2117,7 @@ fn typecheck_type_declaration() {
     let self_instance_type_id = TypeId(ScopeId(ModuleId(1), 0), 0);
     let tostring_func_id = FuncId(ScopeId(ModuleId(1), 1), 0);
     let hash_func_id = FuncId(ScopeId(ModuleId(1), 1), 1);
+    let eq_func_id = FuncId(ScopeId(ModuleId(1), 1), 2);
     let expected = vec![
         Struct {
             id: StructId(ModuleId(1), 0),
@@ -2129,7 +2130,7 @@ fn typecheck_type_declaration() {
                 StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID, is_readonly: false, defined_span: Span::new(ModuleId(1), (2, 1), (2, 1)), default_value: None },
                 StructField { name: "b".to_string(), type_id: PRELUDE_INT_TYPE_ID, is_readonly: false, defined_span: Span::new(ModuleId(1), (3, 1), (3, 1)), default_value: None },
             ],
-            methods: vec![tostring_func_id, hash_func_id],
+            methods: vec![tostring_func_id, hash_func_id, eq_func_id],
             static_methods: vec![],
         }
     ];
@@ -2196,6 +2197,8 @@ fn typecheck_type_declaration() {
     assert_eq!("toString", project.get_func_by_id(&tostring_func_id).name);
     let hash_func_id = FuncId(ScopeId(ModuleId(1), 1), 3);
     assert_eq!("hash", project.get_func_by_id(&hash_func_id).name);
+    let eq_func_id = FuncId(ScopeId(ModuleId(1), 1), 4);
+    assert_eq!("eq", project.get_func_by_id(&eq_func_id).name);
     let expected = vec![
         Struct {
             id: struct_id,
@@ -2205,7 +2208,7 @@ fn typecheck_type_declaration() {
             generic_ids: vec![],
             self_type_id: self_instance_type_id,
             fields: vec![],
-            methods: vec![tostring_func_id, hash_func_id, foo_func_id],
+            methods: vec![tostring_func_id, hash_func_id, eq_func_id, foo_func_id],
             static_methods: vec![foostatic_func_id],
         }
     ];
@@ -2222,7 +2225,15 @@ fn typecheck_type_declaration() {
     let struct_id = StructId(ModuleId(1), 0);
     let self_instance_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_id, vec![])).unwrap();
     let tostring_func_id = FuncId(ScopeId(ModuleId(1), 1), 2);
+    assert_eq!("toString", project.get_func_by_id(&tostring_func_id).name);
     let hash_func_id = FuncId(ScopeId(ModuleId(1), 1), 3);
+    assert_eq!("hash", project.get_func_by_id(&hash_func_id).name);
+    let eq_func_id = FuncId(ScopeId(ModuleId(1), 1), 4);
+    assert_eq!("eq", project.get_func_by_id(&eq_func_id).name);
+    let foo_func_id = FuncId(ScopeId(ModuleId(1), 1), 0);
+    assert_eq!("foo", project.get_func_by_id(&foo_func_id).name);
+    let foostatic_func_id = FuncId(ScopeId(ModuleId(1), 1), 1);
+    assert_eq!("fooStatic", project.get_func_by_id(&foostatic_func_id).name);
     let expected = vec![
         Struct {
             id: struct_id,
@@ -2234,8 +2245,8 @@ fn typecheck_type_declaration() {
             fields: vec![
                 StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID, is_readonly: true, defined_span: Span::new(ModuleId(1), (2, 1), (2, 1)), default_value: None },
             ],
-            methods: vec![tostring_func_id, FuncId(ScopeId(ModuleId(1), 1), 3), FuncId(ScopeId(ModuleId(1), 1), 0)],
-            static_methods: vec![FuncId(ScopeId(ModuleId(1), 1), 1)],
+            methods: vec![tostring_func_id, hash_func_id, eq_func_id, foo_func_id],
+            static_methods: vec![foostatic_func_id],
         }
     ];
     assert_eq!(expected, module.structs);
@@ -2344,6 +2355,40 @@ fn typecheck_type_declaration() {
             captured_vars: vec![],
             captured_closures: vec![],
         },
+        Function {
+            id: eq_func_id,
+            fn_scope_id: ScopeId::BOGUS,
+            fn_type_id: project.find_type_id(&ScopeId(ModuleId(1), 1), &project.function_type(vec![self_instance_type_id], 1, false, PRELUDE_BOOL_TYPE_ID)).unwrap(),
+            name: "eq".to_string(),
+            decorators: vec![],
+            generic_ids: vec![],
+            kind: FunctionKind::Method(self_instance_type_id),
+            params: vec![
+                FunctionParam {
+                    name: "self".to_string(),
+                    type_id: self_instance_type_id,
+                    var_id: VarId::BOGUS,
+                    defined_span: None,
+                    default_value: None,
+                    is_variadic: false,
+                    is_incomplete: false,
+                },
+                FunctionParam {
+                    name: "other".to_string(),
+                    type_id: self_instance_type_id,
+                    var_id: VarId::BOGUS,
+                    defined_span: None,
+                    default_value: None,
+                    is_variadic: false,
+                    is_incomplete: false,
+                }
+            ],
+            return_type_id: PRELUDE_BOOL_TYPE_ID,
+            defined_span: None,
+            body: vec![],
+            captured_vars: vec![],
+            captured_closures: vec![],
+        },
     ];
     assert_eq!(expected, module.scopes[1].funcs);
 
@@ -2357,6 +2402,14 @@ fn typecheck_type_declaration() {
     let module = &project.modules[1];
     let struct_id = StructId(ModuleId(1), 0);
     let struct_scope_id = ScopeId(ModuleId(1), 1);
+    let tostring_func_id = FuncId(ScopeId(ModuleId(1), 1), 1);
+    assert_eq!("toString", project.get_func_by_id(&tostring_func_id).name);
+    let hash_func_id = FuncId(ScopeId(ModuleId(1), 1), 2);
+    assert_eq!("hash", project.get_func_by_id(&hash_func_id).name);
+    let eq_func_id = FuncId(ScopeId(ModuleId(1), 1), 3);
+    assert_eq!("eq", project.get_func_by_id(&eq_func_id).name);
+    let tuple_func_id = FuncId(ScopeId(ModuleId(1), 1), 0);
+    assert_eq!("tuple", project.get_func_by_id(&tuple_func_id).name);
     let expected = vec![
         Struct {
             id: struct_id,
@@ -2368,7 +2421,7 @@ fn typecheck_type_declaration() {
             fields: vec![
                 StructField { name: "value".to_string(), type_id: TypeId(struct_scope_id, 0), is_readonly: false, defined_span: Span::new(ModuleId(1), (2, 1), (2, 5)), default_value: None },
             ],
-            methods: vec![FuncId(ScopeId(ModuleId(1), 1), 1), FuncId(ScopeId(ModuleId(1), 1), 2), FuncId(ScopeId(ModuleId(1), 1), 0)],
+            methods: vec![tostring_func_id, hash_func_id, eq_func_id, tuple_func_id],
             static_methods: vec![],
         }
     ];
@@ -2383,6 +2436,12 @@ fn typecheck_type_declaration() {
     let module = &project.modules[1];
     let struct_id = StructId(ModuleId(1), 0);
     let struct_scope_id = ScopeId(ModuleId(1), 1);
+    let tostring_func_id = FuncId(ScopeId(ModuleId(1), 1), 0);
+    assert_eq!("toString", project.get_func_by_id(&tostring_func_id).name);
+    let hash_func_id = FuncId(ScopeId(ModuleId(1), 1), 1);
+    assert_eq!("hash", project.get_func_by_id(&hash_func_id).name);
+    let eq_func_id = FuncId(ScopeId(ModuleId(1), 1), 2);
+    assert_eq!("eq", project.get_func_by_id(&eq_func_id).name);
     let expected = vec![
         Struct {
             id: struct_id,
@@ -2405,7 +2464,7 @@ fn typecheck_type_declaration() {
                     }),
                 },
             ],
-            methods: vec![FuncId(ScopeId(ModuleId(1), 1), 0), FuncId(ScopeId(ModuleId(1), 1), 1)],
+            methods: vec![tostring_func_id, hash_func_id, eq_func_id],
             static_methods: vec![],
         }
     ];
@@ -4262,7 +4321,7 @@ fn typecheck_accessor() {
         }),
         kind: AccessorKind::Method,
         is_opt_safe: false,
-        member_idx: 2,
+        member_idx: 3,
         member_span: Range { start: Position::new(6, 3), end: Position::new(6, 3) },
         type_id: {
             let int_array_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
