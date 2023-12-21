@@ -625,7 +625,7 @@ type Map<K, V> {
   // TODO: can't do this until `eq` methods are supported for non-primitives
   func entries(self): Set<(K, V)> {
     val entries: Set<(K, V)> = Set.new()
-    //self.forEach((k, v) => entries.insert((k, v)))
+    self.forEach((k, v) => entries.insert((k, v)))
 
     entries
   }

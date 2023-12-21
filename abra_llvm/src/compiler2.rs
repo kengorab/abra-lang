@@ -15,7 +15,7 @@ use inkwell::values::{BasicValue, BasicValueEnum, CallableValue, FloatValue, Fun
 use itertools::Itertools;
 use abra_core::lexer::tokens::Token;
 use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
-use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, FuncId, Function, FunctionKind, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_SCOPE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, Struct, StructId, Type, TypedLiteral, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
+use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, FuncId, Function, FunctionKind, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
 
 const ABRA_MAIN_FN_NAME: &str = "_abra_main";
 
@@ -40,12 +40,12 @@ struct ResolvedGeneric {
 struct ResolvedGenerics(Vec<HashMap<TypeId, ResolvedGeneric>>);
 
 impl ResolvedGenerics {
-    // pub fn dump(&self, project: &Project) {
+    // pub fn dump<'ctx>(&self, compiler: &LLVMCompiler2<'ctx>) {
     //     println!("resolved_generics:");
     //     for layer in &self.0 {
     //         println!("--------");
     //         for (key, resolved) in layer {
-    //             println!("  {} ({:?}): {} ({})", project.type_repr(key), key, project.type_repr(&resolved.type_id), &resolved.llvm_type_name)
+    //             println!("  {} ({:?}): {} ({})", compiler.project.type_repr(key), key, compiler.project.type_repr(&resolved.type_id), &resolved.llvm_type_name)
     //         }
     //     }
     // }
@@ -111,6 +111,7 @@ pub struct LLVMCompiler2<'a> {
     loop_stack: Vec<(/* loop_start: */ BasicBlock<'a>, /* loop_end: */ BasicBlock<'a>)>,
     closure_captures: HashMap<FuncId, PointerValue<'a>>,
     typeids: RefCell<HashMap<String, usize>>,
+    adhoc_types: RefCell<Vec<Type>>,
 
     // cached for convenience
     string_type: StructType<'a>,
@@ -205,6 +206,7 @@ impl<'a> LLVMCompiler2<'a> {
             loop_stack: vec![],
             closure_captures: HashMap::new(),
             typeids: RefCell::new(typeids),
+            adhoc_types: RefCell::new(vec![]),
 
             // cached values
             string_type,
@@ -284,7 +286,7 @@ impl<'a> LLVMCompiler2<'a> {
         self.builder.build_ptr_to_int(sizeof_struct, self.i64(), "")
     }
 
-    fn new_resolved_generics_via_instance(&mut self, ty: &Type) -> ResolvedGenerics {
+    fn new_resolved_generics_via_instance(&self, ty: &Type) -> ResolvedGenerics {
         if let Type::GenericInstance(struct_id, generics) = ty {
             let struct_ = self.project.get_struct_by_id(struct_id);
             let map = struct_.generic_ids.iter().zip(generics)
@@ -298,19 +300,19 @@ impl<'a> LLVMCompiler2<'a> {
         }
     }
 
-    fn extend_resolved_generics_via_instance(&mut self, resolved_generics: &ResolvedGenerics, type_id: &TypeId) -> ResolvedGenerics {
+    fn extend_resolved_generics_via_instance(&self, resolved_generics: &ResolvedGenerics, type_id: &TypeId) -> ResolvedGenerics {
         let mut map = HashMap::new();
-        if let Type::GenericInstance(struct_id, generics) = self.project.get_type_by_id(type_id) {
+        if let Type::GenericInstance(struct_id, generics) = self.get_type_by_id(type_id) {
             // For tuples, we shouldn't ever be looking up generics by id since tuples don't have any
             // instance methods aside from those programmatically generated (see `get_or_compile_tuple_method`),
             // and in that generation logic, we use the given realized generics of the tuple items themselves
             // rather than deriving them from resolved_generics.
-            if struct_id != &self.project.prelude_tuple_struct_id {
-                let struct_ = self.project.get_struct_by_id(struct_id);
+            if struct_id != self.project.prelude_tuple_struct_id {
+                let struct_ = self.project.get_struct_by_id(&struct_id);
                 for (generic_type_id, type_id) in struct_.generic_ids.iter().zip(generics) {
-                    let resolved = resolved_generics.resolve(type_id)
+                    let resolved = resolved_generics.resolve(&type_id)
                         .map(|resolved| resolved.clone())
-                        .unwrap_or_else(|| self.make_resolved_generic(type_id, resolved_generics));
+                        .unwrap_or_else(|| self.make_resolved_generic(&type_id, resolved_generics));
                     map.insert(*generic_type_id, resolved);
                 }
             }
@@ -318,25 +320,76 @@ impl<'a> LLVMCompiler2<'a> {
         resolved_generics.extend(map)
     }
 
+    fn get_or_add_adhoc_type(&self, ty: Type) -> TypeId {
+        if let Some((idx, _)) = self.adhoc_types.borrow().iter().find_position(|t| *t == &ty) {
+            return TypeId(ScopeId::BOGUS, idx)
+        }
+            let idx = self.adhoc_types.borrow().len();
+            self.adhoc_types.borrow_mut().push(ty);
+            TypeId(ScopeId::BOGUS, idx)
+    }
+
+    fn get_type_by_id(&self, type_id: &TypeId) -> Type {
+        if type_id.0 == ScopeId::BOGUS {
+            self.adhoc_types.borrow().get(type_id.1).unwrap().clone()
+        } else {
+            self.project.get_type_by_id(type_id).clone()
+        }
+    }
+
+    fn type_is_option(&self, type_id: &TypeId) -> Option<TypeId> {
+        match self.get_type_by_id(&type_id) {
+            Type::GenericInstance(struct_id, generic_ids) if struct_id == self.project.prelude_option_struct_id => Some(generic_ids[0]),
+            _ => None
+        }
+    }
+
+    fn type_is_tuple(&self, type_id: &TypeId) -> Option<Vec<TypeId>> {
+        match self.get_type_by_id(&type_id) {
+            Type::GenericInstance(struct_id, generic_ids) if struct_id == self.project.prelude_tuple_struct_id => Some(generic_ids),
+            _ => None
+        }
+    }
+
     fn make_resolved_generic(&self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> ResolvedGeneric {
         let llvm_type_name = self.llvm_type_name_by_id(type_id, resolved_generics);
 
-        // This is a little gross... due to lifetimes it'd be a huge pain to try to persist the BasicTypeEnum
-        // returned by this function. However, that's not strictly necessary - for primitive types, there is
-        // nothing to generate (it's just i64, f64, etc); for struct types, this code generates the StructType
-        // definition and saves it into the llvm main_module by name (the same name as generated above by
-        // `llvm_type_name_by_id`). So as long as the StructType _exists_ in the llvm module by the time we need
-        // to access it by name later on, everything is ok. This is a _little_ janky, but persisting this value
-        // in the ResolvedGeneric value is a little wasteful (and also quite annoying to manage).
-        let Some(_) = self.llvm_underlying_type_by_id(type_id, resolved_generics) else { todo!() };
-
-        let type_id = resolved_generics.resolve(type_id).map(|resolved| resolved.type_id).unwrap_or(*type_id);
+        let type_id = match self.get_type_by_id(type_id) {
+            Type::Primitive(_) => *type_id,
+            Type::Generic(_, name) => resolved_generics.resolve(type_id)
+                .expect(&format!("Could not resolve generic {name} in current scope"))
+                .type_id,
+            Type::GenericInstance(struct_id, generics) => {
+                let mut create_new = false;
+                let mut resolved_generic_ids = Vec::with_capacity(generics.len());
+                for generic_id in generics {
+                    if let Type::Generic(_, name) = self.get_type_by_id(&generic_id) {
+                        create_new = true;
+                        let resolved_type_id = resolved_generics.resolve(&generic_id)
+                            .expect(&format!("Could not resolve generic {name} in current scope"))
+                            .type_id;
+                        resolved_generic_ids.push(resolved_type_id)
+                    } else {
+                        resolved_generic_ids.push(generic_id);
+                    }
+                }
+                if create_new {
+                    self.get_or_add_adhoc_type(Type::GenericInstance(struct_id, resolved_generic_ids))
+                } else {
+                    *type_id
+                }
+            }
+            Type::GenericEnumInstance(_, _, _) |
+            Type::Function(_, _, _, _) |
+            Type::Type(_) |
+            Type::ModuleAlias => todo!(),
+        };
 
         ResolvedGeneric { type_id, llvm_type_name }
     }
 
     fn llvm_type_name_by_id(&self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> String {
-        let ty = self.project.get_type_by_id(type_id);
+        let ty = self.get_type_by_id(type_id);
         match ty {
             Type::Primitive(PrimitiveType::Unit) => "Unit".into(),
             Type::Primitive(PrimitiveType::Any) => "Any".into(),
@@ -347,7 +400,7 @@ impl<'a> LLVMCompiler2<'a> {
             Type::Generic(_, name) => {
                 resolved_generics.resolve(type_id)
                     .map(|resolved| {
-                        if let Type::Generic(_, other_name) = self.project.get_type_by_id(&resolved.type_id) {
+                        if let Type::Generic(_, other_name) = self.get_type_by_id(&resolved.type_id) {
                             if other_name == name { panic!("Self-referential generic type named {}; stackoverflow detected", other_name); }
                         }
                         resolved.llvm_type_name.clone()
@@ -355,12 +408,12 @@ impl<'a> LLVMCompiler2<'a> {
                     .unwrap_or(name.clone())
             }
             Type::GenericInstance(struct_id, generic_ids) => {
-                let struct_ = self.project.get_struct_by_id(struct_id);
+                let struct_ = self.project.get_struct_by_id(&struct_id);
                 let struct_name = &struct_.name;
                 let generic_names = generic_ids.iter().map(|type_id| self.llvm_type_name_by_id(type_id, resolved_generics)).join(",");
                 let generic_names = if generic_ids.is_empty() { "".into() } else { format!("<{}>", generic_names) };
 
-                if struct_id == &self.project.prelude_tuple_struct_id {
+                if struct_id == self.project.prelude_tuple_struct_id {
                     let tuple_size = generic_ids.len();
                     format!("{struct_name}{tuple_size}{generic_names}")
                 } else {
@@ -369,12 +422,12 @@ impl<'a> LLVMCompiler2<'a> {
             }
             Type::GenericEnumInstance(_, _, _) => todo!(),
             Type::Function(parameter_type_ids, num_required_params, is_variadic, return_type_id) => {
-                debug_assert!(!*is_variadic, "Not yet implemented");
+                debug_assert!(!is_variadic, "Not yet implemented");
 
-                let arity = *num_required_params;
+                let arity = num_required_params;
 
-                let ret_type_name = self.llvm_type_name_by_id(return_type_id, resolved_generics);
-                let param_type_names = parameter_type_ids.iter().take(*num_required_params).map(|type_id| self.llvm_type_name_by_id(type_id, resolved_generics));//.join(",");
+                let ret_type_name = self.llvm_type_name_by_id(&return_type_id, resolved_generics);
+                let param_type_names = parameter_type_ids.iter().take(num_required_params).map(|type_id| self.llvm_type_name_by_id(type_id, resolved_generics));
                 let mut function_type_args = vec![ret_type_name];
                 function_type_args.extend(param_type_names);
                 let function_type_args = function_type_args.join(",");
@@ -383,16 +436,12 @@ impl<'a> LLVMCompiler2<'a> {
             }
             Type::Type(kind) => match kind {
                 TypeKind::Struct(struct_id) => {
-                    let struct_ = self.project.get_struct_by_id(struct_id);
+                    let struct_ = self.project.get_struct_by_id(&struct_id);
                     let struct_name = &struct_.name;
                     let generic_names = struct_.generic_ids.iter()
                         .map(|type_id| {
-                            let generic_name = self.get_generic_name(type_id);
-                            if let Some(resolved) = resolved_generics.resolve(type_id) {
-                                resolved.llvm_type_name.clone()
-                            } else {
-                                generic_name.clone()
-                            }
+                            let Type::Generic(_, generic_name) = self.get_type_by_id(type_id) else { unreachable!("TypeId {:?} represents a type that is not a generic", type_id) };
+                            generic_name
                         })
                         .join(",");
                     let generic_names = if struct_.generic_ids.is_empty() { "".into() } else { format!("<{}>", generic_names) };
@@ -405,18 +454,18 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn llvm_underlying_type_by_id(&self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> Option<BasicTypeEnum<'a>> {
-        let ty = self.project.get_type_by_id(type_id);
+        let ty = self.get_type_by_id(type_id);
         let llvm_type = match ty {
             Type::Primitive(PrimitiveType::Unit) => return None,
             Type::Primitive(PrimitiveType::Any) => {
                 self.get_or_make_trait_struct_type(&PRELUDE_ANY_TYPE_ID, resolved_generics).0.as_basic_type_enum()
             }
             Type::Primitive(PrimitiveType::Int) => self.i64().as_basic_type_enum(),
-            Type::GenericInstance(struct_id, _) if struct_id == &self.project.prelude_int_struct_id => self.i64().as_basic_type_enum(),
+            Type::GenericInstance(struct_id, _) if struct_id == self.project.prelude_int_struct_id => self.i64().as_basic_type_enum(),
             Type::Primitive(PrimitiveType::Float) => self.f64().as_basic_type_enum(),
-            Type::GenericInstance(struct_id, _) if struct_id == &self.project.prelude_float_struct_id => self.f64().as_basic_type_enum(),
+            Type::GenericInstance(struct_id, _) if struct_id == self.project.prelude_float_struct_id => self.f64().as_basic_type_enum(),
             Type::Primitive(PrimitiveType::Bool) => self.bool().as_basic_type_enum(),
-            Type::GenericInstance(struct_id, _) if struct_id == &self.project.prelude_bool_struct_id => self.bool().as_basic_type_enum(),
+            Type::GenericInstance(struct_id, _) if struct_id == self.project.prelude_bool_struct_id => self.bool().as_basic_type_enum(),
             Type::Primitive(PrimitiveType::String) => self.string_type.as_basic_type_enum(),
             Type::Generic(_, name) => {
                 return resolved_generics.resolve(type_id)
@@ -425,7 +474,7 @@ impl<'a> LLVMCompiler2<'a> {
                             return Some(llvm_ty.into());
                         }
 
-                        if let Type::Generic(_, other_name) = self.project.get_type_by_id(&resolved.type_id) {
+                        if let Type::Generic(_, other_name) = self.get_type_by_id(&resolved.type_id) {
                             if other_name == name {
                                 if let Some(llvm_ty) = self.main_module.get_struct_type(&resolved.llvm_type_name) {
                                     return Some(llvm_ty.into());
@@ -505,7 +554,7 @@ impl<'a> LLVMCompiler2<'a> {
         }
     }
 
-    fn get_typeid_from_value(&self, value: BasicValueEnum<'a>) -> IntValue<'a> {
+    fn _get_typeid_from_value(&self, value: BasicValueEnum<'a>) -> IntValue<'a> {
         if value.is_int_value() {
             if value.get_type().into_int_type().get_bit_width() == 1 {
                 self.const_i32(RUNTIME_TYPEID_BOOL as u64)
@@ -652,11 +701,6 @@ impl<'a> LLVMCompiler2<'a> {
         self.fn_type(ret_llvm_type, params.as_slice())
     }
 
-    fn get_generic_name(&self, type_id: &TypeId) -> String {
-        let Type::Generic(_, generic_name) = self.project.get_type_by_id(type_id) else { unreachable!("TypeId {:?} represents a type that is not a generic", type_id) };
-        generic_name.clone()
-    }
-
     fn malloc<T: BasicValue<'a>>(&self, malloc_size: T, target_type: PointerType<'a>) -> PointerValue<'a> {
         let malloc_size = malloc_size.as_basic_value_enum();
         let mem = self.builder.build_call(self.malloc, &[malloc_size.into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
@@ -733,8 +777,8 @@ impl<'a> LLVMCompiler2<'a> {
                 let node_type_id = node.type_id();
                 if idx == num_nodes - 1 && *node_type_id != PRELUDE_UNIT_TYPE_ID {
                     if let Some(res) = res {
-                        let node_type = self.project.get_type_by_id(node_type_id);
-                        let resolved_generics = self.new_resolved_generics_via_instance(node_type);
+                        let node_type = self.get_type_by_id(node_type_id);
+                        let resolved_generics = self.new_resolved_generics_via_instance(&node_type);
                         let to_string_fn = self.get_or_compile_to_string_method_for_type(node_type_id, &resolved_generics);
                         let str_val = self.builder.build_call(to_string_fn, &[res.into()], "repr").try_as_basic_value().left().unwrap().into_pointer_value();
                         let (len_val, chars_val) = self.destructure_string(str_val);
@@ -1095,14 +1139,14 @@ impl<'a> LLVMCompiler2<'a> {
                 let value = match op {
                     BinaryOp::Add => {
                         if left_type_id == &PRELUDE_STRING_TYPE_ID || right_type_id == &PRELUDE_STRING_TYPE_ID {
-                            let string_ty = self.project.get_type_by_id(&PRELUDE_STRING_TYPE_ID);
+                            let string_ty = self.get_type_by_id(&PRELUDE_STRING_TYPE_ID);
                             let (member_idx, func_id) = string_ty.find_method_by_name(self.project, "concat").unwrap();
                             let function = self.project.get_func_by_id(func_id);
 
                             let string_concat_target = if left_type_id == &PRELUDE_STRING_TYPE_ID {
                                 left.clone()
                             } else {
-                                let right_ty = self.project.get_type_by_id(right_type_id);
+                                let right_ty = self.get_type_by_id(right_type_id);
                                 let (tostring_member_idx, tostring_func_id) = right_ty.find_method_by_name(self.project, "toString").unwrap();
                                 let tostring_func = self.project.get_func_by_id(tostring_func_id);
 
@@ -1355,51 +1399,6 @@ impl<'a> LLVMCompiler2<'a> {
                         let left = self.visit_expression(left, resolved_generics).unwrap();
                         let right = self.visit_expression(right, resolved_generics).unwrap();
                         self.compile_eq(op == &BinaryOp::Neq, left_type_id, left, right_type_id, right, resolved_generics).into()
-                        // let comp_op_int = if op == &BinaryOp::Neq { IntPredicate::NE } else { IntPredicate::EQ };
-                        // let comp_op_float = if op == &BinaryOp::Neq { FloatPredicate::ONE } else { FloatPredicate::OEQ };
-                        //
-                        // let (left_type_id, left_type_name) = resolved_generics.resolve_if_generic(left_type_id, &self.project)
-                        //     .map(|resolved| (resolved.type_id, resolved.llvm_type_name.clone()))
-                        //     .unwrap_or_else(|| {
-                        //         (*left_type_id, self.llvm_type_name_by_id(left_type_id, resolved_generics))
-                        //     });
-                        // let (right_type_id, right_type_name) = resolved_generics.resolve_if_generic(right_type_id, &self.project)
-                        //     .map(|resolved| (resolved.type_id, resolved.llvm_type_name.clone()))
-                        //     .unwrap_or_else(|| {
-                        //         (*right_type_id, self.llvm_type_name_by_id(right_type_id, resolved_generics))
-                        //     });
-                        //
-                        // let left = self.visit_expression(left, resolved_generics).unwrap();
-                        // let right = self.visit_expression(right, resolved_generics).unwrap();
-                        // if left_type_id == PRELUDE_INT_TYPE_ID && right_type_id == PRELUDE_INT_TYPE_ID {
-                        //     self.builder.build_int_compare(comp_op_int, left.into_int_value(), right.into_int_value(), "").into()
-                        // } else if left_type_id == PRELUDE_BOOL_TYPE_ID && right_type_id == PRELUDE_BOOL_TYPE_ID {
-                        //     self.builder.build_int_compare(comp_op_int, left.into_int_value(), right.into_int_value(), "").into()
-                        // } else if left_type_id == PRELUDE_INT_TYPE_ID && right_type_id == PRELUDE_FLOAT_TYPE_ID {
-                        //     let left = self.builder.build_signed_int_to_float(left.into_int_value(), self.f64(), "");
-                        //     self.builder.build_float_compare(comp_op_float, left, right.into_float_value(), "").into()
-                        // } else if left_type_id == PRELUDE_FLOAT_TYPE_ID && right_type_id == PRELUDE_INT_TYPE_ID {
-                        //     let right = self.builder.build_signed_int_to_float(right.into_int_value(), self.f64(), "");
-                        //     self.builder.build_float_compare(comp_op_float, left.into_float_value(), right, "").into()
-                        // } else if left_type_id == PRELUDE_FLOAT_TYPE_ID && right_type_id == PRELUDE_FLOAT_TYPE_ID {
-                        //     self.builder.build_float_compare(comp_op_float, left.into_float_value(), right.into_float_value(), "").into()
-                        // } else {
-                        //     let left_typeid = self.get_typeid_by_name(&left_type_name);
-                        //     let right_typeid = self.get_typeid_by_name(&right_type_name);
-                        //
-                        //     if left_typeid != right_typeid {
-                        //         self.const_bool(false).into()
-                        //     } else {
-                        //         let resolved_generics = self.extend_resolved_generics_via_instance(resolved_generics, &left_type_id);
-                        //         let eq_method = self.get_or_compile_eq_method_for_type(&left_type_id, &resolved_generics);
-                        //         let eq_result = self.builder.build_call(eq_method, &[left.into(), right.into()], "").try_as_basic_value().left().unwrap().into_int_value();
-                        //         if op == &BinaryOp::Neq {
-                        //             self.builder.build_not(eq_result, "").into()
-                        //         } else {
-                        //             eq_result.into()
-                        //         }
-                        //     }
-                        // }
                     }
                     BinaryOp::Pow => {
                         let left_val = self.visit_expression(left, resolved_generics).unwrap();
@@ -1489,11 +1488,11 @@ impl<'a> LLVMCompiler2<'a> {
             }
             TypedNode::Grouped { expr, .. } => self.visit_expression(expr, resolved_generics),
             TypedNode::Array { items, type_id, resolved_type_id, .. } => {
-                let Type::GenericInstance(struct_id, generics) = self.project.get_type_by_id(type_id) else { unreachable!() };
-                debug_assert!(struct_id == &self.project.prelude_array_struct_id);
-                let array_struct = self.project.get_struct_by_id(struct_id);
+                let Type::GenericInstance(struct_id, generics) = self.get_type_by_id(type_id) else { unreachable!() };
+                debug_assert!(struct_id == self.project.prelude_array_struct_id);
+                let array_struct = self.project.get_struct_by_id(&struct_id);
                 let inner_type_id = generics[0];
-                let array_type = self.project.get_type_by_id(&self.project.find_type_id(&PRELUDE_SCOPE_ID, &Type::Type(TypeKind::Struct(*struct_id))).unwrap());
+                let array_type = Type::Type(TypeKind::Struct(self.project.prelude_array_struct_id));
 
                 let array_with_capacity_llvm_fn = {
                     let array_with_capacity_func_id = array_type.find_static_method_by_name(self.project, "withCapacity").unwrap();
@@ -1520,8 +1519,8 @@ impl<'a> LLVMCompiler2<'a> {
                     .or(Some(arr_val))
             }
             TypedNode::Tuple { type_id, items, resolved_type_id, .. } => {
-                let Type::GenericInstance(struct_id, _) = self.project.get_type_by_id(type_id) else { unreachable!() };
-                debug_assert!(struct_id == &self.project.prelude_tuple_struct_id);
+                let Type::GenericInstance(struct_id, _) = self.get_type_by_id(type_id) else { unreachable!() };
+                debug_assert!(struct_id == self.project.prelude_tuple_struct_id);
 
                 let resolved_generics = self.extend_resolved_generics_via_instance(resolved_generics, type_id);
                 let Some(llvm_type) = self.llvm_underlying_type_by_id(type_id, &resolved_generics) else { todo!() };
@@ -1546,11 +1545,11 @@ impl<'a> LLVMCompiler2<'a> {
                     .or(Some(tuple_val))
             }
             TypedNode::Set { items, type_id, resolved_type_id, .. } => {
-                let Type::GenericInstance(struct_id, generics) = self.project.get_type_by_id(type_id) else { unreachable!() };
-                debug_assert!(struct_id == &self.project.prelude_set_struct_id);
-                let set_struct = self.project.get_struct_by_id(struct_id);
+                let Type::GenericInstance(struct_id, generics) = self.get_type_by_id(type_id) else { unreachable!() };
+                debug_assert!(struct_id == self.project.prelude_set_struct_id);
+                let set_struct = self.project.get_struct_by_id(&struct_id);
                 let inner_type_id = generics[0];
-                let set_type = self.project.get_type_by_id(&self.project.find_type_id(&PRELUDE_SCOPE_ID, &Type::Type(TypeKind::Struct(*struct_id))).unwrap());
+                let set_type = Type::Type(TypeKind::Struct(self.project.prelude_set_struct_id));
 
                 let set_new_llvm_fn = {
                     let set_new_func_id = set_type.find_static_method_by_name(self.project, "new").unwrap();
@@ -1577,12 +1576,12 @@ impl<'a> LLVMCompiler2<'a> {
                     .or(Some(set_val))
             }
             TypedNode::Map { items, type_id, resolved_type_id, .. } => {
-                let Type::GenericInstance(struct_id, generics) = self.project.get_type_by_id(type_id) else { unreachable!() };
-                debug_assert!(struct_id == &self.project.prelude_map_struct_id);
-                let map_struct = self.project.get_struct_by_id(struct_id);
+                let Type::GenericInstance(struct_id, generics) = self.get_type_by_id(type_id) else { unreachable!() };
+                debug_assert!(struct_id == self.project.prelude_map_struct_id);
+                let map_struct = self.project.get_struct_by_id(&struct_id);
                 let key_type_id = generics[0];
                 let val_type_id = generics[1];
-                let map_type = self.project.get_type_by_id(&self.project.find_type_id(&PRELUDE_SCOPE_ID, &Type::Type(TypeKind::Struct(*struct_id))).unwrap());
+                let map_type = Type::Type(TypeKind::Struct(self.project.prelude_map_struct_id));
 
                 let map_new_llvm_fn = {
                     let map_new_func_id = map_type.find_static_method_by_name(self.project, "new").unwrap();
@@ -1719,11 +1718,11 @@ impl<'a> LLVMCompiler2<'a> {
                             }
                         }
 
-                        let target_ty = self.project.get_type_by_id(&target_type_id);
+                        let target_ty = self.get_type_by_id(&target_type_id);
 
                         match kind {
                             AccessorKind::Field => unreachable!("Field accessor nodes should be handled in the catchall case below"),
-                            AccessorKind::Method if self.project.type_is_tuple(&target_type_id).is_some() => {
+                            AccessorKind::Method if self.type_is_tuple(&target_type_id).is_some() => {
                                 debug_assert!(*member_idx == METHOD_IDX_TOSTRING || *member_idx == METHOD_IDX_HASH, "Tuples don't have any methods aside from toString/hash");
                                 params_data = vec![(target_type_id, false)];
 
@@ -1732,10 +1731,10 @@ impl<'a> LLVMCompiler2<'a> {
 
                                 self.get_or_compile_tuple_method(&target_type_id, &resolved_generics, member_idx).into()
                             }
-                            AccessorKind::Method if self.project.type_is_option(&target_type_id).is_some() => {
-                                let Some(inner_type_id) = self.project.type_is_option(&target_type_id) else { unreachable!() };
+                            AccessorKind::Method if self.type_is_option(&target_type_id).is_some() => {
+                                let Some(inner_type_id) = self.type_is_option(&target_type_id) else { unreachable!() };
 
-                                let func_id = self.project.get_type_by_id(&inner_type_id).get_method(self.project, *member_idx).unwrap();
+                                let func_id = self.get_type_by_id(&inner_type_id).get_method(self.project, *member_idx).unwrap();
                                 let function = self.project.get_func_by_id(&func_id);
                                 params_data = function.params.iter().skip(1).map(|p| (p.type_id, p.default_value.is_some())).collect_vec();
 
@@ -2014,7 +2013,7 @@ impl<'a> LLVMCompiler2<'a> {
                 let mut target_type_id = *target.type_id();
                 let target = self.visit_expression(target, resolved_generics).unwrap();
 
-                let opt_inner_type_id = self.project.type_is_option(&target_type_id);
+                let opt_inner_type_id = self.type_is_option(&target_type_id);
                 let (target_value, opt_safe_blocks) = if *is_opt_safe && opt_inner_type_id.is_some() {
                     target_type_id = opt_inner_type_id.unwrap();
 
@@ -2034,7 +2033,7 @@ impl<'a> LLVMCompiler2<'a> {
                     (target.into_pointer_value(), None)
                 };
 
-                let target_ty = self.project.get_type_by_id(&target_type_id);
+                let target_ty = self.get_type_by_id(&target_type_id);
 
                 let value = match kind {
                     AccessorKind::Field => {
@@ -2073,10 +2072,10 @@ impl<'a> LLVMCompiler2<'a> {
             }
             TypedNode::Indexing { target, index, type_id, resolved_type_id, .. } => {
                 let target_type_id = target.as_ref().type_id();
-                let target_ty = self.project.get_type_by_id(target_type_id);
+                let target_ty = self.get_type_by_id(target_type_id);
 
                 let empty_generics = vec![];
-                let (target_struct_id, target_generics) = if let Type::GenericInstance(target_struct_id, target_generics) = target_ty {
+                let (target_struct_id, target_generics) = if let Type::GenericInstance(target_struct_id, target_generics) = &target_ty {
                     (target_struct_id, target_generics)
                 } else if target_type_id == &PRELUDE_STRING_TYPE_ID {
                     (&self.project.prelude_string_struct_id, &empty_generics)
@@ -2238,13 +2237,14 @@ impl<'a> LLVMCompiler2<'a> {
                         Some(expr_val)
                     }
                     AssignmentKind::Accessor { target, kind, member_idx } => {
-                        let target_ty = self.project.get_type_by_id(target.type_id());
+                        let target_type_id = target.type_id();
                         let target = self.visit_expression(target, resolved_generics).unwrap();
 
                         let expr_val = self.visit_expression(expr, resolved_generics).unwrap();
 
                         match kind {
                             AccessorKind::Field => {
+                                let target_ty = self.get_type_by_id(target_type_id);
                                 let field = target_ty.get_field(self.project, *member_idx).unwrap();
                                 let field_slot = self.builder.build_struct_gep(target.into_pointer_value(), (*member_idx + 1) as u32, &field.name).unwrap();
                                 self.builder.build_store(field_slot, expr_val);
@@ -2255,8 +2255,8 @@ impl<'a> LLVMCompiler2<'a> {
                         Some(expr_val)
                     }
                     AssignmentKind::Indexing { target, index } => {
-                        let target_ty = self.project.get_type_by_id(target.type_id());
-                        let Type::GenericInstance(struct_id, target_generics) = target_ty  else { unreachable!() };
+                        let target_ty = self.get_type_by_id(target.type_id());
+                        let Type::GenericInstance(struct_id, target_generics) = &target_ty  else { unreachable!() };
                         debug_assert!(struct_id == &self.project.prelude_array_struct_id);
                         let array_inner_type_id = &target_generics[0];
                         let (array_set_member_idx, array_set_func_id) = target_ty.find_method_by_name(self.project, "set").unwrap();
@@ -2358,7 +2358,7 @@ impl<'a> LLVMCompiler2<'a> {
         let end_bb = self.context.append_basic_block(self.current_fn.0, "if_end");
 
         let condition_type_id = *condition.type_id();
-        let cond_is_opt = self.project.type_is_option(&condition_type_id).is_some();
+        let cond_is_opt = self.type_is_option(&condition_type_id).is_some();
 
         let cond_val = self.visit_expression(&condition, resolved_generics).unwrap();
         let (cond_val, opt_cond_local) = if cond_is_opt {
@@ -2436,8 +2436,8 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn make_option_instance<V: BasicValue<'a>>(&mut self, outer_type_id: &TypeId, value: V, resolved_generics: &ResolvedGenerics) -> StructValue<'a> {
-        let Type::GenericInstance(struct_id, generics) = self.project.get_type_by_id(outer_type_id) else { unreachable!() };
-        debug_assert!(struct_id == &self.project.prelude_option_struct_id);
+        let Type::GenericInstance(struct_id, generics) = self.get_type_by_id(outer_type_id) else { unreachable!() };
+        debug_assert!(struct_id == self.project.prelude_option_struct_id);
 
         let inner_type_id = resolved_generics.resolve_if_generic(&generics[0], &self.project)
             .map(|resolved| resolved.type_id)
@@ -2473,8 +2473,8 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn make_none_option_instance(&mut self, outer_type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> StructValue<'a> {
-        let Type::GenericInstance(struct_id, generics) = self.project.get_type_by_id(outer_type_id) else { unreachable!() };
-        debug_assert!(struct_id == &self.project.prelude_option_struct_id);
+        let Type::GenericInstance(struct_id, generics) = self.get_type_by_id(outer_type_id) else { unreachable!() };
+        debug_assert!(struct_id == self.project.prelude_option_struct_id);
         let inner_type_id = resolved_generics.resolve_if_generic(&generics[0], &self.project)
             .map(|resolved| resolved.type_id)
             .unwrap_or(generics[0]);
@@ -2527,7 +2527,7 @@ impl<'a> LLVMCompiler2<'a> {
                 } else {
                     let Some(value_type) = self.llvm_underlying_type_by_id(&value_type_id, resolved_generics) else { todo!() };
                     let value_type = self.llvm_ptr_wrap_type_if_needed(value_type);
-                    if self.project.type_is_option(&value_type_id).is_some() {
+                    if self.type_is_option(&value_type_id).is_some() {
                         let ptr = self.builder.build_int_to_ptr(raw_value, self.ptr(value_type), "self");
                         self.builder.build_load(ptr, "self").as_basic_value_enum()
                     } else {
@@ -2562,7 +2562,7 @@ impl<'a> LLVMCompiler2<'a> {
                 } else {
                     let Some(value_type) = self.llvm_underlying_type_by_id(&value_type_id, resolved_generics) else { todo!() };
                     let value_type = self.llvm_ptr_wrap_type_if_needed(value_type);
-                    if self.project.type_is_option(&value_type_id).is_some() {
+                    if self.type_is_option(&value_type_id).is_some() {
                         let ptr = self.builder.build_int_to_ptr(raw_value, self.ptr(value_type), "self");
                         self.builder.build_load(ptr, "self").as_basic_value_enum()
                     } else {
@@ -2600,7 +2600,7 @@ impl<'a> LLVMCompiler2<'a> {
             self.builder.build_store(value_slot, value);
         } else {
             // Otherwise, value should be treated a pointer
-            let ptr = if self.project.type_is_option(&value_type_id).is_some() {
+            let ptr = if self.type_is_option(&value_type_id).is_some() {
                 let option_struct_llvm_type = value.as_basic_value_enum().get_type();
                 let value_local = self.builder.build_alloca(option_struct_llvm_type, "");
                 self.builder.build_store(value_local, value);
@@ -2643,7 +2643,7 @@ impl<'a> LLVMCompiler2<'a> {
         resolved_type_id: &TypeId,
     ) -> Option<BasicValueEnum<'a>> {
         let get_ptr_size = |pointer_type_id: &TypeId| -> IntValue<'a> {
-            let pointer_type_id = if let Some(inner_type_id) = self.project.type_is_option(pointer_type_id) {
+            let pointer_type_id = if let Some(inner_type_id) = self.type_is_option(pointer_type_id) {
                 inner_type_id
             } else {
                 *pointer_type_id
@@ -2717,7 +2717,7 @@ impl<'a> LLVMCompiler2<'a> {
                 let other_arg = arguments.next().expect("Pointer#copyFrom has arity 3").as_ref().expect("Pointer#copyFrom has 2 required non-implicit arguments");
                 let size_arg = arguments.next().expect("Pointer#copyFrom has arity 3").as_ref().expect("Pointer#copyFrom has 2 required non-implicit arguments");
 
-                let Type::GenericInstance(_, generics) = self.project.get_type_by_id(instance_node.type_id()) else { unreachable!() };
+                let Type::GenericInstance(_, generics) = self.get_type_by_id(instance_node.type_id()) else { unreachable!() };
                 let ptr_size = get_ptr_size(&generics[0]);
 
                 let ptr = self.visit_expression(instance_node, resolved_generics).expect("Instance is not of type Unit").into_pointer_value();
@@ -2758,7 +2758,7 @@ impl<'a> LLVMCompiler2<'a> {
             _ => unimplemented!("Unimplemented intrinsic '{}'", name),
         };
 
-        if self.project.type_is_option(resolved_type_id).is_some() {
+        if self.type_is_option(resolved_type_id).is_some() {
             Some(self.make_option_instance(resolved_type_id, value, resolved_generics).into())
         } else {
             Some(value)
@@ -2799,36 +2799,36 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn get_or_compile_to_string_method_for_type(&mut self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
-        if let Some(inner_type_id) = self.project.type_is_option(type_id) {
+        if let Some(inner_type_id) = self.type_is_option(type_id) {
             self.get_or_compile_option_method(resolved_generics, &inner_type_id, &METHOD_IDX_TOSTRING)
-        } else if self.project.type_is_tuple(type_id).is_some() {
+        } else if self.type_is_tuple(type_id).is_some() {
             self.get_or_compile_tuple_method(&type_id, resolved_generics, &METHOD_IDX_TOSTRING)
         } else {
-            let value_ty = self.project.get_type_by_id(type_id);
+            let value_ty = self.get_type_by_id(type_id);
             let (_, tostring_func_id) = value_ty.find_method_by_name(self.project, "toString").unwrap();
             self.get_or_compile_function(tostring_func_id, resolved_generics)
         }
     }
 
     fn get_or_compile_hash_method_for_type(&mut self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
-        if let Some(inner_type_id) = self.project.type_is_option(type_id) {
+        if let Some(inner_type_id) = self.type_is_option(type_id) {
             self.get_or_compile_option_method(resolved_generics, &inner_type_id, &METHOD_IDX_HASH)
-        } else if self.project.type_is_tuple(type_id).is_some() {
+        } else if self.type_is_tuple(type_id).is_some() {
             self.get_or_compile_tuple_method(&type_id, resolved_generics, &METHOD_IDX_HASH)
         } else {
-            let value_ty = self.project.get_type_by_id(type_id);
+            let value_ty = self.get_type_by_id(type_id);
             let (_, hash_func_id) = value_ty.find_method_by_name(self.project, "hash").unwrap();
             self.get_or_compile_function(hash_func_id, resolved_generics)
         }
     }
 
     fn get_or_compile_eq_method_for_type(&mut self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
-        if let Some(inner_type_id) = self.project.type_is_option(type_id) {
+        if let Some(inner_type_id) = self.type_is_option(type_id) {
             self.get_or_compile_option_method(resolved_generics, &inner_type_id, &METHOD_IDX_EQ)
-        } else if self.project.type_is_tuple(type_id).is_some() {
+        } else if self.type_is_tuple(type_id).is_some() {
             self.get_or_compile_tuple_method(&type_id, resolved_generics, &METHOD_IDX_EQ)
         } else {
-            let value_ty = self.project.get_type_by_id(type_id);
+            let value_ty = self.get_type_by_id(type_id);
             let (_, eq_func_id) = value_ty.find_method_by_name(self.project, "eq").unwrap();
             self.get_or_compile_function(eq_func_id, resolved_generics)
         }
@@ -3048,8 +3048,8 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn get_or_compile_tuple_method(&mut self, type_id: &TypeId, resolved_generics: &ResolvedGenerics, member_idx: &usize) -> FunctionValue<'a> {
-        let Type::GenericInstance(struct_id, generic_ids) = self.project.get_type_by_id(type_id) else { unreachable!(); };
-        debug_assert!(struct_id == &self.project.prelude_tuple_struct_id);
+        let Type::GenericInstance(struct_id, generic_ids) = self.get_type_by_id(type_id) else { unreachable!(); };
+        debug_assert!(struct_id == self.project.prelude_tuple_struct_id);
 
         let resolved_generics = self.extend_resolved_generics_via_instance(resolved_generics, type_id);
 
@@ -3367,16 +3367,16 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn compile_struct_type_by_type_id(&self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> StructType<'a> {
-        let ty = self.project.get_type_by_id(type_id);
+        let ty = self.get_type_by_id(type_id);
         let Type::GenericInstance(struct_id, generics) = ty else { todo!() };
-        if struct_id == &self.project.prelude_option_struct_id {
+        if struct_id == self.project.prelude_option_struct_id {
             return self.compile_option_struct_type_by_type_id(type_id, resolved_generics);
         }
-        if struct_id == &self.project.prelude_tuple_struct_id {
+        if struct_id == self.project.prelude_tuple_struct_id {
             return self.compile_tuple_struct_type_by_type_id(type_id, resolved_generics);
         }
 
-        let struct_ = self.project.get_struct_by_id(struct_id);
+        let struct_ = self.project.get_struct_by_id(&struct_id);
         let type_name = self.llvm_type_name_by_id(type_id, resolved_generics);
         let llvm_type = self.context.opaque_struct_type(&type_name);
         self.register_typeid(&type_name);
@@ -3386,7 +3386,7 @@ impl<'a> LLVMCompiler2<'a> {
         }).collect();
         let resolved_generics = resolved_generics.extend_via_struct(struct_, &realized_generics);
 
-        let struct_ = self.project.get_struct_by_id(struct_id);
+        let struct_ = self.project.get_struct_by_id(&struct_id);
 
         let mut field_types = Vec::with_capacity(struct_.fields.len() + 1);
         field_types.push(self.i32().into());
@@ -3400,9 +3400,9 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn compile_option_struct_type_by_type_id(&self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> StructType<'a> {
-        let ty = self.project.get_type_by_id(type_id);
+        let ty = self.get_type_by_id(type_id);
         let Type::GenericInstance(struct_id, generics) = ty else { todo!() };
-        debug_assert!(struct_id == &self.project.prelude_option_struct_id);
+        debug_assert!(struct_id == self.project.prelude_option_struct_id);
 
         let type_name = self.llvm_type_name_by_id(type_id, resolved_generics);
         if let Some(llvm_type) = self.main_module.get_struct_type(&type_name) {
@@ -3420,9 +3420,9 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn compile_tuple_struct_type_by_type_id(&self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> StructType<'a> {
-        let ty = self.project.get_type_by_id(type_id);
+        let ty = self.get_type_by_id(type_id);
         let Type::GenericInstance(struct_id, generics) = ty else { todo!() };
-        debug_assert!(struct_id == &self.project.prelude_tuple_struct_id);
+        debug_assert!(struct_id == self.project.prelude_tuple_struct_id);
 
         let type_name = self.llvm_type_name_by_id(type_id, resolved_generics);
         if let Some(llvm_type) = self.main_module.get_struct_type(&type_name) {
@@ -3434,7 +3434,7 @@ impl<'a> LLVMCompiler2<'a> {
         let mut field_types = Vec::with_capacity(generics.len() + 1);
         field_types.push(self.i32().into());
         for generic_id in generics {
-            let Some(inner_llvm_type) = self.llvm_underlying_type_by_id(generic_id, resolved_generics) else { todo!() };
+            let Some(inner_llvm_type) = self.llvm_underlying_type_by_id(&generic_id, resolved_generics) else { todo!() };
             field_types.push(self.llvm_ptr_wrap_type_if_needed(inner_llvm_type));
         }
         llvm_type.set_body(field_types.as_slice(), false);
@@ -3930,8 +3930,8 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn make_function_value(&mut self, func_id: &FuncId, target_type_id: &TypeId, captures_arr: Option<PointerValue<'a>>, resolved_generics: &ResolvedGenerics) -> BasicValueEnum<'a> {
-        let Type::Function(target_param_type_ids, target_num_required_params, _, target_return_type_id) = self.project.get_type_by_id(target_type_id) else { unreachable!() };
-        let target_arity = *target_num_required_params;
+        let Type::Function(target_param_type_ids, target_num_required_params, _, target_return_type_id) = self.get_type_by_id(target_type_id) else { unreachable!() };
+        let target_arity = target_num_required_params;
         debug_assert!(target_param_type_ids.len() == target_arity);
 
         let function = self.project.get_func_by_id(func_id);
@@ -3965,8 +3965,8 @@ impl<'a> LLVMCompiler2<'a> {
                 let wrapper_fn_name = format!("{}$wrapper(discard={})", &function.name, num_throwaway_params);
 
                 let wrapper_params = target_param_type_ids.iter().map(|param_type_id| (*param_type_id, false)).collect();
-                let fn_sig = self.llvm_function_signature_by_parts(&wrapper_fn_name, None, &vec![], &wrapper_params, target_return_type_id, resolved_generics);
-                let fn_type = self.llvm_function_type_by_parts(target_param_type_ids, target_arity, is_closure, false, target_return_type_id, &resolved_generics);
+                let fn_sig = self.llvm_function_signature_by_parts(&wrapper_fn_name, None, &vec![], &wrapper_params, &target_return_type_id, resolved_generics);
+                let fn_type = self.llvm_function_type_by_parts(&target_param_type_ids, target_arity, is_closure, false, &target_return_type_id, &resolved_generics);
                 let wrapper_llvm_fn = self.main_module.add_function(&fn_sig, fn_type, None);
 
                 let prev_bb = self.builder.get_insert_block().unwrap();
@@ -4020,8 +4020,8 @@ impl<'a> LLVMCompiler2<'a> {
             let wrapper_fn_name = format!("{}$wrapper(optsRvcDef={})", &function.name, num_optional_params_being_given_default_value);
 
             let wrapper_params = target_param_type_ids.iter().map(|param_type_id| (*param_type_id, false)).collect();
-            let fn_sig = self.llvm_function_signature_by_parts(&wrapper_fn_name, None, &vec![], &wrapper_params, target_return_type_id, resolved_generics);
-            let fn_type = self.llvm_function_type_by_parts(target_param_type_ids, target_arity, is_closure, false, target_return_type_id, &resolved_generics);
+            let fn_sig = self.llvm_function_signature_by_parts(&wrapper_fn_name, None, &vec![], &wrapper_params, &target_return_type_id, resolved_generics);
+            let fn_type = self.llvm_function_type_by_parts(&target_param_type_ids, target_arity, is_closure, false, &target_return_type_id, &resolved_generics);
             let wrapper_llvm_fn = self.main_module.add_function(&fn_sig, fn_type, None);
 
             let prev_bb = self.builder.get_insert_block().unwrap();
@@ -4071,8 +4071,8 @@ impl<'a> LLVMCompiler2<'a> {
             let wrapper_fn_name = format!("{}$wrapper(discard={})", &function.name, num_throwaway_params);
 
             let wrapper_params = target_param_type_ids.iter().map(|param_type_id| (*param_type_id, false)).collect();
-            let fn_sig = self.llvm_function_signature_by_parts(&wrapper_fn_name, None, &vec![], &wrapper_params, target_return_type_id, resolved_generics);
-            let fn_type = self.llvm_function_type_by_parts(target_param_type_ids, target_arity, is_closure, false, target_return_type_id, &resolved_generics);
+            let fn_sig = self.llvm_function_signature_by_parts(&wrapper_fn_name, None, &vec![], &wrapper_params, &target_return_type_id, resolved_generics);
+            let fn_type = self.llvm_function_type_by_parts(&target_param_type_ids, target_arity, is_closure, false, &target_return_type_id, &resolved_generics);
             let wrapper_llvm_fn = self.main_module.add_function(&fn_sig, fn_type, None);
 
             let prev_bb = self.builder.get_insert_block().unwrap();
@@ -4120,14 +4120,14 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn make_function_value_type_by_type_id(&self, func_type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> (StructType<'a>, PointerType<'a>) {
-        let func_ty = self.project.get_type_by_id(func_type_id);
+        let func_ty = self.get_type_by_id(func_type_id);
         let Type::Function(param_type_ids, num_required_params, is_variadic, return_type_id) = func_ty else { unreachable!() };
 
         let fn_value_type_name = self.llvm_type_name_by_id(func_type_id, resolved_generics);
 
         // The `fn_ptr` type is always treated as if it's a non-closure function. If it is a closure function, it will be determined
         // dynamically at runtime by comparing the `captures` field with `NULL`, and the `fn_ptr` will be cast into the proper type.
-        let llvm_fn_type = self.llvm_function_type_by_parts(param_type_ids, *num_required_params, false, *is_variadic, return_type_id, resolved_generics);
+        let llvm_fn_type = self.llvm_function_type_by_parts(&param_type_ids, num_required_params, false, is_variadic, &return_type_id, resolved_generics);
         let fn_ptr_type = llvm_fn_type.ptr_type(AddressSpace::Generic);
 
         if let Some(llvm_type) = self.main_module.get_struct_type(&fn_value_type_name) {

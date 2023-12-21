@@ -1,17 +1,5 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-type Person {
-  name: String
-  age: Int
-
-  //func eq(self, other: Person): Bool {
-  //  println("here")
-  //  false
-  //}
-}
-
-val p1 = Person(name: "Foo", age: 75)
-val p2 = Person(name: "Foo", age: 75)
-
-p1 == p2
+val map = { a: 1, b: 2 }
+map.entries()
