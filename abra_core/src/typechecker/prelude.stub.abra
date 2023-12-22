@@ -165,6 +165,21 @@ type String {
   }
 }
 
+type ArrayIterator<T> {
+  array: Array<T>
+  _i: Int = 0
+
+  func next(self): (T, Int)? {
+    if self.array[self._i] |item| {
+      val ret = (item, self._i)
+      self._i += 1
+      ret
+    } else {
+      None
+    }
+  }
+}
+
 type Array<T> {
   length: Int
   _buffer: Pointer<T> = Pointer.null()
@@ -268,6 +283,8 @@ type Array<T> {
   }
 
   func isEmpty(self): Bool = self.length == 0
+
+  func iterator(self): ArrayIterator<T> = ArrayIterator(array: self)
 
   @Stub func enumerate(self): (T, Int)[]
 
@@ -421,6 +438,33 @@ type Array<T> {
   @Stub func reverse(self): T[]
 }
 
+type SetIterator<T> {
+  set: Set<T>
+  _i: Int = 0
+  _mapIterator: MapIterator<T, Bool>? = None
+
+  func next(self): (T, Int)? {
+    if self._mapIterator {
+      // noop
+    } else {
+      self._mapIterator = self.set._map.iterator()
+    }
+
+    if self._mapIterator |iter| {
+      if iter.next() |item| {
+        val ret = (item[0], self._i)
+        self._i += 1
+        ret
+      } else {
+        None
+      }
+    } else {
+      // unreachable
+      None
+    }
+  }
+}
+
 type Set<T> {
   size: Int
   _map: Map<T, Bool> = Map.new()
@@ -446,6 +490,8 @@ type Set<T> {
   func isEmpty(self): Bool {
     self._map.isEmpty()
   }
+
+  func iterator(self): SetIterator<T> = SetIterator(set: self)
 
   @Stub func enumerate(self): (T, Int)[]
 
@@ -514,6 +560,30 @@ type MapEntry<K, V> {
   key: K
   value: V
   next: MapEntry<K, V>? = None
+}
+
+type MapIterator<K, V> {
+  map: Map<K, V>
+  _i: Int = -1
+  _cursor: MapEntry<K, V>? = None
+
+  func next(self): (K, V)? {
+    if self._i >= self.map._entries.length { return None }
+
+    if self._cursor {
+      // noop
+    } else {
+      self._i += 1
+      self._cursor = flattenOption(self.map._entries[self._i])
+    }
+
+    if self._cursor |cur| {
+      self._cursor = cur.next
+      return (cur.key, cur.value)
+    }
+
+    self.next()
+  }
 }
 
 type Map<K, V> {
@@ -597,6 +667,8 @@ type Map<K, V> {
       i += 1
     }
   }
+
+  func iterator(self): MapIterator<K, V> = MapIterator(map: self)
 
   @Stub func enumerate(self): (K, V)[]
   @Stub func keys(self): Set<K>

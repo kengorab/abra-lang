@@ -2312,8 +2312,6 @@ impl<'a> LLVMCompiler2<'a> {
                 (*right_type_id, self.llvm_type_name_by_id(right_type_id, resolved_generics))
             });
 
-        // let left = self.visit_expression(left, resolved_generics).unwrap();
-        // let right = self.visit_expression(right, resolved_generics).unwrap();
         if left_type_id == PRELUDE_INT_TYPE_ID && right_type_id == PRELUDE_INT_TYPE_ID {
             self.builder.build_int_compare(comp_op_int, left.into_int_value(), right.into_int_value(), "").into()
         } else if left_type_id == PRELUDE_BOOL_TYPE_ID && right_type_id == PRELUDE_BOOL_TYPE_ID {

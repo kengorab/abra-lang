@@ -79,6 +79,23 @@
   println(map2.entries())
 })()
 
+// Map#iterator
+(() => {
+  val m = { a: 1, b: 2, c: 3 }
+  val iter = m.iterator()
+
+  /// Expect: (c, 3)
+  println(iter.next())
+  /// Expect: (b, 2)
+  println(iter.next())
+  /// Expect: (a, 1)
+  println(iter.next())
+  /// Expect: None
+  println(iter.next())
+  /// Expect: None
+  println(iter.next())
+})()
+
 // Map#containsKey
 (() => {
   val m = { (1): "a", (2): "b" }

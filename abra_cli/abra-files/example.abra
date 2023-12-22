@@ -1,13 +1,30 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-func returnInVarDecl(i: Int): Int {
-  val a = if i == 100 {
-    17
-  } else {
-    return -1
-  }
+val m = { a: 1, b: 2, c: 3 }
+val iter = m.iterator()
 
-  return a
-}
-returnInVarDecl(100)
+println(iter.next())
+println(iter.next())
+println(iter.next())
+println(iter.next())
+println(iter.next())
+println(iter.next())
+
+val s = #{"a", "b", "a", "c"}
+val iter2 = s.iterator()
+println(iter2.next())
+println(iter2.next())
+println(iter2.next())
+println(iter2.next())
+println(iter2.next())
+
+val a = [1.23, 4.56, 7.89]
+val iter3 = a.iterator()
+println(iter3.next())
+println(iter3.next())
+println(iter3.next())
+println(iter3.next())
+println(iter3.next())
+println(iter3.next())
+println(iter3.next())

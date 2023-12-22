@@ -76,6 +76,22 @@ type Person {
   println(set.isEmpty())
 })()
 
+// Set#iterator
+(() => {
+  val s = #{"a", "b", "a", "c"}
+  val iter = s.iterator()
+  /// Expect: (c, 0)
+  println(iter.next())
+  /// Expect: (b, 1)
+  println(iter.next())
+  /// Expect: (a, 2)
+  println(iter.next())
+  /// Expect: None
+  println(iter.next())
+  /// Expect: None
+  println(iter.next())
+})()
+
 // Set#contains
 (() => {
   val set: Set<Int> = #{}
