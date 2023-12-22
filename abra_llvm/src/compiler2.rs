@@ -1056,7 +1056,16 @@ impl<'a> LLVMCompiler2<'a> {
 
                 None
             }
-            TypedNode::Return { .. } => todo!(),
+            TypedNode::Return { expr, .. } => {
+                if let Some(expr) = expr {
+                    let return_value = self.visit_expression(expr, resolved_generics).unwrap();
+                    self.builder.build_return(Some(&return_value));
+                } else {
+                    self.builder.build_return(None);
+                }
+
+                None
+            }
             TypedNode::Import { .. } => None,
             _ => self.visit_expression(node, resolved_generics),
         }
@@ -3325,6 +3334,10 @@ impl<'a> LLVMCompiler2<'a> {
             let res = self.visit_statement(node, resolved_generics);
             if idx == num_nodes - 1 {
                 if has_return_value {
+                    if node.is_returning_terminator() {
+                        break;
+                    }
+
                     self.builder.build_return(Some(&res.unwrap()));
                 } else {
                     self.builder.build_return(None);

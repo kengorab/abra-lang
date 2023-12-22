@@ -1,5 +1,14 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-val map = { a: 1, b: 2 }
-map.entries()
+//func foo(i: Int): Int? {
+//  if i < 17 return 0
+//
+//  i + 10
+//}
+//
+//val f = foo(100)
+//f
+
+val m = { a: 1 }
+m.get("a")

@@ -1139,6 +1139,99 @@ impl TypedNode {
             TypedNode::Import { token, .. } => token.get_range(),
         }
     }
+
+    pub fn terminator(&self) -> Option<TerminatorKind> {
+        match self {
+            TypedNode::Literal { .. } => None,
+            TypedNode::Unary { expr, .. } => expr.terminator(),
+            TypedNode::Binary { left, right, .. } => left.terminator().or_else(|| right.terminator()),
+            TypedNode::Grouped { expr, .. } => expr.terminator(),
+            TypedNode::Array { items, .. } => items.iter().find_map(|item| item.terminator()),
+            TypedNode::Tuple { items, .. } => items.iter().find_map(|item| item.terminator()),
+            TypedNode::Set { items, .. } => items.iter().find_map(|item| item.terminator()),
+            TypedNode::Map { items, .. } => items.iter().find_map(|(key, value)| key.terminator().or_else(|| value.terminator())),
+            TypedNode::Identifier { .. } => None,
+            TypedNode::NoneValue { .. } => None,
+            TypedNode::Invocation { target, arguments, .. } => {
+                target.terminator()
+                    .or_else(|| arguments.iter().find_map(|arg| arg.as_ref().and_then(|arg| arg.terminator())))
+            }
+            TypedNode::Accessor { target, .. } => target.terminator(),
+            TypedNode::Indexing { target, index, .. } => {
+                target.terminator().or_else(|| match index {
+                    IndexingMode::Index(expr) => expr.terminator(),
+                    IndexingMode::Range(start_expr, end_expr) => {
+                        start_expr.as_ref().and_then(|expr| expr.terminator()).or_else(|| end_expr.as_ref().and_then(|expr| expr.terminator()))
+                    }
+                })
+            }
+            TypedNode::Lambda { .. } => None,
+            TypedNode::Assignment { expr, .. } => expr.terminator(),
+            TypedNode::If { condition, if_block_terminator, else_block_terminator, .. } => {
+                condition.terminator().or_else(|| if_block_terminator.clone()).or_else(|| else_block_terminator.clone())
+            }
+            TypedNode::Match { .. } => todo!(),
+            TypedNode::FuncDeclaration(_) => None,
+            TypedNode::TypeDeclaration(_) => None,
+            TypedNode::EnumDeclaration(_) => None,
+            TypedNode::BindingDeclaration { expr, .. } => expr.as_ref().and_then(|expr| expr.terminator()),
+            TypedNode::ForLoop { .. } => todo!(),
+            TypedNode::WhileLoop { condition, block_terminator, .. } => condition.terminator().or_else(|| block_terminator.clone()),
+            TypedNode::Break { .. } => Some(TerminatorKind::NonReturning),
+            TypedNode::Continue { .. } => Some(TerminatorKind::NonReturning),
+            TypedNode::Return { .. } => Some(TerminatorKind::Returning),
+            TypedNode::Import { .. } => None,
+        }
+    }
+
+    pub fn is_returning_terminator(&self) -> bool {
+        match self {
+            TypedNode::Literal { .. } => false,
+            TypedNode::Unary { expr, .. } => matches!(expr.terminator(), Some(TerminatorKind::Returning)),
+            TypedNode::Binary { left, right, .. } => {
+                matches!(left.terminator(), Some(TerminatorKind::Returning)) && matches!(right.terminator(), Some(TerminatorKind::Returning))
+            },
+            TypedNode::Grouped { expr, .. } => matches!(expr.terminator(), Some(TerminatorKind::Returning)),
+            TypedNode::Array { items, .. } |
+            TypedNode::Tuple { items, .. } |
+            TypedNode::Set { items, .. } => items.iter().all(|item| matches!(item.terminator(), Some(TerminatorKind::Returning))),
+            TypedNode::Map { items, .. } => items.iter().all(|(key, value)| {
+                matches!(key.terminator(), Some(TerminatorKind::Returning)) && matches!(value.terminator(), Some(TerminatorKind::Returning))
+            }),
+            TypedNode::Identifier { .. } |
+            TypedNode::NoneValue { .. } => false,
+            TypedNode::Invocation { target, arguments, .. } => {
+                matches!(target.terminator(), Some(TerminatorKind::Returning)) &&
+                    arguments.iter().all(|arg| arg.as_ref().map_or(true, |arg| matches!(arg.terminator(), Some(TerminatorKind::Returning))))
+            }
+            TypedNode::Accessor { target, .. } => matches!(target.terminator(), Some(TerminatorKind::Returning)),
+            TypedNode::Indexing { target, index, .. } => {
+                matches!(target.terminator(), Some(TerminatorKind::Returning)) && match index {
+                    IndexingMode::Index(expr) => matches!(expr.terminator(), Some(TerminatorKind::Returning)),
+                    IndexingMode::Range(start_expr, end_expr) => {
+                        start_expr.as_ref().map_or(true, |expr| matches!(expr.terminator(), Some(TerminatorKind::Returning))) &&
+                            end_expr.as_ref().map_or(true, |expr| matches!(expr.terminator(), Some(TerminatorKind::Returning)))
+                    }
+                }
+            }
+            TypedNode::Lambda { .. } => false,
+            TypedNode::Assignment { expr, .. } => matches!(expr.terminator(), Some(TerminatorKind::Returning)),
+            TypedNode::If { condition, if_block_terminator, else_block_terminator, .. } => {
+                matches!(condition.terminator(), Some(TerminatorKind::Returning)) && matches!(if_block_terminator, Some(TerminatorKind::Returning)) && matches!(else_block_terminator, Some(TerminatorKind::Returning))
+            }
+            TypedNode::Match { .. } => todo!(),
+            TypedNode::FuncDeclaration(_) |
+            TypedNode::TypeDeclaration(_) |
+            TypedNode::EnumDeclaration(_) => false,
+            TypedNode::BindingDeclaration { expr, .. } => expr.as_ref().map_or(true, |expr| matches!(expr.terminator(), Some(TerminatorKind::Returning))),
+            TypedNode::ForLoop { .. } => todo!(),
+            TypedNode::WhileLoop { condition, block_terminator, .. } => matches!(condition.terminator(), Some(TerminatorKind::Returning)) && matches!(block_terminator, Some(TerminatorKind::Returning)),
+            TypedNode::Break { .. } |
+            TypedNode::Continue { .. } => false,
+            TypedNode::Return { .. } => true,
+            TypedNode::Import { .. } => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -4012,10 +4105,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         };
 
         if let Some(node) = typed_if_block.last_mut() {
-            node.set_resolved_type_id(type_id);
+            if type_id != PRELUDE_UNIT_TYPE_ID {
+                node.set_resolved_type_id(type_id);
+            }
         }
         if let Some(node) = typed_else_block.last_mut() {
-            node.set_resolved_type_id(type_id);
+            if type_id != PRELUDE_UNIT_TYPE_ID {
+                node.set_resolved_type_id(type_id);
+            }
         }
 
         let resolved_type_id = type_hint.unwrap_or(type_id);

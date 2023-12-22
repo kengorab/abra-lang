@@ -98,22 +98,17 @@ type String {
   }
 
   func eq(self, other: String): Bool {
-    if self.length != other.length {
-      false
-    } else {
-      var ret = true
-      var i = 0
-      while i < self.length {
-        val selfCh = self._buffer.offset(i).load().asInt()
-        val otherCh = other._buffer.offset(i).load().asInt()
-        if selfCh != otherCh {
-          ret = false
-          break
-        }
-        i += 1
-      }
-      ret
+    if self.length != other.length { return false }
+
+    var i = 0
+    while i < self.length {
+      val selfCh = self._buffer.offset(i).load().asInt()
+      val otherCh = other._buffer.offset(i).load().asInt()
+      if selfCh != otherCh { return false }
+      i += 1
     }
+
+    true
   }
 
   func isEmpty(self): Bool = self.length == 0
@@ -203,6 +198,8 @@ type Array<T> {
   }
 
   func toString(self): String {
+    if self.isEmpty() return "[]"
+
     val reprs: String[] = Array.withCapacity(self.length)
     var len = 2 // account for '[' and ']'
     var i = 0
@@ -256,26 +253,22 @@ type Array<T> {
   }
 
   func eq(self, other: Array<T>): Bool {
-    if self.length != other.length {
-      false
-    } else {
-      var ret = true
-      var i = 0
-      while i < self.length {
-        val selfItem = self._buffer.offset(i).load()
-        val otherItem = other._buffer.offset(i).load()
+    if self.length != other.length return false
 
-        if selfItem != otherItem {
-          ret = false
-          break
-        }
-        i += 1
-      }
-      ret
+    var i = 0
+    while i < self.length {
+      val selfItem = self._buffer.offset(i).load()
+      val otherItem = other._buffer.offset(i).load()
+
+      if selfItem != otherItem { return false }
+      i += 1
     }
+
+    true
   }
 
-  @Stub func isEmpty(self): Bool
+  func isEmpty(self): Bool = self.length == 0
+
   @Stub func enumerate(self): (T, Int)[]
 
   func push(self, item: T) {
@@ -437,15 +430,13 @@ type Set<T> {
   }
 
   func toString(self): String {
-    if self.isEmpty() {
-      "#{}"
-    } else {
-      val reprs: String[] = Array.withCapacity(self._map.size)
-      self.forEach(item => reprs.push(item.toString()))
+    if self.isEmpty() return "#{}"
 
-      val items = reprs.join(", ")
-      "#{${items}}"
-    }
+    val reprs: String[] = Array.withCapacity(self._map.size)
+    self.forEach(item => reprs.push(item.toString()))
+
+    val items = reprs.join(", ")
+    "#{${items}}"
   }
 
   func eq(self, other: Set<T>): Bool {
@@ -548,58 +539,47 @@ type Map<K, V> {
   }
 
   func toString(self): String {
-    if self.isEmpty() {
-      "{}"
-    } else {
-      val reprs: String[] = Array.withCapacity(self.size)
-      var i = 0
-      while i < self._entries.length {
-        if self._entries[i] |bucket| {
-          var cursor = bucket
-          while cursor |cur| {
-            val item = "${cur.key}: ${cur.value}"
-            reprs.push(item)
-            cursor = cur.next
-          }
-        }
-        i += 1
-      }
+    if self.isEmpty() return "{}"
 
-      val items = reprs.join(", ")
-      "{ ${items} }"
+    val reprs: String[] = Array.withCapacity(self.size)
+    var i = 0
+    while i < self._entries.length {
+      if self._entries[i] |bucket| {
+        var cursor = bucket
+        while cursor |cur| {
+          val item = "${cur.key}: ${cur.value}"
+          reprs.push(item)
+          cursor = cur.next
+        }
+      }
+      i += 1
     }
+
+    val items = reprs.join(", ")
+    "{ ${items} }"
   }
 
   func eq(self, other: Map<K, V>): Bool {
-    if self.size != other.size {
-      false
-    } else {
-      var ret = true
-      var i = 0
-      while i < self._entries.length {
-        if self._entries[i] |bucket| {
-          var cursor = bucket
+    if self.size != other.size return false
 
-          while cursor |cur| {
-            if other.get(cur.key) |otherValue| {
-              if otherValue != cur.value {
-                ret = false
-                break
-              }
-            } else {
-              ret = false
-              break
-            }
-            cursor = cur.next
+    var i = 0
+    while i < self._entries.length {
+      if self._entries[i] |bucket| {
+        var cursor = bucket
+
+        while cursor |cur| {
+          if other.get(cur.key) |otherValue| {
+            if otherValue != cur.value return false
+          } else {
+            return false
           }
-          if !ret {
-            break
-          }
+          cursor = cur.next
         }
-        i += 1
       }
-      ret
+      i += 1
     }
+
+    true
   }
 
   func isEmpty(self): Bool = self.size == 0
@@ -622,7 +602,6 @@ type Map<K, V> {
   @Stub func keys(self): Set<K>
   @Stub func values(self): V[]
 
-  // TODO: can't do this until `eq` methods are supported for non-primitives
   func entries(self): Set<(K, V)> {
     val entries: Set<(K, V)> = Set.new()
     self.forEach((k, v) => entries.insert((k, v)))
@@ -654,20 +633,19 @@ type Map<K, V> {
   func insert(self, key: K, value: V): V? {
     val hash = self._getKeyHash(key)
 
-    var ret: V? = None
     if flattenOption(self._entries[hash]) |slot| {
       var cursor: MapEntry<K, V>? = slot
       while cursor |cur| {
         if cur.key == key {
-          ret = cur.value
+          val old = cur.value
           cur.value = value
-          break // todo: just return ret here when early returns are a thing
+          return old
         } else if cur.next |next| {
           cursor = next
         } else {
           cur.next = MapEntry(key: key, value: value)
           self.size += 1
-          break
+          return None
         }
       }
     } else {
@@ -677,29 +655,24 @@ type Map<K, V> {
 
     // resize if self.size > self._capacity * self._loadFactor
 
-    ret
+    None
   }
 
   func _getEntry(self, key: K): MapEntry<K, V>? {
     val hash = self._getKeyHash(key)
 
     if flattenOption(self._entries[hash]) |bucket| {
-      var ret: MapEntry<K, V>? = None
-
       var cursor: MapEntry<K, V>? = bucket
       while cursor |entry| {
         if entry.key == key {
-          ret = entry
-          break
+          return entry
         } else {
           cursor = entry.next
         }
       }
-
-      ret
-    } else {
-      None
     }
+
+    None
   }
 
   func get(self, key: K): V? {
