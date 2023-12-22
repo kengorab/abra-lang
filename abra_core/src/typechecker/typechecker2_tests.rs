@@ -4875,7 +4875,7 @@ fn typecheck_if_statement() {
         }),
         condition_binding: None,
         if_block: vec![
-            TypedNode::Literal { token: Token::Int(Position::new(1, 11), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_UNIT_TYPE_ID }
+            TypedNode::Literal { token: Token::Int(Position::new(1, 11), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_INT_TYPE_ID }
         ],
         if_block_terminator: None,
         else_block: vec![],
@@ -4909,7 +4909,7 @@ fn typecheck_if_statement() {
                 var_id: condition_binding_var_id,
                 type_arg_ids: vec![],
                 type_id: PRELUDE_BOOL_TYPE_ID,
-                resolved_type_id: PRELUDE_UNIT_TYPE_ID,
+                resolved_type_id: PRELUDE_BOOL_TYPE_ID,
             }
         ],
         if_block_terminator: None,
@@ -4933,11 +4933,11 @@ fn typecheck_if_statement() {
         }),
         condition_binding: None,
         if_block: vec![
-            TypedNode::Literal { token: Token::Int(Position::new(1, 11), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_UNIT_TYPE_ID }
+            TypedNode::Literal { token: Token::Int(Position::new(1, 11), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: PRELUDE_INT_TYPE_ID }
         ],
         if_block_terminator: None,
         else_block: vec![
-            TypedNode::Literal { token: Token::Bool(Position::new(1, 22), false), value: TypedLiteral::Bool(false), type_id: PRELUDE_BOOL_TYPE_ID, resolved_type_id: PRELUDE_UNIT_TYPE_ID }
+            TypedNode::Literal { token: Token::Bool(Position::new(1, 22), false), value: TypedLiteral::Bool(false), type_id: PRELUDE_BOOL_TYPE_ID, resolved_type_id: PRELUDE_BOOL_TYPE_ID }
         ],
         else_block_terminator: None,
         is_statement: true,

@@ -249,3 +249,32 @@ jank.setB([1.2, 3.4])
 /// Expect: Wow(a: 0, b: [1.2, 3.4])
 println(jank.toString())
 
+// Return statements in if-expressions
+func returnExprInArr(i: Int): Int[] {
+  val arr = [
+    1,
+    if i == 0 { return [] } else 2,
+    3
+  ]
+
+  arr
+}
+/// Expect: []
+println(returnExprInArr(0))
+/// Expect: [1, 2, 3]
+println(returnExprInArr(1))
+
+func returnInVarDecl(i: Int): Int {
+  val a = if i == 100 {
+    17
+  } else {
+    return -1
+  }
+
+  return a
+}
+
+/// Expect: 17
+println(returnInVarDecl(100))
+/// Expect: -1
+println(returnInVarDecl(0))

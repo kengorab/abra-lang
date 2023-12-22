@@ -1,14 +1,13 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-//func foo(i: Int): Int? {
-//  if i < 17 return 0
-//
-//  i + 10
-//}
-//
-//val f = foo(100)
-//f
+func returnInVarDecl(i: Int): Int {
+  val a = if i == 100 {
+    17
+  } else {
+    return -1
+  }
 
-val m = { a: 1 }
-m.get("a")
+  return a
+}
+returnInVarDecl(100)

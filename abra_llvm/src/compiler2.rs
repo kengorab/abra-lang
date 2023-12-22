@@ -322,11 +322,11 @@ impl<'a> LLVMCompiler2<'a> {
 
     fn get_or_add_adhoc_type(&self, ty: Type) -> TypeId {
         if let Some((idx, _)) = self.adhoc_types.borrow().iter().find_position(|t| *t == &ty) {
-            return TypeId(ScopeId::BOGUS, idx)
+            return TypeId(ScopeId::BOGUS, idx);
         }
-            let idx = self.adhoc_types.borrow().len();
-            self.adhoc_types.borrow_mut().push(ty);
-            TypeId(ScopeId::BOGUS, idx)
+        let idx = self.adhoc_types.borrow().len();
+        self.adhoc_types.borrow_mut().push(ty);
+        TypeId(ScopeId::BOGUS, idx)
     }
 
     fn get_type_by_id(&self, type_id: &TypeId) -> Type {
@@ -2428,11 +2428,25 @@ impl<'a> LLVMCompiler2<'a> {
             let Some(llvm_type) = self.llvm_underlying_type_by_id(type_id, resolved_generics) else { todo!() };
             let llvm_type = self.llvm_ptr_wrap_type_if_needed(llvm_type);
 
-            let if_block_value = if_block_value.unwrap_or_else(|| self.make_none_option_instance(type_id, &resolved_generics).into());
-            let else_block_value = else_block_value.unwrap_or_else(|| self.make_none_option_instance(type_id, &resolved_generics).into());
+            debug_assert!(!(if_block_terminator.is_some() && else_block_terminator.is_some()), "In an if-expression, we cannot have both branches terminate");
 
             let phi = self.builder.build_phi(llvm_type, "");
-            phi.add_incoming(&[(&if_block_value, then_bb), (&else_block_value, else_bb)]);
+
+            if if_block_terminator.is_some() {
+                let else_block_value = else_block_value.unwrap_or_else(|| self.make_none_option_instance(type_id, &resolved_generics).into());
+
+                phi.add_incoming(&[(&else_block_value, else_bb)]);
+            } else if else_block_terminator.is_some() {
+                let if_block_value = if_block_value.unwrap_or_else(|| self.make_none_option_instance(type_id, &resolved_generics).into());
+
+                phi.add_incoming(&[(&if_block_value, then_bb)]);
+            } else {
+                let if_block_value = if_block_value.unwrap_or_else(|| self.make_none_option_instance(type_id, &resolved_generics).into());
+                let else_block_value = else_block_value.unwrap_or_else(|| self.make_none_option_instance(type_id, &resolved_generics).into());
+
+                phi.add_incoming(&[(&if_block_value, then_bb), (&else_block_value, else_bb)]);
+            };
+
             let phi_value = phi.as_basic_value();
 
             if resolved_type_id == &PRELUDE_ANY_TYPE_ID {
@@ -3039,7 +3053,7 @@ impl<'a> LLVMCompiler2<'a> {
         let else_value = self.builder.build_and(
             self.builder.build_not(self_is_set_val, ""),
             self.builder.build_not(other_is_set_val, ""),
-            "both_are_unset"
+            "both_are_unset",
         );
         self.builder.build_unconditional_branch(end_bb);
 
