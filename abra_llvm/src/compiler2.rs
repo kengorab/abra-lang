@@ -1194,6 +1194,10 @@ impl<'a> LLVMCompiler2<'a> {
                     UnaryOp::Negate => {
                         if type_id == &PRELUDE_BOOL_TYPE_ID {
                             self.builder.build_not(expr_val.into_int_value(), "").into()
+                        } else if self.type_is_option(type_id).is_some() {
+                            let local = self.builder.build_alloca(expr_val.get_type(), "");
+                            self.builder.build_store(local, expr_val);
+                            self.builder.build_not(self.option_instance_get_is_set(local), "").into()
                         } else {
                             unreachable!("`!` unary operator not defined for type {}", self.project.type_repr(type_id))
                         }

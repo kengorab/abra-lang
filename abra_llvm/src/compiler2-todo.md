@@ -1,0 +1,24 @@
+# Todos for LLVM Compiler v2 (in no particular order)
+
+- [ ] tuple destructuring
+- [ ] array destructuring
+  - [ ] including `*spread` syntax
+  - [ ] string destructuring
+- [ ] enums
+- [ ] match statement/expression
+- [ ] imports/exports
+- [ ] I/O and other low-level things
+- [ ] module alias as a type
+- [ ] error on vars used before initialization (Requires Typechecker)
+- [ ] initializers/constructors and/or fields w/ default values that can reference `self` (Requires Typechecker)
+- [ ] referencing a method as function value
+- [ ] traits (Requires Typechecker, Parser, Lexer)
+- [ ] `..` range expression (Requires Typechecker, Parser, Lexer)
+- [x] unary negate for Option type, returns `true` if value is `None` (Requires Typechecker)
+- [ ] growing array when capacity reached
+- [ ] growing map when capacity/loadFactor reached
+- [ ] unsigned integers of different sizes (Requires Typechecker)
+- [ ] `Result<V, E>` enum
+- [ ] `try` expressions (leveraging the `Result<V, E>` enum) (Requires Typechecker)
+- [ ] more efficient string interpolation (right now it casts everything to `Any` to call `String#concat` which sucks)
+- [ ] better `print`/`println` - don't wrap everything in `Any`, special logic which just `toString`s args beforehand?

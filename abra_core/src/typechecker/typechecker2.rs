@@ -966,7 +966,10 @@ impl TypedNode {
         match self {
             // Expressions
             TypedNode::Literal { type_id, .. } => type_id,
-            TypedNode::Unary { expr, .. } => expr.type_id(),
+            TypedNode::Unary { op, expr, .. } => match op {
+                UnaryOp::Minus => expr.type_id(),
+                UnaryOp::Negate => &PRELUDE_BOOL_TYPE_ID,
+            },
             TypedNode::Binary { type_id, .. } => type_id,
             TypedNode::Grouped { expr, .. } => expr.type_id(),
             TypedNode::Array { type_id, .. } => type_id,
@@ -3780,7 +3783,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         if let Some(generic_id) = generic_id {
                             generic_id
                         } else {
-                            return Err(TypeError::InvalidControlFlowTarget { span: self.make_span(&typed_iterator.span()), type_id: *iterator_type_id, kind: InvalidControlFlowTargetKind::ForLoop })
+                            return Err(TypeError::InvalidControlFlowTarget { span: self.make_span(&typed_iterator.span()), type_id: *iterator_type_id, kind: InvalidControlFlowTargetKind::ForLoop });
                         }
                     }
                     _ => return Err(TypeError::InvalidControlFlowTarget { span: self.make_span(&typed_iterator.span()), type_id: *iterator_type_id, kind: InvalidControlFlowTargetKind::ForLoop }),
@@ -4512,11 +4515,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     UnaryOp::Minus if *type_id != PRELUDE_INT_TYPE_ID && *type_id != PRELUDE_FLOAT_TYPE_ID => {
                         Err(TypeError::TypeMismatch { span, expected: vec![PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID], received: *type_id })
                     }
-                    UnaryOp::Negate if *type_id != PRELUDE_BOOL_TYPE_ID => {
+                    UnaryOp::Minus => {
+                        let resolved_type_id = type_hint.unwrap_or(*type_id);
+                        Ok(TypedNode::Unary { token, op, expr: Box::new(typed_expr), resolved_type_id })
+                    }
+                    UnaryOp::Negate if *type_id != PRELUDE_BOOL_TYPE_ID && self.project.type_is_option(type_id).is_none() => {
                         Err(TypeError::TypeMismatch { span, expected: vec![PRELUDE_BOOL_TYPE_ID], received: *type_id })
                     }
-                    _ => {
-                        let resolved_type_id = type_hint.unwrap_or(*type_id);
+                    UnaryOp::Negate => {
+                        let resolved_type_id = type_hint.unwrap_or(PRELUDE_BOOL_TYPE_ID);
                         Ok(TypedNode::Unary { token, op, expr: Box::new(typed_expr), resolved_type_id })
                     }
                 }

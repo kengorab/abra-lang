@@ -1,16 +1,10 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-//val r = range(0, 5, 2)
-//
-//println(r.next())
-//println(r.next())
-//println(r.next())
-//println(r.next())
-//println(r.next())
+val i: Int? = 17
 
-for i in range(0, 5, 2) {
-  println(i)
+if !i {
+  println("i is None")
 }
 
 println("done")

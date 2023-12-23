@@ -425,9 +425,7 @@ type SetIterator<T> {
   _mapIterator: MapIterator<T, Bool>? = None
 
   func next(self): T? {
-    if self._mapIterator {
-      // noop
-    } else {
+    if !self._mapIterator {
       self._mapIterator = self.set._map.iterator()
     }
 
@@ -562,9 +560,7 @@ type MapIterator<K, V> {
   func next(self): (K, V)? {
     if self._i >= self.map._entries.length { return None }
 
-    if self._cursor {
-      // noop
-    } else {
+    if !self._cursor {
       self._i += 1
       self._cursor = flattenOption(self.map._entries[self._i])
     }
