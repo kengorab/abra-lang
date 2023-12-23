@@ -2,16 +2,13 @@
 func stdoutWrite(str: String)
 
 func print(*items: Any[]) {
-  var i = 0
-  while i < items.length {
+  for i in range(0, items.length) {
     val item = items._buffer.offset(i).load()
     stdoutWrite(item.toString())
 
     if i != items.length - 1 {
       stdoutWrite(" ")
     }
-
-    i += 1
   }
 }
 
@@ -105,11 +102,9 @@ type String {
 
   func hash(self): Int {
     var hash = 31 * self.length
-    var i = 0
-    while i < self.length {
+    for i in range(0, self.length) {
       val byte = self._buffer.offset(i).load()
       hash = hash + 31 * byte.asInt()
-      i += 1
     }
     hash
   }
@@ -117,12 +112,10 @@ type String {
   func eq(self, other: String): Bool {
     if self.length != other.length { return false }
 
-    var i = 0
-    while i < self.length {
+    for i in range(0, self.length) {
       val selfCh = self._buffer.offset(i).load().asInt()
       val otherCh = other._buffer.offset(i).load().asInt()
       if selfCh != otherCh { return false }
-      i += 1
     }
 
     true
@@ -162,13 +155,11 @@ type String {
 
   func get(self, index: Int): String {
     var idx = if index < 0 index + self.length else index
-    if idx >= self.length || idx < 0 {
-      ""
-    } else {
-      val str = String.withLength(1)
-      str._buffer.copyFrom(self._buffer.offset(idx), 1)
-      str
-    }
+    if idx >= self.length || idx < 0 { return "" }
+
+    val str = String.withLength(1)
+    str._buffer.copyFrom(self._buffer.offset(idx), 1)
+    str
   }
 
   func getRange(self, startIndex = 0, endIndex = self.length): String {
@@ -207,10 +198,8 @@ type Array<T> {
 
   func fill<T>(length: Int, value: T): T[] {
     val buffer = Pointer.malloc<T>(length)
-    var i = 0
-    while i < length {
+    for i in range(0, length) {
       buffer.offset(i).store(value)
-      i += 1
     }
 
     Array(length: length, _buffer: buffer, _capacity: length)
@@ -218,11 +207,9 @@ type Array<T> {
 
   func fillBy<T>(length: Int, fn: (Int) => T): T[] {
     val buffer = Pointer.malloc<T>(length)
-    var i = 0
-    while i < length {
+    for i in range(0, length) {
       val item = fn(i)
       buffer.offset(i).store(item)
-      i += 1
     }
 
     Array(length: length, _buffer: buffer, _capacity: length)
@@ -233,8 +220,7 @@ type Array<T> {
 
     val reprs: String[] = Array.withCapacity(self.length)
     var len = 2 // account for '[' and ']'
-    var i = 0
-    while i < self.length {
+    for i in range(0, self.length) {
       val item = self._buffer.offset(i).load()
       val repr = item.toString()
       reprs.push(repr)
@@ -242,7 +228,6 @@ type Array<T> {
       if i != self.length - 1 {
         len += 2 // account for ", " unless last item
       }
-      i += 1
     }
 
     // we have an extra 2 bytes for the trailing ", " but we need an extra 1 for the null termination anyway
@@ -251,8 +236,7 @@ type Array<T> {
     str._buffer.offset(offset).store(Byte.fromInt(91)) // '['
     offset += 1
 
-    i = 0
-    while i < self.length {
+    for i in range(0, self.length) {
       val repr = reprs._buffer.offset(i).load()
       str._buffer.offset(offset).copyFrom(repr._buffer, repr.length)
       offset += repr.length
@@ -263,8 +247,6 @@ type Array<T> {
         str._buffer.offset(offset).store(Byte.fromInt(32)) // ' '
         offset += 1
       }
-
-      i += 1
     }
 
     str._buffer.offset(offset).store(Byte.fromInt(93)) // ']'
@@ -274,11 +256,9 @@ type Array<T> {
 
   func hash(self): Int {
     var hash = 31 * self.length
-    var i = 0
-    while i < self.length {
+    for i in range(0, self.length) {
       val item = self._buffer.offset(i).load()
       hash = hash + 31 * item.hash()
-      i += 1
     }
     hash
   }
@@ -286,13 +266,11 @@ type Array<T> {
   func eq(self, other: Array<T>): Bool {
     if self.length != other.length return false
 
-    var i = 0
-    while i < self.length {
+    for i in range(0, self.length) {
       val selfItem = self._buffer.offset(i).load()
       val otherItem = other._buffer.offset(i).load()
 
       if selfItem != otherItem { return false }
-      i += 1
     }
 
     true
@@ -324,12 +302,10 @@ type Array<T> {
 
   func map<U>(self, fn: (T, Int) => U): U[] {
     val newArray: U[] = Array.withCapacity(self.length)
-    var i = 0
-    while i < self.length {
+    for i in range(0, self.length) {
       val item = self._buffer.offset(i).load()
       val result = fn(item, i)
       newArray.push(result)
-      i += 1
     }
 
     newArray
@@ -337,13 +313,11 @@ type Array<T> {
 
   func filter(self, fn: (T, Int) => Bool): T[] {
     val newArray: T[] = Array.withCapacity(self.length)
-    var i = 0
-    while i < self.length {
+    for i in range(0, self.length) {
       val item = self._buffer.offset(i).load()
       if fn(item, i) {
         newArray.push(item)
       }
-      i += 1
     }
 
     newArray
@@ -351,30 +325,25 @@ type Array<T> {
 
   func reduce<U>(self, initialValue: U, fn: (U, T, Int) => U): U {
     var acc = initialValue
-    var i = 0
-    while i < self.length {
+    for i in range(0, self.length) {
       val item = self._buffer.offset(i).load()
       acc = fn(acc, item, i)
-      i += 1
     }
 
     acc
   }
 
   func forEach(self, fn: (T, Int) => Unit) {
-    var i = 0
-    while i < self.length {
+    for i in range(0, self.length) {
       val item = self._buffer.offset(i).load()
       fn(item, i)
-      i += 1
     }
   }
 
   func join(self, joiner = ""): String {
     val reprs: String[] = Array.withCapacity(self.length)
     var length = 0
-    var i = 0
-    while i < self.length {
+    for i in range(0, self.length) {
       val item = self._buffer.offset(i).load()
       val repr = item.toString()
       reprs.push(repr)
@@ -382,13 +351,11 @@ type Array<T> {
       if i != self.length - 1 {
         length += joiner.length
       }
-      i += 1
     }
 
     val str = String.withLength(length)
-    i = 0
     var offset = 0
-    while i < reprs.length {
+    for i in range(0, reprs.length) {
       val repr = reprs._buffer.offset(i).load()
       str._buffer.offset(offset).copyFrom(repr._buffer, repr.length)
       offset += repr.length
@@ -396,7 +363,6 @@ type Array<T> {
         str._buffer.offset(offset).copyFrom(joiner._buffer, joiner.length)
         offset += joiner.length
       }
-      i += 1
     }
 
     str
@@ -490,7 +456,9 @@ type Set<T> {
     if self.isEmpty() return "#{}"
 
     val reprs: String[] = Array.withCapacity(self._map.size)
-    self.forEach(item => reprs.push(item.toString()))
+    for item in self {
+      reprs.push(item.toString())
+    }
 
     val items = reprs.join(", ")
     "#{${items}}"
@@ -525,14 +493,18 @@ type Set<T> {
 
   func map<U>(self, fn: (T) => U): U[] {
     val arr: U[] = Array.withCapacity(self.size)
-    self.forEach(item => arr.push(fn(item)))
+    for item in self {
+      arr.push(fn(item))
+    }
 
     arr
   }
 
   func filter(self, fn: (T) => Bool): Set<T> {
     val newSet: Set<T> = Set.new()
-    self.forEach(item => if fn(item) newSet.insert(item))
+    for item in self {
+      if fn(item) newSet.insert(item)
+    }
 
     newSet
   }
@@ -541,29 +513,36 @@ type Set<T> {
 
   func asArray(self): T[] {
     val arr: T[] = Array.withCapacity(self.size)
-    self.forEach(item => arr.push(item))
+    for item in self {
+      arr.push(item)
+    }
 
     arr
   }
 
   func union(self, other: Set<T>): Set<T> {
     val newSet: Set<T> = Set.new()
-    self.forEach(item => newSet.insert(item))
-    other.forEach(item => newSet.insert(item))
+
+    for item in self { newSet.insert(item) }
+    for item in other { newSet.insert(item) }
 
     newSet
   }
 
   func difference(self, other: Set<T>): Set<T> {
     val newSet: Set<T> = Set.new()
-    self.forEach(item => if !other.contains(item) newSet.insert(item))
+    for item in self {
+      if !other.contains(item) newSet.insert(item)
+    }
 
     newSet
   }
 
   func intersection(self, other: Set<T>): Set<T> {
     val newSet: Set<T> = Set.new()
-    self.forEach(item => if other.contains(item) newSet.insert(item))
+    for item in self {
+      if other.contains(item) newSet.insert(item)
+    }
 
     newSet
   }
@@ -625,8 +604,7 @@ type Map<K, V> {
     if self.isEmpty() return "{}"
 
     val reprs: String[] = Array.withCapacity(self.size)
-    var i = 0
-    while i < self._entries.length {
+    for i in range(0, self._entries.length) {
       if self._entries[i] |bucket| {
         var cursor = bucket
         while cursor |cur| {
@@ -635,7 +613,6 @@ type Map<K, V> {
           cursor = cur.next
         }
       }
-      i += 1
     }
 
     val items = reprs.join(", ")
@@ -645,8 +622,7 @@ type Map<K, V> {
   func eq(self, other: Map<K, V>): Bool {
     if self.size != other.size return false
 
-    var i = 0
-    while i < self._entries.length {
+    for i in range(0, self._entries.length) {
       if self._entries[i] |bucket| {
         var cursor = bucket
 
@@ -659,7 +635,6 @@ type Map<K, V> {
           cursor = cur.next
         }
       }
-      i += 1
     }
 
     true
@@ -668,8 +643,7 @@ type Map<K, V> {
   func isEmpty(self): Bool = self.size == 0
 
   func forEach(self, fn: (K, V) => Unit) {
-    var i = 0
-    while i < self._entries.length {
+    for i in range(0, self._entries.length) {
       if self._entries[i] |bucket| {
         var cursor = bucket
         while cursor |cur| {
@@ -677,7 +651,6 @@ type Map<K, V> {
           cursor = cur.next
         }
       }
-      i += 1
     }
   }
 
@@ -689,7 +662,9 @@ type Map<K, V> {
 
   func entries(self): Set<(K, V)> {
     val entries: Set<(K, V)> = Set.new()
-    self.forEach((k, v) => entries.insert((k, v)))
+    for pair in self {
+      entries.insert(pair)
+    }
 
     entries
   }
@@ -700,8 +675,7 @@ type Map<K, V> {
 
   func mapValues<U>(self, fn: (K, V) => U): Map<K, U> {
     val newMap: Map<K, U> = Map.new()
-    var i = 0
-    while i < self._entries.length {
+    for i in range(0, self._entries.length) {
       if self._entries[i] |bucket| {
         var cursor = bucket
         while cursor |cur| {
@@ -709,7 +683,6 @@ type Map<K, V> {
           cursor = cur.next
         }
       }
-      i += 1
     }
 
     newMap
