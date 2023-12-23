@@ -1419,6 +1419,7 @@ fn typecheck_for_loop() {
                 })),
             }
         ],
+        block_terminator: None,
     };
     assert_eq!(expected, module.code[1]);
 
@@ -1436,8 +1437,15 @@ fn typecheck_for_loop() {
     "#);
     assert_typecheck_ok(r#"
       for k, v in { a: 1, b: 2 } {
+        val _: (String, Int) = k
+        val _: Int = v
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      for (k, v), i in { a: 1, b: 2 } {
         val _: String = k
         val _: Int = v
+        val _: Int = i
       }
     "#);
 

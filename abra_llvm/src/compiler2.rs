@@ -13,7 +13,7 @@ use inkwell::targets::TargetMachine;
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FloatType, FunctionType, IntType, PointerType, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum, CallableValue, FloatValue, FunctionValue, InstructionOpcode, IntValue, PointerValue, StructValue};
 use itertools::Itertools;
-use abra_core::lexer::tokens::Token;
+use abra_core::lexer::tokens::{POSITION_BOGUS, Token};
 use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
 use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, FuncId, Function, FunctionKind, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
 
@@ -992,7 +992,69 @@ impl<'a> LLVMCompiler2<'a> {
 
                 None
             }
-            TypedNode::ForLoop { .. } => todo!(),
+            TypedNode::ForLoop { binding, binding_var_ids, index_var_id, iterator, body, block_terminator, .. } => {
+                let iterator_ty = self.get_type_by_id(iterator.type_id());
+
+                let resolved_generics = self.extend_resolved_generics_via_instance(resolved_generics, iterator.type_id());
+                let iterator_val = self.visit_expression(iterator, &resolved_generics).unwrap();
+
+                let Type::GenericInstance(struct_id, _) = &iterator_ty else { unreachable!() };
+                let (iter_instance, iter_type_id) = if struct_id == &self.project.prelude_array_struct_id || struct_id == &self.project.prelude_set_struct_id || struct_id == &self.project.prelude_map_struct_id {
+                    let (_, func_id) = iterator_ty.find_method_by_name(&self.project, "iterator").unwrap();
+                    let iterator_func = self.project.get_func_by_id(func_id);
+
+                    let iterator_method = self.get_or_compile_function(func_id, &resolved_generics);
+                    let instance = self.builder.build_call(iterator_method, &[iterator_val.into()], "").try_as_basic_value().left().unwrap();
+
+                    (instance, iterator_func.return_type_id)
+                } else {
+                    (iterator_val, *iterator.type_id())
+                };
+
+                let iter_ty = self.get_type_by_id(&iter_type_id);
+                let (_, func_id) = iter_ty.find_method_by_name(&self.project, "next").unwrap();
+                let resolved_generics = self.extend_resolved_generics_via_instance(&resolved_generics, &iter_type_id);
+                let iter_next_func = self.get_or_compile_function(func_id, &resolved_generics);
+
+                let cond_bb = self.context.append_basic_block(self.current_fn.0, "for_loop_cond");
+                let body_bb = self.context.append_basic_block(self.current_fn.0, "for_loop_body");
+                let end_bb = self.context.append_basic_block(self.current_fn.0, "for_loop_end");
+                self.loop_stack.push((cond_bb, end_bb));
+                if let Some(var_id) = index_var_id {
+                    let var = self.project.get_var_by_id(var_id);
+                    let binding = BindingPattern::Variable(Token::Ident(POSITION_BOGUS, var.name.clone()));
+                    let neg_one = self.builder.build_int_neg(self.const_i64(1), "");
+                    self.compile_binding_declaration(&binding, &vec![*var_id], Some(neg_one.into()), &resolved_generics);
+                }
+                let next_local = self.builder.build_alloca(iter_next_func.get_type().get_return_type().unwrap(), "next_local");
+                self.builder.build_unconditional_branch(cond_bb);
+
+                self.builder.position_at_end(cond_bb);
+                let next_value = self.builder.build_call(iter_next_func, &[iter_instance.into()], "").try_as_basic_value().left().unwrap();
+                self.builder.build_store(next_local, next_value);
+                let cond = self.option_instance_get_is_set(next_local);
+                self.builder.build_conditional_branch(cond, body_bb, end_bb);
+
+                self.builder.position_at_end(body_bb);
+                let next_value_val = self.option_instance_get_value(next_local);
+                self.compile_binding_declaration(binding, binding_var_ids, Some(next_value_val), &resolved_generics);
+                if let Some(var_id) = index_var_id {
+                    let LLVMVar::Slot(index_var_slot) = self.ctx_stack.last().unwrap().variables.get(var_id).unwrap() else { unreachable!() };
+                    let index_val = self.builder.build_load(*index_var_slot, "").into_int_value();
+                    self.builder.build_store(*index_var_slot, self.builder.build_int_add(index_val, self.const_i64(1), ""));
+                }
+                for node in body {
+                    self.visit_statement(node, &resolved_generics);
+                }
+                if block_terminator.is_none() {
+                    self.builder.build_unconditional_branch(cond_bb);
+                }
+
+                self.builder.position_at_end(end_bb);
+                self.loop_stack.pop();
+
+                None
+            }
             TypedNode::WhileLoop { condition, condition_var_id, body, block_terminator, .. } => {
                 let loop_cond_block = self.context.append_basic_block(self.current_fn.0, "while_loop_cond");
                 let loop_body_block = self.context.append_basic_block(self.current_fn.0, "while_loop_body");

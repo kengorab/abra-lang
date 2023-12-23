@@ -953,7 +953,7 @@ pub enum TypedNode {
     TypeDeclaration(StructId),
     EnumDeclaration(EnumId),
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
-    ForLoop { token: Token, binding: BindingPattern, binding_var_ids: Vec<VarId>, index_var_id: Option<VarId>, iterator: Box<TypedNode>, body: Vec<TypedNode> },
+    ForLoop { token: Token, binding: BindingPattern, binding_var_ids: Vec<VarId>, index_var_id: Option<VarId>, iterator: Box<TypedNode>, body: Vec<TypedNode>, block_terminator: Option<TerminatorKind> },
     WhileLoop { token: Token, condition: Box<TypedNode>, condition_var_id: Option<VarId>, body: Vec<TypedNode>, block_terminator: Option<TerminatorKind> },
     Break { token: Token },
     Continue { token: Token },
@@ -1175,7 +1175,7 @@ impl TypedNode {
             TypedNode::TypeDeclaration(_) => None,
             TypedNode::EnumDeclaration(_) => None,
             TypedNode::BindingDeclaration { expr, .. } => expr.as_ref().and_then(|expr| expr.terminator()),
-            TypedNode::ForLoop { .. } => todo!(),
+            TypedNode::ForLoop { iterator, block_terminator, .. } => iterator.terminator().or_else(|| block_terminator.clone()),
             TypedNode::WhileLoop { condition, block_terminator, .. } => condition.terminator().or_else(|| block_terminator.clone()),
             TypedNode::Break { .. } => Some(TerminatorKind::NonReturning),
             TypedNode::Continue { .. } => Some(TerminatorKind::NonReturning),
@@ -1190,7 +1190,7 @@ impl TypedNode {
             TypedNode::Unary { expr, .. } => matches!(expr.terminator(), Some(TerminatorKind::Returning)),
             TypedNode::Binary { left, right, .. } => {
                 matches!(left.terminator(), Some(TerminatorKind::Returning)) && matches!(right.terminator(), Some(TerminatorKind::Returning))
-            },
+            }
             TypedNode::Grouped { expr, .. } => matches!(expr.terminator(), Some(TerminatorKind::Returning)),
             TypedNode::Array { items, .. } |
             TypedNode::Tuple { items, .. } |
@@ -1224,7 +1224,7 @@ impl TypedNode {
             TypedNode::TypeDeclaration(_) |
             TypedNode::EnumDeclaration(_) => false,
             TypedNode::BindingDeclaration { expr, .. } => expr.as_ref().map_or(true, |expr| matches!(expr.terminator(), Some(TerminatorKind::Returning))),
-            TypedNode::ForLoop { .. } => todo!(),
+            TypedNode::ForLoop { iterator, block_terminator, .. } => matches!(iterator.terminator(), Some(TerminatorKind::Returning)) && matches!(block_terminator, Some(TerminatorKind::Returning)),
             TypedNode::WhileLoop { condition, block_terminator, .. } => matches!(condition.terminator(), Some(TerminatorKind::Returning)) && matches!(block_terminator, Some(TerminatorKind::Returning)),
             TypedNode::Break { .. } |
             TypedNode::Continue { .. } => false,
@@ -3762,10 +3762,27 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let typed_iterator = self.typecheck_expression(*iterator, None)?;
                 let iterator_type_id = typed_iterator.type_id();
                 let iterator_type = self.project.get_type_by_id(iterator_type_id);
-                let (iteratee_type_id, index_type_id) = match iterator_type {
-                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_array_struct_id => (generic_ids[0], PRELUDE_INT_TYPE_ID),
-                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_set_struct_id => (generic_ids[0], PRELUDE_INT_TYPE_ID),
-                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_map_struct_id => (generic_ids[0], generic_ids[1]),
+                let iteratee_type_id = match iterator_type {
+                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_array_struct_id => generic_ids[0],
+                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_set_struct_id => generic_ids[0],
+                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_map_struct_id => {
+                        self.add_or_find_type_id(self.project.tuple_type(vec![generic_ids[0], generic_ids[1]]))
+                    }
+                    Type::GenericInstance(struct_id, _) => {
+                        // TODO: replace this logic when traits are introduced to the language
+                        let struct_ = self.project.get_struct_by_id(struct_id);
+                        let generic_id = struct_.methods.iter().find_map(|func_id| {
+                            let function = self.project.get_func_by_id(func_id);
+                            if function.name != "next" { return None; }
+                            self.project.type_is_option(&function.return_type_id)
+                        });
+
+                        if let Some(generic_id) = generic_id {
+                            generic_id
+                        } else {
+                            return Err(TypeError::InvalidControlFlowTarget { span: self.make_span(&typed_iterator.span()), type_id: *iterator_type_id, kind: InvalidControlFlowTargetKind::ForLoop })
+                        }
+                    }
                     _ => return Err(TypeError::InvalidControlFlowTarget { span: self.make_span(&typed_iterator.span()), type_id: *iterator_type_id, kind: InvalidControlFlowTargetKind::ForLoop }),
                 };
 
@@ -3775,7 +3792,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let index_var_id = if let Some(index_ident) = index_ident {
                     let var_name = Token::get_ident_name(&index_ident);
                     let span = self.make_span(&index_ident.get_range());
-                    let var_id = self.add_variable_to_current_scope(var_name, index_type_id, false, true, &span, false)?;
+                    let var_id = self.add_variable_to_current_scope(var_name, PRELUDE_INT_TYPE_ID, false, true, &span, false)?;
                     Some(var_id)
                 } else {
                     None
@@ -3792,7 +3809,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     self.current_scope_mut().terminator = Some(TerminatorKind::Returning);
                 }
 
-                Ok(TypedNode::ForLoop { token, binding, binding_var_ids, index_var_id, iterator: Box::new(typed_iterator), body: typed_body })
+                Ok(TypedNode::ForLoop { token, binding, binding_var_ids, index_var_id, iterator: Box::new(typed_iterator), body: typed_body, block_terminator: loop_scope_terminator })
             }
             AstNode::WhileLoop(token, while_loop_node) => {
                 let WhileLoopNode { condition, condition_binding, body } = while_loop_node;

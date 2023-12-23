@@ -80,17 +80,23 @@ type Person {
 (() => {
   val s = #{"a", "b", "a", "c"}
   val iter = s.iterator()
-  /// Expect: (c, 0)
+  /// Expect: c
   println(iter.next())
-  /// Expect: (b, 1)
+  /// Expect: b
   println(iter.next())
-  /// Expect: (a, 2)
+  /// Expect: a
   println(iter.next())
   /// Expect: None
   println(iter.next())
   /// Expect: None
   println(iter.next())
 })()
+
+// For-loops
+/// Expect: c 0
+/// Expect: b 1
+/// Expect: a 2
+for ch, idx in #{"a", "b", "c"} { println(ch, idx) }
 
 // Set#contains
 (() => {

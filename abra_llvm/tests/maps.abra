@@ -96,6 +96,12 @@
   println(iter.next())
 })()
 
+// For-loops
+/// Expect: (c, 3) 0
+/// Expect: (b, 2) 1
+/// Expect: (a, 1) 2
+for ch, idx in { a: 1, b: 2, c: 3 } { println(ch, idx) }
+
 // Map#containsKey
 (() => {
   val m = { (1): "a", (2): "b" }

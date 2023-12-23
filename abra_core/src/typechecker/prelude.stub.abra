@@ -20,7 +20,24 @@ func println(*items: Any[]) {
   stdoutWrite("\n")
 }
 
-@Stub func range(start: Int, end: Int, stepBy = 1): Int[]
+type RangeIterator {
+  start: Int
+  end: Int
+  stepBy: Int
+  _i: Int = 0
+
+  func next(self): Int? {
+    val offset = self._i * self.stepBy
+    if self.start + offset >= self.end {
+      None
+    } else {
+      self._i += 1
+      self.start + offset
+    }
+  }
+}
+
+func range(start: Int, end: Int, stepBy = 1): RangeIterator = RangeIterator(start: start, end: end, stepBy: stepBy)
 
 func flattenOption<T>(value: T??): T? = if value |v| v else None
 
@@ -169,11 +186,10 @@ type ArrayIterator<T> {
   array: Array<T>
   _i: Int = 0
 
-  func next(self): (T, Int)? {
+  func next(self): T? {
     if self.array[self._i] |item| {
-      val ret = (item, self._i)
       self._i += 1
-      ret
+      item
     } else {
       None
     }
@@ -440,10 +456,9 @@ type Array<T> {
 
 type SetIterator<T> {
   set: Set<T>
-  _i: Int = 0
   _mapIterator: MapIterator<T, Bool>? = None
 
-  func next(self): (T, Int)? {
+  func next(self): T? {
     if self._mapIterator {
       // noop
     } else {
@@ -452,9 +467,7 @@ type SetIterator<T> {
 
     if self._mapIterator |iter| {
       if iter.next() |item| {
-        val ret = (item[0], self._i)
-        self._i += 1
-        ret
+        item[0]
       } else {
         None
       }
