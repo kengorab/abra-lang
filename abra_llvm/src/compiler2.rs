@@ -15,7 +15,7 @@ use inkwell::values::{BasicValue, BasicValueEnum, CallableValue, FloatValue, Fun
 use itertools::Itertools;
 use abra_core::lexer::tokens::{POSITION_BOGUS, Token};
 use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
-use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, FuncId, Function, FunctionKind, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
+use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, EnumVariantKind, FuncId, Function, FunctionKind, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
 
 const ABRA_MAIN_FN_NAME: &str = "_abra_main";
 
@@ -100,6 +100,8 @@ const RUNTIME_TYPEID_INT: usize = 0;
 const RUNTIME_TYPEID_FLOAT: usize = 1;
 const RUNTIME_TYPEID_BOOL: usize = 2;
 const RUNTIME_TYPEID_STRING: usize = 3;
+
+const ENUM_TYPENAME_TAG: &str = "enum#";
 
 pub struct LLVMCompiler2<'a> {
     project: &'a Project,
@@ -379,7 +381,26 @@ impl<'a> LLVMCompiler2<'a> {
                     *type_id
                 }
             }
-            Type::GenericEnumInstance(_, _, _) |
+            Type::GenericEnumInstance(enum_id, generics, variant_idx) => {
+                let mut create_new = false;
+                let mut resolved_generic_ids = Vec::with_capacity(generics.len());
+                for generic_id in generics {
+                    if let Type::Generic(_, name) = self.get_type_by_id(&generic_id) {
+                        create_new = true;
+                        let resolved_type_id = resolved_generics.resolve(&generic_id)
+                            .expect(&format!("Could not resolve generic {name} in current scope"))
+                            .type_id;
+                        resolved_generic_ids.push(resolved_type_id)
+                    } else {
+                        resolved_generic_ids.push(generic_id);
+                    }
+                }
+                if create_new {
+                    self.get_or_add_adhoc_type(Type::GenericEnumInstance(enum_id, resolved_generic_ids, variant_idx))
+                } else {
+                    *type_id
+                }
+            }
             Type::Function(_, _, _, _) |
             Type::Type(_) |
             Type::ModuleAlias => todo!(),
@@ -420,7 +441,13 @@ impl<'a> LLVMCompiler2<'a> {
                     format!("{struct_name}{generic_names}")
                 }
             }
-            Type::GenericEnumInstance(_, _, _) => todo!(),
+            Type::GenericEnumInstance(enum_id, generic_ids, _) => {
+                let enum_ = self.project.get_enum_by_id(&enum_id);
+                let enum_name = &enum_.name;
+                let generic_names = generic_ids.iter().map(|type_id| self.llvm_type_name_by_id(type_id, resolved_generics)).join(",");
+                let generic_names = if generic_ids.is_empty() { "".into() } else { format!("<{}>", generic_names) };
+                format!("{ENUM_TYPENAME_TAG}{enum_name}{generic_names}")
+            }
             Type::Function(parameter_type_ids, num_required_params, is_variadic, return_type_id) => {
                 debug_assert!(!is_variadic, "Not yet implemented");
 
@@ -447,7 +474,18 @@ impl<'a> LLVMCompiler2<'a> {
                     let generic_names = if struct_.generic_ids.is_empty() { "".into() } else { format!("<{}>", generic_names) };
                     format!("{struct_name}{generic_names}")
                 }
-                TypeKind::Enum(_) => todo!(),
+                TypeKind::Enum(enum_id) => {
+                    let enum_ = self.project.get_enum_by_id(&enum_id);
+                    let enum_name = &enum_.name;
+                    let generic_names = enum_.generic_ids.iter()
+                        .map(|type_id| {
+                            let Type::Generic(_, generic_name) = self.get_type_by_id(type_id) else { unreachable!("TypeId {:?} represents a type that is not a generic", type_id) };
+                            generic_name
+                        })
+                        .join(",");
+                    let generic_names = if enum_.generic_ids.is_empty() { "".into() } else { format!("<{}>", generic_names) };
+                    format!("{ENUM_TYPENAME_TAG}{enum_name}{generic_names}")
+                }
             }
             Type::ModuleAlias => todo!()
         }
@@ -508,7 +546,10 @@ impl<'a> LLVMCompiler2<'a> {
                     struct_type.as_basic_type_enum()
                 }
             }
-            Type::GenericEnumInstance(_, _, _) => todo!(),
+            Type::GenericEnumInstance(_, _, _) => {
+                let (enum_llvm_type, _) = self.get_or_compile_enum_type_by_type_id(type_id, resolved_generics);
+                enum_llvm_type.as_basic_type_enum()
+            }
             Type::Function(_, _, _, _) => self.make_function_value_type_by_type_id(type_id, resolved_generics).0.as_basic_type_enum(),
             Type::Type(_) |
             Type::ModuleAlias => todo!()
@@ -524,7 +565,7 @@ impl<'a> LLVMCompiler2<'a> {
                 .and_then(|name| name.to_str().ok())
                 .unwrap_or("");
 
-            if llvm_type_name.starts_with("Option<") || llvm_type_name == "Any" {
+            if llvm_type_name == "Any" || llvm_type_name.starts_with("Option<") || llvm_type_name.starts_with(ENUM_TYPENAME_TAG) {
                 llvm_type
             } else {
                 self.ptr(llvm_type).as_basic_type_enum()
@@ -554,7 +595,7 @@ impl<'a> LLVMCompiler2<'a> {
         }
     }
 
-    fn _get_typeid_from_value(&self, value: BasicValueEnum<'a>) -> IntValue<'a> {
+    fn get_typeid_from_value(&self, value: BasicValueEnum<'a>) -> IntValue<'a> {
         if value.is_int_value() {
             if value.get_type().into_int_type().get_bit_width() == 1 {
                 self.const_i32(RUNTIME_TYPEID_BOOL as u64)
@@ -566,6 +607,12 @@ impl<'a> LLVMCompiler2<'a> {
         } else if value.is_pointer_value() {
             let typeid_slot = self.builder.build_struct_gep(value.into_pointer_value(), 0, "typeid_slot").unwrap();
             self.builder.build_load(typeid_slot, "typeid").into_int_value()
+        } else if value.get_type().is_struct_type() && value.get_type().into_struct_type().get_name().unwrap().to_str().unwrap().starts_with(ENUM_TYPENAME_TAG) {
+            let local = self.builder.build_alloca(value.get_type(), "local");
+            self.builder.build_store(local, value);
+            let value_slot = self.builder.build_struct_gep(local, 0, "").unwrap();
+            let value = self.builder.build_load(value_slot, "").into_int_value();
+            self.builder.build_right_shift(value, self.const_i64(48), false, "")
         } else {
             let local = self.builder.build_alloca(value.get_type(), "local");
             self.builder.build_store(local, value);
@@ -2086,8 +2133,15 @@ impl<'a> LLVMCompiler2<'a> {
             }
             TypedNode::Accessor { target, kind, member_idx, is_opt_safe, type_id, resolved_type_id, .. } => {
                 let mut target_type_id = *target.type_id();
-                let target = self.visit_expression(target, resolved_generics).unwrap();
 
+                if let Type::Type(TypeKind::Enum(_)) = self.get_type_by_id(&target_type_id) {
+                    let instance = self.construct_const_enum_variant(&target_type_id, *member_idx, resolved_generics);
+
+                    return self.cast_result_if_necessary(instance, &type_id, resolved_type_id, &resolved_generics)
+                        .or(Some(instance));
+                }
+
+                let target = self.visit_expression(target, resolved_generics).unwrap();
                 let opt_inner_type_id = self.type_is_option(&target_type_id);
                 let (target_value, opt_safe_blocks) = if *is_opt_safe && opt_inner_type_id.is_some() {
                     target_type_id = opt_inner_type_id.unwrap();
@@ -2614,7 +2668,15 @@ impl<'a> LLVMCompiler2<'a> {
                 } else {
                     let Some(value_type) = self.llvm_underlying_type_by_id(&value_type_id, resolved_generics) else { todo!() };
                     let value_type = self.llvm_ptr_wrap_type_if_needed(value_type);
-                    if self.type_is_option(&value_type_id).is_some() {
+
+                    if self.llvm_type_name_by_id(&value_type_id, resolved_generics).starts_with(ENUM_TYPENAME_TAG) {
+                        let local = self.builder.build_alloca(value_type, "enum_instance_local");
+                        self.builder.build_store(
+                            self.builder.build_struct_gep(local, 0, "").unwrap(),
+                            raw_value,
+                        );
+                        self.builder.build_load(local, "")
+                    } else if self.type_is_option(&value_type_id).is_some() {
                         let ptr = self.builder.build_int_to_ptr(raw_value, self.ptr(value_type), "self");
                         self.builder.build_load(ptr, "self").as_basic_value_enum()
                     } else {
@@ -2649,7 +2711,15 @@ impl<'a> LLVMCompiler2<'a> {
                 } else {
                     let Some(value_type) = self.llvm_underlying_type_by_id(&value_type_id, resolved_generics) else { todo!() };
                     let value_type = self.llvm_ptr_wrap_type_if_needed(value_type);
-                    if self.type_is_option(&value_type_id).is_some() {
+
+                    if self.llvm_type_name_by_id(&value_type_id, resolved_generics).starts_with(ENUM_TYPENAME_TAG) {
+                        let local = self.builder.build_alloca(value_type, "enum_instance_local");
+                        self.builder.build_store(
+                            self.builder.build_struct_gep(local, 0, "").unwrap(),
+                            raw_value,
+                        );
+                        self.builder.build_load(local, "")
+                    } else if self.type_is_option(&value_type_id).is_some() || self.llvm_type_name_by_id(&value_type_id, resolved_generics).starts_with(ENUM_TYPENAME_TAG) {
                         let ptr = self.builder.build_int_to_ptr(raw_value, self.ptr(value_type), "self");
                         self.builder.build_load(ptr, "self").as_basic_value_enum()
                     } else {
@@ -2685,6 +2755,11 @@ impl<'a> LLVMCompiler2<'a> {
         } else if value_type_id == PRELUDE_BOOL_TYPE_ID {
             let value = self.builder.build_int_cast(value.as_basic_value_enum().into_int_value(), self.i64(), "bool_as_value");
             self.builder.build_store(value_slot, value);
+        } else if self.llvm_type_name_by_id(&value_type_id, resolved_generics).starts_with(ENUM_TYPENAME_TAG) {
+            let local = self.builder.build_alloca(value.as_basic_value_enum().get_type(), "enum_instance_local");
+            self.builder.build_store(local, value);
+            let enum_instance_value = self.builder.build_load(self.builder.build_struct_gep(local, 0, "").unwrap(), "");
+            self.builder.build_store(value_slot, enum_instance_value);
         } else {
             // Otherwise, value should be treated a pointer
             let ptr = if self.type_is_option(&value_type_id).is_some() {
@@ -3490,6 +3565,82 @@ impl<'a> LLVMCompiler2<'a> {
         llvm_type
     }
 
+    fn get_or_compile_enum_type_by_type_id(&self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> (StructType<'a>, Vec<StructType<'a>>) {
+        let ty = self.get_type_by_id(type_id);
+        let enum_id = match ty {
+            Type::GenericEnumInstance(enum_id, _, _) => enum_id,
+            Type::Type(TypeKind::Enum(enum_id)) => enum_id,
+            _ => unreachable!(),
+        };
+
+        let enum_ = self.project.get_enum_by_id(&enum_id);
+        debug_assert!(enum_.generic_ids.is_empty(), "generic enums not yet implemented");
+        debug_assert!(enum_.variants.iter().all(|v| matches!(v.kind, EnumVariantKind::Constant)));
+
+        let enum_type_name = self.llvm_type_name_by_id(type_id, resolved_generics);
+
+        if let Some(enum_llvm_type) = self.main_module.get_struct_type(&enum_type_name) {
+            let enum_variant_llvm_types = enum_.variants.iter()
+                .map(|v| {
+                    let enum_variant_type_name = format!("{}.{}", enum_type_name, &v.name);
+                    self.main_module.get_struct_type(&enum_variant_type_name)
+                        .expect(&format!("{enum_variant_type_name} should exist because it's defined at the same time as {enum_type_name}"))
+                })
+                .collect();
+            return (enum_llvm_type, enum_variant_llvm_types);
+        }
+
+        let enum_llvm_type = self.context.opaque_struct_type(&enum_type_name);
+        self.register_typeid(&enum_type_name);
+
+        let mut enum_variant_llvm_types = Vec::with_capacity(enum_.variants.len());
+        for variant in &enum_.variants {
+            match variant.kind {
+                EnumVariantKind::Constant => {
+                    let enum_variant_type_name = format!("{}.{}", enum_type_name, &variant.name);
+                    let enum_variant_llvm_type = self.context.opaque_struct_type(&enum_variant_type_name);
+                    self.register_typeid(&enum_variant_type_name);
+                    enum_variant_llvm_type.set_body(&[self.i64().into()], false);
+                    enum_variant_llvm_types.push(enum_variant_llvm_type);
+                }
+                EnumVariantKind::Container(_) => todo!()
+            }
+        }
+
+        enum_llvm_type.set_body(&[self.i64().into()], false);
+
+        (enum_llvm_type, enum_variant_llvm_types)
+    }
+
+    fn construct_const_enum_variant(&self, type_id: &TypeId, variant_idx: usize, resolved_generics: &ResolvedGenerics) -> BasicValueEnum<'a> {
+        let Type::Type(TypeKind::Enum(enum_id)) = self.get_type_by_id(type_id) else { todo!() };
+
+        let enum_ = self.project.get_enum_by_id(&enum_id);
+        let (enum_llvm_type, variant_llvm_types) = self.get_or_compile_enum_type_by_type_id(&type_id, &resolved_generics);
+        let variant = &enum_.variants[variant_idx];
+        let variant_llvm_type = variant_llvm_types[variant_idx];
+
+        let enum_type_name = self.llvm_type_name_by_id(type_id, resolved_generics);
+        let enum_variant_type_name = format!("{}.{}", enum_type_name, &variant.name);
+        let variant_typeid = self.get_typeid_by_name(&enum_variant_type_name);
+
+        // An enum instance is contained in 64 bits, and is represented as an unsigned 64-bit integer. The top 16 bits represent the runtime typeid
+        // which, for constant enum variants, is enough to distinguish between them. For container variants (aka tagged unions) this 64-bit integer
+        // is a pointer to the contained data; since pointers can be represented in 48 bits on modern architectures, so pointer is actually derived
+        // via `value & 0xFFFF000000000000`, and the typeid is `value >> 48`.
+        //
+        // NB: This only works if the typeid values are representable in 16 bits.
+        debug_assert!(variant_typeid <= (u16::MAX as usize));
+        let variant_value = (variant_typeid as u64) << 48;
+
+        let instance_ptr = self.builder.build_alloca(variant_llvm_type, &format!("{}_instance_ptr", &enum_variant_type_name));
+        let value_slot = self.builder.build_struct_gep(instance_ptr, 0, &format!("{}_value_slot", &enum_variant_type_name)).unwrap();
+        self.builder.build_store(value_slot, self.const_i64(variant_value));
+
+        let cast_instance_ptr = self.builder.build_cast(InstructionOpcode::BitCast, instance_ptr, self.ptr(enum_llvm_type), &format!("{}_cast", &enum_variant_type_name)).into_pointer_value();
+        self.builder.build_load(cast_instance_ptr, &format!("{}_instance", &enum_variant_type_name))
+    }
+
     fn compile_option_struct_type_by_type_id(&self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> StructType<'a> {
         let ty = self.get_type_by_id(type_id);
         let Type::GenericInstance(struct_id, generics) = ty else { todo!() };
@@ -3620,11 +3771,13 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn compile_to_string_method(&mut self, func_id: &FuncId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
-        let initializer_sig = self.llvm_function_signature(func_id, resolved_generics);
         let function = self.project.get_func_by_id(func_id);
         let FunctionKind::Method(type_id) = &function.kind else { unreachable!() };
-        let Some((struct_, _)) = self.project.get_struct_by_type_id(type_id) else { todo!() };
+        if self.project.get_enum_by_type_id(type_id).is_some() {
+            return self.compile_enum_to_string_method(type_id, func_id, resolved_generics);
+        }
 
+        let Some((struct_, _)) = self.project.get_struct_by_type_id(type_id) else { todo!() };
         if struct_.id == self.project.prelude_int_struct_id {
             return self.compile_int_to_string_method(func_id);
         } else if struct_.id == self.project.prelude_float_struct_id {
@@ -3635,8 +3788,9 @@ impl<'a> LLVMCompiler2<'a> {
             return self.compile_string_to_string_method(func_id);
         }
 
+        let fn_sig = self.llvm_function_signature(func_id, resolved_generics);
         let fn_type = self.llvm_function_type(func_id, resolved_generics);
-        let llvm_fn = self.main_module.add_function(&initializer_sig, fn_type, None);
+        let llvm_fn = self.main_module.add_function(&fn_sig, fn_type, None);
         let prev_bb = self.builder.get_insert_block().unwrap();
         let prev_fn = self.current_fn;
         self.current_fn = (llvm_fn, Some(*func_id));
@@ -3828,10 +3982,65 @@ impl<'a> LLVMCompiler2<'a> {
         llvm_fn
     }
 
+    fn compile_enum_to_string_method(&mut self, type_id: &TypeId, func_id: &FuncId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
+        let Type::GenericEnumInstance(enum_id, _, _) = self.get_type_by_id(type_id) else { unreachable!() };
+        let enum_ = self.project.get_enum_by_id(&enum_id);
+        let enum_type_name = self.llvm_type_name_by_id(type_id, resolved_generics);
+
+        let fn_sig = self.llvm_function_signature(func_id, resolved_generics);
+        let fn_type = self.llvm_function_type(func_id, resolved_generics);
+        let llvm_fn = self.main_module.add_function(&fn_sig, fn_type, None);
+        let prev_bb = self.builder.get_insert_block().unwrap();
+        let prev_fn = self.current_fn;
+        self.current_fn = (llvm_fn, Some(*func_id));
+
+        let mut params_iter = llvm_fn.get_param_iter();
+        params_iter.next().unwrap().set_name("self");
+        let llvm_self_param = llvm_fn.get_nth_param(0).unwrap();
+
+        let block = self.context.append_basic_block(llvm_fn, "");
+        self.builder.position_at_end(block);
+
+        let typeid_val = self.get_typeid_from_value(llvm_self_param);
+
+        let mut variant_cases = Vec::with_capacity(enum_.variants.len());
+        for variant in &enum_.variants {
+            let block = self.context.append_basic_block(self.current_fn.0, &format!("{}_case", &variant.name));
+            self.builder.position_at_end(block);
+            let name = format!("{}.{}", &enum_.name, &variant.name);
+            let str_val = self.builder.build_global_string_ptr(&name, "").as_pointer_value();
+            let len_val = self.const_i64(name.len() as u64);
+            let ret_val = self.construct_string(len_val, str_val);
+            self.builder.build_return(Some(&ret_val));
+
+            let enum_variant_type_name = format!("{}.{}", &enum_type_name, &variant.name);
+            let variant_typeid = self.get_typeid_by_name(&enum_variant_type_name);
+            let switch_case_val = self.const_i32(variant_typeid as u64);
+
+            variant_cases.push((switch_case_val, block));
+        }
+
+        let unreachable_block = self.context.append_basic_block(self.current_fn.0, "unreachable");
+        self.builder.position_at_end(unreachable_block);
+        self.builder.build_unreachable();
+
+        self.builder.position_at_end(block);
+        self.builder.build_switch(typeid_val, unreachable_block, variant_cases.as_slice());
+
+        self.current_fn = prev_fn;
+        self.builder.position_at_end(prev_bb);
+
+        llvm_fn
+    }
+
     fn compile_hash_method(&mut self, func_id: &FuncId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
         let fn_sig = self.llvm_function_signature(func_id, resolved_generics);
         let function = self.project.get_func_by_id(func_id);
         let FunctionKind::Method(type_id) = &function.kind else { unreachable!() };
+        if self.project.get_enum_by_type_id(type_id).is_some() {
+            return self.compile_enum_hash_method(type_id, func_id, resolved_generics);
+        }
+
         let Some((struct_, _)) = self.project.get_struct_by_type_id(type_id) else { todo!() };
 
         if struct_.id == self.project.prelude_int_struct_id {
@@ -3950,10 +4159,61 @@ impl<'a> LLVMCompiler2<'a> {
         llvm_fn
     }
 
+    fn compile_enum_hash_method(&mut self, type_id: &TypeId, func_id: &FuncId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
+        let Type::GenericEnumInstance(enum_id, _, _) = self.get_type_by_id(type_id) else { unreachable!() };
+        let enum_ = self.project.get_enum_by_id(&enum_id);
+        let enum_type_name = self.llvm_type_name_by_id(type_id, resolved_generics);
+
+        let fn_sig = self.llvm_function_signature(func_id, resolved_generics);
+        let fn_type = self.llvm_function_type(func_id, resolved_generics);
+        let llvm_fn = self.main_module.add_function(&fn_sig, fn_type, None);
+        let prev_bb = self.builder.get_insert_block().unwrap();
+        let prev_fn = self.current_fn;
+        self.current_fn = (llvm_fn, Some(*func_id));
+
+        let mut params_iter = llvm_fn.get_param_iter();
+        params_iter.next().unwrap().set_name("self");
+        let llvm_self_param = llvm_fn.get_nth_param(0).unwrap();
+
+        let block = self.context.append_basic_block(llvm_fn, "");
+        self.builder.position_at_end(block);
+
+        let typeid_val = self.get_typeid_from_value(llvm_self_param);
+
+        let mut variant_cases = Vec::with_capacity(enum_.variants.len());
+        for variant in &enum_.variants {
+            let enum_variant_type_name = format!("{}.{}", &enum_type_name, &variant.name);
+            let variant_typeid = self.get_typeid_by_name(&enum_variant_type_name);
+            let switch_case_val = self.const_i32(variant_typeid as u64);
+
+            let block = self.context.append_basic_block(self.current_fn.0, &format!("{}_case", &variant.name));
+            self.builder.position_at_end(block);
+            let variant_typeid_val = self.const_i64(variant_typeid as u64);
+            self.builder.build_return(Some(&variant_typeid_val));
+
+            variant_cases.push((switch_case_val, block));
+        }
+
+        let unreachable_block = self.context.append_basic_block(self.current_fn.0, "unreachable");
+        self.builder.position_at_end(unreachable_block);
+        self.builder.build_unreachable();
+
+        self.builder.position_at_end(block);
+        self.builder.build_switch(typeid_val, unreachable_block, variant_cases.as_slice());
+
+        self.current_fn = prev_fn;
+        self.builder.position_at_end(prev_bb);
+
+        llvm_fn
+    }
+
     fn compile_eq_method(&mut self, func_id: &FuncId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
         let fn_sig = self.llvm_function_signature(func_id, resolved_generics);
         let function = self.project.get_func_by_id(func_id);
         let FunctionKind::Method(type_id) = &function.kind else { unreachable!() };
+        if self.project.get_enum_by_type_id(type_id).is_some() {
+            return self.compile_enum_eq_method(type_id, func_id, resolved_generics);
+        }
         let Some((struct_, _)) = self.project.get_struct_by_type_id(type_id) else { todo!() };
 
         if struct_.id == self.project.prelude_int_struct_id {
@@ -4013,6 +4273,58 @@ impl<'a> LLVMCompiler2<'a> {
 
         let result = self.builder.build_load(result, "result");
         self.builder.build_return(Some(&result));
+
+        self.current_fn = prev_fn;
+        self.builder.position_at_end(prev_bb);
+
+        llvm_fn
+    }
+
+    fn compile_enum_eq_method(&mut self, type_id: &TypeId, func_id: &FuncId, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
+        let Type::GenericEnumInstance(enum_id, _, _) = self.get_type_by_id(type_id) else { unreachable!() };
+        let enum_ = self.project.get_enum_by_id(&enum_id);
+        let enum_type_name = self.llvm_type_name_by_id(type_id, resolved_generics);
+
+        let fn_sig = self.llvm_function_signature(func_id, resolved_generics);
+        let fn_type = self.llvm_function_type(func_id, resolved_generics);
+        let llvm_fn = self.main_module.add_function(&fn_sig, fn_type, None);
+        let prev_bb = self.builder.get_insert_block().unwrap();
+        let prev_fn = self.current_fn;
+        self.current_fn = (llvm_fn, Some(*func_id));
+
+        let mut params_iter = llvm_fn.get_param_iter();
+        params_iter.next().unwrap().set_name("self");
+        params_iter.next().unwrap().set_name("other");
+        let llvm_self_param = llvm_fn.get_nth_param(0).unwrap();
+        let llvm_other_param = llvm_fn.get_nth_param(1).unwrap();
+
+        let block = self.context.append_basic_block(llvm_fn, "");
+        self.builder.position_at_end(block);
+
+        let self_typeid_val = self.get_typeid_from_value(llvm_self_param);
+        let other_typeid_val = self.get_typeid_from_value(llvm_other_param);
+
+        let mut variant_cases = Vec::with_capacity(enum_.variants.len());
+        for variant in &enum_.variants {
+            let enum_variant_type_name = format!("{}.{}", &enum_type_name, &variant.name);
+            let variant_typeid = self.get_typeid_by_name(&enum_variant_type_name);
+            let switch_case_val = self.const_i32(variant_typeid as u64);
+
+            let block = self.context.append_basic_block(self.current_fn.0, &format!("{}_case", &variant.name));
+            self.builder.position_at_end(block);
+            let variant_typeid_val = self.const_i64(variant_typeid as u64);
+            let eq = self.builder.build_int_compare(IntPredicate::EQ, variant_typeid_val, other_typeid_val, "");
+            self.builder.build_return(Some(&eq));
+
+            variant_cases.push((switch_case_val, block));
+        }
+
+        let unreachable_block = self.context.append_basic_block(self.current_fn.0, "unreachable");
+        self.builder.position_at_end(unreachable_block);
+        self.builder.build_unreachable();
+
+        self.builder.position_at_end(block);
+        self.builder.build_switch(self_typeid_val, unreachable_block, variant_cases.as_slice());
 
         self.current_fn = prev_fn;
         self.builder.position_at_end(prev_bb);
@@ -4349,6 +4661,11 @@ mod tests {
     #[test]
     fn test_types() {
         run_test_file("types.abra");
+    }
+
+    #[test]
+    fn test_enums() {
+        run_test_file("enums.abra");
     }
 
     #[test]

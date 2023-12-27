@@ -1,0 +1,89 @@
+enum Color {
+  Red
+  Green
+  Blue
+
+  func hex(self): String {
+    if self == Color.Red {
+      "0xFF0000"
+    } else if self == Color.Green {
+      "0x00FF00"
+    } else if self == Color.Blue {
+      "0x0000FF"
+    } else {
+      "unreachable"
+    }
+  }
+}
+
+val r = Color.Red
+val g = Color.Green
+val b = Color.Blue
+
+// Test default toString method
+/// Expect: Color.Red
+println(r)
+/// Expect: Color.Red
+println(Color.Red)
+/// Expect: Color.Green
+println(g)
+/// Expect: Color.Green
+println(Color.Green)
+/// Expect: Color.Blue
+println(b)
+/// Expect: Color.Blue
+println(Color.Blue)
+
+// Test default hash method
+/// Expect: true
+println(r.hash() == Color.Red.hash())
+/// Expect: true
+println(g.hash() == Color.Green.hash())
+/// Expect: true
+println(b.hash() == Color.Blue.hash())
+/// Expect: false
+println(r.hash() == Color.Blue.hash())
+/// Expect: false
+println(r.hash() == Color.Green.hash())
+
+// Test default eq method
+/// Expect: true
+println(r == Color.Red)
+/// Expect: false
+println(r == Color.Green)
+/// Expect: false
+println(r == Color.Blue)
+
+// Test calling method
+/// Expect: 0xFF0000 0xFF0000
+println(Color.Red.hex(), r.hex())
+/// Expect: 0x00FF00 0x00FF00
+println(Color.Green.hex(), g.hex())
+/// Expect: 0x0000FF 0x0000FF
+println(Color.Blue.hex(), b.hex())
+
+enum Color2 {
+  Red
+  Green
+  Blue
+
+  func toString(self): String = "custom Color2#toString implementation"
+  func hash(self): Int = 17
+  func eq(self, other: Color2): Bool {
+    println("[Color2#eq] here")
+    false
+  }
+}
+
+// Test custom toString method
+/// Expect: custom Color2#toString implementation
+println(Color2.Red.toString())
+
+// Test custom hash method
+/// Expect: 17
+println(Color2.Green.hash())
+
+// Test custom eq method
+/// Expect: [Color2#eq] here
+/// Expect: false
+println(Color2.Blue == Color2.Blue)

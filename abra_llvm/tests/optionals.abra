@@ -122,3 +122,18 @@ type TestOptChainingMethodInvocation {
   /// Expect: 3
   println(t4?.closure())
 })()
+
+// Optional enum instances
+
+enum Color {
+  Red
+  Green
+  Blue
+}
+(() => {
+  val colors = [Color.Red, Color.Green, Color.Blue]
+  /// Expect: None
+  println(colors[3]?.toString())
+  /// Expect: Color.Blue
+  println(colors[2]?.toString())
+})()

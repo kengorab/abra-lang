@@ -1,10 +1,57 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-val i: Int? = 17
-
-if !i {
-  println("i is None")
+enum Color {
+  Red
+  Blue
+  Green
 }
 
-println("done")
+val colors = [Color.Red, Color.Green, Color.Blue]
+println(colors[3]?.toString())
+println(colors[2]?.toString())
+
+//enum Color {
+//  Red
+//  Blue
+//  Green
+//
+//  func hex(self): String {
+//    if self == Color.Red {
+//      "0xFF0000"
+//    } else if self == Color.Green {
+//      "0x00FF00"
+//    } else if self == Color.Blue {
+//      "0x0000FF"
+//    } else {
+//      "unreachable"
+//    }
+//  }
+//}
+//
+//val r = Color.Red
+//val b = Color.Blue
+//val g = Color.Green
+//
+////println(b)
+////r.toString()
+////b.hash()
+//
+////r == r
+//
+////func hex(color: Color): String {
+////  if color == Color.Red {
+////    "0xFF0000"
+////  } else if color == Color.Green {
+////    "0x00FF00"
+////  } else if color == Color.Blue {
+////    "0x0000FF"
+////  } else {
+////    "unreachable"
+////  }
+////}
+//
+////hex(b)
+//
+//r.hex()
+//

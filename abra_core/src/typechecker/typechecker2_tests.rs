@@ -2624,7 +2624,13 @@ fn typecheck_enum_declaration() {
     ").unwrap();
     let module = &project.modules[1];
     let enum_id = EnumId(ModuleId(1), 0);
-    let baz_func_id = FuncId(ScopeId(ModuleId(1), 1), 0);
+    let baz_func_id = FuncId(ScopeId(ModuleId(1), 1), 3);
+    let tostring_func_id = FuncId(ScopeId(ModuleId(1), 1), 0);
+    assert_eq!("toString", project.get_func_by_id(&tostring_func_id).name);
+    let hash_func_id = FuncId(ScopeId(ModuleId(1), 1), 1);
+    assert_eq!("hash", project.get_func_by_id(&hash_func_id).name);
+    let eq_func_id = FuncId(ScopeId(ModuleId(1), 1), 2);
+    assert_eq!("eq", project.get_func_by_id(&eq_func_id).name);
     let expected = vec![
         Enum {
             id: enum_id,
@@ -2637,7 +2643,7 @@ fn typecheck_enum_declaration() {
                 EnumVariant { name: "Bar".to_string(), defined_span: Span::new(ModuleId(1), (2, 1), (2, 3)), kind: EnumVariantKind::Constant },
                 EnumVariant { name: "Baz".to_string(), defined_span: Span::new(ModuleId(1), (3, 1), (3, 3)), kind: EnumVariantKind::Container(baz_func_id) },
             ],
-            methods: vec![],
+            methods: vec![tostring_func_id, hash_func_id, eq_func_id],
             static_methods: vec![],
         }
     ];
@@ -2684,7 +2690,7 @@ fn typecheck_enum_declaration() {
         captured_vars: vec![],
         captured_closures: vec![],
     };
-    assert_eq!(baz_variant_func, module.scopes[1].funcs[0]);
+    assert_eq!(baz_variant_func, module.scopes[1].funcs[3]);
 }
 
 #[test]

@@ -696,9 +696,13 @@ impl Type {
     }
 
     pub fn get_method(&self, project: &Project, method_idx: usize) -> Option<FuncId> {
-        let Some(struct_id) = self.get_struct_id(project) else { return None; };
-
-        Some(project.get_struct_by_id(&struct_id).methods[method_idx])
+        if let Some(struct_id) = self.get_struct_id(project) {
+            Some(project.get_struct_by_id(&struct_id).methods[method_idx])
+        } else if let Type::GenericEnumInstance(enum_id, _, _) = self {
+            Some(project.get_enum_by_id(enum_id).methods[method_idx])
+        } else {
+            return None;
+        }
     }
 
     pub fn get_static_method(&self, project: &Project, static_method_idx: usize) -> Option<FuncId> {
@@ -712,10 +716,16 @@ impl Type {
     }
 
     pub fn find_method_by_name<'a, S: AsRef<str>>(&self, project: &'a Project, method_name: S) -> Option<(usize, &'a FuncId)> {
-        let Some(struct_id) = self.get_struct_id(project) else { return None; };
-
         let method_name = method_name.as_ref();
-        project.get_struct_by_id(&struct_id).methods.iter().enumerate().find(|(_, m)| &project.get_func_by_id(m).name == method_name)
+        let methods = if let Some(struct_id) = self.get_struct_id(project) {
+            &project.get_struct_by_id(&struct_id).methods
+        } else if let Type::GenericEnumInstance(enum_id, _, _) = self {
+            &project.get_enum_by_id(enum_id).methods
+        } else {
+            return None;
+        };
+
+        methods.iter().enumerate().find(|(_, m)| &project.get_func_by_id(m).name == method_name)
     }
 
     fn get_struct_id(&self, project: &Project) -> Option<StructId> {
@@ -3558,6 +3568,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let EnumDeclNode { variants, methods, .. } = node;
 
         let enum_ = self.project.get_enum_by_id(enum_id);
+        let self_type_id = enum_.self_type_id;
 
         self.current_scope_id = enum_.enum_scope_id;
         self.current_type_decl = Some(enum_.self_type_id);
@@ -3579,12 +3590,23 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.project.get_enum_by_id_mut(enum_id).variants.push(variant);
         }
 
+        let mut tostring_func_id = None;
+        let mut hash_func_id = None;
+        let mut eq_func_id = None;
         for method in methods {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: an enum's methods must be of type AstNode::FunctionDecl") };
             let func_id = self.typecheck_function_pass_0(decl_node)?;
 
             let is_method = decl_node.args.get(0).map(|(token, _, _, _)| matches!(token, Token::Self_(_))).unwrap_or(false);
             if is_method {
+                if Token::get_ident_name(&decl_node.name) == "toString" {
+                    tostring_func_id = Some(func_id);
+                } else if Token::get_ident_name(&decl_node.name) == "hash" {
+                    hash_func_id = Some(func_id);
+                } else if Token::get_ident_name(&decl_node.name) == "eq" {
+                    eq_func_id = Some(func_id);
+                }
+
                 self.project.get_enum_by_id_mut(enum_id).methods.push(func_id);
             } else {
                 let enum_ = self.project.get_enum_by_id(&enum_id);
@@ -3599,6 +3621,79 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             self.typecheck_function_pass_1(&func_id, decl_node, true)?;
         }
+
+        let tostring_func_id = if let Some(func_id) = tostring_func_id {
+            let tostring_func_idx = self.project.get_enum_by_id(enum_id).methods.iter().find_position(|m| m == &&func_id).unwrap().0;
+            self.project.get_enum_by_id_mut(enum_id).methods.remove(tostring_func_idx);
+            func_id
+        } else {
+            let string_type_id = self.add_or_find_type_id(Type::Primitive(PrimitiveType::String));
+            let tostring_func_id = self.add_function_to_current_scope(
+                ScopeId::BOGUS,
+                &Token::Ident(POSITION_BOGUS, "toString".to_string()),
+                vec![],
+                true,
+                vec![
+                    FunctionParam { name: "self".to_string(), type_id: self_type_id, var_id: VarId::BOGUS, defined_span: None, default_value: None, is_variadic: false, is_incomplete: false }
+                ],
+                string_type_id,
+            )?;
+            self.project.get_func_by_id_mut(&tostring_func_id).defined_span = None;
+            let func = self.project.get_func_by_id(&tostring_func_id);
+            let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+            self.project.get_func_by_id_mut(&tostring_func_id).fn_type_id = fn_type_id;
+            tostring_func_id
+        };
+        self.project.get_enum_by_id_mut(enum_id).methods.insert(METHOD_IDX_TOSTRING, tostring_func_id);
+
+        let hash_func_id = if let Some(func_id) = hash_func_id {
+            let hash_func_idx = self.project.get_enum_by_id(enum_id).methods.iter().find_position(|m| m == &&func_id).unwrap().0;
+            self.project.get_enum_by_id_mut(enum_id).methods.remove(hash_func_idx);
+            func_id
+        } else {
+            let int_type_id = self.add_or_find_type_id(Type::Primitive(PrimitiveType::Int));
+            let hash_func_id = self.add_function_to_current_scope(
+                ScopeId::BOGUS,
+                &Token::Ident(POSITION_BOGUS, "hash".to_string()),
+                vec![],
+                true,
+                vec![
+                    FunctionParam { name: "self".to_string(), type_id: self_type_id, var_id: VarId::BOGUS, defined_span: None, default_value: None, is_variadic: false, is_incomplete: false }
+                ],
+                int_type_id,
+            )?;
+            self.project.get_func_by_id_mut(&hash_func_id).defined_span = None;
+            let func = self.project.get_func_by_id(&hash_func_id);
+            let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+            self.project.get_func_by_id_mut(&hash_func_id).fn_type_id = fn_type_id;
+            hash_func_id
+        };
+        self.project.get_enum_by_id_mut(enum_id).methods.insert(METHOD_IDX_HASH, hash_func_id);
+
+        let eq_func_id = if let Some(func_id) = eq_func_id {
+            let eq_func_idx = self.project.get_enum_by_id(enum_id).methods.iter().find_position(|m| m == &&func_id).unwrap().0;
+            self.project.get_enum_by_id_mut(enum_id).methods.remove(eq_func_idx);
+            func_id
+        } else {
+            let bool_type_id = self.add_or_find_type_id(Type::Primitive(PrimitiveType::Bool));
+            let eq_func_id = self.add_function_to_current_scope(
+                ScopeId::BOGUS,
+                &Token::Ident(POSITION_BOGUS, "eq".to_string()),
+                vec![],
+                true,
+                vec![
+                    FunctionParam { name: "self".to_string(), type_id: self_type_id, var_id: VarId::BOGUS, defined_span: None, default_value: None, is_variadic: false, is_incomplete: false },
+                    FunctionParam { name: "other".to_string(), type_id: self_type_id, var_id: VarId::BOGUS, defined_span: None, default_value: None, is_variadic: false, is_incomplete: false },
+                ],
+                bool_type_id,
+            )?;
+            self.project.get_func_by_id_mut(&eq_func_id).defined_span = None;
+            let func = self.project.get_func_by_id(&eq_func_id);
+            let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+            self.project.get_func_by_id_mut(&eq_func_id).fn_type_id = fn_type_id;
+            eq_func_id
+        };
+        self.project.get_enum_by_id_mut(enum_id).methods.insert(METHOD_IDX_EQ, eq_func_id);
 
         self.current_type_decl = None;
 
@@ -3640,7 +3735,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
         }
 
-        let mut method_func_id_idx = 0;
+        let mut method_func_id_idx = 3;
         let mut static_method_func_id_idx = 0;
         for method in methods.into_iter() {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: an enum's methods must be of type AstNode::FunctionDecl") };
@@ -3648,8 +3743,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             let enum_ = self.project.get_enum_by_id(&enum_id);
             let func_id = if is_method {
-                method_func_id_idx += 1;
-                enum_.methods[method_func_id_idx - 1]
+                if Token::get_ident_name(&decl_node.name) == "toString" {
+                    enum_.methods[METHOD_IDX_TOSTRING]
+                } else if Token::get_ident_name(&decl_node.name) == "hash" {
+                    enum_.methods[METHOD_IDX_HASH]
+                } else if Token::get_ident_name(&decl_node.name) == "eq" {
+                    enum_.methods[METHOD_IDX_EQ]
+                } else {
+                    method_func_id_idx += 1;
+                    enum_.methods[method_func_id_idx - 1]
+                }
             } else {
                 static_method_func_id_idx += 1;
                 enum_.static_methods[static_method_func_id_idx - 1]
