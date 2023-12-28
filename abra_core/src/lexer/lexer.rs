@@ -126,6 +126,7 @@ impl<'a> Lexer<'a> {
                 let v = match ch {
                     '0'..='9' => (ch as u8) - b'0',
                     'a'..='f' => (ch as u8) - b'a' + 10,
+                    'A'..='F' => (ch as u8) - b'A' + 10,
                     _ => break
                 };
 
@@ -136,7 +137,7 @@ impl<'a> Lexer<'a> {
             return Ok(Some(Token::Int(pos, val)));
         } else if ch == '0' && self.peek() == Some(&'b') {
             let pos = Position::new(self.line, self.col);
-            self.expect_next()?; // Consume 'x'
+            self.expect_next()?; // Consume 'b'
 
             let mut val = 0i64;
             while let Some(&ch) = self.peek() {
