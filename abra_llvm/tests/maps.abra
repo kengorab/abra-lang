@@ -71,7 +71,7 @@
 // Map#entries
 (() => {
   val map1 = { a: 1, b: 2 }
-  /// Expect: #{(b, 2), (a, 1)}
+  /// Expect: #{("b", 2), ("a", 1)}
   println(map1.entries())
 
   val map2 = { ((1, 1)): true, ((0, 1)): false }
@@ -84,11 +84,11 @@
   val m = { a: 1, b: 2, c: 3 }
   val iter = m.iterator()
 
-  /// Expect: (c, 3)
+  /// Expect: ("c", 3)
   println(iter.next())
-  /// Expect: (b, 2)
+  /// Expect: ("b", 2)
   println(iter.next())
-  /// Expect: (a, 1)
+  /// Expect: ("a", 1)
   println(iter.next())
   /// Expect: None
   println(iter.next())
@@ -97,9 +97,9 @@
 })()
 
 // For-loops
-/// Expect: (c, 3) 0
-/// Expect: (b, 2) 1
-/// Expect: (a, 1) 2
+/// Expect: ("c", 3) 0
+/// Expect: ("b", 2) 1
+/// Expect: ("a", 1) 2
 for ch, idx in { a: 1, b: 2, c: 3 } { println(ch, idx) }
 
 // Map#containsKey

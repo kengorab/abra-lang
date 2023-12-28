@@ -5,53 +5,22 @@ enum Color {
   Red
   Blue
   Green
+  RGB(r: Int, g: Int, b: Int)
+
+  func hex(self): String {
+    if self == Color.Red {
+      "0xFF0000"
+    } else if self == Color.Green {
+      "0x00FF00"
+    } else if self == Color.Blue {
+      "0x0000FF"
+    } else {
+      "todo"
+    }
+  }
 }
 
-val colors = [Color.Red, Color.Green, Color.Blue]
-println(colors[3]?.toString())
-println(colors[2]?.toString())
+//val black = Color.RGB(r: 1, g: 2, b: 3)
+//black.hash()
 
-//enum Color {
-//  Red
-//  Blue
-//  Green
-//
-//  func hex(self): String {
-//    if self == Color.Red {
-//      "0xFF0000"
-//    } else if self == Color.Green {
-//      "0x00FF00"
-//    } else if self == Color.Blue {
-//      "0x0000FF"
-//    } else {
-//      "unreachable"
-//    }
-//  }
-//}
-//
-//val r = Color.Red
-//val b = Color.Blue
-//val g = Color.Green
-//
-////println(b)
-////r.toString()
-////b.hash()
-//
-////r == r
-//
-////func hex(color: Color): String {
-////  if color == Color.Red {
-////    "0xFF0000"
-////  } else if color == Color.Green {
-////    "0x00FF00"
-////  } else if color == Color.Blue {
-////    "0x0000FF"
-////  } else {
-////    "unreachable"
-////  }
-////}
-//
-////hex(b)
-//
-//r.hex()
-//
+Color.Red == Color.Green
