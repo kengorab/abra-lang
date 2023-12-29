@@ -34,6 +34,7 @@
   }
 
   // With case binding and _no_ `None` case
+
   /// Expect: value: 2
   match arr[1] {
     _ v => println("value: ${v}")
@@ -41,6 +42,49 @@
   /// Expect: value: None
   match arr[14] {
     _ v => println("value: ${v}")
+  }
+
+  // With constant cases
+
+  /// Expect: 18
+  match arr[1] {
+    2 v => println(16 + v)
+    1 => println(15)
+    None => println(-4)
+    _ => println(100)
+  }
+  /// Expect: 18
+  match arr[1] {
+    None => println(-4)
+    2 v => println(16 + v)
+    1 => println(15)
+    _ => println(100)
+  }
+  /// Expect: 18
+  match arr[1] {
+    2 v => println(16 + v)
+    1 => println(15)
+    _ => println(100)
+  }
+  /// Expect: -4
+  match arr[5] {
+    2 v => println(16 + v)
+    1 => println(15)
+    None => println(-4)
+    _ => println(100)
+  }
+  /// Expect: -4
+  match arr[5] {
+    None => println(-4)
+    2 v => println(16 + v)
+    1 => println(15)
+    _ => println(100)
+  }
+  /// Expect: 100
+  match arr[5] {
+    2 v => println(16 + v)
+    1 => println(15)
+    _ => println(100)
   }
 })()
 

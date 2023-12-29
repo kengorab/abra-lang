@@ -25,18 +25,11 @@
 //
 //Color.Red == Color.Green
 
-func foo(): Int {
-  val arr = [1, 2, 3]
-  val i = 4
-  match arr[i] {
-    //None v => println("Got: ${v}")
-    _ v => println("Got: ${v}")
-  }
-  val n = match arr[i] {
-    None => return -4
-    _ => 100
-  }
-  n
+val arr = [1, 2, 3, 4]
+val n = match arr[1] {
+  None => -4
+  2 v => 16 + v
+  1 => 15
+  _ => 100
 }
-
-foo()
+n

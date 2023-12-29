@@ -2647,8 +2647,8 @@ impl<'a> LLVMCompiler2<'a> {
                 TypedMatchCaseKind::None => {
                     seen_none_case = true;
                     let is_none_bb = self.context.append_basic_block(self.current_fn.0, "is_none");
-                    let else_bb = self.context.append_basic_block(self.current_fn.0, "is_not_none");
-                    self.builder.build_conditional_branch(data_is_set, else_bb, is_none_bb);
+                    let next_case_bb = self.context.append_basic_block(self.current_fn.0, "next_case");
+                    self.builder.build_conditional_branch(data_is_set, next_case_bb, is_none_bb);
 
                     self.builder.position_at_end(is_none_bb);
                     if let Some(var_id) = &case.case_binding {
@@ -2675,7 +2675,7 @@ impl<'a> LLVMCompiler2<'a> {
                         self.builder.build_unconditional_branch(end_bb);
                     }
 
-                    self.builder.position_at_end(else_bb);
+                    self.builder.position_at_end(next_case_bb);
                 }
                 TypedMatchCaseKind::Wildcard(_) => {
                     if let Some(var_id) = &case.case_binding {
@@ -2703,7 +2703,54 @@ impl<'a> LLVMCompiler2<'a> {
                     }
                 }
                 TypedMatchCaseKind::Type(_, _) => todo!(),
-                TypedMatchCaseKind::Constant(_, _) => todo!(),
+                TypedMatchCaseKind::Constant(constant_node_type_id, constant_node) => {
+                    let next_case_bb = self.context.append_basic_block(self.current_fn.0, "next_case");
+
+                    let target_type_id = if let Some(inner_type_id) = self.type_is_option(target_type_id) {
+                        if !seen_none_case {
+                            let cont_bb = self.context.append_basic_block(self.current_fn.0, "cont");
+
+                            self.builder.build_conditional_branch(data_is_set, cont_bb, next_case_bb);
+                            self.builder.position_at_end(cont_bb);
+                        }
+
+                        inner_type_id
+                    } else {
+                        *target_type_id
+                    };
+
+                    let is_eq_bb = self.context.append_basic_block(self.current_fn.0, "is_eq");
+                    let constant_value = self.visit_expression(constant_node, &resolved_generics).unwrap();
+                    let eq = self.compile_eq(false, &target_type_id, data, constant_node_type_id, constant_value, &resolved_generics);
+                    self.builder.build_conditional_branch(eq, is_eq_bb, next_case_bb);
+
+                    self.builder.position_at_end(is_eq_bb);
+                    if let Some(var_id) = &case.case_binding {
+                        let expr_val = data;
+                        let var = self.project.get_var_by_id(var_id);
+                        let pat = BindingPattern::Variable(Token::Ident(var.defined_span.as_ref().unwrap().range.start.clone(), var.name.clone()));
+                        self.compile_binding_declaration(&pat, &vec![*var_id], Some(expr_val), &resolved_generics);
+                    }
+
+                    let mut case_value = None;
+                    let case_body_len = case.body.len();
+                    for (idx, node) in case.body.iter().enumerate() {
+                        if idx == case_body_len - 1 {
+                            case_value = self.visit_statement(node, &resolved_generics);
+                        } else {
+                            self.visit_statement(node, &resolved_generics);
+                        }
+                    }
+                    if case.block_terminator.is_none() {
+                        if let Some(result_slot) = result_slot {
+                            let case_value = case_value.expect("If we're able to treat the match as an expression, then the resulting value exists");
+                            self.builder.build_store(result_slot, case_value);
+                        }
+                        self.builder.build_unconditional_branch(end_bb);
+                    }
+
+                    self.builder.position_at_end(next_case_bb);
+                }
             }
         }
 
