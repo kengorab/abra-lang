@@ -15,7 +15,7 @@ use inkwell::values::{BasicValue, BasicValueEnum, CallableValue, FloatValue, Fun
 use itertools::Itertools;
 use abra_core::lexer::tokens::{POSITION_BOGUS, Token};
 use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
-use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, EnumId, EnumVariantKind, FuncId, Function, FunctionKind, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
+use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, EnumId, EnumVariantKind, FuncId, Function, FunctionKind, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedMatchCaseKind, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
 
 const ABRA_MAIN_FN_NAME: &str = "_abra_main";
 
@@ -596,7 +596,7 @@ impl<'a> LLVMCompiler2<'a> {
         }
     }
 
-    fn get_typeid_from_value(&self, value: BasicValueEnum<'a>) -> (IntValue<'a>, /* local: */ Option<PointerValue<'a>>) {
+    fn get_typeid_from_value(&self, value: BasicValueEnum<'a>, local: Option<PointerValue<'a>>) -> (IntValue<'a>, /* local: */ Option<PointerValue<'a>>) {
         if value.is_int_value() {
             let value = if value.get_type().into_int_type().get_bit_width() == 1 {
                 self.const_i32(RUNTIME_TYPEID_BOOL as u64)
@@ -612,15 +612,25 @@ impl<'a> LLVMCompiler2<'a> {
             let value = self.builder.build_load(typeid_slot, "typeid").into_int_value();
             (value, None)
         } else if value.get_type().is_struct_type() && value.get_type().into_struct_type().get_name().unwrap().to_str().unwrap().starts_with(ENUM_TYPENAME_TAG) {
-            let local = self.builder.build_alloca(value.get_type(), "local");
-            self.builder.build_store(local, value);
+            let local = if let Some(local) = local {
+                local
+            } else {
+                let local = self.builder.build_alloca(value.get_type(), "local");
+                self.builder.build_store(local, value);
+                local
+            };
             let value_slot = self.builder.build_struct_gep(local, 0, "").unwrap();
             let value = self.builder.build_load(value_slot, "").into_int_value();
             let value = self.builder.build_right_shift(value, self.const_i64(48), false, "");
             (value, Some(local))
         } else {
-            let local = self.builder.build_alloca(value.get_type(), "local");
-            self.builder.build_store(local, value);
+            let local = if let Some(local) = local {
+                local
+            } else {
+                let local = self.builder.build_alloca(value.get_type(), "local");
+                self.builder.build_store(local, value);
+                local
+            };
             let typeid_slot = self.builder.build_struct_gep(local, 0, "typeid_slot").unwrap();
             let value = self.builder.build_load(typeid_slot, "typeid").into_int_value();
             (value, Some(local))
@@ -1010,7 +1020,7 @@ impl<'a> LLVMCompiler2<'a> {
     fn visit_statement(&mut self, node: &TypedNode, resolved_generics: &ResolvedGenerics) -> Option<BasicValueEnum<'a>> {
         match node {
             node @ TypedNode::If { .. } => self.visit_if_node(node, resolved_generics),
-            TypedNode::Match { .. } => todo!(),
+            TypedNode::Match { .. } => self.visit_match_node(node, resolved_generics),
             TypedNode::FuncDeclaration(func_id) => {
                 let function = self.project.get_func_by_id(func_id);
                 if function.is_closure() {
@@ -2436,6 +2446,7 @@ impl<'a> LLVMCompiler2<'a> {
                 }
             }
             node @ TypedNode::If { .. } => self.visit_if_node(node, resolved_generics),
+            node @ TypedNode::Match { .. } => self.visit_match_node(node, resolved_generics),
             _ => unreachable!("Node {:?} is not an expression and should have been handled in visit_statement", node)
         }
     }
@@ -2596,6 +2607,113 @@ impl<'a> LLVMCompiler2<'a> {
             } else {
                 Some(phi_value)
             }
+        }
+    }
+
+    fn visit_match_node(&mut self, if_node: &TypedNode, resolved_generics: &ResolvedGenerics) -> Option<BasicValueEnum<'a>> {
+        let TypedNode::Match { is_statement, target, cases, type_id, .. } = if_node else { unreachable!() };
+
+        let target_type_id = target.type_id();
+        let resolved_generics = self.extend_resolved_generics_via_instance(resolved_generics, target_type_id);
+        let target_value = self.visit_expression(target, &resolved_generics).unwrap();
+        let target_local = self.builder.build_alloca(target_value.get_type(), "match_target_local");
+        self.builder.build_store(target_local, target_value);
+
+        // let (typeid_val, _) = self.get_typeid_from_value(target_value, Some(target_local));
+
+        let match_target_is_option_type = self.type_is_option(target_type_id).is_some();
+        let (data_is_set, data) = if match_target_is_option_type {
+            (self.option_instance_get_is_set(target_local), self.option_instance_get_value(target_local))
+        } else {
+            (self.const_bool(true), target_value)
+        };
+
+        let end_bb = self.context.append_basic_block(self.current_fn.0, "match_end");
+
+        let result_slot = if !*is_statement {
+            let Some(llvm_type) = self.llvm_underlying_type_by_id(type_id, &resolved_generics) else { todo!() };
+            let llvm_type = self.llvm_ptr_wrap_type_if_needed(llvm_type);
+
+            let result = self.builder.build_alloca(llvm_type, "match_result");
+            self.builder.build_store(result, llvm_type.const_zero());
+            Some(result)
+        } else {
+            None
+        };
+
+        let mut seen_none_case = false;
+        for case in cases {
+            match &case.kind {
+                TypedMatchCaseKind::None => {
+                    seen_none_case = true;
+                    let is_none_bb = self.context.append_basic_block(self.current_fn.0, "is_none");
+                    let else_bb = self.context.append_basic_block(self.current_fn.0, "is_not_none");
+                    self.builder.build_conditional_branch(data_is_set, else_bb, is_none_bb);
+
+                    self.builder.position_at_end(is_none_bb);
+                    if let Some(var_id) = &case.case_binding {
+                        let expr_val = target_value;
+                        let var = self.project.get_var_by_id(var_id);
+                        let pat = BindingPattern::Variable(Token::Ident(var.defined_span.as_ref().unwrap().range.start.clone(), var.name.clone()));
+                        self.compile_binding_declaration(&pat, &vec![*var_id], Some(expr_val), &resolved_generics);
+                    }
+
+                    let mut case_value = None;
+                    let case_body_len = case.body.len();
+                    for (idx, node) in case.body.iter().enumerate() {
+                        if idx == case_body_len - 1 {
+                            case_value = self.visit_statement(node, &resolved_generics);
+                        } else {
+                            self.visit_statement(node, &resolved_generics);
+                        }
+                    }
+                    if case.block_terminator.is_none() {
+                        if let Some(result_slot) = result_slot {
+                            let case_value = case_value.expect("If we're able to treat the match as an expression, then the resulting value exists");
+                            self.builder.build_store(result_slot, case_value);
+                        }
+                        self.builder.build_unconditional_branch(end_bb);
+                    }
+
+                    self.builder.position_at_end(else_bb);
+                }
+                TypedMatchCaseKind::Wildcard(_) => {
+                    if let Some(var_id) = &case.case_binding {
+                        let expr_val = if match_target_is_option_type && seen_none_case { data } else { target_value };
+                        let var = self.project.get_var_by_id(var_id);
+                        let pat = BindingPattern::Variable(Token::Ident(var.defined_span.as_ref().unwrap().range.start.clone(), var.name.clone()));
+                        self.compile_binding_declaration(&pat, &vec![*var_id], Some(expr_val), &resolved_generics);
+                    }
+
+                    let mut case_value = None;
+                    let case_body_len = case.body.len();
+                    for (idx, node) in case.body.iter().enumerate() {
+                        if idx == case_body_len - 1 {
+                            case_value = self.visit_statement(node, &resolved_generics);
+                        } else {
+                            self.visit_statement(node, &resolved_generics);
+                        }
+                    }
+                    if case.block_terminator.is_none() {
+                        if let Some(result_slot) = result_slot {
+                            let case_value = case_value.expect("If we're able to treat the match as an expression, then the resulting value exists");
+                            self.builder.build_store(result_slot, case_value);
+                        }
+                        self.builder.build_unconditional_branch(end_bb);
+                    }
+                }
+                TypedMatchCaseKind::Type(_, _) => todo!(),
+                TypedMatchCaseKind::Constant(_, _) => todo!(),
+            }
+        }
+
+        self.builder.position_at_end(end_bb);
+
+        if let Some(result_slot) = result_slot {
+            let result = self.builder.build_load(result_slot, "match_result_final");
+            Some(result)
+        } else {
+            None
         }
     }
 
@@ -4029,7 +4147,7 @@ impl<'a> LLVMCompiler2<'a> {
         let block = self.context.append_basic_block(llvm_fn, "");
         self.builder.position_at_end(block);
 
-        let (typeid_val, intermediate_local) = self.get_typeid_from_value(llvm_self_param);
+        let (typeid_val, intermediate_local) = self.get_typeid_from_value(llvm_self_param, None);
 
         let mut variant_cases = Vec::with_capacity(enum_.variants.len());
         for (idx, variant) in enum_.variants.iter().enumerate() {
@@ -4229,7 +4347,7 @@ impl<'a> LLVMCompiler2<'a> {
         let block = self.context.append_basic_block(llvm_fn, "");
         self.builder.position_at_end(block);
 
-        let (typeid_val, intermediate_local) = self.get_typeid_from_value(llvm_self_param);
+        let (typeid_val, intermediate_local) = self.get_typeid_from_value(llvm_self_param, None);
 
         let mut variant_cases = Vec::with_capacity(enum_.variants.len());
         for (idx, variant) in enum_.variants.iter().enumerate() {
@@ -4374,8 +4492,8 @@ impl<'a> LLVMCompiler2<'a> {
         let block = self.context.append_basic_block(llvm_fn, "");
         self.builder.position_at_end(block);
 
-        let (self_typeid_val, self_intermediate_local) = self.get_typeid_from_value(llvm_self_param);
-        let (other_typeid_val, other_intermediate_local) = self.get_typeid_from_value(llvm_other_param);
+        let (self_typeid_val, self_intermediate_local) = self.get_typeid_from_value(llvm_self_param, None);
+        let (other_typeid_val, other_intermediate_local) = self.get_typeid_from_value(llvm_other_param, None);
 
         let mut variant_cases = Vec::with_capacity(enum_.variants.len());
         for (idx, variant) in enum_.variants.iter().enumerate() {
@@ -4777,6 +4895,11 @@ mod tests {
     #[test]
     fn test_ifs() {
         run_test_file("ifs.abra");
+    }
+
+    #[test]
+    fn test_match() {
+        run_test_file("match.abra");
     }
 
     #[test]

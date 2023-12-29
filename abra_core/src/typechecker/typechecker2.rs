@@ -782,7 +782,7 @@ pub enum TerminatorKind {
     Returning,
 }
 
-fn compound_terminator_kinds(tk1: Option<TerminatorKind>, tk2: Option<TerminatorKind>) -> Option<TerminatorKind> {
+fn compound_terminator_kinds(tk1: &Option<TerminatorKind>, tk2: &Option<TerminatorKind>) -> Option<TerminatorKind> {
     match (tk1, tk2) {
         (Some(TerminatorKind::Returning), Some(TerminatorKind::Returning)) => Some(TerminatorKind::Returning),
         (Some(TerminatorKind::NonReturning), Some(_)) | (Some(_), Some(TerminatorKind::NonReturning)) => Some(TerminatorKind::NonReturning),
@@ -933,8 +933,25 @@ pub enum AssignmentKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum TypedMatchCaseArgument {
+    Pattern(BindingPattern),
+    Literal(TypedNode),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypedMatchCaseKind {
+    None,
+    Wildcard(TypeId),
+    Type(TypeId, Vec<TypedMatchCaseArgument>),
+    Constant(TypeId, TypedNode),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct TypedMatchCase {
     pub body: Vec<TypedNode>,
+    pub kind: TypedMatchCaseKind,
+    pub case_binding: Option<VarId>,
+    pub block_terminator: Option<TerminatorKind>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -956,7 +973,7 @@ pub enum TypedNode {
     Lambda { span: Range, func_id: FuncId, type_id: TypeId, resolved_type_id: TypeId },
     Assignment { span: Range, kind: AssignmentKind, type_id: TypeId, expr: Box<TypedNode> },
     If { if_token: Token, condition: Box<TypedNode>, condition_binding: Option<(BindingPattern, Vec<VarId>)>, if_block: Vec<TypedNode>, if_block_terminator: Option<TerminatorKind>, else_block: Vec<TypedNode>, else_block_terminator: Option<TerminatorKind>, is_statement: bool, type_id: TypeId, resolved_type_id: TypeId },
-    Match { match_token: Token, target: Box<TypedNode>, cases: Vec<TypedMatchCase>, is_statement: bool, type_id: TypeId },
+    Match { match_token: Token, target: Box<TypedNode>, cases: Vec<TypedMatchCase>, is_statement: bool, type_id: TypeId, resolved_type_id: TypeId },
 
     // Statements
     FuncDeclaration(FuncId),
@@ -1019,8 +1036,8 @@ impl TypedNode {
             TypedNode::Grouped { expr, .. } => expr.set_resolved_type_id(new_type_id),
             TypedNode::Array { resolved_type_id, .. } => *resolved_type_id = new_type_id,
             TypedNode::Tuple { resolved_type_id, .. } => *resolved_type_id = new_type_id,
-            TypedNode::Set { .. } |
-            TypedNode::Map { .. } => todo!(),
+            TypedNode::Set { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::Map { resolved_type_id, .. } => *resolved_type_id = new_type_id,
             TypedNode::Identifier { resolved_type_id, .. } => *resolved_type_id = new_type_id,
             TypedNode::NoneValue { resolved_type_id, .. } => *resolved_type_id = new_type_id,
             TypedNode::Invocation { resolved_type_id, .. } => *resolved_type_id = new_type_id,
@@ -4219,7 +4236,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             type_id = Some(self.add_or_find_type_id(self.project.option_type(*hint_type_id, true)));
         }
 
-        self.current_scope_mut().terminator = compound_terminator_kinds(if_block_terminator, else_block_terminator);
+        self.current_scope_mut().terminator = compound_terminator_kinds(&if_block_terminator, &else_block_terminator);
 
         let type_id = if is_statement {
             PRELUDE_UNIT_TYPE_ID
@@ -4296,7 +4313,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.begin_child_scope(&format!("match_case_{}", match_case_idx), ScopeKind::Match);
 
             let case_type_id;
-            match match_type {
+            let kind = match match_type {
                 MatchCaseType::None(none_token) => {
                     let Some(unwrapped_type) = self.project.type_is_option(&target_type_id) else {
                         let kind = UnreachableMatchCaseKind::NoTypeOverlap { case_type: None, target_type: target_type_id, target_span: self.make_span(&typed_target.span()) };
@@ -4310,7 +4327,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     seen_none_token = Some(none_token);
                     none_case_covered = true;
 
-                    case_type_id = self.project.prelude_none_type_id;
+                    case_type_id = target_type_id;
+
+                    TypedMatchCaseKind::None
                 }
                 MatchCaseType::Ident(ident_token, args) => {
                     if let Some(destructured_arg) = args.as_ref().and_then(|args| args.first()) {
@@ -4335,6 +4354,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
 
                     case_type_id = resolved_case_type_id;
+
+                    TypedMatchCaseKind::Type(resolved_case_type_id, vec![])
                 }
                 MatchCaseType::Compound(path_tokens, args) => {
                     debug_assert!(args.is_none(), "Destructuring enum variants not implemented yet");
@@ -4370,6 +4391,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
 
                     case_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_.id, generic_ids.clone(), Some(variant_idx)));
+
+                    TypedMatchCaseKind::Type(case_type_id, vec![])
                 }
                 MatchCaseType::Wildcard(wildcard_token) => {
                     if let Some(seen_wildcard_token) = seen_wildcard_token {
@@ -4377,7 +4400,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                     seen_wildcard_token = Some(wildcard_token);
                     all_cases_covered = true;
-                    case_type_id = target_type_id;
+                    case_type_id = match self.project.type_is_option(&target_type_id) {
+                        Some(inner_type_id) if none_case_covered => inner_type_id,
+                        _ => target_type_id
+                    };
+
+                    TypedMatchCaseKind::Wildcard(target_type_id)
                 }
                 MatchCaseType::Constant(const_node) => {
                     let typed_const_node = self.typecheck_expression(const_node, None)?;
@@ -4386,7 +4414,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let kind = UnreachableMatchCaseKind::NoTypeOverlap { case_type: Some(node_type_id), target_type: target_type_id, target_span: self.make_span(&typed_target.span()) };
                         return Err(TypeError::UnreachableMatchCase { span: self.make_span(&typed_const_node.span()), kind });
                     }
-                    let TypedNode::Literal { token: const_token, value: const_val, .. } = typed_const_node else {
+                    let TypedNode::Literal { token: const_token, value: const_val, .. } = &typed_const_node else {
                         unreachable!("Internal error: constant case expressions must be int, float, bool, or string")
                     };
                     if let Some(orig_token) = seen_constant_values.get(&const_val) {
@@ -4395,14 +4423,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                     // Handle the special case where, if we're matching on a Bool and we have `true` and `false` literal match cases, then we know we have an exhaustive match.
                     if target_type_id == PRELUDE_BOOL_TYPE_ID {
-                        if const_val == TypedLiteral::Bool(true) && seen_constant_values.contains_key(&TypedLiteral::Bool(false)) ||
-                            const_val == TypedLiteral::Bool(false) && seen_constant_values.contains_key(&TypedLiteral::Bool(true)) {
+                        if *const_val == TypedLiteral::Bool(true) && seen_constant_values.contains_key(&TypedLiteral::Bool(false)) ||
+                            *const_val == TypedLiteral::Bool(false) && seen_constant_values.contains_key(&TypedLiteral::Bool(true)) {
                             all_cases_covered = true;
                         }
                     }
-                    seen_constant_values.insert(const_val, const_token);
+                    seen_constant_values.insert(const_val.clone(), const_token.clone());
 
                     case_type_id = node_type_id;
+
+                    TypedMatchCaseKind::Constant(node_type_id, typed_const_node)
                 }
                 MatchCaseType::Tuple(_, _) => {
                     // I think I want this to work slightly differently (better?) in this version. For example:
@@ -4416,13 +4446,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     // were passed to the "single-match" syntax, it'd desugar to the above.
                     todo!()
                 }
-            }
+            };
 
-            if let Some(case_binding_tok) = case_binding {
+            let case_binding = if let Some(case_binding_tok) = case_binding {
                 let binding_name = Token::get_ident_name(&case_binding_tok);
                 let span = self.make_span(&case_binding_tok.get_range());
-                let _var_id = self.add_variable_to_current_scope(binding_name, case_type_id, false, true, &span, false)?;
-            }
+                let var_id = self.add_variable_to_current_scope(binding_name, case_type_id, false, true, &span, false)?;
+                Some(var_id)
+            } else {
+                None
+            };
 
             if match_case_body.is_empty() {
                 let span = self.make_span(&match_case_token.get_range());
@@ -4476,10 +4509,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 typed_body.push(typed_node);
             }
 
-            all_branches_terminator = compound_terminator_kinds(all_branches_terminator, self.current_scope().terminator);
+            let block_terminator = self.current_scope().terminator;
+            all_branches_terminator = compound_terminator_kinds(&all_branches_terminator, &block_terminator);
             self.end_child_scope();
 
-            typed_match_cases.push(TypedMatchCase { body: typed_body })
+            typed_match_cases.push(TypedMatchCase { body: typed_body, kind, case_binding, block_terminator })
         }
 
         self.current_scope_mut().terminator = all_branches_terminator;
@@ -4495,12 +4529,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             type_id.unwrap_or(PRELUDE_UNIT_TYPE_ID)
         };
 
+        let resolved_type_id = type_hint.unwrap_or(type_id);
+
         Ok(TypedNode::Match {
             match_token,
             target: Box::new(typed_target),
             cases: typed_match_cases,
             is_statement,
             type_id,
+            resolved_type_id,
         })
     }
 

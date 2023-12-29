@@ -4,7 +4,7 @@
 - [ ] array destructuring
   - [ ] including `*spread` syntax
   - [ ] string destructuring
-- [ ] enums
+- [x] enums
 - [ ] match statement/expression
 - [ ] imports/exports
 - [ ] I/O and other low-level things

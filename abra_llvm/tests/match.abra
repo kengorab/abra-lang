@@ -1,0 +1,77 @@
+// Basic test
+(() => {
+  /// Expect: here
+  match "abc" {
+    _ => println("here")
+  }
+})()
+
+// Testing option type
+(() => {
+  val arr = [1, 2, 3, 4]
+  /// Expect: found a number
+  match arr[1] {
+    None => println("nothing here")
+    _ => println("found a number")
+  }
+  /// Expect: nothing here
+  match arr[14] {
+    None => println("nothing here")
+    _ => println("found a number")
+  }
+
+  // With case binding
+
+  /// Expect: found a number: 2
+  match arr[1] {
+    None v => println("nothing here: ${v}")
+    _ v => println("found a number: ${v}")
+  }
+  /// Expect: nothing here: None
+  match arr[14] {
+    None v => println("nothing here: ${v}")
+    _ v => println("found a number: ${v}")
+  }
+
+  // With case binding and _no_ `None` case
+  /// Expect: value: 2
+  match arr[1] {
+    _ v => println("value: ${v}")
+  }
+  /// Expect: value: None
+  match arr[14] {
+    _ v => println("value: ${v}")
+  }
+})()
+
+// Testing match as expression
+(() => {
+  val arr = [1, 2, 3, 4]
+  val x = match arr[1] {
+    None => -1
+    _ v => v * 100
+  }
+  /// Expect: 200
+  println(x)
+
+  val y = match arr[14] {
+    None => -1
+    _ v => v * 100
+  }
+  /// Expect: -1
+  println(y)
+})()
+
+// Testing match as expression: terminator in block
+
+func matchCaseHasReturn(input: Int?): Int {
+  val x = match input {
+    None => return -1
+    _ v => v * 100
+  }
+  x + 1
+}
+/// Expect: -1
+println(matchCaseHasReturn(None))
+/// Expect: 401
+println(matchCaseHasReturn(4))

@@ -1,26 +1,42 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-enum Color {
-  Red
-  Blue
-  Green
-  RGB(r: Int, g: Int, b: Int)
+//enum Color {
+//  Red
+//  Blue
+//  Green
+//  RGB(r: Int, g: Int, b: Int)
+//
+//  func hex(self): String {
+//    if self == Color.Red {
+//      "0xFF0000"
+//    } else if self == Color.Green {
+//      "0x00FF00"
+//    } else if self == Color.Blue {
+//      "0x0000FF"
+//    } else {
+//      "todo"
+//    }
+//  }
+//}
+//
+////val black = Color.RGB(r: 1, g: 2, b: 3)
+////black.hash()
+//
+//Color.Red == Color.Green
 
-  func hex(self): String {
-    if self == Color.Red {
-      "0xFF0000"
-    } else if self == Color.Green {
-      "0x00FF00"
-    } else if self == Color.Blue {
-      "0x0000FF"
-    } else {
-      "todo"
-    }
+func foo(): Int {
+  val arr = [1, 2, 3]
+  val i = 4
+  match arr[i] {
+    //None v => println("Got: ${v}")
+    _ v => println("Got: ${v}")
   }
+  val n = match arr[i] {
+    None => return -4
+    _ => 100
+  }
+  n
 }
 
-//val black = Color.RGB(r: 1, g: 2, b: 3)
-//black.hash()
-
-Color.Red == Color.Green
+foo()
