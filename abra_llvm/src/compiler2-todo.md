@@ -5,7 +5,12 @@
   - [ ] including `*spread` syntax
   - [ ] string destructuring
 - [x] enums
-- [ ] match statement/expression
+- [x] match statement/expression
+  - [x] `None` case
+  - [x] wildcard case
+  - [x] constant case
+  - [x] type case (incl. enums)
+- [ ] match statement on `Any`/generic type
 - [ ] imports/exports
 - [ ] I/O and other low-level things
 - [ ] module alias as a type

@@ -491,6 +491,10 @@ impl<'a> LLVMCompiler2<'a> {
         }
     }
 
+    fn llvm_enum_variant_type_name(&self, enum_type_name: &String, enum_variant_name: &String) -> String {
+        format!("{enum_type_name}.{enum_variant_name}")
+    }
+
     fn llvm_underlying_type_by_id(&self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> Option<BasicTypeEnum<'a>> {
         let ty = self.get_type_by_id(type_id);
         let llvm_type = match ty {
@@ -2619,8 +2623,6 @@ impl<'a> LLVMCompiler2<'a> {
         let target_local = self.builder.build_alloca(target_value.get_type(), "match_target_local");
         self.builder.build_store(target_local, target_value);
 
-        // let (typeid_val, _) = self.get_typeid_from_value(target_value, Some(target_local));
-
         let match_target_is_option_type = self.type_is_option(target_type_id).is_some();
         let (data_is_set, data) = if match_target_is_option_type {
             (self.option_instance_get_is_set(target_local), self.option_instance_get_value(target_local))
@@ -2642,6 +2644,7 @@ impl<'a> LLVMCompiler2<'a> {
         };
 
         let mut seen_none_case = false;
+        let mut seen_wildcard_case = false;
         for case in cases {
             match &case.kind {
                 TypedMatchCaseKind::None => {
@@ -2678,6 +2681,7 @@ impl<'a> LLVMCompiler2<'a> {
                     self.builder.position_at_end(next_case_bb);
                 }
                 TypedMatchCaseKind::Wildcard(_) => {
+                    seen_wildcard_case = true;
                     if let Some(var_id) = &case.case_binding {
                         let expr_val = if match_target_is_option_type && seen_none_case { data } else { target_value };
                         let var = self.project.get_var_by_id(var_id);
@@ -2702,7 +2706,60 @@ impl<'a> LLVMCompiler2<'a> {
                         self.builder.build_unconditional_branch(end_bb);
                     }
                 }
-                TypedMatchCaseKind::Type(_, _) => todo!(),
+                TypedMatchCaseKind::Type(type_id, args) => {
+                    debug_assert!(args.is_empty(), "Not yet implemented");
+
+                    let next_case_bb = self.context.append_basic_block(self.current_fn.0, "next_case");
+
+                    if match_target_is_option_type && !seen_none_case {
+                        let cont_bb = self.context.append_basic_block(self.current_fn.0, "cont");
+
+                        self.builder.build_conditional_branch(data_is_set, cont_bb, next_case_bb);
+                        self.builder.position_at_end(cont_bb);
+                    }
+                    let case_type_name = self.llvm_type_name_by_id(type_id, &resolved_generics);
+                    let case_typeid = if let Type::GenericEnumInstance(enum_id, _, variant_idx) = self.get_type_by_id(type_id) {
+                        let enum_ = self.project.get_enum_by_id(&enum_id);
+                        let variant = &enum_.variants[variant_idx.unwrap()];
+                        let enum_variant_name = self.llvm_enum_variant_type_name(&case_type_name, &variant.name);
+                        self.get_typeid_by_name(&enum_variant_name)
+                    } else {
+                        self.get_typeid_by_name(&case_type_name)
+                    };
+                    let case_typeid_val = self.const_i64(case_typeid as u64);
+                    let (typeid_val, _) = self.get_typeid_from_value(data, None);
+
+                    let is_same_type_bb = self.context.append_basic_block(self.current_fn.0, "is_same_type");
+                    let cond = self.builder.build_int_compare(IntPredicate::EQ, typeid_val, case_typeid_val, "typeid_matches");
+                    self.builder.build_conditional_branch(cond, is_same_type_bb, next_case_bb);
+
+                    self.builder.position_at_end(is_same_type_bb);
+                    if let Some(var_id) = &case.case_binding {
+                        let expr_val = data;
+                        let var = self.project.get_var_by_id(var_id);
+                        let pat = BindingPattern::Variable(Token::Ident(var.defined_span.as_ref().unwrap().range.start.clone(), var.name.clone()));
+                        self.compile_binding_declaration(&pat, &vec![*var_id], Some(expr_val), &resolved_generics);
+                    }
+
+                    let mut case_value = None;
+                    let case_body_len = case.body.len();
+                    for (idx, node) in case.body.iter().enumerate() {
+                        if idx == case_body_len - 1 {
+                            case_value = self.visit_statement(node, &resolved_generics);
+                        } else {
+                            self.visit_statement(node, &resolved_generics);
+                        }
+                    }
+                    if case.block_terminator.is_none() {
+                        if let Some(result_slot) = result_slot {
+                            let case_value = case_value.expect("If we're able to treat the match as an expression, then the resulting value exists");
+                            self.builder.build_store(result_slot, case_value);
+                        }
+                        self.builder.build_unconditional_branch(end_bb);
+                    }
+
+                    self.builder.position_at_end(next_case_bb);
+                }
                 TypedMatchCaseKind::Constant(constant_node_type_id, constant_node) => {
                     let next_case_bb = self.context.append_basic_block(self.current_fn.0, "next_case");
 
@@ -2752,6 +2809,10 @@ impl<'a> LLVMCompiler2<'a> {
                     self.builder.position_at_end(next_case_bb);
                 }
             }
+        }
+
+        if !seen_wildcard_case {
+            self.builder.build_unconditional_branch(end_bb);
         }
 
         self.builder.position_at_end(end_bb);
@@ -3735,7 +3796,7 @@ impl<'a> LLVMCompiler2<'a> {
         let (enum_llvm_type, _) = self.get_or_compile_enum_type_by_type_id(&enum_id, &enum_type_name, &resolved_generics);
         let variant = &enum_.variants[variant_idx];
 
-        let enum_variant_type_name = format!("{}.{}", enum_type_name, &variant.name);
+        let enum_variant_type_name = self.llvm_enum_variant_type_name(&enum_type_name, &variant.name);
         let variant_typeid = self.get_typeid_by_name(&enum_variant_type_name);
 
         // An enum instance is contained in 64 bits, and is represented as an unsigned 64-bit integer. The top 16 bits represent the runtime typeid
@@ -3759,7 +3820,7 @@ impl<'a> LLVMCompiler2<'a> {
         let (enum_llvm_type, variant_llvm_types) = self.get_or_compile_enum_type_by_type_id(&enum_id, &enum_type_name, &resolved_generics);
         let variant = &enum_.variants[variant_idx];
         let EnumVariantKind::Container(func_id) = &variant.kind else { unreachable!() };
-        let enum_variant_type_name = format!("{}.{}", enum_type_name, &variant.name);
+        let enum_variant_type_name = self.llvm_enum_variant_type_name(&enum_type_name, &variant.name);
 
         let variant_fn_sig = self.llvm_function_signature(func_id, resolved_generics);
         if let Some(llvm_func) = self.main_module.get_function(&variant_fn_sig) {

@@ -86,6 +86,84 @@
     1 => println(15)
     _ => println(100)
   }
+
+  // With type cases
+
+  /// Expect: 2000
+  match arr[1] {
+    None => println(-4)
+    Int v => println(v * 1000)
+    2 v => println(16 + v)
+    1 => println(15)
+    _ => println(100)
+  }
+  /// Expect: 18
+  match arr[1] {
+    None => println(-4)
+    2 v => println(16 + v)
+    Int v => println(v * 1000)
+    1 => println(15)
+    _ => println(100)
+  }
+})()
+
+// With enums
+
+enum Color {
+  Red
+  Blue
+  Green
+  RGB(r: Int, g: Int, b: Int)
+}
+
+(() => {
+  val colors = [Color.Red, Color.Blue, Color.Green, Color.RGB(r: 0, g: 0, b: 0)]
+  /// Expect: red
+  /// Expect: blue
+  /// Expect: green
+  /// Expect: rgb
+  for color in colors {
+    match color {
+      Color.Red => println("red")
+      Color.Blue => println("blue")
+      Color.Green => println("green")
+      Color.RGB => println("rgb")
+    }
+  }
+
+  /// Expect: blue
+  match colors[1] {
+    None => println("none")
+    Color.Red => println("red")
+    Color.Blue => println("blue")
+    Color.Green => println("green")
+    Color.RGB => println("rgb")
+  }
+  /// Expect: blue
+  match colors[1] {
+    Color.Red => println("red")
+    Color.Blue => println("blue")
+    Color.Green => println("green")
+    Color.RGB => println("rgb")
+    None => println("none")
+  }
+
+  /// Expect: none
+  match colors[5] {
+    None => println("none")
+    Color.Red => println("red")
+    Color.Blue => println("blue")
+    Color.Green => println("green")
+    Color.RGB => println("rgb")
+  }
+  /// Expect: none
+  match colors[5] {
+    Color.Red => println("red")
+    Color.Blue => println("blue")
+    Color.Green => println("green")
+    Color.RGB => println("rgb")
+    None => println("none")
+  }
 })()
 
 // Testing match as expression
