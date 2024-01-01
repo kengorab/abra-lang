@@ -400,6 +400,15 @@ pub enum MatchCaseArgument {
     Literal(AstNode),
 }
 
+impl MatchCaseArgument {
+    pub(crate) fn get_span(&self) -> Range {
+        match self {
+            MatchCaseArgument::Pattern(p) => p.get_span(),
+            MatchCaseArgument::Literal(n) => n.get_token().get_range(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum MatchCaseType {
     None(Token),

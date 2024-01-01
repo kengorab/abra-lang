@@ -934,7 +934,7 @@ pub enum AssignmentKind {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypedMatchCaseArgument {
-    Pattern(BindingPattern),
+    Pattern(BindingPattern, Vec<VarId>),
     Literal(TypedNode),
 }
 
@@ -1300,6 +1300,8 @@ pub type TypecheckError = Either<Either<LexerError, ParseError>, TypeError>;
 pub enum DestructuringMismatchKind {
     CannotDestructureAsTuple,
     InvalidTupleArity(/* actual_arity: */ usize, /* attempted_arity: */ usize),
+    InvalidEnumVariantArity(/* actual_arity: */ usize, /* attempted_arity: */ usize),
+    InvalidDestructureTarget,
     CannotDestructureAsArray,
 }
 
@@ -1659,13 +1661,19 @@ impl TypeError {
                     DestructuringMismatchKind::InvalidTupleArity(actual_arity, attempted_arity) => {
                         format!("Cannot destructure a tuple of {} elements into {} values", actual_arity, attempted_arity)
                     }
+                    DestructuringMismatchKind::InvalidEnumVariantArity(actual_arity, attempted_arity) => {
+                        format!("Cannot destructure enum variant (which has {} element{}) into {} value{}", actual_arity, if *actual_arity == 1 { "" } else { "s" }, attempted_arity, if *attempted_arity == 1 { "" } else { "s" })
+                    }
+                    DestructuringMismatchKind::InvalidDestructureTarget => {
+                        format!("Cannot destructure a value of type {}", project.type_repr(type_id))
+                    }
                     DestructuringMismatchKind::CannotDestructureAsArray => {
                         format!("Cannot destructure a value of type {} as an array", project.type_repr(type_id))
                     }
                 };
 
                 format!(
-                    "Invalid destructuring pattern for assignment\n{}\n{}",
+                    "Invalid destructuring pattern\n{}\n{}",
                     cursor_line, msg
                 )
             }
@@ -4358,25 +4366,25 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     TypedMatchCaseKind::Type(resolved_case_type_id, vec![])
                 }
                 MatchCaseType::Compound(path_tokens, args) => {
-                    debug_assert!(args.is_none(), "Destructuring enum variants not implemented yet");
                     let mut path_tokens_iter = path_tokens.into_iter();
                     let enum_name_token = path_tokens_iter.next().expect("There should be at least 2 tokens in the path");
                     let enum_name = Token::get_ident_name(&enum_name_token);
                     let Some(enum_) = self.get_enum_by_name(&enum_name) else {
                         return Err(TypeError::UnknownType { span: self.make_span(&enum_name_token.get_range()), name: enum_name });
                     };
+                    let enum_id = enum_.id;
 
                     let variant_name_token = path_tokens_iter.next().expect("There should be 2 tokens in the path");
                     let match_case_range = enum_name_token.get_range().expand(&variant_name_token.get_range());
 
                     let variant_name = Token::get_ident_name(&variant_name_token);
-                    let Some((variant_idx, _variant)) = enum_.variants.iter().enumerate().find(|(_, v)| v.name == variant_name) else {
+                    let Some((variant_idx, variant)) = enum_.variants.iter().enumerate().find(|(_, v)| v.name == variant_name) else {
                         return Err(TypeError::UnknownMember { span: self.make_span(&variant_name_token.get_range()), field_name: variant_name, type_id: enum_.self_type_id });
                     };
                     let inner_type_id = self.project.type_is_option(&target_type_id).unwrap_or(target_type_id);
                     let target_ty = self.project.get_type_by_id(&inner_type_id);
                     let generic_ids = match target_ty {
-                        Type::GenericEnumInstance(enum_id, generic_ids, _) if *enum_id == enum_.id => generic_ids,
+                        Type::GenericEnumInstance(enum_id, generic_ids, _) if *enum_id == enum_.id => generic_ids.clone(),
                         _ => return Err(TypeError::UnreachableMatchCase {
                             span: self.make_span(&match_case_range),
                             kind: UnreachableMatchCaseKind::NoTypeOverlap { case_type: Some(enum_.self_type_id), target_type: target_type_id, target_span: self.make_span(&typed_target.span()) },
@@ -4390,9 +4398,55 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         enum_variants_covered = true;
                     }
 
-                    case_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_.id, generic_ids.clone(), Some(variant_idx)));
+                    let enum_variant_func_id = if let Some(_) = &args {
+                        if let EnumVariantKind::Container(func_id) = &variant.kind { Some(*func_id) } else { None }
+                    } else {
+                        None
+                    };
 
-                    TypedMatchCaseKind::Type(case_type_id, vec![])
+                    case_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids, Some(variant_idx)));
+
+                    let typed_match_case_args = if let Some(args) = args {
+                        let Some(func_id) = enum_variant_func_id else {
+                            return Err(TypeError::DestructuringMismatch { span: self.make_span(&args[0].get_span()), kind: DestructuringMismatchKind::InvalidDestructureTarget, type_id: case_type_id });
+                        };
+                        let variant_fields = self.project.get_func_by_id(&func_id).params.iter().map(|p| p.type_id).collect_vec();
+                        let num_destructuring_args = args.len();
+                        let mut typed_match_case_args = Vec::with_capacity(num_destructuring_args);
+                        for pair in args.into_iter().zip_longest(&variant_fields) {
+                            let typed_arg = match pair {
+                                EitherOrBoth::Both(match_case_arg, field_type_id) => {
+                                    let match_case_arg_span = match_case_arg.get_span();
+
+                                    match match_case_arg {
+                                        MatchCaseArgument::Pattern(mut binding) => {
+                                            let mut var_ids = vec![];
+                                            self.typecheck_binding_pattern(false, true, &mut binding, &field_type_id, &mut var_ids)?;
+                                            TypedMatchCaseArgument::Pattern(binding, var_ids)
+                                        }
+                                        MatchCaseArgument::Literal(node) => {
+                                            let typed_node = self.typecheck_expression(node, Some(*field_type_id))?;
+                                            if !self.type_satisfies_other(typed_node.type_id(), field_type_id) {
+                                                return Err(TypeError::TypeMismatch { span: self.make_span(&match_case_arg_span), expected: vec![*field_type_id], received: *typed_node.type_id() });
+                                            }
+                                            TypedMatchCaseArgument::Literal(typed_node)
+                                        }
+                                    }
+                                }
+                                EitherOrBoth::Left(arg) => {
+                                    return Err(TypeError::DestructuringMismatch { span: self.make_span(&arg.get_span()), kind: DestructuringMismatchKind::InvalidEnumVariantArity(variant_fields.len(), num_destructuring_args), type_id: case_type_id });
+                                }
+                                EitherOrBoth::Right(_) => { break; }
+                            };
+                            typed_match_case_args.push(typed_arg);
+                        }
+
+                        typed_match_case_args
+                    } else {
+                        vec![]
+                    };
+
+                    TypedMatchCaseKind::Type(case_type_id, typed_match_case_args)
                 }
                 MatchCaseType::Wildcard(wildcard_token) => {
                     if let Some(seen_wildcard_token) = seen_wildcard_token {

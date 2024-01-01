@@ -15,7 +15,7 @@ use inkwell::values::{BasicValue, BasicValueEnum, CallableValue, FloatValue, Fun
 use itertools::Itertools;
 use abra_core::lexer::tokens::{POSITION_BOGUS, Token};
 use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
-use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, EnumId, EnumVariantKind, FuncId, Function, FunctionKind, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedMatchCaseKind, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
+use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, EnumId, EnumVariantKind, FuncId, Function, FunctionKind, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedMatchCaseArgument, TypedMatchCaseKind, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
 
 const ABRA_MAIN_FN_NAME: &str = "_abra_main";
 
@@ -2707,7 +2707,7 @@ impl<'a> LLVMCompiler2<'a> {
                     }
                 }
                 TypedMatchCaseKind::Type(type_id, args) => {
-                    debug_assert!(args.is_empty(), "Not yet implemented");
+                    debug_assert!(args.iter().all(|a| matches!(a, TypedMatchCaseArgument::Pattern(_, _))), "Literal args not yet implemented");
 
                     let next_case_bb = self.context.append_basic_block(self.current_fn.0, "next_case");
 
@@ -2727,7 +2727,7 @@ impl<'a> LLVMCompiler2<'a> {
                         self.get_typeid_by_name(&case_type_name)
                     };
                     let case_typeid_val = self.const_i64(case_typeid as u64);
-                    let (typeid_val, _) = self.get_typeid_from_value(data, None);
+                    let (typeid_val, intermediate_local) = self.get_typeid_from_value(data, None);
 
                     let is_same_type_bb = self.context.append_basic_block(self.current_fn.0, "is_same_type");
                     let cond = self.builder.build_int_compare(IntPredicate::EQ, typeid_val, case_typeid_val, "typeid_matches");
@@ -2739,6 +2739,28 @@ impl<'a> LLVMCompiler2<'a> {
                         let var = self.project.get_var_by_id(var_id);
                         let pat = BindingPattern::Variable(Token::Ident(var.defined_span.as_ref().unwrap().range.start.clone(), var.name.clone()));
                         self.compile_binding_declaration(&pat, &vec![*var_id], Some(expr_val), &resolved_generics);
+                    }
+
+                    if !args.is_empty() {
+                        if let Type::GenericEnumInstance(enum_id, _, variant_idx) = self.get_type_by_id(&type_id) {
+                            let variant_idx = variant_idx.expect("Match cases cannot be top-level enum types; they must be variants");
+                            let enum_ = self.project.get_enum_by_id(&enum_id);
+                            let enum_type_name = self.llvm_type_name_by_id(&type_id, &resolved_generics);
+                            let variant = &enum_.variants[variant_idx];
+                            let EnumVariantKind::Container(func_id) = &variant.kind else { unreachable!("Only tagged union variants can be destructured") };
+                            let params = &self.project.get_func_by_id(func_id).params;
+                            let enum_data = self.extract_tagged_union_enum_variant_data(intermediate_local.unwrap(), &enum_id, &enum_type_name, variant_idx, &resolved_generics);
+
+                            for (idx, (arg, param)) in args.iter().zip(params).enumerate() {
+                                let TypedMatchCaseArgument::Pattern(pattern, var_ids) = arg else { todo!() };
+
+                                let slot = self.builder.build_struct_gep(enum_data, idx as u32, &format!("{}_slot", &param.name)).unwrap();
+                                let value = self.builder.build_load(slot, &format!("{}_value", &param.name));
+                                self.compile_binding_declaration(pattern, var_ids, Some(value), &resolved_generics);
+                            }
+                        } else {
+                            todo!()
+                        };
                     }
 
                     let mut case_value = None;

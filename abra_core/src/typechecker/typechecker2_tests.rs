@@ -3,7 +3,7 @@ use itertools::{Either, Itertools};
 use crate::lexer::tokens::{Position, POSITION_BOGUS, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BinaryOp, BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind, InvalidControlFlowTargetKind, ControlFlowTerminator, TerminatorKind, ExportedValue, TypeKind, DecoratorInstance, FunctionKind};
+use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind, InvalidControlFlowTargetKind, ControlFlowTerminator, TerminatorKind, ExportedValue, TypeKind, DecoratorInstance, FunctionKind, DestructuringMismatchKind};
 
 const PRELUDE_STR: &str = include_str!("prelude.stub.abra");
 
@@ -5298,6 +5298,39 @@ fn typecheck_failure_match_expression() {
     let expected = TypeError::NonExhaustiveMatch {
         span: Span::new(ModuleId(1), (2, 9), (2, 13)),
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericEnumInstance(color_enum.id, vec![], Some(0))).unwrap(),
+    };
+    assert_eq!(expected, err);
+
+    let (project, Either::Right(err)) = test_typecheck("\
+      enum Color { Red }\n\
+      val _ = match Color.Red { Color.Red(r) => 0 }\n\
+    ").unwrap_err() else { unreachable!() };
+    let color_enum = project.find_enum_by_name(&ModuleId(1), &"Color".to_string()).unwrap();
+    let expected = TypeError::DestructuringMismatch {
+        span: Span::new(ModuleId(1), (2, 37), (2, 37)),
+        kind: DestructuringMismatchKind::InvalidDestructureTarget,
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericEnumInstance(color_enum.id, vec![], Some(0))).unwrap(),
+    };
+    assert_eq!(expected, err);
+    let (project, Either::Right(err)) = test_typecheck("\
+      enum Color { Red(r: Int), Blue }\n\
+      val _ = match Color.Blue { Color.Red(r1, r2) => 0, Color.Blue => 1 }\n\
+    ").unwrap_err() else { unreachable!() };
+    let color_enum = project.find_enum_by_name(&ModuleId(1), &"Color".to_string()).unwrap();
+    let expected = TypeError::DestructuringMismatch {
+        span: Span::new(ModuleId(1), (2, 42), (2, 43)),
+        kind: DestructuringMismatchKind::InvalidEnumVariantArity(1, 2),
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 3), &Type::GenericEnumInstance(color_enum.id, vec![], Some(0))).unwrap(),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      enum Color { Red(r: Int), Blue }\n\
+      val _ = match Color.Blue { Color.Red(\"foo\") => 0, Color.Blue => 1 }\n\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Span::new(ModuleId(1), (2, 38), (2, 42)),
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_STRING_TYPE_ID,
     };
     assert_eq!(expected, err);
 }

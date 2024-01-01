@@ -117,17 +117,17 @@ enum Color {
 }
 
 (() => {
-  val colors = [Color.Red, Color.Blue, Color.Green, Color.RGB(r: 0, g: 0, b: 0)]
+  val colors = [Color.Red, Color.Blue, Color.Green, Color.RGB(r: 1, g: 2, b: 3)]
   /// Expect: red
   /// Expect: blue
   /// Expect: green
-  /// Expect: rgb
+  /// Expect: rgb(1, 2, 3)
   for color in colors {
     match color {
       Color.Red => println("red")
       Color.Blue => println("blue")
       Color.Green => println("green")
-      Color.RGB => println("rgb")
+      Color.RGB(r, g, b) => println("rgb($r, $g, $b)")
     }
   }
 

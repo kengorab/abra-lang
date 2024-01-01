@@ -10,6 +10,7 @@
   - [x] wildcard case
   - [x] constant case
   - [x] type case (incl. enums)
+  - [x] destructuring tagged union enum variants
 - [ ] match statement on `Any`/generic type
 - [ ] imports/exports
 - [ ] I/O and other low-level things
