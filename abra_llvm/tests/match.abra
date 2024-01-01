@@ -164,6 +164,18 @@ enum Color {
     Color.RGB => println("rgb")
     None => println("none")
   }
+
+  // Updating values of enum variant
+
+  val c = Color.RGB(r: 1, g: 2, b: 3)
+  match c {
+    Color.RGB(r, g, b) c => {
+      c.b = 100
+    }
+    _ => {}
+  }
+  /// Expect: Color.RGB(r: 1, g: 2, b: 100)
+  println(c)
 })()
 
 // Testing match as expression

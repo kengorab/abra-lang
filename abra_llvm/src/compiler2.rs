@@ -2411,9 +2411,17 @@ impl<'a> LLVMCompiler2<'a> {
                         match kind {
                             AccessorKind::Field => {
                                 let target_ty = self.get_type_by_id(target_type_id);
-                                let field = target_ty.get_field(self.project, *member_idx).unwrap();
-                                let field_slot = self.builder.build_struct_gep(target.into_pointer_value(), (*member_idx + 1) as u32, &field.name).unwrap();
-                                self.builder.build_store(field_slot, expr_val);
+                                let slot = if let Type::GenericEnumInstance(enum_id, _, variant_idx) = &target_ty {
+                                    let enum_type_name = self.llvm_type_name_by_id(&target_type_id, &resolved_generics);
+                                    let local = self.builder.build_alloca(target.get_type(), "local");
+                                    self.builder.build_store(local, target);
+                                    let ptr = self.extract_tagged_union_enum_variant_data(local, &enum_id, &enum_type_name, variant_idx.unwrap(), &resolved_generics);
+                                    self.builder.build_struct_gep(ptr, (*member_idx) as u32, "").unwrap()
+                                } else {
+                                    let field = target_ty.get_field(self.project, *member_idx).unwrap();
+                                    self.builder.build_struct_gep(target.into_pointer_value(), (*member_idx + 1) as u32, &field.name).unwrap()
+                                };
+                                self.builder.build_store(slot, expr_val);
                             }
                             AccessorKind::Method | AccessorKind::StaticMethod | AccessorKind::EnumVariant => unreachable!("Cannot assign to methods or variants"),
                         }

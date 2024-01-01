@@ -8,13 +8,11 @@ enum Color {
   RGB(r: Int, g: Int, b: Int)
 }
 
-val arr = [Color.Red, Color.Blue, Color.Green, Color.RGB(r: 1, g: 2, b: 3)]
-
-val n = match arr[3] {
-  None => "none"
-  Color.Red => "red"
-  Color.Blue => "blue"
-  Color.Green => "green"
-  Color.RGB(r, g, b) => "rgb($r, $g, $b)"
+val c = Color.RGB(r: 1, g: 2, b: 3)
+match c {
+  Color.RGB(r, g, b) c => {
+    c.b = 100
+  }
+  _ => {}
 }
-n
+c

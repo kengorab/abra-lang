@@ -4511,7 +4511,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 None
             };
 
-            if match_case_body.is_empty() {
+            if match_case_body.is_empty() && !is_statement {
                 let span = self.make_span(&match_case_token.get_range());
                 return Err(TypeError::EmptyMatchBlock { span });
             }
