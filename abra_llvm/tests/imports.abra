@@ -1,0 +1,14 @@
+import a, arr from "./imports_mod1"
+import return123 from "./imports_mod2"
+
+/// Expect: 123
+println(a)
+/// Expect: [1, 2, 5]
+println(arr)
+
+arr[0] = a
+/// Expect: [123, 2, 5]
+println(arr)
+
+/// Expect: 123
+println(return123())

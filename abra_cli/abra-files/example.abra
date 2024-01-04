@@ -1,18 +1,10 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-enum Color {
-  Red
-  Blue
-  Green
-  RGB(r: Int, g: Int, b: Int)
-}
+import a, arr from "./example2"
+import sum from "./example3"
 
-val c = Color.RGB(r: 1, g: 2, b: 3)
-match c {
-  Color.RGB(r, g, b) c => {
-    c.b = 100
-  }
-  _ => {}
-}
-c
+val b = 1
+arr[b] = a
+
+(arr, sum(a, b))

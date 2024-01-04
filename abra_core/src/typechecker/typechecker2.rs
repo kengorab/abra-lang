@@ -901,10 +901,18 @@ pub enum ExportedValue {
     Variable(VarId),
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum ImportedValue {
+    Function(FuncId),
+    Type(TypeKind),
+    Variable(VarId),
+}
+
 #[derive(Debug, PartialEq)]
 pub struct TypedModule {
     pub id: ModuleId,
     pub name: String,
+    pub imports: Vec<ModuleId>,
     pub type_ids: Vec<TypeId>,
     // TODO: is this necessary?
     pub functions: Vec<FuncId>,
@@ -955,6 +963,13 @@ pub struct TypedMatchCase {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum TypedImportKind {
+    ImportAll(/* star_token: */ Token),
+    ImportList(/* imports: */ Vec<ImportedValue>),
+    Alias(/* alias_token: */ Token),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum TypedNode {
     // Expressions
     Literal { token: Token, value: TypedLiteral, type_id: TypeId, resolved_type_id: TypeId },
@@ -979,13 +994,13 @@ pub enum TypedNode {
     FuncDeclaration(FuncId),
     TypeDeclaration(StructId),
     EnumDeclaration(EnumId),
-    BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
+    BindingDeclaration { token: Token, is_exported: bool, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
     ForLoop { token: Token, binding: BindingPattern, binding_var_ids: Vec<VarId>, index_var_id: Option<VarId>, iterator: Box<TypedNode>, body: Vec<TypedNode>, block_terminator: Option<TerminatorKind> },
     WhileLoop { token: Token, condition: Box<TypedNode>, condition_var_id: Option<VarId>, body: Vec<TypedNode>, block_terminator: Option<TerminatorKind> },
     Break { token: Token },
     Continue { token: Token },
     Return { token: Token, expr: Option<Box<TypedNode>> },
-    Import { token: Token, kind: ImportKind, module_id: ModuleId },
+    Import { token: Token, kind: TypedImportKind, module_id: ModuleId },
 }
 
 impl TypedNode {
@@ -1864,7 +1879,7 @@ impl TypeError {
 
                 let second_line = match kind {
                     ImmutableAssignmentKind::Parameter => "Function parameters are automatically declared as immutable".to_string(),
-                    ImmutableAssignmentKind::Variable => "Variable is declared as immutable. Use 'var' when declaring variable to allow it to be reassigned".to_string(),
+                    ImmutableAssignmentKind::Variable => "Variable is declared as immutable".to_string(),
                     ImmutableAssignmentKind::Field(type_name) => format!("Field '{}' is marked readonly in type '{}'", var_name, type_name),
                     ImmutableAssignmentKind::Method(type_name) => format!("Function '{}' is a method on type '{}'", var_name, type_name),
                     ImmutableAssignmentKind::StaticMethod(type_name) => format!("Function '{}' is a static method on type '{}'", var_name, type_name),
@@ -2761,7 +2776,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         debug_assert!(self.project.modules.is_empty());
 
         self.module_loader.register(&parser::ast::ModuleId::prelude(), &PRELUDE_MODULE_ID);
-        let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), type_ids: vec![], functions: vec![], structs: vec![], enums: vec![], code: vec![], scopes: vec![], exports: HashMap::new(), completed: false };
+        let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), imports: vec![], type_ids: vec![], functions: vec![], structs: vec![], enums: vec![], code: vec![], scopes: vec![], exports: HashMap::new(), completed: false };
         let mut prelude_scope = Scope { label: "prelude.root".to_string(), kind: ScopeKind::Module(PRELUDE_MODULE_ID), terminator: None, id: PRELUDE_SCOPE_ID, parent: None, types: vec![], vars: vec![], funcs: vec![] };
 
         let primitives = [
@@ -2833,7 +2848,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(())
     }
 
-    pub fn typecheck_module(&mut self, m_id: &parser::ast::ModuleId) -> Result<(), TypecheckError> {
+    pub fn typecheck_module(&mut self, m_id: &parser::ast::ModuleId) -> Result<ModuleId, TypecheckError> {
         debug_assert!(self.project.modules.len() >= 1 && self.project.modules[0].name == "prelude", "Prelude must be loaded in order to typecheck further modules");
 
         let (file_name, parse_result) = self.module_loader.load_untyped_ast(&m_id).map_err(Either::Left)?
@@ -2848,6 +2863,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.project.modules.push(TypedModule {
             id: module_id,
             name: file_name,
+            imports: vec![],
             type_ids: vec![],
             functions: vec![],
             structs: vec![],
@@ -2860,19 +2876,18 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.current_scope_id = scope_id;
 
-        if !parse_result.imports.is_empty() {
-            for (_, import_m_id, module_token) in parse_result.imports {
-                if !self.module_loader.module_exists(&import_m_id) { continue; }
-                if let Some(m) = self.module_loader.get_module_id(&import_m_id).and_then(|module_id| self.project.modules.get(module_id.0)) {
-                    if m.completed { continue; }
+        for (_, import_m_id, module_token) in parse_result.imports {
+            if !self.module_loader.module_exists(&import_m_id) { continue; }
+            if let Some(m) = self.module_loader.get_module_id(&import_m_id).and_then(|module_id| self.project.modules.get(module_id.0)) {
+                if m.completed { continue; }
 
-                    let span = self.make_span(&module_token.get_range());
-                    return Err(Either::Right(TypeError::CircularModuleImport { span }));
-                }
-
-                let mut tc = Typechecker2::new(self.module_loader, self.project);
-                tc.typecheck_module(&import_m_id)?;
+                let span = self.make_span(&module_token.get_range());
+                return Err(Either::Right(TypeError::CircularModuleImport { span }));
             }
+
+            let mut tc = Typechecker2::new(self.module_loader, self.project);
+            let imported_module_id = tc.typecheck_module(&import_m_id)?;
+            self.current_module_mut().imports.push(imported_module_id);
         }
 
         self.current_scope_id = scope_id;
@@ -2880,7 +2895,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.current_module_mut().completed = true;
 
-        Ok(())
+        Ok(module_id)
     }
 
     fn typecheck_block(&mut self, nodes: Vec<AstNode>) -> Result<(), TypeError> {
@@ -3884,7 +3899,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 }
 
-                Ok(TypedNode::BindingDeclaration { token, pattern: binding, vars: var_ids, expr: typed_expr })
+                Ok(TypedNode::BindingDeclaration { token, is_exported, pattern: binding, vars: var_ids, expr: typed_expr })
             }
             AstNode::IfStatement(token, if_node) => self.typecheck_if_node(token, if_node, false, type_hint),
             AstNode::ForLoop(token, for_loop_node) => {
@@ -4052,34 +4067,41 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let module_id = *module_id;
                 let ModuleId(module_idx) = module_id;
 
-                match &kind {
+                let kind = match kind {
                     ImportKind::ImportAll(star_token) => {
                         let import_module = &self.project.modules[module_idx];
                         let exports = import_module.exports.values().map(|e| e.clone()).collect_vec();
 
                         for export in exports {
-                            self.add_imported_value(export, star_token)?;
+                            self.add_imported_value(export, &star_token)?;
                         }
+
+                        TypedImportKind::ImportAll(star_token)
                     }
                     ImportKind::ImportList(imports) => {
+                        let mut imported_values = Vec::with_capacity(imports.len());
                         for import_tok in imports {
-                            let import_name = Token::get_ident_name(import_tok);
+                            let import_name = Token::get_ident_name(&import_tok);
                             let import_module = &self.project.modules[module_idx];
                             let Some(export) = import_module.exports.get(&import_name) else {
                                 let span = self.make_span(&import_tok.get_range());
                                 return Err(TypeError::UnknownExport { span, module_id, import_name, is_aliased: false });
                             };
 
-                            self.add_imported_value(*export, import_tok)?;
+                            let imported_value = self.add_imported_value(*export, &import_tok)?;
+                            imported_values.push(imported_value);
                         }
+                        TypedImportKind::ImportList(imported_values)
                     }
                     ImportKind::Alias(alias_token) => {
-                        let alias_name = Token::get_ident_name(alias_token);
+                        let alias_name = Token::get_ident_name(&alias_token);
                         let module_type_id = TypeId::module_type_alias(&module_id);
                         let span = self.make_span(&alias_token.get_range());
                         self.add_variable_to_current_scope(alias_name, module_type_id, false, true, &span, false)?;
+
+                        TypedImportKind::Alias(alias_token)
                     }
-                }
+                };
 
                 Ok(TypedNode::Import { token, kind, module_id })
             }
@@ -4087,28 +4109,34 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
     }
 
-    fn add_imported_value(&mut self, exported_value: ExportedValue, import_token: &Token) -> Result<(), TypeError> {
+    fn add_imported_value(&mut self, exported_value: ExportedValue, import_token: &Token) -> Result<ImportedValue, TypeError> {
         let span = self.make_span(&import_token.get_range());
 
-        match exported_value {
+        let imported_value = match exported_value {
             ExportedValue::Function(func_id) => {
                 self.add_function_variable_alias_to_current_scope(import_token, &func_id)?;
+
+                ImportedValue::Function(func_id)
             }
-            ExportedValue::Type(type_kind) => match type_kind {
-                TypeKind::Struct(struct_id) => {
-                    let struct_type_id = self.add_or_find_type_id(self.project.struct_type(struct_id));
-                    let struct_ = self.project.get_struct_by_id(&struct_id);
-                    let struct_var_id = self.add_variable_to_current_scope(struct_.name.clone(), struct_type_id, false, true, &span, false)?;
-                    let variable = self.project.get_var_by_id_mut(&struct_var_id);
-                    variable.alias = VariableAlias::Type(TypeKind::Struct(struct_id));
+            ExportedValue::Type(type_kind) => {
+                match type_kind {
+                    TypeKind::Struct(struct_id) => {
+                        let struct_type_id = self.add_or_find_type_id(self.project.struct_type(struct_id));
+                        let struct_ = self.project.get_struct_by_id(&struct_id);
+                        let struct_var_id = self.add_variable_to_current_scope(struct_.name.clone(), struct_type_id, false, true, &span, false)?;
+                        let variable = self.project.get_var_by_id_mut(&struct_var_id);
+                        variable.alias = VariableAlias::Type(TypeKind::Struct(struct_id));
+                    }
+                    TypeKind::Enum(enum_id) => {
+                        let enum_type_id = self.add_or_find_type_id(self.project.enum_type(enum_id));
+                        let enum_ = self.project.get_enum_by_id(&enum_id);
+                        let enum_var_id = self.add_variable_to_current_scope(enum_.name.clone(), enum_type_id, false, true, &span, false)?;
+                        let variable = self.project.get_var_by_id_mut(&enum_var_id);
+                        variable.alias = VariableAlias::Type(TypeKind::Enum(enum_id));
+                    }
                 }
-                TypeKind::Enum(enum_id) => {
-                    let enum_type_id = self.add_or_find_type_id(self.project.enum_type(enum_id));
-                    let enum_ = self.project.get_enum_by_id(&enum_id);
-                    let enum_var_id = self.add_variable_to_current_scope(enum_.name.clone(), enum_type_id, false, true, &span, false)?;
-                    let variable = self.project.get_var_by_id_mut(&enum_var_id);
-                    variable.alias = VariableAlias::Type(TypeKind::Enum(enum_id));
-                }
+
+                ImportedValue::Type(type_kind)
             }
             ExportedValue::Variable(var_id) => {
                 let imported_var = self.project.get_var_by_id(&var_id);
@@ -4116,10 +4144,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let var_id = self.add_variable_to_current_scope(imported_var.name.clone(), imported_var.type_id, false, imported_var.is_initialized, &span, false)?;
                 let var = self.project.get_var_by_id_mut(&var_id);
                 var.is_captured = is_captured;
-            }
-        }
 
-        Ok(())
+                ImportedValue::Variable(var_id)
+            }
+        };
+
+        Ok(imported_value)
     }
 
     fn typecheck_if_node(&mut self, if_token: Token, if_node: IfNode, is_expr: bool, type_hint: Option<TypeId>) -> Result<TypedNode, TypeError> {

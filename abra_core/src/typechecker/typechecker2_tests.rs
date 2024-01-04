@@ -1408,6 +1408,7 @@ fn typecheck_for_loop() {
         body: vec![
             TypedNode::BindingDeclaration {
                 token: Token::Val(Position::new(2, 16)),
+                is_exported: false,
                 pattern: BindingPattern::Variable(Token::Ident(Position::new(2, 20), "a".to_string())),
                 vars: vec![VarId(ScopeId(ModuleId(1), 1), 1)],
                 expr: Some(Box::new(TypedNode::Identifier {
@@ -1493,6 +1494,7 @@ fn typecheck_while_loop() {
         body: vec![
             TypedNode::BindingDeclaration {
                 token: Token::Val(Position::new(2, 18)),
+                is_exported: false,
                 pattern: BindingPattern::Variable(Token::Ident(Position::new(2, 22), "a".to_string())),
                 vars: vec![VarId(ScopeId(ModuleId(1), 1), 1)],
                 expr: Some(Box::new(TypedNode::Identifier {
@@ -2806,6 +2808,7 @@ fn typecheck_function_declaration() {
             body: vec![
                 TypedNode::BindingDeclaration {
                     token: Token::Val(Position::new(3, 1)),
+                    is_exported: false,
                     pattern: BindingPattern::Variable(Token::Ident(Position::new(3, 5), "y".to_string())),
                     vars: vec![
                         VarId(ScopeId(ModuleId(1), 1), 1)

@@ -1,4 +1,4 @@
-import s from "./example3"
+import s from "./imports_mod2"
 
 export val a = 123
 export val arr = [1, 2, s.length]

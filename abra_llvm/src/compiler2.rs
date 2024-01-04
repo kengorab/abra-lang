@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::TryFrom;
 use std::fmt::Debug;
 use std::path::PathBuf;
@@ -15,7 +15,7 @@ use inkwell::values::{BasicValue, BasicValueEnum, CallableValue, FloatValue, Fun
 use itertools::Itertools;
 use abra_core::lexer::tokens::{POSITION_BOGUS, Token};
 use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
-use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, EnumId, EnumVariantKind, FuncId, Function, FunctionKind, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedMatchCaseArgument, TypedMatchCaseKind, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
+use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, EnumId, EnumVariantKind, FuncId, Function, FunctionKind, ImportedValue, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, ModuleId, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedImportKind, TypedLiteral, TypedMatchCaseArgument, TypedMatchCaseKind, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
 
 const ABRA_MAIN_FN_NAME: &str = "_abra_main";
 
@@ -122,10 +122,10 @@ pub struct LLVMCompiler2<'a> {
 }
 
 impl<'a> LLVMCompiler2<'a> {
-    pub fn compile(project: &Project, out_dir: &PathBuf, out_file_name: Option<String>) -> PathBuf {
+    pub fn compile(entrypoint_module_id: &ModuleId, project: &Project, out_dir: &PathBuf, out_file_name: Option<String>) -> PathBuf {
         let context = Context::create();
         let mut compiler = LLVMCompiler2::new(project, &context);
-        compiler.generate(project);
+        compiler.generate(entrypoint_module_id, project);
 
         let out_name = out_file_name.unwrap_or("main".into());
 
@@ -151,8 +151,8 @@ impl<'a> LLVMCompiler2<'a> {
         exec_out_file
     }
 
-    pub fn compile_and_run(project: &Project, out_dir: &PathBuf, out_file_name: Option<String>) -> ExitStatus {
-        let exec_out_file = Self::compile(project, out_dir, out_file_name);
+    pub fn compile_and_run(entrypoint_module_id: &ModuleId, project: &Project, out_dir: &PathBuf, out_file_name: Option<String>) -> ExitStatus {
+        let exec_out_file = Self::compile(entrypoint_module_id, project, out_dir, out_file_name);
 
         let run_output = Command::new(&exec_out_file).output().unwrap();
         if !run_output.stderr.is_empty() {
@@ -825,14 +825,32 @@ impl<'a> LLVMCompiler2<'a> {
         self.builder.build_return(Some(&self.const_i32(0).as_basic_value_enum()));
     }
 
-    pub fn generate(&mut self, project: &Project) {
+    pub fn generate(&mut self, entrypoint_module_id: &ModuleId, project: &Project) {
         self.build_main_fn();
 
         let printf = self.main_module.add_function("printf", self.fn_type_variadic(self.i64(), &[self.ptr(self.i8()).into()]), None);
 
-        for m in &project.modules {
-            // There's no top-level code to execute in the prelude, so we can skip it.
-            if m.id == PRELUDE_MODULE_ID { continue; }
+        let mut compiled = HashSet::new();
+        let mut module_queue = VecDeque::new();
+        module_queue.push_back(*entrypoint_module_id);
+
+        while let Some(module_id) = module_queue.pop_front() {
+            let m = &project.modules[module_id.0];
+
+            if compiled.contains(&m.id) { continue; }
+
+            let mut deps_satisfied = true;
+            for import_id in &m.imports {
+                if !compiled.contains(import_id) {
+                    module_queue.push_back(*import_id);
+                    deps_satisfied = false;
+                }
+            }
+            if !deps_satisfied {
+                module_queue.push_back(module_id);
+                continue;
+            }
+            compiled.insert(module_id);
 
             // The top-level code in a module is executed in the special $mod_{mod_id} fn...
             let mod_fn_name = format!("$mod_{}", m.id.0);
@@ -848,7 +866,7 @@ impl<'a> LLVMCompiler2<'a> {
             for (idx, node) in m.code.iter().enumerate() {
                 let res = self.visit_statement(node, &empty_generics);
                 let node_type_id = node.type_id();
-                if idx == num_nodes - 1 && *node_type_id != PRELUDE_UNIT_TYPE_ID {
+                if module_id == *entrypoint_module_id && idx == num_nodes - 1 && *node_type_id != PRELUDE_UNIT_TYPE_ID {
                     if let Some(res) = res {
                         let node_type = self.get_type_by_id(node_type_id);
                         let resolved_generics = self.new_resolved_generics_via_instance(&node_type);
@@ -856,7 +874,7 @@ impl<'a> LLVMCompiler2<'a> {
                         let str_val = self.builder.build_call(to_string_fn, &[res.into()], "repr").try_as_basic_value().left().unwrap().into_pointer_value();
                         let (len_val, chars_val) = self.destructure_string(str_val);
 
-                        let fmt_str = self.builder.build_global_string_ptr("%.*s", "").as_basic_value_enum();
+                        let fmt_str = self.builder.build_global_string_ptr("%.*s\n", "").as_basic_value_enum();
                         self.builder.build_call(printf, &[fmt_str.into(), len_val.into(), chars_val.into()], "").try_as_basic_value().left().unwrap();
                     }
                 }
@@ -989,7 +1007,7 @@ impl<'a> LLVMCompiler2<'a> {
         captures
     }
 
-    fn compile_binding_declaration(&mut self, pattern: &BindingPattern, vars: &Vec<VarId>, expr_val: Option<BasicValueEnum<'a>>, resolved_generics: &ResolvedGenerics) {
+    fn compile_binding_declaration(&mut self, is_exported: bool, pattern: &BindingPattern, vars: &Vec<VarId>, expr_val: Option<BasicValueEnum<'a>>, resolved_generics: &ResolvedGenerics) {
         let BindingPattern::Variable(token) = pattern else { todo!() };
         let var_name = Token::get_ident_name(token);
         let Some(variable) = vars.iter().find_map(|var_id| {
@@ -1008,15 +1026,28 @@ impl<'a> LLVMCompiler2<'a> {
                 let heap_mem = self.malloc(self.const_i64(8), ptr_type);
                 self.builder.build_store(heap_mem, expr_val);
 
-                let slot = self.builder.build_alloca(ptr_type, &var_name);
-                self.ctx_stack.last_mut().unwrap().variables.insert(variable.id, LLVMVar::Slot(slot));
+                let slot = if is_exported {
+                    // let global = self.main_module.add_global(ptr_type, None, &var_name);
+                    // global.set_initializer(&ptr_type.const_null());
+                    // global.as_pointer_value()
+                    todo!()
+                } else {
+                    self.builder.build_alloca(ptr_type, &var_name)
+                };
 
                 self.builder.build_store(slot, heap_mem);
-            } else {
-                let slot = self.builder.build_alloca(llvm_type, &var_name);
                 self.ctx_stack.last_mut().unwrap().variables.insert(variable.id, LLVMVar::Slot(slot));
+            } else {
+                let slot = if is_exported {
+                    let global = self.main_module.add_global(llvm_type, None, &var_name);
+                    global.set_initializer(&llvm_type.const_zero());
+                    global.as_pointer_value()
+                } else {
+                    self.builder.build_alloca(llvm_type, &var_name)
+                };
 
                 self.builder.build_store(slot, expr_val);
+                self.ctx_stack.last_mut().unwrap().variables.insert(variable.id, LLVMVar::Slot(slot));
             }
         }
     }
@@ -1057,11 +1088,11 @@ impl<'a> LLVMCompiler2<'a> {
                 None
             }
             TypedNode::EnumDeclaration(_) => None,
-            TypedNode::BindingDeclaration { vars, pattern, expr, .. } => {
+            TypedNode::BindingDeclaration { is_exported, vars, pattern, expr, .. } => {
                 let Some(expr) = expr else { todo!() };
                 let expr_val = self.visit_expression(expr, resolved_generics);
 
-                self.compile_binding_declaration(pattern, vars, expr_val, resolved_generics);
+                self.compile_binding_declaration(*is_exported, pattern, vars, expr_val, resolved_generics);
 
                 None
             }
@@ -1097,7 +1128,7 @@ impl<'a> LLVMCompiler2<'a> {
                     let var = self.project.get_var_by_id(var_id);
                     let binding = BindingPattern::Variable(Token::Ident(POSITION_BOGUS, var.name.clone()));
                     let neg_one = self.builder.build_int_neg(self.const_i64(1), "");
-                    self.compile_binding_declaration(&binding, &vec![*var_id], Some(neg_one.into()), &resolved_generics);
+                    self.compile_binding_declaration(false, &binding, &vec![*var_id], Some(neg_one.into()), &resolved_generics);
                 }
                 let next_local = self.builder.build_alloca(iter_next_func.get_type().get_return_type().unwrap(), "next_local");
                 self.builder.build_unconditional_branch(cond_bb);
@@ -1110,7 +1141,7 @@ impl<'a> LLVMCompiler2<'a> {
 
                 self.builder.position_at_end(body_bb);
                 let next_value_val = self.option_instance_get_value(next_local);
-                self.compile_binding_declaration(binding, binding_var_ids, Some(next_value_val), &resolved_generics);
+                self.compile_binding_declaration(false, binding, binding_var_ids, Some(next_value_val), &resolved_generics);
                 if let Some(var_id) = index_var_id {
                     let LLVMVar::Slot(index_var_slot) = self.ctx_stack.last().unwrap().variables.get(var_id).unwrap() else { unreachable!() };
                     let index_val = self.builder.build_load(*index_var_slot, "").into_int_value();
@@ -1163,7 +1194,7 @@ impl<'a> LLVMCompiler2<'a> {
                     // TODO: While loops should support BindingPattern as conditional_binding rather than just a single var. When that's done, this can go away.
                     let var = self.project.get_var_by_id(condition_var_id);
                     let pat = BindingPattern::Variable(Token::Ident(var.defined_span.as_ref().unwrap().range.start.clone(), var.name.clone()));
-                    self.compile_binding_declaration(&pat, &vec![*condition_var_id], Some(expr_val), resolved_generics);
+                    self.compile_binding_declaration(false, &pat, &vec![*condition_var_id], Some(expr_val), resolved_generics);
                 }
                 for node in body {
                     self.visit_statement(node, resolved_generics);
@@ -1201,7 +1232,27 @@ impl<'a> LLVMCompiler2<'a> {
 
                 None
             }
-            TypedNode::Import { .. } => None,
+            TypedNode::Import { kind, .. } => {
+                match kind {
+                    TypedImportKind::ImportAll(_) => todo!(),
+                    TypedImportKind::ImportList(imports) => {
+                        for i in imports {
+                            match i {
+                                ImportedValue::Function(_) => { /* no-op */ }
+                                ImportedValue::Type(_) => todo!(),
+                                ImportedValue::Variable(var_id) => {
+                                    let var = self.project.get_var_by_id(var_id);
+                                    let slot = self.main_module.get_global(&var.name).unwrap().as_pointer_value();
+                                    self.ctx_stack.last_mut().unwrap().variables.insert(var.id, LLVMVar::Slot(slot));
+                                }
+                            }
+                        }
+                    }
+                    TypedImportKind::Alias(_) => todo!(),
+                }
+
+                None
+            }
             _ => self.visit_expression(node, resolved_generics),
         }
     }
@@ -2553,7 +2604,7 @@ impl<'a> LLVMCompiler2<'a> {
             } else {
                 self.const_bool(true).into()
             };
-            self.compile_binding_declaration(condition_binding, condition_binding_var_ids, Some(expr_val), resolved_generics);
+            self.compile_binding_declaration(false, condition_binding, condition_binding_var_ids, Some(expr_val), resolved_generics);
         }
         let mut if_block_value = None;
         let if_block_len = if_block.len();
@@ -2666,7 +2717,7 @@ impl<'a> LLVMCompiler2<'a> {
                         let expr_val = target_value;
                         let var = self.project.get_var_by_id(var_id);
                         let pat = BindingPattern::Variable(Token::Ident(var.defined_span.as_ref().unwrap().range.start.clone(), var.name.clone()));
-                        self.compile_binding_declaration(&pat, &vec![*var_id], Some(expr_val), &resolved_generics);
+                        self.compile_binding_declaration(false, &pat, &vec![*var_id], Some(expr_val), &resolved_generics);
                     }
 
                     let mut case_value = None;
@@ -2694,7 +2745,7 @@ impl<'a> LLVMCompiler2<'a> {
                         let expr_val = if match_target_is_option_type && seen_none_case { data } else { target_value };
                         let var = self.project.get_var_by_id(var_id);
                         let pat = BindingPattern::Variable(Token::Ident(var.defined_span.as_ref().unwrap().range.start.clone(), var.name.clone()));
-                        self.compile_binding_declaration(&pat, &vec![*var_id], Some(expr_val), &resolved_generics);
+                        self.compile_binding_declaration(false, &pat, &vec![*var_id], Some(expr_val), &resolved_generics);
                     }
 
                     let mut case_value = None;
@@ -2746,7 +2797,7 @@ impl<'a> LLVMCompiler2<'a> {
                         let expr_val = data;
                         let var = self.project.get_var_by_id(var_id);
                         let pat = BindingPattern::Variable(Token::Ident(var.defined_span.as_ref().unwrap().range.start.clone(), var.name.clone()));
-                        self.compile_binding_declaration(&pat, &vec![*var_id], Some(expr_val), &resolved_generics);
+                        self.compile_binding_declaration(false, &pat, &vec![*var_id], Some(expr_val), &resolved_generics);
                     }
 
                     if !args.is_empty() {
@@ -2764,7 +2815,7 @@ impl<'a> LLVMCompiler2<'a> {
 
                                 let slot = self.builder.build_struct_gep(enum_data, idx as u32, &format!("{}_slot", &param.name)).unwrap();
                                 let value = self.builder.build_load(slot, &format!("{}_value", &param.name));
-                                self.compile_binding_declaration(pattern, var_ids, Some(value), &resolved_generics);
+                                self.compile_binding_declaration(false, pattern, var_ids, Some(value), &resolved_generics);
                             }
                         } else {
                             todo!()
@@ -2816,7 +2867,7 @@ impl<'a> LLVMCompiler2<'a> {
                         let expr_val = data;
                         let var = self.project.get_var_by_id(var_id);
                         let pat = BindingPattern::Variable(Token::Ident(var.defined_span.as_ref().unwrap().range.start.clone(), var.name.clone()));
-                        self.compile_binding_declaration(&pat, &vec![*var_id], Some(expr_val), &resolved_generics);
+                        self.compile_binding_declaration(false, &pat, &vec![*var_id], Some(expr_val), &resolved_generics);
                     }
 
                     let mut case_value = None;
@@ -5048,5 +5099,10 @@ mod tests {
     #[test]
     fn test_any() {
         run_test_file("any.abra");
+    }
+
+    #[test]
+    fn test_imports() {
+        run_test_file("imports.abra");
     }
 }

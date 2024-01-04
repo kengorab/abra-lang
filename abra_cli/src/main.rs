@@ -375,8 +375,8 @@ fn cmd_compile_llvm_and_run_2(opts: BuildOpts) -> Result<(), ()> {
         }
     }
 
-    match tc.typecheck_module(&module_id) {
-        Ok(_) => {}
+    let entrypoint_module_id = match tc.typecheck_module(&module_id) {
+        Ok(m_id) => m_id,
         Err(e) => {
             match e {
                 Either::Left(Either::Left(e)) => {
@@ -396,17 +396,17 @@ fn cmd_compile_llvm_and_run_2(opts: BuildOpts) -> Result<(), ()> {
 
             std::process::exit(1);
         }
-    }
+    };
 
     if opts.run {
-        let exit_status = LLVMCompiler2::compile_and_run(&project, &dotabra_dir, opts.out_file_name);
+        let exit_status = LLVMCompiler2::compile_and_run(&entrypoint_module_id, &project, &dotabra_dir, opts.out_file_name);
         if let Some(status_code) = exit_status.code() {
             std::process::exit(status_code)
         } else {
             // Process terminated by signal
         }
     } else {
-        LLVMCompiler2::compile(&project, &dotabra_dir, opts.out_file_name);
+        LLVMCompiler2::compile(&entrypoint_module_id, &project, &dotabra_dir, opts.out_file_name);
     }
 
     Ok(())
