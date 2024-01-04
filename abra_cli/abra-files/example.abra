@@ -1,10 +1,9 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-import a, arr from "./example2"
-import sum from "./example3"
+import Person, Color from "./example2"
 
-val b = 1
-arr[b] = a
+val meg1 = Person(name: "Meg", favoriteColor: Color.Blue)
+val meg2 = Person.new("Meg", Color.Blue)
 
-(arr, sum(a, b))
+println(meg1 == meg2)

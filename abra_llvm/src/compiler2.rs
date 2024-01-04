@@ -15,7 +15,7 @@ use inkwell::values::{BasicValue, BasicValueEnum, CallableValue, FloatValue, Fun
 use itertools::Itertools;
 use abra_core::lexer::tokens::{POSITION_BOGUS, Token};
 use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
-use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, EnumId, EnumVariantKind, FuncId, Function, FunctionKind, ImportedValue, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, ModuleId, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedImportKind, TypedLiteral, TypedMatchCaseArgument, TypedMatchCaseKind, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
+use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, EnumId, EnumVariantKind, FuncId, Function, FunctionKind, ImportedValue, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, ModuleId, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedImportKind, TypedLiteral, TypedMatchCaseArgument, TypedMatchCaseKind, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
 
 const ABRA_MAIN_FN_NAME: &str = "_abra_main";
 
@@ -438,15 +438,24 @@ impl<'a> LLVMCompiler2<'a> {
                     let tuple_size = generic_ids.len();
                     format!("{struct_name}{tuple_size}{generic_names}")
                 } else {
-                    format!("{struct_name}{generic_names}")
+                    let prefix = if struct_id.0 == PRELUDE_MODULE_ID {
+                        format!("{}", &struct_.name)
+                    } else {
+                        format!("{}.{}.{}", struct_id.0.0, struct_id.1, &struct_.name)
+                    };
+                    format!("{prefix}{generic_names}")
                 }
             }
             Type::GenericEnumInstance(enum_id, generic_ids, _) => {
                 let enum_ = self.project.get_enum_by_id(&enum_id);
-                let enum_name = &enum_.name;
                 let generic_names = generic_ids.iter().map(|type_id| self.llvm_type_name_by_id(type_id, resolved_generics)).join(",");
                 let generic_names = if generic_ids.is_empty() { "".into() } else { format!("<{}>", generic_names) };
-                format!("{ENUM_TYPENAME_TAG}{enum_name}{generic_names}")
+                let prefix = if enum_id.0 == PRELUDE_MODULE_ID {
+                    format!("{}", &enum_.name)
+                } else {
+                    format!("{}.{}.{}", enum_id.0.0, enum_id.1, &enum_.name)
+                };
+                format!("{ENUM_TYPENAME_TAG}{prefix}{generic_names}")
             }
             Type::Function(parameter_type_ids, num_required_params, is_variadic, return_type_id) => {
                 debug_assert!(!is_variadic, "Not yet implemented");
@@ -464,7 +473,6 @@ impl<'a> LLVMCompiler2<'a> {
             Type::Type(kind) => match kind {
                 TypeKind::Struct(struct_id) => {
                     let struct_ = self.project.get_struct_by_id(&struct_id);
-                    let struct_name = &struct_.name;
                     let generic_names = struct_.generic_ids.iter()
                         .map(|type_id| {
                             let Type::Generic(_, generic_name) = self.get_type_by_id(type_id) else { unreachable!("TypeId {:?} represents a type that is not a generic", type_id) };
@@ -472,11 +480,15 @@ impl<'a> LLVMCompiler2<'a> {
                         })
                         .join(",");
                     let generic_names = if struct_.generic_ids.is_empty() { "".into() } else { format!("<{}>", generic_names) };
-                    format!("{struct_name}{generic_names}")
+                    let prefix = if struct_id.0 == PRELUDE_MODULE_ID {
+                        format!("{}", &struct_.name)
+                    } else {
+                        format!("{}.{}.{}", struct_id.0.0, struct_id.1, &struct_.name)
+                    };
+                    format!("{prefix}{generic_names}")
                 }
                 TypeKind::Enum(enum_id) => {
                     let enum_ = self.project.get_enum_by_id(&enum_id);
-                    let enum_name = &enum_.name;
                     let generic_names = enum_.generic_ids.iter()
                         .map(|type_id| {
                             let Type::Generic(_, generic_name) = self.get_type_by_id(type_id) else { unreachable!("TypeId {:?} represents a type that is not a generic", type_id) };
@@ -484,7 +496,12 @@ impl<'a> LLVMCompiler2<'a> {
                         })
                         .join(",");
                     let generic_names = if enum_.generic_ids.is_empty() { "".into() } else { format!("<{}>", generic_names) };
-                    format!("{ENUM_TYPENAME_TAG}{enum_name}{generic_names}")
+                    let prefix = if enum_id.0 == PRELUDE_MODULE_ID {
+                        format!("{}", &enum_.name)
+                    } else {
+                        format!("{}.{}.{}", enum_id.0.0, enum_id.1, &enum_.name)
+                    };
+                    format!("{ENUM_TYPENAME_TAG}{prefix}{generic_names}")
                 }
             }
             Type::ModuleAlias => todo!()
@@ -1236,15 +1253,13 @@ impl<'a> LLVMCompiler2<'a> {
                 match kind {
                     TypedImportKind::ImportAll(_) => todo!(),
                     TypedImportKind::ImportList(imports) => {
-                        for i in imports {
-                            match i {
-                                ImportedValue::Function(_) => { /* no-op */ }
-                                ImportedValue::Type(_) => todo!(),
-                                ImportedValue::Variable(var_id) => {
-                                    let var = self.project.get_var_by_id(var_id);
-                                    let slot = self.main_module.get_global(&var.name).unwrap().as_pointer_value();
-                                    self.ctx_stack.last_mut().unwrap().variables.insert(var.id, LLVMVar::Slot(slot));
-                                }
+                        for import in imports {
+                            if let ImportedValue::Variable(var_id) = import {
+                                let var = self.project.get_var_by_id(var_id);
+                                let slot = self.main_module.get_global(&var.name).unwrap().as_pointer_value();
+                                self.ctx_stack.last_mut().unwrap().variables.insert(var.id, LLVMVar::Slot(slot));
+                            } else {
+                                // Functions & types don't need variable referencing (yet)
                             }
                         }
                     }

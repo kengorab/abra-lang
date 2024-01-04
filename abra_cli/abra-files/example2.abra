@@ -1,4 +1,14 @@
-import s from "./example3"
+export enum Color {
+  Red
+  Blue
+  Green
+}
 
-export val a = 123
-export val arr = [1, 2, s.length]
+export type Person {
+  name: String
+  favoriteColor: Color
+
+  func new(name: String, favoriteColor: Color): Person {
+    Person(name: name, favoriteColor: favoriteColor)
+  }
+}

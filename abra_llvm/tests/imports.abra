@@ -1,5 +1,6 @@
 import a, arr from "./imports_mod1"
 import return123 from "./imports_mod2"
+import makePerson from "./imports_mod2"
 
 /// Expect: 123
 println(a)
@@ -12,3 +13,20 @@ println(arr)
 
 /// Expect: 123
 println(return123())
+
+enum Color {
+  Red
+  Blue
+  Yellow
+}
+
+type Person {
+  name: String
+  favoriteColor: Color
+}
+
+val meg = Person(name: "Meg", favoriteColor: Color.Blue)
+val ken = makePerson(name: "Ken")
+
+/// Expect: Person(name: "Meg", favoriteColor: Color.Blue) Person(firstName: "Ken", favoriteColor: Color.Purple)
+println(meg, ken)
