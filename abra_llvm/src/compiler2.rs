@@ -643,6 +643,7 @@ impl<'a> LLVMCompiler2<'a> {
             let value_slot = self.builder.build_struct_gep(local, 0, "").unwrap();
             let value = self.builder.build_load(value_slot, "").into_int_value();
             let value = self.builder.build_right_shift(value, self.const_i64(48), false, "");
+            let value = self.builder.build_int_cast(value, self.i32(), "");
             (value, Some(local))
         } else {
             let local = if let Some(local) = local {
@@ -857,7 +858,7 @@ impl<'a> LLVMCompiler2<'a> {
             if compiled.contains(&m.id) { continue; }
 
             let mut deps_satisfied = true;
-            for import_id in &m.imports {
+            for (import_id, _) in &m.imports {
                 if !compiled.contains(import_id) {
                     module_queue.push_back(*import_id);
                     deps_satisfied = false;
@@ -1263,7 +1264,7 @@ impl<'a> LLVMCompiler2<'a> {
                             }
                         }
                     }
-                    TypedImportKind::Alias(_) => todo!(),
+                    TypedImportKind::Alias(_) => { /* no-op */ }
                 }
 
                 None
@@ -2800,7 +2801,7 @@ impl<'a> LLVMCompiler2<'a> {
                     } else {
                         self.get_typeid_by_name(&case_type_name)
                     };
-                    let case_typeid_val = self.const_i64(case_typeid as u64);
+                    let case_typeid_val = self.const_i32(case_typeid as u64);
                     let (typeid_val, intermediate_local) = self.get_typeid_from_value(data, None);
 
                     let is_same_type_bb = self.context.append_basic_block(self.current_fn.0, "is_same_type");
@@ -4708,7 +4709,7 @@ impl<'a> LLVMCompiler2<'a> {
             let block = self.context.append_basic_block(self.current_fn.0, &format!("{}_case", &variant.name));
             self.builder.position_at_end(block);
 
-            let variant_typeid_val = self.const_i64(variant_typeid as u64);
+            let variant_typeid_val = self.const_i32(variant_typeid as u64);
             let neq = self.builder.build_int_compare(IntPredicate::NE, variant_typeid_val, other_typeid_val, "");
 
             let neq_bb = self.context.append_basic_block(self.current_fn.0, "typeids_neq_bb");

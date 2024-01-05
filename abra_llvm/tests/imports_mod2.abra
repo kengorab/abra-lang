@@ -2,7 +2,7 @@ export val s = "hello"
 
 export func return123(): Int = 123
 
-enum Color {
+export enum Color {
   Purple
   Green
   Orange
@@ -13,6 +13,6 @@ type Person {
   favoriteColor: Color
 }
 
-export func makePerson(name: String): Person {
-  Person(firstName: name, favoriteColor: Color.Purple)
+export func makePerson(name: String, favoriteColor: Color): Person {
+  Person(firstName: name, favoriteColor: favoriteColor)
 }

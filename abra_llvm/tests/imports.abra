@@ -1,6 +1,7 @@
 import a, arr from "./imports_mod1"
 import return123 from "./imports_mod2"
 import makePerson from "./imports_mod2"
+import "./imports_mod2" as mod2
 
 /// Expect: 123
 println(a)
@@ -26,7 +27,7 @@ type Person {
 }
 
 val meg = Person(name: "Meg", favoriteColor: Color.Blue)
-val ken = makePerson(name: "Ken")
+val ken = makePerson(name: "Ken", favoriteColor: mod2.Color.Purple)
 
 /// Expect: Person(name: "Meg", favoriteColor: Color.Blue) Person(firstName: "Ken", favoriteColor: Color.Purple)
 println(meg, ken)

@@ -251,6 +251,17 @@ impl Project {
         module.structs.iter()
             .find(|s| s.name == *name)
             .or_else(|| {
+                // If struct cannot be found in current module, look in the module's imports, making
+                // sure to only consider the _imported names_ from that imported module.
+                module.imports.iter().find_map(|(import_id, imported_names)|
+                    if imported_names.contains(name) {
+                        self.find_struct_by_name(import_id, name)
+                    } else {
+                        None
+                    }
+                )
+            })
+            .or_else(|| {
                 // If struct cannot be found in current module, look in the prelude module
                 self.prelude_module().structs.iter()
                     .find(|s| s.name == *name)
@@ -261,6 +272,17 @@ impl Project {
         let module = &self.modules[module_id.0];
         module.enums.iter()
             .find(|s| s.name == *name)
+            .or_else(|| {
+                // If struct cannot be found in current module, look in the module's imports, making
+                // sure to only consider the _imported names_ from that imported module.
+                module.imports.iter().find_map(|(import_id, imported_names)|
+                    if imported_names.contains(name) {
+                        self.find_enum_by_name(import_id, name)
+                    } else {
+                        None
+                    }
+                )
+            })
             .or_else(|| {
                 // If enum cannot be found in current module, look in the prelude module
                 self.prelude_module().enums.iter()
@@ -912,7 +934,7 @@ pub enum ImportedValue {
 pub struct TypedModule {
     pub id: ModuleId,
     pub name: String,
-    pub imports: Vec<ModuleId>,
+    pub imports: HashMap<ModuleId, HashSet<String>>,
     pub type_ids: Vec<TypeId>,
     // TODO: is this necessary?
     pub functions: Vec<FuncId>,
@@ -2776,7 +2798,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         debug_assert!(self.project.modules.is_empty());
 
         self.module_loader.register(&parser::ast::ModuleId::prelude(), &PRELUDE_MODULE_ID);
-        let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), imports: vec![], type_ids: vec![], functions: vec![], structs: vec![], enums: vec![], code: vec![], scopes: vec![], exports: HashMap::new(), completed: false };
+        let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), imports: HashMap::new(), type_ids: vec![], functions: vec![], structs: vec![], enums: vec![], code: vec![], scopes: vec![], exports: HashMap::new(), completed: false };
         let mut prelude_scope = Scope { label: "prelude.root".to_string(), kind: ScopeKind::Module(PRELUDE_MODULE_ID), terminator: None, id: PRELUDE_SCOPE_ID, parent: None, types: vec![], vars: vec![], funcs: vec![] };
 
         let primitives = [
@@ -2863,7 +2885,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.project.modules.push(TypedModule {
             id: module_id,
             name: file_name,
-            imports: vec![],
+            imports: HashMap::new(),
             type_ids: vec![],
             functions: vec![],
             structs: vec![],
@@ -2887,7 +2909,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             let mut tc = Typechecker2::new(self.module_loader, self.project);
             let imported_module_id = tc.typecheck_module(&import_m_id)?;
-            self.current_module_mut().imports.push(imported_module_id);
+            self.current_module_mut().imports.insert(imported_module_id, HashSet::new());
         }
 
         self.current_scope_id = scope_id;
@@ -4073,7 +4095,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let exports = import_module.exports.values().map(|e| e.clone()).collect_vec();
 
                         for export in exports {
-                            self.add_imported_value(export, &star_token)?;
+                            self.add_imported_value(module_id, export, &star_token)?;
                         }
 
                         TypedImportKind::ImportAll(star_token)
@@ -4088,7 +4110,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 return Err(TypeError::UnknownExport { span, module_id, import_name, is_aliased: false });
                             };
 
-                            let imported_value = self.add_imported_value(*export, &import_tok)?;
+                            let imported_value = self.add_imported_value(module_id, *export, &import_tok)?;
                             imported_values.push(imported_value);
                         }
                         TypedImportKind::ImportList(imported_values)
@@ -4109,45 +4131,55 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
     }
 
-    fn add_imported_value(&mut self, exported_value: ExportedValue, import_token: &Token) -> Result<ImportedValue, TypeError> {
+    fn add_imported_value(&mut self, module_id: ModuleId, exported_value: ExportedValue, import_token: &Token) -> Result<ImportedValue, TypeError> {
         let span = self.make_span(&import_token.get_range());
 
-        let imported_value = match exported_value {
+        let (imported_value, imported_name) = match exported_value {
             ExportedValue::Function(func_id) => {
                 self.add_function_variable_alias_to_current_scope(import_token, &func_id)?;
 
-                ImportedValue::Function(func_id)
+                let imported_name = self.project.get_func_by_id(&func_id).name.clone();
+                (ImportedValue::Function(func_id), imported_name)
             }
             ExportedValue::Type(type_kind) => {
-                match type_kind {
+                let imported_name = match type_kind {
                     TypeKind::Struct(struct_id) => {
                         let struct_type_id = self.add_or_find_type_id(self.project.struct_type(struct_id));
                         let struct_ = self.project.get_struct_by_id(&struct_id);
+                        let imported_name = struct_.name.clone();
                         let struct_var_id = self.add_variable_to_current_scope(struct_.name.clone(), struct_type_id, false, true, &span, false)?;
                         let variable = self.project.get_var_by_id_mut(&struct_var_id);
                         variable.alias = VariableAlias::Type(TypeKind::Struct(struct_id));
+
+                        imported_name
                     }
                     TypeKind::Enum(enum_id) => {
                         let enum_type_id = self.add_or_find_type_id(self.project.enum_type(enum_id));
                         let enum_ = self.project.get_enum_by_id(&enum_id);
+                        let imported_name = enum_.name.clone();
                         let enum_var_id = self.add_variable_to_current_scope(enum_.name.clone(), enum_type_id, false, true, &span, false)?;
                         let variable = self.project.get_var_by_id_mut(&enum_var_id);
                         variable.alias = VariableAlias::Type(TypeKind::Enum(enum_id));
-                    }
-                }
 
-                ImportedValue::Type(type_kind)
+                        imported_name
+                    }
+                };
+
+                (ImportedValue::Type(type_kind), imported_name)
             }
             ExportedValue::Variable(var_id) => {
                 let imported_var = self.project.get_var_by_id(&var_id);
                 let is_captured = imported_var.is_captured;
                 let var_id = self.add_variable_to_current_scope(imported_var.name.clone(), imported_var.type_id, false, imported_var.is_initialized, &span, false)?;
                 let var = self.project.get_var_by_id_mut(&var_id);
+                let imported_name = var.name.clone();
                 var.is_captured = is_captured;
 
-                ImportedValue::Variable(var_id)
+                (ImportedValue::Variable(var_id), imported_name)
             }
         };
+
+        self.current_module_mut().imports.entry(module_id).or_default().insert(imported_name);
 
         Ok(imported_value)
     }
@@ -4397,86 +4429,143 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
                 MatchCaseType::Compound(path_tokens, args) => {
                     let mut path_tokens_iter = path_tokens.into_iter();
-                    let enum_name_token = path_tokens_iter.next().expect("There should be at least 2 tokens in the path");
-                    let enum_name = Token::get_ident_name(&enum_name_token);
-                    let Some(enum_) = self.get_enum_by_name(&enum_name) else {
-                        return Err(TypeError::UnknownType { span: self.make_span(&enum_name_token.get_range()), name: enum_name });
-                    };
-                    let enum_id = enum_.id;
+                    let first_token = path_tokens_iter.next().expect("There should be at least 1 token in the path");
+                    let first_token_str = Token::get_ident_name(&first_token);
 
-                    let variant_name_token = path_tokens_iter.next().expect("There should be 2 tokens in the path");
-                    let match_case_range = enum_name_token.get_range().expand(&variant_name_token.get_range());
+                    let (enum_or_struct, name_token) = if let Some(var) = self.project.find_variable_by_name(&ScopeId(self.current_module().id, 0), &first_token_str) {
+                        if let Some(alias_module_id) = var.type_id.as_module_type_alias() {
+                            let type_name_token = path_tokens_iter.next().expect("There should be at least 2 tokens in the path");
+                            let type_name = Token::get_ident_name(&type_name_token);
 
-                    let variant_name = Token::get_ident_name(&variant_name_token);
-                    let Some((variant_idx, variant)) = enum_.variants.iter().enumerate().find(|(_, v)| v.name == variant_name) else {
-                        return Err(TypeError::UnknownMember { span: self.make_span(&variant_name_token.get_range()), field_name: variant_name, type_id: enum_.self_type_id });
-                    };
-                    let inner_type_id = self.project.type_is_option(&target_type_id).unwrap_or(target_type_id);
-                    let target_ty = self.project.get_type_by_id(&inner_type_id);
-                    let generic_ids = match target_ty {
-                        Type::GenericEnumInstance(enum_id, generic_ids, _) if *enum_id == enum_.id => generic_ids.clone(),
-                        _ => return Err(TypeError::UnreachableMatchCase {
-                            span: self.make_span(&match_case_range),
-                            kind: UnreachableMatchCaseKind::NoTypeOverlap { case_type: Some(enum_.self_type_id), target_type: target_type_id, target_span: self.make_span(&typed_target.span()) },
-                        }),
-                    };
-                    if let Some(orig_range) = seen_enum_variants.get(&(enum_.id, variant_idx)) {
-                        return Err(TypeError::DuplicateMatchCase { span: self.make_span(&match_case_range), orig_span: self.make_span(orig_range) });
-                    }
-                    seen_enum_variants.insert((enum_.id, variant_idx), match_case_range);
-                    if enum_.variants.iter().enumerate().all(|(v_idx, _)| seen_enum_variants.contains_key(&(enum_.id, v_idx))) {
-                        enum_variants_covered = true;
-                    }
-
-                    let enum_variant_func_id = if let Some(_) = &args {
-                        if let EnumVariantKind::Container(func_id) = &variant.kind { Some(*func_id) } else { None }
-                    } else {
-                        None
-                    };
-
-                    case_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids, Some(variant_idx)));
-
-                    let typed_match_case_args = if let Some(args) = args {
-                        let Some(func_id) = enum_variant_func_id else {
-                            return Err(TypeError::DestructuringMismatch { span: self.make_span(&args[0].get_span()), kind: DestructuringMismatchKind::InvalidDestructureTarget, type_id: case_type_id });
-                        };
-                        let variant_fields = self.project.get_func_by_id(&func_id).params.iter().map(|p| p.type_id).collect_vec();
-                        let num_destructuring_args = args.len();
-                        let mut typed_match_case_args = Vec::with_capacity(num_destructuring_args);
-                        for pair in args.into_iter().zip_longest(&variant_fields) {
-                            let typed_arg = match pair {
-                                EitherOrBoth::Both(match_case_arg, field_type_id) => {
-                                    let match_case_arg_span = match_case_arg.get_span();
-
-                                    match match_case_arg {
-                                        MatchCaseArgument::Pattern(mut binding) => {
-                                            let mut var_ids = vec![];
-                                            self.typecheck_binding_pattern(false, true, &mut binding, &field_type_id, &mut var_ids)?;
-                                            TypedMatchCaseArgument::Pattern(binding, var_ids)
-                                        }
-                                        MatchCaseArgument::Literal(node) => {
-                                            let typed_node = self.typecheck_expression(node, Some(*field_type_id))?;
-                                            if !self.type_satisfies_other(typed_node.type_id(), field_type_id) {
-                                                return Err(TypeError::TypeMismatch { span: self.make_span(&match_case_arg_span), expected: vec![*field_type_id], received: *typed_node.type_id() });
-                                            }
-                                            TypedMatchCaseArgument::Literal(typed_node)
-                                        }
-                                    }
-                                }
-                                EitherOrBoth::Left(arg) => {
-                                    return Err(TypeError::DestructuringMismatch { span: self.make_span(&arg.get_span()), kind: DestructuringMismatchKind::InvalidEnumVariantArity(variant_fields.len(), num_destructuring_args), type_id: case_type_id });
-                                }
-                                EitherOrBoth::Right(_) => { break; }
+                            let module = &self.project.modules[alias_module_id.0];
+                            let exported_value = module.exports.iter().find_map(|(name, val)| if name == &type_name { Some(val) } else { None });
+                            let Some(export) = exported_value else {
+                                let span = self.make_span(&type_name_token.get_range());
+                                return Err(TypeError::UnknownExport { span, module_id: alias_module_id, import_name: type_name, is_aliased: true });
                             };
-                            typed_match_case_args.push(typed_arg);
-                        }
 
-                        typed_match_case_args
+                            match export {
+                                ExportedValue::Variable(_) | ExportedValue::Function(_) => {
+                                    return Err(TypeError::UnknownType { span: self.make_span(&type_name_token.get_range()), name: type_name });
+                                }
+                                ExportedValue::Type(TypeKind::Enum(enum_id)) => (Either::Left(self.project.get_enum_by_id(enum_id)), type_name_token),
+                                ExportedValue::Type(TypeKind::Struct(struct_id)) => (Either::Right(self.project.get_struct_by_id(struct_id)), type_name_token),
+                            }
+                        } else if let Type::Type(TypeKind::Enum(enum_id)) = self.project.get_type_by_id(&var.type_id) {
+                            let enum_ = self.project.get_enum_by_id(enum_id);
+                            (Either::Left(enum_), first_token)
+                        } else {
+                            return Err(TypeError::UnknownType { span: self.make_span(&first_token.get_range()), name: first_token_str });
+                        }
                     } else {
-                        vec![]
+                        return Err(TypeError::UnknownType { span: self.make_span(&first_token.get_range()), name: first_token_str });
                     };
 
-                    TypedMatchCaseKind::Type(case_type_id, typed_match_case_args)
+                    match enum_or_struct {
+                        Either::Right(struct_) => {
+                            if let Some(destructured_arg) = args.as_ref().and_then(|args| args.first()) {
+                                let tok = match destructured_arg {
+                                    MatchCaseArgument::Pattern(p) => p.get_token(),
+                                    MatchCaseArgument::Literal(n) => n.get_token(),
+                                };
+                                return Err(TypeError::UnimplementedFeature { span: self.make_span(&tok.get_range()), desc: "destructuring of non-enum type in match case" });
+                            }
+                            if let Some(orig_token) = seen_type_token {
+                                return Err(TypeError::DuplicateMatchCase { span: self.make_span(&name_token.get_range()), orig_span: self.make_span(&orig_token.get_range()) });
+                            }
+                            seen_type_token = Some(name_token.clone());
+
+                            let resolved_case_type_id = struct_.self_type_id;
+                            if !self.type_satisfies_other(&resolved_case_type_id, &target_type_id) {
+                                let kind = UnreachableMatchCaseKind::NoTypeOverlap { case_type: Some(resolved_case_type_id), target_type: target_type_id, target_span: self.make_span(&typed_target.span()) };
+                                return Err(TypeError::UnreachableMatchCase { span: self.make_span(&name_token.get_range()), kind });
+                            }
+                            if resolved_case_type_id == target_type_id || matches!(self.project.type_is_option(&target_type_id), Some(unwrapped_opt_type) if unwrapped_opt_type == resolved_case_type_id) {
+                                type_case_covered = true;
+                            }
+
+                            case_type_id = resolved_case_type_id;
+
+                            TypedMatchCaseKind::Type(resolved_case_type_id, vec![])
+                        }
+                        Either::Left(enum_) => {
+                            let enum_id = enum_.id;
+
+                            let variant_name_token = path_tokens_iter.next().expect("There should be 2 tokens in the path");
+                            let match_case_range = name_token.get_range().expand(&variant_name_token.get_range());
+
+                            let variant_name = Token::get_ident_name(&variant_name_token);
+                            let Some((variant_idx, variant)) = enum_.variants.iter().enumerate().find(|(_, v)| v.name == variant_name) else {
+                                return Err(TypeError::UnknownMember { span: self.make_span(&variant_name_token.get_range()), field_name: variant_name, type_id: enum_.self_type_id });
+                            };
+                            let inner_type_id = self.project.type_is_option(&target_type_id).unwrap_or(target_type_id);
+                            let target_ty = self.project.get_type_by_id(&inner_type_id);
+                            let generic_ids = match target_ty {
+                                Type::GenericEnumInstance(enum_id, generic_ids, _) if *enum_id == enum_.id => generic_ids.clone(),
+                                _ => return Err(TypeError::UnreachableMatchCase {
+                                    span: self.make_span(&match_case_range),
+                                    kind: UnreachableMatchCaseKind::NoTypeOverlap { case_type: Some(enum_.self_type_id), target_type: target_type_id, target_span: self.make_span(&typed_target.span()) },
+                                }),
+                            };
+                            if let Some(orig_range) = seen_enum_variants.get(&(enum_.id, variant_idx)) {
+                                return Err(TypeError::DuplicateMatchCase { span: self.make_span(&match_case_range), orig_span: self.make_span(orig_range) });
+                            }
+                            seen_enum_variants.insert((enum_.id, variant_idx), match_case_range);
+                            if enum_.variants.iter().enumerate().all(|(v_idx, _)| seen_enum_variants.contains_key(&(enum_.id, v_idx))) {
+                                enum_variants_covered = true;
+                            }
+
+                            let enum_variant_func_id = if let Some(_) = &args {
+                                if let EnumVariantKind::Container(func_id) = &variant.kind { Some(*func_id) } else { None }
+                            } else {
+                                None
+                            };
+
+                            case_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids, Some(variant_idx)));
+
+                            let typed_match_case_args = if let Some(args) = args {
+                                let Some(func_id) = enum_variant_func_id else {
+                                    return Err(TypeError::DestructuringMismatch { span: self.make_span(&args[0].get_span()), kind: DestructuringMismatchKind::InvalidDestructureTarget, type_id: case_type_id });
+                                };
+                                let variant_fields = self.project.get_func_by_id(&func_id).params.iter().map(|p| p.type_id).collect_vec();
+                                let num_destructuring_args = args.len();
+                                let mut typed_match_case_args = Vec::with_capacity(num_destructuring_args);
+                                for pair in args.into_iter().zip_longest(&variant_fields) {
+                                    let typed_arg = match pair {
+                                        EitherOrBoth::Both(match_case_arg, field_type_id) => {
+                                            let match_case_arg_span = match_case_arg.get_span();
+
+                                            match match_case_arg {
+                                                MatchCaseArgument::Pattern(mut binding) => {
+                                                    let mut var_ids = vec![];
+                                                    self.typecheck_binding_pattern(false, true, &mut binding, &field_type_id, &mut var_ids)?;
+                                                    TypedMatchCaseArgument::Pattern(binding, var_ids)
+                                                }
+                                                MatchCaseArgument::Literal(node) => {
+                                                    let typed_node = self.typecheck_expression(node, Some(*field_type_id))?;
+                                                    if !self.type_satisfies_other(typed_node.type_id(), field_type_id) {
+                                                        return Err(TypeError::TypeMismatch { span: self.make_span(&match_case_arg_span), expected: vec![*field_type_id], received: *typed_node.type_id() });
+                                                    }
+                                                    TypedMatchCaseArgument::Literal(typed_node)
+                                                }
+                                            }
+                                        }
+                                        EitherOrBoth::Left(arg) => {
+                                            return Err(TypeError::DestructuringMismatch { span: self.make_span(&arg.get_span()), kind: DestructuringMismatchKind::InvalidEnumVariantArity(variant_fields.len(), num_destructuring_args), type_id: case_type_id });
+                                        }
+                                        EitherOrBoth::Right(_) => { break; }
+                                    };
+                                    typed_match_case_args.push(typed_arg);
+                                }
+
+                                typed_match_case_args
+                            } else {
+                                vec![]
+                            };
+
+                            TypedMatchCaseKind::Type(case_type_id, typed_match_case_args)
+                        }
+                    }
                 }
                 MatchCaseType::Wildcard(wildcard_token) => {
                     if let Some(seen_wildcard_token) = seen_wildcard_token {

@@ -1,9 +1,19 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-import Person, Color from "./example2"
+import "./example2" as ex2
+import Color from "./example2"
 
-val meg1 = Person(name: "Meg", favoriteColor: Color.Blue)
-val meg2 = Person.new("Meg", Color.Blue)
+val meg1 = ex2.Person(name: "Meg", favoriteColor: ex2.Color.Blue)
+val meg2 = ex2.Person.new("Meg", ex2.Color.Blue)
 
-println(meg1 == meg2)
+val megs = [meg1, meg2]
+
+match meg1.favoriteColor {
+  //megs.Color.Blue => println("of course")
+  //ex2.hello => {}
+  //ex2.Person => println("yes")
+  Color => println("of course")
+  ex2.Color.Blue => println("of course")
+  _ => println("huh??")
+}

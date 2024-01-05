@@ -2391,7 +2391,7 @@ fn typecheck_type_declaration() {
                     default_value: None,
                     is_variadic: false,
                     is_incomplete: false,
-                }
+                },
             ],
             return_type_id: PRELUDE_BOOL_TYPE_ID,
             defined_span: None,
@@ -5100,6 +5100,49 @@ fn typecheck_match_statement_and_expression() {
         _ => 0
       }
     "#);
+
+    // Types referenced from import aliases
+    assert_typecheck_ok_modules(
+        r#"
+          import C from "./2"
+          import "./2" as two
+
+          val c = C.C2
+          match c {
+            two.C.C1 => {}
+            two.C.C2 => {}
+            two.C.C3 => {}
+          }
+        "#,
+        &[
+            (
+                "2",
+                r#"
+                  export enum C { C1, C2, C3 }
+                "#
+            )
+        ],
+    );
+    assert_typecheck_ok_modules(
+        r#"
+          import B from "./2"
+          import "./2" as two
+
+          val arr = [B(b: "foo"), B(b: "bar")]
+          match arr[0] {
+            two.B => {}
+            None => {}
+          }
+        "#,
+        &[
+            (
+                "2",
+                r#"
+                  export type B { b: String }
+                "#
+            )
+        ],
+    );
 }
 
 #[test]
@@ -5334,6 +5377,117 @@ fn typecheck_failure_match_expression() {
         span: Span::new(ModuleId(1), (2, 38), (2, 42)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_STRING_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    // Aliased imported types
+    let (_, Either::Right(err)) = test_typecheck_with_modules(
+        "\
+        import B from \"./2\"\n\
+        import \"./2\" as two\n\
+        var b: B\n\
+        match b {\n\
+          B => {}\n\
+          two.B => {}\n\
+        }",
+        &[
+            ("2", "export type B { b: String }"),
+        ],
+    ).unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateMatchCase {
+        span: Span::new(ModuleId(1), (6, 5), (6, 5)),
+        orig_span: Span::new(ModuleId(1), (5, 1), (5, 1))
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck_with_modules(
+        "\
+        import B from \"./2\"\n\
+        import \"./2\" as two\n\
+        var b: B\n\
+        match b {\n\
+          two.Z => {}\n\
+        }",
+        &[
+            ("2", "export type B { b: String }"),
+        ],
+    ).unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownExport {
+        span: Span::new(ModuleId(1), (5, 5), (5, 5)),
+        module_id: ModuleId(2),
+        import_name: "Z".to_string(),
+        is_aliased: true,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck_with_modules(
+        "\
+        import B from \"./2\"\n\
+        import \"./2\" as two\n\
+        var b: B\n\
+        match b {\n\
+          two.hello => {}\n\
+        }",
+        &[
+            ("2", "export type B { b: String }\nexport func hello() {}"),
+        ],
+    ).unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownType {
+        span: Span::new(ModuleId(1), (5, 5), (5, 9)),
+        name: "hello".to_string(),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck_with_modules(
+        "\
+        import B from \"./2\"\n\
+        import \"./2\" as two\n\
+        var b: B\n\
+        match b {\n\
+          b.B => {}\n\
+        }",
+        &[
+            ("2", "export type B { b: String }"),
+        ],
+    ).unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownType {
+        span: Span::new(ModuleId(1), (5, 1), (5, 1)),
+        name: "b".to_string(),
+    };
+    assert_eq!(expected, err);
+
+    // Aliased imported enums
+    let (_, Either::Right(err)) = test_typecheck_with_modules(
+        "\
+        import B from \"./2\"\n\
+        import \"./2\" as two\n\
+        var b: B\n\
+        match b {\n\
+          B.B1 => {}\n\
+          two.B.B1 => {}\n\
+        }",
+        &[
+            ("2", "export enum B { B1 }"),
+        ],
+    ).unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateMatchCase {
+        span: Span::new(ModuleId(1), (6, 5), (6, 8)),
+        orig_span: Span::new(ModuleId(1), (5, 1), (5, 4))
+    };
+    assert_eq!(expected, err);
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck_with_modules(
+        "\
+        import B from \"./2\"\n\
+        import \"./2\" as two\n\
+        var b: B\n\
+        match b {\n\
+          b.B.B1 => {}\n\
+        }",
+        &[
+            ("2", "export enum B { B1 }"),
+        ],
+    ).unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownType {
+        span: Span::new(ModuleId(1), (5, 1), (5, 1)),
+        name: "b".to_string(),
     };
     assert_eq!(expected, err);
 }
