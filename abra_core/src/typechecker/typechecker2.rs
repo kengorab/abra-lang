@@ -36,16 +36,16 @@ pub trait LoadModule {
 
 pub struct ModuleLoader<'a> {
     program_root: &'a PathBuf,
-    prelude_path: &'a PathBuf,
+    std_path: &'a PathBuf,
     module_id_map: HashMap<ModuleId, parser::ast::ModuleId>,
     module_id_map_rev: HashMap<parser::ast::ModuleId, ModuleId>,
 }
 
 impl<'a> ModuleLoader<'a> {
-    pub fn new(program_root: &'a PathBuf, prelude_path: &'a PathBuf) -> ModuleLoader<'a> {
+    pub fn new(program_root: &'a PathBuf, std_path: &'a PathBuf) -> ModuleLoader<'a> {
         ModuleLoader {
             program_root,
-            prelude_path,
+            std_path,
             module_id_map: HashMap::new(),
             module_id_map_rev: HashMap::new(),
         }
@@ -55,7 +55,8 @@ impl<'a> ModuleLoader<'a> {
 impl<'a> LoadModule for ModuleLoader<'a> {
     fn resolve_path(&self, module_id: &parser::ast::ModuleId) -> Option<String> {
         if module_id.is_prelude() {
-            return Some(self.prelude_path.to_str().unwrap().to_string());
+            let prelude_path = self.std_path.join("prelude.abra");
+            return Some(prelude_path.to_str().unwrap().to_string());
         }
 
         let mut path = PathBuf::new();
@@ -70,7 +71,8 @@ impl<'a> LoadModule for ModuleLoader<'a> {
 
     fn get_path(&self, module_id: &ModuleId) -> Option<String> {
         if module_id == &PRELUDE_MODULE_ID {
-            Some(self.prelude_path.to_str().unwrap().to_string())
+            let prelude_path = self.std_path.join("prelude.abra");
+            return Some(prelude_path.to_str().unwrap().to_string());
         } else {
             let m_id = self.module_id_map.get(module_id).expect(&format!("Internal error: expected module for {:?}", module_id));
             self.resolve_path(m_id)

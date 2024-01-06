@@ -26,7 +26,7 @@ use abra_llvm::compiler2::LLVMCompiler2;
 mod repl;
 
 #[derive(Clap)]
-#[clap(name = "abra", version = crate_version ! ())]
+#[clap(name = "abra", version = crate_version!())]
 struct Opts {
     #[clap(subcommand)]
     sub_cmd: SubCommand,
@@ -34,7 +34,7 @@ struct Opts {
 
 #[derive(Clap)]
 enum SubCommand {
-    Typecheck(RunOpts),
+    Typecheck(BuildOpts),
     Run(RunOpts),
     Compile(CompileOpts),
     Compile2(CompileOpts),
@@ -77,6 +77,9 @@ struct BuildOpts {
     #[clap(short = "o", help = "Where the resulting binary should be placed (default: '<build-dir>/.abra/main')")]
     out_file_name: Option<String>,
 
+    #[clap(long = "std", help = "Path to the abra std/ directory")]
+    std_path: Option<String>,
+
     #[clap(short = "b", help = "Where the .abra output dir should be placed (default: current directory)")]
     build_dir: Option<String>,
 }
@@ -118,7 +121,13 @@ fn main() -> Result<(), ()> {
     }
 }
 
-fn cmd_typecheck2(opts: RunOpts) -> Result<(), ()> {
+fn cmd_typecheck2(opts: BuildOpts) -> Result<(), ()> {
+    typecheck_project(&opts);
+
+    Ok(())
+}
+
+fn typecheck_project(opts: &BuildOpts) -> (abra_core::typechecker::typechecker2::ModuleId, Project) {
     let current_path = std::env::current_dir().unwrap();
     let file_path = current_path.join(&opts.file_path);
 
@@ -126,45 +135,52 @@ fn cmd_typecheck2(opts: RunOpts) -> Result<(), ()> {
     let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
     let module_id = ModuleId::parse_module_path(&format!("./{}", module_name)).unwrap();
 
-    let prelude_stub_abra_path = get_project_root().unwrap().join("abra_core/src/typechecker/prelude.stub.abra");
-    let mut module_loader = ModuleLoader::new(&root, &prelude_stub_abra_path);
+    let std_path = opts.std_path.as_ref()
+        .map(|path| PathBuf::from(path))
+        .unwrap_or_else(|| {
+            get_project_root().unwrap().join("abra_core/std")
+        });
+
+    let mut module_loader = ModuleLoader::new(&root, &std_path);
     let mut project = Project::default();
     let mut tc = Typechecker2::new(&mut module_loader, &mut project);
     match tc.typecheck_prelude() {
         Ok(_) => {}
         Err(e) => {
             match e {
-                Either::Left(Either::Left(e)) => eprintln!("{}", e.get_message(&"prelude.stub.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
-                Either::Left(Either::Right(e)) => eprintln!("{}", e.get_message(&"prelude.stub.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
+                Either::Left(e) => {
+                    let file_name = module_loader.resolve_path(&ModuleId::prelude()).unwrap();
+                    let contents = std::fs::read_to_string(&file_name).unwrap();
+                    match e {
+                        Either::Left(e) => eprintln!("{}", e.get_message(&"prelude.abra".to_string(), &contents)),
+                        Either::Right(e) => eprintln!("{}", e.get_message(&"prelude.abra".to_string(), &contents)),
+                    }
+                }
                 Either::Right(e) => eprintln!("{}", e.message(&module_loader, &project)),
             }
             std::process::exit(1);
         }
     }
 
-    match tc.typecheck_module(&module_id) {
-        Ok(_) => {}
+    let entrypoint_module_id = match tc.typecheck_module(&module_id) {
+        Ok(mod_id) => mod_id,
         Err(e) => {
             match e {
-                Either::Left(Either::Left(e)) => {
-                    let file_name = module_loader.resolve_path(&module_id)
-                        .expect("Internal error: cannot report on errors in a file that never existed in the first place");
+                Either::Left(e) => {
+                    let file_name = module_loader.resolve_path(&module_id).unwrap();
                     let contents = std::fs::read_to_string(&file_name).unwrap();
-                    eprintln!("{}", e.get_message(&file_name, &contents))
-                }
-                Either::Left(Either::Right(e)) => {
-                    let file_name = module_loader.resolve_path(&module_id)
-                        .expect("Internal error: cannot report on errors in a file that never existed in the first place");
-                    let contents = std::fs::read_to_string(&file_name).unwrap();
-                    eprintln!("{}", e.get_message(&file_name, &contents))
+                    match e {
+                        Either::Left(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+                        Either::Right(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+                    }
                 }
                 Either::Right(e) => eprintln!("{}", e.message(&module_loader, &project)),
             }
             std::process::exit(1);
         }
-    }
+    };
 
-    Ok(())
+    (entrypoint_module_id, project)
 }
 
 fn cmd_compile_to_c_and_run2(opts: CompileOpts) -> Result<(), ()> {
@@ -184,7 +200,7 @@ fn cmd_compile_to_c_and_run2(opts: CompileOpts) -> Result<(), ()> {
     let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
     let module_id = ModuleId::parse_module_path(&format!("./{}", &module_name)).unwrap();
 
-    let prelude_stub_abra_path = get_project_root().unwrap().join("abra_core/src/typechecker/prelude.stub.abra");
+    let prelude_stub_abra_path = get_project_root().unwrap().join("abra_core/std/prelude.abra");
     let mut module_loader = ModuleLoader::new(&root, &prelude_stub_abra_path);
     let mut project = Project::default();
     let mut tc = Typechecker2::new(&mut module_loader, &mut project);
@@ -192,8 +208,8 @@ fn cmd_compile_to_c_and_run2(opts: CompileOpts) -> Result<(), ()> {
         Ok(_) => {}
         Err(e) => {
             match e {
-                Either::Left(Either::Left(e)) => eprintln!("{}", e.get_message(&"prelude.stub.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
-                Either::Left(Either::Right(e)) => eprintln!("{}", e.get_message(&"prelude.stub.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
+                Either::Left(Either::Left(e)) => eprintln!("{}", e.get_message(&"prelude.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
+                Either::Left(Either::Right(e)) => eprintln!("{}", e.get_message(&"prelude.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
                 Either::Right(e) => eprintln!("{}", e.message(&module_loader, &project)),
             }
             std::process::exit(1);
@@ -343,8 +359,8 @@ fn cmd_compile_llvm_and_run_2(opts: BuildOpts) -> Result<(), ()> {
     let file_path = current_path.join(&opts.file_path);
 
     let working_dir = file_path.parent().unwrap();
-    let dotabra_dir = if let Some(build_dir_name) = opts.build_dir {
-        Path::new(&build_dir_name).join(".abra")
+    let dotabra_dir = if let Some(build_dir_name) = &opts.build_dir {
+        Path::new(build_dir_name).join(".abra")
     } else {
         working_dir.join(".abra")
     };
@@ -355,48 +371,7 @@ fn cmd_compile_llvm_and_run_2(opts: BuildOpts) -> Result<(), ()> {
         }
     }
 
-    let root = file_path.parent().unwrap().to_path_buf();
-    let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
-    let module_id = ModuleId::parse_module_path(&format!("./{}", &module_name)).unwrap();
-
-    let prelude_stub_abra_path = get_project_root().unwrap().join("abra_core/src/typechecker/prelude.stub.abra");
-    let mut module_loader = ModuleLoader::new(&root, &prelude_stub_abra_path);
-    let mut project = Project::default();
-    let mut tc = Typechecker2::new(&mut module_loader, &mut project);
-    match tc.typecheck_prelude() {
-        Ok(_) => {}
-        Err(e) => {
-            match e {
-                Either::Left(Either::Left(e)) => eprintln!("{}", e.get_message(&"prelude.stub.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
-                Either::Left(Either::Right(e)) => eprintln!("{}", e.get_message(&"prelude.stub.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
-                Either::Right(e) => eprintln!("{}", e.message(&module_loader, &project)),
-            }
-            std::process::exit(1);
-        }
-    }
-
-    let entrypoint_module_id = match tc.typecheck_module(&module_id) {
-        Ok(m_id) => m_id,
-        Err(e) => {
-            match e {
-                Either::Left(Either::Left(e)) => {
-                    let file_name = module_loader.resolve_path(&module_id)
-                        .expect("Internal error: cannot report on errors in a file that never existed in the first place");
-                    let contents = std::fs::read_to_string(&file_name).unwrap();
-                    eprintln!("{}", e.get_message(&file_name, &contents))
-                }
-                Either::Left(Either::Right(e)) => {
-                    let file_name = module_loader.resolve_path(&module_id)
-                        .expect("Internal error: cannot report on errors in a file that never existed in the first place");
-                    let contents = std::fs::read_to_string(&file_name).unwrap();
-                    eprintln!("{}", e.get_message(&file_name, &contents))
-                }
-                Either::Right(e) => eprintln!("{}", e.message(&module_loader, &project)),
-            }
-
-            std::process::exit(1);
-        }
-    };
+    let (entrypoint_module_id, project) = typecheck_project(&opts);
 
     if opts.run {
         let exit_status = LLVMCompiler2::compile_and_run(&entrypoint_module_id, &project, &dotabra_dir, opts.out_file_name);

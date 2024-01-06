@@ -12,9 +12,9 @@
   - [x] type case (incl. enums)
   - [x] destructuring tagged union enum variants
 - [ ] match statement on `Any`/generic type
-- [ ] imports/exports
+- [x] imports/exports
 - [ ] I/O and other low-level things
-- [ ] module alias as a type
+- [x] module alias as a type
 - [ ] error on vars used before initialization (Requires Typechecker)
 - [ ] initializers/constructors and/or fields w/ default values that can reference `self` (Requires Typechecker)
 - [ ] referencing a method as function value

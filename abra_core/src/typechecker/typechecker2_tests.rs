@@ -5,7 +5,7 @@ use crate::parser;
 use crate::parser::ast::{BinaryOp, BindingPattern, UnaryOp};
 use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind, InvalidControlFlowTargetKind, ControlFlowTerminator, TerminatorKind, ExportedValue, TypeKind, DecoratorInstance, FunctionKind, DestructuringMismatchKind};
 
-const PRELUDE_STR: &str = include_str!("prelude.stub.abra");
+const PRELUDE_STR: &str = include_str!("../../std/prelude.abra");
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -26,7 +26,7 @@ impl TestModuleLoader {
 impl LoadModule for TestModuleLoader {
     fn resolve_path(&self, module_id: &parser::ast::ModuleId) -> Option<String> {
         if module_id.is_prelude() {
-            Some("prelude.stub.abra".to_string())
+            Some("prelude".to_string())
         } else {
             Some(module_id.get_path(".").replace("././", "./"))
         }
@@ -48,10 +48,6 @@ impl LoadModule for TestModuleLoader {
     }
 
     fn load_file(&self, file_name: &String) -> Option<String> {
-        if file_name == "prelude.stub.abra" {
-            return Some(PRELUDE_STR.to_string());
-        }
-
         self.files.get(file_name).map(|contents| contents.clone())
     }
 }
@@ -75,6 +71,7 @@ fn test_typecheck_with_modules(entry_module: &str, other_modules: &[(&str, &str)
         .collect_vec();
     let entry_module_id = parser::ast::ModuleId::parse_module_path(&format!("{}", TEST_MODULE_NAME)).unwrap();
     modules.push((entry_module_id.get_path(".").to_string(), entry_module));
+    modules.push(("prelude".to_string(), PRELUDE_STR));
 
     let mut loader = TestModuleLoader::new(modules);
     let mut project = Project::default();
