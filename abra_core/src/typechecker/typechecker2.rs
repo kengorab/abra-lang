@@ -335,6 +335,16 @@ impl Project {
         }
     }
 
+    pub fn condense_type_id_if_primitive<'a>(&self, type_id: &'a TypeId) -> &'a TypeId {
+        match type_id {
+            type_id if matches!(self.get_type_by_id(type_id), Type::GenericInstance(struct_id, _) if struct_id == &self.prelude_int_struct_id) => &PRELUDE_INT_TYPE_ID,
+            type_id if matches!(self.get_type_by_id(type_id), Type::GenericInstance(struct_id, _) if struct_id == &self.prelude_float_struct_id) => &PRELUDE_FLOAT_TYPE_ID,
+            type_id if matches!(self.get_type_by_id(type_id), Type::GenericInstance(struct_id, _) if struct_id == &self.prelude_bool_struct_id) => &PRELUDE_BOOL_TYPE_ID,
+            type_id if matches!(self.get_type_by_id(type_id), Type::GenericInstance(struct_id, _) if struct_id == &self.prelude_string_struct_id) => &PRELUDE_STRING_TYPE_ID,
+            type_id => type_id
+        }
+    }
+
     pub fn find_variable_by_name(&self, scope_id: &ScopeId, name: &String) -> Option<&Variable> {
         if name == "_" { return None; }
 
@@ -4821,7 +4831,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let UnaryNode { op, expr } = n;
 
                 let typed_expr = self.typecheck_expression(*expr, None)?;
-                let type_id = typed_expr.type_id();
+                let type_id = self.project.condense_type_id_if_primitive(typed_expr.type_id());
 
                 let span = self.make_span(&token.get_range().expand(&typed_expr.span()));
                 match op {
@@ -4865,8 +4875,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let typed_left = self.typecheck_expression(*left, None)?;
                 let typed_right = self.typecheck_expression(*right, None)?;
-                let l_type_id = typed_left.type_id();
-                let r_type_id = typed_right.type_id();
+                let l_type_id = self.project.condense_type_id_if_primitive(typed_left.type_id());
+                let r_type_id = self.project.condense_type_id_if_primitive(typed_right.type_id());
 
                 let type_id = match &op {
                     BinaryOp::Add => match (*l_type_id, *r_type_id) {

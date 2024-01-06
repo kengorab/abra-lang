@@ -1,5 +1,4 @@
-@Intrinsic("stdout_write")
-func stdoutWrite(str: String)
+@Intrinsic("stdout_write") func stdoutWrite(str: String)
 
 func print(*items: Any[]) {
   for i in range(0, items.length) {
@@ -72,20 +71,85 @@ type Pointer<T> {
   func copyFrom(self, other: Pointer<T>, size: Int)
 }
 
+@Intrinsic("int_as_float") func _intAsFloat(i: Int): Float
+
 type Int {
-  @Stub func abs(self): Int
-  @Stub func asBase(self, base: Int): String
-  @Stub func isEven(self): Bool
-  @Stub func isOdd(self): Bool
-  @Stub func isBetween(self, lower: Int, upper: Int, inclusive = false): Bool
+  func asFloat(self): Float = _intAsFloat(self)
+
+  func abs(self): Int = if self < 0 { -self } else { self }
+
+  func asBase(self, base: Int): String? {
+    if !((2 <= base && base <= 36) || base == 62) return None
+
+    // TODO: Extract to constants on String (when static members are a thing)
+    val digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+    val digitsBase62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+    val isNeg = self < 0
+    var number = self.abs()
+
+    var maxPower = 1
+    while base ** maxPower <= number {
+      maxPower += 1
+    }
+
+    if isNeg { maxPower += 1 }
+    val str = String.withLength(maxPower)
+    var i = maxPower - 1
+
+    while number != 0 {
+      val rem = number % base
+      val D = if base == 62 digitsBase62 else digits
+      str._buffer.offset(i).store(D._buffer.offset(rem).load())
+      i -= 1
+      number = (number / base).asInt()
+    }
+
+    if isNeg {
+      str._buffer.offset(i).store(Byte.fromInt(45)) // '-'
+    }
+
+    str
+  }
+
+  func hex(self): String = "0x" + (self.asBase(16) ?: "")
+
+  func isEven(self): Bool = self % 2 == 0
+
+  func isOdd(self): Bool = self % 2 != 0
+
+  func isBetween(self, lower: Int, upper: Int, inclusive = false): Bool {
+    if inclusive {
+      lower <= self && self <= upper
+    } else {
+      lower < self && self < upper
+    }
+  }
 }
 
+@Intrinsic("float_as_int") func _floatAsInt(f: Float): Int
+@Intrinsic("float_floor") func _floor(f: Float): Int
+@Intrinsic("float_ceil") func _ceil(f: Float): Int
+@Intrinsic("float_round") func _round(f: Float): Int
+
 type Float {
-  @Stub func abs(self): Float
-  @Stub func floor(self): Int
-  @Stub func ceil(self): Int
-  @Stub func round(self): Int
-  @Stub func withPrecision(self, precision: Int): Float
+  func asInt(self): Int = _floatAsInt(self)
+
+  func abs(self): Float = if self < 0 { -self } else { self }
+
+  func floor(self): Int = _floor(self)
+
+  func ceil(self): Int = _ceil(self)
+
+  func round(self): Int = _round(self)
+
+  func withPrecision(self, precision: Int): Float {
+    if precision < 0 return self
+    if precision == 0 return _round(self).asFloat()
+
+    val factor = 10 ** precision
+    _round(self * factor) / factor
+  }
 }
 
 type Bool {

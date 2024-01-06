@@ -107,3 +107,43 @@ println(17 >= 15)
 println(17 >= 18.0)
 /// Expect: true
 println(17 >= 15.1)
+
+// Int#abs
+/// Expect: 12
+println(12.abs())
+/// Expect: 12
+println((-12).abs())
+
+// Int#asBase
+/// Expect: None None None None
+println(123.asBase(1), 123.asBase(0), 123.asBase(-1), 123.asBase(37))
+/// Expect: 1100 -1100
+println(12.asBase(2), (-12).asBase(2))
+/// Expect: 4d2 -4d2
+println(1234.asBase(16), (-1234).asBase(16))
+/// Expect: ya -ya
+println(1234.asBase(36), (-1234).asBase(36))
+/// Expect: L8WN -L8WN
+println(11235813.asBase(62), (-11235813).asBase(62))
+
+// Int#hex
+/// Expect: 0x2a 0x4d2
+println(42.hex(), 1234.hex())
+
+// Int#isEven
+/// Expect: true true
+println(12.isEven(), (-12).isEven())
+/// Expect: false false
+println(11.isEven(), (-11).isEven())
+
+// Int#isOdd
+/// Expect: false false
+println(12.isOdd(), (-12).isOdd())
+/// Expect: true true
+println(11.isOdd(), (-11).isOdd())
+
+// Int#isBetween
+/// Expect: true false false false false
+println(12.isBetween(10, 14), (-12).isBetween(10, 14), 10.isBetween(10, 14), 14.isBetween(10, 14), 15.isBetween(10, 14))
+/// Expect: false true true false
+println((-12).isBetween(10, 14, true), 10.isBetween(10, 14, true), 14.isBetween(10, 14, true), 15.isBetween(10, 14, true))

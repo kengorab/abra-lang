@@ -1317,7 +1317,7 @@ impl<'a> LLVMCompiler2<'a> {
                     .or(Some(value))
             }
             TypedNode::Unary { op, expr, resolved_type_id, .. } => {
-                let type_id = expr.as_ref().type_id();
+                let type_id = self.project.condense_type_id_if_primitive(expr.as_ref().type_id());
 
                 let expr_val = self.visit_expression(expr, resolved_generics).unwrap();
 
@@ -1348,8 +1348,8 @@ impl<'a> LLVMCompiler2<'a> {
                     .or(Some(value))
             }
             TypedNode::Binary { left, op, right, type_id, resolved_type_id, .. } => {
-                let left_type_id = left.as_ref().type_id();
-                let right_type_id = right.as_ref().type_id();
+                let left_type_id = self.project.condense_type_id_if_primitive(left.as_ref().type_id());
+                let right_type_id = self.project.condense_type_id_if_primitive(right.as_ref().type_id());
 
                 let value = match op {
                     BinaryOp::Add => {
@@ -1619,12 +1619,13 @@ impl<'a> LLVMCompiler2<'a> {
                         let left_val = self.visit_expression(left, resolved_generics).unwrap();
                         let right_val = self.visit_expression(right, resolved_generics).unwrap();
                         if left_type_id == &PRELUDE_INT_TYPE_ID && right_type_id == &PRELUDE_INT_TYPE_ID {
-                            let pow_fn = self.main_module.get_function("llvm.powi.f64.i64").unwrap_or_else(|| {
-                                self.main_module.add_function("llvm.powi.f64.i64", self.fn_type(self.f64(), &[self.f64().into(), self.i64().into()]), None)
+                            let pow_fn = self.main_module.get_function("llvm.powi.f64.i32").unwrap_or_else(|| {
+                                self.main_module.add_function("llvm.powi.f64.i32", self.fn_type(self.f64(), &[self.f64().into(), self.i32().into()]), None)
                             });
 
-                            let left = self.builder.build_signed_int_to_float(left_val.into_int_value(), self.f64(), "");
-                            self.builder.build_call(pow_fn, &[left.into(), right_val.into_int_value().into()], "").try_as_basic_value().left().unwrap()
+                            let base = self.builder.build_signed_int_to_float(left_val.into_int_value(), self.f64(), "");
+                            let exp = self.builder.build_int_cast(right_val.into_int_value(), self.i32(), "");
+                            self.builder.build_call(pow_fn, &[base.into(), exp.into()], "").try_as_basic_value().left().unwrap()
                         } else {
                             let pow_fn = self.main_module.get_function("llvm.pow.f64").unwrap_or_else(|| {
                                 self.main_module.add_function("llvm.pow.f64", self.fn_type(self.f64(), &[self.f64().into(), self.f64().into()]), None)
@@ -1999,22 +2000,23 @@ impl<'a> LLVMCompiler2<'a> {
                                 let function = self.project.get_func_by_id(&func_id);
                                 params_data = function.params.iter().skip(1).map(|p| (p.type_id, p.default_value.is_some())).collect_vec();
 
-                                if let Some(dec) = function.decorators.iter().find(|dec| dec.name == "Intrinsic") {
-                                    let TypedNode::Literal { value: TypedLiteral::String(intrinsic_name), .. } = &dec.args[0] else { unreachable!("@Intrinsic requires exactly 1 String argument") };
-                                    return self.compile_intrinsic_invocation(type_arg_ids, &resolved_generics, intrinsic_name, Some(&**target), arguments, resolved_type_id);
-                                }
-
                                 if function.is_closure() {
                                     let captures = self.get_captures_for_closure(function);
                                     args.push(captures.into());
                                 }
 
-                                let target = self.visit_expression(target, &resolved_generics).unwrap();
-                                method_self_arg = Some((if function.is_closure() { 1 } else { 0 }, target));
+                                let target_value = self.visit_expression(target, &resolved_generics).unwrap();
+                                method_self_arg = Some((if function.is_closure() { 1 } else { 0 }, target_value));
 
                                 let realized_generics = type_arg_ids.iter().map(|type_id| self.make_resolved_generic(type_id, resolved_generics)).collect();
                                 new_resolved_generics = self.extend_resolved_generics_via_instance(resolved_generics, &target_type_id);
                                 new_resolved_generics = new_resolved_generics.extend_via_func_call(function, &realized_generics);
+
+                                if let Some(dec) = function.decorators.iter().find(|dec| dec.name == "Intrinsic") {
+                                    let TypedNode::Literal { value: TypedLiteral::String(intrinsic_name), .. } = &dec.args[0] else { unreachable!("@Intrinsic requires exactly 1 String argument") };
+                                    return self.compile_intrinsic_invocation(type_arg_ids, &new_resolved_generics, intrinsic_name, Some(&**target), arguments, resolved_type_id);
+                                }
+
                                 self.get_or_compile_function(&func_id, &new_resolved_generics).into()
                             }
                             AccessorKind::StaticMethod => {
@@ -3261,6 +3263,51 @@ impl<'a> LLVMCompiler2<'a> {
                 let instance_node = implicit_argument.expect("Byte#asInt is an instance method and will have an implicit argument");
                 let i8_val = self.visit_expression(instance_node, resolved_generics).unwrap().into_int_value();
                 let i64_val = self.builder.build_int_cast(i8_val, self.i64(), "");
+                i64_val.as_basic_value_enum()
+            }
+            "int_as_float" => { // Static method
+                let instance_node = arguments.first().expect("Int#asFloat has arity 1").as_ref().unwrap();
+                let i64_val = self.visit_expression(instance_node, resolved_generics).unwrap().into_int_value();
+                let float_val = self.builder.build_cast(InstructionOpcode::SIToFP, i64_val, self.f64(), "");
+                float_val.as_basic_value_enum()
+            }
+            "float_as_int" => { // Static method
+                let instance_node = arguments.first().expect("Float#asInt has arity 1").as_ref().unwrap();
+                let float_val = self.visit_expression(instance_node, resolved_generics).unwrap().into_float_value();
+                let i64_val = self.builder.build_cast(InstructionOpcode::FPToSI, float_val, self.i64(), "");
+                i64_val.as_basic_value_enum()
+            }
+            "float_floor" => { // Static method
+                let instance_node = arguments.first().expect("Float#floor has arity 1").as_ref().unwrap();
+                let float_val = self.visit_expression(instance_node, resolved_generics).unwrap().into_float_value();
+                let floor_fn = self.main_module.get_function("llvm.floor.f64").unwrap_or_else(|| {
+                    self.main_module.add_function("llvm.floor.f64", self.fn_type(self.f64(), &[self.f64().into()]), None)
+                });
+
+                let floor_val = self.builder.build_call(floor_fn, &[float_val.into()], "").try_as_basic_value().left().unwrap().into_float_value();
+                let i64_val = self.builder.build_cast(InstructionOpcode::FPToSI, floor_val, self.i64(), "");
+                i64_val.as_basic_value_enum()
+            }
+            "float_ceil" => { // Static method
+                let instance_node = arguments.first().expect("Float#ceil has arity 1").as_ref().unwrap();
+                let float_val = self.visit_expression(instance_node, resolved_generics).unwrap().into_float_value();
+                let ceil_fn = self.main_module.get_function("llvm.ceil.f64").unwrap_or_else(|| {
+                    self.main_module.add_function("llvm.ceil.f64", self.fn_type(self.f64(), &[self.f64().into()]), None)
+                });
+
+                let ceil_val = self.builder.build_call(ceil_fn, &[float_val.into()], "").try_as_basic_value().left().unwrap().into_float_value();
+                let i64_val = self.builder.build_cast(InstructionOpcode::FPToSI, ceil_val, self.i64(), "");
+                i64_val.as_basic_value_enum()
+            }
+            "float_round" => { // Static method
+                let instance_node = arguments.first().expect("Float#round has arity 1").as_ref().unwrap();
+                let float_val = self.visit_expression(instance_node, resolved_generics).unwrap().into_float_value();
+                let round_fn = self.main_module.get_function("llvm.round.f64").unwrap_or_else(|| {
+                    self.main_module.add_function("llvm.round.f64", self.fn_type(self.f64(), &[self.f64().into()]), None)
+                });
+
+                let round_val = self.builder.build_call(round_fn, &[float_val.into()], "").try_as_basic_value().left().unwrap().into_float_value();
+                let i64_val = self.builder.build_cast(InstructionOpcode::FPToSI, round_val, self.i64(), "");
                 i64_val.as_basic_value_enum()
             }
             _ => unimplemented!("Unimplemented intrinsic '{}'", name),

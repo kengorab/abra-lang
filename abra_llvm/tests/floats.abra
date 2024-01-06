@@ -109,3 +109,37 @@ println(17.1 >= 15)
 println(17.1 >= 18.0)
 /// Expect: true
 println(17.1 >= 15.1)
+
+// Float#asInt
+/// Expect: 1
+println((1.23).asInt())
+
+// Float#abs
+/// Expect: 1.23
+println((1.23).abs())
+/// Expect: 1.23
+println((-1.23).abs())
+
+// Float#floor
+/// Expect: 1 -2
+println((1.23).floor(), (-1.23).floor())
+
+// Float#ceil
+/// Expect: 1 -2
+println((1.23).floor(), (-1.23).floor())
+
+// Float#round
+/// Expect: 6 7
+println((6.24).round(), (6.54).round())
+/// Expect: -6 -7
+println((-6.24).round(), (-6.54).round())
+
+// Float#withPrecision
+/// Expect: 6
+println((6.12345).withPrecision(0))
+/// Expect: 7
+println((6.98765).withPrecision(0))
+/// Expect: 6.98765
+println((6.98765).withPrecision(-1))
+/// Expect: 1.23
+println((1.23456).withPrecision(2))

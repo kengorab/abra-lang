@@ -313,7 +313,7 @@ fn typecheck_prelude_int() {
 
       // Methods
       val abs: Int = i.abs()
-      val asBase: String = i.asBase(base: 16)
+      val asBase: String? = i.asBase(base: 16)
       val isEven: Bool = i.isEven()
       val isOdd: Bool = i.isOdd()
       val isBetween1: Bool = i.isBetween(lower: 1, upper: 36)
