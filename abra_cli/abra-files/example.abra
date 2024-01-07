@@ -1,4 +1,12 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-(-12).asBase(2)
+import "./example2" as ex2
+
+func a(): Int {
+  ex2.abc()
+
+  123
+}
+
+println(a())

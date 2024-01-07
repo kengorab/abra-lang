@@ -1,19 +1,19 @@
-@Intrinsic("stdout_write") func stdoutWrite(str: String)
+import "./_intrinsics" as intrinsics
 
 func print(*items: Any[]) {
   for i in range(0, items.length) {
     val item = items._buffer.offset(i).load()
-    stdoutWrite(item.toString())
+    intrinsics.stdoutWrite(item.toString())
 
     if i != items.length - 1 {
-      stdoutWrite(" ")
+      intrinsics.stdoutWrite(" ")
     }
   }
 }
 
 func println(*items: Any[]) {
   print(items: items)
-  stdoutWrite("\n")
+  intrinsics.stdoutWrite("\n")
 }
 
 type RangeIterator {
@@ -71,10 +71,8 @@ type Pointer<T> {
   func copyFrom(self, other: Pointer<T>, size: Int)
 }
 
-@Intrinsic("int_as_float") func _intAsFloat(i: Int): Float
-
 type Int {
-  func asFloat(self): Float = _intAsFloat(self)
+  func asFloat(self): Float = intrinsics.intAsFloat(self)
 
   func abs(self): Int = if self < 0 { -self } else { self }
 
@@ -127,28 +125,23 @@ type Int {
   }
 }
 
-@Intrinsic("float_as_int") func _floatAsInt(f: Float): Int
-@Intrinsic("float_floor") func _floor(f: Float): Int
-@Intrinsic("float_ceil") func _ceil(f: Float): Int
-@Intrinsic("float_round") func _round(f: Float): Int
-
 type Float {
-  func asInt(self): Int = _floatAsInt(self)
+  func asInt(self): Int = intrinsics.floatAsInt(self)
 
   func abs(self): Float = if self < 0 { -self } else { self }
 
-  func floor(self): Int = _floor(self)
+  func floor(self): Int = intrinsics.floor(self)
 
-  func ceil(self): Int = _ceil(self)
+  func ceil(self): Int = intrinsics.ceil(self)
 
-  func round(self): Int = _round(self)
+  func round(self): Int = intrinsics.round(self)
 
   func withPrecision(self, precision: Int): Float {
     if precision < 0 return self
-    if precision == 0 return _round(self).asFloat()
+    if precision == 0 return intrinsics.round(self).asFloat()
 
     val factor = 10 ** precision
-    _round(self * factor) / factor
+    intrinsics.round(self * factor) / factor
   }
 }
 

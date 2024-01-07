@@ -3807,18 +3807,20 @@ impl<'a> LLVMCompiler2<'a> {
             self.ctx_stack.last_mut().unwrap().variables.insert(param.var_id, variable);
         }
 
-        let num_nodes = function.body.len();
-        for (idx, node) in function.body.iter().enumerate() {
-            let res = self.visit_statement(node, resolved_generics);
-            if idx == num_nodes - 1 {
-                if has_return_value {
-                    if node.is_returning_terminator() {
-                        break;
-                    }
+        if function.body.is_empty() {
+            self.builder.build_return(None);
+        } else {
+            let num_nodes = function.body.len();
+            for (idx, node) in function.body.iter().enumerate() {
+                let res = self.visit_statement(node, resolved_generics);
+                if idx == num_nodes - 1 {
+                    if has_return_value {
+                        if node.is_returning_terminator() { break; }
 
-                    self.builder.build_return(Some(&res.unwrap()));
-                } else {
-                    self.builder.build_return(None);
+                        self.builder.build_return(Some(&res.unwrap()));
+                    } else {
+                        self.builder.build_return(None);
+                    }
                 }
             }
         }

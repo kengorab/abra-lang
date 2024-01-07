@@ -12,16 +12,16 @@ use crate::parser::ast::{args_to_parameters, AssignmentNode, AstLiteralNode, Ast
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
-    fn resolve_path(&self, module_id: &parser::ast::ModuleId) -> Option<String>;
     fn get_path(&self, module_id: &ModuleId) -> Option<String>;
-    fn register(&mut self, m_id: &parser::ast::ModuleId, module_id: &ModuleId);
+    fn calculate_path_wrt_other(&self, m_id: &parser::ast::ModuleId, other: Option<&ModuleId>) -> String;
+    fn register(&mut self, m_id: &parser::ast::ModuleId, module_id: &ModuleId, with_respect_to: Option<&ModuleId>);
     fn get_module_id(&self, m_id: &parser::ast::ModuleId) -> Option<&ModuleId>;
-    fn module_exists(&self, m_id: &parser::ast::ModuleId) -> bool;
+    fn module_exists(&self, m_id: &parser::ast::ModuleId, with_respect_to: Option<&ModuleId>) -> bool;
     fn load_file(&self, file_name: &String) -> Option<String>;
-    fn load_untyped_ast(&self, module_id: &parser::ast::ModuleId) -> Result<Option<(String, ParseResult)>, Either<LexerError, ParseError>> {
+    fn load_untyped_ast(&self, module_id: &parser::ast::ModuleId, with_respect_to: Option<&ModuleId>) -> Result<Option<(String, ParseResult)>, Either<LexerError, ParseError>> {
         use crate::{lexer::lexer, parser::parser};
 
-        let Some(file_name) = self.resolve_path(&module_id) else { return Ok(None); };
+        let file_name = self.calculate_path_wrt_other(module_id, with_respect_to);
         let Some(file_contents) = self.load_file(&file_name) else { return Ok(None); };
 
         match lexer::tokenize(module_id, &file_contents) {
@@ -39,6 +39,7 @@ pub struct ModuleLoader<'a> {
     std_path: &'a PathBuf,
     module_id_map: HashMap<ModuleId, parser::ast::ModuleId>,
     module_id_map_rev: HashMap<parser::ast::ModuleId, ModuleId>,
+    module_id_paths: HashMap<ModuleId, String>,
 }
 
 impl<'a> ModuleLoader<'a> {
@@ -48,50 +49,46 @@ impl<'a> ModuleLoader<'a> {
             std_path,
             module_id_map: HashMap::new(),
             module_id_map_rev: HashMap::new(),
+            module_id_paths: HashMap::new(),
         }
     }
 }
 
 impl<'a> LoadModule for ModuleLoader<'a> {
-    fn resolve_path(&self, module_id: &parser::ast::ModuleId) -> Option<String> {
-        if module_id.is_prelude() {
-            let prelude_path = self.std_path.join("prelude.abra");
-            return Some(prelude_path.to_str().unwrap().to_string());
-        }
-
-        let mut path = PathBuf::new();
-
-        let path_buf = PathBuf::from(module_id.get_path(&self.program_root)).with_extension("abra");
-        for c in path_buf.components() {
-            path.push(c.as_os_str())
-        }
-
-        path.to_str().map(|s| s.to_string())
-    }
 
     fn get_path(&self, module_id: &ModuleId) -> Option<String> {
-        if module_id == &PRELUDE_MODULE_ID {
-            let prelude_path = self.std_path.join("prelude.abra");
-            return Some(prelude_path.to_str().unwrap().to_string());
-        } else {
-            let m_id = self.module_id_map.get(module_id).expect(&format!("Internal error: expected module for {:?}", module_id));
-            self.resolve_path(m_id)
-        }
+        self.module_id_paths.get(module_id).map(|s| s.clone())
     }
 
-    fn register(&mut self, m_id: &parser::ast::ModuleId, module_id: &ModuleId) {
+    fn calculate_path_wrt_other(&self, m_id: &parser::ast::ModuleId, other: Option<&ModuleId>) -> String {
+        let path = if let Some(wrt) = other {
+            let wrt_path = self.module_id_paths.get(wrt)
+                .expect("Attempting to register a module with respect to other which has not yet been registered");
+            m_id.get_path(PathBuf::from(wrt_path).parent().unwrap())
+        } else {
+            if let parser::ast::ModuleId::External(_) = &m_id {
+                m_id.get_path(self.std_path)
+            } else {
+                m_id.get_path(self.program_root)
+            }
+        };
+        format!("{path}.abra")
+    }
+
+    fn register(&mut self, m_id: &parser::ast::ModuleId, module_id: &ModuleId, with_respect_to: Option<&ModuleId>) {
         self.module_id_map.insert(*module_id, m_id.clone());
         self.module_id_map_rev.insert(m_id.clone(), *module_id);
+
+        let path = self.calculate_path_wrt_other(m_id, with_respect_to);
+        self.module_id_paths.insert(*module_id, path);
     }
 
     fn get_module_id(&self, m_id: &parser::ast::ModuleId) -> Option<&ModuleId> {
         self.module_id_map_rev.get(m_id)
     }
 
-    fn module_exists(&self, m_id: &parser::ast::ModuleId) -> bool {
-        if m_id.is_prelude() { return true; }
-
-        let Some(path) = self.resolve_path(m_id) else { return false; };
+    fn module_exists(&self, m_id: &parser::ast::ModuleId, with_respect_to: Option<&ModuleId>) -> bool {
+        let path = self.calculate_path_wrt_other(m_id, with_respect_to);
         Path::try_exists(Path::new(&path)).unwrap_or(false)
     }
 
@@ -1448,7 +1445,7 @@ pub enum TypeError {
     UnreachableCode { span: Span },
     InvalidExportScope { span: Span },
     CircularModuleImport { span: Span },
-    UnknownModule { span: Span, module_path: Option<String> },
+    UnknownModule { span: Span, module_path: String },
     UnknownExport { span: Span, module_id: ModuleId, import_name: String, is_aliased: bool },
 }
 
@@ -2062,15 +2059,9 @@ impl TypeError {
                 )
             }
             TypeError::UnknownModule { module_path, .. } => {
-                let path_msg = if let Some(module_path) = module_path {
-                    format!(" at '{}'", module_path)
-                } else {
-                    "".to_string()
-                };
-
                 format!(
-                    "Could not import module\n{}\nNo such module exists{}",
-                    cursor_line, path_msg
+                    "Could not import module\n{}\nNo such module exists at '{}'",
+                    cursor_line, module_path
                 )
             }
             TypeError::UnknownExport { module_id, import_name, is_aliased, .. } => {
@@ -2809,7 +2800,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     pub fn typecheck_prelude(&mut self) -> Result<(), TypecheckError> {
         debug_assert!(self.project.modules.is_empty());
 
-        self.module_loader.register(&parser::ast::ModuleId::prelude(), &PRELUDE_MODULE_ID);
+        self.module_loader.register(&parser::ast::ModuleId::prelude(), &PRELUDE_MODULE_ID, None);
         let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), imports: HashMap::new(), type_ids: vec![], functions: vec![], structs: vec![], enums: vec![], code: vec![], scopes: vec![], exports: HashMap::new(), completed: false };
         let mut prelude_scope = Scope { label: "prelude.root".to_string(), kind: ScopeKind::Module(PRELUDE_MODULE_ID), terminator: None, id: PRELUDE_SCOPE_ID, parent: None, types: vec![], vars: vec![], funcs: vec![] };
 
@@ -2867,7 +2858,20 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.current_scope_id = PRELUDE_SCOPE_ID;
 
-        let (_, parse_result) = self.module_loader.load_untyped_ast(&parser::ast::ModuleId::prelude()).map_err(Either::Left)?.unwrap();
+        let (_, parse_result) = self.module_loader.load_untyped_ast(&parser::ast::ModuleId::prelude(), None).map_err(Either::Left)?.unwrap();
+        for (_, import_m_id, module_token) in parse_result.imports {
+            if !self.module_loader.module_exists(&import_m_id, Some(&PRELUDE_MODULE_ID)) { continue; }
+            if let Some(m) = self.module_loader.get_module_id(&import_m_id).and_then(|module_id| self.project.modules.get(module_id.0)) {
+                if m.completed { continue; }
+
+                let span = self.make_span(&module_token.get_range());
+                return Err(Either::Right(TypeError::CircularModuleImport { span }));
+            }
+
+            let mut tc = Typechecker2::new(self.module_loader, self.project);
+            let imported_module_id = tc.typecheck_module(&import_m_id, Some(&PRELUDE_MODULE_ID))?;
+            self.current_module_mut().imports.insert(imported_module_id, HashSet::new());
+        }
         self.typecheck_block(parse_result.nodes).map_err(Either::Right)?;
 
         debug_assert_ne!(self.project.prelude_none_type_id, PLACEHOLDER_TYPE_ID);
@@ -2882,14 +2886,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(())
     }
 
-    pub fn typecheck_module(&mut self, m_id: &parser::ast::ModuleId) -> Result<ModuleId, TypecheckError> {
+    pub fn typecheck_module(&mut self, m_id: &parser::ast::ModuleId, with_respect_to_module: Option<&ModuleId>) -> Result<ModuleId, TypecheckError> {
         debug_assert!(self.project.modules.len() >= 1 && self.project.modules[0].name == "prelude", "Prelude must be loaded in order to typecheck further modules");
 
-        let (file_name, parse_result) = self.module_loader.load_untyped_ast(&m_id).map_err(Either::Left)?
+        let (file_name, parse_result) = self.module_loader.load_untyped_ast(&m_id, with_respect_to_module).map_err(Either::Left)?
             .expect("Internal error");
 
         let module_id = ModuleId(self.project.modules.len());
-        self.module_loader.register(m_id, &module_id);
+        self.module_loader.register(m_id, &module_id, with_respect_to_module);
 
         let scope_id = ScopeId(module_id, 0);
         let label = format!("{:?}.root", &module_id);
@@ -2911,7 +2915,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.current_scope_id = scope_id;
 
         for (_, import_m_id, module_token) in parse_result.imports {
-            if !self.module_loader.module_exists(&import_m_id) { continue; }
+            if !self.module_loader.module_exists(&import_m_id, Some(&module_id)) { continue; }
             if let Some(m) = self.module_loader.get_module_id(&import_m_id).and_then(|module_id| self.project.modules.get(module_id.0)) {
                 if m.completed { continue; }
 
@@ -2920,7 +2924,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
 
             let mut tc = Typechecker2::new(self.module_loader, self.project);
-            let imported_module_id = tc.typecheck_module(&import_m_id)?;
+            let imported_module_id = tc.typecheck_module(&import_m_id, Some(&module_id))?;
             self.current_module_mut().imports.insert(imported_module_id, HashSet::new());
         }
 
@@ -4095,7 +4099,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let ImportNode { kind, module_token, module_id } = import_node;
                 let Some(module_id) = self.module_loader.get_module_id(&module_id) else {
                     let span = self.make_span(&module_token.get_range());
-                    let module_path = self.module_loader.resolve_path(&module_id);
+                    let module_path = self.module_loader.calculate_path_wrt_other(&module_id, Some(&self.current_module().id));
                     return Err(TypeError::UnknownModule { span, module_path });
                 };
                 let module_id = *module_id;
@@ -5203,7 +5207,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let VarId(var_scope_id, _) = var_id;
                     let FuncId(func_scope_id, _) = current_func_id;
 
-                    if !self.scope_contains_other(&var_scope_id, &func_scope_id) {
+                    if var_type_id.as_module_type_alias().is_none() && !self.scope_contains_other(&var_scope_id, &func_scope_id) {
                         let var = self.project.get_var_by_id_mut(&var_id);
                         if var.alias == VariableAlias::None {
                             var.is_captured = true;

@@ -1,0 +1,17 @@
+@Intrinsic("stdout_write")
+export func stdoutWrite(str: String)
+
+@Intrinsic("int_as_float")
+export func intAsFloat(i: Int): Float
+
+@Intrinsic("float_as_int")
+export func floatAsInt(f: Float): Int
+
+@Intrinsic("float_floor")
+export func floor(f: Float): Int
+
+@Intrinsic("float_ceil")
+export func ceil(f: Float): Int
+
+@Intrinsic("float_round")
+export func round(f: Float): Int

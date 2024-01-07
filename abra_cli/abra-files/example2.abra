@@ -12,3 +12,5 @@ export type Person {
     Person(name: name, favoriteColor: favoriteColor)
   }
 }
+
+export func abc() { }

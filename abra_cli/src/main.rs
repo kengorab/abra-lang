@@ -149,7 +149,8 @@ fn typecheck_project(opts: &BuildOpts) -> (abra_core::typechecker::typechecker2:
         Err(e) => {
             match e {
                 Either::Left(e) => {
-                    let file_name = module_loader.resolve_path(&ModuleId::prelude()).unwrap();
+                    let module_id = module_loader.get_module_id(&ModuleId::prelude()).unwrap();
+                    let file_name = module_loader.get_path(&module_id).unwrap();
                     let contents = std::fs::read_to_string(&file_name).unwrap();
                     match e {
                         Either::Left(e) => eprintln!("{}", e.get_message(&"prelude.abra".to_string(), &contents)),
@@ -162,12 +163,13 @@ fn typecheck_project(opts: &BuildOpts) -> (abra_core::typechecker::typechecker2:
         }
     }
 
-    let entrypoint_module_id = match tc.typecheck_module(&module_id) {
+    let entrypoint_module_id = match tc.typecheck_module(&module_id, None) {
         Ok(mod_id) => mod_id,
         Err(e) => {
             match e {
                 Either::Left(e) => {
-                    let file_name = module_loader.resolve_path(&module_id).unwrap();
+                    let module_id = module_loader.get_module_id(&module_id).unwrap();
+                    let file_name = module_loader.get_path(&module_id).unwrap();
                     let contents = std::fs::read_to_string(&file_name).unwrap();
                     match e {
                         Either::Left(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
@@ -216,19 +218,19 @@ fn cmd_compile_to_c_and_run2(opts: CompileOpts) -> Result<(), ()> {
         }
     }
 
-    match tc.typecheck_module(&module_id) {
+    match tc.typecheck_module(&module_id, None) {
         Ok(_) => {}
         Err(e) => {
             match e {
                 Either::Left(Either::Left(e)) => {
-                    let file_name = module_loader.resolve_path(&module_id)
-                        .expect("Internal error: cannot report on errors in a file that never existed in the first place");
+                    let module_id = module_loader.get_module_id(&module_id).unwrap();
+                    let file_name = module_loader.get_path(&module_id).unwrap();
                     let contents = std::fs::read_to_string(&file_name).unwrap();
                     eprintln!("{}", e.get_message(&file_name, &contents))
                 }
                 Either::Left(Either::Right(e)) => {
-                    let file_name = module_loader.resolve_path(&module_id)
-                        .expect("Internal error: cannot report on errors in a file that never existed in the first place");
+                    let module_id = module_loader.get_module_id(&module_id).unwrap();
+                    let file_name = module_loader.get_path(&module_id).unwrap();
                     let contents = std::fs::read_to_string(&file_name).unwrap();
                     eprintln!("{}", e.get_message(&file_name, &contents))
                 }
