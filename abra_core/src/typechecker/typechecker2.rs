@@ -55,22 +55,19 @@ impl<'a> ModuleLoader<'a> {
 }
 
 impl<'a> LoadModule for ModuleLoader<'a> {
-
     fn get_path(&self, module_id: &ModuleId) -> Option<String> {
         self.module_id_paths.get(module_id).map(|s| s.clone())
     }
 
     fn calculate_path_wrt_other(&self, m_id: &parser::ast::ModuleId, other: Option<&ModuleId>) -> String {
-        let path = if let Some(wrt) = other {
+        let path = if let parser::ast::ModuleId::External(_) = &m_id {
+            m_id.get_path(self.std_path)
+        } else if let Some(wrt) = other {
             let wrt_path = self.module_id_paths.get(wrt)
                 .expect("Attempting to register a module with respect to other which has not yet been registered");
             m_id.get_path(PathBuf::from(wrt_path).parent().unwrap())
         } else {
-            if let parser::ast::ModuleId::External(_) = &m_id {
-                m_id.get_path(self.std_path)
-            } else {
-                m_id.get_path(self.program_root)
-            }
+            m_id.get_path(self.program_root)
         };
         format!("{path}.abra")
     }
@@ -112,6 +109,7 @@ pub struct Project {
     pub prelude_tuple_struct_id: StructId,
     pub prelude_set_struct_id: StructId,
     pub prelude_map_struct_id: StructId,
+    pub intrinsics_module_id: ModuleId,
 }
 
 const PLACEHOLDER_STRUCT_ID: StructId = StructId(PRELUDE_MODULE_ID, usize::MAX);
@@ -131,6 +129,7 @@ impl Default for Project {
             prelude_tuple_struct_id: PLACEHOLDER_STRUCT_ID,
             prelude_set_struct_id: PLACEHOLDER_STRUCT_ID,
             prelude_map_struct_id: PLACEHOLDER_STRUCT_ID,
+            intrinsics_module_id: ModuleId::BOGUS,
         }
     }
 }
@@ -252,12 +251,19 @@ impl Project {
             .or_else(|| {
                 // If struct cannot be found in current module, look in the module's imports, making
                 // sure to only consider the _imported names_ from that imported module.
-                module.imports.iter().find_map(|(import_id, imported_names)|
-                    if imported_names.contains(name) {
-                        self.find_struct_by_name(import_id, name)
-                    } else {
-                        None
-                    }
+                module.imports.iter().find_map(|(import_id, imported_values)|
+                    imported_values.iter().find_map(|import| {
+                        if let ImportedValue::Type(TypeKind::Struct(struct_id)) = import {
+                            let struct_ = self.get_struct_by_id(struct_id);
+                            if &struct_.name == name {
+                                self.find_struct_by_name(import_id, name)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    })
                 )
             })
             .or_else(|| {
@@ -274,12 +280,19 @@ impl Project {
             .or_else(|| {
                 // If struct cannot be found in current module, look in the module's imports, making
                 // sure to only consider the _imported names_ from that imported module.
-                module.imports.iter().find_map(|(import_id, imported_names)|
-                    if imported_names.contains(name) {
-                        self.find_enum_by_name(import_id, name)
-                    } else {
-                        None
-                    }
+                module.imports.iter().find_map(|(import_id, imported_values)|
+                    imported_values.iter().find_map(|import| {
+                        if let ImportedValue::Type(TypeKind::Enum(enum_id)) = import {
+                            let enum_ = self.get_enum_by_id(enum_id);
+                            if &enum_.name == name {
+                                self.find_enum_by_name(import_id, name)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    })
                 )
             })
             .or_else(|| {
@@ -943,7 +956,7 @@ pub enum ImportedValue {
 pub struct TypedModule {
     pub id: ModuleId,
     pub name: String,
-    pub imports: HashMap<ModuleId, HashSet<String>>,
+    pub imports: HashMap<ModuleId, Vec<ImportedValue>>,
     pub type_ids: Vec<TypeId>,
     // TODO: is this necessary?
     pub functions: Vec<FuncId>,
@@ -1031,7 +1044,6 @@ pub enum TypedNode {
     Break { token: Token },
     Continue { token: Token },
     Return { token: Token, expr: Option<Box<TypedNode>> },
-    Import { token: Token, kind: TypedImportKind, module_id: ModuleId },
 }
 
 impl TypedNode {
@@ -1069,7 +1081,6 @@ impl TypedNode {
             TypedNode::Break { .. } |
             TypedNode::Continue { .. } => &PRELUDE_UNIT_TYPE_ID,
             TypedNode::Return { expr, .. } => expr.as_ref().map_or(&PRELUDE_UNIT_TYPE_ID, |expr| expr.type_id()),
-            TypedNode::Import { .. } => &PRELUDE_UNIT_TYPE_ID,
         }
     }
 
@@ -1104,7 +1115,6 @@ impl TypedNode {
             TypedNode::Break { .. } |
             TypedNode::Continue { .. } => {}
             TypedNode::Return { expr, .. } => if let Some(expr) = expr { expr.set_resolved_type_id(new_type_id) },
-            TypedNode::Import { .. } => {}
         }
     }
 
@@ -1212,7 +1222,6 @@ impl TypedNode {
                     start
                 }
             }
-            TypedNode::Import { token, .. } => token.get_range(),
         }
     }
 
@@ -1256,7 +1265,6 @@ impl TypedNode {
             TypedNode::Break { .. } => Some(TerminatorKind::NonReturning),
             TypedNode::Continue { .. } => Some(TerminatorKind::NonReturning),
             TypedNode::Return { .. } => Some(TerminatorKind::Returning),
-            TypedNode::Import { .. } => None,
         }
     }
 
@@ -1305,7 +1313,6 @@ impl TypedNode {
             TypedNode::Break { .. } |
             TypedNode::Continue { .. } => false,
             TypedNode::Return { .. } => true,
-            TypedNode::Import { .. } => false,
         }
     }
 }
@@ -1340,7 +1347,7 @@ pub const PRELUDE_FLOAT_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 3);
 pub const PRELUDE_BOOL_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 4);
 pub const PRELUDE_STRING_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 5);
 
-pub type TypecheckError = Either<Either<LexerError, ParseError>, TypeError>;
+pub type TypecheckError = Either<(Either<LexerError, ParseError>, parser::ast::ModuleId), TypeError>;
 
 #[derive(Debug, PartialEq)]
 pub enum DestructuringMismatchKind {
@@ -2858,19 +2865,36 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.current_scope_id = PRELUDE_SCOPE_ID;
 
-        let (_, parse_result) = self.module_loader.load_untyped_ast(&parser::ast::ModuleId::prelude(), None).map_err(Either::Left)?.unwrap();
-        for (_, import_m_id, module_token) in parse_result.imports {
-            if !self.module_loader.module_exists(&import_m_id, Some(&PRELUDE_MODULE_ID)) { continue; }
-            if let Some(m) = self.module_loader.get_module_id(&import_m_id).and_then(|module_id| self.project.modules.get(module_id.0)) {
-                if m.completed { continue; }
-
-                let span = self.make_span(&module_token.get_range());
-                return Err(Either::Right(TypeError::CircularModuleImport { span }));
+        let prelude_m_id = parser::ast::ModuleId::prelude();
+        let (_, parse_result) = self.module_loader.load_untyped_ast(&prelude_m_id, None)
+            .map_err(|e| Either::Left((e, prelude_m_id)))?
+            .unwrap();
+        for (_, import_node) in parse_result.imports {
+            let import_m_id = &import_node.module_id;
+            if !self.module_loader.module_exists(&import_m_id, Some(&PRELUDE_MODULE_ID)) {
+                let span = self.make_span(&import_node.module_token.get_range());
+                let module_path = self.module_loader.calculate_path_wrt_other(&import_m_id, Some(&self.current_module().id));
+                return Err(Either::Right(TypeError::UnknownModule { span, module_path }));
             }
+            let completed_module_id = if let Some(m) = self.module_loader.get_module_id(&import_m_id).and_then(|module_id| self.project.modules.get(module_id.0)) {
+                if !m.completed {
+                    let span = self.make_span(&import_node.module_token.get_range());
+                    return Err(Either::Right(TypeError::CircularModuleImport { span }));
+                }
 
-            let mut tc = Typechecker2::new(self.module_loader, self.project);
-            let imported_module_id = tc.typecheck_module(&import_m_id, Some(&PRELUDE_MODULE_ID))?;
-            self.current_module_mut().imports.insert(imported_module_id, HashSet::new());
+                Some(m.id)
+            } else {
+                None
+            };
+
+            let imported_module_id = if let Some(module_id) = completed_module_id {
+                module_id
+            } else {
+                let mut tc = Typechecker2::new(self.module_loader, self.project);
+                tc.typecheck_module(&import_m_id, Some(&PRELUDE_MODULE_ID))?
+            };
+            self.current_module_mut().imports.entry(imported_module_id).or_default();
+            self.typecheck_import(&imported_module_id, import_node).map_err(Either::Right)?;
         }
         self.typecheck_block(parse_result.nodes).map_err(Either::Right)?;
 
@@ -2882,6 +2906,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         debug_assert_ne!(self.project.prelude_array_struct_id, PLACEHOLDER_STRUCT_ID);
         debug_assert_ne!(self.project.prelude_set_struct_id, PLACEHOLDER_STRUCT_ID);
         debug_assert_ne!(self.project.prelude_map_struct_id, PLACEHOLDER_STRUCT_ID);
+        debug_assert_ne!(self.project.intrinsics_module_id, ModuleId::BOGUS, "The '_intrinsics' module should have been discovered as part of typechecking 'prelude'");
 
         Ok(())
     }
@@ -2889,11 +2914,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     pub fn typecheck_module(&mut self, m_id: &parser::ast::ModuleId, with_respect_to_module: Option<&ModuleId>) -> Result<ModuleId, TypecheckError> {
         debug_assert!(self.project.modules.len() >= 1 && self.project.modules[0].name == "prelude", "Prelude must be loaded in order to typecheck further modules");
 
-        let (file_name, parse_result) = self.module_loader.load_untyped_ast(&m_id, with_respect_to_module).map_err(Either::Left)?
-            .expect("Internal error");
-
         let module_id = ModuleId(self.project.modules.len());
         self.module_loader.register(m_id, &module_id, with_respect_to_module);
+
+        let (file_name, parse_result) = self.module_loader.load_untyped_ast(&m_id, with_respect_to_module)
+            .map_err(|e| Either::Left((e, m_id.clone())))?
+            .expect("Internal error");
+        if file_name.ends_with("/_intrinsics.abra") {
+            self.project.intrinsics_module_id = module_id;
+        }
 
         let scope_id = ScopeId(module_id, 0);
         let label = format!("{:?}.root", &module_id);
@@ -2914,18 +2943,33 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.current_scope_id = scope_id;
 
-        for (_, import_m_id, module_token) in parse_result.imports {
-            if !self.module_loader.module_exists(&import_m_id, Some(&module_id)) { continue; }
-            if let Some(m) = self.module_loader.get_module_id(&import_m_id).and_then(|module_id| self.project.modules.get(module_id.0)) {
-                if m.completed { continue; }
-
-                let span = self.make_span(&module_token.get_range());
-                return Err(Either::Right(TypeError::CircularModuleImport { span }));
+        for (_, import_node) in parse_result.imports {
+            let import_m_id = &import_node.module_id;
+            if !self.module_loader.module_exists(&import_m_id, Some(&module_id)) {
+                let span = self.make_span(&import_node.module_token.get_range());
+                let module_path = self.module_loader.calculate_path_wrt_other(&import_m_id, Some(&self.current_module().id));
+                return Err(Either::Right(TypeError::UnknownModule { span, module_path }));
             }
 
-            let mut tc = Typechecker2::new(self.module_loader, self.project);
-            let imported_module_id = tc.typecheck_module(&import_m_id, Some(&module_id))?;
-            self.current_module_mut().imports.insert(imported_module_id, HashSet::new());
+            let completed_module_id = if let Some(m) = self.module_loader.get_module_id(&import_m_id).and_then(|module_id| self.project.modules.get(module_id.0)) {
+                if !m.completed {
+                    let span = self.make_span(&import_node.module_token.get_range());
+                    return Err(Either::Right(TypeError::CircularModuleImport { span }));
+                }
+
+                Some(m.id)
+            } else {
+                None
+            };
+
+            let imported_module_id = if let Some(module_id) = completed_module_id {
+                module_id
+            } else {
+                let mut tc = Typechecker2::new(self.module_loader, self.project);
+                tc.typecheck_module(&import_m_id, Some(&module_id))?
+            };
+            self.current_module_mut().imports.entry(imported_module_id).or_default();
+            self.typecheck_import(&imported_module_id, import_node).map_err(Either::Right)?;
         }
 
         self.current_scope_id = scope_id;
@@ -3048,6 +3092,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let current_module = self.current_module_mut();
                     current_module.code.push(TypedNode::EnumDeclaration(enum_id));
                 }
+                AstNode::ImportStatement(_, _) => { continue; }
                 node => {
                     let typed_node = self.typecheck_statement(node, None)?;
 
@@ -4095,107 +4140,92 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 Ok(TypedNode::Return { token, expr: typed_ret_expr })
             }
             AstNode::FunctionDecl(_, _) | AstNode::TypeDecl(_, _) | AstNode::EnumDecl(_, _) => unreachable!("Internal error: node should have been handled in typecheck_block"),
-            AstNode::ImportStatement(token, import_node) => {
-                let ImportNode { kind, module_token, module_id } = import_node;
-                let Some(module_id) = self.module_loader.get_module_id(&module_id) else {
-                    let span = self.make_span(&module_token.get_range());
-                    let module_path = self.module_loader.calculate_path_wrt_other(&module_id, Some(&self.current_module().id));
-                    return Err(TypeError::UnknownModule { span, module_path });
-                };
-                let module_id = *module_id;
-                let ModuleId(module_idx) = module_id;
-
-                let kind = match kind {
-                    ImportKind::ImportAll(star_token) => {
-                        let import_module = &self.project.modules[module_idx];
-                        let exports = import_module.exports.values().map(|e| e.clone()).collect_vec();
-
-                        for export in exports {
-                            self.add_imported_value(module_id, export, &star_token)?;
-                        }
-
-                        TypedImportKind::ImportAll(star_token)
-                    }
-                    ImportKind::ImportList(imports) => {
-                        let mut imported_values = Vec::with_capacity(imports.len());
-                        for import_tok in imports {
-                            let import_name = Token::get_ident_name(&import_tok);
-                            let import_module = &self.project.modules[module_idx];
-                            let Some(export) = import_module.exports.get(&import_name) else {
-                                let span = self.make_span(&import_tok.get_range());
-                                return Err(TypeError::UnknownExport { span, module_id, import_name, is_aliased: false });
-                            };
-
-                            let imported_value = self.add_imported_value(module_id, *export, &import_tok)?;
-                            imported_values.push(imported_value);
-                        }
-                        TypedImportKind::ImportList(imported_values)
-                    }
-                    ImportKind::Alias(alias_token) => {
-                        let alias_name = Token::get_ident_name(&alias_token);
-                        let module_type_id = TypeId::module_type_alias(&module_id);
-                        let span = self.make_span(&alias_token.get_range());
-                        self.add_variable_to_current_scope(alias_name, module_type_id, false, true, &span, false)?;
-
-                        TypedImportKind::Alias(alias_token)
-                    }
-                };
-
-                Ok(TypedNode::Import { token, kind, module_id })
-            }
+            AstNode::ImportStatement(_, _) => unreachable!("Imports are handled prior to typechecking any other node"),
             n => self.typecheck_expression(n, type_hint)
         }
+    }
+
+    fn typecheck_import(&mut self, import_module_id: &ModuleId, import_node: ImportNode) -> Result<TypedImportKind, TypeError> {
+        let kind = match import_node.kind {
+            ImportKind::ImportAll(star_token) => {
+                let import_module = &self.project.modules[import_module_id.0];
+                let exports = import_module.exports.values().map(|e| e.clone()).collect_vec();
+
+                for export in exports {
+                    self.add_imported_value(*import_module_id, export, &star_token)?;
+                }
+
+                TypedImportKind::ImportAll(star_token)
+            }
+            ImportKind::ImportList(imports) => {
+                let mut imported_values = Vec::with_capacity(imports.len());
+                for import_tok in imports {
+                    let import_name = Token::get_ident_name(&import_tok);
+                    let import_module = &self.project.modules[import_module_id.0];
+                    let Some(export) = import_module.exports.get(&import_name) else {
+                        let span = self.make_span(&import_tok.get_range());
+                        return Err(TypeError::UnknownExport { span, module_id: *import_module_id, import_name, is_aliased: false });
+                    };
+
+                    let imported_value = self.add_imported_value(*import_module_id, *export, &import_tok)?;
+                    imported_values.push(imported_value);
+                }
+                TypedImportKind::ImportList(imported_values)
+            }
+            ImportKind::Alias(alias_token) => {
+                let alias_name = Token::get_ident_name(&alias_token);
+                let module_type_id = TypeId::module_type_alias(import_module_id);
+                let span = self.make_span(&alias_token.get_range());
+                self.add_variable_to_current_scope(alias_name, module_type_id, false, true, &span, false)?;
+
+                TypedImportKind::Alias(alias_token)
+            }
+        };
+
+        Ok(kind)
     }
 
     fn add_imported_value(&mut self, module_id: ModuleId, exported_value: ExportedValue, import_token: &Token) -> Result<ImportedValue, TypeError> {
         let span = self.make_span(&import_token.get_range());
 
-        let (imported_value, imported_name) = match exported_value {
+        let imported_value = match exported_value {
             ExportedValue::Function(func_id) => {
                 self.add_function_variable_alias_to_current_scope(import_token, &func_id)?;
 
-                let imported_name = self.project.get_func_by_id(&func_id).name.clone();
-                (ImportedValue::Function(func_id), imported_name)
+                ImportedValue::Function(func_id)
             }
             ExportedValue::Type(type_kind) => {
-                let imported_name = match type_kind {
+                match type_kind {
                     TypeKind::Struct(struct_id) => {
                         let struct_type_id = self.add_or_find_type_id(self.project.struct_type(struct_id));
                         let struct_ = self.project.get_struct_by_id(&struct_id);
-                        let imported_name = struct_.name.clone();
                         let struct_var_id = self.add_variable_to_current_scope(struct_.name.clone(), struct_type_id, false, true, &span, false)?;
                         let variable = self.project.get_var_by_id_mut(&struct_var_id);
                         variable.alias = VariableAlias::Type(TypeKind::Struct(struct_id));
-
-                        imported_name
                     }
                     TypeKind::Enum(enum_id) => {
                         let enum_type_id = self.add_or_find_type_id(self.project.enum_type(enum_id));
                         let enum_ = self.project.get_enum_by_id(&enum_id);
-                        let imported_name = enum_.name.clone();
                         let enum_var_id = self.add_variable_to_current_scope(enum_.name.clone(), enum_type_id, false, true, &span, false)?;
                         let variable = self.project.get_var_by_id_mut(&enum_var_id);
                         variable.alias = VariableAlias::Type(TypeKind::Enum(enum_id));
-
-                        imported_name
                     }
                 };
 
-                (ImportedValue::Type(type_kind), imported_name)
+                ImportedValue::Type(type_kind)
             }
             ExportedValue::Variable(var_id) => {
                 let imported_var = self.project.get_var_by_id(&var_id);
                 let is_captured = imported_var.is_captured;
                 let var_id = self.add_variable_to_current_scope(imported_var.name.clone(), imported_var.type_id, false, imported_var.is_initialized, &span, false)?;
                 let var = self.project.get_var_by_id_mut(&var_id);
-                let imported_name = var.name.clone();
                 var.is_captured = is_captured;
 
-                (ImportedValue::Variable(var_id), imported_name)
+                ImportedValue::Variable(var_id)
             }
         };
 
-        self.current_module_mut().imports.entry(module_id).or_default().insert(imported_name);
+        self.current_module_mut().imports.entry(module_id).or_default().push(imported_value);
 
         Ok(imported_value)
     }

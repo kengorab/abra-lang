@@ -506,7 +506,7 @@ impl<W: std::io::Write> CCompiler2<W> {
             TypedNode::Break { .. } => {}
             TypedNode::Continue { .. } => {}
             TypedNode::Return { .. } => {}
-            TypedNode::Import { .. } => {}
+            // TypedNode::Import { .. } => {}
             n => {
                 self.compile_expression(project, n);
             }

@@ -1,19 +1,25 @@
 import "./_intrinsics" as intrinsics
+import Pointer, Byte from "./_intrinsics"
+import "libc" as libc
+
+func stdoutWrite(str: String) {
+  libc.write(libc.STDOUT_FILENO(), str._buffer, str.length)
+}
 
 func print(*items: Any[]) {
   for i in range(0, items.length) {
     val item = items._buffer.offset(i).load()
-    intrinsics.stdoutWrite(item.toString())
+    stdoutWrite(item.toString())
 
     if i != items.length - 1 {
-      intrinsics.stdoutWrite(" ")
+      stdoutWrite(" ")
     }
   }
 }
 
 func println(*items: Any[]) {
   print(items: items)
-  intrinsics.stdoutWrite("\n")
+  stdoutWrite("\n")
 }
 
 type RangeIterator {
@@ -36,40 +42,6 @@ type RangeIterator {
 func range(start: Int, end: Int, stepBy = 1): RangeIterator = RangeIterator(start: start, end: end, stepBy: stepBy)
 
 func flattenOption<T>(value: T??): T? = if value |v| v else None
-
-type Byte {
-  @Intrinsic("byte_from_int")
-  func fromInt(value: Int): Byte
-
-  @Intrinsic("byte_as_int")
-  func asInt(self): Int
-}
-
-type Pointer<T> {
-  @Intrinsic("pointer_null")
-  func null<T>(): Pointer<T>
-
-  @Intrinsic("pointer_malloc")
-  func malloc<T>(count = 1): Pointer<T>
-
-  //@Intrinsic("pointer_realloc")
-  //func realloc(self, count: Int): Pointer<T>
-
-  @Intrinsic("pointer_address")
-  func address(self): Int
-
-  @Intrinsic("pointer_store")
-  func store(self, value: T)
-
-  @Intrinsic("pointer_load")
-  func load(self): T
-
-  @Intrinsic("pointer_offset")
-  func offset(self, offset: Int): Pointer<T>
-
-  @Intrinsic("pointer_copy_from")
-  func copyFrom(self, other: Pointer<T>, size: Int)
-}
 
 type Int {
   func asFloat(self): Float = intrinsics.intAsFloat(self)

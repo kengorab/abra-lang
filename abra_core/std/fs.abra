@@ -1,0 +1,18 @@
+//import "libc" as libc
+
+export func readFile(path: String): String? {
+  //val fd = libc.open(path._buffer)
+  //if fd == -1 return None
+
+  //val len = libc.lseek(fd, 0, libc.SEEK_END)
+  //if len == -1 return None
+  //libc.lseek(fd, 0, libc.SEEK_SET)
+
+  //val str = String.withLength(len)
+  //val res = libc.read(fd, str._buffer, len)
+  //if res == -1 return None
+
+  //str
+
+  None
+}

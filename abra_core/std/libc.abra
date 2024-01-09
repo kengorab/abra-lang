@@ -1,0 +1,26 @@
+//export val O_RDONLY = 0
+//export val O_WRONLY = 1
+//export val O_RDWR   = 2
+//
+//@CBinding("open")
+//export func open(pathname: Pointer<Byte>, flags: Int): Int
+//
+//export val SEEK_SET = 0
+//export val SEEK_CUR = 1
+//export val SEEK_END = 2
+//
+//@CBinding("lseek")
+//export func lseek(fd: Int, offset: Int, whence: Int): Int
+//
+//@CBinding("read")
+//export func read(fd: Int, buf: Pointer<Byte>, count: Int): Int
+//
+
+import Pointer, Byte from "./_intrinsics"
+
+export val STDIN_FILENO = 0
+export func STDOUT_FILENO(): Int = 1
+export val STDERR_FILENO = 2
+
+@CBinding("write")
+export func write(fd: Int, buf: Pointer<Byte>, count: Int): Int

@@ -15,7 +15,7 @@ use inkwell::values::{BasicValue, BasicValueEnum, CallableValue, FloatValue, Fun
 use itertools::Itertools;
 use abra_core::lexer::tokens::{POSITION_BOGUS, Token};
 use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
-use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, EnumId, EnumVariantKind, FuncId, Function, FunctionKind, ImportedValue, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, ModuleId, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedImportKind, TypedLiteral, TypedMatchCaseArgument, TypedMatchCaseKind, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
+use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, EnumId, EnumVariantKind, FuncId, Function, FunctionKind, ImportedValue, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, ModuleId, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedMatchCaseArgument, TypedMatchCaseKind, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
 
 const ABRA_MAIN_FN_NAME: &str = "_abra_main";
 
@@ -438,7 +438,7 @@ impl<'a> LLVMCompiler2<'a> {
                     let tuple_size = generic_ids.len();
                     format!("{struct_name}{tuple_size}{generic_names}")
                 } else {
-                    let prefix = if struct_id.0 == PRELUDE_MODULE_ID {
+                    let prefix = if struct_id.0 == PRELUDE_MODULE_ID || struct_id.0 == self.project.intrinsics_module_id {
                         format!("{}", &struct_.name)
                     } else {
                         format!("{}.{}.{}", struct_id.0.0, struct_id.1, &struct_.name)
@@ -870,6 +870,19 @@ impl<'a> LLVMCompiler2<'a> {
             }
             compiled.insert(module_id);
 
+            for import in m.imports.iter().flat_map(|(_, imported_values)| imported_values.iter()) {
+                if let ImportedValue::Variable(var_id) = import {
+                    let var = self.project.get_var_by_id(var_id);
+                    let slot = self.main_module.get_global(&var.name).unwrap_or_else(|| {
+                        dbg!(&var);
+                        panic!();
+                    }).as_pointer_value();
+                    self.ctx_stack.last_mut().unwrap().variables.insert(var.id, LLVMVar::Slot(slot));
+                } else {
+                    // Functions & types don't need variable referencing (yet)
+                }
+            }
+
             // The top-level code in a module is executed in the special $mod_{mod_id} fn...
             let mod_fn_name = format!("$mod_{}", m.id.0);
             let mod_fn_type = self.fn_type(self.bool(), &[]);
@@ -1246,25 +1259,6 @@ impl<'a> LLVMCompiler2<'a> {
                     self.builder.build_return(Some(&return_value));
                 } else {
                     self.builder.build_return(None);
-                }
-
-                None
-            }
-            TypedNode::Import { kind, .. } => {
-                match kind {
-                    TypedImportKind::ImportAll(_) => todo!(),
-                    TypedImportKind::ImportList(imports) => {
-                        for import in imports {
-                            if let ImportedValue::Variable(var_id) = import {
-                                let var = self.project.get_var_by_id(var_id);
-                                let slot = self.main_module.get_global(&var.name).unwrap().as_pointer_value();
-                                self.ctx_stack.last_mut().unwrap().variables.insert(var.id, LLVMVar::Slot(slot));
-                            } else {
-                                // Functions & types don't need variable referencing (yet)
-                            }
-                        }
-                    }
-                    TypedImportKind::Alias(_) => { /* no-op */ }
                 }
 
                 None
@@ -1902,13 +1896,17 @@ impl<'a> LLVMCompiler2<'a> {
                                     let TypedNode::Literal { value: TypedLiteral::String(intrinsic_name), .. } = &dec.args[0] else { unreachable!("@Intrinsic requires exactly 1 String argument") };
                                     return self.compile_intrinsic_invocation(type_arg_ids, &new_resolved_generics, intrinsic_name, Some(&**target), arguments, resolved_type_id);
                                 }
+                                if let Some(dec) = function.decorators.iter().find(|dec| dec.name == "CBinding") {
+                                    let TypedNode::Literal { value: TypedLiteral::String(libc_fn_name), .. } = &dec.args[0] else { unreachable!("@CBinding requires exactly 1 String argument") };
+                                    self.get_or_compile_cbinding_function(libc_fn_name, func_id).into()
+                                } else {
+                                    if function.is_closure() {
+                                        let captures = self.get_captures_for_closure(function);
+                                        args.push(captures.into());
+                                    }
 
-                                if function.is_closure() {
-                                    let captures = self.get_captures_for_closure(function);
-                                    args.push(captures.into());
+                                    self.get_or_compile_function(func_id, &new_resolved_generics).into()
                                 }
-
-                                self.get_or_compile_function(func_id, &new_resolved_generics).into()
                             }
                             VariableAlias::Type(TypeKind::Enum(_)) => unreachable!("Cannot invoke an enum directly"),
                             VariableAlias::Type(TypeKind::Struct(struct_id)) => {
@@ -2012,12 +2010,17 @@ impl<'a> LLVMCompiler2<'a> {
                                 new_resolved_generics = self.extend_resolved_generics_via_instance(resolved_generics, &target_type_id);
                                 new_resolved_generics = new_resolved_generics.extend_via_func_call(function, &realized_generics);
 
-                                if let Some(dec) = function.decorators.iter().find(|dec| dec.name == "Intrinsic") {
-                                    let TypedNode::Literal { value: TypedLiteral::String(intrinsic_name), .. } = &dec.args[0] else { unreachable!("@Intrinsic requires exactly 1 String argument") };
+                                if let Some(dec) = function.decorators.iter().find(|dec| dec.name == "Intrinsic" || dec.name == "CBinding") {
+                                    let TypedNode::Literal { value: TypedLiteral::String(intrinsic_name), .. } = &dec.args[0] else { unreachable!("@Intrinsic/@CBinding requires exactly 1 String argument") };
                                     return self.compile_intrinsic_invocation(type_arg_ids, &new_resolved_generics, intrinsic_name, Some(&**target), arguments, resolved_type_id);
                                 }
 
-                                self.get_or_compile_function(&func_id, &new_resolved_generics).into()
+                                if let Some(dec) = function.decorators.iter().find(|dec| dec.name == "CBinding") {
+                                    let TypedNode::Literal { value: TypedLiteral::String(libc_fn_name), .. } = &dec.args[0] else { unreachable!("@CBinding requires exactly 1 String argument") };
+                                    self.get_or_compile_cbinding_function(libc_fn_name, &func_id).into()
+                                } else {
+                                    self.get_or_compile_function(&func_id, &new_resolved_generics).into()
+                                }
                             }
                             AccessorKind::StaticMethod => {
                                 let func_id = target_ty.get_static_method(self.project, *member_idx).unwrap();
@@ -2027,17 +2030,22 @@ impl<'a> LLVMCompiler2<'a> {
                                 let realized_generics = type_arg_ids.iter().map(|type_id| self.make_resolved_generic(type_id, resolved_generics)).collect();
                                 new_resolved_generics = resolved_generics.extend_via_func_call(function, &realized_generics);
 
-                                if let Some(dec) = function.decorators.iter().find(|dec| dec.name == "Intrinsic") {
-                                    let TypedNode::Literal { value: TypedLiteral::String(intrinsic_name), .. } = &dec.args[0] else { unreachable!("@Intrinsic requires exactly 1 String argument") };
+                                if let Some(dec) = function.decorators.iter().find(|dec| dec.name == "Intrinsic" || dec.name == "CBinding") {
+                                    let TypedNode::Literal { value: TypedLiteral::String(intrinsic_name), .. } = &dec.args[0] else { unreachable!("@Intrinsic/@CBinding requires exactly 1 String argument") };
                                     return self.compile_intrinsic_invocation(type_arg_ids, &new_resolved_generics, intrinsic_name, None, arguments, resolved_type_id);
                                 }
 
-                                if function.is_closure() {
-                                    let captures = self.get_captures_for_closure(function);
-                                    args.push(captures.into());
-                                }
+                                if let Some(dec) = function.decorators.iter().find(|dec| dec.name == "CBinding") {
+                                    let TypedNode::Literal { value: TypedLiteral::String(libc_fn_name), .. } = &dec.args[0] else { unreachable!("@CBinding requires exactly 1 String argument") };
+                                    self.get_or_compile_cbinding_function(libc_fn_name, &func_id).into()
+                                } else {
+                                    if function.is_closure() {
+                                        let captures = self.get_captures_for_closure(function);
+                                        args.push(captures.into());
+                                    }
 
-                                self.get_or_compile_function(&func_id, &new_resolved_generics).into()
+                                    self.get_or_compile_function(&func_id, &new_resolved_generics).into()
+                                }
                             }
                             AccessorKind::EnumVariant => {
                                 let Type::Type(TypeKind::Enum(enum_id)) = self.get_type_by_id(&target_type_id) else { unreachable!() };
@@ -3239,20 +3247,6 @@ impl<'a> LLVMCompiler2<'a> {
 
                 return None;
             }
-            "stdout_write" => { // Freestanding function
-                let arg_node = arguments.first().expect("stdoutWrite has arity 1").as_ref().expect("stdoutWrite has 1 required argument");
-                let arg_value = self.visit_expression(arg_node, resolved_generics).unwrap().into_pointer_value();
-                let arg_value_len_ptr = self.builder.build_struct_gep(arg_value, 1, "len_slot").unwrap();
-                let arg_value_len = self.builder.build_load(arg_value_len_ptr, "len");
-                let arg_value_chars_ptr = self.builder.build_struct_gep(arg_value, 2, "chars_slot").unwrap();
-                let arg_value_chars = self.builder.build_load(arg_value_chars_ptr, "chars");
-
-                let printf = self.main_module.get_function("printf").unwrap();
-                let fmt_str = self.builder.build_global_string_ptr("%.*s", "").as_basic_value_enum();
-                self.builder.build_call(printf, &[fmt_str.into(), arg_value_len.into(), arg_value_chars.into()], "").try_as_basic_value().left();
-
-                return None;
-            }
             "byte_from_int" => { // Static method
                 let arg_node = arguments.first().expect("Byte.fromInt has arity 1").as_ref().expect("Byte.fromInt has 1 required argument");
                 let arg_value = self.visit_expression(arg_node, resolved_generics).unwrap().into_int_value();
@@ -3318,6 +3312,79 @@ impl<'a> LLVMCompiler2<'a> {
         } else {
             Some(value)
         }
+    }
+
+    fn get_or_compile_cbinding_function(&mut self, c_fn_name: &String, func_id: &FuncId) -> FunctionValue<'a> {
+        let llvm_wrapper_fn_name = format!("$libc:{c_fn_name}_wrapper");
+        if let Some(llvm_wrapper_fn) = self.main_module.get_function(&llvm_wrapper_fn_name) {
+            return llvm_wrapper_fn;
+        }
+
+        let function = self.project.get_func_by_id(func_id);
+
+        let llvm_fn_type = self.llvm_function_type(func_id, &ResolvedGenerics::default());
+        let llvm_wrapper_fn = self.main_module.add_function(&llvm_wrapper_fn_name, llvm_fn_type, None);
+        let prev_bb = self.builder.get_insert_block().unwrap();
+
+        let block = self.context.append_basic_block(llvm_wrapper_fn, "");
+        self.builder.position_at_end(block);
+
+        let llvm_fn = {
+            debug_assert!(self.main_module.get_function(&c_fn_name).is_none(), "We shouldn't register this function more than once");
+
+            let mut args = Vec::with_capacity(function.params.len());
+            for param in &function.params {
+                debug_assert!(param.default_value.is_none(), "CBinding functions must not have any default-valued parameters");
+                debug_assert!(!param.is_variadic, "CBinding functions cannot be variadic (yet)");
+
+                if param.type_id == PRELUDE_INT_TYPE_ID {
+                    args.push(self.i32().into());
+                } else {
+                    let resolved_generics = self.extend_resolved_generics_via_instance(&ResolvedGenerics::default(), &param.type_id);
+                    let param_type = self.llvm_underlying_type_by_id(&param.type_id, &resolved_generics).unwrap();
+                    args.push(param_type.into())
+                }
+            }
+
+            let fn_type = if function.return_type_id == PRELUDE_UNIT_TYPE_ID {
+                self.context.void_type().fn_type(args.as_slice(), false)
+            } else {
+                let return_type = if function.return_type_id == PRELUDE_INT_TYPE_ID {
+                    self.i32().into()
+                } else {
+                    self.llvm_underlying_type_by_id(&function.return_type_id, &ResolvedGenerics::default()).unwrap()
+                };
+
+                return_type.fn_type(args.as_slice(), false)
+            };
+
+            self.main_module.add_function(&c_fn_name, fn_type, None)
+        };
+
+        let mut params_iter = llvm_wrapper_fn.get_param_iter();
+        let mut args = Vec::with_capacity(function.params.len());
+        for param in &function.params {
+            let llvm_param = params_iter.next().unwrap();
+            llvm_param.set_name(&param.name);
+
+            if param.type_id == PRELUDE_INT_TYPE_ID {
+                let cast_param_value = self.builder.build_int_cast(llvm_param.into_int_value(), self.i32(), &format!("cast_{}", &param.name));
+                args.push(cast_param_value.into());
+            } else {
+                args.push(llvm_param.into())
+            }
+        }
+        let raw_result = self.builder.build_call(llvm_fn, args.as_slice(), "raw_result").try_as_basic_value().left().unwrap();
+        let return_value = if function.return_type_id == PRELUDE_INT_TYPE_ID {
+            self.builder.build_int_cast(raw_result.into_int_value(), self.i64().into(), "cast_return_value").into()
+        } else {
+            raw_result
+        };
+        self.builder.build_return(Some(&return_value));
+
+        self.builder.position_at_end(prev_bb);
+
+        llvm_wrapper_fn
     }
 
     fn get_or_make_trait_struct_type(&self, trait_type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> (/* trait_type: */ StructType<'a>, /* vtable_type: */ StructType<'a>) {

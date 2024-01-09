@@ -7,7 +7,7 @@ use crate::parser::parse_error::{ParseErrorKind, ParseError};
 use crate::parser::precedence::Precedence;
 
 pub struct ParseResult {
-    pub imports: Vec<(Token, ModuleId, Token)>,
+    pub imports: Vec<(Token, ImportNode)>,
     pub nodes: Vec<AstNode>,
 }
 
@@ -20,24 +20,22 @@ pub fn parse(module_id: ModuleId, tokens: Vec<Token>) -> Result<ParseResult, Par
     loop {
         match parser.peek() {
             Some(tok) => {
-                let node = if let Token::Import(_) = tok {
+                if let Token::Import(_) = tok {
                     let node = match parser.parse_import_statement(!imports_done) {
                         Ok(node) => node,
                         Err(kind) => return Err(ParseError { module_id, kind })
                     };
                     if let AstNode::ImportStatement(import_tok, import_node) = &node {
-                        imports.push((import_tok.clone(), import_node.module_id.clone(), import_node.module_token.clone()))
+                        imports.push((import_tok.clone(), import_node.clone()))
                     }
-                    node
+                    nodes.push(node);
                 } else {
                     imports_done = true;
                     match parser.parse_stmt(None) {
-                        Ok(node) => node,
+                        Ok(node) => nodes.push(node),
                         Err(kind) => return Err(ParseError { module_id, kind })
                     }
-                };
-
-                nodes.push(node);
+                }
             }
             None => break
         }
@@ -572,7 +570,7 @@ impl Parser {
         let stub_mode = decorators.iter()
             .find(|dec| {
                 let name = Token::get_ident_name(&dec.name);
-                name == "Stub" || name == "Intrinsic"
+                name == "Stub" || name == "Intrinsic" || name == "CBinding"
             })
             .is_some();
         let body = match self.peek() {
@@ -1335,7 +1333,7 @@ impl Parser {
                 } else {
                     BinaryOp::Gt
                 }
-            },
+            }
             Token::GTE(_) => BinaryOp::Gte,
             Token::LT(_) => {
                 if let Some(Token::LT(_)) = extra_token {
@@ -1343,7 +1341,7 @@ impl Parser {
                 } else {
                     BinaryOp::Lt
                 }
-            },
+            }
             Token::LTE(_) => BinaryOp::Lte,
             Token::Neq(_) => BinaryOp::Neq,
             Token::Eq(_) => BinaryOp::Eq,
@@ -1880,7 +1878,7 @@ mod tests {
                             left: Box::new(int_literal!((1, 6), 5)),
                             op: BinaryOp::Add,
                             right: Box::new(int_literal!((1, 10), 1)),
-                        }
+                        },
                     )),
                 },
             )
@@ -2235,7 +2233,7 @@ mod tests {
     fn parse_binary_errors_eof() {
         let cases = vec![
             "-5 +", "-5 -", "-5 *", "-5 /",
-            "5  >", "5 >=", "5  <", "5 <=", "5 ==", "5 !=", "5 <<", "5 >>"
+            "5  >", "5 >=", "5  <", "5 <=", "5 ==", "5 !=", "5 <<", "5 >>",
         ];
 
         for input in cases {

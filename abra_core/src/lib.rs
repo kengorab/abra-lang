@@ -78,7 +78,8 @@ pub fn typecheck<R>(module_id: ModuleId, input: &String, loader: &mut ModuleLoad
     where R: ModuleReader
 {
     let ParseResult { imports, nodes } = tokenize_and_parse(&module_id, input)?;
-    for (import_token, import_module_id, _) in imports {
+    for (import_token, import_node) in imports {
+        let import_module_id = import_node.module_id;
         loader.load_module(&module_id, &import_module_id).map_err(|e| match e {
             ModuleLoaderError::WrappedError(e) => e,
             ModuleLoaderError::NoSuchModule => {

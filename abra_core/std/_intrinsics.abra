@@ -1,6 +1,3 @@
-@Intrinsic("stdout_write")
-export func stdoutWrite(str: String)
-
 @Intrinsic("int_as_float")
 export func intAsFloat(i: Int): Float
 
@@ -15,3 +12,37 @@ export func ceil(f: Float): Int
 
 @Intrinsic("float_round")
 export func round(f: Float): Int
+
+export type Byte {
+  @Intrinsic("byte_from_int")
+  func fromInt(value: Int): Byte
+
+  @Intrinsic("byte_as_int")
+  func asInt(self): Int
+}
+
+export type Pointer<T> {
+  @Intrinsic("pointer_null")
+  func null<T>(): Pointer<T>
+
+  @Intrinsic("pointer_malloc")
+  func malloc<T>(count = 1): Pointer<T>
+
+  //@Intrinsic("pointer_realloc")
+  //func realloc(self, count: Int): Pointer<T>
+
+  @Intrinsic("pointer_address")
+  func address(self): Int
+
+  @Intrinsic("pointer_store")
+  func store(self, value: T)
+
+  @Intrinsic("pointer_load")
+  func load(self): T
+
+  @Intrinsic("pointer_offset")
+  func offset(self, offset: Int): Pointer<T>
+
+  @Intrinsic("pointer_copy_from")
+  func copyFrom(self, other: Pointer<T>, size: Int)
+}

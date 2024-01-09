@@ -8,6 +8,7 @@ use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecke
 
 const PRELUDE_STR: &str = include_str!("../../std/prelude.abra");
 const INTRINSICS_STR: &str = include_str!("../../std/_intrinsics.abra");
+const LIBC_STR: &str = include_str!("../../std/libc.abra");
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -68,7 +69,7 @@ impl LoadModule for TestModuleLoader {
 }
 
 const TEST_MODULE_NAME: &str = "test";
-const TEST_MODULE_IDX: usize = 2;
+const TEST_MODULE_IDX: usize = 3;
 const TEST_MODULE_ID: ModuleId = ModuleId(TEST_MODULE_IDX);
 
 fn test_typecheck(input: &str) -> Result<Project, (Project, TypecheckError)> {
@@ -90,6 +91,7 @@ fn test_typecheck_with_modules(entry_module: &str, other_modules: &[(&str, &str)
     modules.push((format!("{}.abra", entry_module_id.get_path("")), entry_module));
     modules.push(("std/prelude.abra".to_string(), PRELUDE_STR));
     modules.push(("std/_intrinsics.abra".to_string(), INTRINSICS_STR));
+    modules.push(("std/libc.abra".to_string(), LIBC_STR));
 
     let mut loader = TestModuleLoader::new(modules);
     let mut project = Project::default();
@@ -645,7 +647,7 @@ fn typecheck_failure_imports() {
         ],
     ).unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownModule {
-        span: Span::new(ModuleId(4), (1, 15), (1, 23)),
+        span: Span::new(ModuleId(5), (1, 15), (1, 23)),
         module_path: "./bogus.abra".to_string(),
     };
     assert_eq!(expected, err);
@@ -658,7 +660,7 @@ fn typecheck_failure_imports() {
     ).unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownExport {
         span: Span::new(TEST_MODULE_ID, (1, 8), (1, 8)),
-        module_id: ModuleId(3),
+        module_id: ModuleId(4),
         import_name: "x".to_string(),
         is_aliased: false,
     };
@@ -671,8 +673,8 @@ fn typecheck_failure_imports() {
         ],
     ).unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownExport {
-        span: Span::new(ModuleId(3), (1, 8), (1, 8)),
-        module_id: ModuleId(4),
+        span: Span::new(ModuleId(4), (1, 8), (1, 8)),
+        module_id: ModuleId(5),
         import_name: "x".to_string(),
         is_aliased: false,
     };
@@ -686,7 +688,7 @@ fn typecheck_failure_imports() {
         ],
     ).unwrap_err() else { unreachable!() };
     let expected = TypeError::CircularModuleImport {
-        span: Span::new(ModuleId(4), (1, 15), (1, 19)),
+        span: Span::new(ModuleId(5), (1, 15), (1, 19)),
     };
     assert_eq!(expected, err);
 
@@ -719,7 +721,7 @@ fn typecheck_failure_imports() {
     ).unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownExport {
         span: Span::new(TEST_MODULE_ID, (2, 13), (2, 15)),
-        module_id: ModuleId(3),
+        module_id: ModuleId(4),
         import_name: "xyz".to_string(),
         is_aliased: true,
     };
@@ -735,7 +737,7 @@ fn typecheck_failure_imports() {
     ).unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownExport {
         span: Span::new(TEST_MODULE_ID, (2, 21), (2, 23)),
-        module_id: ModuleId(3),
+        module_id: ModuleId(4),
         import_name: "xyz".to_string(),
         is_aliased: true,
     };
@@ -1885,7 +1887,7 @@ fn typecheck_failure_return() {
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::ReturnTypeMismatch {
         span: Span::new(TEST_MODULE_ID, (2, 36), (2, 39)),
-        func_name: "lambda_2_0_0_1_0".to_string(),
+        func_name: "lambda_3_0_0_1_0".to_string(),
         expected: PRELUDE_INT_TYPE_ID,
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -4278,13 +4280,13 @@ fn typecheck_failure_invocation_instantiation() {
 fn typecheck_accessor() {
     // Test simple case
     let project = test_typecheck("val a = [1, 2, 3]\na.length").unwrap();
-    let module = &project.modules[2];
+    let module = &project.modules[TEST_MODULE_IDX];
     let expected = TypedNode::Accessor {
         target: Box::new({
-            let type_id = project.find_type_id(&ScopeId(ModuleId(2), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+            let type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
             TypedNode::Identifier {
                 token: Token::Ident(Position::new(2, 1), "a".to_string()),
-                var_id: VarId(ScopeId(ModuleId(2), 0), 0),
+                var_id: VarId(ScopeId(TEST_MODULE_ID, 0), 0),
                 type_arg_ids: vec![],
                 type_id,
                 resolved_type_id: type_id,
@@ -4306,14 +4308,14 @@ fn typecheck_accessor() {
       val f = Foo(a: 12)\n\
       f.a\
     ").unwrap();
-    let module = &project.modules[2];
+    let module = &project.modules[TEST_MODULE_IDX];
     let struct_ = &module.structs[0];
     let expected = TypedNode::Accessor {
         target: Box::new({
-            let type_id = project.find_type_id(&ScopeId(ModuleId(2), 0), &Type::GenericInstance(struct_.id, vec![])).unwrap();
+            let type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &Type::GenericInstance(struct_.id, vec![])).unwrap();
             TypedNode::Identifier {
                 token: Token::Ident(Position::new(3, 1), "f".to_string()),
-                var_id: VarId(ScopeId(ModuleId(2), 0), 1),
+                var_id: VarId(ScopeId(TEST_MODULE_ID, 0), 1),
                 type_arg_ids: vec![],
                 type_id,
                 resolved_type_id: type_id,
@@ -4338,14 +4340,14 @@ fn typecheck_accessor() {
       val f = Foo(a: 12)\n\
       f.b\
     ").unwrap();
-    let module = &project.modules[2];
+    let module = &project.modules[TEST_MODULE_IDX];
     let struct_ = &module.structs[0];
     let expected = TypedNode::Accessor {
         target: Box::new({
-            let type_id = project.find_type_id(&ScopeId(ModuleId(2), 0), &Type::GenericInstance(struct_.id, vec![])).unwrap();
+            let type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &Type::GenericInstance(struct_.id, vec![])).unwrap();
             TypedNode::Identifier {
                 token: Token::Ident(Position::new(6, 1), "f".to_string()),
-                var_id: VarId(ScopeId(ModuleId(2), 0), 1),
+                var_id: VarId(ScopeId(TEST_MODULE_ID, 0), 1),
                 type_arg_ids: vec![],
                 type_id,
                 resolved_type_id: type_id,
@@ -4356,13 +4358,13 @@ fn typecheck_accessor() {
         member_idx: 3,
         member_span: Range { start: Position::new(6, 3), end: Position::new(6, 3) },
         type_id: {
-            let int_array_type_id = project.find_type_id(&ScopeId(ModuleId(2), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
-            project.find_type_id(&ScopeId(ModuleId(2), 0), &project.function_type(vec![PRELUDE_INT_TYPE_ID], 1, false, int_array_type_id)).unwrap()
+            let int_array_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+            project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.function_type(vec![PRELUDE_INT_TYPE_ID], 1, false, int_array_type_id)).unwrap()
         },
         type_arg_ids: vec![],
         resolved_type_id: {
-            let int_array_type_id = project.find_type_id(&ScopeId(ModuleId(2), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
-            project.find_type_id(&ScopeId(ModuleId(2), 0), &project.function_type(vec![PRELUDE_INT_TYPE_ID], 1, false, int_array_type_id)).unwrap()
+            let int_array_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+            project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.function_type(vec![PRELUDE_INT_TYPE_ID], 1, false, int_array_type_id)).unwrap()
         },
     };
     assert_eq!(expected, module.code[2]);
@@ -5428,7 +5430,7 @@ fn typecheck_failure_match_expression() {
     ).unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownExport {
         span: Span::new(TEST_MODULE_ID, (5, 5), (5, 5)),
-        module_id: ModuleId(3),
+        module_id: ModuleId(4),
         import_name: "Z".to_string(),
         is_aliased: true,
     };

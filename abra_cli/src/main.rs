@@ -148,7 +148,7 @@ fn typecheck_project(opts: &BuildOpts) -> (abra_core::typechecker::typechecker2:
         Ok(_) => {}
         Err(e) => {
             match e {
-                Either::Left(e) => {
+                Either::Left((e, _)) => {
                     let module_id = module_loader.get_module_id(&ModuleId::prelude()).unwrap();
                     let file_name = module_loader.get_path(&module_id).unwrap();
                     let contents = std::fs::read_to_string(&file_name).unwrap();
@@ -167,7 +167,7 @@ fn typecheck_project(opts: &BuildOpts) -> (abra_core::typechecker::typechecker2:
         Ok(mod_id) => mod_id,
         Err(e) => {
             match e {
-                Either::Left(e) => {
+                Either::Left((e, module_id)) => {
                     let module_id = module_loader.get_module_id(&module_id).unwrap();
                     let file_name = module_loader.get_path(&module_id).unwrap();
                     let contents = std::fs::read_to_string(&file_name).unwrap();
@@ -210,8 +210,8 @@ fn cmd_compile_to_c_and_run2(opts: CompileOpts) -> Result<(), ()> {
         Ok(_) => {}
         Err(e) => {
             match e {
-                Either::Left(Either::Left(e)) => eprintln!("{}", e.get_message(&"prelude.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
-                Either::Left(Either::Right(e)) => eprintln!("{}", e.get_message(&"prelude.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
+                Either::Left((Either::Left(e), _)) => eprintln!("{}", e.get_message(&"prelude.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
+                Either::Left((Either::Right(e), _)) => eprintln!("{}", e.get_message(&"prelude.abra".to_string(), &std::fs::read_to_string(&prelude_stub_abra_path).unwrap())),
                 Either::Right(e) => eprintln!("{}", e.message(&module_loader, &project)),
             }
             std::process::exit(1);
@@ -222,17 +222,15 @@ fn cmd_compile_to_c_and_run2(opts: CompileOpts) -> Result<(), ()> {
         Ok(_) => {}
         Err(e) => {
             match e {
-                Either::Left(Either::Left(e)) => {
+                Either::Left((e, module_id)) => {
                     let module_id = module_loader.get_module_id(&module_id).unwrap();
                     let file_name = module_loader.get_path(&module_id).unwrap();
                     let contents = std::fs::read_to_string(&file_name).unwrap();
-                    eprintln!("{}", e.get_message(&file_name, &contents))
-                }
-                Either::Left(Either::Right(e)) => {
-                    let module_id = module_loader.get_module_id(&module_id).unwrap();
-                    let file_name = module_loader.get_path(&module_id).unwrap();
-                    let contents = std::fs::read_to_string(&file_name).unwrap();
-                    eprintln!("{}", e.get_message(&file_name, &contents))
+
+                    match e {
+                        Either::Left(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+                        Either::Right(e) => eprintln!("{}", e.get_message(&file_name, &contents))
+                    }
                 }
                 Either::Right(e) => eprintln!("{}", e.message(&module_loader, &project)),
             }
