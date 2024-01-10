@@ -1,18 +1,1 @@
-//export enum Color {
-//  Red
-//  Blue
-//  Green
-//}
-//
-//export type Person {
-//  name: String
-//  favoriteColor: Color
-//
-//  func new(name: String, favoriteColor: Color): Person {
-//    Person(name: name, favoriteColor: favoriteColor)
-//  }
-//}
-//
-//export func abc() { }
-
-export type B { b: String }
+export val a = ("a", 2)

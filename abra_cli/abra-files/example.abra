@@ -1,27 +1,7 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-//import "libc" as libc
-//
-//val s = "hello"
-//
-//func foo() {
-//  val res = libc.write(libc.STDOUT_FILENO(), s._buffer, s.length)
-//}
-//foo()
-////if res == -1 {
-////  println("Error...")
-////} else {
-////  println("Wrote $res bytes")
-////}
+import * from "./example2"
+import * from "./example3"
 
-import a from "./3"
-
-import B from "./example2"
-import "./example2" as two
-var b: B
-match b {
-  B => {}
-  two.B => {}
-}
-
+//val a = 123

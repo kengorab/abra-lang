@@ -1,2 +1,1 @@
-export val s = "abcd"
-export func sum(x: Int, y: Int): Int = x + y
+export val a = "a"

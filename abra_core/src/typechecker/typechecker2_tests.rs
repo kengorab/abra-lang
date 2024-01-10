@@ -1292,6 +1292,7 @@ fn typecheck_none() {
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
+            is_exported: false,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -1309,6 +1310,7 @@ fn typecheck_none() {
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
+            is_exported: false,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -1326,6 +1328,7 @@ fn typecheck_none() {
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
+            is_exported: false,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -1343,6 +1346,7 @@ fn typecheck_none() {
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
+            is_exported: false,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -1368,6 +1372,7 @@ fn typecheck_none() {
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
+            is_exported: false,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -1981,6 +1986,7 @@ fn typecheck_binding_declaration() {
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
+            is_exported: false,
         },
         Variable {
             id: VarId(ScopeId(TEST_MODULE_ID, 0), 1),
@@ -1992,6 +1998,7 @@ fn typecheck_binding_declaration() {
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
+            is_exported: false,
         },
         Variable {
             id: VarId(ScopeId(TEST_MODULE_ID, 0), 2),
@@ -2003,6 +2010,7 @@ fn typecheck_binding_declaration() {
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
+            is_exported: false,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -2022,6 +2030,7 @@ fn typecheck_binding_declaration() {
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
+            is_exported: false,
         },
         Variable {
             id: VarId(ScopeId(TEST_MODULE_ID, 0), 1),
@@ -2033,6 +2042,7 @@ fn typecheck_binding_declaration() {
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
+            is_exported: false,
         },
         Variable {
             id: VarId(ScopeId(TEST_MODULE_ID, 0), 2),
@@ -2044,6 +2054,7 @@ fn typecheck_binding_declaration() {
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
+            is_exported: false,
         },
         Variable {
             id: VarId(ScopeId(TEST_MODULE_ID, 0), 3),
@@ -2055,6 +2066,7 @@ fn typecheck_binding_declaration() {
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
+            is_exported: false,
         },
         Variable {
             id: VarId(ScopeId(TEST_MODULE_ID, 0), 4),
@@ -2066,6 +2078,7 @@ fn typecheck_binding_declaration() {
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
+            is_exported: false,
         },
         Variable {
             id: VarId(ScopeId(TEST_MODULE_ID, 0), 5),
@@ -2077,6 +2090,7 @@ fn typecheck_binding_declaration() {
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
+            is_exported: false,
         },
         Variable {
             id: VarId(ScopeId(TEST_MODULE_ID, 0), 6),
@@ -2088,6 +2102,7 @@ fn typecheck_binding_declaration() {
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
+            is_exported: false,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -2174,6 +2189,7 @@ fn typecheck_type_declaration() {
             is_captured: false,
             alias: VariableAlias::Type(TypeKind::Struct(struct_id)),
             is_parameter: false,
+            is_exported: false,
         }
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -2679,6 +2695,7 @@ fn typecheck_enum_declaration() {
             is_captured: false,
             alias: VariableAlias::Type(TypeKind::Enum(enum_id)),
             is_parameter: false,
+            is_exported: false,
         }
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -2933,6 +2950,7 @@ fn typecheck_function_declaration() {
             is_captured: false,
             alias: VariableAlias::Function(FuncId(ScopeId(TEST_MODULE_ID, 0), 0)),
             is_parameter: false,
+            is_exported: false,
         },
         Variable {
             id: VarId(ScopeId(TEST_MODULE_ID, 0), 1),
@@ -2944,6 +2962,7 @@ fn typecheck_function_declaration() {
             is_captured: true,
             alias: VariableAlias::None,
             is_parameter: false,
+            is_exported: false,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -3452,6 +3471,7 @@ fn typecheck_invocation() {
         is_captured: false,
         alias: VariableAlias::None,
         is_parameter: false,
+        is_exported: false,
     };
     assert_eq!(&expected, foo_var);
     let accessor_invocation = &module.code[3];
@@ -3485,6 +3505,7 @@ fn typecheck_invocation() {
         is_captured: false,
         alias: VariableAlias::None,
         is_parameter: false,
+        is_exported: false,
     };
     assert_eq!(&expected, f_var);
     let foo_var = &module.scopes[0].vars[2];
@@ -3498,6 +3519,7 @@ fn typecheck_invocation() {
         is_captured: false,
         alias: VariableAlias::None,
         is_parameter: false,
+        is_exported: false,
     };
     assert_eq!(&expected, foo_var);
     let f_invocation = &module.code[3];
@@ -3865,6 +3887,7 @@ fn typecheck_method_invocation() {
         is_captured: false,
         alias: VariableAlias::None,
         is_parameter: false,
+        is_exported: false,
     };
     assert_eq!(&expected, bar_var);
     let var_invocation = &module.code[3];
@@ -3903,6 +3926,7 @@ fn typecheck_method_invocation() {
         is_captured: false,
         alias: VariableAlias::None,
         is_parameter: false,
+        is_exported: false,
     };
     assert_eq!(&expected, bar_var);
     let var_invocation = &module.code[2];
@@ -3953,6 +3977,7 @@ fn typecheck_method_invocation() {
         is_captured: false,
         alias: VariableAlias::None,
         is_parameter: false,
+        is_exported: false,
     };
     assert_eq!(&expected, bar_var);
     let var_invocation = &module.code[3];
@@ -4456,6 +4481,7 @@ fn typecheck_lambda() {
         is_captured: false,
         alias: VariableAlias::None,
         is_parameter: false,
+        is_exported: false,
     };
     assert_eq!(&expected, f_var);
 
@@ -4472,6 +4498,7 @@ fn typecheck_lambda() {
         is_captured: false,
         alias: VariableAlias::None,
         is_parameter: false,
+        is_exported: false,
     };
     assert_eq!(&expected, f_var);
 

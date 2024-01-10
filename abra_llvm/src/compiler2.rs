@@ -15,7 +15,7 @@ use inkwell::values::{BasicValue, BasicValueEnum, CallableValue, FloatValue, Fun
 use itertools::Itertools;
 use abra_core::lexer::tokens::{POSITION_BOGUS, Token};
 use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
-use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, EnumId, EnumVariantKind, FuncId, Function, FunctionKind, ImportedValue, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, ModuleId, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedMatchCaseArgument, TypedMatchCaseKind, TypedNode, TypeId, TypeKind, VariableAlias, VarId};
+use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, EnumId, EnumVariantKind, FuncId, Function, FunctionKind, ImportedValue, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, ModuleId, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedMatchCaseArgument, TypedMatchCaseKind, TypedNode, TypeId, TypeKind, Variable, VariableAlias, VarId};
 
 const ABRA_MAIN_FN_NAME: &str = "_abra_main";
 
@@ -512,6 +512,11 @@ impl<'a> LLVMCompiler2<'a> {
         format!("{enum_type_name}.{enum_variant_name}")
     }
 
+    fn llvm_global_var_name(&self, variable: &Variable) -> String {
+        let ModuleId(module_idx) = variable.id.0.0;
+        format!("{module_idx}.{}", &variable.name)
+    }
+
     fn llvm_underlying_type_by_id(&self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> Option<BasicTypeEnum<'a>> {
         let ty = self.get_type_by_id(type_id);
         let llvm_type = match ty {
@@ -850,6 +855,7 @@ impl<'a> LLVMCompiler2<'a> {
 
         let mut compiled = HashSet::new();
         let mut module_queue = VecDeque::new();
+        module_queue.push_back(PRELUDE_MODULE_ID);
         module_queue.push_back(*entrypoint_module_id);
 
         while let Some(module_id) = module_queue.pop_front() {
@@ -857,26 +863,25 @@ impl<'a> LLVMCompiler2<'a> {
 
             if compiled.contains(&m.id) { continue; }
 
-            let mut deps_satisfied = true;
+            let mut reenqueued = false;
             for (import_id, _) in &m.imports {
                 if !compiled.contains(import_id) {
-                    module_queue.push_back(*import_id);
-                    deps_satisfied = false;
+                    if !reenqueued {
+                        reenqueued = true;
+                        module_queue.push_front(module_id);
+                    }
+                    module_queue.push_front(*import_id);
                 }
             }
-            if !deps_satisfied {
-                module_queue.push_back(module_id);
+            if reenqueued {
                 continue;
             }
             compiled.insert(module_id);
 
             for import in m.imports.iter().flat_map(|(_, imported_values)| imported_values.iter()) {
-                if let ImportedValue::Variable(var_id) = import {
+                if let ImportedValue::Variable(_, var_id) = import {
                     let var = self.project.get_var_by_id(var_id);
-                    let slot = self.main_module.get_global(&var.name).unwrap_or_else(|| {
-                        dbg!(&var);
-                        panic!();
-                    }).as_pointer_value();
+                    let slot = self.main_module.get_global(&self.llvm_global_var_name(&var)).unwrap().as_pointer_value();
                     self.ctx_stack.last_mut().unwrap().variables.insert(var.id, LLVMVar::Slot(slot));
                 } else {
                     // Functions & types don't need variable referencing (yet)
@@ -1053,24 +1058,18 @@ impl<'a> LLVMCompiler2<'a> {
             // If variable is captured, move value to heap so its lifetime extends beyond the current stack frame. There is specific logic
             // to handle references to the variable later on (see TypedNode::Identifier and TypedNode::Assignment logic).
             if variable.is_captured {
+                debug_assert!(!variable.is_exported, "Exports are global variables, so referencing them in a function is not a 'capture'");
+
                 let ptr_type = llvm_type.ptr_type(AddressSpace::Generic);
                 let heap_mem = self.malloc(self.const_i64(8), ptr_type);
                 self.builder.build_store(heap_mem, expr_val);
 
-                let slot = if is_exported {
-                    // let global = self.main_module.add_global(ptr_type, None, &var_name);
-                    // global.set_initializer(&ptr_type.const_null());
-                    // global.as_pointer_value()
-                    todo!()
-                } else {
-                    self.builder.build_alloca(ptr_type, &var_name)
-                };
-
+                let slot = self.builder.build_alloca(ptr_type, &var_name);
                 self.builder.build_store(slot, heap_mem);
                 self.ctx_stack.last_mut().unwrap().variables.insert(variable.id, LLVMVar::Slot(slot));
             } else {
                 let slot = if is_exported {
-                    let global = self.main_module.add_global(llvm_type, None, &var_name);
+                    let global = self.main_module.add_global(llvm_type, None, &self.llvm_global_var_name(&variable));
                     global.set_initializer(&llvm_type.const_zero());
                     global.as_pointer_value()
                 } else {
@@ -1825,44 +1824,49 @@ impl<'a> LLVMCompiler2<'a> {
             TypedNode::Identifier { var_id, resolved_type_id, .. } => {
                 let variable = self.project.get_var_by_id(var_id);
 
-                let value = match variable.alias {
-                    VariableAlias::None => {
-                        // If the variable is captured, then the underlying model is different and needs to be handled specially.
-                        // Captured variables are moved to the heap upon initialization (see TypedNode::BindingDeclaration), and
-                        // their backing type uses pointer indirection. If we're currently in a function which closes over the
-                        // variable, we handle it here...
-                        if let Some(ptr) = self.get_captured_var_slot(var_id, resolved_generics) {
-                            self.builder.build_load(ptr, &format!("decoded_captured_var_{}", &variable.name))
-                        } else {
-                            let llvm_var = self.ctx_stack.last().unwrap().variables.get(&variable.id).expect(&format!("No stored slot for variable {} ({:?})", &variable.name, &variable));
-                            match llvm_var {
-                                LLVMVar::Slot(slot) => {
-                                    let val = self.builder.build_load(*slot, &variable.name);
-                                    // ...otherwise, we need to handle it here. If the variable is captured by some closure, then it'll
-                                    // be represented as a pointer value which needs to be dereferenced upon access.
-                                    if variable.is_captured {
-                                        self.builder.build_load(val.into_pointer_value(), "")
-                                    } else {
-                                        val
+                let value = if variable.is_exported {
+                    let global = self.main_module.get_global(&self.llvm_global_var_name(&variable)).unwrap();
+                    self.builder.build_load(global.as_pointer_value(), &variable.name)
+                } else {
+                    match variable.alias {
+                        VariableAlias::None => {
+                            // If the variable is captured, then the underlying model is different and needs to be handled specially.
+                            // Captured variables are moved to the heap upon initialization (see TypedNode::BindingDeclaration), and
+                            // their backing type uses pointer indirection. If we're currently in a function which closes over the
+                            // variable, we handle it here...
+                            if let Some(ptr) = self.get_captured_var_slot(var_id, resolved_generics) {
+                                self.builder.build_load(ptr, &format!("decoded_captured_var_{}", &variable.name))
+                            } else {
+                                let llvm_var = self.ctx_stack.last().unwrap().variables.get(&variable.id).expect(&format!("No stored slot for variable {} ({:?})", &variable.name, &variable));
+                                match llvm_var {
+                                    LLVMVar::Slot(slot) => {
+                                        let val = self.builder.build_load(*slot, &variable.name);
+                                        // ...otherwise, we need to handle it here. If the variable is captured by some closure, then it'll
+                                        // be represented as a pointer value which needs to be dereferenced upon access.
+                                        if variable.is_captured {
+                                            self.builder.build_load(val.into_pointer_value(), "")
+                                        } else {
+                                            val
+                                        }
                                     }
+                                    LLVMVar::Param(value) => *value,
                                 }
-                                LLVMVar::Param(value) => *value,
                             }
                         }
-                    }
-                    VariableAlias::Function(func_id) => {
-                        // todo: cache value to not create duplicate?
-                        let function = self.project.get_func_by_id(&func_id);
-                        let captures = if function.is_closure() {
-                            let captures = self.get_captures_for_closure(function);
-                            Some(captures.into_pointer_value())
-                        } else {
-                            None
-                        };
+                        VariableAlias::Function(func_id) => {
+                            // todo: cache value to not create duplicate?
+                            let function = self.project.get_func_by_id(&func_id);
+                            let captures = if function.is_closure() {
+                                let captures = self.get_captures_for_closure(function);
+                                Some(captures.into_pointer_value())
+                            } else {
+                                None
+                            };
 
-                        self.make_function_value(&func_id, resolved_type_id, captures, resolved_generics)
+                            self.make_function_value(&func_id, resolved_type_id, captures, resolved_generics)
+                        }
+                        VariableAlias::Type(_) => todo!()
                     }
-                    VariableAlias::Type(_) => todo!()
                 };
 
                 self.cast_result_if_necessary(value, &variable.type_id, resolved_type_id, &resolved_generics)

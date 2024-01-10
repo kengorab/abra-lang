@@ -19,7 +19,7 @@
 import Pointer, Byte from "./_intrinsics"
 
 export val STDIN_FILENO = 0
-export func STDOUT_FILENO(): Int = 1
+export val STDOUT_FILENO = 1
 export val STDERR_FILENO = 2
 
 @CBinding("write")

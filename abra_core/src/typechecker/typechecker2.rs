@@ -253,7 +253,7 @@ impl Project {
                 // sure to only consider the _imported names_ from that imported module.
                 module.imports.iter().find_map(|(import_id, imported_values)|
                     imported_values.iter().find_map(|import| {
-                        if let ImportedValue::Type(TypeKind::Struct(struct_id)) = import {
+                        if let ImportedValue::Type(_, TypeKind::Struct(struct_id)) = import {
                             let struct_ = self.get_struct_by_id(struct_id);
                             if &struct_.name == name {
                                 self.find_struct_by_name(import_id, name)
@@ -282,7 +282,7 @@ impl Project {
                 // sure to only consider the _imported names_ from that imported module.
                 module.imports.iter().find_map(|(import_id, imported_values)|
                     imported_values.iter().find_map(|import| {
-                        if let ImportedValue::Type(TypeKind::Enum(enum_id)) = import {
+                        if let ImportedValue::Type(_, TypeKind::Enum(enum_id)) = import {
                             let enum_ = self.get_enum_by_id(enum_id);
                             if &enum_.name == name {
                                 self.find_enum_by_name(import_id, name)
@@ -357,17 +357,40 @@ impl Project {
         }
     }
 
-    pub fn find_variable_by_name(&self, scope_id: &ScopeId, name: &String) -> Option<&Variable> {
+    pub fn find_variable_by_name(&self, scope_id: &ScopeId, name: &String) -> Option<(Option<Range>, &Variable)> {
         if name == "_" { return None; }
 
         self.walk_scope_chain_with(scope_id, |scope| {
             for var in &scope.vars {
                 if var.name == *name {
-                    return Some(var);
+                    return Some((var.defined_span.as_ref().map(|r| r.range.clone()),var));
                 }
             }
             None
+        }).or_else(|| {
+            self.find_imported_var_by_name(&scope_id.0, name).map(|(tok, v)| (Some(tok.get_range()), v))
         })
+    }
+
+    pub fn find_imported_var_by_name(&self, current_module_id: &ModuleId, name: &String) -> Option<(&Token, &Variable)> {
+        let module = &self.modules[current_module_id.0];
+        module.imports.iter().find_map(|(_, imported_values)|
+            imported_values.iter().find_map(|import| {
+                match import {
+                    // An imported function or type would have been found in the walk_scope_chain_with call,
+                    // since they're added to the current scope as variables.
+                    ImportedValue::Function(_, _) | ImportedValue::Type(_, _) => None,
+                    ImportedValue::Variable(token, var_id) => {
+                        let var = self.get_var_by_id(var_id);
+                        if var.name == *name {
+                            Some((token, var))
+                        } else {
+                            None
+                        }
+                    }
+                }
+            })
+        )
     }
 
     pub fn find_var_id_by_alias(&self, alias: VariableAlias) -> Option<VarId> {
@@ -872,6 +895,7 @@ pub struct Variable {
     pub is_captured: bool,
     pub alias: VariableAlias,
     pub is_parameter: bool,
+    pub is_exported: bool,
 }
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
@@ -945,11 +969,11 @@ pub enum ExportedValue {
     Variable(VarId),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ImportedValue {
-    Function(FuncId),
-    Type(TypeKind),
-    Variable(VarId),
+    Function(Token, FuncId),
+    Type(Token, TypeKind),
+    Variable(Token, VarId),
 }
 
 #[derive(Debug, PartialEq)]
@@ -2559,16 +2583,24 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     }
 
     fn add_variable_to_current_scope(&mut self, name: String, type_id: TypeId, is_mutable: bool, is_initialized: bool, span: &Span, is_parameter: bool) -> Result<VarId, TypeError> {
-        let current_scope = self.current_scope_mut();
-
+        let current_scope = self.current_scope();
         for var in &current_scope.vars {
             if var.name == name && name != "_" {
                 return Err(TypeError::DuplicateName { span: span.clone(), name, original_span: var.defined_span.clone(), kind: DuplicateNameKind::Variable });
             }
         }
 
+        // If the current scope is the root scope of the module, also compare against names imported into the module
+        if name != "_" && current_scope.id.1 == 0 {
+            if let Some((token, _)) = self.project.find_imported_var_by_name(&self.current_module().id, &name) {
+                let original_span = Some(self.make_span(&token.get_range()));
+                return Err(TypeError::DuplicateName { span: span.clone(), name, original_span, kind: DuplicateNameKind::Variable });
+            }
+        }
+
+        let current_scope = self.current_scope_mut();
         let id = VarId(current_scope.id, current_scope.vars.len());
-        let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: Some(span.clone()), is_captured: false, alias: VariableAlias::None, is_parameter };
+        let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: Some(span.clone()), is_captured: false, alias: VariableAlias::None, is_parameter, is_exported: false };
         current_scope.vars.push(var);
 
         Ok(id)
@@ -3976,7 +4008,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 if is_exported {
                     for var_id in &var_ids {
-                        let var = self.project.get_var_by_id(var_id);
+                        let var = self.project.get_var_by_id_mut(var_id);
+                        var.is_exported = true;
                         let var_name = var.name.clone();
                         self.current_module_mut().exports.insert(var_name, ExportedValue::Variable(*var_id));
                     }
@@ -4192,7 +4225,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             ExportedValue::Function(func_id) => {
                 self.add_function_variable_alias_to_current_scope(import_token, &func_id)?;
 
-                ImportedValue::Function(func_id)
+                ImportedValue::Function(import_token.clone(), func_id)
             }
             ExportedValue::Type(type_kind) => {
                 match type_kind {
@@ -4212,20 +4245,20 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 };
 
-                ImportedValue::Type(type_kind)
+                ImportedValue::Type(import_token.clone(), type_kind)
             }
             ExportedValue::Variable(var_id) => {
-                let imported_var = self.project.get_var_by_id(&var_id);
-                let is_captured = imported_var.is_captured;
-                let var_id = self.add_variable_to_current_scope(imported_var.name.clone(), imported_var.type_id, false, imported_var.is_initialized, &span, false)?;
-                let var = self.project.get_var_by_id_mut(&var_id);
-                var.is_captured = is_captured;
+                let name = &self.project.get_var_by_id(&var_id).name;
+                if let Some((range, _)) = self.project.find_variable_by_name(&self.current_scope_id, name) {
+                    let original_span = range.map(|r| self.make_span(&r));
+                    return Err(TypeError::DuplicateName { span: span.clone(), name: name.clone(), original_span, kind: DuplicateNameKind::Variable });
+                }
 
-                ImportedValue::Variable(var_id)
+                ImportedValue::Variable(import_token.clone(), var_id)
             }
         };
 
-        self.current_module_mut().imports.entry(module_id).or_default().push(imported_value);
+        self.current_module_mut().imports.entry(module_id).or_default().push(imported_value.clone());
 
         Ok(imported_value)
     }
@@ -4478,7 +4511,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let first_token = path_tokens_iter.next().expect("There should be at least 1 token in the path");
                     let first_token_str = Token::get_ident_name(&first_token);
 
-                    let (enum_or_struct, name_token) = if let Some(var) = self.project.find_variable_by_name(&ScopeId(self.current_module().id, 0), &first_token_str) {
+                    let (enum_or_struct, name_token) = if let Some((_, var)) = self.project.find_variable_by_name(&ScopeId(self.current_module().id, 0), &first_token_str) {
                         if let Some(alias_module_id) = var.type_id.as_module_type_alias() {
                             let type_name_token = path_tokens_iter.next().expect("There should be at least 2 tokens in the path");
                             let type_name = Token::get_ident_name(&type_name_token);
@@ -5213,7 +5246,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let name = Token::get_ident_name(&token);
                 let variable = self.project.find_variable_by_name(&self.current_scope_id, &name);
-                let Some(Variable { id, type_id, .. }) = variable else {
+                let Some((_, Variable { id, type_id, .. })) = variable else {
                     let span = self.make_span(&token.get_range());
                     return Err(TypeError::UnknownIdentifier { span, token });
                 };
@@ -5237,10 +5270,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let VarId(var_scope_id, _) = var_id;
                     let FuncId(func_scope_id, _) = current_func_id;
 
-                    if var_type_id.as_module_type_alias().is_none() && !self.scope_contains_other(&var_scope_id, &func_scope_id) {
-                        let var = self.project.get_var_by_id_mut(&var_id);
+                    let var = self.project.get_var_by_id(&var_id);
+                    if !var.is_exported && var_type_id.as_module_type_alias().is_none() && !self.scope_contains_other(&var_scope_id, &func_scope_id) {
                         if var.alias == VariableAlias::None {
-                            var.is_captured = true;
+                            self.project.get_var_by_id_mut(&var_id).is_captured = true;
 
                             let func = self.project.get_func_by_id_mut(&current_func_id);
                             if !func.captured_vars.contains(&var_id) {
