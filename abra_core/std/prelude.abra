@@ -152,8 +152,36 @@ type String {
 
   func isEmpty(self): Bool = self.length == 0
 
-  @Stub func toLower(self): String
-  @Stub func toUpper(self): String
+  func toLower(self): String {
+    val str = String.withLength(self.length)
+    for i in range(0, self.length) {
+      val ch = self._buffer.offset(i).load().asInt()
+      val lowerCh = if 65 <= ch && ch <= 90 {
+        ch + 32
+      } else {
+        ch
+      }
+      str._buffer.offset(i).store(Byte.fromInt(lowerCh))
+    }
+
+    str
+  }
+
+  func toUpper(self): String {
+    val str = String.withLength(self.length)
+    for i in range(0, self.length) {
+      val ch = self._buffer.offset(i).load().asInt()
+      val upperCh = if 97 <= ch && ch <= 122 {
+        ch - 32
+      } else {
+        ch
+      }
+      str._buffer.offset(i).store(Byte.fromInt(upperCh))
+    }
+
+    str
+  }
+
   @Stub func padLeft(self, totalSize: Int, padding = " "): String
   @Stub func trim(self): String
   @Stub func trimStart(self, pattern: String? = None): String
@@ -163,6 +191,22 @@ type String {
   @Stub func lines(self): String[]
   @Stub func parseInt(self, radix = 10): Int?
   @Stub func parseFloat(self): Float?
+
+  func endsWith(self, suffix: String): Bool {
+    if self.length < suffix.length return false
+    if suffix.isEmpty() return true
+
+    val selfOffset = self.length - suffix.length
+    var i = 0
+    while i < suffix.length {
+      val selfCh = self._buffer.offset(selfOffset + i).load().asInt()
+      val otherCh = suffix._buffer.offset(i).load().asInt()
+      if selfCh != otherCh return false
+      i += 1
+    }
+
+    true
+  }
 
   func concat<T>(self, suffix: T, *others: Any[]): String {
     val suffixStr = suffix.toString()

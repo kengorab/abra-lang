@@ -1,0 +1,17 @@
+import "fs" as fs
+
+// fs::getCurrentWorkingDirectory
+(() => {
+  val cwd = fs.getCurrentWorkingDirectory()
+  /// Expect: true
+  println(cwd.endsWith("/abra-lang/abra_llvm"))
+})()
+
+// fs::readFile
+(() => {
+  val cwd = fs.getCurrentWorkingDirectory()
+  /// Expect: ReadFileResult.Ok(contents: "Test file to test fs module")
+  println(fs.readFile(cwd + "/tests/_test_file.txt"))
+  /// Expect: ReadFileResult.Err(error: ReadFileError.CouldNotOpen(message: "No such file or directory"))
+  println(fs.readFile(cwd + "/tests/_not_exist.txt"))
+})()

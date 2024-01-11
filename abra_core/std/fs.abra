@@ -1,18 +1,60 @@
-//import "libc" as libc
+import Byte from "./_intrinsics"
+import "libc" as libc
 
-export func readFile(path: String): String? {
-  //val fd = libc.open(path._buffer)
-  //if fd == -1 return None
+export enum ReadFileResult {
+  Ok(contents: String)
+  Err(error: ReadFileError)
+}
 
-  //val len = libc.lseek(fd, 0, libc.SEEK_END)
-  //if len == -1 return None
-  //libc.lseek(fd, 0, libc.SEEK_SET)
+export enum ReadFileError {
+  CouldNotOpen(message: String)
+  CouldNotClose(message: String)
+  CouldNotSeek(message: String)
+  CouldNotRead(message: String)
+}
 
-  //val str = String.withLength(len)
-  //val res = libc.read(fd, str._buffer, len)
-  //if res == -1 return None
+export func readFile(path: String): /* Result<String, ReadFileError> */ ReadFileResult {
+  val fd = libc.open(path._buffer, libc.O_RDONLY)
+  if fd == -1 {
+    val errMsg = libc.strerror(libc.errno())
+    val err = ReadFileError.CouldNotOpen(message: errMsg)
+    return ReadFileResult.Err(error: err)
+  }
 
-  //str
+  val len = libc.lseek(fd, 0, libc.SEEK_END)
+  if len == -1 {
+    val errMsg = libc.strerror(libc.errno())
+    val err = ReadFileError.CouldNotSeek(message: errMsg)
+    return ReadFileResult.Err(error: err)
+  }
+  if libc.lseek(fd, 0, libc.SEEK_SET) == -1 {
+    val errMsg = libc.strerror(libc.errno())
+    val err = ReadFileError.CouldNotSeek(message: errMsg)
+    return ReadFileResult.Err(error: err)
+  }
 
-  None
+  val str = String.withLength(len)
+  if libc.read(fd, str._buffer, len) == -1 {
+    val errMsg = libc.strerror(libc.errno())
+    val err = ReadFileError.CouldNotRead(message: errMsg)
+    return ReadFileResult.Err(error: err)
+  }
+  if libc.close(fd) == -1 {
+    val errMsg = libc.strerror(libc.errno())
+    val err = ReadFileError.CouldNotClose(message: errMsg)
+    return ReadFileResult.Err(error: err)
+  }
+
+  ReadFileResult.Ok(contents: str)
+}
+
+export func getCurrentWorkingDirectory(): String {
+  val buf = Pointer.malloc<Byte>(libc.PATH_MAX)
+
+  val cwd = libc.getcwd(buf, libc.PATH_MAX)
+  val len = libc.strlen(cwd._buffer)
+
+  val str = String.withLength(len)
+  str._buffer.copyFrom(buf, len)
+  str
 }

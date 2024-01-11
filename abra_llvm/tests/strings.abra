@@ -118,6 +118,38 @@
   println(nonEmpty.isEmpty())
 })()
 
+// String#toLower
+(() => {
+  /// Expect:  |
+  println("".toLower(), "|")
+  /// Expect: -hello!
+  println("-hElLo!".toLower())
+})()
+
+// String#toUpper
+(() => {
+  /// Expect:  |
+  println("".toUpper(), "|")
+  /// Expect: -HELLO!
+  println("-hElLo!".toUpper())
+})()
+
+// String#endsWith
+(() => {
+  /// Expect: true
+  println("".endsWith(""))
+  /// Expect: true
+  println("hello".endsWith(""))
+  /// Expect: true
+  println("hello".endsWith("lo"))
+  /// Expect: true
+  println("hello".endsWith("hello"))
+  /// Expect: false
+  println("hello".endsWith("lo!"))
+  /// Expect: false
+  println("hello".endsWith("hhello"))
+})()
+
 // String#concat
 (() => {
   /// Expect: helloworld

@@ -3176,6 +3176,13 @@ impl<'a> LLVMCompiler2<'a> {
         };
 
         let value = match name.as_ref() {
+            "errno" => { // Static method
+                let errno = self.main_module.get_global("errno").unwrap_or_else(|| {
+                    self.main_module.add_global(self.i32(), Some(AddressSpace::Global), "errno")
+                });
+                let errno_val = self.builder.build_load(errno.as_pointer_value(), "errno_value").into_int_value();
+                self.builder.build_int_cast(errno_val, self.i64(), "").into()
+            }
             "pointer_null" => { // Static method
                 let pointer_type = type_arg_ids[0];
                 let Some(llvm_type) = self.llvm_underlying_type_by_id(&pointer_type, &resolved_generics) else { todo!() };
@@ -3333,9 +3340,9 @@ impl<'a> LLVMCompiler2<'a> {
         let block = self.context.append_basic_block(llvm_wrapper_fn, "");
         self.builder.position_at_end(block);
 
-        let llvm_fn = {
-            debug_assert!(self.main_module.get_function(&c_fn_name).is_none(), "We shouldn't register this function more than once");
-
+        let llvm_fn = if let Some(llvm_fn) = self.main_module.get_function(&c_fn_name) {
+            llvm_fn
+        } else {
             let mut args = Vec::with_capacity(function.params.len());
             for param in &function.params {
                 debug_assert!(param.default_value.is_none(), "CBinding functions must not have any default-valued parameters");
@@ -3355,6 +3362,8 @@ impl<'a> LLVMCompiler2<'a> {
             } else {
                 let return_type = if function.return_type_id == PRELUDE_INT_TYPE_ID {
                     self.i32().into()
+                } else if function.return_type_id == PRELUDE_STRING_TYPE_ID {
+                    self.ptr(self.i8()).into()
                 } else {
                     self.llvm_underlying_type_by_id(&function.return_type_id, &ResolvedGenerics::default()).unwrap()
                 };
@@ -3381,6 +3390,13 @@ impl<'a> LLVMCompiler2<'a> {
         let raw_result = self.builder.build_call(llvm_fn, args.as_slice(), "raw_result").try_as_basic_value().left().unwrap();
         let return_value = if function.return_type_id == PRELUDE_INT_TYPE_ID {
             self.builder.build_int_cast(raw_result.into_int_value(), self.i64().into(), "cast_return_value").into()
+        } else if function.return_type_id == PRELUDE_STRING_TYPE_ID {
+            let strlen = self.main_module.get_function("strlen").unwrap_or_else(|| {
+                self.main_module.add_function("strlen", self.fn_type(self.i32(), &[self.ptr(self.i8()).into()]), None)
+            });
+            let len = self.builder.build_call(strlen, &[raw_result.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+            let len = self.builder.build_int_cast(len, self.i64(), "");
+            self.construct_string(len, raw_result.into_pointer_value())
         } else {
             raw_result
         };
@@ -5240,5 +5256,10 @@ mod tests {
     #[test]
     fn test_imports() {
         run_test_file("imports.abra");
+    }
+
+    #[test]
+    fn test_fs() {
+        run_test_file("fs.abra");
     }
 }
