@@ -3177,10 +3177,17 @@ impl<'a> LLVMCompiler2<'a> {
 
         let value = match name.as_ref() {
             "errno" => { // Static method
-                let errno = self.main_module.get_global("errno").unwrap_or_else(|| {
-                    self.main_module.add_global(self.i32(), Some(AddressSpace::Global), "errno")
-                });
-                let errno_val = self.builder.build_load(errno.as_pointer_value(), "errno_value").into_int_value();
+                let error_fn = match std::env::consts::OS {
+                    "linux" => self.main_module.get_function("__errno_location").unwrap_or_else(|| {
+                        self.main_module.add_function("__errno_location", self.fn_type(self.ptr(self.i32()), &[]), None)
+                    }),
+                    "macos" => self.main_module.get_function("__error").unwrap_or_else(|| {
+                        self.main_module.add_function("__error", self.fn_type(self.ptr(self.i32()), &[]), None)
+                    }),
+                    os => unimplemented!("Unsupported operating system {os}")
+                };
+                let errno = self.builder.build_call(error_fn, &[], "").try_as_basic_value().left().unwrap().into_pointer_value();
+                let errno_val = self.builder.build_load(errno, "errno_value").into_int_value();
                 self.builder.build_int_cast(errno_val, self.i64(), "").into()
             }
             "pointer_null" => { // Static method

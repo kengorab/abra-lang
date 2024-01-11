@@ -1,9 +1,6 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-//import "fs" as fs
-//
-//fs.readFile("/Users/kengorab/Desktop/abra-lang/README.md")
+import "fs" as fs
 
-println("-hElLo!".toLower())
-println("-hElLo!".toUpper())
+fs.readFile("/Users/kengorab/Desktop/abra-lang/README.m")
