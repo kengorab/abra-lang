@@ -2666,6 +2666,7 @@ fn typecheck_enum_declaration() {
     assert_eq!("hash", project.get_func_by_id(&hash_func_id).name);
     let eq_func_id = FuncId(ScopeId(TEST_MODULE_ID, 1), 2);
     assert_eq!("eq", project.get_func_by_id(&eq_func_id).name);
+    let self_type_id= TypeId(ScopeId(TEST_MODULE_ID, 0), 0);
     let expected = vec![
         Enum {
             id: enum_id,
@@ -2673,7 +2674,7 @@ fn typecheck_enum_declaration() {
             name: "Foo".to_string(),
             defined_span: Span::new(TEST_MODULE_ID, (1, 6), (1, 8)),
             generic_ids: vec![],
-            self_type_id: TypeId(ScopeId(TEST_MODULE_ID, 0), 0),
+            self_type_id,
             variants: vec![
                 EnumVariant { name: "Bar".to_string(), defined_span: Span::new(TEST_MODULE_ID, (2, 1), (2, 3)), kind: EnumVariantKind::Constant },
                 EnumVariant { name: "Baz".to_string(), defined_span: Span::new(TEST_MODULE_ID, (3, 1), (3, 3)), kind: EnumVariantKind::Container(baz_func_id) },
@@ -2708,7 +2709,7 @@ fn typecheck_enum_declaration() {
         decorators: vec![],
         name: "Baz".to_string(),
         generic_ids: vec![],
-        kind: FunctionKind::Freestanding, // TODO: Is this correct? should we model this as a FunctionKind::StaticMethod ?
+        kind: FunctionKind::StaticMethod(self_type_id),
         params: vec![
             FunctionParam {
                 name: "x".to_string(),

@@ -13,7 +13,7 @@
   - [x] destructuring tagged union enum variants
 - [ ] match statement on `Any`/generic type
 - [x] imports/exports
-- [ ] I/O and other low-level things
+- [x] I/O and other low-level things
 - [x] module alias as a type
 - [ ] error on vars used before initialization (Requires Typechecker)
 - [ ] initializers/constructors and/or fields w/ default values that can reference `self` (Requires Typechecker)
@@ -24,7 +24,13 @@
 - [ ] growing array when capacity reached
 - [ ] growing map when capacity/loadFactor reached
 - [ ] unsigned integers of different sizes (Requires Typechecker)
-- [ ] `Result<V, E>` enum
+- [x] `Result<V, E>` enum
 - [ ] `try` expressions (leveraging the `Result<V, E>` enum) (Requires Typechecker)
 - [ ] more efficient string interpolation (right now it casts everything to `Any` to call `String#concat` which sucks)
 - [ ] better `print`/`println` - don't wrap everything in `Any`, special logic which just `toString`s args beforehand?
+- [ ] `process` builtin
+  - [ ] environment variables
+  - [ ] program arguments
+- [ ] memory management
+  - [ ] garbage collection?
+  - [ ] reference counting?
