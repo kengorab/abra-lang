@@ -289,35 +289,58 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn new_resolved_generics_via_instance(&self, ty: &Type) -> ResolvedGenerics {
-        if let Type::GenericInstance(struct_id, generics) = ty {
-            let struct_ = self.project.get_struct_by_id(struct_id);
-            let map = struct_.generic_ids.iter().zip(generics)
-                .map(|(generic_id, type_arg_id)| {
-                    (*generic_id, self.make_resolved_generic(type_arg_id, &ResolvedGenerics::default()))
-                })
-                .collect();
-            ResolvedGenerics(vec![map])
-        } else {
-            ResolvedGenerics::default()
+        match ty {
+            Type::GenericInstance(struct_id, generics) => {
+                let struct_ = self.project.get_struct_by_id(struct_id);
+                let map = struct_.generic_ids.iter().zip(generics)
+                    .map(|(generic_id, type_arg_id)| {
+                        (*generic_id, self.make_resolved_generic(type_arg_id, &ResolvedGenerics::default()))
+                    })
+                    .collect();
+                ResolvedGenerics(vec![map])
+            }
+            Type::GenericEnumInstance(enum_id, generics, _) => {
+                let enum_ = self.project.get_enum_by_id(enum_id);
+                let map = enum_.generic_ids.iter().zip(generics)
+                    .map(|(generic_id, type_arg_id)| {
+                        (*generic_id, self.make_resolved_generic(type_arg_id, &ResolvedGenerics::default()))
+                    })
+                    .collect();
+                ResolvedGenerics(vec![map])
+            }
+            _ => ResolvedGenerics::default()
         }
     }
 
     fn extend_resolved_generics_via_instance(&self, resolved_generics: &ResolvedGenerics, type_id: &TypeId) -> ResolvedGenerics {
         let mut map = HashMap::new();
-        if let Type::GenericInstance(struct_id, generics) = self.get_type_by_id(type_id) {
-            // For tuples, we shouldn't ever be looking up generics by id since tuples don't have any
-            // instance methods aside from those programmatically generated (see `get_or_compile_tuple_method`),
-            // and in that generation logic, we use the given realized generics of the tuple items themselves
-            // rather than deriving them from resolved_generics.
-            if struct_id != self.project.prelude_tuple_struct_id {
-                let struct_ = self.project.get_struct_by_id(&struct_id);
-                for (generic_type_id, type_id) in struct_.generic_ids.iter().zip(generics) {
+        let ty = self.get_type_by_id(type_id);
+        match ty {
+            Type::GenericInstance(struct_id, generics) => {
+                // For tuples, we shouldn't ever be looking up generics by id since tuples don't have any
+                // instance methods aside from those programmatically generated (see `get_or_compile_tuple_method`),
+                // and in that generation logic, we use the given realized generics of the tuple items themselves
+                // rather than deriving them from resolved_generics.
+                if struct_id != self.project.prelude_tuple_struct_id {
+                    let struct_ = self.project.get_struct_by_id(&struct_id);
+                    for (generic_type_id, type_id) in struct_.generic_ids.iter().zip(generics) {
+                        let resolved = resolved_generics.resolve(&type_id)
+                            .map(|resolved| resolved.clone())
+                            .unwrap_or_else(|| self.make_resolved_generic(&type_id, resolved_generics));
+                        map.insert(*generic_type_id, resolved);
+                    }
+                }
+            }
+            Type::GenericEnumInstance(enum_id, generics, _) => {
+                let enum_ = self.project.get_enum_by_id(&enum_id);
+                for (generic_type_id, type_id) in enum_.generic_ids.iter().zip(generics) {
                     let resolved = resolved_generics.resolve(&type_id)
                         .map(|resolved| resolved.clone())
                         .unwrap_or_else(|| self.make_resolved_generic(&type_id, resolved_generics));
                     map.insert(*generic_type_id, resolved);
                 }
             }
+            _ => {}
         }
         resolved_generics.extend(map)
     }
@@ -489,12 +512,7 @@ impl<'a> LLVMCompiler2<'a> {
                 }
                 TypeKind::Enum(enum_id) => {
                     let enum_ = self.project.get_enum_by_id(&enum_id);
-                    let generic_names = enum_.generic_ids.iter()
-                        .map(|type_id| {
-                            let Type::Generic(_, generic_name) = self.get_type_by_id(type_id) else { unreachable!("TypeId {:?} represents a type that is not a generic", type_id) };
-                            generic_name
-                        })
-                        .join(",");
+                    let generic_names = enum_.generic_ids.iter().map(|type_id| self.llvm_type_name_by_id(type_id, resolved_generics)).join(",");
                     let generic_names = if enum_.generic_ids.is_empty() { "".into() } else { format!("<{}>", generic_names) };
                     let prefix = if enum_id.0 == PRELUDE_MODULE_ID {
                         format!("{}", &enum_.name)
@@ -574,7 +592,7 @@ impl<'a> LLVMCompiler2<'a> {
             }
             Type::GenericEnumInstance(enum_id, _, _) => {
                 let enum_type_name = self.llvm_type_name_by_id(type_id, resolved_generics);
-                let (enum_llvm_type, _) = self.get_or_compile_enum_type_by_type_id(&enum_id, &enum_type_name, resolved_generics);
+                let (enum_llvm_type, _) = self.get_or_compile_enum_type_by_type_id(&type_id, &enum_id, &enum_type_name, resolved_generics);
                 enum_llvm_type.as_basic_type_enum()
             }
             Type::Function(_, _, _, _) => self.make_function_value_type_by_type_id(type_id, resolved_generics).0.as_basic_type_enum(),
@@ -2059,8 +2077,11 @@ impl<'a> LLVMCompiler2<'a> {
                                 let function = self.project.get_func_by_id(func_id);
                                 params_data = function.params.iter().map(|p| (p.type_id, p.default_value.is_some())).collect_vec();
 
-                                let enum_type_name = self.llvm_type_name_by_id(&target_type_id, &resolved_generics);
-                                self.get_or_compile_tagged_union_enum_variant_function(&enum_id, &enum_type_name, *member_idx, resolved_generics).into()
+                                let realized_generics = type_arg_ids.iter().map(|type_id| self.make_resolved_generic(type_id, resolved_generics)).collect();
+                                new_resolved_generics = resolved_generics.extend_via_func_call(function, &realized_generics);
+
+                                let enum_type_name = self.llvm_type_name_by_id(&target_type_id, &new_resolved_generics);
+                                self.get_or_compile_tagged_union_enum_variant_function(&type_id, &enum_id, &enum_type_name, *member_idx, &new_resolved_generics).into()
                             }
                         }
                     }
@@ -2253,7 +2274,7 @@ impl<'a> LLVMCompiler2<'a> {
 
                 if let Type::Type(TypeKind::Enum(enum_id)) = self.get_type_by_id(&target_type_id) {
                     let enum_type_name = self.llvm_type_name_by_id(&target_type_id, resolved_generics);
-                    let instance = self.construct_const_enum_variant(&enum_id, &enum_type_name, *member_idx, resolved_generics);
+                    let instance = self.construct_const_enum_variant(&target_type_id, &enum_id, &enum_type_name, *member_idx, resolved_generics);
 
                     return self.cast_result_if_necessary(instance, &type_id, resolved_type_id, &resolved_generics)
                         .or(Some(instance));
@@ -2496,7 +2517,7 @@ impl<'a> LLVMCompiler2<'a> {
                                     let enum_type_name = self.llvm_type_name_by_id(&target_type_id, &resolved_generics);
                                     let local = self.builder.build_alloca(target.get_type(), "local");
                                     self.builder.build_store(local, target);
-                                    let ptr = self.extract_tagged_union_enum_variant_data(local, &enum_id, &enum_type_name, variant_idx.unwrap(), &resolved_generics);
+                                    let ptr = self.extract_tagged_union_enum_variant_data(local, &target_type_id, &enum_id, &enum_type_name, variant_idx.unwrap(), &resolved_generics);
                                     self.builder.build_struct_gep(ptr, (*member_idx) as u32, "").unwrap()
                                 } else {
                                     let field = target_ty.get_field(self.project, *member_idx).unwrap();
@@ -2838,7 +2859,7 @@ impl<'a> LLVMCompiler2<'a> {
                             let variant = &enum_.variants[variant_idx];
                             let EnumVariantKind::Container(func_id) = &variant.kind else { unreachable!("Only tagged union variants can be destructured") };
                             let params = &self.project.get_func_by_id(func_id).params;
-                            let enum_data = self.extract_tagged_union_enum_variant_data(intermediate_local.unwrap(), &enum_id, &enum_type_name, variant_idx, &resolved_generics);
+                            let enum_data = self.extract_tagged_union_enum_variant_data(intermediate_local.unwrap(), &type_id, &enum_id, &enum_type_name, variant_idx, &resolved_generics);
 
                             for (idx, (arg, param)) in args.iter().zip(params).enumerate() {
                                 let TypedMatchCaseArgument::Pattern(pattern, var_ids) = arg else { todo!() };
@@ -3986,9 +4007,8 @@ impl<'a> LLVMCompiler2<'a> {
         llvm_type
     }
 
-    fn get_or_compile_enum_type_by_type_id(&self, enum_id: &EnumId, enum_type_name: &String, resolved_generics: &ResolvedGenerics) -> (StructType<'a>, Vec<Option<StructType<'a>>>) {
+    fn get_or_compile_enum_type_by_type_id(&self, type_id: &TypeId, enum_id: &EnumId, enum_type_name: &String, resolved_generics: &ResolvedGenerics) -> (StructType<'a>, Vec<Option<StructType<'a>>>) {
         let enum_ = self.project.get_enum_by_id(&enum_id);
-        debug_assert!(enum_.generic_ids.is_empty(), "generic enums not yet implemented");
 
         if let Some(enum_llvm_type) = self.main_module.get_struct_type(&enum_type_name) {
             let enum_variant_llvm_types = enum_.variants.iter()
@@ -4003,6 +4023,8 @@ impl<'a> LLVMCompiler2<'a> {
         let enum_llvm_type = self.context.opaque_struct_type(&enum_type_name);
         enum_llvm_type.set_body(&[self.i64().into()], false);
         self.register_typeid(&enum_type_name);
+
+        let resolved_generics = self.extend_resolved_generics_via_instance(resolved_generics, type_id);
 
         let mut enum_variant_llvm_types = Vec::with_capacity(enum_.variants.len());
         for variant in &enum_.variants {
@@ -4031,9 +4053,9 @@ impl<'a> LLVMCompiler2<'a> {
         (enum_llvm_type, enum_variant_llvm_types)
     }
 
-    fn construct_const_enum_variant(&self, enum_id: &EnumId, enum_type_name: &String, variant_idx: usize, resolved_generics: &ResolvedGenerics) -> BasicValueEnum<'a> {
+    fn construct_const_enum_variant(&self, type_id: &TypeId, enum_id: &EnumId, enum_type_name: &String, variant_idx: usize, resolved_generics: &ResolvedGenerics) -> BasicValueEnum<'a> {
         let enum_ = self.project.get_enum_by_id(&enum_id);
-        let (enum_llvm_type, _) = self.get_or_compile_enum_type_by_type_id(&enum_id, &enum_type_name, &resolved_generics);
+        let (enum_llvm_type, _) = self.get_or_compile_enum_type_by_type_id(&type_id, &enum_id, &enum_type_name, &resolved_generics);
         let variant = &enum_.variants[variant_idx];
 
         let enum_variant_type_name = self.llvm_enum_variant_type_name(&enum_type_name, &variant.name);
@@ -4055,9 +4077,9 @@ impl<'a> LLVMCompiler2<'a> {
         self.builder.build_load(instance_ptr, &format!("{}_instance", &enum_variant_type_name))
     }
 
-    fn get_or_compile_tagged_union_enum_variant_function(&mut self, enum_id: &EnumId, enum_type_name: &String, variant_idx: usize, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
+    fn get_or_compile_tagged_union_enum_variant_function(&mut self, type_id: &TypeId, enum_id: &EnumId, enum_type_name: &String, variant_idx: usize, resolved_generics: &ResolvedGenerics) -> FunctionValue<'a> {
         let enum_ = self.project.get_enum_by_id(&enum_id);
-        let (enum_llvm_type, variant_llvm_types) = self.get_or_compile_enum_type_by_type_id(&enum_id, &enum_type_name, &resolved_generics);
+        let (enum_llvm_type, variant_llvm_types) = self.get_or_compile_enum_type_by_type_id(&type_id, &enum_id, &enum_type_name, &resolved_generics);
         let variant = &enum_.variants[variant_idx];
         let EnumVariantKind::Container(func_id) = &variant.kind else { unreachable!() };
         let enum_variant_type_name = self.llvm_enum_variant_type_name(&enum_type_name, &variant.name);
@@ -4119,12 +4141,12 @@ impl<'a> LLVMCompiler2<'a> {
         llvm_fn
     }
 
-    fn extract_tagged_union_enum_variant_data(&self, local_value: PointerValue<'a>, enum_id: &EnumId, enum_type_name: &String, variant_idx: usize, resolved_generics: &ResolvedGenerics) -> PointerValue<'a> {
+    fn extract_tagged_union_enum_variant_data(&self, local_value: PointerValue<'a>, type_id: &TypeId, enum_id: &EnumId, enum_type_name: &String, variant_idx: usize, resolved_generics: &ResolvedGenerics) -> PointerValue<'a> {
         let underlying_int_value_slot = self.builder.build_struct_gep(local_value, 0, "value_slot").unwrap();
         let underlying_int_value = self.builder.build_load(underlying_int_value_slot, "value").into_int_value();
         let masked_value = self.builder.build_and(underlying_int_value, self.const_i64(0x0000FFFFFFFFFFFF), "");
 
-        let (_, variant_llvm_types) = self.get_or_compile_enum_type_by_type_id(enum_id, enum_type_name, resolved_generics);
+        let (_, variant_llvm_types) = self.get_or_compile_enum_type_by_type_id(type_id, enum_id, enum_type_name, resolved_generics);
         let variant_llvm_type = variant_llvm_types[variant_idx].expect(&format!("Variant {} is a tagged union and must have had a struct type defined", variant_idx));
 
         self.builder.build_int_to_ptr(masked_value, self.ptr(variant_llvm_type), "")
@@ -4262,7 +4284,12 @@ impl<'a> LLVMCompiler2<'a> {
     fn generate_tostring_logic_for_structured_data(&mut self, prefix: &String, display_names: bool, data_spec: &Vec<(TypeId, String, PointerValue<'a>)>, resolved_generics: &ResolvedGenerics) -> BasicValueEnum<'a> {
         let named_items_fmt_str = data_spec.iter()
             .map(|(type_id, name, _)| {
-                let val_fmt = if type_id == &PRELUDE_STRING_TYPE_ID { "\"%s\"" } else { "%s" };
+                let resolved_generics = self.extend_resolved_generics_via_instance(resolved_generics, &type_id);
+                let type_id = resolved_generics.resolve_if_generic(&type_id, &self.project)
+                    .map(|resolved| resolved.type_id)
+                    .unwrap_or(*type_id);
+
+                let val_fmt = if type_id == PRELUDE_STRING_TYPE_ID { "\"%s\"" } else { "%s" };
                 if display_names {
                     format!("{name}: {val_fmt}")
                 } else {
@@ -4505,7 +4532,7 @@ impl<'a> LLVMCompiler2<'a> {
 
             let ret_val = if let EnumVariantKind::Container(func_id) = &variant.kind {
                 let local = intermediate_local.expect("When extracting the typeid from an enum variant value, there is an intermediate value introduced");
-                let data = self.extract_tagged_union_enum_variant_data(local, &enum_id, &enum_type_name, idx, resolved_generics);
+                let data = self.extract_tagged_union_enum_variant_data(local, &type_id, &enum_id, &enum_type_name, idx, resolved_generics);
 
                 let function = self.project.get_func_by_id(func_id);
                 let data_spec = function.params.iter().enumerate().map(|(idx, param)| {
@@ -4708,7 +4735,7 @@ impl<'a> LLVMCompiler2<'a> {
 
             let ret_val = if let EnumVariantKind::Container(func_id) = &variant.kind {
                 let local = intermediate_local.expect("When extracting the typeid from an enum variant value, there is an intermediate value introduced");
-                let data = self.extract_tagged_union_enum_variant_data(local, &enum_id, &enum_type_name, idx, resolved_generics);
+                let data = self.extract_tagged_union_enum_variant_data(local, &type_id, &enum_id, &enum_type_name, idx, resolved_generics);
 
                 let function = self.project.get_func_by_id(func_id);
                 let data_spec = function.params.iter().enumerate().map(|(idx, param)| {
@@ -4866,8 +4893,8 @@ impl<'a> LLVMCompiler2<'a> {
             let ret_val = if let EnumVariantKind::Container(func_id) = &variant.kind {
                 let self_local = self_intermediate_local.expect("When extracting the typeid from an enum variant value, there is an intermediate value introduced");
                 let other_local = other_intermediate_local.expect("When extracting the typeid from an enum variant value, there is an intermediate value introduced");
-                let self_data = self.extract_tagged_union_enum_variant_data(self_local, &enum_id, &enum_type_name, idx, resolved_generics);
-                let other_data = self.extract_tagged_union_enum_variant_data(other_local, &enum_id, &enum_type_name, idx, resolved_generics);
+                let self_data = self.extract_tagged_union_enum_variant_data(self_local, &type_id, &enum_id, &enum_type_name, idx, resolved_generics);
+                let other_data = self.extract_tagged_union_enum_variant_data(other_local, &type_id, &enum_id, &enum_type_name, idx, resolved_generics);
 
                 let function = self.project.get_func_by_id(func_id);
                 let data_spec = function.params.iter().enumerate().map(|(idx, param)| {
@@ -5253,6 +5280,11 @@ mod tests {
     #[test]
     fn test_optionals() {
         run_test_file("optionals.abra");
+    }
+
+    #[test]
+    fn test_results() {
+        run_test_file("results.abra");
     }
 
     #[test]

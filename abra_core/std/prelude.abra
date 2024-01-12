@@ -43,6 +43,11 @@ func range(start: Int, end: Int, stepBy = 1): RangeIterator = RangeIterator(star
 
 func flattenOption<T>(value: T??): T? = if value |v| v else None
 
+enum Result<V, E> {
+  Ok(value: V)
+  Err(error: E)
+}
+
 type Int {
   func asFloat(self): Float = intrinsics.intAsFloat(self)
 

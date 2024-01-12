@@ -772,10 +772,16 @@ impl Type {
         }
     }
 
-    pub fn get_static_method(&self, project: &Project, static_method_idx: usize) -> Option<FuncId> {
+    pub fn get_static_method(&self, project: &Project, mut static_method_idx: usize) -> Option<FuncId> {
         let static_methods = match self {
             Type::Type(TypeKind::Struct(struct_id)) => &project.get_struct_by_id(struct_id).static_methods,
-            Type::Type(TypeKind::Enum(enum_id)) => &project.get_enum_by_id(enum_id).static_methods,
+            Type::Type(TypeKind::Enum(enum_id)) => {
+                let enum_ = project.get_enum_by_id(enum_id);
+                debug_assert!(static_method_idx >= enum_.variants.len());
+                static_method_idx -= enum_.variants.len();
+
+                &project.get_enum_by_id(enum_id).static_methods
+            },
             _ => return None
         };
 
@@ -3865,6 +3871,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let prev_scope_id = self.current_scope_id;
         self.current_scope_id = enum_.enum_scope_id;
+        let prev_type_decl = self.current_type_decl.replace(enum_.self_type_id);
 
         debug_assert!(enum_.variants.len() == variants.len());
         for (idx, ((variant_decl_token, variant_decl_args), variant)) in variants.iter().zip(&enum_variants).enumerate() {
@@ -3878,7 +3885,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let return_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids.clone(), Some(idx)));
                 self.end_child_scope();
 
-                let variant_func_id = self.add_function_to_current_scope(fn_scope_id, variant_decl_token, vec![], false, params, return_type_id)?;
+                let variant_func_id = self.add_function_to_current_scope(fn_scope_id, variant_decl_token, generic_ids.clone(), false, params, return_type_id)?;
                 let func = self.project.get_func_by_id(&variant_func_id);
                 let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
                 self.project.get_func_by_id_mut(&variant_func_id).fn_type_id = fn_type_id;
@@ -3916,6 +3923,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         self.current_scope_id = prev_scope_id;
+        self.current_type_decl = prev_type_decl;
 
         Ok(())
     }
@@ -5555,7 +5563,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             }
                         }
                         TypeKind::Enum(enum_id) => {
-                            let enum_ = self.project.get_enum_by_id(enum_id);
+                            let enum_id = *enum_id;
+                            let enum_ = self.project.get_enum_by_id(&enum_id);
+                            let num_variants = enum_.variants.len();
+                            let enum_static_methods = enum_.static_methods.clone(); // Sadly need to clone in case it's needed after the for-loop :/
 
                             for (idx, variant) in enum_.variants.iter().enumerate() {
                                 if *variant.name == field_name {
@@ -5569,7 +5580,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                                 }
                                             }
 
-                                            let type_id = self.add_or_find_type_id(Type::GenericEnumInstance(*enum_id, generic_ids.clone(), Some(idx)));
+                                            let type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids.clone(), Some(idx)));
                                             field_data = Some((AccessorKind::EnumVariant, idx, type_id));
                                             break;
                                         }
@@ -5586,6 +5597,23 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                             break;
                                         }
                                     }
+                                }
+                            }
+
+                            if field_data.is_none() {
+                                let method = enum_static_methods.iter().enumerate().find_map(|(idx, func_id)| {
+                                    let function = self.project.get_func_by_id(func_id);
+                                    if function.name == field_name { Some((idx, function)) } else { None }
+                                });
+                                if let Some((idx, function)) = method {
+                                    let mut type_id = function.fn_type_id;
+                                    if let Some(type_hint_id) = &type_hint {
+                                        let ty = self.project.get_type_by_id(type_hint_id);
+                                        if matches!(ty, Type::Function(_, _, _, _)) {
+                                            type_id = self.substitute_generics(type_hint_id, &type_id);
+                                        }
+                                    }
+                                    field_data = Some((AccessorKind::StaticMethod, idx + num_variants, type_id));
                                 }
                             }
                         }
@@ -5852,11 +5880,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             }
                             Type::Type(TypeKind::Enum(enum_id)) => {
                                 let enum_ = self.project.get_enum_by_id(enum_id);
-                                let variant = &enum_.variants[*member_idx];
-                                let EnumVariantKind::Container(enum_variant_func_id) = variant.kind else {
-                                    return Err(TypeError::IllegalEnumVariantConstruction { span: self.make_span(&typed_target.span()), enum_id: *enum_id, variant_idx: *member_idx });
+                                let function = if *member_idx < enum_.variants.len() {
+                                    let variant = &enum_.variants[*member_idx];
+                                    let EnumVariantKind::Container(enum_variant_func_id) = variant.kind else {
+                                        return Err(TypeError::IllegalEnumVariantConstruction { span: self.make_span(&typed_target.span()), enum_id: *enum_id, variant_idx: *member_idx });
+                                    };
+                                    self.project.get_func_by_id(&enum_variant_func_id)
+                                } else {
+                                    self.project.get_func_by_id(&enum_.static_methods[*member_idx - enum_.variants.len()])
                                 };
-                                let function = self.project.get_func_by_id(&enum_variant_func_id);
+
                                 func_id = Some(function.id);
                                 fn_generic_ids = function.generic_ids.clone();
                                 fn_is_variadic = function.is_variadic();

@@ -1,0 +1,27 @@
+func f1(i: Int): Result<Int, String> {
+  if i < 10 Result.Err(error: "$i is less than 10")
+  else Result.Ok(value: i)
+}
+
+/// Expect: Result.Err(error: "9 is less than 10") Result.Ok(value: 10)
+println(f1(9), f1(10))
+
+func f2(i: Int): Result<String, Int> {
+  if i < 10 Result.Ok(value: "$i is less than 10")
+  else Result.Err(error: i)
+}
+
+/// Expect: Error: 12
+/// Expect: Ok: 6 is less than 10
+val results = [f2(12), f2(6)]
+for res in results {
+  match res {
+    Result.Ok(i) => println("Ok:", i)
+    Result.Err(e) => println("Error:", e)
+  }
+}
+
+val result1: Result<Int, Bool> = Result.Ok(value: 1234)
+val result2: Result<Int, Bool> = Result.Err(error: false)
+/// Expect: Result.Ok(value: 1234) Result.Err(error: false)
+println(result1, result2)
