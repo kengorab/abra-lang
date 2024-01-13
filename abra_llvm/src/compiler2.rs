@@ -136,18 +136,19 @@ impl<'a> LLVMCompiler2<'a> {
 
         let exec_out_file = out_dir.join(&out_name);
         let mut cmd = Command::new("clang");
+        cmd.arg(&llvm_module_out_file);
 
         if use_gc {
+            // For some reason, if the lib is included in the clang args before the llvm module, it fails
+            // to find the necessary symbols, so make sure to add it as an arg _afterwards_.
             let libgc_path = get_project_root().unwrap().join("abra_llvm/ext/libgc/lib/libgc.a");
-            let libgc_headers_path = get_project_root().unwrap().join("abra_llvm/ext/libgc/include");
-            cmd.arg(libgc_path).arg(format!("-I{}", libgc_headers_path.as_path().to_str().unwrap()));
+            cmd.arg(libgc_path);
         }
 
         let cc_output = cmd
-            .arg(&llvm_module_out_file)
-            .arg("-lm")
             .arg("-o")
             .arg(&exec_out_file)
+            .arg("-lm")
             .arg("-Wno-override-module")
             .output()
             .unwrap();
