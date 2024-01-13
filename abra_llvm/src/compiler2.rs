@@ -139,6 +139,8 @@ impl<'a> LLVMCompiler2<'a> {
 
         if use_gc {
             let libgc_path = get_project_root().unwrap().join("abra_llvm/ext/libgc/lib/libgc.a");
+            eprintln!("libgc_path: {}", libgc_path.as_path().to_str().unwrap());
+            eprintln!("libgc exists: {}", libgc_path.exists());
             cmd.arg(libgc_path);
         }
 

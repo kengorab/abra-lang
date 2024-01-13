@@ -3433,7 +3433,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
             }
 
-            let mut param = &mut self.project.get_func_by_id_mut(&func_id).params[param_idx];
+            let param = &mut self.project.get_func_by_id_mut(&func_id).params[param_idx];
             param.default_value = Some(typed_default_value);
             param.type_id = type_id;
             param.is_incomplete = false;
