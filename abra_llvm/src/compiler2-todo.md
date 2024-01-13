@@ -31,9 +31,9 @@
 - [x] `Process` builtin
   - [x] environment variables
   - [x] program arguments
-- [ ] memory management
-  - [ ] garbage collection?
-  - [ ] reference counting?
+- [x] memory management
+  - [x] garbage collection?
+  - ~~[ ] reference counting?~~
 - [ ] name collisions
   - [ ] for bound c-functions
   - [ ] for enum tagged union variant constructors

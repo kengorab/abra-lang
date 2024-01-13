@@ -16,6 +16,7 @@ use itertools::Itertools;
 use abra_core::lexer::tokens::{POSITION_BOGUS, Token};
 use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
 use abra_core::typechecker::typechecker2::{AccessorKind, AssignmentKind, EnumId, EnumVariantKind, FuncId, Function, FunctionKind, ImportedValue, METHOD_IDX_EQ, METHOD_IDX_HASH, METHOD_IDX_TOSTRING, ModuleId, PRELUDE_ANY_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_MODULE_ID, PRELUDE_STRING_TYPE_ID, PRELUDE_UNIT_TYPE_ID, PrimitiveType, Project, ScopeId, Struct, StructId, Type, TypedLiteral, TypedMatchCaseArgument, TypedMatchCaseKind, TypedNode, TypeId, TypeKind, Variable, VariableAlias, VarId};
+use crate::get_project_root;
 
 const ABRA_MAIN_FN_NAME: &str = "_abra_main";
 
@@ -114,17 +115,17 @@ pub struct LLVMCompiler2<'a> {
     closure_captures: HashMap<FuncId, PointerValue<'a>>,
     typeids: RefCell<HashMap<String, usize>>,
     adhoc_types: RefCell<Vec<Type>>,
+    use_gc: bool,
 
     // cached for convenience
     string_type: StructType<'a>,
-    malloc: FunctionValue<'a>,
     snprintf: FunctionValue<'a>,
 }
 
 impl<'a> LLVMCompiler2<'a> {
-    pub fn compile(entrypoint_module_id: &ModuleId, project: &Project, out_dir: &PathBuf, out_file_name: Option<String>) -> PathBuf {
+    pub fn compile(entrypoint_module_id: &ModuleId, project: &Project, out_dir: &PathBuf, out_file_name: Option<String>, use_gc: bool) -> PathBuf {
         let context = Context::create();
-        let mut compiler = LLVMCompiler2::new(project, &context);
+        let mut compiler = LLVMCompiler2::new(project, &context, use_gc);
         compiler.generate(entrypoint_module_id, project);
 
         let out_name = out_file_name.unwrap_or("main".into());
@@ -132,8 +133,16 @@ impl<'a> LLVMCompiler2<'a> {
         let llvm_module_out_file = out_dir.join(format!("_{}.ll", &out_name));
         compiler.main_module.print_to_file(&llvm_module_out_file).unwrap();
 
+
         let exec_out_file = out_dir.join(&out_name);
-        let cc_output = Command::new("clang")
+        let mut cmd = Command::new("clang");
+
+        if use_gc {
+            let libgc_path = get_project_root().unwrap().join("abra_llvm/ext/libgc/lib/libgc.a");
+            cmd.arg(libgc_path);
+        }
+
+        let cc_output = cmd
             .arg(&llvm_module_out_file)
             .arg("-lm")
             .arg("-o")
@@ -151,8 +160,8 @@ impl<'a> LLVMCompiler2<'a> {
         exec_out_file
     }
 
-    pub fn compile_and_run(entrypoint_module_id: &ModuleId, project: &Project, out_dir: &PathBuf, out_file_name: Option<String>, program_args: &Vec<String>) -> ExitStatus {
-        let exec_out_file = Self::compile(entrypoint_module_id, project, out_dir, out_file_name);
+    pub fn compile_and_run(entrypoint_module_id: &ModuleId, project: &Project, out_dir: &PathBuf, out_file_name: Option<String>, program_args: &Vec<String>, use_gc: bool) -> ExitStatus {
+        let exec_out_file = Self::compile(entrypoint_module_id, project, out_dir, out_file_name, use_gc);
 
         let mut cmd = Command::new(&exec_out_file);
         for arg in program_args {
@@ -168,7 +177,7 @@ impl<'a> LLVMCompiler2<'a> {
         run_output.status
     }
 
-    fn new(project: &'a Project, context: &'a Context) -> Self {
+    fn new(project: &'a Project, context: &'a Context, use_gc: bool) -> Self {
         let builder = context.create_builder();
         let main_module = context.create_module("__main");
 
@@ -191,11 +200,6 @@ impl<'a> LLVMCompiler2<'a> {
             context.i8_type().ptr_type(AddressSpace::Generic).into(), // _buffer
         ], false);
 
-        let malloc = main_module.add_function(
-            "malloc",
-            context.i8_type().ptr_type(AddressSpace::Generic).fn_type(&[context.i64_type().into()], false),
-            None,
-        );
         let snprintf = main_module.add_function(
             "snprintf",
             context.i64_type().fn_type(&[context.i8_type().ptr_type(AddressSpace::Generic).into(), context.i32_type().into(), context.i8_type().ptr_type(AddressSpace::Generic).into()], true),
@@ -213,10 +217,10 @@ impl<'a> LLVMCompiler2<'a> {
             closure_captures: HashMap::new(),
             typeids: RefCell::new(typeids),
             adhoc_types: RefCell::new(vec![]),
+            use_gc,
 
             // cached values
             string_type,
-            malloc,
             snprintf,
         }
     }
@@ -814,8 +818,14 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn malloc<T: BasicValue<'a>>(&self, malloc_size: T, target_type: PointerType<'a>) -> PointerValue<'a> {
+        let malloc_name = if self.use_gc { "GC_malloc" } else { "malloc" };
+
+        let malloc = self.main_module.get_function(malloc_name).unwrap_or_else(|| {
+            self.main_module.add_function(malloc_name, self.fn_type(self.ptr(self.i8()), &[self.i64().into()]), None)
+        });
+
         let malloc_size = malloc_size.as_basic_value_enum();
-        let mem = self.builder.build_call(self.malloc, &[malloc_size.into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
+        let mem = self.builder.build_call(malloc, &[malloc_size.into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
         self.builder.build_pointer_cast(mem, target_type, "ptr")
     }
 
@@ -880,6 +890,11 @@ impl<'a> LLVMCompiler2<'a> {
         let entry_fn = self.main_module.add_function("main", main_fn_type, None);
         let block = self.context.append_basic_block(entry_fn, "");
         self.builder.position_at_end(block);
+
+        if self.use_gc {
+            let gc_init_fn = self.main_module.add_function("GC_init", self.context.void_type().fn_type(&[], false), None);
+            self.builder.build_call(gc_init_fn, &[], "");
+        }
 
         let abra_main_fn = self.main_module.get_function(ABRA_MAIN_FN_NAME).expect("abra_main is defined at the start");
         self.builder.build_call(abra_main_fn, &[entry_fn.get_nth_param(0).unwrap().into(), entry_fn.get_nth_param(1).unwrap().into()], "");

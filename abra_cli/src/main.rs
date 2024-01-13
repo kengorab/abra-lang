@@ -68,12 +68,6 @@ struct JitOpts {
 
 #[derive(Clap)]
 struct BuildOpts {
-    #[clap(help = "Path to an abra file to compile")]
-    file_path: String,
-
-    #[clap(last = true, help = "Arguments to pass to the abra program")]
-    program_args: Vec<String>,
-
     #[clap(short = "r", long = "run", help = "Run after building")]
     run: bool,
 
@@ -85,6 +79,15 @@ struct BuildOpts {
 
     #[clap(short = "b", help = "Where the .abra output dir should be placed (default: current directory)")]
     build_dir: Option<String>,
+
+    #[clap(long = "no-gc", help = "Disable garbage collector (default: false)")]
+    no_gc: Option<bool>,
+
+    #[clap(help = "Path to an abra file to compile")]
+    file_path: String,
+
+    #[clap(last = true, help = "Arguments to pass to the abra program")]
+    program_args: Vec<String>,
 }
 
 #[derive(Clap)]
@@ -377,14 +380,15 @@ fn cmd_compile_llvm_and_run_2(opts: BuildOpts) -> Result<(), ()> {
     let (entrypoint_module_id, project) = typecheck_project(&opts);
 
     if opts.run {
-        let exit_status = LLVMCompiler2::compile_and_run(&entrypoint_module_id, &project, &dotabra_dir, opts.out_file_name, &opts.program_args);
+        let use_gc = !opts.no_gc.unwrap_or(false);
+        let exit_status = LLVMCompiler2::compile_and_run(&entrypoint_module_id, &project, &dotabra_dir, opts.out_file_name, &opts.program_args, use_gc);
         if let Some(status_code) = exit_status.code() {
             std::process::exit(status_code)
         } else {
             // Process terminated by signal
         }
     } else {
-        LLVMCompiler2::compile(&entrypoint_module_id, &project, &dotabra_dir, opts.out_file_name);
+        LLVMCompiler2::compile(&entrypoint_module_id, &project, &dotabra_dir, opts.out_file_name, false);
     }
 
     Ok(())
