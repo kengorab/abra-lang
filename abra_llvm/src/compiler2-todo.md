@@ -28,9 +28,26 @@
 - [ ] `try` expressions (leveraging the `Result<V, E>` enum) (Requires Typechecker)
 - [ ] more efficient string interpolation (right now it casts everything to `Any` to call `String#concat` which sucks)
 - [ ] better `print`/`println` - don't wrap everything in `Any`, special logic which just `toString`s args beforehand?
-- [ ] `process` builtin
-  - [ ] environment variables
-  - [ ] program arguments
+- [x] `Process` builtin
+  - [x] environment variables
+  - [x] program arguments
 - [ ] memory management
   - [ ] garbage collection?
   - [ ] reference counting?
+- [ ] name collisions
+  - [ ] for bound c-functions
+  - [ ] for enum tagged union variant constructors
+- [ ] exported funcs which capture exports (also if the capture _isn't_ exported)
+  - ```
+    // example2.abra
+    export var B = 4
+    export func incrB(by: Int) {
+      B += by
+    }
+    
+    // example.abra
+    import makeAdder, B, incrB from "./example2"
+    println(B)
+    incrB(by: 5)
+    println(B)
+  ```

@@ -1,3 +1,9 @@
+@Intrinsic("argc")
+export func argc(): Int
+
+@Intrinsic("argv")
+export func argv(): Pointer<Pointer<Byte>>
+
 @Intrinsic("int_as_float")
 export func intAsFloat(i: Int): Float
 
@@ -24,6 +30,9 @@ export type Byte {
 export type Pointer<T> {
   @Intrinsic("pointer_null")
   func null<T>(): Pointer<T>
+
+  @Intrinsic("pointer_is_null")
+  func isNullPtr(self): Bool
 
   @Intrinsic("pointer_malloc")
   func malloc<T>(count = 1): Pointer<T>

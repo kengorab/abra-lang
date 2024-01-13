@@ -1,4 +1,4 @@
-import a, arr from "./imports_mod1"
+import a, arr, makeAdder, add5 from "./imports_mod1"
 import return123 from "./imports_mod2"
 import makePerson from "./imports_mod2"
 import "./imports_mod2" as mod2
@@ -31,3 +31,12 @@ val ken = makePerson(name: "Ken", favoriteColor: mod2.Color.Purple)
 
 /// Expect: Person(name: "Meg", favoriteColor: Color.Blue) Person(firstName: "Ken", favoriteColor: Color.Purple)
 println(meg, ken)
+
+// Test exported closure-maker function
+val add4 = makeAdder(4)
+/// Expect: 9
+println(add4(5))
+
+// Test exported closure
+/// Expect: 9
+println(add5(4))

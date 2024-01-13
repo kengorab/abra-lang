@@ -71,6 +71,9 @@ struct BuildOpts {
     #[clap(help = "Path to an abra file to compile")]
     file_path: String,
 
+    #[clap(last = true, help = "Arguments to pass to the abra program")]
+    program_args: Vec<String>,
+
     #[clap(short = "r", long = "run", help = "Run after building")]
     run: bool,
 
@@ -374,7 +377,7 @@ fn cmd_compile_llvm_and_run_2(opts: BuildOpts) -> Result<(), ()> {
     let (entrypoint_module_id, project) = typecheck_project(&opts);
 
     if opts.run {
-        let exit_status = LLVMCompiler2::compile_and_run(&entrypoint_module_id, &project, &dotabra_dir, opts.out_file_name);
+        let exit_status = LLVMCompiler2::compile_and_run(&entrypoint_module_id, &project, &dotabra_dir, opts.out_file_name, &opts.program_args);
         if let Some(status_code) = exit_status.code() {
             std::process::exit(status_code)
         } else {

@@ -1308,14 +1308,15 @@ impl TypedNode {
             TypedNode::Grouped { expr, .. } => matches!(expr.terminator(), Some(TerminatorKind::Returning)),
             TypedNode::Array { items, .. } |
             TypedNode::Tuple { items, .. } |
-            TypedNode::Set { items, .. } => items.iter().all(|item| matches!(item.terminator(), Some(TerminatorKind::Returning))),
-            TypedNode::Map { items, .. } => items.iter().all(|(key, value)| {
+            TypedNode::Set { items, .. } => !items.is_empty() && items.iter().all(|item| matches!(item.terminator(), Some(TerminatorKind::Returning))),
+            TypedNode::Map { items, .. } => !items.is_empty() && items.iter().all(|(key, value)| {
                 matches!(key.terminator(), Some(TerminatorKind::Returning)) && matches!(value.terminator(), Some(TerminatorKind::Returning))
             }),
             TypedNode::Identifier { .. } |
             TypedNode::NoneValue { .. } => false,
             TypedNode::Invocation { target, arguments, .. } => {
                 matches!(target.terminator(), Some(TerminatorKind::Returning)) &&
+                    !arguments.is_empty() &&
                     arguments.iter().all(|arg| arg.as_ref().map_or(true, |arg| matches!(arg.terminator(), Some(TerminatorKind::Returning))))
             }
             TypedNode::Accessor { target, .. } => matches!(target.terminator(), Some(TerminatorKind::Returning)),

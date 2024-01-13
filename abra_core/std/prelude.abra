@@ -498,6 +498,30 @@ type Array<T> {
   @Stub func reverse(self): T[]
 }
 
+type Process {
+  func args(): String[] {
+    val argc = intrinsics.argc()
+    val argv = intrinsics.argv()
+
+    val args: String[] = Array.withCapacity(argc)
+    for i in range(0, argc) {
+      val str = argv.offset(i).load()
+      val len = libc.strlen(str)
+      args.push(String(length: len, _buffer: str))
+    }
+
+    args
+  }
+
+  func getEnvVar(name: String): String? {
+    val str = libc.getenv(name._buffer)
+    if str.isNullPtr() return None
+
+    val len = libc.strlen(str)
+    String(length: len, _buffer: str)
+  }
+}
+
 type SetIterator<T> {
   set: Set<T>
   _mapIterator: MapIterator<T, Bool>? = None

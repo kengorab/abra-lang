@@ -1,5 +1,8 @@
 import Pointer, Byte from "./_intrinsics"
 
+@CBinding("getenv")
+export func getenv(name: Pointer<Byte>): Pointer<Byte>
+
 @Intrinsic("errno")
 export func errno(): Int
 

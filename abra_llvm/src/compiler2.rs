@@ -151,10 +151,14 @@ impl<'a> LLVMCompiler2<'a> {
         exec_out_file
     }
 
-    pub fn compile_and_run(entrypoint_module_id: &ModuleId, project: &Project, out_dir: &PathBuf, out_file_name: Option<String>) -> ExitStatus {
+    pub fn compile_and_run(entrypoint_module_id: &ModuleId, project: &Project, out_dir: &PathBuf, out_file_name: Option<String>, program_args: &Vec<String>) -> ExitStatus {
         let exec_out_file = Self::compile(entrypoint_module_id, project, out_dir, out_file_name);
 
-        let run_output = Command::new(&exec_out_file).output().unwrap();
+        let mut cmd = Command::new(&exec_out_file);
+        for arg in program_args {
+            cmd.arg(arg);
+        }
+        let run_output = cmd.output().unwrap();
         if !run_output.stderr.is_empty() {
             eprintln!("Error: {}", String::from_utf8(run_output.stderr).unwrap());
         }
@@ -841,6 +845,22 @@ impl<'a> LLVMCompiler2<'a> {
         let abra_main_fn = main_module.add_function(ABRA_MAIN_FN_NAME, fn_type, None);
         let block = context.append_basic_block(abra_main_fn, "");
         builder.position_at_end(block);
+
+        let mut params_iter = abra_main_fn.get_param_iter();
+
+        let argc_param = params_iter.next().unwrap();
+        argc_param.set_name("argc");
+        let argc_global = main_module.add_global(context.i64_type(), None, "$argc");
+        argc_global.set_constant(false);
+        argc_global.set_initializer(&context.i64_type().const_zero());
+        builder.build_store(argc_global.as_pointer_value(), builder.build_int_cast(argc_param.into_int_value(), context.i64_type(), ""));
+
+        let argv_param = params_iter.next().unwrap();
+        argv_param.set_name("argv");
+        let argv_global = main_module.add_global(argv_t, None, "$argv");
+        argv_global.set_constant(false);
+        argv_global.set_initializer(&argv_t.const_zero());
+        builder.build_store(argv_global.as_pointer_value(), argv_param);
 
         abra_main_fn
     }
@@ -3197,6 +3217,15 @@ impl<'a> LLVMCompiler2<'a> {
         };
 
         let value = match name.as_ref() {
+            "argc" => { // Static method
+                let argc_ptr = self.main_module.get_global("$argc").unwrap().as_pointer_value();
+                let argc = self.builder.build_load(argc_ptr, "argc").into_int_value();
+                self.builder.build_int_cast(argc, self.i64(), "argc").into()
+            }
+            "argv" => { // Static method
+                let argv_ptr = self.main_module.get_global("$argv").unwrap().as_pointer_value();
+                self.builder.build_load(argv_ptr, "argv")
+            }
             "errno" => { // Static method
                 let error_fn = match std::env::consts::OS {
                     "linux" => self.main_module.get_function("__errno_location").unwrap_or_else(|| {
@@ -3217,6 +3246,13 @@ impl<'a> LLVMCompiler2<'a> {
                 let llvm_type = self.llvm_ptr_wrap_type_if_needed(llvm_type);
 
                 self.ptr(llvm_type).const_null().as_basic_value_enum()
+            }
+            "pointer_is_null" => { // Instance method
+                let instance_node = implicit_argument.expect("pointer_is_null is an instance method and will have an implicit argument");
+                let instance_value = self.visit_expression(instance_node, resolved_generics).expect("Instance is not of type Unit").into_pointer_value();
+                let pointer_address = self.builder.build_ptr_to_int(instance_value, self.i64(), "address");
+
+                self.builder.build_int_compare(IntPredicate::EQ, pointer_address, self.const_i64(0), "").into()
             }
             "pointer_malloc" => { // Static method
                 let pointer_type_id = type_arg_ids[0];
@@ -5155,6 +5191,10 @@ mod tests {
     use crate::get_project_root;
 
     fn run_test_file(file_name: &str) {
+        run_test_file_with_args_and_env(file_name, &[], &[]);
+    }
+
+    fn run_test_file_with_args_and_env(file_name: &str, program_args: &[&str], env: &[(&str, &str)]) {
         let rust_project_root = get_project_root().unwrap();
 
         let tests_file_path = rust_project_root.join("abra_llvm").join("tests");
@@ -5169,16 +5209,27 @@ mod tests {
             temp_dir()
         };
         eprintln!("running test {}, using build dir: {}", file_name, &build_dir.to_str().unwrap());
-        let output = Command::cargo_bin("abra").unwrap()
+
+        let mut cmd = Command::cargo_bin("abra").unwrap();
+
+        if !env.is_empty() {
+            for (key, val) in env {
+                cmd.env(key, val);
+            }
+        }
+
+        cmd
             .arg("build")
             .arg("--run")
             .arg(&test_file_path)
             .arg("-o")
             .arg(file_name.replace(".abra", ""))
             .arg("-b")
-            .arg(build_dir)
-            .output()
-            .unwrap();
+            .arg(build_dir);
+        if !program_args.is_empty() {
+            cmd.arg("--").args(program_args);
+        }
+        let output = cmd.output().unwrap();
         assert!(output.stderr.is_empty(), "Compilation error: {}", String::from_utf8(output.stderr).unwrap());
 
         let output = String::from_utf8(output.stdout).unwrap();
@@ -5285,6 +5336,11 @@ mod tests {
     #[test]
     fn test_results() {
         run_test_file("results.abra");
+    }
+
+    #[test]
+    fn test_process() {
+        run_test_file_with_args_and_env("process.abra", &["-f", "bar", "--baz", "qux"], &[("FOO", "bar")]);
     }
 
     #[test]
