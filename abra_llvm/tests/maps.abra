@@ -68,6 +68,16 @@
   println(map == { (1): "a", (2): "b" })
 })()
 
+// Map.fromPairs
+(() => {
+  // TODO: The typechecker won't recognize this if it's inlined for some reason
+  val pairs = [("a", 1), ("b", 2), ("c", 3)]
+  val m = Map.fromPairs(pairs)
+
+  /// Expect: { c: 3, b: 2, a: 1 }
+  println(m)
+})()
+
 // Map#entries
 (() => {
   val map1 = { a: 1, b: 2 }

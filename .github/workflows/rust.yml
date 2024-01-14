@@ -60,7 +60,7 @@ jobs:
     - name: Run mal tests
       run: |
         cd abra_mal
-        ./test.sh
+        ./test.sh src
     - name: Build & run wasm tests
       run: |
         cd abra_wasm && WASM_PACK_TARGET=nodejs ./build.sh && cd ..

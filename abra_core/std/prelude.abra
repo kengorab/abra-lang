@@ -366,8 +366,6 @@ type Array<T> {
 
   func iterator(self): ArrayIterator<T> = ArrayIterator(array: self)
 
-  //@Stub func enumerate(self): (T, Int)[]
-
   func push(self, item: T) {
     if self.length == self._capacity {
       self._capacity *= 2
@@ -588,8 +586,6 @@ type Set<T> {
 
   func iterator(self): SetIterator<T> = SetIterator(set: self)
 
-  //@Stub func enumerate(self): (T, Int)[]
-
   func contains(self, item: T): Bool {
     self._map.containsKey(item)
   }
@@ -708,6 +704,14 @@ type Map<K, V> {
     Map(size: 0, _capacity: capacity, _entries: entries)
   }
 
+  func fromPairs<K, V>(pairs: (K, V)[]): Map<K, V> {
+    val map: Map<K, V> = Map.new(pairs.length)
+    for pair in pairs {
+      map.insert(pair[0], pair[1])
+    }
+    map
+  }
+
   func toString(self): String {
     if self.isEmpty() return "{}"
 
@@ -764,7 +768,6 @@ type Map<K, V> {
 
   func iterator(self): MapIterator<K, V> = MapIterator(map: self)
 
-  //@Stub func enumerate(self): (K, V)[]
   @Stub func keys(self): Set<K>
   @Stub func values(self): V[]
 

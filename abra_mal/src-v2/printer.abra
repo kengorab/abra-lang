@@ -1,0 +1,33 @@
+import Value, AtomInner from "./types"
+
+export func prStr(value: Value, readable = false): String {
+  match value {
+    Value.Nil => "nil"
+    Value.Bool(value) => "$value"
+    Value.Int(value) => "$value"
+    Value.Str(value) => if readable {
+      val v = value
+        .replaceAll("\\", "\\\\")
+        .replaceAll("\"", "\\\"")
+        .replaceAll("\n", "\\n")
+      "\"$v\""
+    } else {
+      value
+    }
+    Value.Symbol(value) => value
+    Value.Keyword(value) => value
+    Value.Atom(inner) => "(atom ${prStr(inner._inner, readable)})"
+    Value.List(values) => "(" + values.map(v => prStr(v, readable)).join(" ") + ")"
+    Value.Vector(values) => "[" + values.map(v => prStr(v, readable)).join(" ") + "]"
+    Value.Hash(map) => {
+      val pairs = map.entries().map(p => {
+        val key = prStr(p[0], readable)
+        val value = prStr(p[1], readable)
+        "$key $value"
+      })
+      "{${pairs.join(" ")}}"
+    }
+    Value.BuiltinFn => "#<function>"
+    Value.Fn => "#<function>"
+  }
+}

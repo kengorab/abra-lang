@@ -13,19 +13,22 @@ declare -a testFiles=(
   'step9_try'
 )
 
+src_dir=$1
+echo "Using src dir '$src_dir'"
+
 for f in "${testFiles[@]}"; do
   echo "************************"
   echo "Running $f..."
   echo "************************"
 
-  ./runtest.py --rundir src "../tests/$f.mal" -- ./run
+  ./runtest.py --rundir "$src_dir" "../tests/$f.mal" -- ./run
   if [ $? -ne 0 ]; then
     echo "Test $f failed, abort"
     exit 1
   fi
 
   if [ $f == "step6_file" ]; then
-    cd src
+    cd "$src_dir"
 
     ../tests/run_argv_test.sh ./run
     if [ $? -ne 0 ]; then
