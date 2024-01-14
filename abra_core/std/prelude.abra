@@ -100,6 +100,14 @@ type Int {
       lower < self && self < upper
     }
   }
+
+  func nextPowerOf2(self): Int {
+    var pow = 1
+    while pow < self {
+      pow = pow << 1
+    }
+    pow
+  }
 }
 
 type Float {
@@ -358,9 +366,15 @@ type Array<T> {
 
   func iterator(self): ArrayIterator<T> = ArrayIterator(array: self)
 
-  @Stub func enumerate(self): (T, Int)[]
+  //@Stub func enumerate(self): (T, Int)[]
 
   func push(self, item: T) {
+    if self.length == self._capacity {
+      self._capacity *= 2
+
+      self._buffer = Pointer.realloc(self._buffer, self._capacity)
+    }
+
     self._buffer.offset(self.length).store(item)
     self.length += 1
   }
@@ -495,7 +509,7 @@ type Array<T> {
   }
 
   @Stub func update(self, index: Int, updater: (T) => T)
-  @Stub func reverse(self): T[]
+  @Stub func reversed(self): T[]
 }
 
 type Process {
@@ -574,7 +588,7 @@ type Set<T> {
 
   func iterator(self): SetIterator<T> = SetIterator(set: self)
 
-  @Stub func enumerate(self): (T, Int)[]
+  //@Stub func enumerate(self): (T, Int)[]
 
   func contains(self, item: T): Bool {
     self._map.containsKey(item)
@@ -685,11 +699,7 @@ type Map<K, V> {
   func new<K, V>(initialCapacity = 16): Map<K, V> {
     // Find a power of 2 >= initialCapacity, if non-default value provided
     val capacity = if initialCapacity != 16 {
-      var cap = 1
-      while cap < initialCapacity {
-        cap = cap << 1
-      }
-      cap
+      initialCapacity.nextPowerOf2()
     } else {
       initialCapacity
     }
@@ -754,7 +764,7 @@ type Map<K, V> {
 
   func iterator(self): MapIterator<K, V> = MapIterator(map: self)
 
-  @Stub func enumerate(self): (K, V)[]
+  //@Stub func enumerate(self): (K, V)[]
   @Stub func keys(self): Set<K>
   @Stub func values(self): V[]
 
@@ -767,7 +777,7 @@ type Map<K, V> {
     entries
   }
 
-  func _getKeyHash(self, key: K): Int = key.hash() && (self._entries._capacity - 1)
+  func _getKeyHash(self, key: K, numEntries: Int): Int = key.hash() && (numEntries - 1)
 
   func containsKey(self, key: K): Bool = if self._getEntry(key) true else false
 
@@ -787,35 +797,58 @@ type Map<K, V> {
   }
 
   func insert(self, key: K, value: V): V? {
-    val hash = self._getKeyHash(key)
+    val res = self._insertInto(key, value, self._entries)
+    if res[1] self.size += 1
 
-    if flattenOption(self._entries[hash]) |slot| {
-      var cursor: MapEntry<K, V>? = slot
+    if self._needsResize() self._resize()
+
+    res[0]
+  }
+
+  func _needsResize(self): Bool = self.size > self._capacity * self._loadFactor
+
+  func _insertInto(self, key: K, value: V, entries: MapEntry<K, V>?[]): (V?, Bool) {
+    val hash = self._getKeyHash(key, entries._capacity)
+
+    if flattenOption(entries[hash]) |bucket| {
+      var cursor: MapEntry<K, V>? = bucket
       while cursor |cur| {
         if cur.key == key {
           val old = cur.value
           cur.value = value
-          return old
+          return (old, false)
         } else if cur.next |next| {
           cursor = next
         } else {
           cur.next = MapEntry(key: key, value: value)
-          self.size += 1
-          return None
+          return (None, true)
         }
       }
+
+      // Should be unreachable since loop will always eventually result in a return
+      (None, false)
     } else {
-      self._entries[hash] = MapEntry(key: key, value: value)
-      self.size += 1
+      entries[hash] = MapEntry(key: key, value: value)
+      (None, true)
+    }
+  }
+
+  func _resize(self) {
+    val newCapacity = self._capacity * 2
+
+    val newEntries: MapEntry<K, V>?[] = Array.fillBy(newCapacity, () => None)
+    for entry in self {
+      val key = entry[0]
+      val value = entry[1]
+      self._insertInto(key, value, newEntries)
     }
 
-    // resize if self.size > self._capacity * self._loadFactor
-
-    None
+    self._capacity = newCapacity
+    self._entries = newEntries
   }
 
   func _getEntry(self, key: K): MapEntry<K, V>? {
-    val hash = self._getKeyHash(key)
+    val hash = self._getKeyHash(key, self._entries._capacity)
 
     if flattenOption(self._entries[hash]) |bucket| {
       var cursor: MapEntry<K, V>? = bucket

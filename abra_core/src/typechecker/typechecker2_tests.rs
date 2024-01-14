@@ -402,7 +402,6 @@ fn typecheck_prelude_array() {
 
       // Methods
       val isEmpty: Bool = arr.isEmpty()
-      val enumerate: (String, Int)[] = arr.enumerate()
       arr.push("e")
       arr.push(item: "e")
       val pop: String? = arr.pop()
@@ -432,7 +431,7 @@ fn typecheck_prelude_array() {
       val getOr: String = arr.getOr(index: 0, default: "foo")
       val getOrElse: String = arr.getOrElse(index: 0, getDefault: () => "foo")
       arr.update(index: 4, updater: s => s.toUpper())
-      val reverse: String[] = arr.reverse()
+      val reversed: String[] = arr.reversed()
     "#);
     if let Err((_, e)) = &result { dbg!(e); }
     assert!(result.is_ok());
@@ -448,7 +447,6 @@ fn typecheck_prelude_set() {
 
       // Methods
       val isEmpty: Bool = set.isEmpty()
-      val enumerate: (String, Int)[] = set.enumerate()
       val contains: Bool = set.contains(item: "b")
       set.insert(item: "d")
       val remove: String? = set.remove(item: "d")
@@ -474,7 +472,6 @@ fn typecheck_prelude_map() {
 
       // Methods
       val isEmpty: Bool = map.isEmpty()
-      val enumerate: (String, Int)[] = map.enumerate()
       val keys: Set<String> = map.keys()
       val values: Int[] = map.values()
       val entries: Set<(String, Int)> = map.entries()

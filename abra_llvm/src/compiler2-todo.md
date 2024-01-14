@@ -21,8 +21,8 @@
 - [ ] traits (Requires Typechecker, Parser, Lexer)
 - [ ] `..` range expression (Requires Typechecker, Parser, Lexer)
 - [x] unary negate for Option type, returns `true` if value is `None` (Requires Typechecker)
-- [ ] growing array when capacity reached
-- [ ] growing map when capacity/loadFactor reached
+- [x] growing array when capacity reached
+- [x] growing map when capacity/loadFactor reached
 - [ ] unsigned integers of different sizes (Requires Typechecker)
 - [x] `Result<V, E>` enum
 - [ ] `try` expressions (leveraging the `Result<V, E>` enum) (Requires Typechecker)
@@ -33,6 +33,7 @@
   - [x] program arguments
 - [x] memory management
   - [x] garbage collection?
+  - [ ] use GC_malloc_atomic for char*'s
   - ~~[ ] reference counting?~~
 - [ ] name collisions
   - [ ] for bound c-functions

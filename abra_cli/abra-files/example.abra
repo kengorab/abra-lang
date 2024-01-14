@@ -1,8 +1,4 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-//import "fs" as fs
-//
-//fs.readFile("/Users/kengorab/Desktop/abra-lang/README.m")
-
 Process.args()

@@ -150,6 +150,8 @@ impl<'a> LLVMCompiler2<'a> {
             .arg(&exec_out_file)
             .arg("-lm")
             .arg("-Wno-override-module")
+            // Ignore linker warnings. For some reason libgc.a has warnings on macos
+            .arg("-Wl,-w")
             .output()
             .unwrap();
         if !cc_output.stderr.is_empty() {
@@ -828,6 +830,18 @@ impl<'a> LLVMCompiler2<'a> {
 
         let malloc_size = malloc_size.as_basic_value_enum();
         let mem = self.builder.build_call(malloc, &[malloc_size.into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
+        self.builder.build_pointer_cast(mem, target_type, "ptr")
+    }
+
+    fn realloc<T: BasicValue<'a>>(&self, ptr: PointerValue<'a>, realloc_size: T, target_type: PointerType<'a>) -> PointerValue<'a> {
+        let realloc_name = if self.use_gc { "GC_realloc" } else { "realloc" };
+
+        let realloc = self.main_module.get_function(realloc_name).unwrap_or_else(|| {
+            self.main_module.add_function(realloc_name, self.fn_type(self.ptr(self.i8()), &[self.ptr(self.i8()).into(), self.i64().into()]), None)
+        });
+
+        let realloc_size = realloc_size.as_basic_value_enum();
+        let mem = self.builder.build_call(realloc, &[ptr.into(), realloc_size.into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
         self.builder.build_pointer_cast(mem, target_type, "ptr")
     }
 
@@ -2570,28 +2584,47 @@ impl<'a> LLVMCompiler2<'a> {
                     AssignmentKind::Indexing { target, index } => {
                         let target_ty = self.get_type_by_id(target.type_id());
                         let Type::GenericInstance(struct_id, target_generics) = &target_ty  else { unreachable!() };
-                        debug_assert!(struct_id == &self.project.prelude_array_struct_id);
-                        let array_inner_type_id = &target_generics[0];
-                        let (array_set_member_idx, array_set_func_id) = target_ty.find_method_by_name(self.project, "set").unwrap();
-                        let array_set_function = self.project.get_func_by_id(array_set_func_id);
+
+                        let member_idx;
+                        let type_arg_ids;
+                        let function = if struct_id == &self.project.prelude_array_struct_id {
+                            let array_inner_type_id = &target_generics[0];
+                            type_arg_ids = vec![*array_inner_type_id];
+
+                            let (array_set_member_idx, array_set_func_id) = target_ty.find_method_by_name(self.project, "set").unwrap();
+                            member_idx = array_set_member_idx;
+                            self.project.get_func_by_id(array_set_func_id)
+                        } else if struct_id == &self.project.prelude_map_struct_id {
+                            let map_key_type_id = &target_generics[0];
+                            let map_val_type_id = &target_generics[1];
+                            type_arg_ids = vec![*map_key_type_id, *map_val_type_id];
+
+                            let (map_insert_member_idx, map_insert_func_id) = target_ty.find_method_by_name(self.project, "insert").unwrap();
+                            member_idx = map_insert_member_idx;
+                            self.project.get_func_by_id(map_insert_func_id)
+                        } else {
+                            unreachable!("Unindexable type {:?}", &target_ty);
+                        };
+
+                        let ret_type_id = function.return_type_id;
 
                         return self.visit_expression(&TypedNode::Invocation {
                             target: Box::new(TypedNode::Accessor {
                                 target: target.clone(),
                                 kind: AccessorKind::Method,
                                 is_opt_safe: false,
-                                member_idx: array_set_member_idx,
+                                member_idx,
                                 member_span: target.span(),
-                                type_id: array_set_function.fn_type_id,
+                                type_id: function.fn_type_id,
                                 type_arg_ids: vec![],
-                                resolved_type_id: array_set_function.fn_type_id,
+                                resolved_type_id: function.fn_type_id,
                             }),
                             arguments: vec![
                                 Some(*index.clone()), Some(*expr.clone()),
                             ],
-                            type_arg_ids: vec![*array_inner_type_id],
-                            type_id: *array_inner_type_id,
-                            resolved_type_id: *array_inner_type_id,
+                            type_arg_ids,
+                            type_id: ret_type_id,
+                            resolved_type_id: ret_type_id,
                         }, resolved_generics);
                     }
                 }
@@ -3286,6 +3319,24 @@ impl<'a> LLVMCompiler2<'a> {
                 let malloc_amount_val = self.builder.build_int_mul(count_arg_value.into_int_value(), ptr_size, "malloc_amt");
 
                 let ptr = self.malloc(malloc_amount_val, self.ptr(llvm_type));
+                ptr.as_basic_value_enum()
+            }
+            "pointer_realloc" => { // Static method
+                let pointer_type_id = type_arg_ids[0];
+                let ptr_size = get_ptr_size(&pointer_type_id);
+                let Some(llvm_type) = self.llvm_underlying_type_by_id(&pointer_type_id, &resolved_generics) else { todo!() };
+                let llvm_type = self.llvm_ptr_wrap_type_if_needed(llvm_type);
+
+                let mut args_iter = arguments.iter();
+                let instance_node = args_iter.next().expect("Pointer.realloc has arity 2").as_ref().expect("Pointer.realloc param 1 is required");
+                let instance_value = self.visit_expression(instance_node, resolved_generics).expect("Instance is not of type Unit").into_pointer_value();
+                let cast_instance_value = self.builder.build_pointer_cast(instance_value, self.ptr(self.i8()), "");
+
+                let count_arg = args_iter.next().expect("Pointer.realloc has arity 2").as_ref().expect("Pointer.realloc param 2 is required");
+                let count_arg_value = self.visit_expression(count_arg, resolved_generics).expect("Pointer.realloc's count parameter is not of type Unit");
+                let realloc_amount_val = self.builder.build_int_mul(count_arg_value.into_int_value(), ptr_size, "malloc_amt");
+
+                let ptr = self.realloc(cast_instance_value, realloc_amount_val, self.ptr(llvm_type));
                 ptr.as_basic_value_enum()
             }
             "pointer_address" => { // Instance method

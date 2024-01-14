@@ -37,8 +37,8 @@ export type Pointer<T> {
   @Intrinsic("pointer_malloc")
   func malloc<T>(count = 1): Pointer<T>
 
-  //@Intrinsic("pointer_realloc")
-  //func realloc(self, count: Int): Pointer<T>
+  @Intrinsic("pointer_realloc")
+  func realloc<T>(ptr: Pointer<T>, count: Int): Pointer<T>
 
   @Intrinsic("pointer_address")
   func address(self): Int
