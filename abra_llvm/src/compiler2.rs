@@ -145,14 +145,18 @@ impl<'a> LLVMCompiler2<'a> {
             cmd.arg(libgc_path);
         }
 
-        let cc_output = cmd
+        cmd
             .arg("-o")
             .arg(&exec_out_file)
             .arg("-lm")
-            .arg("-Wno-override-module")
+            .arg("-Wno-override-module");
+
+        if std::env::consts::OS == "macos" {
             // Ignore linker warnings. For some reason libgc.a has warnings on macos
-            .arg("-Wl,-w")
-            .output()
+            cmd.arg("-Wl,-w");
+        }
+
+        let cc_output = cmd.output()
             .unwrap();
         if !cc_output.stderr.is_empty() {
             eprintln!("{}", String::from_utf8(cc_output.stderr).unwrap());
@@ -823,6 +827,18 @@ impl<'a> LLVMCompiler2<'a> {
 
     fn malloc<T: BasicValue<'a>>(&self, malloc_size: T, target_type: PointerType<'a>) -> PointerValue<'a> {
         let malloc_name = if self.use_gc { "GC_malloc" } else { "malloc" };
+
+        let malloc = self.main_module.get_function(malloc_name).unwrap_or_else(|| {
+            self.main_module.add_function(malloc_name, self.fn_type(self.ptr(self.i8()), &[self.i64().into()]), None)
+        });
+
+        let malloc_size = malloc_size.as_basic_value_enum();
+        let mem = self.builder.build_call(malloc, &[malloc_size.into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
+        self.builder.build_pointer_cast(mem, target_type, "ptr")
+    }
+
+    fn malloc_atomic<T: BasicValue<'a>>(&self, malloc_size: T, target_type: PointerType<'a>) -> PointerValue<'a> {
+        let malloc_name = if self.use_gc { "GC_malloc_atomic" } else { "malloc" };
 
         let malloc = self.main_module.get_function(malloc_name).unwrap_or_else(|| {
             self.main_module.add_function(malloc_name, self.fn_type(self.ptr(self.i8()), &[self.i64().into()]), None)
@@ -4422,7 +4438,7 @@ impl<'a> LLVMCompiler2<'a> {
         }
 
         let len_plus_1 = self.builder.build_int_add::<IntValue<'a>>(len_val.into(), self.const_i64(1).into(), "len_plus_1");
-        let str_val = self.malloc(len_plus_1, self.ptr(self.i8()));
+        let str_val = self.malloc_atomic(len_plus_1, self.ptr(self.i8()));
         let snprintf_len_val = self.builder.build_int_cast(len_plus_1, self.i32(), "");
         let mut args = vec![str_val.into(), snprintf_len_val.into(), fmt_str_val.into()];
         args.append(&mut snprintf_args);
@@ -4495,7 +4511,7 @@ impl<'a> LLVMCompiler2<'a> {
         let self_param = llvm_fn.get_nth_param(0).unwrap();
         let len_val = self.builder.build_call(self.snprintf, &[self.null_ptr().into(), self.const_i32(0).into(), fmt_str.into(), self_param.into()], "len").try_as_basic_value().left().unwrap().into_int_value();
         let len_plus_1 = self.builder.build_int_add::<IntValue<'a>>(len_val.into(), self.const_i64(1).into(), "len_plus_1");
-        let str_val = self.malloc(len_plus_1, self.ptr(self.i8()));
+        let str_val = self.malloc_atomic(len_plus_1, self.ptr(self.i8()));
         let snprintf_len_val = self.builder.build_int_cast(len_plus_1, self.i32(), "");
         self.builder.build_call(self.snprintf, &[str_val.into(), snprintf_len_val.into(), fmt_str.into(), self_param.into()], "").try_as_basic_value().left().unwrap();
 
@@ -4526,7 +4542,7 @@ impl<'a> LLVMCompiler2<'a> {
         let self_param = llvm_fn.get_nth_param(0).unwrap();
         let len_val = self.builder.build_call(self.snprintf, &[self.null_ptr().into(), self.const_i32(0).into(), fmt_str.into(), self_param.into()], "len").try_as_basic_value().left().unwrap().into_int_value();
         let len_plus_1 = self.builder.build_int_add::<IntValue<'a>>(len_val.into(), self.const_i64(1).into(), "len_plus_1");
-        let str_val = self.malloc(len_plus_1, self.ptr(self.i8()));
+        let str_val = self.malloc_atomic(len_plus_1, self.ptr(self.i8()));
         let sprintf_len_val = self.builder.build_int_cast(len_plus_1, self.i32(), "");
         self.builder.build_call(self.snprintf, &[str_val.into(), sprintf_len_val.into(), fmt_str.into(), self_param.into()], "").try_as_basic_value().left().unwrap();
 

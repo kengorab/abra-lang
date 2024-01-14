@@ -33,7 +33,7 @@
   - [x] program arguments
 - [x] memory management
   - [x] garbage collection?
-  - [ ] use GC_malloc_atomic for char*'s
+  - [x] use GC_malloc_atomic for char*'s
   - ~~[ ] reference counting?~~
 - [ ] name collisions
   - [ ] for bound c-functions
