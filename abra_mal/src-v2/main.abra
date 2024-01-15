@@ -26,7 +26,11 @@ func quasiquoteInner(items: Value[]): Result<Value, Error> {
       _ => {}
     }
 
-    val qqResult = try quasiquote(elt)
+    //val qqResult = try quasiquote(elt)
+    val qqResult = match quasiquote(elt) {
+      Result.Ok(r) => r
+      Result.Err e => return e
+    }
     result = [Value.Symbol("cons"), qqResult, Value.List(result)]
   }
 
@@ -35,18 +39,22 @@ func quasiquoteInner(items: Value[]): Result<Value, Error> {
 
 func quasiquote(ast: Value): Result<Value, Error> {
   val value = match ast {
-    Value.Vector(items) => {
-      return quasiquoteInner(items)
-        .map(v => Value.List([Value.Symbol("vec"), v]))
-    }
+    //Value.Vector(items) => {
+    //  return match quasiquoteInner(items) {
+    //    Result.Ok(v) => Result.Ok(value: Value.List([Value.Symbol("vec"), v]))
+    //    Result.Err e => e
+    //  }
+    //}
     Value.List(items) => {
-      match items[0] {
+      val x = match items[0] {
         Value.Symbol("unquote") => {
-          if items[1] |item| item
-          else return Result.Err(Error(error: "unquote expects 1 argument"))
+          val y = if items[1] |item| item
+          else Value.Nil //return Result.Err(Error(error: "unquote expects 1 argument"))
+          y
         }
-        _ => return quasiquoteInner(items)
+        _ => Value.Nil // return quasiquoteInner(items)
       }
+      x
     }
     Value.Hash h => Value.List([Value.Symbol("quote"), h])
     Value.Symbol s => Value.List([Value.Symbol("quote"), s])
@@ -82,7 +90,11 @@ func macroExpand(_ast: Value, env: Env): Result<Value, Error> {
             if env.find(sym) |value| {
               match value {
                 Value.Fn(macroFn) => {
-                  ast = try macroFn.fn(items[1:])
+                  //ast = try macroFn.fn(items[1:])
+                  match macroFn.fn(items[1:]) {
+                    Result.Ok(v) => ast = v
+                    Result.Err e => return e
+                  }
                 }
                 _ => return Result.Err(Error(error: "macro $sym was not a function"))
               }
@@ -105,7 +117,11 @@ func eval(_input: Value, _env: Env): Result<Value, Error> {
   var env = _env
  
   while true {
-    input = try macroExpand(input, env)
+    //input = try macroExpand(input, env)
+    match macroExpand(input, env) {
+      Result.Ok(v) => input = v
+      Result.Err e => return e
+    }
 
     match input {
       Value.List(values) => {
@@ -116,7 +132,11 @@ func eval(_input: Value, _env: Env): Result<Value, Error> {
             val [name, value] = values[1:]
             return match name {
               Value.Symbol(sym) => {
-                val v = try eval(value ?: Value.Nil, env)
+                //val v = try eval(value ?: Value.Nil, env)
+                val v = match eval(value ?: Value.Nil, env) {
+                  Result.Ok(v_) => v_
+                  Result.Err e => return e
+                }
                 env.set(sym, v)
                 Result.Ok(v)
               }
@@ -130,7 +150,11 @@ func eval(_input: Value, _env: Env): Result<Value, Error> {
               _ => return Result.Err(Error(error: "defmacro! names must be symbols"))
             }
 
-            val v = try eval(value ?: Value.Nil, env)
+            //val v = try eval(value ?: Value.Nil, env)
+            val v = match eval(value ?: Value.Nil, env) {
+              Result.Ok(v_) => v_
+              Result.Err e => return e
+            }
             return match v {
               Value.Fn(fnVal) => {
                 fnVal.isMacro = true
@@ -150,7 +174,11 @@ func eval(_input: Value, _env: Env): Result<Value, Error> {
             for i in range(0, bindings.length, 2) {
               match bindings[i] {
                 Value.Symbol(key) => {
-                  val value = try eval(bindings[i + 1] ?: Value.Nil, letEnv)
+                  //val value = try eval(bindings[i + 1] ?: Value.Nil, letEnv)
+                  val value = match eval(bindings[i + 1] ?: Value.Nil, letEnv) {
+                    Result.Ok(v) => v
+                    Result.Err e => return e
+                  }
                   letEnv.set(key, value)
                 }
                 _ => return Result.Err(Error(error: "let* bindings must be symbols"))
@@ -170,12 +198,20 @@ func eval(_input: Value, _env: Env): Result<Value, Error> {
           }
           Value.Symbol("if") => {
             val [condExpr, thenBlock, elseBlock] = values[1:]
-            val cond = match try eval(condExpr ?: Value.Nil, env) {
-              Value.Bool(b) => b,
-              Value.Nil => false,
-              _ => true
+            //val cond = match try eval(condExpr ?: Value.Nil, env) {
+            //  Value.Bool(b) => b,
+            //  Value.Nil => false,
+            //  _ => true
+            //}
+            val cond = match eval(condExpr ?: Value.Nil, env) {
+              Result.Ok(v) => match v {
+                Value.Bool(b) => b,
+                Value.Nil => false,
+                _ => true
+              }
+              Result.Err e => return e
             }
-            input = if cond thenBlock ?: Value.Nil else elseBlock ?: Value.Nil 
+            input = if cond thenBlock ?: Value.Nil else elseBlock ?: Value.Nil
             continue
           } 
           Value.Symbol("fn*") => {
@@ -215,7 +251,11 @@ func eval(_input: Value, _env: Env): Result<Value, Error> {
           }
           Value.Symbol("quasiquote") => {
             if values[1] |value| {
-              input = try quasiquote(value)
+              //input = try quasiquote(value)
+              match quasiquote(value) {
+                Result.Ok(v) => input = v
+                Result.Err e => return e
+              }
               continue
             } else {
               Result.Err(Error(error: "quasiquote expects 1 argument"))
@@ -273,23 +313,45 @@ func eval(_input: Value, _env: Env): Result<Value, Error> {
             }
           }
           _ => {
-            return match try evalAst(input, env) {
-              Value.List(values) => {
-                val [fn, *args] = values
-                match fn {
-                  Value.BuiltinFn(fn) => fn(args)
-                  Value.Fn(fnVal) => {
-                    val fnEnv = Env(outer: fnVal.env)
-                    fnEnv.initFnEnv(fnVal.params, args)
-                    input = fnVal.body
-                    env = fnEnv
-                    continue
+            //return match try evalAst(input, env) {
+            //  Value.List(values) => {
+            //    val [fn, *args] = values
+            //    match fn {
+            //      Value.BuiltinFn(fn) => fn(args)
+            //      Value.Fn(fnVal) => {
+            //        val fnEnv = Env(outer: fnVal.env)
+            //        fnEnv.initFnEnv(fnVal.params, args)
+            //        input = fnVal.body
+            //        env = fnEnv
+            //        continue
+            //      }
+            //      None => Result.Err(Error(error: "Unreachable"))
+            //      _ v => Result.Err(Error(error: "Could not evaluate ${pr(v)} as function"))
+            //    }
+            //  }
+            //  _ => Result.Err(Error(error: "Unreachable?"))
+            //}
+
+            return match evalAst(input, env) {
+              Result.Ok(v) => match v {
+                Value.List(values) => {
+                  val [fn, *args] = values
+                  match fn {
+                    Value.BuiltinFn(fn) => fn(args)
+                    Value.Fn(fnVal) => {
+                      val fnEnv = Env(outer: fnVal.env)
+                      fnEnv.initFnEnv(fnVal.params, args)
+                      input = fnVal.body
+                      env = fnEnv
+                      continue
+                    }
+                    None => Result.Err(Error(error: "Unreachable"))
+                    _ v => Result.Err(Error(error: "Could not evaluate ${pr(v)} as function"))
                   }
-                  None => Result.Err(Error(error: "Unreachable"))
-                  _ v => Result.Err(Error(error: "Could not evaluate ${pr(v)} as function"))
                 }
+                _ => Result.Err(Error(error: "Unreachable?"))
               }
-              _ => Result.Err(Error(error: "Unreachable?"))
+              Result.Err e => return e
             }
           }
         }

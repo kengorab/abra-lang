@@ -4610,16 +4610,31 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 None
                             };
 
+                            let enum_ = self.project.get_enum_by_id(&enum_id);
+                            debug_assert!(enum_.generic_ids.len() == generic_ids.len());
+                            let enum_generics = enum_.generic_ids.iter().zip(&generic_ids)
+                                .map(|(generic_id, resolved_generic_id)| (*generic_id, *resolved_generic_id))
+                                .collect::<HashMap<TypeId, TypeId>>();
                             case_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids, Some(variant_idx)));
 
                             let typed_match_case_args = if let Some(args) = args {
                                 let Some(func_id) = enum_variant_func_id else {
                                     return Err(TypeError::DestructuringMismatch { span: self.make_span(&args[0].get_span()), kind: DestructuringMismatchKind::InvalidDestructureTarget, type_id: case_type_id });
                                 };
-                                let variant_fields = self.project.get_func_by_id(&func_id).params.iter().map(|p| p.type_id).collect_vec();
+                                let variant_field_type_ids = self.project.get_func_by_id(&func_id).params.iter()
+                                    .map(|p| {
+                                        match self.project.get_type_by_id(&p.type_id) {
+                                            Type::Generic(_, name) => {
+                                                *enum_generics.get(&p.type_id).expect(&format!("Expected generic {name} to have been discovered"))
+                                            }
+                                            _ => p.type_id
+                                        }
+                                    })
+                                    .collect_vec();
+                                let enum_variant_arity = variant_field_type_ids.len();
                                 let num_destructuring_args = args.len();
                                 let mut typed_match_case_args = Vec::with_capacity(num_destructuring_args);
-                                for pair in args.into_iter().zip_longest(&variant_fields) {
+                                for pair in args.into_iter().zip_longest(variant_field_type_ids) {
                                     let typed_arg = match pair {
                                         EitherOrBoth::Both(match_case_arg, field_type_id) => {
                                             let match_case_arg_span = match_case_arg.get_span();
@@ -4631,16 +4646,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                                     TypedMatchCaseArgument::Pattern(binding, var_ids)
                                                 }
                                                 MatchCaseArgument::Literal(node) => {
-                                                    let typed_node = self.typecheck_expression(node, Some(*field_type_id))?;
-                                                    if !self.type_satisfies_other(typed_node.type_id(), field_type_id) {
-                                                        return Err(TypeError::TypeMismatch { span: self.make_span(&match_case_arg_span), expected: vec![*field_type_id], received: *typed_node.type_id() });
+                                                    let typed_node = self.typecheck_expression(node, Some(field_type_id))?;
+                                                    if !self.type_satisfies_other(typed_node.type_id(), &field_type_id) {
+                                                        return Err(TypeError::TypeMismatch { span: self.make_span(&match_case_arg_span), expected: vec![field_type_id], received: *typed_node.type_id() });
                                                     }
                                                     TypedMatchCaseArgument::Literal(typed_node)
                                                 }
                                             }
                                         }
                                         EitherOrBoth::Left(arg) => {
-                                            return Err(TypeError::DestructuringMismatch { span: self.make_span(&arg.get_span()), kind: DestructuringMismatchKind::InvalidEnumVariantArity(variant_fields.len(), num_destructuring_args), type_id: case_type_id });
+                                            return Err(TypeError::DestructuringMismatch { span: self.make_span(&arg.get_span()), kind: DestructuringMismatchKind::InvalidEnumVariantArity(enum_variant_arity, num_destructuring_args), type_id: case_type_id });
                                         }
                                         EitherOrBoth::Right(_) => { break; }
                                     };
