@@ -1,0 +1,41 @@
+import Value from "./types"
+
+export enum Op { Add, Sub, Mul, Div }
+
+export func doMath(args: Value[], op: Op): Value {
+  val [a, b] = args
+  match a {
+    Value.Int(a) => {
+      match b {
+        Value.Int(b) => {
+          match op {
+            Op.Add => Value.Int(value: a + b)
+            Op.Sub => Value.Int(value: a - b)
+            Op.Mul => Value.Int(value: a * b)
+            Op.Div => Value.Int(value: (a / b).round())
+          }
+        }
+        _ => {
+          println("ERROR")
+          Value.Nil
+        }
+      }
+    }
+    _ => {
+      println("ERROR")
+      Value.Nil
+    }
+  }
+}
+
+// TODO: Add issue for this as a new feature
+// match (a, b, op) {
+//   (Value.Int(a), Value.Int(b), Op.Add) => Value.Int(value: a + b)
+//   (Value.Int(a), Value.Int(b), Op.Sub) => Value.Int(value: a - b)
+//   (Value.Int(a), Value.Int(b), Op.Mul) => Value.Int(value: a * b)
+//   (Value.Int(a), Value.Int(b), Op.Div) => Value.Int(value: (a / b).round())
+//   _ => {
+//     println("ERROR")
+//     Value.Nil
+//   }
+// }

@@ -1,0 +1,36 @@
+/// Expect: true
+println(true)
+
+/// Expect: false
+println(false)
+
+// Unary operation
+/// Expect: true false false true
+println(!false, !!false, !true, !!true)
+
+// Binary operations
+func returnsFalse(): Bool {
+  println("boolFunc called")
+  false
+}
+
+/// Expect: boolFunc called
+/// Expect: false
+println(true && returnsFalse())
+/// Expect: false
+println(false && returnsFalse())
+
+/// Expect: true
+println(true || returnsFalse())
+/// Expect: boolFunc called
+/// Expect: false
+println(false || returnsFalse())
+
+/// Expect: true
+println(true == true)
+/// Expect: false
+println(true != true)
+/// Expect: false
+println(false == true)
+/// Expect: true
+println(true != false)

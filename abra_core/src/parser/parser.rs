@@ -7,7 +7,7 @@ use crate::parser::parse_error::{ParseErrorKind, ParseError};
 use crate::parser::precedence::Precedence;
 
 pub struct ParseResult {
-    pub imports: Vec<(Token, ModuleId, Token)>,
+    pub imports: Vec<(Token, ImportNode)>,
     pub nodes: Vec<AstNode>,
 }
 
@@ -20,24 +20,22 @@ pub fn parse(module_id: ModuleId, tokens: Vec<Token>) -> Result<ParseResult, Par
     loop {
         match parser.peek() {
             Some(tok) => {
-                let node = if let Token::Import(_) = tok {
+                if let Token::Import(_) = tok {
                     let node = match parser.parse_import_statement(!imports_done) {
                         Ok(node) => node,
                         Err(kind) => return Err(ParseError { module_id, kind })
                     };
                     if let AstNode::ImportStatement(import_tok, import_node) = &node {
-                        imports.push((import_tok.clone(), import_node.module_id.clone(), import_node.module_token.clone()))
+                        imports.push((import_tok.clone(), import_node.clone()))
                     }
-                    node
+                    nodes.push(node);
                 } else {
                     imports_done = true;
                     match parser.parse_stmt(None) {
-                        Ok(node) => node,
+                        Ok(node) => nodes.push(node),
                         Err(kind) => return Err(ParseError { module_id, kind })
                     }
-                };
-
-                nodes.push(node);
+                }
             }
             None => break
         }
@@ -210,14 +208,14 @@ impl Parser {
 
     fn precedence_for_token(tok: &Token) -> Precedence {
         match tok {
-            Token::Plus(_) | Token::PlusEq(_) | Token::Minus(_) | Token::MinusEq(_) => Precedence::Addition,
-            Token::Star(_) | Token::StarEq(_) | Token::Slash(_) | Token::SlashEq(_) | Token::Percent(_) | Token::PercentEq(_) => Precedence::Multiplication,
+            Token::Plus(_) | Token::Minus(_) => Precedence::Addition,
+            Token::Star(_) | Token::Slash(_) | Token::Percent(_) => Precedence::Multiplication,
             Token::And(_) | Token::AndEq(_) => Precedence::And,
             Token::Or(_) | Token::OrEq(_) | Token::Caret(_) => Precedence::Or,
             Token::Elvis(_) | Token::ElvisEq(_) | Token::StarStar(_) => Precedence::Coalesce,
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
             Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
-            Token::Assign(_) => Precedence::Assignment,
+            Token::PlusEq(_) | Token::MinusEq(_) | Token::StarEq(_) | Token::SlashEq(_) | Token::PercentEq(_) | Token::Assign(_) => Precedence::Assignment,
             Token::Dot(_) | Token::QuestionDot(_) | Token::Arrow(_) => Precedence::Call,
             Token::LParen(_, is_preceded_by_newline) => {
                 if *is_preceded_by_newline { Precedence::None } else { Precedence::Call }
@@ -572,7 +570,7 @@ impl Parser {
         let stub_mode = decorators.iter()
             .find(|dec| {
                 let name = Token::get_ident_name(&dec.name);
-                name == "Stub" || name == "Intrinsic"
+                name == "Stub" || name == "Intrinsic" || name == "CBinding"
             })
             .is_some();
         let body = match self.peek() {
@@ -1171,6 +1169,7 @@ impl Parser {
         let ParseResult { nodes: args, .. } = parse(dummy_module_id, chunks.collect())
             .map_err(|err| err.kind)?;
 
+        // TODO: don't use String#concat; we can avoid treating these varargs values as Any[] if we instead use Array#join, and call toString on each chunk
         Ok(AstNode::Invocation(
             Token::LParen(first_chunk.get_position(), false),
             InvocationNode {
@@ -1301,6 +1300,15 @@ impl Parser {
 
     fn parse_binary(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseErrorKind> {
         let prec = Parser::precedence_for_token(&token);
+
+        let extra_token = if matches!(token, Token::GT(_)) && matches!(self.peek(), Some(Token::GT(_))) {
+            Some(self.expect_next_token(TokenType::GT)?)
+        } else if matches!(token, Token::LT(_)) && matches!(self.peek(), Some(Token::LT(_))) {
+            Some(self.expect_next_token(TokenType::LT)?)
+        } else {
+            None
+        };
+
         let right = self.parse_precedence(prec)?;
         let op = match token {
             Token::Plus(_) => BinaryOp::Add,
@@ -1319,9 +1327,21 @@ impl Parser {
             Token::OrEq(_) => BinaryOp::OrEq,
             Token::Elvis(_) => BinaryOp::Coalesce,
             Token::ElvisEq(_) => BinaryOp::CoalesceEq,
-            Token::GT(_) => BinaryOp::Gt,
+            Token::GT(_) => {
+                if let Some(Token::GT(_)) = extra_token {
+                    BinaryOp::ShiftRight
+                } else {
+                    BinaryOp::Gt
+                }
+            }
             Token::GTE(_) => BinaryOp::Gte,
-            Token::LT(_) => BinaryOp::Lt,
+            Token::LT(_) => {
+                if let Some(Token::LT(_)) = extra_token {
+                    BinaryOp::ShiftLeft
+                } else {
+                    BinaryOp::Lt
+                }
+            }
             Token::LTE(_) => BinaryOp::Lte,
             Token::Neq(_) => BinaryOp::Neq,
             Token::Eq(_) => BinaryOp::Eq,
@@ -1576,7 +1596,9 @@ impl Parser {
             self.tokens.advance_cursor();
             loop {
                 if self.peek().is_none() {
-                    return Err(self.unexpected_eof());
+                    types.clear();
+                    self.tokens.reset_cursor();
+                    break;
                 }
 
                 if let Some(Token::GT(_)) = self.peek() {
@@ -1590,6 +1612,7 @@ impl Parser {
                 let type_ident_res = self.parse_type_identifier(false);
                 match type_ident_res {
                     Err(_) => {
+                        types.clear();
                         self.tokens.reset_cursor();
                         break;
                     }
@@ -1604,6 +1627,7 @@ impl Parser {
             if let Some(Token::LParen(_, _)) = self.peek() {
                 self.tokens.truncate_iterator_to_cursor();
             } else {
+                types.clear();
                 self.tokens.reset_cursor();
             }
         }
@@ -1761,7 +1785,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_binary_numeric() -> TestResult {
+    fn parse_binary_plus() -> TestResult {
         let ast = parse("1.2 + 3")?;
         let expected = vec![
             Binary(
@@ -1811,6 +1835,57 @@ mod tests {
             )
         ];
         Ok(assert_eq!(expected, ast))
+    }
+
+    #[test]
+    fn parse_binary_shift_operators() -> TestResult {
+        let ast = parse("1 << 5")?;
+        let expected = vec![
+            Binary(
+                Token::LT(Position::new(1, 3)),
+                BinaryNode {
+                    left: Box::new(int_literal!((1, 1), 1)),
+                    op: BinaryOp::ShiftLeft,
+                    right: Box::new(int_literal!((1, 6), 5)),
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("1 >> 5")?;
+        let expected = vec![
+            Binary(
+                Token::GT(Position::new(1, 3)),
+                BinaryNode {
+                    left: Box::new(int_literal!((1, 1), 1)),
+                    op: BinaryOp::ShiftRight,
+                    right: Box::new(int_literal!((1, 6), 5)),
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("1 >> 5 + 1")?;
+        let expected = vec![
+            Binary(
+                Token::GT(Position::new(1, 3)),
+                BinaryNode {
+                    left: Box::new(int_literal!((1, 1), 1)),
+                    op: BinaryOp::ShiftRight,
+                    right: Box::new(Binary(
+                        Token::Plus(Position::new(1, 8)),
+                        BinaryNode {
+                            left: Box::new(int_literal!((1, 6), 5)),
+                            op: BinaryOp::Add,
+                            right: Box::new(int_literal!((1, 10), 1)),
+                        },
+                    )),
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        Ok(())
     }
 
     #[test]
@@ -2158,7 +2233,7 @@ mod tests {
     fn parse_binary_errors_eof() {
         let cases = vec![
             "-5 +", "-5 -", "-5 *", "-5 /",
-            "5  >", "5 >=", "5  <", "5 <=", "5 ==", "5 !=",
+            "5  >", "5 >=", "5  <", "5 <=", "5 ==", "5 !=", "5 <<", "5 >>",
         ];
 
         for input in cases {
@@ -2171,9 +2246,7 @@ mod tests {
     fn parse_binary_errors_unexpected_token() {
         let cases = vec![
             ("5 > + 4", ParseErrorKind::UnexpectedToken(Token::Plus(Position::new(1, 5)))),
-            ("5 >> 4", ParseErrorKind::UnexpectedToken(Token::GT(Position::new(1, 4)))),
             ("5 < + 4", ParseErrorKind::UnexpectedToken(Token::Plus(Position::new(1, 5)))),
-            ("5 << 4", ParseErrorKind::UnexpectedToken(Token::LT(Position::new(1, 4)))),
             ("5 <> 6", ParseErrorKind::UnexpectedToken(Token::GT(Position::new(1, 4)))),
         ];
 

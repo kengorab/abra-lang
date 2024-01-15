@@ -1,0 +1,281 @@
+// Test raw construction of array
+(() => {
+  val arr = Array<Int>(length: 0, _buffer: Pointer.malloc<Int>(1), _capacity: 1)
+  arr.push(12)
+  /// Expect: [12]
+  println(arr)
+})()
+
+// Test array literal construction
+(() => {
+  val emptyArr: Int[] = []
+  /// Expect: []
+  println(emptyArr)
+
+  val intArr = [1, 2, 3, 4]
+  /// Expect: [1, 2, 3, 4]
+  println(intArr)
+
+  val floatArr = [0.12, 3.45, 6.0]
+  /// Expect: [0.12, 3.45, 6]
+  println(floatArr)
+
+  val stringArr = ["ab", "cd", "ef"]
+  /// Expect: [ab, cd, ef]
+  println(stringArr)
+
+  val nestedArr = [[1, 2], [3, 4], [5, 6]]
+  /// Expect: [[1, 2], [3, 4], [5, 6]]
+  println(nestedArr)
+})()
+
+// == operator (also Array#eq)
+(() => {
+  val arr = [1, 2]
+
+  /// Expect: true
+  println(arr == [1, 2])
+  /// Expect: true
+  println([[1, 2], [3, 4]] == [[1, 2], [3, 4]])
+
+  /// Expect: false
+  println(arr == ["a", "b"])
+  /// Expect: false
+  println(arr == "ab")
+  /// Expect: false
+  println(arr == 123)
+  /// Expect: false
+  println(arr == 12.3)
+  /// Expect: false
+  println(arr == [1, 2, 3])
+  /// Expect: false
+  println(arr == #{1, 2, 3})
+  /// Expect: false
+  println(arr == { (1): "a", (2): "b" })
+})()
+
+// Indexing (also Array#get(index: Int))
+(() => {
+  val arr = [1, 2, 3]
+  /// Expect: None 1 2 3 1 2 3 None
+  println(arr[-4], arr[-3], arr[-2], arr[-1], arr[0], arr[1], arr[2], arr[3])
+})()
+
+// Range indexing (also Array#getRange(startIndex: Int, endIndex: Int))
+(() => {
+  val arr = [1, 2, 3, 4, 5]
+
+  /// Expect: [2, 3, 4] [2, 3, 4]
+  println(arr[1:4], arr[-4:4])
+
+  /// Expect: []
+  println(arr[1:1])
+
+  val x = 1
+  val y = 4
+
+  /// Expect: [2, 3, 4] [2, 3, 4]
+  println(arr[x:y], arr[-y:y])
+
+  /// Expect: [2, 3, 4, 5] [1]
+  println(arr[1:], arr[:1])
+
+  /// Expect: [2, 3, 4, 5] [1]
+  println(arr[x:], arr[:x])
+})()
+
+// Array.fill
+(() => {
+  val zeroes = Array.fill(5, 0)
+  /// Expect: [0, 0, 0, 0, 0]
+  println(zeroes)
+
+  val arr = [1, 2]
+  val refs = Array.fill(3, arr)
+  /// Expect: [[1, 2], [1, 2], [1, 2]]
+  println(refs)
+  arr.push(3)
+  /// Expect: [[1, 2, 3], [1, 2, 3], [1, 2, 3]]
+  println(refs)
+})()
+
+// Array.fillBy
+(() => {
+  val zero = 0
+  val zeroes = Array.fillBy(5, () => zero)
+  /// Expect: [0, 0, 0, 0, 0]
+  println(zeroes)
+
+  val nums = Array.fillBy(5, i => i + 1)
+  /// Expect: [1, 2, 3, 4, 5]
+  println(nums)
+
+  val arr = [1, 2]
+  val sharedRefs = Array.fillBy(3, () => arr)
+  /// Expect: [[1, 2], [1, 2], [1, 2]]
+  println(sharedRefs)
+  arr.push(3)
+  /// Expect: [[1, 2, 3], [1, 2, 3], [1, 2, 3]]
+  println(sharedRefs)
+
+  val uniqueRefs = Array.fillBy(3, () => [1, 2])
+  /// Expect: [[1, 2], [1, 2], [1, 2]]
+  println(uniqueRefs)
+  if uniqueRefs[0] |arr| arr[1] = 0
+  /// Expect: [[1, 0], [1, 2], [1, 2]]
+  println(uniqueRefs)
+})()
+
+// Array#hash
+(() => {
+  val arr = [1, 2, 3]
+  /// Expect: true
+  println(arr.hash() == [1, 2, 3].hash())
+
+  /// Expect: false
+  println(arr.hash() == [1, 2].hash())
+})()
+
+// Array#iterator
+(() => {
+  val a = [1.23, 4.56, 7.89]
+  val iter = a.iterator()
+  /// Expect: 1.23
+  println(iter.next())
+  /// Expect: 4.56
+  println(iter.next())
+  /// Expect: 7.89
+  println(iter.next())
+  /// Expect: None
+  println(iter.next())
+  /// Expect: None
+  println(iter.next())
+})()
+
+// For-loops
+/// Expect: a
+/// Expect: b
+/// Expect: c
+for ch in ["a", "b", "c"] println(ch)
+
+// Array#push
+(() => {
+  val intArr = [1, 2, 3]
+  /// Expect: [1, 2, 3] 3 3
+  println(intArr, intArr.length, intArr._capacity)
+  // Pushing beyond the capacity should expand the array
+  intArr.push(4)
+  /// Expect: [1, 2, 3, 4] 4 6
+  println(intArr, intArr.length, intArr._capacity)
+
+  // Popping element should leave _capacity
+  intArr.pop()
+  /// Expect: [1, 2, 3] 3 6
+  println(intArr, intArr.length, intArr._capacity)
+
+  val strArr = ["a", "b", "c"]
+  val arrArr = [strArr, strArr]
+  /// Expect: [[a, b, c], [a, b, c]] 3 3
+  println(arrArr, strArr.length, strArr._capacity)
+  // Pushing beyond the capacity should expand the array
+  strArr.push("d")
+  /// Expect: [[a, b, c, d], [a, b, c, d]] 4 6
+  println(arrArr, strArr.length, strArr._capacity)
+})()
+
+// Array#pop
+(() => {
+  val arr = [1, 2, 3]
+  /// Expect: 3
+  println(arr.pop())
+  /// Expect: [1, 2]
+  println(arr)
+
+  /// Expect: 2
+  println(arr.pop())
+  /// Expect: [1]
+  println(arr)
+
+  /// Expect: 1
+  println(arr.pop())
+  /// Expect: []
+  println(arr)
+
+  /// Expect: None
+  println(arr.pop())
+  /// Expect: []
+  println(arr)
+})()
+
+// Array#map
+func addOne(i: Int): Int = i + 1
+func exclaim(i: Int, _: Int, x = "!"): String = "$i$x"
+val one = 1
+(() => {
+  val arr = [1, 2, 3, 4]
+
+  /// Expect: [2, 3, 4, 5]
+  println(arr.map(addOne))
+  /// Expect: [2, 3, 4, 5]
+  println(arr.map(i => i + 1))
+  /// Expect: [2, 3, 4, 5]
+  println(arr.map(i => i + one))
+
+  /// Expect: [1!, 2!, 3!, 4!]
+  println(arr.map(exclaim))
+  /// Expect: [1!, 2!, 3!, 4!]
+  println(arr.map((i, _, x = "!") => "$i$x"))
+})()
+
+// Array#filter
+func isEven(i: Int): Bool = i % 2 == 0
+(() => {
+  val arr = [1, 2, 3, 4]
+
+  /// Expect: [2, 4]
+  println(arr.filter(isEven))
+  /// Expect: [2, 4]
+  println(arr.filter(x => x % 2 == 0))
+})()
+
+// Array#reduce
+func doSum(acc: Int, i: Int): Int = acc + i
+(() => {
+  val arr = [1, 2, 3, 4]
+
+  /// Expect: 10
+  println(arr.reduce(0, doSum))
+  /// Expect: 10
+  println(arr.reduce(0, (acc, i) => acc + i))
+})()
+
+// Array#forEach
+func printItem(item: Int) = println(item)
+(() => {
+  val arr = [1, 2, 3, 4]
+
+  /// Expect: 1
+  /// Expect: 2
+  /// Expect: 3
+  /// Expect: 4
+  arr.forEach(printItem)
+  /// Expect: 1
+  /// Expect: 2
+  /// Expect: 3
+  /// Expect: 4
+  arr.forEach(i => {
+    println(i)
+  })
+})()
+
+// Array#join
+(() => {
+  val arr = [123, 456, 789]
+  /// Expect: 123|456|789
+  println(arr.join("|"))
+  /// Expect: 123456789
+  println(arr.join())
+
+  /// Expect: 1
+  println([1].join(", "))
+})()

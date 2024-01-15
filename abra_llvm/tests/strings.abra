@@ -1,0 +1,167 @@
+// Test raw string construction
+(() => {
+  val s = String.withLength(3)
+  s._buffer.offset(0).store(Byte.fromInt(65))
+  s._buffer.offset(1).store(Byte.fromInt(66))
+  s._buffer.offset(2).store(Byte.fromInt(67))
+  /// Expect: ABC
+  println(s)
+  /// Expect: false
+  println(s.isEmpty())
+})()
+
+// Test literal construction
+(() => {
+  /// Expect: hello
+  println("hello")
+})()
+
+// + operator (also String#concat<T>(other: T, *others: Any[]), with no `others`)
+(() => {
+  /// Expect: helloworld
+  println("hello" + "world")
+  /// Expect: hello12 12hello
+  println("hello" + 12, 12 + "hello")
+  /// Expect: hello1.23 1.23hello
+  println("hello" + 1.23, 1.23 + "hello")
+  /// Expect: hellotrue truehello
+  println("hello" + true, true + "hello")
+  /// Expect: hello[1, 2, 3] [1, 2, 3]hello
+  println("hello" + [1, 2, 3], [1, 2, 3] + "hello")
+})()
+
+// == operator (also String#eq)
+(() => {
+  val s1 = "string"
+  /// Expect: true
+  println(s1 == s1)
+  /// Expect: true
+  println(s1 == "string")
+
+  /// Expect: false
+  println(s1 == 123)
+  /// Expect: false
+  println(s1 == 12.3)
+  /// Expect: false
+  println(s1 == [1, 2, 3])
+  /// Expect: false
+  println(s1 == #{1, 2, 3})
+  /// Expect: false
+  println(s1 == { (1): "a", (2): "b" })
+})()
+
+// Interpolation (also String#concat<T>(other: T, *others: Any[]))
+(() => {
+  val array = [1, 2, 3]
+  /// Expect: length of [1, 2, 3] is 3
+  println("length of $array is ${array.length}")
+})()
+
+// Indexing (also String#get(index: Int))
+(() => {
+  val s = "abc"
+  /// Expect: |  a b c a b c  |
+  println("|", s[-4], s[-3], s[-2], s[-1], s[0], s[1], s[2], s[3], "|")
+})()
+
+// Range indexing (also String#getRange(startIndex: Int, endIndex: Int))
+(() => {
+  val s = "hello"
+
+  /// Expect: h e l l o
+  println(s[0], s[1], s[2], s[3], s[4])
+
+  /// Expect: o l l e h
+  println(s[-1], s[-2], s[-3], s[-4], s[-5])
+
+  /// Expect:   end
+  println(s[5], s[-6], "end")
+
+  /// Expect: ell ell
+  println(s[1:4], s[-4:4])
+
+  /// Expect:  end
+  println(s[1:1], "end")
+
+  val a = 1
+  val b = 4
+
+  /// Expect: ell ell
+  println(s[a:b], s[-b:b])
+
+  /// Expect: ello h
+  println(s[1:], s[:1])
+
+  /// Expect: ello h
+  println(s[a:], s[:a])
+})()
+
+// String#hash
+(() => {
+  val empty = ""
+  /// Expect: true
+  println(empty.hash() == "".hash())
+
+  val nonEmpty = "hello"
+  /// Expect: true
+  println(nonEmpty.hash() == "hello".hash())
+})()
+
+// String#isEmpty
+(() => {
+  val empty = ""
+  /// Expect: true
+  println(empty.isEmpty())
+
+  val nonEmpty = "hello"
+  /// Expect: false
+  println(nonEmpty.isEmpty())
+})()
+
+// String#toLower
+(() => {
+  /// Expect:  |
+  println("".toLower(), "|")
+  /// Expect: -hello!
+  println("-hElLo!".toLower())
+})()
+
+// String#toUpper
+(() => {
+  /// Expect:  |
+  println("".toUpper(), "|")
+  /// Expect: -HELLO!
+  println("-hElLo!".toUpper())
+})()
+
+// String#endsWith
+(() => {
+  /// Expect: true
+  println("".endsWith(""))
+  /// Expect: true
+  println("hello".endsWith(""))
+  /// Expect: true
+  println("hello".endsWith("lo"))
+  /// Expect: true
+  println("hello".endsWith("hello"))
+  /// Expect: false
+  println("hello".endsWith("lo!"))
+  /// Expect: false
+  println("hello".endsWith("hhello"))
+})()
+
+// String#concat
+(() => {
+  /// Expect: helloworld
+  println("hello".concat("world"))
+  /// Expect: hello12
+  println("hello".concat(12))
+  /// Expect: hello1.23
+  println("hello".concat(1.23))
+  /// Expect: hellotrue
+  println("hello".concat(true))
+  /// Expect: hello[1, 2, 3]
+  println("hello".concat([1, 2, 3]))
+  /// Expect: hello12.3true[1, 2, 3]
+  println("hello".concat(1, 2.3, true, [1, 2, 3]))
+})()

@@ -372,7 +372,7 @@ impl<W: std::io::Write> CCompiler2<W> {
 
         for scope in &module.scopes {
             for function in &scope.funcs {
-                if function.has_self { continue; }
+                if function.has_self() { continue; }
 
                 // Passing container_type=None since functions with `self` are skipped above
                 self.emit_fn_predecl(project, &function, None);
@@ -380,7 +380,7 @@ impl<W: std::io::Write> CCompiler2<W> {
         }
         for scope in &module.scopes {
             for function in &scope.funcs {
-                if function.has_self { continue; }
+                if function.has_self() { continue; }
 
                 // Passing container_type=None since functions with `self` are skipped above
                 self.compile_function(project, &function.id, None);
@@ -506,7 +506,7 @@ impl<W: std::io::Write> CCompiler2<W> {
             TypedNode::Break { .. } => {}
             TypedNode::Continue { .. } => {}
             TypedNode::Return { .. } => {}
-            TypedNode::Import { .. } => {}
+            // TypedNode::Import { .. } => {}
             n => {
                 self.compile_expression(project, n);
             }
@@ -771,6 +771,7 @@ impl<W: std::io::Write> CCompiler2<W> {
                     BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::AndEq | BinaryOp::OrEq | BinaryOp::CoalesceEq => {
                         unreachable!("Assignment operators expressions are pre-transformed")
                     }
+                    _ => unimplemented!()
                 };
 
                 let handle = self.next_ssa_handle();
@@ -990,11 +991,11 @@ impl<W: std::io::Write> CCompiler2<W> {
                             Type::GenericInstance(struct_id, _) if *struct_id == project.prelude_set_struct_id => true,
                             _ => false
                         };
-                        let Some((field_name, _)) = target_type.get_field(project, *member_idx) else { unreachable!() };
+                        let Some(field) = target_type.get_field(project, *member_idx) else { unreachable!() };
                         if is_builtin {
-                            self.emit_line(format!("{} {} = {}_field_{}({});", &result_type_name, &result_handle, self.get_type_name_by_id(project, target_type_id), field_name, &target_handle));
+                            self.emit_line(format!("{} {} = {}_field_{}({});", &result_type_name, &result_handle, self.get_type_name_by_id(project, target_type_id), &field.name, &target_handle));
                         } else {
-                            self.emit_line(format!("{} {} = {}.value->{};", &result_type_name, &result_handle, &target_handle, field_name))
+                            self.emit_line(format!("{} {} = {}.value->{};", &result_type_name, &result_handle, &target_handle, &field.name))
                         }
                     }
                     AccessorKind::Method |

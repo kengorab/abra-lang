@@ -1412,6 +1412,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                         (_, _) => Err(TypecheckerErrorKind::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
                 }
+                _ => unimplemented!()
             }
         }
 

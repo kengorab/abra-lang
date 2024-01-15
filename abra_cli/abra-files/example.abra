@@ -1,18 +1,54 @@
-//type Foo<T> {
-//  func make<T>(): Foo<T> = Foo()
+// TODO: This shouldn't stackoverflow
+//println([])
+
+//func doThing(fn: () => Result<String, Int>) {
+//  fn()
+//}
+//
+//doThing(() => {
+//  return Result.Err(123)
+//})
+
+//val arr = [
+//            ("a", 1),
+//            ("b", 2),
+//            ("c", 3),
+//          ]
+//val m = Map.fromPairs(arr)
+//
+///// Expect: { c: 3, b: 2, a: 1 }
+//println(m)
+
+//enum Value {
+//  Int(value: Int)
+//  List(values: Value[])
+//  Vector(values: Value[])
+//}
+//
+//func eq(value1: Value?, value2: Value?): Bool {
+//  val pair = match value1 {
+//    Value.List(v1) => match value2 {
+//      Value.List(v2) => (v1, v2)
+//      Value.Vector(v2) => (v1, v2)
+//      _ => return false
+//    }
+//    _ => return value1 == value2
+//  }
+//
+//  true
 //}
 
-//val f: Foo<Float> = Foo.make<Int>()
-//val _: Int = f
-
-//func make<T>(): T[] = []
-//val arr: Float[] = make<Int>()
-
-//func make<T>(t: T): T[] = []
-//val arr = make<Int>("f")
-
-// TODO: So should this
-func makeArray<U>(): U[] = []
-type Foo<T> {
-  a: T[] = makeArray()
+func foo(): Result<Int, String> {
+  Result.Ok(value: 123)
 }
+
+func bar(): Result<Int, String> {
+  val x = match foo() {
+    Result.Ok(v) => v
+    Result.Err e => return e
+  }
+
+  Result.Ok(value: x + 1)
+}
+
+

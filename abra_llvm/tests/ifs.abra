@@ -1,0 +1,60 @@
+// If statements
+
+/// Expect: here 1
+if 1 < 4 {
+  println("here 1")
+} else {
+  println("here 2")
+}
+
+/// Expect: here 2
+if 1 > 4 {
+  println("here 1")
+} else {
+  println("here 2")
+}
+
+/// Expect: here 3
+if 1 > 4 {
+  println("here 1")
+} else if 2 > 4 {
+  println("here 2")
+} else {
+  println("here 3")
+}
+
+// If expressions
+
+val a = if 1 > 0 123 else 456
+/// Expect: 123
+println(a)
+
+val b = (if 1 < 0 123 else 456) + 1000
+/// Expect: 1456
+println(b)
+
+val c = if true { 123 } else { None }
+/// Expect: 123
+println(c)
+
+val d = if false { 123 } else { None }
+/// Expect: None
+println(d)
+
+/// Expect: 123
+println(if true { 123 })
+
+/// Expect: None
+println(if false { 123 })
+
+///// Expect: None
+//println(if true { None } else { 1 + 2 }) // TODO: Make this work
+/// Expect: 3
+println(if true { 1 + 2 } else { None })
+
+// Condition bindings
+val arr = [1, 2, 3, 4]
+/// Expect: 101
+println(if arr[0] |item| { item + 100 } else { 0 })
+/// Expect: 0
+println(if arr[5] |item| { item + 100 } else { 0 })

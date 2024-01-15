@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use itertools::{Either, EitherOrBoth, Itertools};
-use crate::{parser, tokenize_and_parse};
+use crate::parser;
 use crate::common::util::integer_decode;
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
@@ -12,16 +12,16 @@ use crate::parser::ast::{args_to_parameters, AssignmentNode, AstLiteralNode, Ast
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
-    fn resolve_path(&self, module_id: &parser::ast::ModuleId) -> Option<String>;
     fn get_path(&self, module_id: &ModuleId) -> Option<String>;
-    fn register(&mut self, m_id: &parser::ast::ModuleId, module_id: &ModuleId);
+    fn calculate_path_wrt_other(&self, m_id: &parser::ast::ModuleId, other: Option<&ModuleId>) -> String;
+    fn register(&mut self, m_id: &parser::ast::ModuleId, module_id: &ModuleId, with_respect_to: Option<&ModuleId>);
     fn get_module_id(&self, m_id: &parser::ast::ModuleId) -> Option<&ModuleId>;
-    fn module_exists(&self, m_id: &parser::ast::ModuleId) -> bool;
+    fn module_exists(&self, m_id: &parser::ast::ModuleId, with_respect_to: Option<&ModuleId>) -> bool;
     fn load_file(&self, file_name: &String) -> Option<String>;
-    fn load_untyped_ast(&self, module_id: &parser::ast::ModuleId) -> Result<Option<(String, ParseResult)>, Either<LexerError, ParseError>> {
+    fn load_untyped_ast(&self, module_id: &parser::ast::ModuleId, with_respect_to: Option<&ModuleId>) -> Result<Option<(String, ParseResult)>, Either<LexerError, ParseError>> {
         use crate::{lexer::lexer, parser::parser};
 
-        let Some(file_name) = self.resolve_path(&module_id) else { return Ok(None); };
+        let file_name = self.calculate_path_wrt_other(module_id, with_respect_to);
         let Some(file_contents) = self.load_file(&file_name) else { return Ok(None); };
 
         match lexer::tokenize(module_id, &file_contents) {
@@ -36,62 +36,60 @@ pub trait LoadModule {
 
 pub struct ModuleLoader<'a> {
     program_root: &'a PathBuf,
-    module_id_map: HashMap::<ModuleId, parser::ast::ModuleId>,
-    module_id_map_rev: HashMap::<parser::ast::ModuleId, ModuleId>,
-    prelude_raw: &'static str,
+    std_path: &'a PathBuf,
+    module_id_map: HashMap<ModuleId, parser::ast::ModuleId>,
+    module_id_map_rev: HashMap<parser::ast::ModuleId, ModuleId>,
+    module_id_paths: HashMap<ModuleId, String>,
 }
 
 impl<'a> ModuleLoader<'a> {
-    pub fn new(program_root: &'a PathBuf) -> ModuleLoader {
-        let prelude_raw = include_str!("prelude.stub.abra");
-
+    pub fn new(program_root: &'a PathBuf, std_path: &'a PathBuf) -> ModuleLoader<'a> {
         ModuleLoader {
             program_root,
+            std_path,
             module_id_map: HashMap::new(),
             module_id_map_rev: HashMap::new(),
-            prelude_raw,
+            module_id_paths: HashMap::new(),
         }
     }
 }
 
 impl<'a> LoadModule for ModuleLoader<'a> {
-    fn resolve_path(&self, module_id: &parser::ast::ModuleId) -> Option<String> {
-        let mut path = PathBuf::new();
-
-        let path_buf = PathBuf::from(module_id.get_path(&self.program_root)).with_extension("abra");
-        for c in path_buf.components() {
-            path.push(c.as_os_str())
-        }
-
-        path.to_str().map(|s| s.to_string())
-    }
-
     fn get_path(&self, module_id: &ModuleId) -> Option<String> {
-        let m_id = self.module_id_map.get(module_id).expect(&format!("Internal error: expected module for {:?}", module_id));
-        self.resolve_path(m_id)
+        self.module_id_paths.get(module_id).map(|s| s.clone())
     }
 
-    fn register(&mut self, m_id: &parser::ast::ModuleId, module_id: &ModuleId) {
+    fn calculate_path_wrt_other(&self, m_id: &parser::ast::ModuleId, other: Option<&ModuleId>) -> String {
+        let path = if let parser::ast::ModuleId::External(_) = &m_id {
+            m_id.get_path(self.std_path)
+        } else if let Some(wrt) = other {
+            let wrt_path = self.module_id_paths.get(wrt)
+                .expect("Attempting to register a module with respect to other which has not yet been registered");
+            m_id.get_path(PathBuf::from(wrt_path).parent().unwrap())
+        } else {
+            m_id.get_path(self.program_root)
+        };
+        format!("{path}.abra")
+    }
+
+    fn register(&mut self, m_id: &parser::ast::ModuleId, module_id: &ModuleId, with_respect_to: Option<&ModuleId>) {
         self.module_id_map.insert(*module_id, m_id.clone());
         self.module_id_map_rev.insert(m_id.clone(), *module_id);
+
+        let path = self.calculate_path_wrt_other(m_id, with_respect_to);
+        self.module_id_paths.insert(*module_id, path);
     }
 
     fn get_module_id(&self, m_id: &parser::ast::ModuleId) -> Option<&ModuleId> {
         self.module_id_map_rev.get(m_id)
     }
 
-    fn module_exists(&self, m_id: &parser::ast::ModuleId) -> bool {
-        if m_id.is_prelude() { return true; }
-
-        let Some(path) = self.resolve_path(m_id) else { return false; };
+    fn module_exists(&self, m_id: &parser::ast::ModuleId, with_respect_to: Option<&ModuleId>) -> bool {
+        let path = self.calculate_path_wrt_other(m_id, with_respect_to);
         Path::try_exists(Path::new(&path)).unwrap_or(false)
     }
 
     fn load_file(&self, file_name: &String) -> Option<String> {
-        if file_name == "prelude.stub.abra" {
-            return Some(self.prelude_raw.to_string());
-        }
-
         std::fs::read_to_string(file_name).ok()
     }
 }
@@ -111,6 +109,7 @@ pub struct Project {
     pub prelude_tuple_struct_id: StructId,
     pub prelude_set_struct_id: StructId,
     pub prelude_map_struct_id: StructId,
+    pub intrinsics_module_id: ModuleId,
 }
 
 const PLACEHOLDER_STRUCT_ID: StructId = StructId(PRELUDE_MODULE_ID, usize::MAX);
@@ -130,6 +129,7 @@ impl Default for Project {
             prelude_tuple_struct_id: PLACEHOLDER_STRUCT_ID,
             prelude_set_struct_id: PLACEHOLDER_STRUCT_ID,
             prelude_map_struct_id: PLACEHOLDER_STRUCT_ID,
+            intrinsics_module_id: ModuleId::BOGUS,
         }
     }
 }
@@ -249,6 +249,24 @@ impl Project {
         module.structs.iter()
             .find(|s| s.name == *name)
             .or_else(|| {
+                // If struct cannot be found in current module, look in the module's imports, making
+                // sure to only consider the _imported names_ from that imported module.
+                module.imports.iter().find_map(|(import_id, imported_values)|
+                    imported_values.iter().find_map(|import| {
+                        if let ImportedValue::Type(_, TypeKind::Struct(struct_id)) = import {
+                            let struct_ = self.get_struct_by_id(struct_id);
+                            if &struct_.name == name {
+                                self.find_struct_by_name(import_id, name)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                )
+            })
+            .or_else(|| {
                 // If struct cannot be found in current module, look in the prelude module
                 self.prelude_module().structs.iter()
                     .find(|s| s.name == *name)
@@ -259,6 +277,24 @@ impl Project {
         let module = &self.modules[module_id.0];
         module.enums.iter()
             .find(|s| s.name == *name)
+            .or_else(|| {
+                // If struct cannot be found in current module, look in the module's imports, making
+                // sure to only consider the _imported names_ from that imported module.
+                module.imports.iter().find_map(|(import_id, imported_values)|
+                    imported_values.iter().find_map(|import| {
+                        if let ImportedValue::Type(_, TypeKind::Enum(enum_id)) = import {
+                            let enum_ = self.get_enum_by_id(enum_id);
+                            if &enum_.name == name {
+                                self.find_enum_by_name(import_id, name)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                )
+            })
             .or_else(|| {
                 // If enum cannot be found in current module, look in the prelude module
                 self.prelude_module().enums.iter()
@@ -311,17 +347,50 @@ impl Project {
         }
     }
 
-    pub fn find_variable_by_name(&self, scope_id: &ScopeId, name: &String) -> Option<&Variable> {
+    pub fn condense_type_id_if_primitive<'a>(&self, type_id: &'a TypeId) -> &'a TypeId {
+        match type_id {
+            type_id if matches!(self.get_type_by_id(type_id), Type::GenericInstance(struct_id, _) if struct_id == &self.prelude_int_struct_id) => &PRELUDE_INT_TYPE_ID,
+            type_id if matches!(self.get_type_by_id(type_id), Type::GenericInstance(struct_id, _) if struct_id == &self.prelude_float_struct_id) => &PRELUDE_FLOAT_TYPE_ID,
+            type_id if matches!(self.get_type_by_id(type_id), Type::GenericInstance(struct_id, _) if struct_id == &self.prelude_bool_struct_id) => &PRELUDE_BOOL_TYPE_ID,
+            type_id if matches!(self.get_type_by_id(type_id), Type::GenericInstance(struct_id, _) if struct_id == &self.prelude_string_struct_id) => &PRELUDE_STRING_TYPE_ID,
+            type_id => type_id
+        }
+    }
+
+    pub fn find_variable_by_name(&self, scope_id: &ScopeId, name: &String) -> Option<(Option<Range>, &Variable)> {
         if name == "_" { return None; }
 
         self.walk_scope_chain_with(scope_id, |scope| {
             for var in &scope.vars {
                 if var.name == *name {
-                    return Some(var);
+                    return Some((var.defined_span.as_ref().map(|r| r.range.clone()),var));
                 }
             }
             None
+        }).or_else(|| {
+            self.find_imported_var_by_name(&scope_id.0, name).map(|(tok, v)| (Some(tok.get_range()), v))
         })
+    }
+
+    pub fn find_imported_var_by_name(&self, current_module_id: &ModuleId, name: &String) -> Option<(&Token, &Variable)> {
+        let module = &self.modules[current_module_id.0];
+        module.imports.iter().find_map(|(_, imported_values)|
+            imported_values.iter().find_map(|import| {
+                match import {
+                    // An imported function or type would have been found in the walk_scope_chain_with call,
+                    // since they're added to the current scope as variables.
+                    ImportedValue::Function(_, _) | ImportedValue::Type(_, _) => None,
+                    ImportedValue::Variable(token, var_id) => {
+                        let var = self.get_var_by_id(var_id);
+                        if var.name == *name {
+                            Some((token, var))
+                        } else {
+                            None
+                        }
+                    }
+                }
+            })
+        )
     }
 
     pub fn find_var_id_by_alias(&self, alias: VariableAlias) -> Option<VarId> {
@@ -343,15 +412,55 @@ impl Project {
         })
     }
 
-    pub fn option_type(&self, mut inner_type_id: TypeId) -> Type {
-        let mut inner = self.get_type_by_id(&inner_type_id);
-        loop {
-            match inner {
-                Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.prelude_option_struct_id => {
-                    inner_type_id = generic_ids[0];
-                    inner = self.get_type_by_id(&inner_type_id);
+    pub fn type_is_trait(&self, type_id: &TypeId) -> bool {
+        type_id == &PRELUDE_ANY_TYPE_ID
+    }
+
+    pub fn type_is_tuple(&self, type_id: &TypeId) -> Option<&Vec<TypeId>> {
+        match self.get_type_by_id(&type_id) {
+            Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.prelude_tuple_struct_id => Some(generic_ids),
+            _ => None
+        }
+    }
+
+    pub fn type_is_option(&self, type_id: &TypeId) -> Option<TypeId> {
+        match self.get_type_by_id(&type_id) {
+            Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.prelude_option_struct_id => Some(generic_ids[0]),
+            _ => None
+        }
+    }
+
+    pub fn option_type_depth(&self, type_id: &TypeId) -> usize {
+        match self.get_type_by_id(type_id) {
+            Type::GenericInstance(struct_id, generics) if struct_id == &self.prelude_option_struct_id => {
+                let mut depth = 1;
+                let mut inner = self.get_type_by_id(&generics[0]);
+                loop {
+                    match inner {
+                        Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.prelude_option_struct_id => {
+                            depth += 1;
+                            inner = self.get_type_by_id(&generic_ids[0]);
+                        }
+                        _ => break
+                    }
                 }
-                _ => break
+                depth
+            }
+            _ => 0
+        }
+    }
+
+    pub fn option_type(&self, mut inner_type_id: TypeId, flatten: bool) -> Type {
+        if flatten {
+            let mut inner = self.get_type_by_id(&inner_type_id);
+            loop {
+                match inner {
+                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.prelude_option_struct_id => {
+                        inner_type_id = generic_ids[0];
+                        inner = self.get_type_by_id(&inner_type_id);
+                    }
+                    _ => break
+                }
             }
         }
 
@@ -378,10 +487,10 @@ impl Project {
         Type::Function(param_type_ids, num_required, is_variadic, return_type_id)
     }
 
-    pub fn function_type_for_function(&self, func: &Function, trim_self: bool) -> Type {
+    pub fn function_type_for_function(&self, func: &Function) -> Type {
         let mut num_required = 0;
 
-        let iter = if func.has_self && trim_self {
+        let iter = if func.has_self() {
             func.params.iter().skip(1)
         } else {
             func.params.iter().skip(0)
@@ -503,7 +612,7 @@ impl ModuleId {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Span {
     module_id: ModuleId,
-    range: Range,
+    pub range: Range,
 }
 
 impl Span {
@@ -533,11 +642,15 @@ impl Span {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct StructId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct EnumId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
+
+pub const METHOD_IDX_TOSTRING: usize = 0;
+pub const METHOD_IDX_HASH: usize = 1;
+pub const METHOD_IDX_EQ: usize = 2;
 
 #[derive(Debug, PartialEq)]
 pub struct Struct {
@@ -595,6 +708,8 @@ impl TypeId {
     const PLACEHOLDER_SLOT_MARKER: ScopeId = ScopeId::BOGUS;
     const MODULE_ALIAS_MARKER: ScopeId = ScopeId(ScopeId::BOGUS.0, ScopeId::BOGUS.1 - 1);
 
+    pub const BOGUS: TypeId = TypeId(ScopeId::BOGUS, usize::MAX);
+
     fn placeholder_slot(idx: usize) -> TypeId {
         TypeId(Self::PLACEHOLDER_SLOT_MARKER, idx)
     }
@@ -641,53 +756,72 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn get_field<'a>(&self, project: &'a Project, field_idx: usize) -> Option<(&'a String, &'a TypeId)> {
-        match self {
-            Type::Primitive(PrimitiveType::Unit) |
-            Type::Primitive(PrimitiveType::Any) => None,
-            Type::Primitive(PrimitiveType::Int) => {
-                let struct_field = &project.get_struct_by_id(&project.prelude_int_struct_id).fields[field_idx];
-                Some((&struct_field.name, &struct_field.type_id))
-            }
-            Type::Primitive(PrimitiveType::Float) => {
-                let struct_field = &project.get_struct_by_id(&project.prelude_float_struct_id).fields[field_idx];
-                Some((&struct_field.name, &struct_field.type_id))
-            }
-            Type::Primitive(PrimitiveType::Bool) => {
-                let struct_field = &project.get_struct_by_id(&project.prelude_bool_struct_id).fields[field_idx];
-                Some((&struct_field.name, &struct_field.type_id))
-            }
-            Type::Primitive(PrimitiveType::String) => {
-                let struct_field = &project.get_struct_by_id(&project.prelude_string_struct_id).fields[field_idx];
-                Some((&struct_field.name, &struct_field.type_id))
-            }
-            Type::Generic(_, _) => None,
-            Type::GenericInstance(struct_id, _) => {
-                let struct_field = &project.get_struct_by_id(struct_id).fields[field_idx];
-                Some((&struct_field.name, &struct_field.type_id))
-            }
-            Type::GenericEnumInstance(_, _, _) |
-            Type::Function(_, _, _, _) |
-            Type::Type(_) |
-            Type::ModuleAlias => todo!()
+    pub fn get_field<'a>(&self, project: &'a Project, field_idx: usize) -> Option<&'a StructField> {
+        let Some(struct_id) = self.get_struct_id(project) else { return None; };
+
+        Some(&project.get_struct_by_id(&struct_id).fields[field_idx])
+    }
+
+    pub fn get_method(&self, project: &Project, method_idx: usize) -> Option<FuncId> {
+        if let Some(struct_id) = self.get_struct_id(project) {
+            Some(project.get_struct_by_id(&struct_id).methods[method_idx])
+        } else if let Type::GenericEnumInstance(enum_id, _, _) = self {
+            Some(project.get_enum_by_id(enum_id).methods[method_idx])
+        } else {
+            return None;
         }
     }
 
-    pub fn get_method<'a>(&self, project: &'a Project, method_idx: usize) -> Option<FuncId> {
+    pub fn get_static_method(&self, project: &Project, mut static_method_idx: usize) -> Option<FuncId> {
+        let static_methods = match self {
+            Type::Type(TypeKind::Struct(struct_id)) => &project.get_struct_by_id(struct_id).static_methods,
+            Type::Type(TypeKind::Enum(enum_id)) => {
+                let enum_ = project.get_enum_by_id(enum_id);
+                debug_assert!(static_method_idx >= enum_.variants.len());
+                static_method_idx -= enum_.variants.len();
+
+                &project.get_enum_by_id(enum_id).static_methods
+            },
+            _ => return None
+        };
+
+        Some(static_methods[static_method_idx])
+    }
+
+    pub fn find_method_by_name<'a, S: AsRef<str>>(&self, project: &'a Project, method_name: S) -> Option<(usize, &'a FuncId)> {
+        let method_name = method_name.as_ref();
+        let methods = if let Some(struct_id) = self.get_struct_id(project) {
+            &project.get_struct_by_id(&struct_id).methods
+        } else if let Type::GenericEnumInstance(enum_id, _, _) = self {
+            &project.get_enum_by_id(enum_id).methods
+        } else {
+            return None;
+        };
+
+        methods.iter().enumerate().find(|(_, m)| &project.get_func_by_id(m).name == method_name)
+    }
+
+    fn get_struct_id(&self, project: &Project) -> Option<StructId> {
         match self {
-            Type::Primitive(PrimitiveType::Unit) |
-            Type::Primitive(PrimitiveType::Any) => None,
-            Type::Primitive(PrimitiveType::Int) => Some(project.get_struct_by_id(&project.prelude_int_struct_id).methods[method_idx]),
-            Type::Primitive(PrimitiveType::Float) => Some(project.get_struct_by_id(&project.prelude_float_struct_id).methods[method_idx]),
-            Type::Primitive(PrimitiveType::Bool) => Some(project.get_struct_by_id(&project.prelude_bool_struct_id).methods[method_idx]),
-            Type::Primitive(PrimitiveType::String) => Some(project.get_struct_by_id(&project.prelude_string_struct_id).methods[method_idx]),
-            Type::Generic(_, _) => None,
-            Type::GenericInstance(struct_id, _) => Some(project.get_struct_by_id(struct_id).methods[method_idx]),
-            Type::GenericEnumInstance(_, _, _) |
-            Type::Function(_, _, _, _) |
-            Type::Type(_) |
-            Type::ModuleAlias => todo!()
+            Type::Primitive(PrimitiveType::Int) => Some(project.prelude_int_struct_id),
+            Type::Primitive(PrimitiveType::Float) => Some(project.prelude_float_struct_id),
+            Type::Primitive(PrimitiveType::Bool) => Some(project.prelude_bool_struct_id),
+            Type::Primitive(PrimitiveType::String) => Some(project.prelude_string_struct_id),
+            Type::GenericInstance(struct_id, _) => Some(*struct_id),
+            Type::Type(TypeKind::Struct(struct_id)) => Some(*struct_id),
+            _ => None
         }
+    }
+
+    pub fn find_static_method_by_name<'a, S: AsRef<str>>(&self, project: &'a Project, method_name: S) -> Option<&'a FuncId> {
+        let static_methods = match self {
+            Type::Type(TypeKind::Struct(struct_id)) => &project.get_struct_by_id(struct_id).static_methods,
+            Type::Type(TypeKind::Enum(enum_id)) => &project.get_enum_by_id(enum_id).static_methods,
+            _ => return None
+        };
+
+        let method_name = method_name.as_ref();
+        static_methods.iter().find(|m| &project.get_func_by_id(m).name == method_name)
     }
 }
 
@@ -721,7 +855,7 @@ pub enum TerminatorKind {
     Returning,
 }
 
-fn compound_terminator_kinds(tk1: Option<TerminatorKind>, tk2: Option<TerminatorKind>) -> Option<TerminatorKind> {
+fn compound_terminator_kinds(tk1: &Option<TerminatorKind>, tk2: &Option<TerminatorKind>) -> Option<TerminatorKind> {
     match (tk1, tk2) {
         (Some(TerminatorKind::Returning), Some(TerminatorKind::Returning)) => Some(TerminatorKind::Returning),
         (Some(TerminatorKind::NonReturning), Some(_)) | (Some(_), Some(TerminatorKind::NonReturning)) => Some(TerminatorKind::NonReturning),
@@ -741,8 +875,12 @@ pub struct Scope {
     pub funcs: Vec<Function>,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct VarId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
+
+impl VarId {
+    pub const BOGUS: VarId = VarId(ScopeId::BOGUS, usize::MAX);
+}
 
 #[derive(Debug, PartialEq)]
 pub enum VariableAlias {
@@ -763,13 +901,21 @@ pub struct Variable {
     pub is_captured: bool,
     pub alias: VariableAlias,
     pub is_parameter: bool,
+    pub is_exported: bool,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct FuncId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
 
 impl FuncId {
     pub const BOGUS: FuncId = FuncId(ScopeId::BOGUS, usize::MAX);
+}
+
+#[derive(Debug, PartialEq)]
+pub enum FunctionKind {
+    Freestanding,
+    Method(TypeId),
+    StaticMethod(TypeId),
 }
 
 #[derive(Debug, PartialEq)]
@@ -782,21 +928,31 @@ pub struct DecoratorInstance {
 pub struct Function {
     pub id: FuncId,
     pub fn_scope_id: ScopeId,
+    pub fn_type_id: TypeId,
     pub decorators: Vec<DecoratorInstance>,
     pub name: String,
     pub generic_ids: Vec<TypeId>,
-    pub has_self: bool,
+    pub kind: FunctionKind,
     pub params: Vec<FunctionParam>,
     pub return_type_id: TypeId,
     // Functions with no defined_span are builtins or lambdas (since they can't have name collisions anyway)
     pub defined_span: Option<Span>,
     pub body: Vec<TypedNode>,
     pub captured_vars: Vec<VarId>,
+    pub captured_closures: Vec<FuncId>,
 }
 
 impl Function {
     fn is_variadic(&self) -> bool {
         self.params.last().map(|p| p.is_variadic).unwrap_or(false)
+    }
+
+    pub fn has_self(&self) -> bool {
+        matches!(&self.kind, FunctionKind::Method(_))
+    }
+
+    pub fn is_closure(&self) -> bool {
+        !(self.captured_vars.is_empty() && self.captured_closures.is_empty())
     }
 }
 
@@ -819,10 +975,18 @@ pub enum ExportedValue {
     Variable(VarId),
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum ImportedValue {
+    Function(Token, FuncId),
+    Type(Token, TypeKind),
+    Variable(Token, VarId),
+}
+
 #[derive(Debug, PartialEq)]
 pub struct TypedModule {
     pub id: ModuleId,
     pub name: String,
+    pub imports: HashMap<ModuleId, Vec<ImportedValue>>,
     pub type_ids: Vec<TypeId>,
     // TODO: is this necessary?
     pub functions: Vec<FuncId>,
@@ -834,7 +998,8 @@ pub struct TypedModule {
     pub completed: bool,
 }
 
-#[derive(Debug, PartialEq)]
+// TODO: AccessorKind should come with func_id when appropriate, why do func_id lookup again later?
+#[derive(Clone, Debug, PartialEq)]
 pub enum AccessorKind {
     Field,
     Method,
@@ -842,50 +1007,73 @@ pub enum AccessorKind {
     EnumVariant,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum AssignmentKind {
     Identifier { var_id: VarId },
     Accessor { target: Box<TypedNode>, kind: AccessorKind, member_idx: usize },
     Indexing { target: Box<TypedNode>, index: Box<TypedNode> },
 }
 
-#[derive(Debug, PartialEq)]
-pub struct TypedMatchCase {
-    pub body: Vec<TypedNode>,
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypedMatchCaseArgument {
+    Pattern(BindingPattern, Vec<VarId>),
+    Literal(TypedNode),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypedMatchCaseKind {
+    None,
+    Wildcard(TypeId),
+    Type(TypeId, Vec<TypedMatchCaseArgument>),
+    Constant(TypeId, TypedNode),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedMatchCase {
+    pub body: Vec<TypedNode>,
+    pub kind: TypedMatchCaseKind,
+    pub case_binding: Option<VarId>,
+    pub block_terminator: Option<TerminatorKind>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypedImportKind {
+    ImportAll(/* star_token: */ Token),
+    ImportList(/* imports: */ Vec<ImportedValue>),
+    Alias(/* alias_token: */ Token),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum TypedNode {
     // Expressions
-    Literal { token: Token, value: TypedLiteral, type_id: TypeId },
-    Unary { token: Token, op: UnaryOp, expr: Box<TypedNode> },
-    Binary { op: BinaryOp, left: Box<TypedNode>, right: Box<TypedNode>, type_id: TypeId },
+    Literal { token: Token, value: TypedLiteral, type_id: TypeId, resolved_type_id: TypeId },
+    Unary { token: Token, op: UnaryOp, expr: Box<TypedNode>, resolved_type_id: TypeId },
+    Binary { op: BinaryOp, left: Box<TypedNode>, right: Box<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
     Grouped { token: Token, expr: Box<TypedNode> },
-    Array { token: Token, items: Vec<TypedNode>, type_id: TypeId },
-    Tuple { token: Token, items: Vec<TypedNode>, type_id: TypeId },
-    Set { token: Token, items: Vec<TypedNode>, type_id: TypeId },
-    Map { token: Token, items: Vec<(TypedNode, TypedNode)>, type_id: TypeId },
-    Identifier { token: Token, var_id: VarId, type_arg_ids: Vec<(TypeId, Range)>, type_id: TypeId },
-    NoneValue { token: Token, type_id: TypeId },
-    Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId },
-    Accessor { target: Box<TypedNode>, kind: AccessorKind, is_opt_safe: bool, member_idx: usize, member_span: Range, type_id: TypeId, type_arg_ids: Vec<(TypeId, Range)> },
-    Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId },
-    Lambda { span: Range, func_id: FuncId, type_id: TypeId },
+    Array { token: Token, items: Vec<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
+    Tuple { token: Token, items: Vec<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
+    Set { token: Token, items: Vec<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
+    Map { token: Token, items: Vec<(TypedNode, TypedNode)>, type_id: TypeId, resolved_type_id: TypeId },
+    Identifier { token: Token, var_id: VarId, type_arg_ids: Vec<(TypeId, Range)>, type_id: TypeId, resolved_type_id: TypeId },
+    NoneValue { token: Token, type_id: TypeId, resolved_type_id: TypeId },
+    Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_arg_ids: Vec<TypeId>, type_id: TypeId, resolved_type_id: TypeId },
+    Accessor { target: Box<TypedNode>, kind: AccessorKind, is_opt_safe: bool, member_idx: usize, member_span: Range, type_id: TypeId, type_arg_ids: Vec<(TypeId, Range)>, resolved_type_id: TypeId },
+    Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId, resolved_type_id: TypeId },
+    Lambda { span: Range, func_id: FuncId, type_id: TypeId, resolved_type_id: TypeId },
     Assignment { span: Range, kind: AssignmentKind, type_id: TypeId, expr: Box<TypedNode> },
-    If { if_token: Token, condition: Box<TypedNode>, condition_binding: Option<BindingPattern>, if_block: Vec<TypedNode>, else_block: Vec<TypedNode>, is_statement: bool, type_id: TypeId },
-    Match { match_token: Token, target: Box<TypedNode>, cases: Vec<TypedMatchCase>, is_statement: bool, type_id: TypeId },
+    If { if_token: Token, condition: Box<TypedNode>, condition_binding: Option<(BindingPattern, Vec<VarId>)>, if_block: Vec<TypedNode>, if_block_terminator: Option<TerminatorKind>, else_block: Vec<TypedNode>, else_block_terminator: Option<TerminatorKind>, is_statement: bool, type_id: TypeId, resolved_type_id: TypeId },
+    Match { match_token: Token, target: Box<TypedNode>, cases: Vec<TypedMatchCase>, is_statement: bool, type_id: TypeId, resolved_type_id: TypeId },
 
     // Statements
     FuncDeclaration(FuncId),
     TypeDeclaration(StructId),
     EnumDeclaration(EnumId),
-    BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
-    ForLoop { token: Token, binding: BindingPattern, binding_var_ids: Vec<VarId>, index_var_id: Option<VarId>, iterator: Box<TypedNode>, body: Vec<TypedNode> },
-    WhileLoop { token: Token, condition: Box<TypedNode>, condition_var_id: Option<VarId>, body: Vec<TypedNode> },
+    BindingDeclaration { token: Token, is_exported: bool, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
+    ForLoop { token: Token, binding: BindingPattern, binding_var_ids: Vec<VarId>, index_var_id: Option<VarId>, iterator: Box<TypedNode>, body: Vec<TypedNode>, block_terminator: Option<TerminatorKind> },
+    WhileLoop { token: Token, condition: Box<TypedNode>, condition_var_id: Option<VarId>, body: Vec<TypedNode>, block_terminator: Option<TerminatorKind> },
     Break { token: Token },
     Continue { token: Token },
     Return { token: Token, expr: Option<Box<TypedNode>> },
-    Import { token: Token, kind: ImportKind, module_id: ModuleId },
 }
 
 impl TypedNode {
@@ -893,7 +1081,10 @@ impl TypedNode {
         match self {
             // Expressions
             TypedNode::Literal { type_id, .. } => type_id,
-            TypedNode::Unary { expr, .. } => expr.type_id(),
+            TypedNode::Unary { op, expr, .. } => match op {
+                UnaryOp::Minus => expr.type_id(),
+                UnaryOp::Negate => &PRELUDE_BOOL_TYPE_ID,
+            },
             TypedNode::Binary { type_id, .. } => type_id,
             TypedNode::Grouped { expr, .. } => expr.type_id(),
             TypedNode::Array { type_id, .. } => type_id,
@@ -920,11 +1111,44 @@ impl TypedNode {
             TypedNode::Break { .. } |
             TypedNode::Continue { .. } => &PRELUDE_UNIT_TYPE_ID,
             TypedNode::Return { expr, .. } => expr.as_ref().map_or(&PRELUDE_UNIT_TYPE_ID, |expr| expr.type_id()),
-            TypedNode::Import { .. } => &PRELUDE_UNIT_TYPE_ID,
         }
     }
 
-    fn span(&self) -> Range {
+    pub fn set_resolved_type_id(&mut self, new_type_id: TypeId) {
+        match self {
+            // Expressions
+            TypedNode::Literal { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::Unary { .. } => {}
+            TypedNode::Binary { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::Grouped { expr, .. } => expr.set_resolved_type_id(new_type_id),
+            TypedNode::Array { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::Tuple { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::Set { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::Map { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::Identifier { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::NoneValue { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::Invocation { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::Accessor { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::Lambda { resolved_type_id, .. } => *resolved_type_id = new_type_id,
+            TypedNode::Assignment { .. } => {}
+            TypedNode::Indexing { .. } => {}
+            TypedNode::If { .. } => {}
+            TypedNode::Match { .. } => {}
+
+            // Statements
+            TypedNode::FuncDeclaration(_) |
+            TypedNode::TypeDeclaration(_) |
+            TypedNode::EnumDeclaration(_) |
+            TypedNode::BindingDeclaration { .. } |
+            TypedNode::ForLoop { .. } |
+            TypedNode::WhileLoop { .. } |
+            TypedNode::Break { .. } |
+            TypedNode::Continue { .. } => {}
+            TypedNode::Return { expr, .. } => if let Some(expr) = expr { expr.set_resolved_type_id(new_type_id) },
+        }
+    }
+
+    pub fn span(&self) -> Range {
         match self {
             // Expressions
             TypedNode::Literal { token, .. } => token.get_range(),
@@ -981,7 +1205,7 @@ impl TypedNode {
                     start.expand(&end)
                 } else if let Some(end) = if_block.last().map(|n| n.span()) {
                     start.expand(&end)
-                } else if let Some(binding) = condition_binding {
+                } else if let Some((binding, _)) = condition_binding {
                     start.expand(&binding.get_span())
                 } else {
                     start.expand(&condition.span())
@@ -1028,12 +1252,103 @@ impl TypedNode {
                     start
                 }
             }
-            TypedNode::Import { token, .. } => token.get_range(),
+        }
+    }
+
+    pub fn terminator(&self) -> Option<TerminatorKind> {
+        match self {
+            TypedNode::Literal { .. } => None,
+            TypedNode::Unary { expr, .. } => expr.terminator(),
+            TypedNode::Binary { left, right, .. } => left.terminator().or_else(|| right.terminator()),
+            TypedNode::Grouped { expr, .. } => expr.terminator(),
+            TypedNode::Array { items, .. } => items.iter().find_map(|item| item.terminator()),
+            TypedNode::Tuple { items, .. } => items.iter().find_map(|item| item.terminator()),
+            TypedNode::Set { items, .. } => items.iter().find_map(|item| item.terminator()),
+            TypedNode::Map { items, .. } => items.iter().find_map(|(key, value)| key.terminator().or_else(|| value.terminator())),
+            TypedNode::Identifier { .. } => None,
+            TypedNode::NoneValue { .. } => None,
+            TypedNode::Invocation { target, arguments, .. } => {
+                target.terminator()
+                    .or_else(|| arguments.iter().find_map(|arg| arg.as_ref().and_then(|arg| arg.terminator())))
+            }
+            TypedNode::Accessor { target, .. } => target.terminator(),
+            TypedNode::Indexing { target, index, .. } => {
+                target.terminator().or_else(|| match index {
+                    IndexingMode::Index(expr) => expr.terminator(),
+                    IndexingMode::Range(start_expr, end_expr) => {
+                        start_expr.as_ref().and_then(|expr| expr.terminator()).or_else(|| end_expr.as_ref().and_then(|expr| expr.terminator()))
+                    }
+                })
+            }
+            TypedNode::Lambda { .. } => None,
+            TypedNode::Assignment { expr, .. } => expr.terminator(),
+            TypedNode::If { condition, if_block_terminator, else_block_terminator, .. } => {
+                condition.terminator().or_else(|| if_block_terminator.clone()).or_else(|| else_block_terminator.clone())
+            }
+            TypedNode::Match { .. } => todo!(),
+            TypedNode::FuncDeclaration(_) => None,
+            TypedNode::TypeDeclaration(_) => None,
+            TypedNode::EnumDeclaration(_) => None,
+            TypedNode::BindingDeclaration { expr, .. } => expr.as_ref().and_then(|expr| expr.terminator()),
+            TypedNode::ForLoop { iterator, block_terminator, .. } => iterator.terminator().or_else(|| block_terminator.clone()),
+            TypedNode::WhileLoop { condition, block_terminator, .. } => condition.terminator().or_else(|| block_terminator.clone()),
+            TypedNode::Break { .. } => Some(TerminatorKind::NonReturning),
+            TypedNode::Continue { .. } => Some(TerminatorKind::NonReturning),
+            TypedNode::Return { .. } => Some(TerminatorKind::Returning),
+        }
+    }
+
+    pub fn is_returning_terminator(&self) -> bool {
+        match self {
+            TypedNode::Literal { .. } => false,
+            TypedNode::Unary { expr, .. } => matches!(expr.terminator(), Some(TerminatorKind::Returning)),
+            TypedNode::Binary { left, right, .. } => {
+                matches!(left.terminator(), Some(TerminatorKind::Returning)) && matches!(right.terminator(), Some(TerminatorKind::Returning))
+            }
+            TypedNode::Grouped { expr, .. } => matches!(expr.terminator(), Some(TerminatorKind::Returning)),
+            TypedNode::Array { items, .. } |
+            TypedNode::Tuple { items, .. } |
+            TypedNode::Set { items, .. } => !items.is_empty() && items.iter().all(|item| matches!(item.terminator(), Some(TerminatorKind::Returning))),
+            TypedNode::Map { items, .. } => !items.is_empty() && items.iter().all(|(key, value)| {
+                matches!(key.terminator(), Some(TerminatorKind::Returning)) && matches!(value.terminator(), Some(TerminatorKind::Returning))
+            }),
+            TypedNode::Identifier { .. } |
+            TypedNode::NoneValue { .. } => false,
+            TypedNode::Invocation { target, arguments, .. } => {
+                matches!(target.terminator(), Some(TerminatorKind::Returning)) &&
+                    !arguments.is_empty() &&
+                    arguments.iter().all(|arg| arg.as_ref().map_or(true, |arg| matches!(arg.terminator(), Some(TerminatorKind::Returning))))
+            }
+            TypedNode::Accessor { target, .. } => matches!(target.terminator(), Some(TerminatorKind::Returning)),
+            TypedNode::Indexing { target, index, .. } => {
+                matches!(target.terminator(), Some(TerminatorKind::Returning)) && match index {
+                    IndexingMode::Index(expr) => matches!(expr.terminator(), Some(TerminatorKind::Returning)),
+                    IndexingMode::Range(start_expr, end_expr) => {
+                        start_expr.as_ref().map_or(true, |expr| matches!(expr.terminator(), Some(TerminatorKind::Returning))) &&
+                            end_expr.as_ref().map_or(true, |expr| matches!(expr.terminator(), Some(TerminatorKind::Returning)))
+                    }
+                }
+            }
+            TypedNode::Lambda { .. } => false,
+            TypedNode::Assignment { expr, .. } => matches!(expr.terminator(), Some(TerminatorKind::Returning)),
+            TypedNode::If { condition, if_block_terminator, else_block_terminator, .. } => {
+                matches!(condition.terminator(), Some(TerminatorKind::Returning)) && matches!(if_block_terminator, Some(TerminatorKind::Returning)) && matches!(else_block_terminator, Some(TerminatorKind::Returning))
+            }
+            TypedNode::Match { .. } => todo!(),
+            TypedNode::FuncDeclaration(_) |
+            TypedNode::TypeDeclaration(_) |
+            TypedNode::EnumDeclaration(_) => false,
+            TypedNode::BindingDeclaration { expr, .. } => expr.as_ref().map_or(true, |expr| matches!(expr.terminator(), Some(TerminatorKind::Returning))),
+            TypedNode::ForLoop { iterator, block_terminator, .. } => matches!(iterator.terminator(), Some(TerminatorKind::Returning)) && matches!(block_terminator, Some(TerminatorKind::Returning)),
+            TypedNode::WhileLoop { condition, block_terminator, .. } => matches!(condition.terminator(), Some(TerminatorKind::Returning)) && matches!(block_terminator, Some(TerminatorKind::Returning)),
+            TypedNode::Break { .. } |
+            TypedNode::Continue { .. } => false,
+            TypedNode::Return { .. } => true,
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TypedLiteral {
     Int(i64),
     Float(f64),
@@ -1063,12 +1378,14 @@ pub const PRELUDE_FLOAT_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 3);
 pub const PRELUDE_BOOL_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 4);
 pub const PRELUDE_STRING_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 5);
 
-pub type TypecheckError = Either<Either<LexerError, ParseError>, TypeError>;
+pub type TypecheckError = Either<(Either<LexerError, ParseError>, parser::ast::ModuleId), TypeError>;
 
 #[derive(Debug, PartialEq)]
 pub enum DestructuringMismatchKind {
     CannotDestructureAsTuple,
     InvalidTupleArity(/* actual_arity: */ usize, /* attempted_arity: */ usize),
+    InvalidEnumVariantArity(/* actual_arity: */ usize, /* attempted_arity: */ usize),
+    InvalidDestructureTarget,
     CannotDestructureAsArray,
 }
 
@@ -1116,9 +1433,10 @@ pub enum UnreachableMatchCaseKind {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum InvalidLoopTargetKind {
-    For,
-    While,
+pub enum InvalidControlFlowTargetKind {
+    ForLoop,
+    WhileLoop,
+    IfCondition,
 }
 
 #[derive(Debug, PartialEq)]
@@ -1160,12 +1478,12 @@ pub enum TypeError {
     EmptyMatchBlock { span: Span },
     UnreachableMatchCase { span: Span, kind: UnreachableMatchCaseKind },
     NonExhaustiveMatch { span: Span, type_id: TypeId },
-    InvalidLoopTarget { span: Span, type_id: TypeId, kind: InvalidLoopTargetKind },
+    InvalidControlFlowTarget { span: Span, type_id: TypeId, kind: InvalidControlFlowTargetKind },
     InvalidControlFlowTerminator { span: Span, terminator: ControlFlowTerminator },
     UnreachableCode { span: Span },
     InvalidExportScope { span: Span },
     CircularModuleImport { span: Span },
-    UnknownModule { span: Span, module_path: Option<String> },
+    UnknownModule { span: Span, module_path: String },
     UnknownExport { span: Span, module_id: ModuleId, import_name: String, is_aliased: bool },
 }
 
@@ -1181,24 +1499,15 @@ impl TypeError {
     }
 
     fn get_underlined_line(loader: &ModuleLoader, span: &Span) -> String {
-        let lines = if &span.module_id == &PRELUDE_MODULE_ID {
-            std::io::BufReader::new(loader.prelude_raw.as_bytes())
-                .lines()
-                .skip(span.range.start.line - 1)
-                .take(span.range.end.line - span.range.start.line + 1)
-                .collect::<Result<Vec<_>, _>>()
-                .unwrap()
-        } else {
-            let file_name = loader.get_path(&span.module_id)
-                .expect("Internal error: cannot report on errors in a file that never existed in the first place");
-            let file = std::fs::File::open(&file_name).unwrap();
-            std::io::BufReader::new(file)
-                .lines()
-                .skip(span.range.start.line - 1)
-                .take(span.range.end.line - span.range.start.line + 1)
-                .collect::<Result<Vec<_>, _>>()
-                .unwrap()
-        };
+        let file_name = loader.get_path(&span.module_id)
+            .expect("Internal error: cannot report on errors in a file that never existed in the first place");
+        let file = std::fs::File::open(&file_name).unwrap();
+        let lines = std::io::BufReader::new(file)
+            .lines()
+            .skip(span.range.start.line - 1)
+            .take(span.range.end.line - span.range.start.line + 1)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
 
         let num_lines = lines.len();
         if num_lines == 1 {
@@ -1268,7 +1577,7 @@ impl TypeError {
             TypeError::EmptyMatchBlock { span } |
             TypeError::UnreachableMatchCase { span, .. } |
             TypeError::NonExhaustiveMatch { span, .. } |
-            TypeError::InvalidLoopTarget { span, .. } |
+            TypeError::InvalidControlFlowTarget { span, .. } |
             TypeError::InvalidControlFlowTerminator { span, .. } |
             TypeError::UnreachableCode { span } |
             TypeError::InvalidExportScope { span } |
@@ -1288,6 +1597,11 @@ impl TypeError {
                         "Type mismatch\n{}\n\
                         Cannot use instance of type {} as value",
                         cursor_line, project.type_repr(&PRELUDE_UNIT_TYPE_ID),
+                    )
+                } else if matches!(project.get_type_by_id(received), Type::Function(_, _, true, _)) {
+                    format!(
+                        "Type mismatch\n{}\nCannot pass variadic function as value",
+                        cursor_line,
                     )
                 } else {
                     let multiple_expected = expected.len() > 1;
@@ -1405,6 +1719,16 @@ impl TypeError {
                         Instances of type {} cannot be used as {} values",
                         cursor_line, type_repr, purpose
                     )
+                } else if let Type::Function(param_type_ids, num_required_params, _, _) = project.get_type_by_id(type_id) {
+                    let num_optional_params = param_type_ids.len() - *num_required_params;
+                    debug_assert!(num_optional_params > 0, "We shouldn't reach this error case otherwise");
+
+                    format!(
+                        "Cannot use function as value in this context\n{}\n\
+                        Expression is a function which has optional parameters. It will not be possible to \
+                        obtain enough information to call this variable as a function later on.",
+                        cursor_line
+                    )
                 } else {
                     format!(
                         "Could not determine type\n{}\n\
@@ -1421,13 +1745,19 @@ impl TypeError {
                     DestructuringMismatchKind::InvalidTupleArity(actual_arity, attempted_arity) => {
                         format!("Cannot destructure a tuple of {} elements into {} values", actual_arity, attempted_arity)
                     }
+                    DestructuringMismatchKind::InvalidEnumVariantArity(actual_arity, attempted_arity) => {
+                        format!("Cannot destructure enum variant (which has {} element{}) into {} value{}", actual_arity, if *actual_arity == 1 { "" } else { "s" }, attempted_arity, if *attempted_arity == 1 { "" } else { "s" })
+                    }
+                    DestructuringMismatchKind::InvalidDestructureTarget => {
+                        format!("Cannot destructure a value of type {}", project.type_repr(type_id))
+                    }
                     DestructuringMismatchKind::CannotDestructureAsArray => {
                         format!("Cannot destructure a value of type {} as an array", project.type_repr(type_id))
                     }
                 };
 
                 format!(
-                    "Invalid destructuring pattern for assignment\n{}\n{}",
+                    "Invalid destructuring pattern\n{}\n{}",
                     cursor_line, msg
                 )
             }
@@ -1618,7 +1948,7 @@ impl TypeError {
 
                 let second_line = match kind {
                     ImmutableAssignmentKind::Parameter => "Function parameters are automatically declared as immutable".to_string(),
-                    ImmutableAssignmentKind::Variable => "Variable is declared as immutable. Use 'var' when declaring variable to allow it to be reassigned".to_string(),
+                    ImmutableAssignmentKind::Variable => "Variable is declared as immutable".to_string(),
                     ImmutableAssignmentKind::Field(type_name) => format!("Field '{}' is marked readonly in type '{}'", var_name, type_name),
                     ImmutableAssignmentKind::Method(type_name) => format!("Function '{}' is a method on type '{}'", var_name, type_name),
                     ImmutableAssignmentKind::StaticMethod(type_name) => format!("Function '{}' is a static method on type '{}'", var_name, type_name),
@@ -1723,15 +2053,16 @@ impl TypeError {
                     cursor_line, project.type_repr(type_id),
                 )
             }
-            TypeError::InvalidLoopTarget { type_id, kind, .. } => {
+            TypeError::InvalidControlFlowTarget { type_id, kind, .. } => {
                 let type_repr = project.type_repr(type_id);
                 let (loop_type, message) = match kind {
-                    InvalidLoopTargetKind::For => ("for", format!("Type '{}' is not iterable", type_repr)),
-                    InvalidLoopTargetKind::While => ("while", format!("Expected Bool or Option type, got '{}'", type_repr)),
+                    InvalidControlFlowTargetKind::ForLoop => ("for-loop target", format!("Type '{}' is not iterable", type_repr)),
+                    InvalidControlFlowTargetKind::WhileLoop => ("while-loop target", format!("Expected Bool or Option type, got '{}'", type_repr)),
+                    InvalidControlFlowTargetKind::IfCondition => ("if-condition value", format!("Expected Bool or Option type, got '{}'", type_repr)),
                 };
 
                 format!(
-                    "Invalid type for {}-loop target\n{}\n{}",
+                    "Invalid type for {}\n{}\n{}",
                     loop_type, cursor_line,
                     message
                 )
@@ -1766,15 +2097,9 @@ impl TypeError {
                 )
             }
             TypeError::UnknownModule { module_path, .. } => {
-                let path_msg = if let Some(module_path) = module_path {
-                    format!(" at '{}'", module_path)
-                } else {
-                    "".to_string()
-                };
-
                 format!(
-                    "Could not import module\n{}\nNo such module exists{}",
-                    cursor_line, path_msg
+                    "Could not import module\n{}\nNo such module exists at '{}'",
+                    cursor_line, module_path
                 )
             }
             TypeError::UnknownExport { module_id, import_name, is_aliased, .. } => {
@@ -1860,13 +2185,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.project.find_enum_by_name(&current_module_id, name)
     }
 
-    fn type_is_option(&self, type_id: &TypeId) -> Option<TypeId> {
-        match self.project.get_type_by_id(&type_id) {
-            Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_option_struct_id => Some(generic_ids[0]),
-            _ => None
-        }
-    }
-
     fn type_is_array(&self, type_id: &TypeId) -> Option<TypeId> {
         match self.project.get_type_by_id(&type_id) {
             Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_array_struct_id => Some(generic_ids[0]),
@@ -1892,6 +2210,24 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 (Type::Generic(_, _), Type::Generic(_, _)) => base_type_id == target_type_id,
                 (_, Type::Generic(_, _)) => false, // unreachable!("Test: we shouldn't reach here because before any attempt to test types, we should substitute generics. See if this assumption is true (there will surely be a counterexample someday)"),
                 (Type::Primitive(idx1), Type::Primitive(idx2)) => idx1 == idx2,
+                (Type::Primitive(PrimitiveType::Int), Type::GenericInstance(struct_id, _)) |
+                (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::Int)) if struct_id == &zelf.project.prelude_int_struct_id => true,
+                (Type::Primitive(PrimitiveType::Float), Type::GenericInstance(struct_id, _)) |
+                (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::Float)) if struct_id == &zelf.project.prelude_float_struct_id => true,
+                (Type::Primitive(PrimitiveType::Bool), Type::GenericInstance(struct_id, _)) |
+                (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::Bool)) if struct_id == &zelf.project.prelude_bool_struct_id => true,
+                (Type::Primitive(PrimitiveType::String), Type::GenericInstance(struct_id, _)) |
+                (Type::GenericInstance(struct_id, _), Type::Primitive(PrimitiveType::String)) if struct_id == &zelf.project.prelude_string_struct_id => true,
+
+                // Handlers for Option<T> types. Eg. attempting to assign an instance of `String?` to `String?` should be allowed, ...
+                (Type::GenericInstance(base_struct_id, base_generic_ids), Type::GenericInstance(target_struct_id, target_generic_ids)) if *base_struct_id == zelf.project.prelude_option_struct_id && *target_struct_id == zelf.project.prelude_option_struct_id => {
+                    type_satisfies_other_impl(zelf, &base_generic_ids[0], &target_generic_ids[0], substitutions)
+                }
+                // ... and assigning an instance of `String` to `String?` should _also_ be allowed.
+                (_, Type::GenericInstance(struct_id, generic_ids)) if *struct_id == zelf.project.prelude_option_struct_id => {
+                    type_satisfies_other_impl(zelf, base_type_id, &generic_ids[0], substitutions)
+                }
+
                 (Type::GenericInstance(struct_id_1, generic_ids_1), Type::GenericInstance(struct_id_2, generic_ids_2)) => {
                     if struct_id_1 != struct_id_2 || generic_ids_1.len() != generic_ids_2.len() {
                         return false;
@@ -1904,12 +2240,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                     true
                 }
-                (Type::GenericInstance(struct_id, _), _) if *struct_id == zelf.project.prelude_option_struct_id => {
-                    false
-                }
-                (_, Type::GenericInstance(struct_id, generic_ids)) if *struct_id == zelf.project.prelude_option_struct_id => {
-                    type_satisfies_other_impl(zelf, base_type_id, &generic_ids[0], substitutions)
-                }
                 (Type::GenericEnumInstance(enum_id, generic_ids, _), Type::GenericEnumInstance(target_enum_id, target_generic_ids, _)) => {
                     if enum_id != target_enum_id || generic_ids.len() != target_generic_ids.len() { return false; }
 
@@ -1919,7 +2249,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                     true
                 }
-                (Type::Function(base_param_type_ids, base_num_req, _, base_return_type_id), Type::Function(target_param_type_ids, _, _, target_return_type_id)) => {
+                (Type::Function(base_param_type_ids, base_num_req, base_is_variadic, base_return_type_id), Type::Function(target_param_type_ids, _, _, target_return_type_id)) => {
+                    if *base_is_variadic { return false; }
+
                     let mut base_generics = zelf.extract_generic_slots(base_type_id);
                     let mut target_generics = zelf.extract_generic_slots(target_type_id);
                     let mut new_substitutions = substitutions.clone();
@@ -1974,7 +2306,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             (_, Type::GenericInstance(var_struct_id, var_generic_ids)) if *var_struct_id == self.project.prelude_option_struct_id => {
                 let generic_id = var_generic_ids[0];
                 let inner = self.substitute_generics(&hint_type_id, &generic_id);
-                self.add_or_find_type_id(self.project.option_type(inner))
+                self.add_or_find_type_id(self.project.option_type(inner, true))
             }
             (Type::GenericInstance(hint_struct_id, hint_generic_ids), Type::GenericInstance(var_struct_id, var_generic_ids)) => {
                 if var_struct_id == hint_struct_id && hint_generic_ids.len() == var_generic_ids.len() {
@@ -2243,7 +2575,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
             TypeIdentifier::Option { inner } => {
                 let inner = self.resolve_type_identifier(&*inner)?;
-                let ty = self.project.option_type(inner);
+                let ty = self.project.option_type(inner, false);
                 Ok(self.add_or_find_type_id(ty))
             }
             TypeIdentifier::Union { .. } => todo!(),
@@ -2258,16 +2590,24 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     }
 
     fn add_variable_to_current_scope(&mut self, name: String, type_id: TypeId, is_mutable: bool, is_initialized: bool, span: &Span, is_parameter: bool) -> Result<VarId, TypeError> {
-        let current_scope = self.current_scope_mut();
-
+        let current_scope = self.current_scope();
         for var in &current_scope.vars {
             if var.name == name && name != "_" {
                 return Err(TypeError::DuplicateName { span: span.clone(), name, original_span: var.defined_span.clone(), kind: DuplicateNameKind::Variable });
             }
         }
 
+        // If the current scope is the root scope of the module, also compare against names imported into the module
+        if name != "_" && current_scope.id.1 == 0 {
+            if let Some((token, _)) = self.project.find_imported_var_by_name(&self.current_module().id, &name) {
+                let original_span = Some(self.make_span(&token.get_range()));
+                return Err(TypeError::DuplicateName { span: span.clone(), name, original_span, kind: DuplicateNameKind::Variable });
+            }
+        }
+
+        let current_scope = self.current_scope_mut();
         let id = VarId(current_scope.id, current_scope.vars.len());
-        let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: Some(span.clone()), is_captured: false, alias: VariableAlias::None, is_parameter };
+        let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: Some(span.clone()), is_captured: false, alias: VariableAlias::None, is_parameter, is_exported: false };
         current_scope.vars.push(var);
 
         Ok(id)
@@ -2278,7 +2618,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let name = Token::get_ident_name(ident);
         let span = self.make_span(&ident.get_range());
 
-        let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
+        let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
         let fn_var_id = self.add_variable_to_current_scope(name, fn_type_id, false, true, &span, false)?;
         let variable = self.project.get_var_by_id_mut(&fn_var_id);
         variable.alias = VariableAlias::Function(*func_id);
@@ -2288,7 +2628,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
     fn add_function_to_current_scope(&mut self, fn_scope_id: ScopeId, name_token: &Token, generic_ids: Vec<TypeId>, has_self: bool, params: Vec<FunctionParam>, return_type_id: TypeId) -> Result<FuncId, TypeError> {
         let is_method = self.current_type_decl.is_some();
-        let current_scope = self.current_scope_mut();
+        let current_scope = self.current_scope();
 
         let name = Token::get_ident_name(name_token);
         let span = Span::from_range(current_scope.id.0, name_token.get_range());
@@ -2299,9 +2639,19 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
         }
 
+        let kind = if let Some(type_id) = self.current_type_decl.as_ref() {
+            if has_self {
+                FunctionKind::Method(*type_id)
+            } else {
+                FunctionKind::StaticMethod(*type_id)
+            }
+        } else {
+            FunctionKind::Freestanding
+        };
         let func_id = FuncId(current_scope.id, current_scope.funcs.len());
-        let func = Function { id: func_id, fn_scope_id, decorators: vec![], name: name.clone(), generic_ids, has_self, params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![] };
-        current_scope.funcs.push(func);
+        let func = Function { id: func_id, fn_scope_id, fn_type_id: PRELUDE_ANY_TYPE_ID, decorators: vec![], name: name.clone(), generic_ids, kind, params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![], captured_closures: vec![] };
+
+        self.current_scope_mut().funcs.push(func);
 
         Ok(func_id)
     }
@@ -2322,13 +2672,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         format!("{}{}_{}_{}", LAMBDA_FN_NAME_PREFIX, self.current_module().id.0, name.into_iter().join("_"), current_scope.funcs.len())
     }
 
-    fn add_lambda_function_to_scope(&mut self, fn_decl_scope_id: &ScopeId, fn_scope_id: ScopeId, params: Vec<FunctionParam>) -> Result<FuncId, TypeError> {
+    fn add_lambda_function_to_scope(&mut self, fn_decl_scope_id: &ScopeId, fn_scope_id: ScopeId, return_type_hint: &Option<TypeId>, params: Vec<FunctionParam>) -> Result<FuncId, TypeError> {
         let name = self.new_lambda_fn_name();
 
         let fn_decl_scope = self.project.get_scope_by_id_mut(fn_decl_scope_id);
 
+        let kind = FunctionKind::Freestanding;
         let func_id = FuncId(fn_decl_scope.id, fn_decl_scope.funcs.len());
-        let func = Function { id: func_id, fn_scope_id, decorators: vec![], name, generic_ids: vec![], has_self: false, params, return_type_id: PRELUDE_ANY_TYPE_ID, defined_span: None, body: vec![], captured_vars: vec![] };
+        let return_type_id = return_type_hint.unwrap_or(PRELUDE_ANY_TYPE_ID);
+        let func = Function { id: func_id, fn_scope_id, fn_type_id: PRELUDE_ANY_TYPE_ID, decorators: vec![], name, generic_ids: vec![], kind, params, return_type_id, defined_span: None, body: vec![], captured_vars: vec![], captured_closures: vec![] };
 
         fn_decl_scope.funcs.push(func);
 
@@ -2492,11 +2844,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
     /* TYPECHECKING */
 
-    pub fn typecheck_prelude(&mut self) {
+    pub fn typecheck_prelude(&mut self) -> Result<(), TypecheckError> {
         debug_assert!(self.project.modules.is_empty());
 
-        self.module_loader.register(&parser::ast::ModuleId::prelude(), &PRELUDE_MODULE_ID);
-        let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), type_ids: vec![], functions: vec![], structs: vec![], enums: vec![], code: vec![], scopes: vec![], exports: HashMap::new(), completed: false };
+        self.module_loader.register(&parser::ast::ModuleId::prelude(), &PRELUDE_MODULE_ID, None);
+        let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), imports: HashMap::new(), type_ids: vec![], functions: vec![], structs: vec![], enums: vec![], code: vec![], scopes: vec![], exports: HashMap::new(), completed: false };
         let mut prelude_scope = Scope { label: "prelude.root".to_string(), kind: ScopeKind::Module(PRELUDE_MODULE_ID), terminator: None, id: PRELUDE_SCOPE_ID, parent: None, types: vec![], vars: vec![], funcs: vec![] };
 
         let primitives = [
@@ -2548,16 +2900,44 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             prelude_module.scopes.push(scope);
             let generic_t_type_id = self.project.add_type_id(&scope_id, Type::Generic(None, "T".to_string()));
 
-            self.project.prelude_none_type_id = self.project.add_type_id(&PRELUDE_SCOPE_ID, self.project.option_type(generic_t_type_id));
+            self.project.prelude_none_type_id = self.project.add_type_id(&PRELUDE_SCOPE_ID, self.project.option_type(generic_t_type_id, true));
         }
 
         self.current_scope_id = PRELUDE_SCOPE_ID;
 
-        let prelude_stub_file = self.module_loader.load_file(&"prelude.stub.abra".to_string()).expect("Internal error: should always be able to load prelude");
-        let parse_result = tokenize_and_parse(&parser::ast::ModuleId::External("prelude".to_string()), &prelude_stub_file)
-            .expect("There should not be a problem parsing the prelude file");
-        self.typecheck_block(parse_result.nodes)
-            .expect("There should not be a problem typechecking the prelude file");
+        let prelude_m_id = parser::ast::ModuleId::prelude();
+        let (_, parse_result) = self.module_loader.load_untyped_ast(&prelude_m_id, None)
+            .map_err(|e| Either::Left((e, prelude_m_id)))?
+            .unwrap();
+        for (_, import_node) in parse_result.imports {
+            let import_m_id = &import_node.module_id;
+            if !self.module_loader.module_exists(&import_m_id, Some(&PRELUDE_MODULE_ID)) {
+                let span = self.make_span(&import_node.module_token.get_range());
+                let module_path = self.module_loader.calculate_path_wrt_other(&import_m_id, Some(&self.current_module().id));
+                return Err(Either::Right(TypeError::UnknownModule { span, module_path }));
+            }
+            let completed_module_id = if let Some(m) = self.module_loader.get_module_id(&import_m_id).and_then(|module_id| self.project.modules.get(module_id.0)) {
+                if !m.completed {
+                    let span = self.make_span(&import_node.module_token.get_range());
+                    return Err(Either::Right(TypeError::CircularModuleImport { span }));
+                }
+
+                Some(m.id)
+            } else {
+                None
+            };
+
+            let imported_module_id = if let Some(module_id) = completed_module_id {
+                module_id
+            } else {
+                let mut tc = Typechecker2::new(self.module_loader, self.project);
+                tc.typecheck_module(&import_m_id, Some(&PRELUDE_MODULE_ID))?
+            };
+            self.current_module_mut().imports.entry(imported_module_id).or_default();
+            self.typecheck_import(&imported_module_id, import_node).map_err(Either::Right)?;
+        }
+        self.typecheck_block(parse_result.nodes).map_err(Either::Right)?;
+
         debug_assert_ne!(self.project.prelude_none_type_id, PLACEHOLDER_TYPE_ID);
         debug_assert_ne!(self.project.prelude_int_struct_id, PLACEHOLDER_STRUCT_ID);
         debug_assert_ne!(self.project.prelude_float_struct_id, PLACEHOLDER_STRUCT_ID);
@@ -2566,16 +2946,23 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         debug_assert_ne!(self.project.prelude_array_struct_id, PLACEHOLDER_STRUCT_ID);
         debug_assert_ne!(self.project.prelude_set_struct_id, PLACEHOLDER_STRUCT_ID);
         debug_assert_ne!(self.project.prelude_map_struct_id, PLACEHOLDER_STRUCT_ID);
+        debug_assert_ne!(self.project.intrinsics_module_id, ModuleId::BOGUS, "The '_intrinsics' module should have been discovered as part of typechecking 'prelude'");
+
+        Ok(())
     }
 
-    pub fn typecheck_module(&mut self, m_id: &parser::ast::ModuleId) -> Result<(), TypecheckError> {
+    pub fn typecheck_module(&mut self, m_id: &parser::ast::ModuleId, with_respect_to_module: Option<&ModuleId>) -> Result<ModuleId, TypecheckError> {
         debug_assert!(self.project.modules.len() >= 1 && self.project.modules[0].name == "prelude", "Prelude must be loaded in order to typecheck further modules");
 
-        let (file_name, parse_result) = self.module_loader.load_untyped_ast(&m_id).map_err(Either::Left)?
-            .expect("Internal error");
-
         let module_id = ModuleId(self.project.modules.len());
-        self.module_loader.register(m_id, &module_id);
+        self.module_loader.register(m_id, &module_id, with_respect_to_module);
+
+        let (file_name, parse_result) = self.module_loader.load_untyped_ast(&m_id, with_respect_to_module)
+            .map_err(|e| Either::Left((e, m_id.clone())))?
+            .expect("Internal error");
+        if file_name.ends_with("/_intrinsics.abra") {
+            self.project.intrinsics_module_id = module_id;
+        }
 
         let scope_id = ScopeId(module_id, 0);
         let label = format!("{:?}.root", &module_id);
@@ -2583,6 +2970,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.project.modules.push(TypedModule {
             id: module_id,
             name: file_name,
+            imports: HashMap::new(),
             type_ids: vec![],
             functions: vec![],
             structs: vec![],
@@ -2595,19 +2983,33 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.current_scope_id = scope_id;
 
-        if !parse_result.imports.is_empty() {
-            for (_, import_m_id, module_token) in parse_result.imports {
-                if !self.module_loader.module_exists(&import_m_id) { continue; }
-                if let Some(m) = self.module_loader.get_module_id(&import_m_id).and_then(|module_id| self.project.modules.get(module_id.0)) {
-                    if m.completed { continue; }
+        for (_, import_node) in parse_result.imports {
+            let import_m_id = &import_node.module_id;
+            if !self.module_loader.module_exists(&import_m_id, Some(&module_id)) {
+                let span = self.make_span(&import_node.module_token.get_range());
+                let module_path = self.module_loader.calculate_path_wrt_other(&import_m_id, Some(&self.current_module().id));
+                return Err(Either::Right(TypeError::UnknownModule { span, module_path }));
+            }
 
-                    let span = self.make_span(&module_token.get_range());
+            let completed_module_id = if let Some(m) = self.module_loader.get_module_id(&import_m_id).and_then(|module_id| self.project.modules.get(module_id.0)) {
+                if !m.completed {
+                    let span = self.make_span(&import_node.module_token.get_range());
                     return Err(Either::Right(TypeError::CircularModuleImport { span }));
                 }
 
+                Some(m.id)
+            } else {
+                None
+            };
+
+            let imported_module_id = if let Some(module_id) = completed_module_id {
+                module_id
+            } else {
                 let mut tc = Typechecker2::new(self.module_loader, self.project);
-                tc.typecheck_module(&import_m_id)?;
-            }
+                tc.typecheck_module(&import_m_id, Some(&module_id))?
+            };
+            self.current_module_mut().imports.entry(imported_module_id).or_default();
+            self.typecheck_import(&imported_module_id, import_node).map_err(Either::Right)?;
         }
 
         self.current_scope_id = scope_id;
@@ -2615,7 +3017,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.current_module_mut().completed = true;
 
-        Ok(())
+        Ok(module_id)
     }
 
     fn typecheck_block(&mut self, nodes: Vec<AstNode>) -> Result<(), TypeError> {
@@ -2688,14 +3090,17 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.typecheck_enum_pass_1(node, &enum_id)?;
         }
 
+        for (node, struct_id) in type_decls.iter().zip(&struct_ids) {
+            self.typecheck_struct_pass_2(node, &struct_id)?;
+        }
+
         let mut func_ids = VecDeque::from(func_ids);
         debug_assert!(func_decls.len() == func_ids.len());
         for (node, (func_id, func_var_id)) in func_decls.iter().zip(&func_ids) {
             self.typecheck_function_pass_1(func_id, node, false)?;
 
             let func = self.project.get_func_by_id(func_id);
-            let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
-            self.project.get_var_by_id_mut(func_var_id).type_id = fn_type_id;
+            self.project.get_var_by_id_mut(func_var_id).type_id = func.fn_type_id;
         }
 
         // --- END PASS 1 for types, enums, and functions
@@ -2708,15 +3113,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     self.typecheck_function_pass_2(func_id, decl_node)?;
 
                     let func = self.project.get_func_by_id(&func_id);
-                    let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
-                    self.project.get_var_by_id_mut(&func_var_id).type_id = fn_type_id;
+                    self.project.get_var_by_id_mut(&func_var_id).type_id = func.fn_type_id;
 
                     let current_module = self.current_module_mut();
                     current_module.code.push(TypedNode::FuncDeclaration(func_id));
                 }
                 AstNode::TypeDecl(_, decl_node) => {
                     let struct_id = struct_ids.pop_front().expect("There should be a struct_id for each type declaration in this block");
-                    self.typecheck_struct_pass_2(struct_id, decl_node)?;
+                    self.typecheck_struct_pass_3(struct_id, decl_node)?;
 
                     let current_module = self.current_module_mut();
                     current_module.code.push(TypedNode::TypeDeclaration(struct_id));
@@ -2728,6 +3132,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let current_module = self.current_module_mut();
                     current_module.code.push(TypedNode::EnumDeclaration(enum_id));
                 }
+                AstNode::ImportStatement(_, _) => { continue; }
                 node => {
                     let typed_node = self.typecheck_statement(node, None)?;
 
@@ -2858,6 +3263,20 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         });
                         continue;
                     }
+                    Err(TypeError::UnknownIdentifier { .. }) if do_partial_completion => {
+                        let type_id = PRELUDE_ANY_TYPE_ID;
+                        let var_id = self.add_variable_to_current_scope(param_name.clone(), type_id, false, true, &ident_span, true)?;
+                        params.push(FunctionParam {
+                            name: param_name,
+                            type_id,
+                            var_id,
+                            defined_span: Some(ident_span),
+                            default_value: None,
+                            is_variadic: *is_vararg,
+                            is_incomplete: true,
+                        });
+                        continue;
+                    }
                     Err(e) => return Err(e)
                 }
             } else {
@@ -2954,6 +3373,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.current_scope_id = prev_scope_id;
 
+        let func = self.project.get_func_by_id(&func_id);
+        let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+        self.project.get_func_by_id_mut(&func_id).fn_type_id = fn_type_id;
+
         Ok(())
     }
 
@@ -3011,7 +3434,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
             }
 
-            let mut param = &mut self.project.get_func_by_id_mut(&func_id).params[param_idx];
+            let param = &mut self.project.get_func_by_id_mut(&func_id).params[param_idx];
             param.default_value = Some(typed_default_value);
             param.type_id = type_id;
             param.is_incomplete = false;
@@ -3049,11 +3472,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.current_function = prev_func_id;
         self.current_scope_id = prev_scope_id;
 
+        let func = self.project.get_func_by_id(&func_id);
+        let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+        self.project.get_func_by_id_mut(&func_id).fn_type_id = fn_type_id;
+
         Ok(())
     }
 
     fn typecheck_struct_pass_0(&mut self, node: &TypeDeclNode) -> Result<StructId, TypeError> {
-        let TypeDeclNode { export_token, name, type_args, fields, .. } = node;
+        let TypeDeclNode { export_token, name, type_args, .. } = node;
         let is_exported = export_token.is_some();
         if let Some(export_token) = export_token { self.verify_export_scope(export_token)?; }
 
@@ -3064,11 +3491,21 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let generic_ids = self.add_generics_to_scope(&struct_scope_id, type_args, false)?;
         let struct_id = self.add_struct_to_current_module(struct_scope_id, name, generic_ids)?;
 
+        if is_exported {
+            self.current_module_mut().exports.insert(struct_name, ExportedValue::Type(TypeKind::Struct(struct_id)));
+        }
+
+        Ok(struct_id)
+    }
+
+    fn typecheck_struct_pass_1(&mut self, node: &TypeDeclNode, struct_id: &StructId) -> Result<(), TypeError> {
+        let struct_ = self.project.get_struct_by_id(struct_id);
+
         let prev_scope_id = self.current_scope_id;
-        self.current_scope_id = struct_scope_id;
+        self.current_scope_id = struct_.struct_scope_id;
 
         let mut seen_fields: HashMap<String, Token> = HashMap::new();
-        for TypeDeclField { ident, type_ident, readonly, .. } in fields {
+        for TypeDeclField { ident, type_ident, readonly, .. } in &node.fields {
             let is_readonly = readonly.is_some();
 
             let field_name = Token::get_ident_name(&ident);
@@ -3092,29 +3529,37 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.current_scope_id = prev_scope_id;
 
-        if is_exported {
-            self.current_module_mut().exports.insert(struct_name, ExportedValue::Type(TypeKind::Struct(struct_id)));
-        }
-
-        Ok(struct_id)
+        Ok(())
     }
 
-    fn typecheck_struct_pass_1(&mut self, node: &TypeDeclNode, struct_id: &StructId) -> Result<(), TypeError> {
+    fn typecheck_struct_pass_2(&mut self, node: &TypeDeclNode, struct_id: &StructId) -> Result<(), TypeError> {
         let TypeDeclNode { methods, .. } = node;
 
         let struct_ = self.project.get_struct_by_id(struct_id);
+        let self_type_id = struct_.self_type_id;
 
         let prev_scope_id = self.current_scope_id;
         self.current_scope_id = struct_.struct_scope_id;
         debug_assert!(self.current_type_decl.is_none(), "At the moment, types cannot be nested within other types");
         self.current_type_decl = Some(struct_.self_type_id);
 
+        let mut tostring_func_id = None;
+        let mut hash_func_id = None;
+        let mut eq_func_id = None;
         for method in methods {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
             let func_id = self.typecheck_function_pass_0(decl_node)?;
 
             let is_method = decl_node.args.get(0).map(|(token, _, _, _)| matches!(token, Token::Self_(_))).unwrap_or(false);
             if is_method {
+                if Token::get_ident_name(&decl_node.name) == "toString" {
+                    tostring_func_id = Some(func_id);
+                } else if Token::get_ident_name(&decl_node.name) == "hash" {
+                    hash_func_id = Some(func_id);
+                } else if Token::get_ident_name(&decl_node.name) == "eq" {
+                    eq_func_id = Some(func_id);
+                }
+
                 self.project.get_struct_by_id_mut(struct_id).methods.push(func_id);
             } else {
                 self.project.get_struct_by_id_mut(struct_id).static_methods.push(func_id);
@@ -3123,19 +3568,92 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.typecheck_function_pass_1(&func_id, decl_node, true)?;
         }
 
-        self.current_type_decl = None;
+        let tostring_func_id = if let Some(func_id) = tostring_func_id {
+            let tostring_func_idx = self.project.get_struct_by_id(struct_id).methods.iter().find_position(|m| m == &&func_id).unwrap().0;
+            self.project.get_struct_by_id_mut(struct_id).methods.remove(tostring_func_idx);
+            func_id
+        } else {
+            let string_type_id = self.add_or_find_type_id(Type::Primitive(PrimitiveType::String));
+            let tostring_func_id = self.add_function_to_current_scope(
+                ScopeId::BOGUS,
+                &Token::Ident(POSITION_BOGUS, "toString".to_string()),
+                vec![],
+                true,
+                vec![
+                    FunctionParam { name: "self".to_string(), type_id: self_type_id, var_id: VarId::BOGUS, defined_span: None, default_value: None, is_variadic: false, is_incomplete: false }
+                ],
+                string_type_id,
+            )?;
+            self.project.get_func_by_id_mut(&tostring_func_id).defined_span = None;
+            let func = self.project.get_func_by_id(&tostring_func_id);
+            let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+            self.project.get_func_by_id_mut(&tostring_func_id).fn_type_id = fn_type_id;
+            tostring_func_id
+        };
+        self.project.get_struct_by_id_mut(struct_id).methods.insert(METHOD_IDX_TOSTRING, tostring_func_id);
 
+        let hash_func_id = if let Some(func_id) = hash_func_id {
+            let hash_func_idx = self.project.get_struct_by_id(struct_id).methods.iter().find_position(|m| m == &&func_id).unwrap().0;
+            self.project.get_struct_by_id_mut(struct_id).methods.remove(hash_func_idx);
+            func_id
+        } else {
+            let int_type_id = self.add_or_find_type_id(Type::Primitive(PrimitiveType::Int));
+            let hash_func_id = self.add_function_to_current_scope(
+                ScopeId::BOGUS,
+                &Token::Ident(POSITION_BOGUS, "hash".to_string()),
+                vec![],
+                true,
+                vec![
+                    FunctionParam { name: "self".to_string(), type_id: self_type_id, var_id: VarId::BOGUS, defined_span: None, default_value: None, is_variadic: false, is_incomplete: false }
+                ],
+                int_type_id,
+            )?;
+            self.project.get_func_by_id_mut(&hash_func_id).defined_span = None;
+            let func = self.project.get_func_by_id(&hash_func_id);
+            let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+            self.project.get_func_by_id_mut(&hash_func_id).fn_type_id = fn_type_id;
+            hash_func_id
+        };
+        self.project.get_struct_by_id_mut(struct_id).methods.insert(METHOD_IDX_HASH, hash_func_id);
+
+        let eq_func_id = if let Some(func_id) = eq_func_id {
+            let eq_func_idx = self.project.get_struct_by_id(struct_id).methods.iter().find_position(|m| m == &&func_id).unwrap().0;
+            self.project.get_struct_by_id_mut(struct_id).methods.remove(eq_func_idx);
+            func_id
+        } else {
+            let bool_type_id = self.add_or_find_type_id(Type::Primitive(PrimitiveType::Bool));
+            let eq_func_id = self.add_function_to_current_scope(
+                ScopeId::BOGUS,
+                &Token::Ident(POSITION_BOGUS, "eq".to_string()),
+                vec![],
+                true,
+                vec![
+                    FunctionParam { name: "self".to_string(), type_id: self_type_id, var_id: VarId::BOGUS, defined_span: None, default_value: None, is_variadic: false, is_incomplete: false },
+                    FunctionParam { name: "other".to_string(), type_id: self_type_id, var_id: VarId::BOGUS, defined_span: None, default_value: None, is_variadic: false, is_incomplete: false },
+                ],
+                bool_type_id,
+            )?;
+            self.project.get_func_by_id_mut(&eq_func_id).defined_span = None;
+            let func = self.project.get_func_by_id(&eq_func_id);
+            let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+            self.project.get_func_by_id_mut(&eq_func_id).fn_type_id = fn_type_id;
+            eq_func_id
+        };
+        self.project.get_struct_by_id_mut(struct_id).methods.insert(METHOD_IDX_EQ, eq_func_id);
+
+        self.current_type_decl = None;
         self.current_scope_id = prev_scope_id;
 
         Ok(())
     }
 
-    fn typecheck_struct_pass_2(&mut self, struct_id: StructId, node: TypeDeclNode) -> Result<(), TypeError> {
+    fn typecheck_struct_pass_3(&mut self, struct_id: StructId, node: TypeDeclNode) -> Result<(), TypeError> {
         let TypeDeclNode { fields, methods, .. } = node;
         let struct_ = self.project.get_struct_by_id(&struct_id);
 
         let prev_scope_id = self.current_scope_id;
         self.current_scope_id = struct_.struct_scope_id;
+        let prev_type_decl_id = self.current_type_decl.replace(struct_.self_type_id);
 
         for (idx, TypeDeclField { default_value, .. }) in fields.into_iter().enumerate() {
             let Some(default_value_node) = default_value else { continue; };
@@ -3157,7 +3675,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             struct_.fields[idx].default_value = Some(default_value);
         }
 
-        let mut method_func_id_idx = 0;
+        let mut method_func_id_idx = 3;
         let mut static_method_func_id_idx = 0;
         for method in methods.into_iter() {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
@@ -3165,8 +3683,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             let struct_ = self.project.get_struct_by_id(&struct_id);
             let func_id = if is_method {
-                method_func_id_idx += 1;
-                struct_.methods[method_func_id_idx - 1]
+                if Token::get_ident_name(&decl_node.name) == "toString" {
+                    struct_.methods[METHOD_IDX_TOSTRING]
+                } else if Token::get_ident_name(&decl_node.name) == "hash" {
+                    struct_.methods[METHOD_IDX_HASH]
+                } else if Token::get_ident_name(&decl_node.name) == "eq" {
+                    struct_.methods[METHOD_IDX_EQ]
+                } else {
+                    method_func_id_idx += 1;
+                    struct_.methods[method_func_id_idx - 1]
+                }
             } else {
                 static_method_func_id_idx += 1;
                 struct_.static_methods[static_method_func_id_idx - 1]
@@ -3176,6 +3702,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         self.current_scope_id = prev_scope_id;
+        self.current_type_decl = prev_type_decl_id;
 
         Ok(())
     }
@@ -3204,6 +3731,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let EnumDeclNode { variants, methods, .. } = node;
 
         let enum_ = self.project.get_enum_by_id(enum_id);
+        let self_type_id = enum_.self_type_id;
 
         self.current_scope_id = enum_.enum_scope_id;
         self.current_type_decl = Some(enum_.self_type_id);
@@ -3225,12 +3753,23 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.project.get_enum_by_id_mut(enum_id).variants.push(variant);
         }
 
+        let mut tostring_func_id = None;
+        let mut hash_func_id = None;
+        let mut eq_func_id = None;
         for method in methods {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: an enum's methods must be of type AstNode::FunctionDecl") };
             let func_id = self.typecheck_function_pass_0(decl_node)?;
 
             let is_method = decl_node.args.get(0).map(|(token, _, _, _)| matches!(token, Token::Self_(_))).unwrap_or(false);
             if is_method {
+                if Token::get_ident_name(&decl_node.name) == "toString" {
+                    tostring_func_id = Some(func_id);
+                } else if Token::get_ident_name(&decl_node.name) == "hash" {
+                    hash_func_id = Some(func_id);
+                } else if Token::get_ident_name(&decl_node.name) == "eq" {
+                    eq_func_id = Some(func_id);
+                }
+
                 self.project.get_enum_by_id_mut(enum_id).methods.push(func_id);
             } else {
                 let enum_ = self.project.get_enum_by_id(&enum_id);
@@ -3245,6 +3784,79 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             self.typecheck_function_pass_1(&func_id, decl_node, true)?;
         }
+
+        let tostring_func_id = if let Some(func_id) = tostring_func_id {
+            let tostring_func_idx = self.project.get_enum_by_id(enum_id).methods.iter().find_position(|m| m == &&func_id).unwrap().0;
+            self.project.get_enum_by_id_mut(enum_id).methods.remove(tostring_func_idx);
+            func_id
+        } else {
+            let string_type_id = self.add_or_find_type_id(Type::Primitive(PrimitiveType::String));
+            let tostring_func_id = self.add_function_to_current_scope(
+                ScopeId::BOGUS,
+                &Token::Ident(POSITION_BOGUS, "toString".to_string()),
+                vec![],
+                true,
+                vec![
+                    FunctionParam { name: "self".to_string(), type_id: self_type_id, var_id: VarId::BOGUS, defined_span: None, default_value: None, is_variadic: false, is_incomplete: false }
+                ],
+                string_type_id,
+            )?;
+            self.project.get_func_by_id_mut(&tostring_func_id).defined_span = None;
+            let func = self.project.get_func_by_id(&tostring_func_id);
+            let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+            self.project.get_func_by_id_mut(&tostring_func_id).fn_type_id = fn_type_id;
+            tostring_func_id
+        };
+        self.project.get_enum_by_id_mut(enum_id).methods.insert(METHOD_IDX_TOSTRING, tostring_func_id);
+
+        let hash_func_id = if let Some(func_id) = hash_func_id {
+            let hash_func_idx = self.project.get_enum_by_id(enum_id).methods.iter().find_position(|m| m == &&func_id).unwrap().0;
+            self.project.get_enum_by_id_mut(enum_id).methods.remove(hash_func_idx);
+            func_id
+        } else {
+            let int_type_id = self.add_or_find_type_id(Type::Primitive(PrimitiveType::Int));
+            let hash_func_id = self.add_function_to_current_scope(
+                ScopeId::BOGUS,
+                &Token::Ident(POSITION_BOGUS, "hash".to_string()),
+                vec![],
+                true,
+                vec![
+                    FunctionParam { name: "self".to_string(), type_id: self_type_id, var_id: VarId::BOGUS, defined_span: None, default_value: None, is_variadic: false, is_incomplete: false }
+                ],
+                int_type_id,
+            )?;
+            self.project.get_func_by_id_mut(&hash_func_id).defined_span = None;
+            let func = self.project.get_func_by_id(&hash_func_id);
+            let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+            self.project.get_func_by_id_mut(&hash_func_id).fn_type_id = fn_type_id;
+            hash_func_id
+        };
+        self.project.get_enum_by_id_mut(enum_id).methods.insert(METHOD_IDX_HASH, hash_func_id);
+
+        let eq_func_id = if let Some(func_id) = eq_func_id {
+            let eq_func_idx = self.project.get_enum_by_id(enum_id).methods.iter().find_position(|m| m == &&func_id).unwrap().0;
+            self.project.get_enum_by_id_mut(enum_id).methods.remove(eq_func_idx);
+            func_id
+        } else {
+            let bool_type_id = self.add_or_find_type_id(Type::Primitive(PrimitiveType::Bool));
+            let eq_func_id = self.add_function_to_current_scope(
+                ScopeId::BOGUS,
+                &Token::Ident(POSITION_BOGUS, "eq".to_string()),
+                vec![],
+                true,
+                vec![
+                    FunctionParam { name: "self".to_string(), type_id: self_type_id, var_id: VarId::BOGUS, defined_span: None, default_value: None, is_variadic: false, is_incomplete: false },
+                    FunctionParam { name: "other".to_string(), type_id: self_type_id, var_id: VarId::BOGUS, defined_span: None, default_value: None, is_variadic: false, is_incomplete: false },
+                ],
+                bool_type_id,
+            )?;
+            self.project.get_func_by_id_mut(&eq_func_id).defined_span = None;
+            let func = self.project.get_func_by_id(&eq_func_id);
+            let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+            self.project.get_func_by_id_mut(&eq_func_id).fn_type_id = fn_type_id;
+            eq_func_id
+        };
+        self.project.get_enum_by_id_mut(enum_id).methods.insert(METHOD_IDX_EQ, eq_func_id);
 
         self.current_type_decl = None;
 
@@ -3261,6 +3873,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let prev_scope_id = self.current_scope_id;
         self.current_scope_id = enum_.enum_scope_id;
+        let prev_type_decl = self.current_type_decl.replace(enum_.self_type_id);
 
         debug_assert!(enum_.variants.len() == variants.len());
         for (idx, ((variant_decl_token, variant_decl_args), variant)) in variants.iter().zip(&enum_variants).enumerate() {
@@ -3274,7 +3887,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let return_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids.clone(), Some(idx)));
                 self.end_child_scope();
 
-                let variant_func_id = self.add_function_to_current_scope(fn_scope_id, variant_decl_token, vec![], false, params, return_type_id)?;
+                let variant_func_id = self.add_function_to_current_scope(fn_scope_id, variant_decl_token, generic_ids.clone(), false, params, return_type_id)?;
+                let func = self.project.get_func_by_id(&variant_func_id);
+                let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+                self.project.get_func_by_id_mut(&variant_func_id).fn_type_id = fn_type_id;
+
                 let EnumVariantKind::Container(func_id) = &mut self.project.get_enum_by_id_mut(&enum_id).variants[idx].kind else { unreachable!() };
                 *func_id = variant_func_id;
                 let ScopeKind::Function(id) = &mut self.project.get_scope_by_id_mut(&fn_scope_id).kind else { unreachable!() };
@@ -3282,7 +3899,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
         }
 
-        let mut method_func_id_idx = 0;
+        let mut method_func_id_idx = 3;
         let mut static_method_func_id_idx = 0;
         for method in methods.into_iter() {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: an enum's methods must be of type AstNode::FunctionDecl") };
@@ -3290,8 +3907,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             let enum_ = self.project.get_enum_by_id(&enum_id);
             let func_id = if is_method {
-                method_func_id_idx += 1;
-                enum_.methods[method_func_id_idx - 1]
+                if Token::get_ident_name(&decl_node.name) == "toString" {
+                    enum_.methods[METHOD_IDX_TOSTRING]
+                } else if Token::get_ident_name(&decl_node.name) == "hash" {
+                    enum_.methods[METHOD_IDX_HASH]
+                } else if Token::get_ident_name(&decl_node.name) == "eq" {
+                    enum_.methods[METHOD_IDX_EQ]
+                } else {
+                    method_func_id_idx += 1;
+                    enum_.methods[method_func_id_idx - 1]
+                }
             } else {
                 static_method_func_id_idx += 1;
                 enum_.static_methods[static_method_func_id_idx - 1]
@@ -3300,6 +3925,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         self.current_scope_id = prev_scope_id;
+        self.current_type_decl = prev_type_decl;
 
         Ok(())
     }
@@ -3337,9 +3963,37 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     (None, Some(expr)) => {
                         let typed_expr = self.typecheck_expression(*expr, None)?;
                         let type_id = typed_expr.type_id();
-                        if *type_id == PRELUDE_UNIT_TYPE_ID || self.type_contains_generics(type_id) {
+                        let generics_in_type = self.extract_generic_slots(type_id);
+                        if *type_id == PRELUDE_UNIT_TYPE_ID {
                             let span = self.make_span(&typed_expr.span());
                             return Err(TypeError::ForbiddenAssignment { span, type_id: *type_id, purpose: "assignment" });
+                        } else if let Type::Function(param_type_ids, num_required_params, _, _) = self.project.get_type_by_id(type_id) {
+                            // TODO: Also check for this case contained in arrays, optionals, tuples, etc; eg:
+                            //   func foo(x = 12) = ...
+                            //   val fns = [foo]
+                            if param_type_ids.len() != *num_required_params {
+                                let span = self.make_span(&typed_expr.span());
+                                return Err(TypeError::ForbiddenAssignment { span, type_id: *type_id, purpose: "assignment" });
+                            }
+                        }
+                        if !generics_in_type.is_empty() {
+                            for generic_type_id in &generics_in_type {
+                                let is_generic_known = self.current_function
+                                    .and_then(|func_id| if self.project.get_func_by_id(&func_id).generic_ids.contains(generic_type_id) { Some(true) } else { None })
+                                    .unwrap_or_else(|| {
+                                        self.current_type_decl
+                                            .and_then(|type_id| {
+                                                self.project.get_struct_by_type_id(&type_id).map(|(struct_, _)| &struct_.generic_ids)
+                                                    .or_else(|| self.project.get_enum_by_type_id(&type_id).map(|(enum_, _, _)| &enum_.generic_ids))
+                                            })
+                                            .map(|generic_ids| generic_ids.contains(generic_type_id))
+                                            .unwrap_or(false)
+                                    });
+                                if !is_generic_known {
+                                    let span = self.make_span(&typed_expr.span());
+                                    return Err(TypeError::ForbiddenAssignment { span, type_id: *type_id, purpose: "assignment" });
+                                }
+                            }
                         }
                         self.typecheck_binding_pattern(is_mutable, true, &mut binding, &type_id, &mut var_ids)?;
 
@@ -3364,13 +4018,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 if is_exported {
                     for var_id in &var_ids {
-                        let var = self.project.get_var_by_id(var_id);
+                        let var = self.project.get_var_by_id_mut(var_id);
+                        var.is_exported = true;
                         let var_name = var.name.clone();
                         self.current_module_mut().exports.insert(var_name, ExportedValue::Variable(*var_id));
                     }
                 }
 
-                Ok(TypedNode::BindingDeclaration { token, pattern: binding, vars: var_ids, expr: typed_expr })
+                Ok(TypedNode::BindingDeclaration { token, is_exported, pattern: binding, vars: var_ids, expr: typed_expr })
             }
             AstNode::IfStatement(token, if_node) => self.typecheck_if_node(token, if_node, false, type_hint),
             AstNode::ForLoop(token, for_loop_node) => {
@@ -3379,11 +4034,28 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let typed_iterator = self.typecheck_expression(*iterator, None)?;
                 let iterator_type_id = typed_iterator.type_id();
                 let iterator_type = self.project.get_type_by_id(iterator_type_id);
-                let (iteratee_type_id, index_type_id) = match iterator_type {
-                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_array_struct_id => (generic_ids[0], PRELUDE_INT_TYPE_ID),
-                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_set_struct_id => (generic_ids[0], PRELUDE_INT_TYPE_ID),
-                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_map_struct_id => (generic_ids[0], generic_ids[1]),
-                    _ => return Err(TypeError::InvalidLoopTarget { span: self.make_span(&typed_iterator.span()), type_id: *iterator_type_id, kind: InvalidLoopTargetKind::For }),
+                let iteratee_type_id = match iterator_type {
+                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_array_struct_id => generic_ids[0],
+                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_set_struct_id => generic_ids[0],
+                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_map_struct_id => {
+                        self.add_or_find_type_id(self.project.tuple_type(vec![generic_ids[0], generic_ids[1]]))
+                    }
+                    Type::GenericInstance(struct_id, _) => {
+                        // TODO: replace this logic when traits are introduced to the language
+                        let struct_ = self.project.get_struct_by_id(struct_id);
+                        let generic_id = struct_.methods.iter().find_map(|func_id| {
+                            let function = self.project.get_func_by_id(func_id);
+                            if function.name != "next" { return None; }
+                            self.project.type_is_option(&function.return_type_id)
+                        });
+
+                        if let Some(generic_id) = generic_id {
+                            generic_id
+                        } else {
+                            return Err(TypeError::InvalidControlFlowTarget { span: self.make_span(&typed_iterator.span()), type_id: *iterator_type_id, kind: InvalidControlFlowTargetKind::ForLoop });
+                        }
+                    }
+                    _ => return Err(TypeError::InvalidControlFlowTarget { span: self.make_span(&typed_iterator.span()), type_id: *iterator_type_id, kind: InvalidControlFlowTargetKind::ForLoop }),
                 };
 
                 self.begin_child_scope("for_loop_block", ScopeKind::Loop);
@@ -3392,7 +4064,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let index_var_id = if let Some(index_ident) = index_ident {
                     let var_name = Token::get_ident_name(&index_ident);
                     let span = self.make_span(&index_ident.get_range());
-                    let var_id = self.add_variable_to_current_scope(var_name, index_type_id, false, true, &span, false)?;
+                    let var_id = self.add_variable_to_current_scope(var_name, PRELUDE_INT_TYPE_ID, false, true, &span, false)?;
                     Some(var_id)
                 } else {
                     None
@@ -3409,20 +4081,20 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     self.current_scope_mut().terminator = Some(TerminatorKind::Returning);
                 }
 
-                Ok(TypedNode::ForLoop { token, binding, binding_var_ids, index_var_id, iterator: Box::new(typed_iterator), body: typed_body })
+                Ok(TypedNode::ForLoop { token, binding, binding_var_ids, index_var_id, iterator: Box::new(typed_iterator), body: typed_body, block_terminator: loop_scope_terminator })
             }
             AstNode::WhileLoop(token, while_loop_node) => {
                 let WhileLoopNode { condition, condition_binding, body } = while_loop_node;
 
                 let typed_condition = self.typecheck_expression(*condition, None)?;
                 let condition_type_id = typed_condition.type_id();
-                if *condition_type_id != PRELUDE_BOOL_TYPE_ID && self.type_is_option(condition_type_id).is_none() {
-                    return Err(TypeError::InvalidLoopTarget { span: self.make_span(&typed_condition.span()), type_id: *condition_type_id, kind: InvalidLoopTargetKind::While });
+                if *condition_type_id != PRELUDE_BOOL_TYPE_ID && self.project.type_is_option(condition_type_id).is_none() {
+                    return Err(TypeError::InvalidControlFlowTarget { span: self.make_span(&typed_condition.span()), type_id: *condition_type_id, kind: InvalidControlFlowTargetKind::WhileLoop });
                 }
 
                 self.begin_child_scope("while_loop_block", ScopeKind::Loop);
                 let condition_var_id = if let Some(condition_binding) = condition_binding {
-                    let condition_type_id = self.type_is_option(condition_type_id).unwrap_or(PRELUDE_BOOL_TYPE_ID);
+                    let condition_type_id = self.project.type_is_option(condition_type_id).unwrap_or(PRELUDE_BOOL_TYPE_ID);
 
                     let var_name = Token::get_ident_name(&condition_binding);
                     let span = self.make_span(&condition_binding.get_range());
@@ -3443,7 +4115,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     self.current_scope_mut().terminator = Some(TerminatorKind::Returning);
                 }
 
-                Ok(TypedNode::WhileLoop { token, condition: Box::new(typed_condition), condition_var_id, body: typed_body })
+                Ok(TypedNode::WhileLoop { token, condition: Box::new(typed_condition), condition_var_id, body: typed_body, block_terminator: loop_scope_terminator })
             }
             AstNode::Break(token) => {
                 let Some(_) = self.project.find_parent_scope_of_kind(&self.current_scope_id, &ScopeKind::Loop) else {
@@ -3511,96 +4183,113 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 Ok(TypedNode::Return { token, expr: typed_ret_expr })
             }
             AstNode::FunctionDecl(_, _) | AstNode::TypeDecl(_, _) | AstNode::EnumDecl(_, _) => unreachable!("Internal error: node should have been handled in typecheck_block"),
-            AstNode::ImportStatement(token, import_node) => {
-                let ImportNode { kind, module_token, module_id } = import_node;
-                let Some(module_id) = self.module_loader.get_module_id(&module_id) else {
-                    let span = self.make_span(&module_token.get_range());
-                    let module_path = self.module_loader.resolve_path(&module_id);
-                    return Err(TypeError::UnknownModule { span, module_path });
-                };
-                let module_id = *module_id;
-                let ModuleId(module_idx) = module_id;
-
-                match &kind {
-                    ImportKind::ImportAll(star_token) => {
-                        let import_module = &self.project.modules[module_idx];
-                        let exports = import_module.exports.values().map(|e| e.clone()).collect_vec();
-
-                        for export in exports {
-                            self.add_imported_value(export, star_token)?;
-                        }
-                    }
-                    ImportKind::ImportList(imports) => {
-                        for import_tok in imports {
-                            let import_name = Token::get_ident_name(import_tok);
-                            let import_module = &self.project.modules[module_idx];
-                            let Some(export) = import_module.exports.get(&import_name) else {
-                                let span = self.make_span(&import_tok.get_range());
-                                return Err(TypeError::UnknownExport { span, module_id, import_name, is_aliased: false });
-                            };
-
-                            self.add_imported_value(*export, import_tok)?;
-                        }
-                    }
-                    ImportKind::Alias(alias_token) => {
-                        let alias_name = Token::get_ident_name(alias_token);
-                        let module_type_id = TypeId::module_type_alias(&module_id);
-                        let span = self.make_span(&alias_token.get_range());
-                        self.add_variable_to_current_scope(alias_name, module_type_id, false, true, &span, false)?;
-                    }
-                }
-
-                Ok(TypedNode::Import { token, kind, module_id })
-            }
+            AstNode::ImportStatement(_, _) => unreachable!("Imports are handled prior to typechecking any other node"),
             n => self.typecheck_expression(n, type_hint)
         }
     }
 
-    fn add_imported_value(&mut self, exported_value: ExportedValue, import_token: &Token) -> Result<(), TypeError> {
+    fn typecheck_import(&mut self, import_module_id: &ModuleId, import_node: ImportNode) -> Result<TypedImportKind, TypeError> {
+        let kind = match import_node.kind {
+            ImportKind::ImportAll(star_token) => {
+                let import_module = &self.project.modules[import_module_id.0];
+                let exports = import_module.exports.values().map(|e| e.clone()).collect_vec();
+
+                for export in exports {
+                    self.add_imported_value(*import_module_id, export, &star_token)?;
+                }
+
+                TypedImportKind::ImportAll(star_token)
+            }
+            ImportKind::ImportList(imports) => {
+                let mut imported_values = Vec::with_capacity(imports.len());
+                for import_tok in imports {
+                    let import_name = Token::get_ident_name(&import_tok);
+                    let import_module = &self.project.modules[import_module_id.0];
+                    let Some(export) = import_module.exports.get(&import_name) else {
+                        let span = self.make_span(&import_tok.get_range());
+                        return Err(TypeError::UnknownExport { span, module_id: *import_module_id, import_name, is_aliased: false });
+                    };
+
+                    let imported_value = self.add_imported_value(*import_module_id, *export, &import_tok)?;
+                    imported_values.push(imported_value);
+                }
+                TypedImportKind::ImportList(imported_values)
+            }
+            ImportKind::Alias(alias_token) => {
+                let alias_name = Token::get_ident_name(&alias_token);
+                let module_type_id = TypeId::module_type_alias(import_module_id);
+                let span = self.make_span(&alias_token.get_range());
+                self.add_variable_to_current_scope(alias_name, module_type_id, false, true, &span, false)?;
+
+                TypedImportKind::Alias(alias_token)
+            }
+        };
+
+        Ok(kind)
+    }
+
+    fn add_imported_value(&mut self, module_id: ModuleId, exported_value: ExportedValue, import_token: &Token) -> Result<ImportedValue, TypeError> {
         let span = self.make_span(&import_token.get_range());
 
-        match exported_value {
+        let imported_value = match exported_value {
             ExportedValue::Function(func_id) => {
                 self.add_function_variable_alias_to_current_scope(import_token, &func_id)?;
+
+                ImportedValue::Function(import_token.clone(), func_id)
             }
-            ExportedValue::Type(type_kind) => match type_kind {
-                TypeKind::Struct(struct_id) => {
-                    let struct_type_id = self.add_or_find_type_id(self.project.struct_type(struct_id));
-                    let struct_ = self.project.get_struct_by_id(&struct_id);
-                    let struct_var_id = self.add_variable_to_current_scope(struct_.name.clone(), struct_type_id, false, true, &span, false)?;
-                    let variable = self.project.get_var_by_id_mut(&struct_var_id);
-                    variable.alias = VariableAlias::Type(TypeKind::Struct(struct_id));
-                }
-                TypeKind::Enum(enum_id) => {
-                    let enum_type_id = self.add_or_find_type_id(self.project.enum_type(enum_id));
-                    let enum_ = self.project.get_enum_by_id(&enum_id);
-                    let enum_var_id = self.add_variable_to_current_scope(enum_.name.clone(), enum_type_id, false, true, &span, false)?;
-                    let variable = self.project.get_var_by_id_mut(&enum_var_id);
-                    variable.alias = VariableAlias::Type(TypeKind::Enum(enum_id));
-                }
+            ExportedValue::Type(type_kind) => {
+                match type_kind {
+                    TypeKind::Struct(struct_id) => {
+                        let struct_type_id = self.add_or_find_type_id(self.project.struct_type(struct_id));
+                        let struct_ = self.project.get_struct_by_id(&struct_id);
+                        let struct_var_id = self.add_variable_to_current_scope(struct_.name.clone(), struct_type_id, false, true, &span, false)?;
+                        let variable = self.project.get_var_by_id_mut(&struct_var_id);
+                        variable.alias = VariableAlias::Type(TypeKind::Struct(struct_id));
+                    }
+                    TypeKind::Enum(enum_id) => {
+                        let enum_type_id = self.add_or_find_type_id(self.project.enum_type(enum_id));
+                        let enum_ = self.project.get_enum_by_id(&enum_id);
+                        let enum_var_id = self.add_variable_to_current_scope(enum_.name.clone(), enum_type_id, false, true, &span, false)?;
+                        let variable = self.project.get_var_by_id_mut(&enum_var_id);
+                        variable.alias = VariableAlias::Type(TypeKind::Enum(enum_id));
+                    }
+                };
+
+                ImportedValue::Type(import_token.clone(), type_kind)
             }
             ExportedValue::Variable(var_id) => {
-                let imported_var = self.project.get_var_by_id(&var_id);
-                let is_captured = imported_var.is_captured;
-                let var_id = self.add_variable_to_current_scope(imported_var.name.clone(), imported_var.type_id, false, imported_var.is_initialized, &span, false)?;
-                let var = self.project.get_var_by_id_mut(&var_id);
-                var.is_captured = is_captured;
-            }
-        }
+                let name = &self.project.get_var_by_id(&var_id).name;
+                if let Some((range, _)) = self.project.find_variable_by_name(&self.current_scope_id, name) {
+                    let original_span = range.map(|r| self.make_span(&r));
+                    return Err(TypeError::DuplicateName { span: span.clone(), name: name.clone(), original_span, kind: DuplicateNameKind::Variable });
+                }
 
-        Ok(())
+                ImportedValue::Variable(import_token.clone(), var_id)
+            }
+        };
+
+        self.current_module_mut().imports.entry(module_id).or_default().push(imported_value.clone());
+
+        Ok(imported_value)
     }
 
     fn typecheck_if_node(&mut self, if_token: Token, if_node: IfNode, is_expr: bool, type_hint: Option<TypeId>) -> Result<TypedNode, TypeError> {
         let is_statement = if let Some(type_hint) = &type_hint { *type_hint == PRELUDE_UNIT_TYPE_ID } else { !is_expr };
 
-        let IfNode { condition, mut condition_binding, if_block, else_block } = if_node;
+        let IfNode { condition, condition_binding, if_block, else_block } = if_node;
 
         let typed_condition = self.typecheck_expression(*condition, None)?;
-        let condition_type_id = typed_condition.type_id();
-        if !self.type_satisfies_other(condition_type_id, &PRELUDE_BOOL_TYPE_ID) {
+        let mut condition_type_id = *typed_condition.type_id();
+        let cond_is_bool = self.type_satisfies_other(&condition_type_id, &PRELUDE_BOOL_TYPE_ID);
+        let cond_is_opt = if let Some(inner_type_id) = self.project.type_is_option(&condition_type_id) {
+            condition_type_id = inner_type_id;
+            true
+        } else {
+            false
+        };
+        if !cond_is_bool && !cond_is_opt {
             let span = self.make_span(&typed_condition.span());
-            return Err(TypeError::TypeMismatch { span, expected: vec![PRELUDE_BOOL_TYPE_ID], received: *condition_type_id });
+            return Err(TypeError::InvalidControlFlowTarget { span, type_id: condition_type_id, kind: InvalidControlFlowTargetKind::IfCondition });
         }
 
         let mut type_id = None;
@@ -3611,9 +4300,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         let if_block_scope_id = self.begin_child_scope("if_block", ScopeKind::If);
-        if let Some(ref mut condition_binding) = &mut condition_binding {
-            self.typecheck_binding_pattern(false, true, condition_binding, condition_type_id, &mut vec![])?;
-        }
+        let condition_binding = if let Some(mut condition_binding) = condition_binding {
+            let mut var_ids = vec![];
+            self.typecheck_binding_pattern(false, true, &mut condition_binding, &condition_type_id, &mut var_ids)?;
+            Some((condition_binding, var_ids))
+        } else {
+            None
+        };
         let if_block_len = if_block.len();
         let mut typed_if_block = Vec::with_capacity(if_block_len);
         if if_block_len != 0 {
@@ -3649,7 +4342,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         } else if let Some(hint_type_id) = &type_id {
             // If there is no if-block body and there is a provided type_hint, then the working type for
             // the expression becomes the hint type wrapped in an option.
-            type_id = Some(self.add_or_find_type_id(self.project.option_type(*hint_type_id)));
+            type_id = Some(self.add_or_find_type_id(self.project.option_type(*hint_type_id, true)));
         } else if !is_statement {
             // If there is no if-block body and there is also no provided type_hint, we can't make any
             // assumptions about what the type should be, so we default to the type of the `None` builtin.
@@ -3679,7 +4372,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     let orig_span = self.make_span(&last_if_block_expr.span());
                                     Err(TypeError::BranchTypeMismatch { span, orig_span, expected: *hint_type_id, received: node_type_id })
                                 } else if !is_statement {
-                                    let hint_type_id = self.type_is_option(hint_type_id).unwrap_or(*hint_type_id);
+                                    let hint_type_id = self.project.type_is_option(hint_type_id).unwrap_or(*hint_type_id);
                                     Err(TypeError::TypeMismatch { span, expected: vec![hint_type_id], received: node_type_id })
                                 } else { unreachable!() };
                             };
@@ -3699,10 +4392,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.end_child_scope();
             else_block_terminator = self.project.get_scope_by_id(&else_block_scope_id).terminator;
         } else if let Some(hint_type_id) = &type_id {
-            type_id = Some(self.add_or_find_type_id(self.project.option_type(*hint_type_id)));
+            type_id = Some(self.add_or_find_type_id(self.project.option_type(*hint_type_id, true)));
         }
 
-        self.current_scope_mut().terminator = compound_terminator_kinds(if_block_terminator, else_block_terminator);
+        self.current_scope_mut().terminator = compound_terminator_kinds(&if_block_terminator, &else_block_terminator);
 
         let type_id = if is_statement {
             PRELUDE_UNIT_TYPE_ID
@@ -3710,14 +4403,30 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             type_id.unwrap_or(PRELUDE_UNIT_TYPE_ID)
         };
 
+        if let Some(node) = typed_if_block.last_mut() {
+            if type_id != PRELUDE_UNIT_TYPE_ID {
+                node.set_resolved_type_id(type_id);
+            }
+        }
+        if let Some(node) = typed_else_block.last_mut() {
+            if type_id != PRELUDE_UNIT_TYPE_ID {
+                node.set_resolved_type_id(type_id);
+            }
+        }
+
+        let resolved_type_id = type_hint.unwrap_or(type_id);
+
         Ok(TypedNode::If {
             if_token,
             condition: Box::new(typed_condition),
             condition_binding,
             if_block: typed_if_block,
+            if_block_terminator,
             else_block: typed_else_block,
+            else_block_terminator,
             is_statement,
             type_id,
+            resolved_type_id,
         })
     }
 
@@ -3742,14 +4451,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let mut seen_wildcard_token: Option<Token> = None;
         let mut seen_constant_values = HashMap::<TypedLiteral, Token>::new();
         let mut seen_none_token: Option<Token> = None;
-        let mut none_case_covered = self.type_is_option(&target_type_id).is_none();
+        let mut none_case_covered = self.project.type_is_option(&target_type_id).is_none();
         let mut seen_type_token: Option<Token> = None;
-        let mut type_case_covered = match self.project.get_type_by_id(&self.type_is_option(&target_type_id).unwrap_or(target_type_id)) {
+        let mut type_case_covered = match self.project.get_type_by_id(&self.project.type_is_option(&target_type_id).unwrap_or(target_type_id)) {
             Type::GenericInstance(_, _) | Type::Primitive(_) => false,
             _ => true
         };
         let mut seen_enum_variants = HashMap::<(EnumId, usize), Range>::new();
-        let mut enum_variants_covered = !matches!(self.project.get_type_by_id(&self.type_is_option(&target_type_id).unwrap_or(target_type_id)), Type::GenericEnumInstance(_, _, _));
+        let mut enum_variants_covered = !matches!(self.project.get_type_by_id(&self.project.type_is_option(&target_type_id).unwrap_or(target_type_id)), Type::GenericEnumInstance(_, _, _));
         let mut all_cases_covered = false;
 
         let mut typed_match_cases = Vec::<TypedMatchCase>::with_capacity(branches.len());
@@ -3763,13 +4472,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.begin_child_scope(&format!("match_case_{}", match_case_idx), ScopeKind::Match);
 
             let case_type_id;
-            match match_type {
+            let kind = match match_type {
                 MatchCaseType::None(none_token) => {
-                    let Some(unwrapped_type) = self.type_is_option(&target_type_id) else {
+                    let Some(unwrapped_type) = self.project.type_is_option(&target_type_id) else {
                         let kind = UnreachableMatchCaseKind::NoTypeOverlap { case_type: None, target_type: target_type_id, target_span: self.make_span(&typed_target.span()) };
                         return Err(TypeError::UnreachableMatchCase { span: self.make_span(&none_token.get_range()), kind });
                     };
-                    debug_assert!(self.type_is_option(&unwrapped_type).is_none(), "A nested Option type should be fully unwrapped");
+                    debug_assert!(self.project.type_is_option(&unwrapped_type).is_none(), "A nested Option type should be fully unwrapped");
 
                     if let Some(orig_token) = seen_none_token {
                         return Err(TypeError::DuplicateMatchCase { span: self.make_span(&none_token.get_range()), orig_span: self.make_span(&orig_token.get_range()) });
@@ -3777,7 +4486,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     seen_none_token = Some(none_token);
                     none_case_covered = true;
 
-                    case_type_id = self.project.prelude_none_type_id;
+                    case_type_id = target_type_id;
+
+                    TypedMatchCaseKind::None
                 }
                 MatchCaseType::Ident(ident_token, args) => {
                     if let Some(destructured_arg) = args.as_ref().and_then(|args| args.first()) {
@@ -3797,46 +4508,168 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let kind = UnreachableMatchCaseKind::NoTypeOverlap { case_type: Some(resolved_case_type_id), target_type: target_type_id, target_span: self.make_span(&typed_target.span()) };
                         return Err(TypeError::UnreachableMatchCase { span: self.make_span(&ident_token.get_range()), kind });
                     }
-                    if resolved_case_type_id == target_type_id || matches!(self.type_is_option(&target_type_id), Some(unwrapped_opt_type) if unwrapped_opt_type == resolved_case_type_id) {
+                    if resolved_case_type_id == target_type_id || matches!(self.project.type_is_option(&target_type_id), Some(unwrapped_opt_type) if unwrapped_opt_type == resolved_case_type_id) {
                         type_case_covered = true;
                     }
 
                     case_type_id = resolved_case_type_id;
+
+                    TypedMatchCaseKind::Type(resolved_case_type_id, vec![])
                 }
                 MatchCaseType::Compound(path_tokens, args) => {
-                    debug_assert!(args.is_none(), "Destructuring enum variants not implemented yet");
                     let mut path_tokens_iter = path_tokens.into_iter();
-                    let enum_name_token = path_tokens_iter.next().expect("There should be at least 2 tokens in the path");
-                    let enum_name = Token::get_ident_name(&enum_name_token);
-                    let Some(enum_) = self.get_enum_by_name(&enum_name) else {
-                        return Err(TypeError::UnknownType { span: self.make_span(&enum_name_token.get_range()), name: enum_name });
+                    let first_token = path_tokens_iter.next().expect("There should be at least 1 token in the path");
+                    let first_token_str = Token::get_ident_name(&first_token);
+
+                    let (enum_or_struct, name_token) = if let Some((_, var)) = self.project.find_variable_by_name(&ScopeId(self.current_module().id, 0), &first_token_str) {
+                        if let Some(alias_module_id) = var.type_id.as_module_type_alias() {
+                            let type_name_token = path_tokens_iter.next().expect("There should be at least 2 tokens in the path");
+                            let type_name = Token::get_ident_name(&type_name_token);
+
+                            let module = &self.project.modules[alias_module_id.0];
+                            let exported_value = module.exports.iter().find_map(|(name, val)| if name == &type_name { Some(val) } else { None });
+                            let Some(export) = exported_value else {
+                                let span = self.make_span(&type_name_token.get_range());
+                                return Err(TypeError::UnknownExport { span, module_id: alias_module_id, import_name: type_name, is_aliased: true });
+                            };
+
+                            match export {
+                                ExportedValue::Variable(_) | ExportedValue::Function(_) => {
+                                    return Err(TypeError::UnknownType { span: self.make_span(&type_name_token.get_range()), name: type_name });
+                                }
+                                ExportedValue::Type(TypeKind::Enum(enum_id)) => (Either::Left(self.project.get_enum_by_id(enum_id)), type_name_token),
+                                ExportedValue::Type(TypeKind::Struct(struct_id)) => (Either::Right(self.project.get_struct_by_id(struct_id)), type_name_token),
+                            }
+                        } else if let Type::Type(TypeKind::Enum(enum_id)) = self.project.get_type_by_id(&var.type_id) {
+                            let enum_ = self.project.get_enum_by_id(enum_id);
+                            (Either::Left(enum_), first_token)
+                        } else {
+                            return Err(TypeError::UnknownType { span: self.make_span(&first_token.get_range()), name: first_token_str });
+                        }
+                    } else {
+                        return Err(TypeError::UnknownType { span: self.make_span(&first_token.get_range()), name: first_token_str });
                     };
 
-                    let variant_name_token = path_tokens_iter.next().expect("There should be 2 tokens in the path");
-                    let match_case_range = enum_name_token.get_range().expand(&variant_name_token.get_range());
+                    match enum_or_struct {
+                        Either::Right(struct_) => {
+                            if let Some(destructured_arg) = args.as_ref().and_then(|args| args.first()) {
+                                let tok = match destructured_arg {
+                                    MatchCaseArgument::Pattern(p) => p.get_token(),
+                                    MatchCaseArgument::Literal(n) => n.get_token(),
+                                };
+                                return Err(TypeError::UnimplementedFeature { span: self.make_span(&tok.get_range()), desc: "destructuring of non-enum type in match case" });
+                            }
+                            if let Some(orig_token) = seen_type_token {
+                                return Err(TypeError::DuplicateMatchCase { span: self.make_span(&name_token.get_range()), orig_span: self.make_span(&orig_token.get_range()) });
+                            }
+                            seen_type_token = Some(name_token.clone());
 
-                    let variant_name = Token::get_ident_name(&variant_name_token);
-                    let Some((variant_idx, _variant)) = enum_.variants.iter().enumerate().find(|(_, v)| v.name == variant_name) else {
-                        return Err(TypeError::UnknownMember { span: self.make_span(&variant_name_token.get_range()), field_name: variant_name, type_id: enum_.self_type_id });
-                    };
-                    let inner_type_id = self.type_is_option(&target_type_id).unwrap_or(target_type_id);
-                    let target_ty = self.project.get_type_by_id(&inner_type_id);
-                    let generic_ids = match target_ty {
-                        Type::GenericEnumInstance(enum_id, generic_ids, _) if *enum_id == enum_.id => generic_ids,
-                        _ => return Err(TypeError::UnreachableMatchCase {
-                            span: self.make_span(&match_case_range),
-                            kind: UnreachableMatchCaseKind::NoTypeOverlap { case_type: Some(enum_.self_type_id), target_type: target_type_id, target_span: self.make_span(&typed_target.span()) },
-                        }),
-                    };
-                    if let Some(orig_range) = seen_enum_variants.get(&(enum_.id, variant_idx)) {
-                        return Err(TypeError::DuplicateMatchCase { span: self.make_span(&match_case_range), orig_span: self.make_span(orig_range) });
+                            let resolved_case_type_id = struct_.self_type_id;
+                            if !self.type_satisfies_other(&resolved_case_type_id, &target_type_id) {
+                                let kind = UnreachableMatchCaseKind::NoTypeOverlap { case_type: Some(resolved_case_type_id), target_type: target_type_id, target_span: self.make_span(&typed_target.span()) };
+                                return Err(TypeError::UnreachableMatchCase { span: self.make_span(&name_token.get_range()), kind });
+                            }
+                            if resolved_case_type_id == target_type_id || matches!(self.project.type_is_option(&target_type_id), Some(unwrapped_opt_type) if unwrapped_opt_type == resolved_case_type_id) {
+                                type_case_covered = true;
+                            }
+
+                            case_type_id = resolved_case_type_id;
+
+                            TypedMatchCaseKind::Type(resolved_case_type_id, vec![])
+                        }
+                        Either::Left(enum_) => {
+                            let enum_id = enum_.id;
+
+                            let variant_name_token = path_tokens_iter.next().expect("There should be 2 tokens in the path");
+                            let match_case_range = name_token.get_range().expand(&variant_name_token.get_range());
+
+                            let variant_name = Token::get_ident_name(&variant_name_token);
+                            let Some((variant_idx, variant)) = enum_.variants.iter().enumerate().find(|(_, v)| v.name == variant_name) else {
+                                return Err(TypeError::UnknownMember { span: self.make_span(&variant_name_token.get_range()), field_name: variant_name, type_id: enum_.self_type_id });
+                            };
+                            let inner_type_id = self.project.type_is_option(&target_type_id).unwrap_or(target_type_id);
+                            let target_ty = self.project.get_type_by_id(&inner_type_id);
+                            let generic_ids = match target_ty {
+                                Type::GenericEnumInstance(enum_id, generic_ids, _) if *enum_id == enum_.id => generic_ids.clone(),
+                                _ => return Err(TypeError::UnreachableMatchCase {
+                                    span: self.make_span(&match_case_range),
+                                    kind: UnreachableMatchCaseKind::NoTypeOverlap { case_type: Some(enum_.self_type_id), target_type: target_type_id, target_span: self.make_span(&typed_target.span()) },
+                                }),
+                            };
+                            if let Some(orig_range) = seen_enum_variants.get(&(enum_.id, variant_idx)) {
+                                return Err(TypeError::DuplicateMatchCase { span: self.make_span(&match_case_range), orig_span: self.make_span(orig_range) });
+                            }
+                            seen_enum_variants.insert((enum_.id, variant_idx), match_case_range);
+                            if enum_.variants.iter().enumerate().all(|(v_idx, _)| seen_enum_variants.contains_key(&(enum_.id, v_idx))) {
+                                enum_variants_covered = true;
+                            }
+
+                            let enum_variant_func_id = if let Some(_) = &args {
+                                if let EnumVariantKind::Container(func_id) = &variant.kind { Some(*func_id) } else { None }
+                            } else {
+                                None
+                            };
+
+                            let enum_ = self.project.get_enum_by_id(&enum_id);
+                            debug_assert!(enum_.generic_ids.len() == generic_ids.len());
+                            let enum_generics = enum_.generic_ids.iter().zip(&generic_ids)
+                                .map(|(generic_id, resolved_generic_id)| (*generic_id, *resolved_generic_id))
+                                .collect::<HashMap<TypeId, TypeId>>();
+                            case_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids, Some(variant_idx)));
+
+                            let typed_match_case_args = if let Some(args) = args {
+                                let Some(func_id) = enum_variant_func_id else {
+                                    return Err(TypeError::DestructuringMismatch { span: self.make_span(&args[0].get_span()), kind: DestructuringMismatchKind::InvalidDestructureTarget, type_id: case_type_id });
+                                };
+                                let variant_field_type_ids = self.project.get_func_by_id(&func_id).params.iter()
+                                    .map(|p| {
+                                        match self.project.get_type_by_id(&p.type_id) {
+                                            Type::Generic(_, name) => {
+                                                *enum_generics.get(&p.type_id).expect(&format!("Expected generic {name} to have been discovered"))
+                                            }
+                                            _ => p.type_id
+                                        }
+                                    })
+                                    .collect_vec();
+                                let enum_variant_arity = variant_field_type_ids.len();
+                                let num_destructuring_args = args.len();
+                                let mut typed_match_case_args = Vec::with_capacity(num_destructuring_args);
+                                for pair in args.into_iter().zip_longest(variant_field_type_ids) {
+                                    let typed_arg = match pair {
+                                        EitherOrBoth::Both(match_case_arg, field_type_id) => {
+                                            let match_case_arg_span = match_case_arg.get_span();
+
+                                            match match_case_arg {
+                                                MatchCaseArgument::Pattern(mut binding) => {
+                                                    let mut var_ids = vec![];
+                                                    self.typecheck_binding_pattern(false, true, &mut binding, &field_type_id, &mut var_ids)?;
+                                                    TypedMatchCaseArgument::Pattern(binding, var_ids)
+                                                }
+                                                MatchCaseArgument::Literal(node) => {
+                                                    let typed_node = self.typecheck_expression(node, Some(field_type_id))?;
+                                                    if !self.type_satisfies_other(typed_node.type_id(), &field_type_id) {
+                                                        return Err(TypeError::TypeMismatch { span: self.make_span(&match_case_arg_span), expected: vec![field_type_id], received: *typed_node.type_id() });
+                                                    }
+                                                    TypedMatchCaseArgument::Literal(typed_node)
+                                                }
+                                            }
+                                        }
+                                        EitherOrBoth::Left(arg) => {
+                                            return Err(TypeError::DestructuringMismatch { span: self.make_span(&arg.get_span()), kind: DestructuringMismatchKind::InvalidEnumVariantArity(enum_variant_arity, num_destructuring_args), type_id: case_type_id });
+                                        }
+                                        EitherOrBoth::Right(_) => { break; }
+                                    };
+                                    typed_match_case_args.push(typed_arg);
+                                }
+
+                                typed_match_case_args
+                            } else {
+                                vec![]
+                            };
+
+                            TypedMatchCaseKind::Type(case_type_id, typed_match_case_args)
+                        }
                     }
-                    seen_enum_variants.insert((enum_.id, variant_idx), match_case_range);
-                    if enum_.variants.iter().enumerate().all(|(v_idx, _)| seen_enum_variants.contains_key(&(enum_.id, v_idx))) {
-                        enum_variants_covered = true;
-                    }
-
-                    case_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_.id, generic_ids.clone(), Some(variant_idx)));
                 }
                 MatchCaseType::Wildcard(wildcard_token) => {
                     if let Some(seen_wildcard_token) = seen_wildcard_token {
@@ -3844,7 +4677,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                     seen_wildcard_token = Some(wildcard_token);
                     all_cases_covered = true;
-                    case_type_id = target_type_id;
+                    case_type_id = match self.project.type_is_option(&target_type_id) {
+                        Some(inner_type_id) if none_case_covered => inner_type_id,
+                        _ => target_type_id
+                    };
+
+                    TypedMatchCaseKind::Wildcard(target_type_id)
                 }
                 MatchCaseType::Constant(const_node) => {
                     let typed_const_node = self.typecheck_expression(const_node, None)?;
@@ -3853,7 +4691,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let kind = UnreachableMatchCaseKind::NoTypeOverlap { case_type: Some(node_type_id), target_type: target_type_id, target_span: self.make_span(&typed_target.span()) };
                         return Err(TypeError::UnreachableMatchCase { span: self.make_span(&typed_const_node.span()), kind });
                     }
-                    let TypedNode::Literal { token: const_token, value: const_val, .. } = typed_const_node else {
+                    let TypedNode::Literal { token: const_token, value: const_val, .. } = &typed_const_node else {
                         unreachable!("Internal error: constant case expressions must be int, float, bool, or string")
                     };
                     if let Some(orig_token) = seen_constant_values.get(&const_val) {
@@ -3862,14 +4700,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                     // Handle the special case where, if we're matching on a Bool and we have `true` and `false` literal match cases, then we know we have an exhaustive match.
                     if target_type_id == PRELUDE_BOOL_TYPE_ID {
-                        if const_val == TypedLiteral::Bool(true) && seen_constant_values.contains_key(&TypedLiteral::Bool(false)) ||
-                            const_val == TypedLiteral::Bool(false) && seen_constant_values.contains_key(&TypedLiteral::Bool(true)) {
+                        if *const_val == TypedLiteral::Bool(true) && seen_constant_values.contains_key(&TypedLiteral::Bool(false)) ||
+                            *const_val == TypedLiteral::Bool(false) && seen_constant_values.contains_key(&TypedLiteral::Bool(true)) {
                             all_cases_covered = true;
                         }
                     }
-                    seen_constant_values.insert(const_val, const_token);
+                    seen_constant_values.insert(const_val.clone(), const_token.clone());
 
                     case_type_id = node_type_id;
+
+                    TypedMatchCaseKind::Constant(node_type_id, typed_const_node)
                 }
                 MatchCaseType::Tuple(_, _) => {
                     // I think I want this to work slightly differently (better?) in this version. For example:
@@ -3883,15 +4723,18 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     // were passed to the "single-match" syntax, it'd desugar to the above.
                     todo!()
                 }
-            }
+            };
 
-            if let Some(case_binding_tok) = case_binding {
+            let case_binding = if let Some(case_binding_tok) = case_binding {
                 let binding_name = Token::get_ident_name(&case_binding_tok);
                 let span = self.make_span(&case_binding_tok.get_range());
-                let _var_id = self.add_variable_to_current_scope(binding_name, case_type_id, false, true, &span, false)?;
-            }
+                let var_id = self.add_variable_to_current_scope(binding_name, case_type_id, false, true, &span, false)?;
+                Some(var_id)
+            } else {
+                None
+            };
 
-            if match_case_body.is_empty() {
+            if match_case_body.is_empty() && !is_statement {
                 let span = self.make_span(&match_case_token.get_range());
                 return Err(TypeError::EmptyMatchBlock { span });
             }
@@ -3925,7 +4768,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                         let orig_span = self.make_span(&last_match_block_expr.span());
                                         Err(TypeError::BranchTypeMismatch { span, orig_span, expected: *hint_type_id, received: node_type_id })
                                     } else {
-                                        let hint_type_id = self.type_is_option(hint_type_id).unwrap_or(*hint_type_id);
+                                        let hint_type_id = self.project.type_is_option(hint_type_id).unwrap_or(*hint_type_id);
                                         Err(TypeError::TypeMismatch { span, expected: vec![hint_type_id], received: node_type_id })
                                     };
                                 };
@@ -3943,10 +4786,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 typed_body.push(typed_node);
             }
 
-            all_branches_terminator = compound_terminator_kinds(all_branches_terminator, self.current_scope().terminator);
+            let block_terminator = self.current_scope().terminator;
+            all_branches_terminator = compound_terminator_kinds(&all_branches_terminator, &block_terminator);
             self.end_child_scope();
 
-            typed_match_cases.push(TypedMatchCase { body: typed_body })
+            typed_match_cases.push(TypedMatchCase { body: typed_body, kind, case_binding, block_terminator })
         }
 
         self.current_scope_mut().terminator = all_branches_terminator;
@@ -3962,12 +4806,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             type_id.unwrap_or(PRELUDE_UNIT_TYPE_ID)
         };
 
+        let resolved_type_id = type_hint.unwrap_or(type_id);
+
         Ok(TypedNode::Match {
             match_token,
             target: Box::new(typed_target),
             cases: typed_match_cases,
             is_statement,
             type_id,
+            resolved_type_id,
         })
     }
 
@@ -3983,7 +4830,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             BindingPattern::Tuple(_, patterns) => {
                 let mut err_kind = None;
                 let mut was_option = false;
-                let type_id = if let Some(wrapped_type_id) = self.type_is_option(&type_id) {
+                let type_id = if let Some(wrapped_type_id) = self.project.type_is_option(&type_id) {
                     was_option = true;
                     wrapped_type_id
                 } else {
@@ -3998,7 +4845,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let generic_ids = generic_ids.clone();
                         for (mut pattern, type_id) in patterns.iter_mut().zip(generic_ids.iter()) {
                             let type_id = if was_option {
-                                self.add_or_find_type_id(self.project.option_type(*type_id))
+                                self.add_or_find_type_id(self.project.option_type(*type_id, true))
                             } else {
                                 *type_id
                             };
@@ -4015,7 +4862,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             BindingPattern::Array(_, patterns, pattern_is_string) => {
                 let mut err_kind = None;
                 let mut inner_type_id = None;
-                let type_id = if let Some(wrapped_type_id) = self.type_is_option(&type_id) {
+                let type_id = if let Some(wrapped_type_id) = self.project.type_is_option(&type_id) {
                     wrapped_type_id
                 } else {
                     *type_id
@@ -4055,7 +4902,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     } else if *pattern_is_string {
                         inner_type_id
                     } else {
-                        self.add_or_find_type_id(self.project.option_type(inner_type_id))
+                        self.add_or_find_type_id(self.project.option_type(inner_type_id, true))
                     };
 
                     self.typecheck_binding_pattern(is_mutable, is_initialized, pattern, &type_id, var_ids)?;
@@ -4069,26 +4916,33 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     fn typecheck_expression(&mut self, node: AstNode, type_hint: Option<TypeId>) -> Result<TypedNode, TypeError> {
         match node {
             AstNode::Literal(token, n) => match n {
-                AstLiteralNode::IntLiteral(i) => Ok(TypedNode::Literal { token, value: TypedLiteral::Int(i), type_id: PRELUDE_INT_TYPE_ID }),
-                AstLiteralNode::FloatLiteral(f) => Ok(TypedNode::Literal { token, value: TypedLiteral::Float(f), type_id: PRELUDE_FLOAT_TYPE_ID }),
-                AstLiteralNode::BoolLiteral(b) => Ok(TypedNode::Literal { token, value: TypedLiteral::Bool(b), type_id: PRELUDE_BOOL_TYPE_ID }),
-                AstLiteralNode::StringLiteral(s) => Ok(TypedNode::Literal { token, value: TypedLiteral::String(s), type_id: PRELUDE_STRING_TYPE_ID })
+                AstLiteralNode::IntLiteral(i) => Ok(TypedNode::Literal { token, value: TypedLiteral::Int(i), type_id: PRELUDE_INT_TYPE_ID, resolved_type_id: type_hint.unwrap_or(PRELUDE_INT_TYPE_ID) }),
+                AstLiteralNode::FloatLiteral(f) => Ok(TypedNode::Literal { token, value: TypedLiteral::Float(f), type_id: PRELUDE_FLOAT_TYPE_ID, resolved_type_id: type_hint.unwrap_or(PRELUDE_FLOAT_TYPE_ID) }),
+                AstLiteralNode::BoolLiteral(b) => Ok(TypedNode::Literal { token, value: TypedLiteral::Bool(b), type_id: PRELUDE_BOOL_TYPE_ID, resolved_type_id: type_hint.unwrap_or(PRELUDE_BOOL_TYPE_ID) }),
+                AstLiteralNode::StringLiteral(s) => Ok(TypedNode::Literal { token, value: TypedLiteral::String(s), type_id: PRELUDE_STRING_TYPE_ID, resolved_type_id: type_hint.unwrap_or(PRELUDE_STRING_TYPE_ID) })
             }
             AstNode::Unary(token, n) => {
                 let UnaryNode { op, expr } = n;
 
                 let typed_expr = self.typecheck_expression(*expr, None)?;
-                let type_id = typed_expr.type_id();
+                let type_id = self.project.condense_type_id_if_primitive(typed_expr.type_id());
 
                 let span = self.make_span(&token.get_range().expand(&typed_expr.span()));
                 match op {
                     UnaryOp::Minus if *type_id != PRELUDE_INT_TYPE_ID && *type_id != PRELUDE_FLOAT_TYPE_ID => {
                         Err(TypeError::TypeMismatch { span, expected: vec![PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID], received: *type_id })
                     }
-                    UnaryOp::Negate if *type_id != PRELUDE_BOOL_TYPE_ID => {
+                    UnaryOp::Minus => {
+                        let resolved_type_id = type_hint.unwrap_or(*type_id);
+                        Ok(TypedNode::Unary { token, op, expr: Box::new(typed_expr), resolved_type_id })
+                    }
+                    UnaryOp::Negate if *type_id != PRELUDE_BOOL_TYPE_ID && self.project.type_is_option(type_id).is_none() => {
                         Err(TypeError::TypeMismatch { span, expected: vec![PRELUDE_BOOL_TYPE_ID], received: *type_id })
                     }
-                    _ => Ok(TypedNode::Unary { token, op, expr: Box::new(typed_expr) })
+                    UnaryOp::Negate => {
+                        let resolved_type_id = type_hint.unwrap_or(PRELUDE_BOOL_TYPE_ID);
+                        Ok(TypedNode::Unary { token, op, expr: Box::new(typed_expr), resolved_type_id })
+                    }
                 }
             }
             AstNode::Binary(token, n) => {
@@ -4115,8 +4969,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let typed_left = self.typecheck_expression(*left, None)?;
                 let typed_right = self.typecheck_expression(*right, None)?;
-                let l_type_id = typed_left.type_id();
-                let r_type_id = typed_right.type_id();
+                let l_type_id = self.project.condense_type_id_if_primitive(typed_left.type_id());
+                let r_type_id = self.project.condense_type_id_if_primitive(typed_right.type_id());
 
                 let type_id = match &op {
                     BinaryOp::Add => match (*l_type_id, *r_type_id) {
@@ -4145,7 +4999,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         }
                     }
                     BinaryOp::Coalesce => {
-                        let Some(mut inner) = self.type_is_option(&l_type_id) else {
+                        let Some(mut inner) = self.project.type_is_option(&l_type_id) else {
                             // SHORT-CIRCUIT: If the LHS is not an Option, we can just return the LHS here.
                             return Ok(typed_left);
                         };
@@ -4168,11 +5022,19 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             return Err(TypeError::IllegalOperator { span, op, left, right });
                         }
                     }
+                    BinaryOp::ShiftLeft | BinaryOp::ShiftRight => match (*l_type_id, *r_type_id) {
+                        (PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID) => PRELUDE_INT_TYPE_ID,
+                        (left, right) => {
+                            let span = self.make_span(&typed_left.span().expand(&typed_right.span()));
+                            return Err(TypeError::IllegalOperator { span, op, left, right });
+                        }
+                    }
                     BinaryOp::Eq | BinaryOp::Neq => PRELUDE_BOOL_TYPE_ID,
 
-                    // Boolean operators
+                    // Boolean/bitwise operators
                     BinaryOp::And | BinaryOp::Or | BinaryOp::Xor => match (*l_type_id, *r_type_id) {
                         (PRELUDE_BOOL_TYPE_ID, PRELUDE_BOOL_TYPE_ID) => PRELUDE_BOOL_TYPE_ID,
+                        (PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID) => PRELUDE_INT_TYPE_ID,
                         (left, right) => {
                             let span = self.make_span(&typed_left.span().expand(&typed_right.span()));
                             return Err(TypeError::IllegalOperator { span, op, left, right });
@@ -4183,7 +5045,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::AndEq | BinaryOp::OrEq | BinaryOp::CoalesceEq => unreachable!()
                 };
 
-                Ok(TypedNode::Binary { op, left: Box::new(typed_left), right: Box::new(typed_right), type_id })
+                let resolved_type_id = type_hint.unwrap_or(type_id);
+                Ok(TypedNode::Binary { op, left: Box::new(typed_left), right: Box::new(typed_right), type_id, resolved_type_id })
             }
             AstNode::Grouped(token, n) => {
                 let typed_expr = self.typecheck_expression(*n.expr, type_hint)?;
@@ -4230,7 +5093,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     Some(inner_type_id) => self.add_or_find_type_id(self.project.array_type(inner_type_id)),
                 };
 
-                Ok(TypedNode::Array { token, items: typed_items, type_id })
+                Ok(TypedNode::Array { token, items: typed_items, type_id, resolved_type_id: type_hint.unwrap_or(type_id) })
             }
             AstNode::Set(token, n) => {
                 let mut inner_type_id = None;
@@ -4271,7 +5134,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     Some(inner_type_id) => self.add_or_find_type_id(self.project.set_type(inner_type_id)),
                 };
 
-                Ok(TypedNode::Set { token, items: typed_items, type_id })
+                let resolved_type_id = type_hint.unwrap_or(type_id);
+                Ok(TypedNode::Set { token, items: typed_items, type_id, resolved_type_id })
             }
             AstNode::Map(token, n) => {
                 let mut key_type_id = None;
@@ -4329,7 +5193,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 };
 
-                Ok(TypedNode::Map { token, items: typed_items, type_id })
+                let resolved_type_id = type_hint.unwrap_or(type_id);
+                Ok(TypedNode::Map { token, items: typed_items, type_id, resolved_type_id })
             }
             AstNode::Tuple(token, items) => {
                 let mut inner_type_ids = None;
@@ -4350,7 +5215,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         Some(type_id) => {
                             let typed_item = self.typecheck_expression(item, Some(type_id))?;
                             let current_value_type_id = typed_item.type_id();
-                            if type_id != *current_value_type_id {
+                            if !self.type_satisfies_other(current_value_type_id, &type_id) {
                                 let span = self.make_span(&typed_item.span());
                                 return Err(TypeError::TypeMismatch { span, expected: vec![type_id], received: *current_value_type_id });
                             }
@@ -4374,21 +5239,39 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 }
 
-                Ok(TypedNode::Tuple { token, items: typed_items, type_id })
+                let resolved_type_id = type_hint.unwrap_or(type_id);
+                Ok(TypedNode::Tuple { token, items: typed_items, type_id, resolved_type_id })
             }
             AstNode::Identifier(token, type_args) => {
                 if let Token::None(_) = &token {
                     let mut type_id = self.project.prelude_none_type_id;
                     if let Some(type_hint) = type_hint {
                         type_id = self.substitute_generics(&type_hint, &type_id);
+
+                        let hint_opt_depth = self.project.option_type_depth(&type_hint);
+                        if hint_opt_depth != 0 {
+                            let type_opt_depth = self.project.option_type_depth(&type_id);
+
+                            if hint_opt_depth > type_opt_depth {
+                                for _ in 0..(hint_opt_depth - type_opt_depth) {
+                                    type_id = self.add_or_find_type_id(self.project.option_type(type_id, false));
+                                }
+                            }
+                            if type_opt_depth > hint_opt_depth {
+                                for _ in 0..(type_opt_depth - hint_opt_depth) {
+                                    let Some(inner) = self.project.type_is_option(&type_id) else { unreachable!() };
+                                    type_id = inner;
+                                }
+                            }
+                        }
                     }
 
-                    return Ok(TypedNode::NoneValue { token, type_id });
+                    return Ok(TypedNode::NoneValue { token, type_id, resolved_type_id: type_id });
                 }
 
                 let name = Token::get_ident_name(&token);
                 let variable = self.project.find_variable_by_name(&self.current_scope_id, &name);
-                let Some(Variable { id, type_id, .. }) = variable else {
+                let Some((_, Variable { id, type_id, .. })) = variable else {
                     let span = self.make_span(&token.get_range());
                     return Err(TypeError::UnknownIdentifier { span, token });
                 };
@@ -4408,32 +5291,40 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
 
                 // Track closed-over variables for current function
-                if let Some(func_id) = self.current_function {
+                if let Some(current_func_id) = self.current_function {
                     let VarId(var_scope_id, _) = var_id;
-                    let FuncId(func_scope_id, _) = func_id;
+                    let FuncId(func_scope_id, _) = current_func_id;
 
-                    if !self.scope_contains_other(&var_scope_id, &func_scope_id) {
-                        let var = self.project.get_var_by_id_mut(&var_id);
+                    let var = self.project.get_var_by_id(&var_id);
+                    if !var.is_exported && var_type_id.as_module_type_alias().is_none() && !self.scope_contains_other(&var_scope_id, &func_scope_id) {
                         if var.alias == VariableAlias::None {
-                            var.is_captured = true;
+                            self.project.get_var_by_id_mut(&var_id).is_captured = true;
 
-                            let func = self.project.get_func_by_id_mut(&func_id);
+                            let func = self.project.get_func_by_id_mut(&current_func_id);
                             if !func.captured_vars.contains(&var_id) {
                                 func.captured_vars.push(var_id);
+                            }
+                        } else if let VariableAlias::Function(func_id) = var.alias {
+                            let function = self.project.get_func_by_id(&func_id);
+                            if function.is_closure() {
+                                let func = self.project.get_func_by_id_mut(&current_func_id);
+                                if !func.captured_closures.contains(&func_id) {
+                                    func.captured_closures.push(func_id);
+                                }
                             }
                         }
                     }
                 }
 
-                Ok(TypedNode::Identifier { token, var_id, type_arg_ids, type_id: var_type_id })
+                let resolved_type_id = type_hint.unwrap_or(var_type_id);
+                Ok(TypedNode::Identifier { token, var_id, type_arg_ids, type_id: var_type_id, resolved_type_id })
             }
             AstNode::Assignment(_, n) => {
                 let AssignmentNode { target, expr } = n;
 
                 let typed_target = self.typecheck_expression(*target, type_hint)?;
                 let target_span = self.make_span(&typed_target.span());
-                let target_type_id = *typed_target.type_id();
-                let typed_expr = self.typecheck_expression(*expr, Some(target_type_id))?;
+                let mut target_type_id = *typed_target.type_id();
 
                 let kind = match typed_target {
                     TypedNode::Identifier { var_id, .. } => {
@@ -4500,7 +5391,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                     TypedNode::Indexing { target, index: IndexingMode::Index(index), .. } => {
                         let index_target_type_id = target.type_id();
-                        if let Type::GenericInstance(struct_id, _) = self.project.get_type_by_id(index_target_type_id) {
+                        let index_target_ty = self.project.get_type_by_id(index_target_type_id);
+                        if let Type::GenericInstance(struct_id, _) = index_target_ty {
                             if struct_id == &self.project.prelude_tuple_struct_id {
                                 return Err(TypeError::InvalidAssignmentTarget { span: target_span, kind: InvalidAssignmentTargetKind::IndexingTuple });
                             }
@@ -4509,11 +5401,22 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             return Err(TypeError::InvalidAssignmentTarget { span: target_span, kind: InvalidAssignmentTargetKind::IndexingString });
                         }
 
+                        let Type::GenericInstance(struct_id, generics) = &index_target_ty else { unreachable!() };
+                        if struct_id == &self.project.prelude_array_struct_id {
+                            target_type_id = generics[0];
+                        } else if struct_id == &self.project.prelude_map_struct_id {
+                            target_type_id = generics[1];
+                        } else {
+                            unreachable!()
+                        }
+
                         AssignmentKind::Indexing { target, index }
                     }
                     TypedNode::Indexing { index: IndexingMode::Range(_, _), .. } => return Err(TypeError::InvalidAssignmentTarget { span: target_span, kind: InvalidAssignmentTargetKind::IndexingRange }),
                     _ => return Err(TypeError::InvalidAssignmentTarget { span: target_span, kind: InvalidAssignmentTargetKind::UnsupportedAssignmentTarget })
                 };
+
+                let typed_expr = self.typecheck_expression(*expr, Some(target_type_id))?;
 
                 let mut type_id = *typed_expr.type_id();
                 if self.type_contains_generics(&type_id) {
@@ -4551,13 +5454,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             return Err(TypeError::InvalidTupleIndex { span: typed_idx_node_span, kind: InvalidTupleIndexKind::OutOfBounds(idx), type_id: target_type_id });
                         };
 
-                        return Ok(TypedNode::Indexing { target: Box::new(typed_target), index: IndexingMode::Index(Box::new(typed_idx_node)), type_id: *type_id });
+                        let resolved_type_id = type_hint.unwrap_or(*type_id);
+                        return Ok(TypedNode::Indexing { target: Box::new(typed_target), index: IndexingMode::Index(Box::new(typed_idx_node)), type_id: *type_id, resolved_type_id });
                     }
                 }
 
                 let (required_index_type_id, result_type_id) = match (&index, target_ty) {
                     (IndexingMode::Index(_), Type::GenericInstance(struct_id, generic_ids)) if struct_id == &self.project.prelude_array_struct_id => {
-                        let opt = self.add_or_find_type_id(self.project.option_type(generic_ids[0]));
+                        let opt = self.add_or_find_type_id(self.project.option_type(generic_ids[0], false));
                         (PRELUDE_INT_TYPE_ID, opt)
                     }
                     (IndexingMode::Range(_, _), Type::GenericInstance(struct_id, _)) if struct_id == &self.project.prelude_array_struct_id => (PRELUDE_INT_TYPE_ID, target_type_id),
@@ -4565,7 +5469,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     (IndexingMode::Range(_, _), Type::Primitive(PrimitiveType::String)) => (PRELUDE_INT_TYPE_ID, PRELUDE_STRING_TYPE_ID),
                     (IndexingMode::Index(_), Type::GenericInstance(struct_id, generic_ids)) if struct_id == &self.project.prelude_map_struct_id => {
                         let key_type_id = generic_ids[0];
-                        let val_type_id = self.add_or_find_type_id(self.project.option_type(generic_ids[1]));
+                        let val_type_id = self.add_or_find_type_id(self.project.option_type(generic_ids[1], false));
                         (key_type_id, val_type_id)
                     }
                     (index, _) => {
@@ -4612,7 +5516,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 };
 
-                Ok(TypedNode::Indexing { target: Box::new(typed_target), index: typed_index, type_id: result_type_id })
+                let resolved_type_id = type_hint.unwrap_or(result_type_id);
+                Ok(TypedNode::Indexing { target: Box::new(typed_target), index: typed_index, type_id: result_type_id, resolved_type_id })
             }
             AstNode::Accessor(_, n) => {
                 let AstNode::Identifier(field_ident, type_args) = *n.field else { unreachable!("Internal error: an accessor's `field` must be an identifier") };
@@ -4623,7 +5528,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let mut target_type_id = *typed_target.type_id();
                 let mut target_is_option_type = false;
                 if n.is_opt_safe {
-                    if let Some(inner_type_id) = self.type_is_option(&target_type_id) {
+                    if let Some(inner_type_id) = self.project.type_is_option(&target_type_id) {
                         target_type_id = inner_type_id;
                         target_is_option_type = true;
                     }
@@ -4650,7 +5555,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     };
                     let type_id = self.project.get_var_by_id(&var_id).type_id;
 
-                    return Ok(TypedNode::Identifier { token: field_ident, var_id, type_arg_ids, type_id });
+                    return Ok(TypedNode::Identifier { token: field_ident, var_id, type_arg_ids, type_id, resolved_type_id: type_id });
                 }
 
                 let mut field_data = None;
@@ -4664,7 +5569,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 if function.name == field_name { Some((idx, function)) } else { None }
                             });
                             if let Some((idx, function)) = method {
-                                let mut type_id = self.add_or_find_type_id(self.project.function_type_for_function(function, false));
+                                let mut type_id = function.fn_type_id;
                                 if let Some(type_hint_id) = &type_hint {
                                     let ty = self.project.get_type_by_id(type_hint_id);
                                     if matches!(ty, Type::Function(_, _, _, _)) {
@@ -4675,7 +5580,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             }
                         }
                         TypeKind::Enum(enum_id) => {
-                            let enum_ = self.project.get_enum_by_id(enum_id);
+                            let enum_id = *enum_id;
+                            let enum_ = self.project.get_enum_by_id(&enum_id);
+                            let num_variants = enum_.variants.len();
+                            let enum_static_methods = enum_.static_methods.clone(); // Sadly need to clone in case it's needed after the for-loop :/
 
                             for (idx, variant) in enum_.variants.iter().enumerate() {
                                 if *variant.name == field_name {
@@ -4689,13 +5597,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                                 }
                                             }
 
-                                            let type_id = self.add_or_find_type_id(Type::GenericEnumInstance(*enum_id, generic_ids.clone(), Some(idx)));
+                                            let type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids.clone(), Some(idx)));
                                             field_data = Some((AccessorKind::EnumVariant, idx, type_id));
                                             break;
                                         }
                                         EnumVariantKind::Container(func_id) => {
                                             let function = self.project.get_func_by_id(&func_id);
-                                            let mut type_id = self.add_or_find_type_id(self.project.function_type_for_function(function, false));
+                                            let mut type_id = function.fn_type_id;
                                             if let Some(type_hint_id) = &type_hint {
                                                 let ty = self.project.get_type_by_id(type_hint_id);
                                                 if matches!(ty, Type::Function(_, _, _, _)) {
@@ -4706,6 +5614,23 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                             break;
                                         }
                                     }
+                                }
+                            }
+
+                            if field_data.is_none() {
+                                let method = enum_static_methods.iter().enumerate().find_map(|(idx, func_id)| {
+                                    let function = self.project.get_func_by_id(func_id);
+                                    if function.name == field_name { Some((idx, function)) } else { None }
+                                });
+                                if let Some((idx, function)) = method {
+                                    let mut type_id = function.fn_type_id;
+                                    if let Some(type_hint_id) = &type_hint {
+                                        let ty = self.project.get_type_by_id(type_hint_id);
+                                        if matches!(ty, Type::Function(_, _, _, _)) {
+                                            type_id = self.substitute_generics(type_hint_id, &type_id);
+                                        }
+                                    }
+                                    field_data = Some((AccessorKind::StaticMethod, idx + num_variants, type_id));
                                 }
                             }
                         }
@@ -4729,7 +5654,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         for (idx, func_id) in enum_.methods.iter().enumerate() {
                             let func = self.project.get_func_by_id(func_id);
                             if func.name == field_name {
-                                let type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, true));
+                                let type_id = func.fn_type_id;
                                 field_data = Some((AccessorKind::Method, idx, type_id));
                                 break;
                             }
@@ -4737,6 +5662,18 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                     if let Some((_, _, type_id)) = &mut field_data {
                         *type_id = self.substitute_generics_with_known(&type_id, &generic_substitutions);
+                    }
+                } else if matches!(target_type, Type::Generic(_, _)) || self.project.type_is_tuple(&target_type_id).is_some() || matches!(target_type, Type::Primitive(PrimitiveType::Any)) {
+                    match field_name.as_str() {
+                        "toString" => {
+                            let type_id = self.add_or_find_type_id(self.project.function_type(vec![], 0, false, PRELUDE_STRING_TYPE_ID));
+                            field_data = Some((AccessorKind::Method, METHOD_IDX_TOSTRING, type_id));
+                        }
+                        "hash" => {
+                            let type_id = self.add_or_find_type_id(self.project.function_type(vec![], 1, false, PRELUDE_INT_TYPE_ID));
+                            field_data = Some((AccessorKind::Method, METHOD_IDX_HASH, type_id));
+                        }
+                        _ => {}
                     }
                 } else {
                     let Some((struct_, generic_substitutions)) = self.project.get_struct_by_type_id(&target_type_id) else {
@@ -4750,7 +5687,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         for (idx, func_id) in struct_.methods.iter().enumerate() {
                             let func = self.project.get_func_by_id(func_id);
                             if func.name == field_name {
-                                let type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, true));
+                                let type_id = func.fn_type_id;
                                 field_data = Some((AccessorKind::Method, idx, type_id));
                                 break;
                             }
@@ -4763,10 +5700,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 if let Some((kind, member_idx, mut type_id)) = field_data {
                     if n.is_opt_safe && target_is_option_type {
-                        type_id = self.add_or_find_type_id(self.project.option_type(type_id))
+                        type_id = self.add_or_find_type_id(self.project.option_type(type_id, true))
                     }
 
-                    Ok(TypedNode::Accessor { target: Box::new(typed_target), kind, is_opt_safe: n.is_opt_safe, member_idx, member_span: field_ident.get_range(), type_id, type_arg_ids })
+                    let resolved_type_id = type_hint.unwrap_or(type_id);
+                    Ok(TypedNode::Accessor { target: Box::new(typed_target), kind, is_opt_safe: n.is_opt_safe, member_idx, member_span: field_ident.get_range(), type_id, type_arg_ids, resolved_type_id })
                 } else {
                     Err(TypeError::UnknownMember { span: field_span, field_name, type_id: target_type_id })
                 }
@@ -4791,6 +5729,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let mut is_instantiation = false;
                 let mut fn_is_variadic = false;
                 let mut forbid_labels = false;
+                let mut func_id = None;
                 match &typed_target {
                     TypedNode::Identifier { var_id, type_arg_ids, .. } if self.project.get_var_by_id(var_id).alias != VariableAlias::None => {
                         provided_type_arg_ids = type_arg_ids.clone();
@@ -4799,6 +5738,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         match var.alias {
                             VariableAlias::Function(alias_func_id) => {
                                 let function = self.project.get_func_by_id(&alias_func_id);
+                                func_id = Some(alias_func_id);
                                 fn_is_variadic = function.is_variadic();
                                 fn_generic_ids = function.generic_ids.clone();
                                 params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
@@ -4828,7 +5768,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let mut target_type_id = *target.type_id();
                         let mut target_is_option_type = false;
                         if *is_opt_safe {
-                            if let Some(inner_type_id) = self.type_is_option(&target_type_id) {
+                            if let Some(inner_type_id) = self.project.type_is_option(&target_type_id) {
                                 target_type_id = inner_type_id;
                                 target_is_option_type = true;
                             }
@@ -4836,6 +5776,47 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let target_ty = self.project.get_type_by_id(&target_type_id);
 
                         match target_ty {
+                            // This case and the one below it are meant to be the same, but if-clauses can't be used alongside |'s in matches
+                            Type::GenericInstance(struct_id, _) if struct_id == &self.project.prelude_tuple_struct_id => {
+                                debug_assert!(kind == &AccessorKind::Method, "Tuple types are only known to have 'toString', 'eq', and 'hash' instance methods; no fields or static methods");
+                                match *member_idx {
+                                    METHOD_IDX_TOSTRING => {
+                                        fn_generic_ids = vec![]; // Cannot determine whether a function accepts type args solely based on its type
+                                        fn_is_variadic = false;
+                                        params_data = vec![];
+                                        return_type_id = PRELUDE_STRING_TYPE_ID;
+                                        forbid_labels = true;
+                                    }
+                                    METHOD_IDX_HASH => {
+                                        fn_generic_ids = vec![]; // Cannot determine whether a function accepts type args solely based on its type
+                                        fn_is_variadic = false;
+                                        params_data = vec![];
+                                        return_type_id = PRELUDE_INT_TYPE_ID;
+                                        forbid_labels = true;
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            }
+                            Type::Generic(_, _) | Type::Primitive(PrimitiveType::Any) => {
+                                debug_assert!(kind == &AccessorKind::Method, "Generic types are only known to have 'toString', 'eq', and 'hash' instance methods; no fields or static methods");
+                                match *member_idx {
+                                    METHOD_IDX_TOSTRING => {
+                                        fn_generic_ids = vec![]; // Cannot determine whether a function accepts type args solely based on its type
+                                        fn_is_variadic = false;
+                                        params_data = vec![];
+                                        return_type_id = PRELUDE_STRING_TYPE_ID;
+                                        forbid_labels = true;
+                                    }
+                                    METHOD_IDX_HASH => {
+                                        fn_generic_ids = vec![]; // Cannot determine whether a function accepts type args solely based on its type
+                                        fn_is_variadic = false;
+                                        params_data = vec![];
+                                        return_type_id = PRELUDE_INT_TYPE_ID;
+                                        forbid_labels = true;
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            }
                             Type::GenericInstance(struct_id, generic_ids) => {
                                 let struct_ = self.project.get_struct_by_id(struct_id);
                                 match kind {
@@ -4858,6 +5839,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     }
                                     AccessorKind::Method => {
                                         let function = self.project.get_func_by_id(&struct_.methods[*member_idx]);
+                                        func_id = Some(function.id);
                                         fn_generic_ids = function.generic_ids.clone();
                                         fn_is_variadic = function.is_variadic();
                                         params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
@@ -4877,6 +5859,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     AccessorKind::Field => todo!(),
                                     AccessorKind::Method => {
                                         let function = self.project.get_func_by_id(&enum_.methods[*member_idx]);
+                                        func_id = Some(function.id);
                                         fn_generic_ids = function.generic_ids.clone();
                                         fn_is_variadic = function.is_variadic();
                                         params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
@@ -4888,7 +5871,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             }
                             Type::Primitive(primitive_type) => {
                                 let struct_id = match primitive_type {
-                                    PrimitiveType::Unit | PrimitiveType::Any => unreachable!("Internal error: accessor of these primitives should have been caught already"),
+                                    PrimitiveType::Unit => unreachable!("Internal error: accessor of Unit should have been caught already"),
+                                    PrimitiveType::Any => unreachable!("Internal error: accessor of Any should have been handled above"),
                                     PrimitiveType::Int => &self.project.prelude_int_struct_id,
                                     PrimitiveType::Float => &self.project.prelude_float_struct_id,
                                     PrimitiveType::Bool => &self.project.prelude_bool_struct_id,
@@ -4896,6 +5880,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 };
                                 let struct_ = self.project.get_struct_by_id(&struct_id);
                                 let function = self.project.get_func_by_id(&struct_.methods[*member_idx]);
+                                func_id = Some(function.id);
                                 fn_generic_ids = function.generic_ids.clone();
                                 fn_is_variadic = function.is_variadic();
                                 params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
@@ -4904,6 +5889,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             Type::Type(TypeKind::Struct(struct_id)) => {
                                 let struct_ = self.project.get_struct_by_id(struct_id);
                                 let function = self.project.get_func_by_id(&struct_.static_methods[*member_idx]);
+                                func_id = Some(function.id);
                                 fn_generic_ids = function.generic_ids.clone();
                                 fn_is_variadic = function.is_variadic();
                                 params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
@@ -4911,23 +5897,28 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             }
                             Type::Type(TypeKind::Enum(enum_id)) => {
                                 let enum_ = self.project.get_enum_by_id(enum_id);
-                                let variant = &enum_.variants[*member_idx];
-                                let EnumVariantKind::Container(func_id) = variant.kind else {
-                                    return Err(TypeError::IllegalEnumVariantConstruction { span: self.make_span(&typed_target.span()), enum_id: *enum_id, variant_idx: *member_idx });
+                                let function = if *member_idx < enum_.variants.len() {
+                                    let variant = &enum_.variants[*member_idx];
+                                    let EnumVariantKind::Container(enum_variant_func_id) = variant.kind else {
+                                        return Err(TypeError::IllegalEnumVariantConstruction { span: self.make_span(&typed_target.span()), enum_id: *enum_id, variant_idx: *member_idx });
+                                    };
+                                    self.project.get_func_by_id(&enum_variant_func_id)
+                                } else {
+                                    self.project.get_func_by_id(&enum_.static_methods[*member_idx - enum_.variants.len()])
                                 };
-                                let function = self.project.get_func_by_id(&func_id);
+
+                                func_id = Some(function.id);
                                 fn_generic_ids = function.generic_ids.clone();
                                 fn_is_variadic = function.is_variadic();
                                 params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
                                 return_type_id = function.return_type_id;
                             }
-                            Type::Generic(_, _) |
                             Type::Function(_, _, _, _) => todo!(),
                             Type::ModuleAlias => unreachable!(),
                         }
 
                         if *is_opt_safe && target_is_option_type {
-                            return_type_id = self.add_or_find_type_id(self.project.option_type(return_type_id));
+                            return_type_id = self.add_or_find_type_id(self.project.option_type(return_type_id, true));
                         }
                     }
                     _ => {
@@ -4953,7 +5944,25 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 if let FunctionPass::Pass1 { just_saw_function_call } = &mut self.function_pass {
                     *just_saw_function_call = true;
-                    return Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: vec![], type_id: return_type_id });
+                    return Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: vec![], type_arg_ids: vec![], type_id: return_type_id, resolved_type_id: return_type_id });
+                }
+
+                // Track closed-over closures for current function
+                if let Some(func_id) = func_id {
+                    let function = self.project.get_func_by_id(&func_id);
+                    if function.is_closure() {
+                        if let Some(containing_func_id) = self.current_function {
+                            let FuncId(func_scope_id, _) = func_id;
+                            let containing_function = self.project.get_func_by_id(&containing_func_id);
+
+                            if !self.scope_contains_other(&func_scope_id, &containing_function.fn_scope_id) {
+                                let func = self.project.get_func_by_id_mut(&containing_func_id);
+                                if !func.captured_closures.contains(&func_id) {
+                                    func.captured_closures.push(func_id);
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if !provided_type_arg_ids.is_empty() && provided_type_arg_ids.len() != fn_generic_ids.len() {
@@ -4974,8 +5983,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     return_type_id = self.substitute_generics_with_known(&return_type_id, &filled_in_generic_types);
                 }
                 if let Some(type_hint) = type_hint {
-                    if self.type_contains_generics(&return_type_id) {
-                        self.extract_values_for_generics(&type_hint, &return_type_id, &mut filled_in_generic_types);
+                    if type_hint != PRELUDE_ANY_TYPE_ID {
+                        if self.type_contains_generics(&return_type_id) {
+                            self.extract_values_for_generics(&type_hint, &return_type_id, &mut filled_in_generic_types);
+                        }
                     }
                 }
 
@@ -5076,19 +6087,21 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 }
 
-                for (param_idx, _, param_type_id, param_is_optional, param_is_variadic) in params_data {
-                    if param_is_variadic {
-                        debug_assert!(param_idx == typed_arguments.len() - 1);
-                        if typed_arguments[param_idx].is_none() {
+                for (param_idx, _, param_type_id, param_is_optional, param_is_variadic) in &params_data {
+                    if *param_is_variadic {
+                        debug_assert!(*param_idx == typed_arguments.len() - 1);
+                        if typed_arguments[*param_idx].is_none() {
                             let start_pos = variadic_arguments.get(0).map(|a| a.span().start).unwrap_or(POSITION_BOGUS);
 
-                            typed_arguments[param_idx] = Some(TypedNode::Array {
+                            let type_id = self.add_or_find_type_id(self.project.array_type(*param_type_id));
+                            typed_arguments[*param_idx] = Some(TypedNode::Array {
                                 token: Token::LBrack(start_pos, false),
                                 items: variadic_arguments.drain(..).collect(),
-                                type_id: self.add_or_find_type_id(self.project.array_type(param_type_id)),
+                                type_id,
+                                resolved_type_id: type_id,
                             })
                         }
-                    } else if typed_arguments[param_idx].is_none() && !param_is_optional {
+                    } else if typed_arguments[*param_idx].is_none() && !*param_is_optional {
                         let span = self.make_span(&typed_target.span().expand(&token.get_range()));
                         return Err(TypeError::InvalidArity { span, num_possible_args, num_required_args, num_provided_args });
                     }
@@ -5103,7 +6116,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     return_type_id
                 };
 
-                Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: typed_arguments, type_id })
+                let type_arg_ids = fn_generic_ids.iter().map(|generic_id| *filled_in_generic_types.get(&generic_id).unwrap()).collect();
+                let resolved_type_id = type_hint.unwrap_or(type_id);
+                Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: typed_arguments, type_arg_ids, type_id, resolved_type_id })
             }
             AstNode::IfExpression(token, if_node) => self.typecheck_if_node(token, if_node, true, type_hint),
             AstNode::MatchExpression(token, match_node) => self.typecheck_match_node(token, match_node, true, type_hint),
@@ -5129,7 +6144,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let fn_scope_id = self.begin_child_scope(format!("{:?}.lambda_{}", &self.current_module().id, self.new_lambda_fn_name()), ScopeKind::Function(FuncId::BOGUS));
                 let parameters = self.typecheck_function_parameters_pass_1(false, &parameters, false)?;
 
-                let lambda_func_id = self.add_lambda_function_to_scope(&prev_scope_id, fn_scope_id, parameters)?;
+                let lambda_func_id = self.add_lambda_function_to_scope(&prev_scope_id, fn_scope_id, &ret_hint, parameters)?;
                 let ScopeKind::Function(id) = &mut self.project.get_scope_by_id_mut(&fn_scope_id).kind else { unreachable!() };
                 *id = lambda_func_id;
                 let prev_func_id = self.current_function;
@@ -5166,12 +6181,36 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let span = func.params.first()
                     .and_then(|p| p.defined_span.as_ref().map(|s| &s.range)).unwrap_or(&token.get_range())
                     .expand(&func.body.last().map(|n| n.span()).unwrap_or(token.get_range()));
-                let func_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
+                let func_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
 
                 self.end_child_scope();
                 self.current_function = prev_func_id;
 
-                Ok(TypedNode::Lambda { span, func_id: lambda_func_id, type_id: func_type_id })
+                let func = self.project.get_func_by_id(&lambda_func_id);
+                if func.is_closure() {
+                    if let Some(current_func_id) = self.current_function {
+                        let FuncId(func_scope_id, _) = current_func_id;
+
+                        let captured_vars = func.captured_vars.clone();
+                        for var_id in &captured_vars {
+                            let VarId(var_scope_id, _) = var_id;
+                            if !self.scope_contains_other(&var_scope_id, &func_scope_id) {
+                                let var = self.project.get_var_by_id_mut(&var_id);
+                                if var.alias == VariableAlias::None {
+                                    var.is_captured = true;
+
+                                    let func = self.project.get_func_by_id_mut(&current_func_id);
+                                    if !func.captured_vars.contains(&var_id) {
+                                        func.captured_vars.push(*var_id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let resolved_type_id = type_hint.unwrap_or(func_type_id);
+                Ok(TypedNode::Lambda { span, func_id: lambda_func_id, type_id: func_type_id, resolved_type_id })
             }
             AstNode::Try(_, _) => todo!(),
             n => unreachable!("Internal error: node is not an expression: {:?}", n),

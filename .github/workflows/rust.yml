@@ -11,7 +11,6 @@ env:
 
 jobs:
   build:
-#    runs-on: ubuntu-latest
     runs-on: ubuntu-22.04
     steps:
     - name: Checkout source
@@ -36,18 +35,12 @@ jobs:
     - uses: actions/setup-python@v2
       with:
         python-version: '3.x'
-#    - name: Install LLVM and Clang
-#      uses: KyleMayes/install-llvm-action@v1.8.1
-#      with:
-#        version: "11.0"
     - name: Install LLVM (11.1.0)
       run: |
         mkdir -p llvm
         curl -L "https://github.com/llvm/llvm-project/releases/download/llvmorg-11.1.0/clang+llvm-11.1.0-x86_64-linux-gnu-ubuntu-20.10.tar.xz" > llvm.tar.xz
         tar x --xz -C llvm --strip-components=1 -f llvm.tar.xz
       if: steps.cache-llvm.outputs.cache-hit != 'true'
-#    - name: libtinfo
-#      run: sudo apt-get update && sudo apt-get -y install libtinfo5
     - name: Setup LLVM
       run: |
         sudo apt-get update
@@ -59,7 +52,7 @@ jobs:
     - name: Install ext dependencies (for C compilation)
       run: ./configure-libgc.sh
     - name: Run rust tests
-      run: cargo test --verbose
+      run: TEST_TMP_DIR=${{ runner.temp }} cargo test --verbose
     - name: Build rust (release mode)
       run: cargo build --release
     - name: Run abra tests
@@ -67,7 +60,7 @@ jobs:
     - name: Run mal tests
       run: |
         cd abra_mal
-        ./test.sh
+        ./test.sh src
     - name: Build & run wasm tests
       run: |
         cd abra_wasm && WASM_PACK_TARGET=nodejs ./build.sh && cd ..

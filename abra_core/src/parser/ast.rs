@@ -125,15 +125,17 @@ pub enum BinaryOp {
     CoalesceEq,
     Lt,
     Lte,
+    ShiftLeft,
     Gt,
     Gte,
+    ShiftRight,
     Neq,
     Eq,
     Pow,
 }
 
 impl BinaryOp {
-    pub(crate) fn repr(&self) -> &str {
+    pub fn repr(&self) -> &str {
         match self {
             BinaryOp::Add => "+",
             BinaryOp::AddEq => "+=",
@@ -154,8 +156,10 @@ impl BinaryOp {
             BinaryOp::CoalesceEq => "?:=",
             BinaryOp::Lt => "<",
             BinaryOp::Lte => "<=",
+            BinaryOp::ShiftLeft => "<<",
             BinaryOp::Gt => ">",
             BinaryOp::Gte => ">=",
+            BinaryOp::ShiftRight => ">>",
             BinaryOp::Neq => "!=",
             BinaryOp::Eq => "==",
             BinaryOp::Pow => "**",
@@ -394,6 +398,15 @@ pub struct MatchCase {
 pub enum MatchCaseArgument {
     Pattern(BindingPattern),
     Literal(AstNode),
+}
+
+impl MatchCaseArgument {
+    pub(crate) fn get_span(&self) -> Range {
+        match self {
+            MatchCaseArgument::Pattern(p) => p.get_span(),
+            MatchCaseArgument::Literal(n) => n.get_token().get_range(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

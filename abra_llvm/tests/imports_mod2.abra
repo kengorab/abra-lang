@@ -1,0 +1,18 @@
+export val s = "hello"
+
+export func return123(): Int = 123
+
+export enum Color {
+  Purple
+  Green
+  Orange
+}
+
+type Person {
+  firstName: String
+  favoriteColor: Color
+}
+
+export func makePerson(name: String, favoriteColor: Color): Person {
+  Person(firstName: name, favoriteColor: favoriteColor)
+}

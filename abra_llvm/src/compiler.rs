@@ -73,9 +73,9 @@ const MASK_NAN: u64 = 0x7ffc000000000000;
 const MASK_INT: u64 = MASK_NAN | 0x0002000000000000;
 const MASK_OBJ: u64 = MASK_NAN | 0x8000000000000000;
 
-const VAL_NONE: u64  = MASK_NAN | 0x0001000000000000;
+const VAL_NONE: u64 = MASK_NAN | 0x0001000000000000;
 const VAL_FALSE: u64 = MASK_NAN | 0x0001000000000001;
-const VAL_TRUE: u64  = MASK_NAN | 0x0001000000000002;
+const VAL_TRUE: u64 = MASK_NAN | 0x0001000000000002;
 
 const PAYLOAD_MASK_INT: u64 = 0x00000000ffffffff;
 const PAYLOAD_MASK_OBJ: u64 = 0x0000ffffffffffff;
@@ -98,7 +98,7 @@ struct TypeSpec<'ctx> {
     typ: Type,
     type_id_ptr: PointerValue<'ctx>,
     struct_type: StructType<'ctx>,
-    ctor_fn: FunctionValue<'ctx>
+    ctor_fn: FunctionValue<'ctx>,
 }
 
 #[derive(Clone, Debug)]
@@ -214,7 +214,7 @@ impl<'ctx> Compiler<'ctx> {
                 let prompt = self.module.add_function("prompt", self.gen_llvm_fn_type(true, 1), None);
                 self.current_scope_mut().fns.insert("prompt".to_string(), prompt);
 
-                return Ok(())
+                return Ok(());
             }
             _ => {}
         }
@@ -262,8 +262,8 @@ impl<'ctx> Compiler<'ctx> {
             self.builder.build_int_add(
                 type_id,
                 self.context.i32_type().const_int(1, false),
-                ""
-            )
+                "",
+            ),
         );
 
         type_id
@@ -345,7 +345,7 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    fn init_int_type(&self)  {
+    fn init_int_type(&self) {
         self.init_builtin_type("type_id_Int", &[
             ("prelude__Int__toString", self.gen_llvm_fn_type(true, 1)),
             ("prelude__Int__abs", self.gen_llvm_fn_type(true, 1)),
@@ -587,7 +587,7 @@ impl<'ctx> Compiler<'ctx> {
         }
 
         // HACK: initialize `process` global
-        let process_type_spec= self.current_scope().types.get("Process").unwrap();
+        let process_type_spec = self.current_scope().types.get("Process").unwrap();
         let argc = self.cur_fn.get_nth_param(0).unwrap();
         let argv = self.cur_fn.get_nth_param(1).unwrap();
         let envp = self.cur_fn.get_nth_param(2).unwrap();
@@ -710,7 +710,7 @@ impl<'ctx> Compiler<'ctx> {
             self.builder.build_call(
                 self.cached_fn(FN_MAP_INSERT),
                 &[map.into(), key.into(), value.into()],
-                ""
+                "",
             );
         }
 
@@ -725,7 +725,7 @@ impl<'ctx> Compiler<'ctx> {
             self.builder.build_call(
                 self.cached_fn(FN_SET_INSERT),
                 &[set.into(), value.into()],
-                ""
+                "",
             );
         }
 
@@ -758,7 +758,7 @@ impl<'ctx> Compiler<'ctx> {
         self.builder.build_call(
             self.cached_fn(FN_DOUBLE_TO_VALUE_T),
             &[float_val.into()],
-            ""
+            "",
         ).try_as_basic_value().left().unwrap().into_int_value()
     }
 
@@ -790,7 +790,7 @@ impl<'ctx> Compiler<'ctx> {
         self.builder.build_call(
             self.cached_fn(FN_VALUE_T_TO_DOUBLE),
             &[value.into()],
-            ""
+            "",
         ).try_as_basic_value().left().unwrap().into_float_value()
     }
 
@@ -834,7 +834,7 @@ impl<'ctx> Compiler<'ctx> {
                     let val = self.builder.build_call(
                         self.cached_fn(FN_TUPLE_GET),
                         &[cur_val.into(), idx.into()],
-                        ""
+                        "",
                     ).try_as_basic_value().left().unwrap();
                     self.visit_binding_pattern(pat, val, is_exported);
                 }
@@ -876,7 +876,7 @@ impl<'ctx> Compiler<'ctx> {
                     let val = self.builder.build_call(
                         func,
                         &[cur_val.into(), idx_val.into()],
-                        ""
+                        "",
                     ).try_as_basic_value().left().unwrap();
                     self.visit_binding_pattern(pat, val, is_exported);
 
@@ -892,7 +892,7 @@ impl<'ctx> Compiler<'ctx> {
         let res = self.builder.build_int_unsigned_rem(
             self.builder.build_int_add(value, self.context.i64_type().const_int(1, false), ""),
             self.context.i64_type().const_int(2, false),
-            ""
+            "",
         );
         self.emit_nan_tagged_bool(res).as_basic_value_enum()
     }
@@ -1014,7 +1014,7 @@ impl<'ctx> Compiler<'ctx> {
             let env_mem = self.builder.build_call(
                 self.cached_fn(FN_MALLOC),
                 &[self.builder.build_int_mul(self.value_t().size_of(), self.context.i64_type().const_int(num_captured_variables as u64, false), "").into()],
-                ""
+                "",
             ).try_as_basic_value().left().unwrap().into_pointer_value();
             let env_mem = self.builder.build_pointer_cast(env_mem, self.value_t().ptr_type(AddressSpace::Generic), "");
 
@@ -1091,9 +1091,9 @@ impl<'ctx> Compiler<'ctx> {
                 //
                 // $param = if num_received_args < $param_idx || $param == None { $default } else { $param }
                 let cond = self.builder.build_or(
-                    self.builder.build_int_compare(IntPredicate::ULE, num_received_args, self.context.i8_type().const_int((idx - 2) as u64, false),  ""),
+                    self.builder.build_int_compare(IntPredicate::ULE, num_received_args, self.context.i8_type().const_int((idx - 2) as u64, false), ""),
                     self.builder.build_int_compare(IntPredicate::EQ, param_val.into_int_value(), self.val_none(), ""),
-                    "cond"
+                    "cond",
                 );
                 let then_bb = self.context.append_basic_block(self.cur_fn, "then");
                 let else_bb = self.context.append_basic_block(self.cur_fn, "else");
@@ -1238,7 +1238,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                     unimplemented!()
                 }
                 self.emit_nan_tagged_int_const(v as i32).as_basic_value_enum()
-            },
+            }
             TypedLiteralNode::FloatLiteral(v) => self.emit_nan_tagged_float_const(v).as_basic_value_enum(),
             TypedLiteralNode::StringLiteral(v) => self.alloc_const_string_obj(v.as_str()).as_basic_value_enum(),
             TypedLiteralNode::BoolLiteral(v) => self.emit_nan_tagged_bool_const(v).as_basic_value_enum(),
@@ -1292,7 +1292,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
 
                         let res = self.builder.build_float_div(left, right, "");
                         self.emit_nan_tagged_float(res).as_basic_value_enum()
-                    },
+                    }
                     BinaryOp::Mod => self.emit_nan_tagged_int(self.builder.build_int_signed_rem(left, right, "")).as_basic_value_enum(),
                     BinaryOp::Pow => {
                         let left = self.builder.build_signed_int_to_float(left, self.context.f64_type(), "left");
@@ -1313,7 +1313,8 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                     BinaryOp::Lte => self.emit_nan_tagged_bool(self.builder.build_int_compare(IntPredicate::SLE, left, right, "")).as_basic_value_enum(),
                     BinaryOp::Coalesce => unreachable!("Coalesce op does not apply to 2 non-optionals"),
                     BinaryOp::And | BinaryOp::Or | BinaryOp::Xor | BinaryOp::AndEq | BinaryOp::OrEq => unreachable!("No boolean ops apply to numbers"),
-                    BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::CoalesceEq => unreachable!("Assign ops are handled separately")
+                    BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::CoalesceEq => unreachable!("Assign ops are handled separately"),
+                    _ => unimplemented!()
                 }
             }
             (ltype @ Type::Float, rtype @ Type::Int, op) |
@@ -1373,15 +1374,16 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                         phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
                         self.emit_nan_tagged_float(phi.as_basic_value().into_float_value()).as_basic_value_enum()
                     }
-                    BinaryOp::Eq =>  self.emit_nan_tagged_bool(self.builder.build_float_compare(FloatPredicate::OEQ, left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Eq => self.emit_nan_tagged_bool(self.builder.build_float_compare(FloatPredicate::OEQ, left, right, "")).as_basic_value_enum(),
                     BinaryOp::Neq => self.emit_nan_tagged_bool(self.builder.build_float_compare(FloatPredicate::ONE, left, right, "")).as_basic_value_enum(),
-                    BinaryOp::Gt =>  self.emit_nan_tagged_bool(self.builder.build_float_compare(FloatPredicate::OGT, left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Gt => self.emit_nan_tagged_bool(self.builder.build_float_compare(FloatPredicate::OGT, left, right, "")).as_basic_value_enum(),
                     BinaryOp::Gte => self.emit_nan_tagged_bool(self.builder.build_float_compare(FloatPredicate::OGE, left, right, "")).as_basic_value_enum(),
                     BinaryOp::Lt => self.emit_nan_tagged_bool(self.builder.build_float_compare(FloatPredicate::OLT, left, right, "")).as_basic_value_enum(),
                     BinaryOp::Lte => self.emit_nan_tagged_bool(self.builder.build_float_compare(FloatPredicate::OLE, left, right, "")).as_basic_value_enum(),
                     BinaryOp::Coalesce => unreachable!("Coalesce op does not apply to 2 non-optionals"),
                     BinaryOp::And | BinaryOp::Or | BinaryOp::Xor | BinaryOp::AndEq | BinaryOp::OrEq => unreachable!("No boolean ops apply to numbers"),
-                    BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::CoalesceEq => unreachable!("Assign ops are handled separately")
+                    BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::CoalesceEq => unreachable!("Assign ops are handled separately"),
+                    _ => unimplemented!()
                 }
             }
             (Type::Bool, Type::Bool, op) => {
@@ -1398,6 +1400,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                     BinaryOp::Coalesce => unreachable!("Coalesce op does not apply to 2 non-optionals"),
                     BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::AndEq | BinaryOp::OrEq | BinaryOp::CoalesceEq => unreachable!("Assign ops are handled separately"),
                     BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod | BinaryOp::Lt | BinaryOp::Lte | BinaryOp::Gt | BinaryOp::Gte | BinaryOp::Pow => unreachable!("No arithmetic ops apply to boolean values"),
+                    _ => unimplemented!()
                 };
                 self.emit_nan_tagged_bool(res).as_basic_value_enum()
             }
@@ -1709,13 +1712,13 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                 let cond_val = self.builder.build_call(
                     self.cached_fn(FN_VALUE_EQ),
                     &[f1_val.into(), f2_val.into()],
-                    ""
+                    "",
                 ).try_as_basic_value().left().unwrap().into_int_value();
                 let cond = self.builder.build_int_compare(
                     IntPredicate::EQ,
                     cond_val,
                     self.context.bool_type().const_zero(),
-                    ""
+                    "",
                 );
 
                 let then_bb = self.context.append_basic_block(self.cur_fn, "then");
@@ -1762,13 +1765,13 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                 let field_hash = self.builder.build_call(
                     self.cached_fn(FN_VALUE_HASH),
                     &[field_val.into()],
-                    ""
+                    "",
                 ).try_as_basic_value().left().unwrap().into_int_value();
 
                 let cur_hash_val = self.builder.build_load(hash_val, "").into_int_value();
                 self.builder.build_store(
                     hash_val,
-                    self.builder.build_int_add(cur_hash_val, field_hash, "")
+                    self.builder.build_int_add(cur_hash_val, field_hash, ""),
                 );
             }
             let ret_hash = self.emit_nan_tagged_int(self.builder.build_load(hash_val, "").into_int_value());
@@ -2118,7 +2121,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             let cur_hash_val = self.builder.build_load(hash_val, "").into_int_value();
             self.builder.build_store(
                 hash_val,
-                self.builder.build_int_add(cur_hash_val, self_variant_idx, "")
+                self.builder.build_int_add(cur_hash_val, self_variant_idx, ""),
             );
 
             let end_bb = self.context.append_basic_block(self.cur_fn, "end");
@@ -2191,13 +2194,13 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
 
         match &node.kind {
             AssignmentTargetKind::Identifier => {
-                if let TypedAstNode::Identifier(_, TypedIdentifierNode{ name, .. }) = *node.target {
+                if let TypedAstNode::Identifier(_, TypedIdentifierNode { name, .. }) = *node.target {
                     let ptr = self.resolve_ptr_to_variable(&name);
                     self.builder.build_store(ptr, expr);
                 } else { unreachable!() }
             }
             k @ AssignmentTargetKind::ArrayIndex | k @ AssignmentTargetKind::MapIndex => {
-                let (target_type, target, idx) = if let TypedAstNode::Indexing(_, TypedIndexingNode{ target, index, .. }) = *node.target {
+                let (target_type, target, idx) = if let TypedAstNode::Indexing(_, TypedIndexingNode { target, index, .. }) = *node.target {
                     let target_type = target.get_type();
                     if let IndexingMode::Index(idx_expr) = index {
                         let target = self.visit(*target)?;
@@ -2235,7 +2238,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                 let target_ptr = self.builder.build_pointer_cast(
                     self.emit_extract_nan_tagged_obj(target.into_int_value()),
                     type_spec.struct_type.ptr_type(AddressSpace::Generic),
-                    ""
+                    "",
                 );
                 let slot = self.builder.build_struct_gep(target_ptr, (field_idx + 1) as u32, "").unwrap();
 
@@ -2291,7 +2294,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
         let cond = self.builder.build_and(
             self.builder.build_int_compare(IntPredicate::NE, cond_val.into_int_value(), self.context.i64_type().const_int(VAL_FALSE, false), ""),
             self.builder.build_int_compare(IntPredicate::NE, cond_val.into_int_value(), self.context.i64_type().const_int(VAL_NONE, false), ""),
-            "cond"
+            "cond",
         );
         let then_bb = self.context.append_basic_block(self.cur_fn, "then");
         let else_bb = self.context.append_basic_block(self.cur_fn, "else");
@@ -2418,11 +2421,11 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                                                 is_opt_safe: false,
                                                 is_method,
                                                 is_readonly,
-                                            }
+                                            },
                                         )
                                     ),
-                                    args: node.args
-                                }
+                                    args: node.args,
+                                },
                             )
                         ],
                         else_block: None,
@@ -2446,7 +2449,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                         let fn_val_ptr = self.builder.build_pointer_cast(
                             self.emit_extract_nan_tagged_obj(fn_val_as_value_t),
                             self.cached_type(TYPE_FUNCTION).ptr_type(AddressSpace::Generic),
-                            ""
+                            "",
                         );
                         let fn_ptr_value_t = self.builder.build_struct_gep(fn_val_ptr, 2, "").unwrap();
                         let fn_ptr_as_int = self.builder.build_load(fn_ptr_value_t, "").into_int_value();
@@ -2492,7 +2495,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                         let fn_val_ptr = self.builder.build_pointer_cast(
                             self.emit_extract_nan_tagged_obj(fn_val_as_value_t),
                             self.cached_type(TYPE_FUNCTION).ptr_type(AddressSpace::Generic),
-                            ""
+                            "",
                         );
                         let fn_ptr_value_t = self.builder.build_struct_gep(fn_val_ptr, 2, "").unwrap();
                         let fn_ptr_as_int = self.builder.build_load(fn_ptr_value_t, "").into_int_value();
@@ -2561,7 +2564,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
         let res = self.builder.build_call(
             ctor_fn,
             field_values.as_slice(),
-            ""
+            "",
         ).try_as_basic_value().left().unwrap();
 
         Ok(res)
@@ -2589,7 +2592,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                                 is_opt_safe: false,
                                 is_method: node.is_method,
                                 is_readonly: node.is_readonly,
-                            }
+                            },
                         )
                     ],
                     else_block: None,
@@ -2643,7 +2646,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                 fn_val_as_value_t
             };
 
-            return Ok(self.builder.build_call(self.cached_fn(FN_FUNCTION_BIND), &[fn_val_as_value_t.into(), target.into()], "").try_as_basic_value().left().unwrap())
+            return Ok(self.builder.build_call(self.cached_fn(FN_FUNCTION_BIND), &[fn_val_as_value_t.into(), target.into()], "").try_as_basic_value().left().unwrap());
         }
 
         let val = match target_type {
@@ -2737,7 +2740,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
         let res = self.builder.build_call(
             callable,
             &[self.value_t_ptr().const_zero().into(), self.context.i8_type().const_int(1, false).into(), iter.into()],
-            ""
+            "",
         ).try_as_basic_value().left().unwrap();
         let iter_local = self.builder.build_alloca(self.value_t(), "$iter");
         self.builder.build_store(iter_local, res);
@@ -2747,12 +2750,12 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                 self.builder.build_pointer_cast(
                     self.emit_extract_nan_tagged_obj(res.into_int_value()),
                     self.cached_type(TYPE_ARRAY).ptr_type(AddressSpace::Generic),
-                    ""
+                    "",
                 ),
                 1,
-                ""
+                "",
             ).unwrap(),
-            ""
+            "",
         );
         self.builder.build_store(iter_len_local, iter_len_val);
 
@@ -2773,7 +2776,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             IntPredicate::ULT,
             self.builder.build_load(idx_local, "").into_int_value(),
             self.builder.build_load(iter_len_local, "").into_int_value(),
-            ""
+            "",
         );
         self.builder.build_conditional_branch(cond, loop_body_bb, loop_end_bb);
 
@@ -2812,7 +2815,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                 self.builder.build_load(idx_local, "").into_int_value(),
                 self.context.i32_type().const_int(1, false),
                 "",
-            )
+            ),
         );
         self.builder.build_unconditional_branch(loop_start_bb);
 
@@ -2840,7 +2843,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
         let cond = self.builder.build_and(
             self.builder.build_int_compare(IntPredicate::NE, cond_val.into_int_value(), self.context.i64_type().const_int(VAL_FALSE, false), ""),
             self.builder.build_int_compare(IntPredicate::NE, cond_val.into_int_value(), self.context.i64_type().const_int(VAL_NONE, false), ""),
-            "cond"
+            "cond",
         );
         self.builder.build_conditional_branch(cond, loop_body_bb, loop_end_bb);
 
@@ -3005,7 +3008,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                                     cond = self.builder.build_and(
                                         cond,
                                         self.builder.build_call(self.cached_fn(FN_VALUE_EQ), &[lit_val.into(), field_val.into()], "").try_as_basic_value().left().unwrap().into_int_value(),
-                                        ""
+                                        "",
                                     );
                                 }
                             }
@@ -3081,7 +3084,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             }
             self.builder.position_at_end(else_bb);
 
-            if idx == num_branches - 1  {
+            if idx == num_branches - 1 {
                 if terminates_early {
                     self.builder.build_unreachable();
                 } else {
@@ -3124,7 +3127,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                 self.current_scope_mut().variables.insert(import_name, Variable {
                     var_ptr: imported_func.as_global_value().as_pointer_value(),
                     is_captured: false,
-                    is_global: true
+                    is_global: true,
                 });
             } else if let Some(imported_type) = mod_exports.types.get(&import_name) {
                 let imported_type = imported_type.clone();
@@ -3150,9 +3153,11 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
 }
 
 type CVFScope = (/* fn_id: */usize, /* vars: */HashSet<String>);
+
 struct CapturedVariableFinder {
     scopes: Vec<CVFScope>,
-    cur_fn_id: usize, // TODO: Do we need to track this?
+    // TODO: Do we need to track this?
+    cur_fn_id: usize,
     captured_variables: HashMap<String, usize>,
     context: HashSet<String>,
 }
@@ -3167,7 +3172,7 @@ impl CapturedVariableFinder {
 
         for (var_name, default_value) in args {
             if let Some(default_value) = default_value {
-                finder.find_foreign_variables(default_value );
+                finder.find_foreign_variables(default_value);
             }
             finder.add_variable_to_cur_scope(var_name.clone());
         }

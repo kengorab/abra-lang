@@ -1,0 +1,9 @@
+import s from "./imports_mod2"
+
+export val a = 123
+export val arr = [1, 2, s.length]
+
+export func makeAdder(a: Int): (Int) => Int {
+  x => x + a
+}
+export val add5 = makeAdder(5)
