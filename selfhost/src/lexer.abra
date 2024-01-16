@@ -7,6 +7,8 @@ export type Token {
 
 export enum TokenKind {
   Int(value: Int)
+  Ident(name: String)
+  Dot
 }
 
 export type Lexer {
@@ -20,51 +22,78 @@ export type Lexer {
 
     val lexer = Lexer(_input: contents)
     while lexer.nextToken() |tok| {
-     tokens.push(tok)
+      tokens.push(tok)
     }
     
     tokens
   }
 
-  func _curPos(self): Position = Position(line: self._line, col: self._col)
-
-  func _forward(self) {
-    self._cursor += 1
-    if self._input[self._cursor] == "\n" {
-      self._line += 1
-      self._col = 0
-    }
-    self._col += 1
-  }
-
   func nextToken(self): Token? {
     if self._cursor >= self._input.length return None
-    var ch = self._input[self._cursor]
 
-    while ch == " " { 
-      self._forward() 
-      ch = self._input[self._cursor]
-    } 
+    self._skipWhitespace()
+    val ch = self._input[self._cursor]
+
+    val position = self._curPos()
 
     if ch.isDigit() && ch != "0" {
-      self._tokenizeNumber()
+      self._tokenizeInteger(startPos: position)
+    } else if ch == "." {
+      self._advance()
+      Token(position: position, kind: TokenKind.Dot)
+    } else if ch.isAlpha() {
+      self._tokenizeIdent(startPos: position)
     } else {
+      // TODO: This is unreachable, but the rust implementation fails to convert the result of this if-expression to an Option
+      // for some reason. This should be fixed separately
       None
     }
   }
 
-  func _tokenizeNumber(self): Token {
+  func _curPos(self): Position = Position(line: self._line, col: self._col)
+
+  func _advance(self) {
+    self._cursor += 1
+    self._col += 1
+  }
+
+  func _skipWhitespace(self) {
+    var ch = self._input[self._cursor]
+    while ch == " " || ch == "\n" { 
+      self._advance() 
+      if ch == "\n" {
+        self._line += 1
+        self._col = 1
+      }
+      ch = self._input[self._cursor]
+    } 
+  }
+
+  func _tokenizeInteger(self, startPos: Position): Token {
     val ch = self._input[self._cursor]
 
+    // ord('0') = 48
     var num = ch._buffer.load().asInt() - 48
-    val position = self._curPos()
-    self._forward()
+    self._advance()
     while self._input[self._cursor].isDigit() {
       num *= 10
       num += self._input._buffer.offset(self._cursor).load().asInt() - 48
-      self._forward()
+      self._advance()
     }
 
-    Token(position: position, kind: TokenKind.Int(value: num))
+    Token(position: startPos, kind: TokenKind.Int(value: num))
+  }
+
+  func _tokenizeIdent(self, startPos: Position): Token {
+    val identStart = self._cursor
+    var ch = self._input[self._cursor]
+
+    while ch.isAlpha() || ch.isDigit() || ch == "_" { 
+      self._advance()
+      ch = self._input[self._cursor]
+    }
+
+    val ident = self._input[identStart:self._cursor]
+    Token(position: startPos, kind: TokenKind.Ident(ident))
   }
 }

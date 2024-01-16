@@ -50,7 +50,10 @@ pub fn tokens_to_json(tokens: &Vec<Token>) -> io::Result<String> {
             Token::From(_) => todo!(),
             Token::As(_) => todo!(),
             Token::Try(_) => todo!(),
-            Token::Ident(_, _) => todo!(),
+            Token::Ident(_, name) => {
+                writeln!(&mut buf, "      \"name\": \"Ident\",")?;
+                writeln!(&mut buf, "      \"value\": \"{}\"", name)?;
+            }
             Token::Self_(_) => todo!(),
             Token::None(_) => todo!(),
             Token::Assign(_) => todo!(),
@@ -90,7 +93,9 @@ pub fn tokens_to_json(tokens: &Vec<Token>) -> io::Result<String> {
             Token::Colon(_) => todo!(),
             Token::Comma(_) => todo!(),
             Token::Question(_) => todo!(),
-            Token::Dot(_) => todo!(),
+            Token::Dot(_) => {
+                writeln!(&mut buf, "      \"name\": \"Dot\"")?;
+            }
             Token::QuestionDot(_) => todo!(),
             Token::Arrow(_) => todo!(),
             Token::At(_) => todo!(),
