@@ -6,4 +6,5 @@ members = [
     "abra_lsp",
     "abra_native",
     "abra_wasm",
+    "selfhost_test",
 ]

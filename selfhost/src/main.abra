@@ -1,0 +1,16 @@
+import "fs" as fs
+import Lexer from "./lexer"
+
+if Process.args()[1] |fileName| {
+  match fs.readFile(fileName) {
+    Result.Ok(contents) => {
+      val tokens = Lexer.tokenize(contents)
+      println("tokens:", tokens)
+    }
+    Result.Err(e) => {
+      println("Could not read file:", e)
+    }
+  }
+} else {
+  println("Missing required argument <file-name>")
+}

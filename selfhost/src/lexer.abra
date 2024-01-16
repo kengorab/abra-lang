@@ -1,0 +1,70 @@
+export type Position { line: Int, col: Int }
+
+export type Token {
+  position: Position
+  kind: TokenKind
+}
+
+export enum TokenKind {
+  Int(value: Int)
+}
+
+export type Lexer {
+  _input: String
+  _cursor: Int = 0
+  _line: Int = 1
+  _col: Int = 1
+
+  func tokenize(contents: String): Token[] {
+    val tokens: Token[] = []
+
+    val lexer = Lexer(_input: contents)
+    while lexer.nextToken() |tok| {
+     tokens.push(tok)
+    }
+    
+    tokens
+  }
+
+  func _curPos(self): Position = Position(line: self._line, col: self._col)
+
+  func _forward(self) {
+    self._cursor += 1
+    if self._input[self._cursor] == "\n" {
+      self._line += 1
+      self._col = 0
+    }
+    self._col += 1
+  }
+
+  func nextToken(self): Token? {
+    if self._cursor >= self._input.length return None
+    var ch = self._input[self._cursor]
+
+    while ch == " " { 
+      self._forward() 
+      ch = self._input[self._cursor]
+    } 
+
+    if ch.isDigit() && ch != "0" {
+      self._tokenizeNumber()
+    } else {
+      None
+    }
+  }
+
+  func _tokenizeNumber(self): Token {
+    val ch = self._input[self._cursor]
+
+    var num = ch._buffer.load().asInt() - 48
+    val position = self._curPos()
+    self._forward()
+    while self._input[self._cursor].isDigit() {
+      num *= 10
+      num += self._input._buffer.offset(self._cursor).load().asInt() - 48
+      self._forward()
+    }
+
+    Token(position: position, kind: TokenKind.Int(value: num))
+  }
+}
