@@ -3,19 +3,11 @@ export type Position { line: Int, col: Int }
 export type Token {
   position: Position
   kind: TokenKind
-  intValue: Int = 0
-  strValue: String = ""
 }
 
-// TODO: When tagged union enums are fixed w.r.t. garbage collection, switch back to this implementation
-// export enum TokenKind {
-//   Int(value: Int)
-//   Ident(name: String)
-//   Dot
-// }
 export enum TokenKind {
-  Int,
-  Ident,
+  Int(value: Int)
+  Ident(name: String)
   Dot
 }
 
@@ -103,7 +95,7 @@ export type Lexer {
         ch = self._input._buffer.offset(self._cursor).load().asInt()
       }
 
-      return Token(position: startPos, kind: TokenKind.Int, intValue: num)
+      return Token(position: startPos, kind: TokenKind.Int(num))
     }
 
     // ord('0') = 48
@@ -115,7 +107,7 @@ export type Lexer {
       self._advance()
     }
 
-    Token(position: startPos, kind: TokenKind.Int, intValue: num)
+    Token(position: startPos, kind: TokenKind.Int(num))
   }
 
   func _tokenizeIdent(self, startPos: Position): Token {
@@ -128,6 +120,6 @@ export type Lexer {
     }
 
     val ident = self._input[identStart:self._cursor]
-    Token(position: startPos, kind: TokenKind.Ident, strValue: ident)
+    Token(position: startPos, kind: TokenKind.Ident(ident))
   }
 }

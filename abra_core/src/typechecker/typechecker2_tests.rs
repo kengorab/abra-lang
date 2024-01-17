@@ -2676,6 +2676,7 @@ fn typecheck_enum_declaration() {
                 EnumVariant { name: "Bar".to_string(), defined_span: Span::new(TEST_MODULE_ID, (2, 1), (2, 3)), kind: EnumVariantKind::Constant },
                 EnumVariant { name: "Baz".to_string(), defined_span: Span::new(TEST_MODULE_ID, (3, 1), (3, 3)), kind: EnumVariantKind::Container(baz_func_id) },
             ],
+            all_variants_constant: false,
             methods: vec![tostring_func_id, hash_func_id, eq_func_id],
             static_methods: vec![],
         }

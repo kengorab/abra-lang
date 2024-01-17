@@ -671,19 +671,6 @@ impl<'a> LLVMCompiler2<'a> {
             let typeid_slot = self.builder.build_struct_gep(value.into_pointer_value(), 0, "typeid_slot").unwrap();
             let value = self.builder.build_load(typeid_slot, "typeid").into_int_value();
             (value, None)
-        } else if value.get_type().is_struct_type() && value.get_type().into_struct_type().get_name().unwrap().to_str().unwrap().starts_with(ENUM_TYPENAME_TAG) {
-            let local = if let Some(local) = local {
-                local
-            } else {
-                let local = self.builder.build_alloca(value.get_type(), "local");
-                self.builder.build_store(local, value);
-                local
-            };
-            let value_slot = self.builder.build_struct_gep(local, 0, "").unwrap();
-            let value = self.builder.build_load(value_slot, "").into_int_value();
-            let value = self.builder.build_right_shift(value, self.const_i64(48), false, "");
-            let value = self.builder.build_int_cast(value, self.i32(), "");
-            (value, Some(local))
         } else {
             let local = if let Some(local) = local {
                 local
@@ -3095,7 +3082,112 @@ impl<'a> LLVMCompiler2<'a> {
         llvm_type.into_struct_type().const_zero()
     }
 
+    fn decode_trait_instance_value(&self, encoded_value: IntValue<'a>, value_type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> BasicValueEnum<'a> {
+        // A 64bit-encoding for a trait instance value can be decoded (at runtime) into an instance of the underlying type
+        // because at compile-time, we know what the TypeId should be. Primitives (Int, Float, and Bool) are simply cast
+        // from the encoded integer representation into the appropriate type; non-primitives are encoded such that the 64bit
+        // value is a pointer to heap-allocated memory. For enums and Option types, the data is copied over from the stack
+        // into heap-allocated space at the time that the trait instance is created, and as such to decode the value we
+        // must read from that pointer. For all other types, the backing pointer is simply converted into an int, so all
+        // that's needed in order to decode it is convert the int back to a pointer.
+
+        if *value_type_id == PRELUDE_INT_TYPE_ID {
+            encoded_value.as_basic_value_enum()
+        } else if *value_type_id == PRELUDE_FLOAT_TYPE_ID {
+            self.builder.build_cast(InstructionOpcode::BitCast, encoded_value, self.f64(), "").as_basic_value_enum()
+        } else if *value_type_id == PRELUDE_BOOL_TYPE_ID {
+            self.builder.build_cast(InstructionOpcode::Trunc, encoded_value, self.bool(), "").as_basic_value_enum()
+        } else {
+            let Some(value_type) = self.llvm_underlying_type_by_id(&value_type_id, resolved_generics) else { todo!() };
+            let value_type = self.llvm_ptr_wrap_type_if_needed(value_type);
+
+            if self.llvm_type_name_by_id(&value_type_id, resolved_generics).starts_with(ENUM_TYPENAME_TAG) || self.type_is_option(&value_type_id).is_some() {
+                let ptr = self.builder.build_int_to_ptr(encoded_value, self.ptr(value_type), "self");
+                self.builder.build_load(ptr, "self").as_basic_value_enum()
+            } else {
+                self.builder.build_int_to_ptr(encoded_value, value_type.into_pointer_type(), "self").as_basic_value_enum()
+            }
+        }
+    }
+
+    fn encode_trait_instance_value(&self, value: BasicValueEnum<'a>, value_type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> IntValue<'a> {
+        // A value must be translated to a 64bit encoding in order to become a trait instance value. At runtime, this value
+        // is later decoded back into its original type. Primitives (Int, Float, and Bool) can simply be cast into a 64-bit
+        // integer type; non-primitives are handled differently. Instances of enums as well as Option types are structures
+        // which live on the stack as opposed to other instances which are heap-allocated. As such, in order to be represented
+        // as a pointer which can be converted into a 64-bit integer for use as an encoded value, the structure must first
+        // be copied into allocated heap memory. Then, like any other instance, that pointer becomes the encoded 64bit value.
+
+        if *value_type_id == PRELUDE_INT_TYPE_ID {
+            value.into_int_value()
+        } else if *value_type_id == PRELUDE_FLOAT_TYPE_ID {
+            self.builder.build_cast(InstructionOpcode::BitCast, value, self.i64(), "float_as_value").into_int_value()
+        } else if *value_type_id == PRELUDE_BOOL_TYPE_ID {
+            self.builder.build_int_cast(value.as_basic_value_enum().into_int_value(), self.i64(), "bool_as_value")
+        } else {
+            let ptr = if self.type_is_option(&value_type_id).is_some() {
+                let option_struct_llvm_type = value.as_basic_value_enum().get_type();
+                let value_local = self.builder.build_alloca(option_struct_llvm_type, "");
+                self.builder.build_store(value_local, value);
+
+                let mem = self.malloc(self.sizeof_struct(option_struct_llvm_type), self.ptr(option_struct_llvm_type));
+                let typeid_slot = self.builder.build_struct_gep(mem, 0, "typeid_slot").unwrap();
+                self.builder.build_store(
+                    typeid_slot,
+                    self.builder.build_load(self.builder.build_struct_gep(value_local, 0, "").unwrap(), "typeid_orig"),
+                );
+                let is_set_slot = self.builder.build_struct_gep(mem, 1, "is_set_slot").unwrap();
+                self.builder.build_store(
+                    is_set_slot,
+                    self.builder.build_load(self.builder.build_struct_gep(value_local, 1, "").unwrap(), "is_set_orig"),
+                );
+                let value_slot = self.builder.build_struct_gep(mem, 2, "value_slot").unwrap();
+                self.builder.build_store(
+                    value_slot,
+                    self.builder.build_load(self.builder.build_struct_gep(value_local, 2, "").unwrap(), "value_orig"),
+                );
+
+                mem
+            } else if self.llvm_type_name_by_id(&value_type_id, resolved_generics).starts_with(ENUM_TYPENAME_TAG) {
+                let enum_id = match self.get_type_by_id(&value_type_id) {
+                    Type::GenericEnumInstance(enum_id, _, _) |
+                    Type::Type(TypeKind::Enum(enum_id)) => enum_id,
+                    _ => unreachable!(),
+                };
+                let enum_ = self.project.get_enum_by_id(&enum_id);
+                let enum_llvm_type = value.as_basic_value_enum().get_type();
+                let value_local = self.builder.build_alloca(enum_llvm_type, "");
+                self.builder.build_store(value_local, value);
+
+                // TODO: if all variants are const, then instead we could just serialize the typeid int rather than heap-allocating
+                let mem = self.malloc(self.sizeof_struct(enum_llvm_type), self.ptr(enum_llvm_type));
+                let typeid_slot = self.builder.build_struct_gep(mem, 0, "typeid_slot").unwrap();
+                self.builder.build_store(
+                    typeid_slot,
+                    self.builder.build_load(self.builder.build_struct_gep(value_local, 0, "").unwrap(), "typeid_orig"),
+                );
+                if !enum_.all_variants_constant {
+                    let value_slot = self.builder.build_struct_gep(mem, 1, "value_slot").unwrap();
+                    self.builder.build_store(
+                        value_slot,
+                        self.builder.build_load(self.builder.build_struct_gep(value_local, 1, "").unwrap(), "value_orig"),
+                    );
+                }
+
+                mem
+            } else {
+                value.as_basic_value_enum().into_pointer_value()
+            };
+            self.builder.build_ptr_to_int(ptr, self.i64(), "ptr_as_value")
+        }
+    }
+
     fn make_trait_instance<V: BasicValue<'a>>(&mut self, trait_type_id: &TypeId, value_type_id: &TypeId, value: V, resolved_generics: &ResolvedGenerics) -> StructValue<'a> {
+        // Trait instance values are a 64bit-encoded integer, which are passed around along with a pointer to the trait's
+        // VTable; function pointers in the VTable accept the encoded value, decode it, and then call the underlying implementation
+        // of the method for the trait on the type instance. This serialization is needed to guarantee that all instances of
+        // any given trait have the same size. Encoding/decoding is delegated to the helper functions above.
+
         debug_assert!(trait_type_id == &PRELUDE_ANY_TYPE_ID, "When other trait implementations come along, this implementation will need to be made generic");
 
         let trait_type_name = self.llvm_type_name_by_id(trait_type_id, resolved_generics);
@@ -3125,34 +3217,10 @@ impl<'a> LLVMCompiler2<'a> {
                 let block = self.context.append_basic_block(wrapper_llvm_fn, "");
                 self.builder.position_at_end(block);
 
-                let raw_value = wrapper_llvm_fn.get_nth_param(0).unwrap().into_int_value();
-                let value = if value_type_id == PRELUDE_INT_TYPE_ID {
-                    raw_value.as_basic_value_enum()
-                } else if value_type_id == PRELUDE_FLOAT_TYPE_ID {
-                    self.builder.build_cast(InstructionOpcode::BitCast, raw_value, self.f64(), "").as_basic_value_enum()
-                } else if value_type_id == PRELUDE_BOOL_TYPE_ID {
-                    self.builder.build_cast(InstructionOpcode::Trunc, raw_value, self.bool(), "").as_basic_value_enum()
-                } else {
-                    let Some(value_type) = self.llvm_underlying_type_by_id(&value_type_id, resolved_generics) else { todo!() };
-                    let value_type = self.llvm_ptr_wrap_type_if_needed(value_type);
-
-                    if self.llvm_type_name_by_id(&value_type_id, resolved_generics).starts_with(ENUM_TYPENAME_TAG) {
-                        let local = self.builder.build_alloca(value_type, "enum_instance_local");
-                        self.builder.build_store(
-                            self.builder.build_struct_gep(local, 0, "").unwrap(),
-                            raw_value,
-                        );
-                        self.builder.build_load(local, "")
-                    } else if self.type_is_option(&value_type_id).is_some() {
-                        let ptr = self.builder.build_int_to_ptr(raw_value, self.ptr(value_type), "self");
-                        self.builder.build_load(ptr, "self").as_basic_value_enum()
-                    } else {
-                        self.builder.build_int_to_ptr(raw_value, value_type.into_pointer_type(), "self").as_basic_value_enum()
-                    }
-                };
-
+                let encoded_value = wrapper_llvm_fn.get_nth_param(0).unwrap().into_int_value();
+                let decoded_value = self.decode_trait_instance_value(encoded_value, &value_type_id, &resolved_generics);
                 let tostring_llvm_fn = self.get_or_compile_to_string_method_for_type(&value_type_id, resolved_generics);
-                let tostring_ret = self.builder.build_call(tostring_llvm_fn, &[value.into()], "").try_as_basic_value().left().unwrap();
+                let tostring_ret = self.builder.build_call(tostring_llvm_fn, &[decoded_value.into()], "").try_as_basic_value().left().unwrap();
                 self.builder.build_return(Some(&tostring_ret));
 
                 self.builder.position_at_end(prev_bb);
@@ -3168,34 +3236,10 @@ impl<'a> LLVMCompiler2<'a> {
                 let block = self.context.append_basic_block(wrapper_llvm_fn, "");
                 self.builder.position_at_end(block);
 
-                let raw_value = wrapper_llvm_fn.get_nth_param(0).unwrap().into_int_value();
-                let value = if value_type_id == PRELUDE_INT_TYPE_ID {
-                    raw_value.as_basic_value_enum()
-                } else if value_type_id == PRELUDE_FLOAT_TYPE_ID {
-                    self.builder.build_cast(InstructionOpcode::BitCast, raw_value, self.f64(), "").as_basic_value_enum()
-                } else if value_type_id == PRELUDE_BOOL_TYPE_ID {
-                    self.builder.build_cast(InstructionOpcode::Trunc, raw_value, self.bool(), "").as_basic_value_enum()
-                } else {
-                    let Some(value_type) = self.llvm_underlying_type_by_id(&value_type_id, resolved_generics) else { todo!() };
-                    let value_type = self.llvm_ptr_wrap_type_if_needed(value_type);
-
-                    if self.llvm_type_name_by_id(&value_type_id, resolved_generics).starts_with(ENUM_TYPENAME_TAG) {
-                        let local = self.builder.build_alloca(value_type, "enum_instance_local");
-                        self.builder.build_store(
-                            self.builder.build_struct_gep(local, 0, "").unwrap(),
-                            raw_value,
-                        );
-                        self.builder.build_load(local, "")
-                    } else if self.type_is_option(&value_type_id).is_some() || self.llvm_type_name_by_id(&value_type_id, resolved_generics).starts_with(ENUM_TYPENAME_TAG) {
-                        let ptr = self.builder.build_int_to_ptr(raw_value, self.ptr(value_type), "self");
-                        self.builder.build_load(ptr, "self").as_basic_value_enum()
-                    } else {
-                        self.builder.build_int_to_ptr(raw_value, value_type.into_pointer_type(), "self").as_basic_value_enum()
-                    }
-                };
-
+                let encoded_value = wrapper_llvm_fn.get_nth_param(0).unwrap().into_int_value();
+                let decoded_value = self.decode_trait_instance_value(encoded_value, &value_type_id, &resolved_generics);
                 let hash_llvm_fn = self.get_or_compile_hash_method_for_type(&value_type_id, resolved_generics);
-                let hash_ret = self.builder.build_call(hash_llvm_fn, &[value.into()], "").try_as_basic_value().left().unwrap();
+                let hash_ret = self.builder.build_call(hash_llvm_fn, &[decoded_value.into()], "").try_as_basic_value().left().unwrap();
                 self.builder.build_return(Some(&hash_ret));
 
                 self.builder.position_at_end(prev_bb);
@@ -3214,50 +3258,8 @@ impl<'a> LLVMCompiler2<'a> {
         self.builder.build_store(vtable_slot, vtable_global.as_pointer_value());
 
         let value_slot = self.builder.build_struct_gep(trait_instance, 1, "value_slot").unwrap();
-        if value_type_id == PRELUDE_INT_TYPE_ID {
-            self.builder.build_store(value_slot, value);
-        } else if value_type_id == PRELUDE_FLOAT_TYPE_ID {
-            let value = self.builder.build_cast(InstructionOpcode::BitCast, value, self.i64(), "float_as_value");
-            self.builder.build_store(value_slot, value);
-        } else if value_type_id == PRELUDE_BOOL_TYPE_ID {
-            let value = self.builder.build_int_cast(value.as_basic_value_enum().into_int_value(), self.i64(), "bool_as_value");
-            self.builder.build_store(value_slot, value);
-        } else if self.llvm_type_name_by_id(&value_type_id, resolved_generics).starts_with(ENUM_TYPENAME_TAG) {
-            let local = self.builder.build_alloca(value.as_basic_value_enum().get_type(), "enum_instance_local");
-            self.builder.build_store(local, value);
-            let enum_instance_value = self.builder.build_load(self.builder.build_struct_gep(local, 0, "").unwrap(), "");
-            self.builder.build_store(value_slot, enum_instance_value);
-        } else {
-            // Otherwise, value should be treated a pointer
-            let ptr = if self.type_is_option(&value_type_id).is_some() {
-                let option_struct_llvm_type = value.as_basic_value_enum().get_type();
-                let value_local = self.builder.build_alloca(option_struct_llvm_type, "");
-                self.builder.build_store(value_local, value);
-
-                let mem = self.malloc(self.sizeof_struct(option_struct_llvm_type), self.ptr(option_struct_llvm_type));
-                let typeid_slot = self.builder.build_struct_gep(mem, 0, "typeid_slot").unwrap();
-                self.builder.build_store(
-                    typeid_slot,
-                    self.builder.build_load(self.builder.build_struct_gep(value_local, 0, "").unwrap(), "typeid_orig"),
-                );
-                let is_set_slot = self.builder.build_struct_gep(mem, 1, "is_set_slot").unwrap();
-                self.builder.build_store(
-                    is_set_slot,
-                    self.builder.build_load(self.builder.build_struct_gep(value_local, 1, "").unwrap(), "is_set_orig"),
-                );
-                let value_slot = self.builder.build_struct_gep(mem, 2, "value_slot").unwrap();
-                self.builder.build_store(
-                    value_slot,
-                    self.builder.build_load(self.builder.build_struct_gep(value_local, 2, "").unwrap(), "value_orig"),
-                );
-
-                mem
-            } else {
-                value.as_basic_value_enum().into_pointer_value()
-            };
-            let value = self.builder.build_ptr_to_int(ptr, self.i64(), "ptr_as_value");
-            self.builder.build_store(value_slot, value);
-        }
+        let encoded_value = self.encode_trait_instance_value(value.as_basic_value_enum(), &value_type_id, &resolved_generics);
+        self.builder.build_store(value_slot, encoded_value);
 
         self.builder.build_load(trait_instance, "trait_instance").into_struct_value()
     }
@@ -4141,7 +4143,11 @@ impl<'a> LLVMCompiler2<'a> {
         }
 
         let enum_llvm_type = self.context.opaque_struct_type(&enum_type_name);
-        enum_llvm_type.set_body(&[self.i64().into()], false);
+        if enum_.all_variants_constant {
+            enum_llvm_type.set_body(&[self.i32().into()], false);
+        } else {
+            enum_llvm_type.set_body(&[self.i32().into(), self.i64().into()], false);
+        }
         self.register_typeid(&enum_type_name);
 
         let resolved_generics = self.extend_resolved_generics_via_instance(resolved_generics, type_id);
@@ -4181,18 +4187,14 @@ impl<'a> LLVMCompiler2<'a> {
         let enum_variant_type_name = self.llvm_enum_variant_type_name(&enum_type_name, &variant.name);
         let variant_typeid = self.get_typeid_by_name(&enum_variant_type_name);
 
-        // An enum instance is contained in 64 bits, and is represented as an unsigned 64-bit integer. The top 16 bits represent the runtime typeid
-        // which, for constant enum variants, is enough to distinguish between them. For container variants (aka tagged unions) this 64-bit integer
-        // is a pointer to the contained data; since pointers can be represented in 48 bits on modern architectures, so pointer is actually derived
-        // via `value & 0xFFFF000000000000`, and the typeid is `value >> 48`.
-        //
-        // NB: This only works if the typeid values are representable in 16 bits.
-        debug_assert!(variant_typeid <= (u16::MAX as usize));
-        let variant_value = (variant_typeid as u64) << 48;
-
         let instance_ptr = self.builder.build_alloca(enum_llvm_type, &format!("{}_instance_ptr", &enum_variant_type_name));
-        let value_slot = self.builder.build_struct_gep(instance_ptr, 0, &format!("{}_value_slot", &enum_variant_type_name)).unwrap();
-        self.builder.build_store(value_slot, self.const_i64(variant_value));
+        let typeid_slot = self.builder.build_struct_gep(instance_ptr, 0, &format!("{}_typeid_slot", &enum_variant_type_name)).unwrap();
+        self.builder.build_store(typeid_slot, self.const_i32(variant_typeid as u64));
+
+        if !enum_.all_variants_constant {
+            let value_slot = self.builder.build_struct_gep(instance_ptr, 1, &format!("{}_value_slot", &enum_variant_type_name)).unwrap();
+            self.builder.build_store(value_slot, self.const_i64(0));
+        }
 
         self.builder.build_load(instance_ptr, &format!("{}_instance", &enum_variant_type_name))
     }
@@ -4235,21 +4237,13 @@ impl<'a> LLVMCompiler2<'a> {
             self.builder.build_store(field_slot, llvm_param);
         }
 
-        // An enum instance is contained in 64 bits, and is represented as an unsigned 64-bit integer. The top 16 bits represent the runtime typeid
-        // which, for constant enum variants, is enough to distinguish between them. For container variants (aka tagged unions) this 64-bit integer
-        // is a pointer to the contained data; since pointers can be represented in 48 bits on modern architectures, so pointer is actually derived
-        // via `value & 0xFFFF000000000000`, and the typeid is `value >> 48`.
-        //
-        // NB: This only works if the typeid values are representable in 16 bits.
-        debug_assert!(variant_typeid <= (u16::MAX as usize));
-        let variant_value = (variant_typeid as u64) << 48;
-        let ptr_as_int = self.builder.build_ptr_to_int(mem, self.i64(), "");
-        let ptr_as_int_masked = self.builder.build_and(ptr_as_int, self.const_i64(0x0000FFFFFFFFFFFF), "");
-        let variant_value = self.builder.build_or(self.const_i64(variant_value), ptr_as_int_masked, "");
-
         let instance_ptr = self.builder.build_alloca(enum_llvm_type, &format!("{}_instance_ptr", &enum_variant_type_name));
-        let value_slot = self.builder.build_struct_gep(instance_ptr, 0, &format!("{}_value_slot", &enum_variant_type_name)).unwrap();
-        self.builder.build_store(value_slot, variant_value);
+        let typeid_slot = self.builder.build_struct_gep(instance_ptr, 0, &format!("{}_typeid_slot", &enum_variant_type_name)).unwrap();
+        self.builder.build_store(typeid_slot, self.const_i32(variant_typeid as u64));
+
+        let value_slot = self.builder.build_struct_gep(instance_ptr, 1, &format!("{}_value_slot", &enum_variant_type_name)).unwrap();
+        let ptr_as_int = self.builder.build_ptr_to_int(mem, self.i64(), "");
+        self.builder.build_store(value_slot, ptr_as_int);
 
         let ret = self.builder.build_load(instance_ptr, &format!("{}_instance", &enum_variant_type_name));
         self.builder.build_return(Some(&ret));
@@ -4262,14 +4256,13 @@ impl<'a> LLVMCompiler2<'a> {
     }
 
     fn extract_tagged_union_enum_variant_data(&self, local_value: PointerValue<'a>, type_id: &TypeId, enum_id: &EnumId, enum_type_name: &String, variant_idx: usize, resolved_generics: &ResolvedGenerics) -> PointerValue<'a> {
-        let underlying_int_value_slot = self.builder.build_struct_gep(local_value, 0, "value_slot").unwrap();
-        let underlying_int_value = self.builder.build_load(underlying_int_value_slot, "value").into_int_value();
-        let masked_value = self.builder.build_and(underlying_int_value, self.const_i64(0x0000FFFFFFFFFFFF), "");
+        let value_slot = self.builder.build_struct_gep(local_value, 1, "value_slot").unwrap();
+        let value_as_int = self.builder.build_load(value_slot, "value_as_int").into_int_value();
 
         let (_, variant_llvm_types) = self.get_or_compile_enum_type_by_type_id(type_id, enum_id, enum_type_name, resolved_generics);
         let variant_llvm_type = variant_llvm_types[variant_idx].expect(&format!("Variant {} is a tagged union and must have had a struct type defined", variant_idx));
 
-        self.builder.build_int_to_ptr(masked_value, self.ptr(variant_llvm_type), "")
+        self.builder.build_int_to_ptr(value_as_int, self.ptr(variant_llvm_type), "")
     }
 
     fn compile_option_struct_type_by_type_id(&self, type_id: &TypeId, resolved_generics: &ResolvedGenerics) -> StructType<'a> {
