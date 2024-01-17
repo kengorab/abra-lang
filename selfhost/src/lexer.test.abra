@@ -6,7 +6,7 @@
 import "fs" as fs
 import Token, TokenKind, Lexer from "./lexer"
 
-func printTokensAsJson(tokens: Token[]) {
+export func printTokensAsJson(tokens: Token[]) {
   println("[")
 
   val indent = "  "
@@ -15,7 +15,7 @@ func printTokensAsJson(tokens: Token[]) {
     println("$indent{")
     println("$indent$indent\"position\": [${token.position.line}, ${token.position.col}],")
     print("$indent$indent\"kind\": ")
-    printTokenKindAsJson(token.kind, "    ")
+    printTokenKindAsJson(token, "$indent$indent")
     val comma = if idx != tokens.length - 1 "," else ""
     println("${indent}}${comma}")
   }
@@ -23,16 +23,16 @@ func printTokensAsJson(tokens: Token[]) {
   println("]")
 }
 
-func printTokenKindAsJson(kind: TokenKind, indent: String) {
+func printTokenKindAsJson(token: Token, indent: String) {
   println("{")
-  match kind {
-    TokenKind.Int(value) => {
+  match token.kind {
+    TokenKind.Int/*(value)*/ => {
       println("$indent  \"name\": \"Int\",")
-      println("$indent  \"value\": $value")
+      println("$indent  \"value\": ${token.intValue}")
     }
-    TokenKind.Ident(name) => {
+    TokenKind.Ident/*(name)*/ => {
       println("$indent  \"name\": \"Ident\",")
-      println("$indent  \"value\": \"$name\"")
+      println("$indent  \"value\": \"${token.strValue}\"")
     }
     TokenKind.Dot => {
       println("$indent  \"name\": \"Dot\"")
