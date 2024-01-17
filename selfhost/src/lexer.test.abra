@@ -15,7 +15,7 @@ export func printTokensAsJson(tokens: Token[]) {
     println("$indent{")
     println("$indent$indent\"position\": [${token.position.line}, ${token.position.col}],")
     print("$indent$indent\"kind\": ")
-    printTokenKindAsJson(token, "$indent$indent")
+    printTokenKindAsJson(token.kind, "$indent$indent")
     val comma = if idx != tokens.length - 1 "," else ""
     println("${indent}}${comma}")
   }
@@ -23,16 +23,16 @@ export func printTokensAsJson(tokens: Token[]) {
   println("]")
 }
 
-func printTokenKindAsJson(token: Token, indent: String) {
+func printTokenKindAsJson(tokenKind: TokenKind, indent: String) {
   println("{")
-  match token.kind {
-    TokenKind.Int/*(value)*/ => {
+  match tokenKind {
+    TokenKind.Int(value) => {
       println("$indent  \"name\": \"Int\",")
-      println("$indent  \"value\": ${token.intValue}")
+      println("$indent  \"value\": $value")
     }
-    TokenKind.Ident/*(name)*/ => {
+    TokenKind.Ident(name) => {
       println("$indent  \"name\": \"Ident\",")
-      println("$indent  \"value\": \"${token.strValue}\"")
+      println("$indent  \"value\": \"$name\"")
     }
     TokenKind.Dot => {
       println("$indent  \"name\": \"Dot\"")

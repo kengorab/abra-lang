@@ -684,6 +684,7 @@ pub struct Enum {
     pub generic_ids: Vec<TypeId>,
     pub self_type_id: TypeId,
     pub variants: Vec<EnumVariant>,
+    pub all_variants_constant: bool,
     pub methods: Vec<FuncId>,
     pub static_methods: Vec<FuncId>,
 }
@@ -2754,6 +2755,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             generic_ids,
             self_type_id,
             variants: vec![],
+            all_variants_constant: false,
             methods: vec![],
             static_methods: vec![],
         };
@@ -3736,6 +3738,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.current_scope_id = enum_.enum_scope_id;
         self.current_type_decl = Some(enum_.self_type_id);
 
+        let mut all_variants_constant = true;
         let mut seen_variants = HashMap::<String, &Token>::new();
         for (variant_ident, variant_args) in variants {
             let name = Token::get_ident_name(variant_ident);
@@ -3748,10 +3751,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             seen_variants.insert(name.clone(), variant_ident);
 
             let kind = if variant_args.is_some() { EnumVariantKind::Container(FuncId::BOGUS) } else { EnumVariantKind::Constant };
+            all_variants_constant &= kind == EnumVariantKind::Constant;
             let defined_span = self.make_span(&variant_ident_range);
             let variant = EnumVariant { name, defined_span, kind };
             self.project.get_enum_by_id_mut(enum_id).variants.push(variant);
         }
+        self.project.get_enum_by_id_mut(enum_id).all_variants_constant = all_variants_constant;
 
         let mut tostring_func_id = None;
         let mut hash_func_id = None;
