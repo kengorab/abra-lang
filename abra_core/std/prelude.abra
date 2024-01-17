@@ -195,6 +195,22 @@ type String {
     str
   }
 
+  func isDigit(self): Bool {
+    // TODO: This method shouldn't be an instance method of String, but we don't have Chars yet so it'll have to do
+    if self.length != 1 return false
+
+    val ch = self._buffer.offset(0).load().asInt()
+    48 <= ch && ch <= 57
+  }
+
+  func isAlpha(self): Bool {
+    // TODO: This method shouldn't be an instance method of String, but we don't have Chars yet so it'll have to do
+    if self.length != 1 return false
+
+    val ch = self._buffer.offset(0).load().asInt()
+    (65 <= ch && ch <= 90) || (97 <= ch && ch <= 122)
+  }
+
   @Stub func padLeft(self, totalSize: Int, padding = " "): String
   @Stub func trim(self): String
   @Stub func trimStart(self, pattern: String? = None): String
@@ -279,7 +295,8 @@ type Array<T> {
   _capacity: Int = 0
 
   func withCapacity<T>(initialCapacity: Int): T[] {
-    Array(length: 0, _buffer: Pointer.malloc(initialCapacity), _capacity: initialCapacity)
+    val capacity = if initialCapacity == 0 16 else initialCapacity
+    Array(length: 0, _buffer: Pointer.malloc(capacity), _capacity: capacity)
   }
 
   func fill<T>(length: Int, value: T): T[] {

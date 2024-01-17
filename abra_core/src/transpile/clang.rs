@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::process::Command;
-use crate::transpile::get_project_root::get_project_root;
+use crate::common::util::get_project_root;
 
 pub fn clang<S: AsRef<str>>(working_dir: &PathBuf, src_file: S, out_file: S) -> Result<(), String> {
     let src_file = join_path(working_dir, src_file.as_ref());

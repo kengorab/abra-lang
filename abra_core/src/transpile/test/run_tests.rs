@@ -2,10 +2,9 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use crate::common::fs_module_reader::FsModuleReader;
-use crate::common::util::random_string;
+use crate::common::util::{get_project_root, random_string};
 use crate::compile_to_c;
 use crate::parser::ast::ModuleId;
-use crate::transpile::get_project_root::get_project_root;
 
 // If empty, all tests will be run. If given the name of a test (eg. `primitives`), only that
 // test will be run.

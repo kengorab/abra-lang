@@ -1,6 +1,4 @@
-use std::{env, fs, io};
-use std::fs::read_dir;
-use std::io::ErrorKind;
+use std::{env, fs};
 use std::path::PathBuf;
 use std::process::{Command, Output};
 use inkwell::context::Context;
@@ -8,7 +6,7 @@ use inkwell::module::Module;
 use abra_core::module_loader::{ModuleLoader, ModuleReader};
 use abra_core::parser::ast::ModuleId;
 use abra_core::{Error, typecheck};
-use abra_core::common::util::random_string;
+use abra_core::common::util::{get_project_root, random_string};
 
 #[cfg(test)]
 mod compiler_tests;
@@ -61,8 +59,8 @@ pub fn compile_to_llvm_and_run<R>(module_id: ModuleId, contents: &String, module
             std::process::exit(1);
         }
         Ok(output) => {
-            io::stdout().write_all(&output.stdout).unwrap();
-            io::stderr().write_all(&output.stderr).unwrap();
+            std::io::stdout().write_all(&output.stdout).unwrap();
+            std::io::stderr().write_all(&output.stderr).unwrap();
             Ok(())
         }
     }
@@ -94,21 +92,6 @@ pub fn compile_to_llvm_and_run<'ctx, R>(module_id: ModuleId, contents: &String, 
     let output = compile_and_run(&llvm_module).unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
     Ok(stdout)
-}
-
-pub fn get_project_root() -> io::Result<PathBuf> {
-    let path = env::current_dir()?;
-    let mut path_ancestors = path.as_path().ancestors();
-
-    while let Some(p) = path_ancestors.next() {
-        let has_cargo = read_dir(p)?
-            .into_iter()
-            .any(|p| p.unwrap().file_name().to_str() == Some("Cargo.lock"));
-        if has_cargo {
-            return Ok(PathBuf::from(p));
-        }
-    }
-    Err(io::Error::new(ErrorKind::NotFound, "Ran out of places to find Cargo.toml"))
 }
 
 fn join_path<S: AsRef<str>>(pwd: &PathBuf, file: S) -> String {
