@@ -122,6 +122,7 @@ impl<'a> Lexer<'a> {
             self.expect_next()?; // Consume 'x'
 
             let mut val = 0i64;
+            let mut is_first = true;
             while let Some(&ch) = self.peek() {
                 let v = match ch {
                     '0'..='9' => (ch as u8) - b'0',
@@ -131,7 +132,14 @@ impl<'a> Lexer<'a> {
                 };
 
                 self.expect_next()?; // Consume char
+                is_first = false;
                 val = val * 16 + (v as i64);
+            }
+
+            if is_first {
+                let ch = self.expect_next()?;
+                let pos = Position::new(self.line, self.col);
+                return Err(LexerErrorKind::UnexpectedChar(pos, ch.to_string()));
             }
 
             return Ok(Some(Token::Int(pos, val)));
@@ -140,6 +148,7 @@ impl<'a> Lexer<'a> {
             self.expect_next()?; // Consume 'b'
 
             let mut val = 0i64;
+            let mut is_first = true;
             while let Some(&ch) = self.peek() {
                 let v = match ch {
                     '0' => 0,
@@ -148,7 +157,14 @@ impl<'a> Lexer<'a> {
                 };
 
                 self.expect_next()?; // Consume char
+                is_first = false;
                 val = val * 2 + (v as i64);
+            }
+
+            if is_first {
+                let ch = self.expect_next()?;
+                let pos = Position::new(self.line, self.col);
+                return Err(LexerErrorKind::UnexpectedChar(pos, ch.to_string()));
             }
 
             return Ok(Some(Token::Int(pos, val)));

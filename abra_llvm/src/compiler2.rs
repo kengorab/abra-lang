@@ -4422,6 +4422,7 @@ impl<'a> LLVMCompiler2<'a> {
             let field_type_id = resolved_generics.resolve_if_generic(&type_id, &self.project)
                 .map(|resolved| resolved.type_id)
                 .unwrap_or(*type_id);
+            let resolved_generics = self.extend_resolved_generics_via_instance(&resolved_generics, &field_type_id);
             let tostring_fn_val = self.get_or_compile_to_string_method_for_type(&field_type_id, &resolved_generics);
             let tostring_val = self.builder.build_call(tostring_fn_val, &[value.into()], &format!("{}_to_string", &name)).try_as_basic_value().left().unwrap().into_pointer_value();
 
@@ -4693,6 +4694,7 @@ impl<'a> LLVMCompiler2<'a> {
             let field_type_id = resolved_generics.resolve_if_generic(&type_id, &self.project)
                 .map(|resolved| resolved.type_id)
                 .unwrap_or(*type_id);
+            let resolved_generics = self.extend_resolved_generics_via_instance(&resolved_generics, &field_type_id);
             let hash_fn = self.get_or_compile_hash_method_for_type(&field_type_id, &resolved_generics);
             let hash = self.builder.build_call(hash_fn, &[value.into()], "").try_as_basic_value().left().unwrap().into_int_value();
 

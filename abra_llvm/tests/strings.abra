@@ -134,6 +134,36 @@
   println("-hElLo!".toUpper())
 })()
 
+// String#split
+(() => {
+  /// Expect: [a, s, d, f]
+  println("a s d f".split(by: " "))
+
+  /// Expect: [, a, b, c d]
+  println("  a  b  c d".split("  "))
+
+  /// Expect: [a, s, d, f]
+  println("asdf".split(""))
+
+  /// Expect: [a, s, d, f]
+  println("a\ns\nd\nf".split("\n"))
+
+  /// Expect: [asdf]
+  println("asdf".split("qwer"))
+})()
+
+// String#lines
+(() => {
+  /// Expect: [a s d f]
+  println("a s d f".lines())
+
+  /// Expect: []
+  println("".lines())
+
+  /// Expect: [a, s, d, f]
+  println("a\ns\nd\nf".lines())
+})()
+
 // String#endsWith
 (() => {
   /// Expect: true

@@ -1,19 +1,8 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-func foo(i: Int): Result<Int, String> {
-  if i < 0 Result.Err(error: "Less than 0")
-  else Result.Ok(value: i * 10)
+enum Foo {
+  Bar(s = Foo.bar())
+
+  func bar(): String = "bar"
 }
-
-enum Color { Red, Blue, Green }
-
-val c = Color.Blue
-
-println(c)
-//for res in results {
-//  match res {
-//    Result.Ok(v) => println("value:", v)
-//    Result.Err(e) => println("error:", e)
-//  }
-//}

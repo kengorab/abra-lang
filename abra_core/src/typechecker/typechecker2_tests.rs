@@ -2656,12 +2656,12 @@ fn typecheck_enum_declaration() {
     ").unwrap();
     let module = &project.modules[TEST_MODULE_IDX];
     let enum_id = EnumId(TEST_MODULE_ID, 0);
-    let baz_func_id = FuncId(ScopeId(TEST_MODULE_ID, 1), 3);
-    let tostring_func_id = FuncId(ScopeId(TEST_MODULE_ID, 1), 0);
+    let baz_func_id = FuncId(ScopeId(TEST_MODULE_ID, 1), 0);
+    let tostring_func_id = FuncId(ScopeId(TEST_MODULE_ID, 1), 1);
     assert_eq!("toString", project.get_func_by_id(&tostring_func_id).name);
-    let hash_func_id = FuncId(ScopeId(TEST_MODULE_ID, 1), 1);
+    let hash_func_id = FuncId(ScopeId(TEST_MODULE_ID, 1), 2);
     assert_eq!("hash", project.get_func_by_id(&hash_func_id).name);
-    let eq_func_id = FuncId(ScopeId(TEST_MODULE_ID, 1), 2);
+    let eq_func_id = FuncId(ScopeId(TEST_MODULE_ID, 1), 3);
     assert_eq!("eq", project.get_func_by_id(&eq_func_id).name);
     let self_type_id= TypeId(ScopeId(TEST_MODULE_ID, 0), 0);
     let expected = vec![
@@ -2725,7 +2725,7 @@ fn typecheck_enum_declaration() {
         captured_vars: vec![],
         captured_closures: vec![],
     };
-    assert_eq!(baz_variant_func, module.scopes[1].funcs[3]);
+    assert_eq!(baz_variant_func, module.scopes[1].funcs[0]);
 }
 
 #[test]

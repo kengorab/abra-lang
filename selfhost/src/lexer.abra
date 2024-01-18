@@ -11,43 +11,91 @@ export enum TokenKind {
   Dot
 }
 
+export type LexerError {
+  position: Position
+  kind: LexerErrorKind
+
+  func getMessage(self, filePath: String, contents: String): String {
+    val lines = ["Error at $filePath:${self.position.line}:${self.position.col}"]
+
+    match self.kind {
+      LexerErrorKind.UnexpectedChar(char) => {
+        lines.push("Unexpected character '$char':")
+      }
+      LexerErrorKind.UnexpectedEof => {
+        lines.push("Unexpected end of file:")
+      }
+    }
+
+    lines.push(self._getCursorLine(contents))
+  
+    lines.join("\n")
+  }
+
+  func _getCursorLine(self, contents: String): String {
+    if contents.lines()[self.position.line - 1] |line| {
+     val cursor = Array.fill(self.position.col, " ")
+     cursor[cursor.length - 1] = "^"
+     "  |  $line\n     ${cursor.join()}"
+    } else {
+     "unreachable"
+    }
+  }
+}
+
+export enum LexerErrorKind {
+  UnexpectedChar(char: String)
+  UnexpectedEof
+}
+
 export type Lexer {
   _input: String
   _cursor: Int = 0
   _line: Int = 1
   _col: Int = 1
 
-  func tokenize(contents: String): Token[] {
+  func tokenize(contents: String): Result<Token[], LexerError> {
     val tokens: Token[] = []
 
     val lexer = Lexer(_input: contents)
-    while lexer.nextToken() |tok| {
+    var nextToken = match lexer.nextToken() { 
+      Result.Ok(v) => v,
+      Result.Err(e) => return Result.Err(error: e)
+    }
+    while nextToken |tok| {
       tokens.push(tok)
+
+      nextToken = match lexer.nextToken() { 
+        Result.Ok(v) => v,
+        Result.Err(e) => return Result.Err(error: e)
+      }
     }
     
-    tokens
+    Result.Ok(tokens)
   }
 
-  func nextToken(self): Token? {
-    if self._cursor >= self._input.length return None
+  func nextToken(self): Result<Token?, LexerError> {
+    if self._cursor >= self._input.length return Result.Ok(None)
 
     self._skipWhitespace()
     val ch = self._input[self._cursor]
 
     val position = self._curPos()
 
-    if ch.isDigit() {
-      self._tokenizeInteger(startPos: position)
+    val token = if ch.isDigit() {
+      val tok = match self._tokenizeInteger(startPos: position) {
+        Result.Ok(v) => v
+        Result.Err(e) => return Result.Err(error: e)
+      }
+      tok
     } else if ch == "." {
       self._advance()
       Token(position: position, kind: TokenKind.Dot)
-    } else if ch.isAlpha() {
+    } else { 
       self._tokenizeIdent(startPos: position)
-    } else {
-      // TODO: This is unreachable, but the rust implementation fails to convert the result of this if-expression to an Option
-      // for some reason. This should be fixed separately
-      None
     }
+
+    Result.Ok(token)
   }
 
   func _curPos(self): Position = Position(line: self._line, col: self._col)
@@ -69,15 +117,16 @@ export type Lexer {
     } 
   }
 
-  func _tokenizeInteger(self, startPos: Position): Token {
+  func _tokenizeInteger(self, startPos: Position): Result<Token, LexerError> {
     val ch = self._input[self._cursor]
     if ch == "0" && self._input[self._cursor + 1] == "x" {
       self._advance() // consume 'x'
       self._advance() // move to next
 
+      var isFirstChar = true
       var num = 0
-      var ch = self._input._buffer.offset(self._cursor).load().asInt()
       while self._cursor < self._input.length {
+        val ch = self._input._buffer.offset(self._cursor).load().asInt()
         val v = if 48 <= ch && ch <= 57 { // 0-9
           (ch - 48)
         } else if 65 <= ch && ch <= 70 { // A-F
@@ -85,17 +134,61 @@ export type Lexer {
         } else if 97 <= ch && ch <= 102 { // a-f
           (ch - 97) + 10
         } else {
-          //println("not valid hex char:", self._input[self._cursor])
           break
         }
 
         num = (num << 4) + v
+        isFirstChar = false
 
         self._advance()
-        ch = self._input._buffer.offset(self._cursor).load().asInt()
       }
 
-      return Token(position: startPos, kind: TokenKind.Int(num))
+      if isFirstChar {
+        val kind = if self._cursor < self._input.length {
+          val char = self._input[self._cursor]
+          LexerErrorKind.UnexpectedChar(char)
+        } else {
+          LexerErrorKind.UnexpectedEof
+        }
+        
+        return Result.Err(LexerError(position: self._curPos(), kind: kind))
+      }
+
+      return Result.Ok(Token(position: startPos, kind: TokenKind.Int(num)))
+    } else if ch == "0" && self._input[self._cursor + 1] == "b" {
+      self._advance() // consume 'b'
+      self._advance() // move to next
+
+      var isFirstChar = true
+      var num = 0
+      while self._cursor < self._input.length {
+        val ch = self._input._buffer.offset(self._cursor).load().asInt()
+        val v = if ch == 48 { 
+          0
+        } else if ch == 49 {
+          1
+        } else {
+          break
+        }
+
+        num = (num << 1) + v
+        isFirstChar = false
+
+        self._advance()
+      }
+
+      if isFirstChar {
+        val kind = if self._cursor < self._input.length {
+          val char = self._input[self._cursor]
+          LexerErrorKind.UnexpectedChar(char)
+        } else {
+          LexerErrorKind.UnexpectedEof
+        }
+        
+        return Result.Err(LexerError(position: self._curPos(), kind: kind))
+      }
+
+      return Result.Ok(Token(position: startPos, kind: TokenKind.Int(num)))
     }
 
     // ord('0') = 48
@@ -107,7 +200,7 @@ export type Lexer {
       self._advance()
     }
 
-    Token(position: startPos, kind: TokenKind.Int(num))
+    Result.Ok(Token(position: startPos, kind: TokenKind.Int(num)))
   }
 
   func _tokenizeIdent(self, startPos: Position): Token {
