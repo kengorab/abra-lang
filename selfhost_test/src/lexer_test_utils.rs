@@ -9,6 +9,7 @@ use abra_core::lexer;
 use abra_core::lexer::tokens::Token;
 use abra_core::parser::ast::ModuleId;
 use similar::{TextDiff, ChangeTag};
+use abra_core::common::display_error::DisplayError;
 use abra_core::common::util::{get_project_root, random_string};
 
 pub fn tokens_to_json(tokens: &Vec<Token>) -> io::Result<String> {
@@ -122,8 +123,10 @@ pub fn exec_test(test_file_path: &str) {
 
     let module_id = ModuleId::parse_module_path("./test").unwrap();
     let contents = std::fs::read_to_string(&test_path).unwrap();
-    let tokens = lexer::lexer::tokenize(&module_id, &contents).unwrap();
-    let rust_impl_tokens_json = tokens_to_json(&tokens).unwrap();
+    let rust_output = match lexer::lexer::tokenize(&module_id, &contents) {
+        Ok(tokens) => tokens_to_json(&tokens).unwrap(),
+        Err(err) => err.get_message(&test_path.to_str().unwrap().to_string(), &contents)
+    };
 
     let build_dir = if let Some(test_temp_dir) = std::env::var("TEST_TMP_DIR").ok() {
         let dir = Path::new(&test_temp_dir).join(random_string(12));
@@ -146,14 +149,14 @@ pub fn exec_test(test_file_path: &str) {
         .output()
         .unwrap();
     assert!(output.stderr.is_empty(), "Compilation error: {}", String::from_utf8(output.stderr).unwrap());
-    let abra_impl_tokens_json = String::from_utf8(output.stdout).unwrap();
+    let abra_output = String::from_utf8(output.stdout).unwrap();
 
-    if rust_impl_tokens_json != abra_impl_tokens_json {
+    if rust_output != abra_output {
         eprintln!("Difference detected between rust implementation and abra implementation:");
         eprintln!("  (The rust output is the 'old' and abra output is the 'new')");
         let diff = TextDiff::from_lines(
-            &rust_impl_tokens_json,
-            &abra_impl_tokens_json,
+            &rust_output,
+            &abra_output,
         );
         for change in diff.iter_all_changes() {
             let sign = match change.tag() {

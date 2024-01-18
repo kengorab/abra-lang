@@ -4,7 +4,7 @@
 // testing.
 
 import "fs" as fs
-import Token, TokenKind, Lexer from "./lexer"
+import Token, TokenKind, Lexer, LexerError, LexerErrorKind from "./lexer"
 
 export func printTokensAsJson(tokens: Token[]) {
   println("[")
@@ -44,8 +44,10 @@ func printTokenKindAsJson(tokenKind: TokenKind, indent: String) {
 if Process.args()[1] |fileName| {
   match fs.readFile(fileName) {
     Result.Ok(contents) => {
-      val tokens = Lexer.tokenize(contents)
-      printTokensAsJson(tokens)
+      match Lexer.tokenize(contents) {
+        Result.Ok(tokens) => printTokensAsJson(tokens)
+        Result.Err(error) => print(error.getMessage(fileName, contents))
+      }
     }
     Result.Err(e) => {
       println("Could not read file:", e)

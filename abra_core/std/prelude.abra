@@ -215,9 +215,60 @@ type String {
   @Stub func trim(self): String
   @Stub func trimStart(self, pattern: String? = None): String
   @Stub func trimEnd(self, pattern: String? = None): String
-  @Stub func split(self, by = ""): String[]
+
+  func split(self, by = ""): String[] {
+    if by.isEmpty() {
+      val arr: String[] = Array.withCapacity(self.length)
+      var i = 0
+      while i < self.length {
+        arr.push(self.get(i))
+        i += 1
+      }
+
+      return arr
+    }
+
+    val arr: String[] = []
+
+    var chunkStart = 0
+    var i = 0
+    while i < self.length {
+      val ch = self._buffer.offset(i).load().asInt()
+
+      val doSplit = if by.length <= self.length - i && ch == by._buffer.offset(0).load().asInt() {
+        var j = 0
+        while j < by.length {
+          if self._buffer.offset(i + j).load().asInt() != by._buffer.offset(j).load().asInt() {
+            break
+          }
+          j += 1
+        }
+
+        j == by.length
+      } else {
+        false
+      }
+
+      if doSplit {
+        val str = self.getRange(chunkStart, i)
+        arr.push(str)
+        i += by.length
+        chunkStart = i
+      } else {
+        i += 1
+      }
+    }
+
+    val str = self.getRange(chunkStart, self.length)
+    arr.push(str)
+
+    arr
+  }
+
   @Stub func splitAt(self, index: Int): (String, String)
-  @Stub func lines(self): String[]
+
+  func lines(self): String[] = self.split(by: "\n")
+
   @Stub func parseInt(self, radix = 10): Int?
   @Stub func parseFloat(self): Float?
 

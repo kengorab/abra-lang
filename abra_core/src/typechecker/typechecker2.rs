@@ -363,7 +363,7 @@ impl Project {
         self.walk_scope_chain_with(scope_id, |scope| {
             for var in &scope.vars {
                 if var.name == *name {
-                    return Some((var.defined_span.as_ref().map(|r| r.range.clone()),var));
+                    return Some((var.defined_span.as_ref().map(|r| r.range.clone()), var));
                 }
             }
             None
@@ -782,7 +782,7 @@ impl Type {
                 static_method_idx -= enum_.variants.len();
 
                 &project.get_enum_by_id(enum_id).static_methods
-            },
+            }
             _ => return None
         };
 
@@ -3329,6 +3329,52 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(params)
     }
 
+    fn typecheck_function_parameters_pass_2(&mut self, func_id: &FuncId, param_default_values: Vec<Option<AstNode>>) -> Result<(), TypeError> {
+        let func = self.project.get_func_by_id(func_id);
+
+        debug_assert!(param_default_values.len() == func.params.len());
+        for (param_idx, default_value) in (0..func.params.len()).zip(param_default_values.into_iter()) {
+            let param = &self.project.get_func_by_id(&func_id).params[param_idx];
+            if !param.is_incomplete { continue; }
+
+            debug_assert!(param.default_value.is_none(), "There should be no reason for incompleteness other than lack of fully-typed default value");
+            let Some(default_value) = default_value else {
+                unreachable!("Internal error: misalignment attempting to hydrate parameter's default value");
+            };
+
+            let mut param_type_id = param.type_id;
+            let type_hint = if param_type_id == PRELUDE_ANY_TYPE_ID { None } else { Some(param_type_id) };
+            let typed_default_value = self.typecheck_expression(default_value, type_hint)?;
+            let type_id = *typed_default_value.type_id();
+
+            // If the default value expression contains an unbound generic, this is an unacceptable state.
+            if self.type_contains_generics(&type_id) {
+                return Err(TypeError::ForbiddenAssignment { span: self.make_span(&typed_default_value.span()), type_id, purpose: "parameter" });
+            }
+
+            // If the param's known type is the sentinel value `Any`, then don't perform any typechecks.
+            if param_type_id != PRELUDE_ANY_TYPE_ID {
+                if self.type_contains_generics(&param_type_id) {
+                    param_type_id = self.substitute_generics(&type_id, &param_type_id);
+                }
+                if !self.type_satisfies_other(&type_id, &param_type_id) {
+                    return Err(TypeError::TypeMismatch { span: self.make_span(&typed_default_value.span()), expected: vec![param_type_id], received: type_id });
+                }
+            }
+
+            let param = &mut self.project.get_func_by_id_mut(&func_id).params[param_idx];
+            param.default_value = Some(typed_default_value);
+            param.type_id = type_id;
+            param.is_incomplete = false;
+
+            let param_var_id = param.var_id;
+            let param_var = self.project.get_var_by_id_mut(&param_var_id);
+            param_var.type_id = type_id;
+        }
+
+        Ok(())
+    }
+
     fn typecheck_function_pass_0(&mut self, node: &FunctionDeclNode) -> Result<FuncId, TypeError> {
         self.function_pass = FunctionPass::Pass0;
 
@@ -3405,46 +3451,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let func_name = func.name.clone();
         let return_type_id = func.return_type_id;
 
-        let node_parameters = node.args;
-        debug_assert!(node_parameters.len() == func.params.len());
-        for (param_idx, (_, _, _, default_value)) in (0..func.params.len()).zip(node_parameters) {
-            let param = &self.project.get_func_by_id(&func_id).params[param_idx];
-            if !param.is_incomplete { continue; }
-
-            debug_assert!(param.default_value.is_none(), "There should be no reason for incompleteness other than lack of fully-typed default value");
-            let Some(default_value) = default_value else {
-                unreachable!("Internal error: misalignment attempting to hydrate parameter's default value");
-            };
-
-            let mut param_type_id = param.type_id;
-            let type_hint = if param_type_id == PRELUDE_ANY_TYPE_ID { None } else { Some(param_type_id) };
-            let typed_default_value = self.typecheck_expression(default_value, type_hint)?;
-            let type_id = *typed_default_value.type_id();
-
-            // If the default value expression contains an unbound generic, this is an unacceptable state.
-            if self.type_contains_generics(&type_id) {
-                return Err(TypeError::ForbiddenAssignment { span: self.make_span(&typed_default_value.span()), type_id, purpose: "parameter" });
-            }
-
-            // If the param's known type is the sentinel value `Any`, then don't perform any typechecks.
-            if param_type_id != PRELUDE_ANY_TYPE_ID {
-                if self.type_contains_generics(&param_type_id) {
-                    param_type_id = self.substitute_generics(&type_id, &param_type_id);
-                }
-                if !self.type_satisfies_other(&type_id, &param_type_id) {
-                    return Err(TypeError::TypeMismatch { span: self.make_span(&typed_default_value.span()), expected: vec![param_type_id], received: type_id });
-                }
-            }
-
-            let param = &mut self.project.get_func_by_id_mut(&func_id).params[param_idx];
-            param.default_value = Some(typed_default_value);
-            param.type_id = type_id;
-            param.is_incomplete = false;
-
-            let param_var_id = param.var_id;
-            let param_var = self.project.get_var_by_id_mut(&param_var_id);
-            param_var.type_id = type_id;
-        }
+        let param_default_values = node.args.into_iter().map(|(_, _, _, default_value)| default_value);
+        self.typecheck_function_parameters_pass_2(&func_id, param_default_values.collect())?;
 
         let mut body = vec![];
         let num_nodes = node.body.len();
@@ -3733,6 +3741,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let EnumDeclNode { variants, methods, .. } = node;
 
         let enum_ = self.project.get_enum_by_id(enum_id);
+        let enum_generic_ids = enum_.generic_ids.clone();
         let self_type_id = enum_.self_type_id;
 
         self.current_scope_id = enum_.enum_scope_id;
@@ -3740,7 +3749,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let mut all_variants_constant = true;
         let mut seen_variants = HashMap::<String, &Token>::new();
-        for (variant_ident, variant_args) in variants {
+        for (idx, (variant_ident, variant_args)) in variants.iter().enumerate() {
             let name = Token::get_ident_name(variant_ident);
             let variant_ident_range = variant_ident.get_range();
             if let Some(seen_variant) = seen_variants.get(&name) {
@@ -3750,7 +3759,27 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
             seen_variants.insert(name.clone(), variant_ident);
 
-            let kind = if variant_args.is_some() { EnumVariantKind::Container(FuncId::BOGUS) } else { EnumVariantKind::Constant };
+            let kind = if let Some(variant_decl_args) = variant_args {
+                let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)), ScopeKind::Function(FuncId::BOGUS));
+
+                let params = variant_decl_args.iter().map(|arg| (args_to_parameters(arg), None)).collect_vec();
+                let params = self.typecheck_function_parameters_pass_1(false, &params, true)?;
+
+                let return_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(*enum_id, enum_generic_ids.clone(), Some(idx)));
+                self.end_child_scope();
+
+                let variant_func_id = self.add_function_to_current_scope(fn_scope_id, variant_ident, enum_generic_ids.clone(), false, params, return_type_id)?;
+                let func = self.project.get_func_by_id(&variant_func_id);
+                let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
+                self.project.get_func_by_id_mut(&variant_func_id).fn_type_id = fn_type_id;
+
+                let ScopeKind::Function(id) = &mut self.project.get_scope_by_id_mut(&fn_scope_id).kind else { unreachable!() };
+                *id = variant_func_id;
+
+                EnumVariantKind::Container(variant_func_id)
+            } else {
+                EnumVariantKind::Constant
+            };
             all_variants_constant &= kind == EnumVariantKind::Constant;
             let defined_span = self.make_span(&variant_ident_range);
             let variant = EnumVariant { name, defined_span, kind };
@@ -3874,33 +3903,23 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let EnumDeclNode { variants, methods, .. } = node;
         let enum_ = self.project.get_enum_by_id(&enum_id);
         let enum_variants = enum_.variants.clone(); // Need to clone, sadly :/
-        let generic_ids = enum_.generic_ids.clone();
 
         let prev_scope_id = self.current_scope_id;
         self.current_scope_id = enum_.enum_scope_id;
         let prev_type_decl = self.current_type_decl.replace(enum_.self_type_id);
 
         debug_assert!(enum_.variants.len() == variants.len());
-        for (idx, ((variant_decl_token, variant_decl_args), variant)) in variants.iter().zip(&enum_variants).enumerate() {
-            if let EnumVariantKind::Container(_) = variant.kind {
+        for ((_, variant_decl_args), variant) in variants.into_iter().zip(&enum_variants) {
+            if let EnumVariantKind::Container(func_id) = variant.kind {
                 let Some(variant_decl_args) = variant_decl_args else { unreachable!("Internal error: incorrectly assigned EnumVariantKind::Container") };
-                let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)), ScopeKind::Function(FuncId::BOGUS));
+                let func = self.project.get_func_by_id(&func_id);
+                let prev_scope_id = self.current_scope_id;
+                self.current_scope_id = func.fn_scope_id;
 
-                let params = variant_decl_args.iter().map(|arg| (args_to_parameters(arg), None)).collect_vec();
-                let params = self.typecheck_function_parameters_pass_1(false, &params, false)?;
+                let param_default_values = variant_decl_args.into_iter().map(|(_, _, _, default_value)| default_value);
+                self.typecheck_function_parameters_pass_2(&func_id, param_default_values.collect())?;
 
-                let return_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids.clone(), Some(idx)));
-                self.end_child_scope();
-
-                let variant_func_id = self.add_function_to_current_scope(fn_scope_id, variant_decl_token, generic_ids.clone(), false, params, return_type_id)?;
-                let func = self.project.get_func_by_id(&variant_func_id);
-                let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func));
-                self.project.get_func_by_id_mut(&variant_func_id).fn_type_id = fn_type_id;
-
-                let EnumVariantKind::Container(func_id) = &mut self.project.get_enum_by_id_mut(&enum_id).variants[idx].kind else { unreachable!() };
-                *func_id = variant_func_id;
-                let ScopeKind::Function(id) = &mut self.project.get_scope_by_id_mut(&fn_scope_id).kind else { unreachable!() };
-                *id = variant_func_id;
+                self.current_scope_id = prev_scope_id;
             }
         }
 
