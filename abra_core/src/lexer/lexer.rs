@@ -168,6 +168,10 @@ impl<'a> Lexer<'a> {
             }
 
             return Ok(Some(Token::Int(pos, val)));
+        } else if ch == '0' && self.peek().map_or(false, |ch| ch.is_digit(10)) {
+            let ch = self.expect_next()?;
+            let pos = Position::new(self.line, self.col);
+            return Err(LexerErrorKind::UnexpectedChar(pos, ch.to_string()));
         }
 
         if ch.is_digit(10) {

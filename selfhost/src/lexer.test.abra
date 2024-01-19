@@ -30,6 +30,14 @@ func printTokenKindAsJson(tokenKind: TokenKind, indent: String) {
       println("$indent  \"name\": \"Int\",")
       println("$indent  \"value\": $value")
     }
+    TokenKind.Float(value) => {
+      println("$indent  \"name\": \"Float\",")
+      println("$indent  \"value\": $value")
+    }
+    TokenKind.String(value) => {
+      println("$indent  \"name\": \"String\",")
+      println("$indent  \"value\": \"$value\"")
+    }
     TokenKind.Ident(name) => {
       println("$indent  \"name\": \"Ident\",")
       println("$indent  \"value\": \"$name\"")

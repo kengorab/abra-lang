@@ -1,8 +1,4 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-enum Foo {
-  Bar(s = Foo.bar())
-
-  func bar(): String = "bar"
-}
+"\u0450ZZ"
