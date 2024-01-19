@@ -18,5 +18,8 @@ fn lexer_tests() {
         .add_test("lexer/strings_error_unterminated_newline.abra")
         .add_test("lexer/strings_error_unterminated_eof.abra")
         .add_test("lexer/strings_error_unsupported_escape_sequence.abra")
+        .add_test("lexer/strings_error_invalid_unicode_seq_length.abra")
+        .add_test("lexer/strings_error_invalid_unicode_seq_eof.abra")
+        .add_test("lexer/strings_error_invalid_unicode_seq_char.abra")
         .run_tests();
 }

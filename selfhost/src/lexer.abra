@@ -1,3 +1,5 @@
+import valueIfValidHexDigit from "./utils"
+
 export type Position { line: Int, col: Int }
 
 export type Token {
@@ -11,6 +13,13 @@ export enum TokenKind {
   String(value: String)
   Ident(name: String)
   Dot
+}
+
+export enum LexerErrorKind {
+  UnexpectedChar(char: String)
+  UnterminatedString(start: Position)
+  UnsupportedEscapeSequence(seq: String, isUnicode: Bool)
+  UnexpectedEof
 }
 
 export type LexerError {
@@ -32,9 +41,12 @@ export type LexerError {
         lines.push("  String is terminated at (${self.position.line}:${self.position.col})")
         lines.push(self._getCursorLine(self.position, contents))
       }
-      LexerErrorKind.UnsupportedEscapeSequence(seq) => {
+      LexerErrorKind.UnsupportedEscapeSequence(seq, isUnicode) => {
         lines.push("Unsupported escape sequence:")
         lines.push(self._getCursorLine(self.position, contents, seq.length))
+        if isUnicode {
+          lines.push("Unicode escape sequences must be \\u followed by 4 hexadecimal characters (between 0000 and 7FFF)")
+        }
       }
       LexerErrorKind.UnexpectedEof => {
         lines.push("Unexpected end of file:")
@@ -57,13 +69,6 @@ export type LexerError {
       "unreachable"
     }
   }
-}
-
-export enum LexerErrorKind {
-  UnexpectedChar(char: String)
-  UnterminatedString(start: Position)
-  UnsupportedEscapeSequence(seq: String)
-  UnexpectedEof
 }
 
 export type Lexer {
@@ -152,15 +157,7 @@ export type Lexer {
         var num = 0
         while self._cursor < self._input.length {
           val ch = self._input._buffer.offset(self._cursor).load().asInt()
-          val v = if 48 <= ch && ch <= 57 { // 0-9
-            (ch - 48)
-          } else if 65 <= ch && ch <= 70 { // A-F
-            (ch - 65) + 10
-          } else if 97 <= ch && ch <= 102 { // a-f
-            (ch - 97) + 10
-          } else {
-            break
-          }
+          val v = if valueIfValidHexDigit(ch) |v| v else break
 
           num = (num << 4) + v
           isFirstChar = false
@@ -274,6 +271,7 @@ export type Lexer {
         val startCursor = self._cursor
         val pos = self._curPos()
         self._advance() // consume '\'
+
         val ch = self._input[self._cursor]
         val escapedCh = match ch {
           "n" => "\n"
@@ -283,11 +281,11 @@ export type Lexer {
           "\'" => "\'",
           "\"" => "\"",
           "$" => "$",
-          "u" => match self._parseUnicodeEscape(startPos) {
+          "u" => match self._parseUnicodeEscape(pos) {
             Result.Ok(c) => c
             Result.Err(e) => return Result.Err(e)
           }
-          _ => return Result.Err(LexerError(position: pos, kind: LexerErrorKind.UnsupportedEscapeSequence("\\$ch")))
+          _ => return Result.Err(LexerError(position: pos, kind: LexerErrorKind.UnsupportedEscapeSequence("\\$ch", false)))
         }
 
         if !seenEscape {
@@ -319,7 +317,64 @@ export type Lexer {
   }
 
   func _parseUnicodeEscape(self, startPos: Position): Result<String, LexerError> {
-    Result.Ok("todo")
+    self._advance() // consume 'u'
+
+    var value = 0
+    for i in range(0, 4) {
+      if self._cursor + i >= self._input.length {
+        val escSeq = "\\u${self._input[self._cursor:self._cursor + i]}"
+        return Result.Err(LexerError(position: startPos, kind: LexerErrorKind.UnsupportedEscapeSequence(escSeq, true)))
+      }
+      val ch = self._input._buffer.offset(self._cursor + i).load().asInt()
+      val v = if valueIfValidHexDigit(ch) |v| v else {
+        val escSeq = "\\u${self._input[self._cursor:self._cursor + i]}"
+        return Result.Err(LexerError(position: startPos, kind: LexerErrorKind.UnsupportedEscapeSequence(escSeq, true)))
+      }
+      value = (value << 4) + v
+    }
+    self._advance()
+    self._advance()
+    self._advance()
+
+    // TODO: Clean up this unicode->utf-8 conversion and abstract it away into some stdlib method once Chars exist?
+    val str = if !(value.isBetween(0, 0xD7FF, true) || value.isBetween(0xE000, 0x10FFFF, true)) {
+      "�"
+    } else if value.isBetween(0, 0x007F, true) {
+      val s = String.withLength(1)
+      s._buffer.offset(0).store(Byte.fromInt(value))
+      s
+    } else if value.isBetween(0x0080, 0x07FF, true) {
+      val s = String.withLength(2)
+      val b1 = 0b11000000 || (value && 0b11111000000)
+      val b2 = 0b10000000 || (value && 0b00000111111)
+      s._buffer.offset(0).store(Byte.fromInt(b1))
+      s._buffer.offset(1).store(Byte.fromInt(b2))
+      s
+    } else if value.isBetween(0x0800, 0xFFFF, true) {
+      val s = String.withLength(3)
+      val b1 = 0b11100000 || ((value && 0b1111000000000000) >> 12)
+      val b2 = 0b10000000 || ((value && 0b0000111111000000) >> 6)
+      val b3 = 0b10000000 || (value && 0b0000000000111111)
+      s._buffer.offset(0).store(Byte.fromInt(b1))
+      s._buffer.offset(1).store(Byte.fromInt(b2))
+      s._buffer.offset(2).store(Byte.fromInt(b3))
+      s
+    } else if value.isBetween(0x10000, 0x10FFFF, true) {
+      val s = String.withLength(4)
+      val b1 = 0b11110000 || (value && 0b111000000000000000000)
+      val b2 = 0b10000000 || (value && 0b000111111000000000000)
+      val b3 = 0b10000000 || (value && 0b000000000111111000000)
+      val b4 = 0b10000000 || (value && 0b000000000000000111111)
+      s._buffer.offset(0).store(Byte.fromInt(b1))
+      s._buffer.offset(1).store(Byte.fromInt(b2))
+      s._buffer.offset(2).store(Byte.fromInt(b3))
+      s._buffer.offset(3).store(Byte.fromInt(b4))
+      s
+    } else {
+      "�"
+    }
+
+    Result.Ok(str)
   }
 
   func _tokenizeIdent(self, startPos: Position): Token {
