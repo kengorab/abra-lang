@@ -12,7 +12,99 @@ use similar::{TextDiff, ChangeTag};
 use abra_core::common::display_error::DisplayError;
 use abra_core::common::util::{get_project_root, random_string};
 
-pub fn tokens_to_json(tokens: &Vec<Token>) -> io::Result<String> {
+pub struct TestRunner {
+    bin_path: String,
+    tests: Vec<&'static str>,
+}
+
+impl TestRunner {
+    pub fn lexer_test_runner() -> Self {
+        let selfhost_dir = get_project_root().unwrap().join("selfhost");
+        let build_dir = if let Some(test_temp_dir) = std::env::var("TEST_TMP_DIR").ok() {
+            let dir = Path::new(&test_temp_dir).join(random_string(12));
+            std::fs::create_dir(&dir).unwrap();
+            dir
+        } else {
+            temp_dir()
+        };
+
+        let output = Command::cargo_bin("abra").unwrap()
+            .arg("build")
+            .arg(&selfhost_dir.join("src/lexer.test.abra"))
+            .arg("-o")
+            .arg("lexer_test")
+            .arg("-b")
+            .arg(&build_dir)
+            .output()
+            .unwrap();
+        assert!(output.stderr.is_empty(), "Compilation error: {}", String::from_utf8(output.stderr).unwrap());
+
+        let bin_path = build_dir.join(".abra/lexer_test").to_str().unwrap().to_string();
+        Self { bin_path, tests: vec![] }
+    }
+
+    pub fn add_test(mut self, test_path: &'static str) -> Self {
+        self.tests.push(test_path);
+        self
+    }
+
+    pub fn run_tests(self) {
+        let selfhost_dir = get_project_root().unwrap().join("selfhost");
+
+        let Self { bin_path, tests } = self;
+
+        let mut failures = vec![];
+        for test_file_path in tests {
+            let test_path = selfhost_dir.join("test").join(test_file_path);
+            let test_path = test_path.to_str().unwrap().to_string();
+            println!("Running lexer test {}", &test_path);
+
+            let module_id = ModuleId::parse_module_path("./test").unwrap();
+            let contents = std::fs::read_to_string(&test_path).unwrap();
+            let rust_output = match lexer::lexer::tokenize(&module_id, &contents) {
+                Ok(tokens) => tokens_to_json(&tokens).unwrap(),
+                Err(err) => err.get_message(&test_path, &contents)
+            };
+
+            let output = Command::new(&bin_path)
+                .arg(&test_path)
+                .output()
+                .unwrap();
+            assert!(output.stderr.is_empty(), "Runtime error: {}", String::from_utf8(output.stderr).unwrap());
+            let abra_output = String::from_utf8(output.stdout).unwrap();
+
+            if rust_output != abra_output {
+                eprintln!("  Difference detected between rust implementation and abra implementation:");
+                eprintln!("    (The rust output is the 'old' and abra output is the 'new')");
+                let diff = TextDiff::from_lines(
+                    &rust_output,
+                    &abra_output,
+                );
+                for change in diff.iter_all_changes() {
+                    let sign = match change.tag() {
+                        ChangeTag::Equal => " ",
+                        ChangeTag::Delete => "-",
+                        ChangeTag::Insert => "+",
+                    };
+                    eprint!("  {sign}{change}");
+                }
+                failures.push(test_path);
+            }
+        }
+
+        if !failures.is_empty() {
+            eprintln!("Failures running lexer tests:");
+            for test_path in failures {
+                eprintln!("  Test path '{}' failed", &test_path)
+            }
+            panic!("Failures running lexer tests!");
+        } else {
+            println!("Lexer tests passed!")
+        }
+    }
+}
+
+fn tokens_to_json(tokens: &Vec<Token>) -> io::Result<String> {
     let mut buf = BufWriter::new(Vec::new());
 
     writeln!(&mut buf, "[")?;
@@ -27,8 +119,14 @@ pub fn tokens_to_json(tokens: &Vec<Token>) -> io::Result<String> {
                 writeln!(&mut buf, "      \"name\": \"Int\",")?;
                 writeln!(&mut buf, "      \"value\": {}", val)?;
             }
-            Token::Float(_, _) => todo!(),
-            Token::String(_, _) => todo!(),
+            Token::Float(_, val) => {
+                writeln!(&mut buf, "      \"name\": \"Float\",")?;
+                writeln!(&mut buf, "      \"value\": {}", val)?;
+            }
+            Token::String(_, val) => {
+                writeln!(&mut buf, "      \"name\": \"String\",")?;
+                writeln!(&mut buf, "      \"value\": \"{}\"", val)?;
+            }
             Token::StringInterp(_, _) => todo!(),
             Token::Bool(_, _) => todo!(),
             Token::Func(_) => todo!(),
@@ -114,58 +212,4 @@ pub fn tokens_to_json(tokens: &Vec<Token>) -> io::Result<String> {
 
     let bytes = buf.into_inner()?;
     Ok(String::from_utf8(bytes).unwrap())
-}
-
-pub fn exec_test(test_file_path: &str) {
-    let selfhost_dir = get_project_root().unwrap().join("selfhost");
-
-    let test_path = selfhost_dir.join("test").join(test_file_path);
-
-    let module_id = ModuleId::parse_module_path("./test").unwrap();
-    let contents = std::fs::read_to_string(&test_path).unwrap();
-    let rust_output = match lexer::lexer::tokenize(&module_id, &contents) {
-        Ok(tokens) => tokens_to_json(&tokens).unwrap(),
-        Err(err) => err.get_message(&test_path.to_str().unwrap().to_string(), &contents)
-    };
-
-    let build_dir = if let Some(test_temp_dir) = std::env::var("TEST_TMP_DIR").ok() {
-        let dir = Path::new(&test_temp_dir).join(random_string(12));
-        std::fs::create_dir(&dir).unwrap();
-        dir
-    } else {
-        temp_dir()
-    };
-
-    let output = Command::cargo_bin("abra").unwrap()
-        .arg("build")
-        .arg("--run")
-        .arg(&selfhost_dir.join("src/lexer.test.abra"))
-        .arg("-o")
-        .arg("lexer.test")
-        .arg("-b")
-        .arg(&build_dir)
-        .arg("--")
-        .arg(&test_path)
-        .output()
-        .unwrap();
-    assert!(output.stderr.is_empty(), "Compilation error: {}", String::from_utf8(output.stderr).unwrap());
-    let abra_output = String::from_utf8(output.stdout).unwrap();
-
-    if rust_output != abra_output {
-        eprintln!("Difference detected between rust implementation and abra implementation:");
-        eprintln!("  (The rust output is the 'old' and abra output is the 'new')");
-        let diff = TextDiff::from_lines(
-            &rust_output,
-            &abra_output,
-        );
-        for change in diff.iter_all_changes() {
-            let sign = match change.tag() {
-                ChangeTag::Equal => " ",
-                ChangeTag::Delete => "-",
-                ChangeTag::Insert => "+",
-            };
-            eprint!("{sign}{change}");
-        }
-        panic!("Test at path '{}' failed", test_path.to_str().unwrap());
-    }
 }

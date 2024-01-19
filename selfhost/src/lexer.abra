@@ -7,6 +7,8 @@ export type Token {
 
 export enum TokenKind {
   Int(value: Int)
+  Float(value: Float)
+  String(value: String)
   Ident(name: String)
   Dot
 }
@@ -21,30 +23,46 @@ export type LexerError {
     match self.kind {
       LexerErrorKind.UnexpectedChar(char) => {
         lines.push("Unexpected character '$char':")
+        lines.push(self._getCursorLine(self.position, contents))
+      }
+      LexerErrorKind.UnterminatedString(start) => {
+        lines.push("Unterminated string:")
+        lines.push("  String begins at (${start.line}:${start.col})")
+        lines.push(self._getCursorLine(start, contents))
+        lines.push("  String is terminated at (${self.position.line}:${self.position.col})")
+        lines.push(self._getCursorLine(self.position, contents))
+      }
+      LexerErrorKind.UnsupportedEscapeSequence(seq) => {
+        lines.push("Unsupported escape sequence:")
+        lines.push(self._getCursorLine(self.position, contents, seq.length))
       }
       LexerErrorKind.UnexpectedEof => {
         lines.push("Unexpected end of file:")
+        lines.push(self._getCursorLine(self.position, contents))
       }
     }
-
-    lines.push(self._getCursorLine(contents))
-  
+ 
     lines.join("\n")
   }
 
-  func _getCursorLine(self, contents: String): String {
-    if contents.lines()[self.position.line - 1] |line| {
-     val cursor = Array.fill(self.position.col, " ")
-     cursor[cursor.length - 1] = "^"
-     "  |  $line\n     ${cursor.join()}"
+  func _getCursorLine(self, position: Position, contents: String, cursorLength = 1): String {
+    if contents.lines()[position.line - 1] |line| {
+      val len = position.col - 1 + cursorLength
+      val cursor = Array.fill(len, " ")
+      for i in range(len - cursorLength, len) {
+        cursor[i] = "^"
+      }
+      "  |  $line\n     ${cursor.join()}"
     } else {
-     "unreachable"
+      "unreachable"
     }
   }
 }
 
 export enum LexerErrorKind {
   UnexpectedChar(char: String)
+  UnterminatedString(start: Position)
+  UnsupportedEscapeSequence(seq: String)
   UnexpectedEof
 }
 
@@ -88,6 +106,12 @@ export type Lexer {
         Result.Err(e) => return Result.Err(error: e)
       }
       tok
+    } else if ch == "\"" {
+      val tok = match self._tokenizeString(startPos: position) {
+        Result.Ok(v) => v
+        Result.Err(e) => return Result.Err(error: e)
+      }
+      tok
     } else if ch == "." {
       self._advance()
       Token(position: position, kind: TokenKind.Dot)
@@ -119,76 +143,82 @@ export type Lexer {
 
   func _tokenizeInteger(self, startPos: Position): Result<Token, LexerError> {
     val ch = self._input[self._cursor]
-    if ch == "0" && self._input[self._cursor + 1] == "x" {
-      self._advance() // consume 'x'
-      self._advance() // move to next
+    if ch == "0" {
+      if self._input[self._cursor + 1] == "x" {
+        self._advance() // consume 'x'
+        self._advance() // move to next
 
-      var isFirstChar = true
-      var num = 0
-      while self._cursor < self._input.length {
-        val ch = self._input._buffer.offset(self._cursor).load().asInt()
-        val v = if 48 <= ch && ch <= 57 { // 0-9
-          (ch - 48)
-        } else if 65 <= ch && ch <= 70 { // A-F
-          (ch - 65) + 10
-        } else if 97 <= ch && ch <= 102 { // a-f
-          (ch - 97) + 10
-        } else {
-          break
+        var isFirstChar = true
+        var num = 0
+        while self._cursor < self._input.length {
+          val ch = self._input._buffer.offset(self._cursor).load().asInt()
+          val v = if 48 <= ch && ch <= 57 { // 0-9
+            (ch - 48)
+          } else if 65 <= ch && ch <= 70 { // A-F
+            (ch - 65) + 10
+          } else if 97 <= ch && ch <= 102 { // a-f
+            (ch - 97) + 10
+          } else {
+            break
+          }
+
+          num = (num << 4) + v
+          isFirstChar = false
+
+          self._advance()
         }
 
-        num = (num << 4) + v
-        isFirstChar = false
+        if isFirstChar {
+          val kind = if self._cursor < self._input.length {
+            val char = self._input[self._cursor]
+            LexerErrorKind.UnexpectedChar(char)
+          } else {
+            LexerErrorKind.UnexpectedEof
+          }
+          
+          return Result.Err(LexerError(position: self._curPos(), kind: kind))
+        }
 
+        return Result.Ok(Token(position: startPos, kind: TokenKind.Int(num)))
+      } else if self._input[self._cursor + 1] == "b" {
+        self._advance() // consume 'b'
+        self._advance() // move to next
+
+        var isFirstChar = true
+        var num = 0
+        while self._cursor < self._input.length {
+          val ch = self._input._buffer.offset(self._cursor).load().asInt()
+          val v = if ch == 48 { 
+            0
+          } else if ch == 49 {
+            1
+          } else {
+            break
+          }
+
+          num = (num << 1) + v
+          isFirstChar = false
+
+          self._advance()
+        }
+
+        if isFirstChar {
+          val kind = if self._cursor < self._input.length {
+            val char = self._input[self._cursor]
+            LexerErrorKind.UnexpectedChar(char)
+          } else {
+            LexerErrorKind.UnexpectedEof
+          }
+          
+          return Result.Err(LexerError(position: self._curPos(), kind: kind))
+        }
+
+        return Result.Ok(Token(position: startPos, kind: TokenKind.Int(num)))
+      } else if self._input[self._cursor + 1].isDigit() {
         self._advance()
+        val char = self._input[self._cursor]
+        return Result.Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedChar(char)))
       }
-
-      if isFirstChar {
-        val kind = if self._cursor < self._input.length {
-          val char = self._input[self._cursor]
-          LexerErrorKind.UnexpectedChar(char)
-        } else {
-          LexerErrorKind.UnexpectedEof
-        }
-        
-        return Result.Err(LexerError(position: self._curPos(), kind: kind))
-      }
-
-      return Result.Ok(Token(position: startPos, kind: TokenKind.Int(num)))
-    } else if ch == "0" && self._input[self._cursor + 1] == "b" {
-      self._advance() // consume 'b'
-      self._advance() // move to next
-
-      var isFirstChar = true
-      var num = 0
-      while self._cursor < self._input.length {
-        val ch = self._input._buffer.offset(self._cursor).load().asInt()
-        val v = if ch == 48 { 
-          0
-        } else if ch == 49 {
-          1
-        } else {
-          break
-        }
-
-        num = (num << 1) + v
-        isFirstChar = false
-
-        self._advance()
-      }
-
-      if isFirstChar {
-        val kind = if self._cursor < self._input.length {
-          val char = self._input[self._cursor]
-          LexerErrorKind.UnexpectedChar(char)
-        } else {
-          LexerErrorKind.UnexpectedEof
-        }
-        
-        return Result.Err(LexerError(position: self._curPos(), kind: kind))
-      }
-
-      return Result.Ok(Token(position: startPos, kind: TokenKind.Int(num)))
     }
 
     // ord('0') = 48
@@ -200,14 +230,103 @@ export type Lexer {
       self._advance()
     }
 
+    if self._input[self._cursor] == "." && self._input[self._cursor + 1].isDigit() {
+      return self._tokenizeFloat(startPos: startPos, wholeNumber: num)
+    }
+
     Result.Ok(Token(position: startPos, kind: TokenKind.Int(num)))
+  }
+
+  func _tokenizeFloat(self, startPos: Position, wholeNumber: Int): Result<Token, LexerError> {
+    self._advance() // consume '.'
+
+    var pow = 1
+    var num = self._input._buffer.offset(self._cursor).load().asInt() - 48
+    self._advance()
+    while self._input[self._cursor].isDigit() {
+      num *= 10
+      num += self._input._buffer.offset(self._cursor).load().asInt() - 48
+      self._advance()
+      pow += 1
+    }
+
+    if self._input[self._cursor] == "." && self._input[self._cursor + 1].isDigit() {
+      val char = self._input[self._cursor]
+      return Result.Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedChar(char)))
+    }
+
+    val float = wholeNumber + (num / 10 ** pow)
+    Result.Ok(Token(position: startPos, kind: TokenKind.Float(float)))
+  }
+
+  func _tokenizeString(self, startPos: Position): Result<Token, LexerError> {
+    self._advance() // consume '"'
+
+    var chars: String[] = []
+    val start = self._cursor
+    var closed = false
+    var seenEscape = false
+    while self._cursor < self._input.length {
+      val ch = self._input[self._cursor]
+      if ch == "\n" {
+        return Result.Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnterminatedString(startPos)))
+      } else if ch == "\\" {
+        val startCursor = self._cursor
+        val pos = self._curPos()
+        self._advance() // consume '\'
+        val ch = self._input[self._cursor]
+        val escapedCh = match ch {
+          "n" => "\n"
+          "\\" => "\\",
+          "r" => "\r",
+          "t" => "\t",
+          "\'" => "\'",
+          "\"" => "\"",
+          "$" => "$",
+          "u" => match self._parseUnicodeEscape(startPos) {
+            Result.Ok(c) => c
+            Result.Err(e) => return Result.Err(e)
+          }
+          _ => return Result.Err(LexerError(position: pos, kind: LexerErrorKind.UnsupportedEscapeSequence("\\$ch")))
+        }
+
+        if !seenEscape {
+          seenEscape = true
+          chars = self._input[start:startCursor].split()
+        }
+        chars.push(escapedCh)
+      } else if ch == "\"" {
+        closed = true
+        break
+      } else {
+        if seenEscape {
+         chars.push(ch)
+        }
+      }
+
+      self._advance()
+    }
+
+    if !closed {
+      return Result.Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnterminatedString(startPos)))
+    }
+
+    val str = if seenEscape chars.join() else self._input[start:self._cursor]
+
+    self._advance() // consume closing '"'
+
+    Result.Ok(Token(position: startPos, kind: TokenKind.String(str)))
+  }
+
+  func _parseUnicodeEscape(self, startPos: Position): Result<String, LexerError> {
+    Result.Ok("todo")
   }
 
   func _tokenizeIdent(self, startPos: Position): Token {
     val identStart = self._cursor
     var ch = self._input[self._cursor]
 
-    while ch.isAlpha() || ch.isDigit() || ch == "_" { 
+    while ch.isAlphanumeric() || ch == "_" { 
       self._advance()
       ch = self._input[self._cursor]
     }
