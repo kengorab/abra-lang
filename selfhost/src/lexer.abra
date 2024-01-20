@@ -8,11 +8,55 @@ export type Token {
 }
 
 export enum TokenKind {
+  // Literals
   Int(value: Int)
   Float(value: Float)
   String(value: String)
+  StringInterpolation(chunks: Token[])
   Ident(name: String)
+
+  // Symbols
+  Plus
+  PlusEq
+  Minus
+  MinusEq
+  Star
+  StarEq
+  StarStar
+  Slash
+  SlashEq
+  Percent
+  PercentEq
+  LT
+  LTE
+  GT
+  GTE
+  Bang
+  Neq
+  Eq
+  EqEq
+  Arrow
+  And
+  AndEq
+  Or
+  OrEq
   Dot
+  Caret
+  LParen
+  RParen
+  LBrack
+  RBrack
+  LBrace
+  RBrace
+  HashBrace
+  Pipe
+  Comma
+  Colon
+  Question
+  Elvis
+  ElvisEq
+  QuestionDot
+  At
 }
 
 export enum LexerErrorKind {
@@ -101,6 +145,11 @@ export type Lexer {
     if self._cursor >= self._input.length return Result.Ok(None)
 
     self._skipWhitespace()
+    if self._skipComment() |error| {
+      return Result.Err(error)
+    }
+
+    self._skipWhitespace()
     val ch = self._input[self._cursor]
 
     val position = self._curPos()
@@ -117,11 +166,14 @@ export type Lexer {
         Result.Err(e) => return Result.Err(error: e)
       }
       tok
-    } else if ch == "." {
-      self._advance()
-      Token(position: position, kind: TokenKind.Dot)
-    } else { 
-      self._tokenizeIdent(startPos: position)
+    } else if ch.isAlpha() || ch == "_" { 
+      self._tokenizeIdentifier(startPos: position)
+    } else {
+      val tok = match self._tokenizeSymbol(startPos: position) {
+        Result.Ok(v) => v
+        Result.Err(e) => return Result.Err(error: e)
+      }
+      tok
     }
 
     Result.Ok(token)
@@ -129,9 +181,9 @@ export type Lexer {
 
   func _curPos(self): Position = Position(line: self._line, col: self._col)
 
-  func _advance(self) {
-    self._cursor += 1
-    self._col += 1
+  func _advance(self, by = 1) {
+    self._cursor += by
+    self._col += by
   }
 
   func _skipWhitespace(self) {
@@ -144,6 +196,47 @@ export type Lexer {
       }
       ch = self._input[self._cursor]
     } 
+  }
+
+  func _skipComment(self): LexerError? {
+    val ch = self._input[self._cursor]
+    val peek = self._input[self._cursor + 1]
+    if ch == "/" && peek == "/" {
+      while self._input[self._cursor] != "\n" {
+        self._advance()
+      }
+    } else if ch == "/" && peek == "*" {
+      self._advance(by: 2) // consume '/' and '*'
+      var open = true
+      while self._cursor < self._input.length {
+        if self._input[self._cursor] == "*" && self._input[self._cursor + 1] == "/" {
+          self._advance(by : 2) // consume '*' and '/'
+          open = false
+          break
+        }
+        self._advance()
+        self._skipWhitespace()
+      }
+
+      if open {
+        self._advance()
+        return LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedEof)
+      }
+    }
+
+    None
+  }
+
+  func _multiCharToken(self, default: TokenKind, cases: (String, TokenKind)[]): TokenKind {
+    val peekCursor = self._cursor + 1
+    for case in cases {
+      if self._input[peekCursor:(peekCursor + case[0].length)] == case[0] {
+        self._advance(by: case[0].length)
+        return case[1]
+      }
+    }
+
+    default
   }
 
   func _tokenizeInteger(self, startPos: Position): Result<Token, LexerError> {
@@ -185,13 +278,7 @@ export type Lexer {
         var num = 0
         while self._cursor < self._input.length {
           val ch = self._input._buffer.offset(self._cursor).load().asInt()
-          val v = if ch == 48 { 
-            0
-          } else if ch == 49 {
-            1
-          } else {
-            break
-          }
+          val v = if ch == 48 || ch == 49 { ch - 48 } else break 
 
           num = (num << 1) + v
           isFirstChar = false
@@ -293,6 +380,9 @@ export type Lexer {
           chars = self._input[start:startCursor].split()
         }
         chars.push(escapedCh)
+      // } else if ch == "$" && self._input[self._cursor + 1] == "{" || self._input[self._cursor + 1].isAlpha() {
+      //   val str = if seenEscape chars.join() else self._input[start:self._cursor]
+      //   return self._tokenizeStringInterpolation(startPos: startPos, firstChunk: str)
       } else if ch == "\"" {
         closed = true
         break
@@ -377,7 +467,12 @@ export type Lexer {
     Result.Ok(str)
   }
 
-  func _tokenizeIdent(self, startPos: Position): Token {
+  func _tokenizeStringInterpolation(self, startPos: Position, firstChunk: String): Result<Token, LexerError> {
+    // TODO
+    Result.Ok(Token(position: startPos, kind: TokenKind.StringInterpolation([Token(position: startPos, kind: TokenKind.String(firstChunk))])))
+  }
+
+  func _tokenizeIdentifier(self, startPos: Position): Token {
     val identStart = self._cursor
     var ch = self._input[self._cursor]
 
@@ -388,5 +483,69 @@ export type Lexer {
 
     val ident = self._input[identStart:self._cursor]
     Token(position: startPos, kind: TokenKind.Ident(ident))
+  }
+
+  func _tokenizeSymbol(self, startPos: Position): Result<Token, LexerError> {
+    val ch = self._input[self._cursor]
+
+    val tokenKind = match ch {
+      "+" => self._multiCharToken(TokenKind.Plus, [("=", TokenKind.PlusEq)])
+      "-" => self._multiCharToken(TokenKind.Minus, [("=", TokenKind.MinusEq)])
+      "*" => self._multiCharToken(TokenKind.Star, [("=", TokenKind.StarEq), ("*", TokenKind.StarStar)])
+      "/" => self._multiCharToken(TokenKind.Slash, [("=", TokenKind.SlashEq)])
+      "%" => self._multiCharToken(TokenKind.Percent, [("=", TokenKind.PercentEq)])
+      "<" => self._multiCharToken(TokenKind.LT, [("=", TokenKind.LTE)])
+      ">" => self._multiCharToken(TokenKind.GT, [("=", TokenKind.GTE)])
+      "!" => self._multiCharToken(TokenKind.Bang, [("=", TokenKind.Neq)])
+      "=" => self._multiCharToken(TokenKind.Eq, [("=", TokenKind.EqEq), (">", TokenKind.Arrow)])
+      "." => TokenKind.Dot
+      "^" => TokenKind.Caret
+      "(" => TokenKind.LParen
+      ")" => TokenKind.RParen
+      "[" => TokenKind.LBrack
+      "]" => TokenKind.RBrack
+      "{" => TokenKind.LBrace
+      "}" => TokenKind.RBrace
+      "&" => {
+        self._advance() // consume '&'
+        if self._cursor >= self._input.length {
+          return Result.Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedEof))
+        } else if self._input[self._cursor] != "&" {
+          val ch = self._input[self._cursor]
+          return Result.Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedChar(ch)))
+        }
+        self._advance() // consume second '&'
+  
+        if self._input[self._cursor] == "=" {
+          self._advance() // consume '='
+          TokenKind.AndEq
+        } else {
+          TokenKind.And
+        }
+      }
+      "|" => self._multiCharToken(TokenKind.Pipe, [("|=", TokenKind.OrEq), ("|", TokenKind.Or)])
+      "," => TokenKind.Comma
+      ":" => TokenKind.Colon
+      "?" => self._multiCharToken(TokenKind.Question, [(":=", TokenKind.ElvisEq), (":", TokenKind.Elvis), (".", TokenKind.QuestionDot)])
+      "#" => {
+        self._advance() // consume '#'
+        if self._cursor >= self._input.length {
+          return Result.Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedEof))
+        } else if self._input[self._cursor] != "{" {
+          val ch = self._input[self._cursor]
+          return Result.Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedChar(ch)))
+        }
+  
+        self._advance() // consume '{'
+  
+        TokenKind.HashBrace
+      }
+      "@" => TokenKind.At
+      _ => return Result.Err(LexerError(position: startPos, kind: LexerErrorKind.UnexpectedChar(ch)))
+    }
+  
+    self._advance()
+  
+    Result.Ok(Token(position: startPos, kind: tokenKind))
   }
 }

@@ -12,9 +12,14 @@ use similar::{TextDiff, ChangeTag};
 use abra_core::common::display_error::DisplayError;
 use abra_core::common::util::{get_project_root, random_string};
 
+enum TestType {
+    VsRust(&'static str),
+    VsTxt(&'static str, &'static str),
+}
+
 pub struct TestRunner {
     bin_path: String,
-    tests: Vec<&'static str>,
+    tests: Vec<TestType>,
 }
 
 impl TestRunner {
@@ -43,8 +48,13 @@ impl TestRunner {
         Self { bin_path, tests: vec![] }
     }
 
-    pub fn add_test(mut self, test_path: &'static str) -> Self {
-        self.tests.push(test_path);
+    pub fn add_test_vs_rust(mut self, test_path: &'static str) -> Self {
+        self.tests.push(TestType::VsRust(test_path));
+        self
+    }
+
+    pub fn add_test_vs_txt(mut self, test_path: &'static str, txt_path: &'static str) -> Self {
+        self.tests.push(TestType::VsTxt(test_path, txt_path));
         self
     }
 
@@ -54,16 +64,34 @@ impl TestRunner {
         let Self { bin_path, tests } = self;
 
         let mut failures = vec![];
-        for test_file_path in tests {
-            let test_path = selfhost_dir.join("test").join(test_file_path);
-            let test_path = test_path.to_str().unwrap().to_string();
-            println!("Running lexer test {}", &test_path);
+        for test in tests {
 
-            let module_id = ModuleId::parse_module_path("./test").unwrap();
-            let contents = std::fs::read_to_string(&test_path).unwrap();
-            let rust_output = match lexer::lexer::tokenize(&module_id, &contents) {
-                Ok(tokens) => tokens_to_json(&tokens).unwrap(),
-                Err(err) => err.get_message(&test_path, &contents)
+            let (test_path, expected_output) = match test {
+                TestType::VsRust(test_file_path) => {
+                    let test_path = selfhost_dir.join("test").join(test_file_path);
+                    let test_path = test_path.to_str().unwrap().to_string();
+                    println!("Running lexer test (vs rust) {}", &test_path);
+
+                    let module_id = ModuleId::parse_module_path("./test").unwrap();
+                    let contents = std::fs::read_to_string(&test_path).unwrap();
+                    let rust_output = match lexer::lexer::tokenize(&module_id, &contents) {
+                        Ok(tokens) => tokens_to_json(&tokens).unwrap(),
+                        Err(err) => err.get_message(&test_path, &contents)
+                    };
+
+                    (test_path, rust_output)
+                }
+                TestType::VsTxt(test_file_path, comparison_file_path) => {
+                    let test_path = selfhost_dir.join("test").join(test_file_path);
+                    let test_path = test_path.to_str().unwrap().to_string();
+                    println!("Running lexer test (vs file) {}", &test_path);
+
+                    let comparison_path = selfhost_dir.join("test").join(comparison_file_path);
+                    let comparison = std::fs::read_to_string(&comparison_path).unwrap();
+                    let comparison = comparison.replace("%FILE_NAME%", &test_path);
+
+                    (test_path, comparison)
+                }
             };
 
             let output = Command::new(&bin_path)
@@ -73,13 +101,10 @@ impl TestRunner {
             assert!(output.stderr.is_empty(), "Runtime error: {}", String::from_utf8(output.stderr).unwrap());
             let abra_output = String::from_utf8(output.stdout).unwrap();
 
-            if rust_output != abra_output {
-                eprintln!("  Difference detected between rust implementation and abra implementation:");
-                eprintln!("    (The rust output is the 'old' and abra output is the 'new')");
-                let diff = TextDiff::from_lines(
-                    &rust_output,
-                    &abra_output,
-                );
+            if expected_output != abra_output {
+                eprintln!("  Difference detected between:");
+                eprintln!("    (The expected output is the 'old' and abra output is the 'new')");
+                let diff = TextDiff::from_lines(&expected_output, &abra_output);
                 for change in diff.iter_all_changes() {
                     let sign = match change.tag() {
                         ChangeTag::Equal => " ",
@@ -155,49 +180,47 @@ fn tokens_to_json(tokens: &Vec<Token>) -> io::Result<String> {
             }
             Token::Self_(_) => todo!(),
             Token::None(_) => todo!(),
-            Token::Assign(_) => todo!(),
-            Token::Plus(_) => todo!(),
-            Token::PlusEq(_) => todo!(),
-            Token::Minus(_) => todo!(),
-            Token::MinusEq(_) => todo!(),
-            Token::Star(_) => todo!(),
-            Token::StarEq(_) => todo!(),
-            Token::Slash(_) => todo!(),
-            Token::SlashEq(_) => todo!(),
-            Token::Percent(_) => todo!(),
-            Token::PercentEq(_) => todo!(),
-            Token::And(_) => todo!(),
-            Token::AndEq(_) => todo!(),
-            Token::Or(_) => todo!(),
-            Token::OrEq(_) => todo!(),
-            Token::Caret(_) => todo!(),
-            Token::Elvis(_) => todo!(),
-            Token::ElvisEq(_) => todo!(),
-            Token::GT(_) => todo!(),
-            Token::GTE(_) => todo!(),
-            Token::LT(_) => todo!(),
-            Token::LTE(_) => todo!(),
-            Token::Eq(_) => todo!(),
-            Token::Neq(_) => todo!(),
-            Token::Bang(_) => todo!(),
-            Token::StarStar(_) => todo!(),
-            Token::LParen(_, _) => todo!(),
-            Token::RParen(_) => todo!(),
-            Token::LBrack(_, _) => todo!(),
-            Token::RBrack(_) => todo!(),
-            Token::LBrace(_) => todo!(),
-            Token::RBrace(_) => todo!(),
-            Token::LBraceHash(_) => todo!(),
-            Token::Pipe(_) => todo!(),
-            Token::Colon(_) => todo!(),
-            Token::Comma(_) => todo!(),
-            Token::Question(_) => todo!(),
-            Token::Dot(_) => {
-                writeln!(&mut buf, "      \"name\": \"Dot\"")?;
-            }
-            Token::QuestionDot(_) => todo!(),
-            Token::Arrow(_) => todo!(),
-            Token::At(_) => todo!(),
+            Token::Assign(_) => writeln!(&mut buf, "      \"name\": \"Assign\"")?,
+            Token::Plus(_) => writeln!(&mut buf, "      \"name\": \"Plus\"")?,
+            Token::PlusEq(_) => writeln!(&mut buf, "      \"name\": \"PlusEq\"")?,
+            Token::Minus(_) => writeln!(&mut buf, "      \"name\": \"Minus\"")?,
+            Token::MinusEq(_) => writeln!(&mut buf, "      \"name\": \"MinusEq\"")?,
+            Token::Star(_) => writeln!(&mut buf, "      \"name\": \"Star\"")?,
+            Token::StarEq(_) => writeln!(&mut buf, "      \"name\": \"StarEq\"")?,
+            Token::Slash(_) => writeln!(&mut buf, "      \"name\": \"Slash\"")?,
+            Token::SlashEq(_) => writeln!(&mut buf, "      \"name\": \"SlashEq\"")?,
+            Token::Percent(_) => writeln!(&mut buf, "      \"name\": \"Percent\"")?,
+            Token::PercentEq(_) => writeln!(&mut buf, "      \"name\": \"PercentEq\"")?,
+            Token::And(_) => writeln!(&mut buf, "      \"name\": \"And\"")?,
+            Token::AndEq(_) => writeln!(&mut buf, "      \"name\": \"AndEq\"")?,
+            Token::Or(_) => writeln!(&mut buf, "      \"name\": \"Or\"")?,
+            Token::OrEq(_) => writeln!(&mut buf, "      \"name\": \"OrEq\"")?,
+            Token::Caret(_) => writeln!(&mut buf, "      \"name\": \"Caret\"")?,
+            Token::Elvis(_) => writeln!(&mut buf, "      \"name\": \"Elvis\"")?,
+            Token::ElvisEq(_) => writeln!(&mut buf, "      \"name\": \"ElvisEq\"")?,
+            Token::GT(_) => writeln!(&mut buf, "      \"name\": \"GT\"")?,
+            Token::GTE(_) => writeln!(&mut buf, "      \"name\": \"GTE\"")?,
+            Token::LT(_) => writeln!(&mut buf, "      \"name\": \"LT\"")?,
+            Token::LTE(_) => writeln!(&mut buf, "      \"name\": \"LTE\"")?,
+            Token::Eq(_) => writeln!(&mut buf, "      \"name\": \"Eq\"")?,
+            Token::Neq(_) => writeln!(&mut buf, "      \"name\": \"Neq\"")?,
+            Token::Bang(_) => writeln!(&mut buf, "      \"name\": \"Bang\"")?,
+            Token::StarStar(_) =>  writeln!(&mut buf, "      \"name\": \"StarStar\"")?,
+            Token::LParen(_, _) => writeln!(&mut buf, "      \"name\": \"LParen\"")?,
+            Token::RParen(_) => writeln!(&mut buf, "      \"name\": \"RParen\"")?,
+            Token::LBrack(_, _) => writeln!(&mut buf, "      \"name\": \"LBrack\"")?,
+            Token::RBrack(_) => writeln!(&mut buf, "      \"name\": \"RBrack\"")?,
+            Token::LBrace(_) => writeln!(&mut buf, "      \"name\": \"LBrace\"")?,
+            Token::RBrace(_) => writeln!(&mut buf, "      \"name\": \"RBrace\"")?,
+            Token::LBraceHash(_) => writeln!(&mut buf, "      \"name\": \"LBraceHash\"")?,
+            Token::Pipe(_) => writeln!(&mut buf, "      \"name\": \"Pipe\"")?,
+            Token::Colon(_) => writeln!(&mut buf, "      \"name\": \"Colon\"")?,
+            Token::Comma(_) => writeln!(&mut buf, "      \"name\": \"Comma\"")?,
+            Token::Question(_) => writeln!(&mut buf, "      \"name\": \"Question\"")?,
+            Token::Dot(_) => writeln!(&mut buf, "      \"name\": \"Dot\"")?,
+            Token::QuestionDot(_) => writeln!(&mut buf, "      \"name\": \"QuestionDot\"")?,
+            Token::Arrow(_) => writeln!(&mut buf, "      \"name\": \"Arrow\"")?,
+            Token::At(_) => writeln!(&mut buf, "      \"name\": \"At\"")?,
         }
         writeln!(&mut buf, "    }}")?;
         write!(&mut buf, "  }}")?;
