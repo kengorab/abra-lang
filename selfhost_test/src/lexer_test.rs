@@ -21,6 +21,7 @@ fn lexer_tests() {
         .add_test_vs_rust("lexer/strings_error_invalid_unicode_seq_length.abra")
         .add_test_vs_rust("lexer/strings_error_invalid_unicode_seq_eof.abra")
         .add_test_vs_rust("lexer/strings_error_invalid_unicode_seq_char.abra")
+        .add_test_vs_rust("lexer/keywords.abra")
         // Symbols
         .add_test_vs_rust("lexer/symbols.abra")
         .add_test_vs_rust("lexer/symbols_error_ampersand_eof.abra")

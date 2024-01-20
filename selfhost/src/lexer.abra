@@ -11,9 +11,34 @@ export enum TokenKind {
   // Literals
   Int(value: Int)
   Float(value: Float)
+  Bool(value: Bool)
   String(value: String)
   StringInterpolation(chunks: Token[])
+
+  // Identifiers/keywords
   Ident(name: String)
+  If
+  Else
+  Val
+  Var
+  Func
+  Self
+  While
+  Break
+  Continue
+  For
+  In
+  Match
+  Type
+  Enum
+  Return
+  Readonly
+  Import
+  Export
+  From
+  As
+  Try
+  None_
 
   // Symbols
   Plus
@@ -97,7 +122,7 @@ export type LexerError {
         lines.push(self._getCursorLine(self.position, contents))
       }
     }
- 
+
     lines.join("\n")
   }
 
@@ -125,31 +150,28 @@ export type Lexer {
     val tokens: Token[] = []
 
     val lexer = Lexer(_input: contents)
-    var nextToken = match lexer.nextToken() { 
+    var nextToken = match lexer.nextToken() {
       Result.Ok(v) => v,
       Result.Err(e) => return Result.Err(error: e)
     }
     while nextToken |tok| {
       tokens.push(tok)
 
-      nextToken = match lexer.nextToken() { 
+      nextToken = match lexer.nextToken() {
         Result.Ok(v) => v,
         Result.Err(e) => return Result.Err(error: e)
       }
     }
-    
+
     Result.Ok(tokens)
   }
 
   func nextToken(self): Result<Token?, LexerError> {
+    self._skipWhitespace()
+    if self._skipComment() |error| return Result.Err(error)
+    self._skipWhitespace()
+
     if self._cursor >= self._input.length return Result.Ok(None)
-
-    self._skipWhitespace()
-    if self._skipComment() |error| {
-      return Result.Err(error)
-    }
-
-    self._skipWhitespace()
     val ch = self._input[self._cursor]
 
     val position = self._curPos()
@@ -166,7 +188,7 @@ export type Lexer {
         Result.Err(e) => return Result.Err(error: e)
       }
       tok
-    } else if ch.isAlpha() || ch == "_" { 
+    } else if ch.isAlpha() || ch == "_" {
       self._tokenizeIdentifier(startPos: position)
     } else {
       val tok = match self._tokenizeSymbol(startPos: position) {
@@ -187,18 +209,22 @@ export type Lexer {
   }
 
   func _skipWhitespace(self) {
+    if self._cursor >= self._input.length return
+
     var ch = self._input[self._cursor]
-    while ch == " " || ch == "\n" { 
-      self._advance() 
+    while ch == " " || ch == "\n" {
+      self._advance()
       if ch == "\n" {
         self._line += 1
         self._col = 1
       }
       ch = self._input[self._cursor]
-    } 
+    }
   }
 
   func _skipComment(self): LexerError? {
+    if self._cursor >= self._input.length return None
+
     val ch = self._input[self._cursor]
     val peek = self._input[self._cursor + 1]
     if ch == "/" && peek == "/" {
@@ -265,7 +291,7 @@ export type Lexer {
           } else {
             LexerErrorKind.UnexpectedEof
           }
-          
+
           return Result.Err(LexerError(position: self._curPos(), kind: kind))
         }
 
@@ -278,7 +304,7 @@ export type Lexer {
         var num = 0
         while self._cursor < self._input.length {
           val ch = self._input._buffer.offset(self._cursor).load().asInt()
-          val v = if ch == 48 || ch == 49 { ch - 48 } else break 
+          val v = if ch == 48 || ch == 49 { ch - 48 } else break
 
           num = (num << 1) + v
           isFirstChar = false
@@ -293,7 +319,7 @@ export type Lexer {
           } else {
             LexerErrorKind.UnexpectedEof
           }
-          
+
           return Result.Err(LexerError(position: self._curPos(), kind: kind))
         }
 
@@ -476,13 +502,40 @@ export type Lexer {
     val identStart = self._cursor
     var ch = self._input[self._cursor]
 
-    while ch.isAlphanumeric() || ch == "_" { 
+    while ch.isAlphanumeric() || ch == "_" {
       self._advance()
       ch = self._input[self._cursor]
     }
 
     val ident = self._input[identStart:self._cursor]
-    Token(position: startPos, kind: TokenKind.Ident(ident))
+    val tokenKind = match ident {
+      "true" => TokenKind.Bool(true)
+      "false" => TokenKind.Bool(false)
+      "if" => TokenKind.If
+      "else" => TokenKind.Else
+      "val" => TokenKind.Val
+      "var" => TokenKind.Var
+      "func" => TokenKind.Func
+      "self" => TokenKind.Self
+      "while" => TokenKind.While
+      "break" => TokenKind.Break
+      "continue" => TokenKind.Continue
+      "for" => TokenKind.For
+      "in" => TokenKind.In
+      "match" => TokenKind.Match
+      "type" => TokenKind.Type
+      "enum" => TokenKind.Enum
+      "return" => TokenKind.Return
+      "readonly" => TokenKind.Readonly
+      "import" => TokenKind.Import
+      "export" => TokenKind.Export
+      "from" => TokenKind.From
+      "as" => TokenKind.As
+      "try" => TokenKind.Try
+      "None" => TokenKind.None_
+      _ => TokenKind.Ident(ident)
+    }
+    Token(position: startPos, kind: tokenKind)
   }
 
   func _tokenizeSymbol(self, startPos: Position): Result<Token, LexerError> {
@@ -515,7 +568,7 @@ export type Lexer {
           return Result.Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedChar(ch)))
         }
         self._advance() // consume second '&'
-  
+
         if self._input[self._cursor] == "=" {
           self._advance() // consume '='
           TokenKind.AndEq
@@ -535,17 +588,17 @@ export type Lexer {
           val ch = self._input[self._cursor]
           return Result.Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedChar(ch)))
         }
-  
+
         self._advance() // consume '{'
-  
+
         TokenKind.HashBrace
       }
       "@" => TokenKind.At
       _ => return Result.Err(LexerError(position: startPos, kind: LexerErrorKind.UnexpectedChar(ch)))
     }
-  
+
     self._advance()
-  
+
     Result.Ok(Token(position: startPos, kind: tokenKind))
   }
 }
