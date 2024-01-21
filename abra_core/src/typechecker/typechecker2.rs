@@ -1286,7 +1286,9 @@ impl TypedNode {
             TypedNode::If { condition, if_block_terminator, else_block_terminator, .. } => {
                 condition.terminator().or_else(|| if_block_terminator.clone()).or_else(|| else_block_terminator.clone())
             }
-            TypedNode::Match { .. } => todo!(),
+            TypedNode::Match { target, cases, .. } => target.terminator().or_else(|| {
+                cases.iter().find_map(|case| case.block_terminator.clone())
+            }),
             TypedNode::FuncDeclaration(_) => None,
             TypedNode::TypeDeclaration(_) => None,
             TypedNode::EnumDeclaration(_) => None,
@@ -1335,7 +1337,10 @@ impl TypedNode {
             TypedNode::If { condition, if_block_terminator, else_block_terminator, .. } => {
                 matches!(condition.terminator(), Some(TerminatorKind::Returning)) && matches!(if_block_terminator, Some(TerminatorKind::Returning)) && matches!(else_block_terminator, Some(TerminatorKind::Returning))
             }
-            TypedNode::Match { .. } => todo!(),
+            TypedNode::Match { target, cases, .. } => {
+                matches!(target.terminator(), Some(TerminatorKind::Returning)) &&
+                    cases.iter().all(|case| matches!(case.block_terminator, Some(TerminatorKind::Returning)))
+            }
             TypedNode::FuncDeclaration(_) |
             TypedNode::TypeDeclaration(_) |
             TypedNode::EnumDeclaration(_) => false,

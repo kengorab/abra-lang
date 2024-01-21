@@ -1,4 +1,4 @@
-use crate::lexer_test_utils::TestRunner;
+use crate::test_utils::TestRunner;
 
 #[test]
 fn lexer_tests() {
@@ -32,5 +32,13 @@ fn lexer_tests() {
         .add_test_vs_rust("lexer/comments_single_line.abra")
         .add_test_vs_rust("lexer/comments_multiline.abra")
         .add_test_vs_txt("lexer/comments_error_multiline_unclosed.abra", "lexer/comments_error_multiline_unclosed.out")
+        .run_tests();
+}
+
+#[test]
+fn parser_tests() {
+    TestRunner::parser_test_runner()
+        // Literals
+        .add_test_vs_txt("parser/literals.abra", "parser/literals.out.json")
         .run_tests();
 }

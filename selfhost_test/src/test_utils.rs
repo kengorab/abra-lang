@@ -18,12 +18,21 @@ enum TestType {
 }
 
 pub struct TestRunner {
+    runner_name: &'static str,
     bin_path: String,
     tests: Vec<TestType>,
 }
 
 impl TestRunner {
     pub fn lexer_test_runner() -> Self {
+        Self::test_runner("lexer", "lexer.test.abra", "lexer_test")
+    }
+
+    pub fn parser_test_runner() -> Self {
+        Self::test_runner("parser", "parser.test.abra", "parser_test")
+    }
+
+    pub fn test_runner(runner_name: &'static str, src_file: &str, output_bin_file: &str) -> Self {
         let selfhost_dir = get_project_root().unwrap().join("selfhost");
         let build_dir = if let Some(test_temp_dir) = std::env::var("TEST_TMP_DIR").ok() {
             let dir = Path::new(&test_temp_dir).join(random_string(12));
@@ -35,17 +44,17 @@ impl TestRunner {
 
         let output = Command::cargo_bin("abra").unwrap()
             .arg("build")
-            .arg(&selfhost_dir.join("src/lexer.test.abra"))
+            .arg(&selfhost_dir.join("src").join(src_file))
             .arg("-o")
-            .arg("lexer_test")
+            .arg(output_bin_file)
             .arg("-b")
             .arg(&build_dir)
             .output()
             .unwrap();
         assert!(output.stderr.is_empty(), "Compilation error: {}", String::from_utf8(output.stderr).unwrap());
 
-        let bin_path = build_dir.join(".abra/lexer_test").to_str().unwrap().to_string();
-        Self { bin_path, tests: vec![] }
+        let bin_path = build_dir.join(".abra").join(output_bin_file).to_str().unwrap().to_string();
+        Self { runner_name, bin_path, tests: vec![] }
     }
 
     pub fn add_test_vs_rust(mut self, test_path: &'static str) -> Self {
@@ -61,7 +70,7 @@ impl TestRunner {
     pub fn run_tests(self) {
         let selfhost_dir = get_project_root().unwrap().join("selfhost");
 
-        let Self { bin_path, tests } = self;
+        let Self { runner_name, bin_path, tests } = self;
 
         let mut failures = vec![];
         for test in tests {
@@ -70,7 +79,7 @@ impl TestRunner {
                 TestType::VsRust(test_file_path) => {
                     let test_path = selfhost_dir.join("test").join(test_file_path);
                     let test_path = test_path.to_str().unwrap().to_string();
-                    println!("Running lexer test (vs rust) {}", &test_path);
+                    println!("Running {runner_name} test (vs rust) {test_path}");
 
                     let module_id = ModuleId::parse_module_path("./test").unwrap();
                     let contents = std::fs::read_to_string(&test_path).unwrap();
@@ -84,7 +93,7 @@ impl TestRunner {
                 TestType::VsTxt(test_file_path, comparison_file_path) => {
                     let test_path = selfhost_dir.join("test").join(test_file_path);
                     let test_path = test_path.to_str().unwrap().to_string();
-                    println!("Running lexer test (vs file) {}", &test_path);
+                    println!("Running {runner_name} test (vs file) {test_path}");
 
                     let comparison_path = selfhost_dir.join("test").join(comparison_file_path);
                     let comparison = std::fs::read_to_string(&comparison_path).unwrap();
@@ -118,13 +127,13 @@ impl TestRunner {
         }
 
         if !failures.is_empty() {
-            eprintln!("Failures running lexer tests:");
+            eprintln!("Failures running {runner_name} tests:");
             for test_path in failures {
                 eprintln!("  Test path '{}' failed", &test_path)
             }
-            panic!("Failures running lexer tests!");
+            panic!("Failures running {} tests!", runner_name);
         } else {
-            println!("Lexer tests passed!")
+            println!("All tests passed for {runner_name}!")
         }
     }
 }
