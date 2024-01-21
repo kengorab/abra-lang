@@ -21,6 +21,7 @@ export enum BinaryOp {
   Sub
   Mul
   Div
+  Mod
 }
 
 export type BinaryAstNode {
@@ -143,13 +144,7 @@ export type Parser {
     while self._peek() |nextToken| {
       val nextPrec = precedenceForToken(nextToken)
       if prec < nextPrec {
-        self._advance() // move past nextToken
-
-        if self._infixRule(nextToken, leftNode) |result| {
-          leftNode = match result { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-        } else {
-          // unreachable
-        }
+        leftNode = match self._infixRule(leftNode) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
       } else {
         break
       }
@@ -168,10 +163,15 @@ export type Parser {
     }
   }
 
-  func _infixRule(self, infixToken: Token, left: AstNode): Result<AstNode, ParseError>? {
+  func _infixRule(self, left: AstNode): Result<AstNode, ParseError> {
+    val infixToken = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     match infixToken.kind {
       TokenKind.Plus => self._parseBinary(infixToken, left)
-      _ => None
+      TokenKind.Minus => self._parseBinary(infixToken, left)
+      TokenKind.Star => self._parseBinary(infixToken, left)
+      TokenKind.Slash => self._parseBinary(infixToken, left)
+      TokenKind.Percent => self._parseBinary(infixToken, left)
+      _ => return Result.Err(ParseError(position: infixToken.position, kind: ParseErrorKind.UnexpectedToken(infixToken)))
     }
   }
 
@@ -196,6 +196,7 @@ export type Parser {
       TokenKind.Minus => BinaryOp.Sub
       TokenKind.Star => BinaryOp.Mul
       TokenKind.Slash => BinaryOp.Div
+      TokenKind.Percent => BinaryOp.Mod
       _ => return todo(token.position)
     }
 
@@ -212,9 +213,9 @@ func precedenceForToken(token: Token): Int {
   match token.kind {
     TokenKind.Plus => 1
     TokenKind.Minus => 1
-    TokenKind.Star => 1
-    TokenKind.Slash => 1
-    TokenKind.Percent => 1
+    TokenKind.Star => 2
+    TokenKind.Slash => 2
+    TokenKind.Percent => 2
     _ => 0
   }
 }

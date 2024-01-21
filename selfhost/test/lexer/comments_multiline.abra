@@ -2,4 +2,7 @@
 /* this
 should *
 disappear
-*/ 456
+*/ /* so should this*/
+/* even if */ 234 /* there's only */
+/* whitespace in between */ /* them */
+456
