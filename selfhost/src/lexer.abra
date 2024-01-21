@@ -240,11 +240,10 @@ export type Lexer {
 
   func nextToken(self): Result<Token?, LexerError> {
     self._skipWhitespace()
-    if self._skipComment() |error| return Result.Err(error)
-    self._skipWhitespace()
 
     if self._cursor >= self._input.length return Result.Ok(None)
     val ch = self._input[self._cursor]
+    val peek = self._input[self._cursor + 1]
 
     val position = self._curPos()
 
@@ -262,6 +261,9 @@ export type Lexer {
       tok
     } else if ch.isAlpha() || ch == "_" {
       self._tokenizeIdentifier(startPos: position)
+    } else if ch == "/" && (peek == "/" || peek == "*") {
+      if self._skipComment() |error| return Result.Err(error)
+      return self.nextToken()
     } else {
       val tok = match self._tokenizeSymbol(startPos: position) {
         Result.Ok(v) => v
