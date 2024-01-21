@@ -152,6 +152,13 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
       println("$fieldsIndent\"type\": \"${pair[0]}\",")
       println("$fieldsIndent\"value\": ${pair[1]}")
     }
+    AstNodeKind.Unary(unaryNode) => {
+      println("$fieldsIndent\"name\": \"unary\",")
+      println("$fieldsIndent\"op\": \"${unaryNode.op}\",")
+      print("$fieldsIndent\"expr\": ")
+      printAstNodeAsJson(unaryNode.expr, 0, currentIndentLevel + 1)
+      println()
+    }
     AstNodeKind.Binary(binaryNode) => {
       println("$fieldsIndent\"name\": \"binary\",")
       println("$fieldsIndent\"op\": \"${binaryNode.op}\",")
@@ -159,6 +166,12 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
       printAstNodeAsJson(binaryNode.left, 0, currentIndentLevel + 1)
       print(",\n$fieldsIndent\"right\": ")
       printAstNodeAsJson(binaryNode.right, 0, currentIndentLevel + 1)
+      println()
+    }
+    AstNodeKind.Grouped(inner) => {
+      println("$fieldsIndent\"name\": \"grouped\",")
+      print("$fieldsIndent\"inner\": ")
+      printAstNodeAsJson(inner, 0, currentIndentLevel + 1)
       println()
     }
   }
