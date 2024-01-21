@@ -9,7 +9,8 @@
         }
       },
       "kind": {
-        "name": "Int",
+        "name": "literal",
+        "type": "int",
         "value": 123
       }
     },
@@ -22,7 +23,8 @@
         }
       },
       "kind": {
-        "name": "Int",
+        "name": "literal",
+        "type": "int",
         "value": 456
       }
     },
@@ -35,7 +37,8 @@
         }
       },
       "kind": {
-        "name": "Float",
+        "name": "literal",
+        "type": "float",
         "value": 1.23
       }
     },
@@ -48,7 +51,8 @@
         }
       },
       "kind": {
-        "name": "Float",
+        "name": "literal",
+        "type": "float",
         "value": 0.0123
       }
     },
@@ -61,7 +65,8 @@
         }
       },
       "kind": {
-        "name": "Bool",
+        "name": "literal",
+        "type": "bool",
         "value": true
       }
     },
@@ -74,7 +79,8 @@
         }
       },
       "kind": {
-        "name": "Bool",
+        "name": "literal",
+        "type": "bool",
         "value": false
       }
     },
@@ -87,7 +93,8 @@
         }
       },
       "kind": {
-        "name": "String",
+        "name": "literal",
+        "type": "string",
         "value": "hello world 1234"
       }
     }

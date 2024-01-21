@@ -1,0 +1,44 @@
+{
+  "nodes": [
+    {
+      "token": {
+        "position": [1, 5],
+        "kind": {
+          "name": "Plus"
+        }
+      },
+      "kind": {
+        "name": "binary",
+        "op": "BinaryOp.Add",
+        "left": {
+          "token": {
+            "position": [1, 1],
+            "kind": {
+              "name": "Int",
+              "value": 123
+            }
+          },
+          "kind": {
+            "name": "literal",
+            "type": "int",
+            "value": 123
+          }
+        },
+        "right": {
+          "token": {
+            "position": [1, 7],
+            "kind": {
+              "name": "Int",
+              "value": 456
+            }
+          },
+          "kind": {
+            "name": "literal",
+            "type": "int",
+            "value": 456
+          }
+        }
+      }
+    }
+  ]
+}

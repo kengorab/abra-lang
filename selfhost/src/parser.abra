@@ -16,8 +16,22 @@ export enum LiteralAstNode {
   String(value: String)
 }
 
+export enum BinaryOp {
+  Add
+  Sub
+  Mul
+  Div
+}
+
+export type BinaryAstNode {
+  left: AstNode
+  op: BinaryOp
+  right: AstNode
+}
+
 export enum AstNodeKind {
   Literal(value: LiteralAstNode)
+  Binary(value: BinaryAstNode)
 }
 
 export enum ParseErrorKind {
@@ -101,9 +115,13 @@ export type Parser {
     }
   }
 
+  func _advance(self) {
+    self._cursor += 1
+  }
+
   func _expectNext(self): Result<Token, ParseError> {
     val tokenRes = self._expectPeek()
-    self._cursor += 1
+    self._advance()
     tokenRes
   }
 
@@ -120,14 +138,40 @@ export type Parser {
 
   func _parsePrecedence(self, prec: Int): Result<AstNode, ParseError> {
     val prefixToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-    match prefixToken.kind {
+    var leftNode = match self._prefixRule(prefixToken) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    while self._peek() |nextToken| {
+      val nextPrec = precedenceForToken(nextToken)
+      if prec < nextPrec {
+        self._advance() // move past nextToken
+
+        if self._infixRule(nextToken, leftNode) |result| {
+          leftNode = match result { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        } else {
+          // unreachable
+        }
+      } else {
+        break
+      }
+    }
+
+    Result.Ok(leftNode)
+  }
+
+  func _prefixRule(self, token: Token): Result<AstNode, ParseError> {
+    match token.kind {
       TokenKind.Int => self._parseLiteral()
       TokenKind.Float => self._parseLiteral()
       TokenKind.Bool => self._parseLiteral()
       TokenKind.String => self._parseLiteral()
-      _ => {
-        return Result.Err(ParseError(position: prefixToken.position, kind: ParseErrorKind.UnexpectedToken(prefixToken)))
-      }
+      _ => Result.Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+    }
+  }
+
+  func _infixRule(self, infixToken: Token, left: AstNode): Result<AstNode, ParseError>? {
+    match infixToken.kind {
+      TokenKind.Plus => self._parseBinary(infixToken, left)
+      _ => None
     }
   }
 
@@ -143,5 +187,34 @@ export type Parser {
     }
 
     Result.Ok(AstNode(token: token, kind: AstNodeKind.Literal(literal)))
+  }
+
+  func _parseBinary(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
+    val prec = precedenceForToken(token)
+    val op = match token.kind {
+      TokenKind.Plus => BinaryOp.Add
+      TokenKind.Minus => BinaryOp.Sub
+      TokenKind.Star => BinaryOp.Mul
+      TokenKind.Slash => BinaryOp.Div
+      _ => return todo(token.position)
+    }
+
+    val right = match self._parsePrecedence(prec: prec) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    Result.Ok(AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: op, right: right))))
+  }
+}
+
+func todo(position: Position): Result<AstNode, ParseError> {
+  Result.Err(ParseError(position: position, kind: ParseErrorKind.NotYetImplemented))
+}
+
+func precedenceForToken(token: Token): Int {
+  match token.kind {
+    TokenKind.Plus => 1
+    TokenKind.Minus => 1
+    TokenKind.Star => 1
+    TokenKind.Slash => 1
+    TokenKind.Percent => 1
+    _ => 0
   }
 }
