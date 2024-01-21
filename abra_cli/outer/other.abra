@@ -1,0 +1,5 @@
+import Foo from "../abra-files/example2"
+
+export func foo(f: Foo) {
+
+}

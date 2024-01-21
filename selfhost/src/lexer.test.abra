@@ -1,10 +1,12 @@
-// When executed directly, this will perform the tokenization and output the tokens as JSON to stdout.
+// When executed directly, this will perform the tokenization and output the tokens as JSON to stdout (
+// code which results in a LexerError will result in the formatted error message being printed to stdout).
 // This is split out into a separate runnable file so that the test-specific code is never compiled into
 // the actual resulting binary; this results in a separate binary being compiled which is only used for
 // testing.
 
 import "fs" as fs
-import Token, TokenKind, Lexer, LexerError, LexerErrorKind from "./lexer"
+import Token, Lexer from "./lexer"
+import printTokenAsJson from "./test_utils"
 
 export func printTokensAsJson(tokens: Token[]) {
   println("[")
@@ -12,109 +14,12 @@ export func printTokensAsJson(tokens: Token[]) {
   val indent = "  "
 
   for token, idx in tokens {
-    println("$indent{")
-    println("$indent$indent\"position\": [${token.position.line}, ${token.position.col}],")
-    print("$indent$indent\"kind\": ")
-    printTokenKindAsJson(token.kind, "$indent$indent")
+    printTokenAsJson(token, 1, 1)
     val comma = if idx != tokens.length - 1 "," else ""
-    println("${indent}}${comma}")
+    println(comma)
   }
 
   println("]")
-}
-
-func printTokenKindAsJson(tokenKind: TokenKind, indent: String) {
-  println("{")
-  match tokenKind {
-    TokenKind.Int(value) => {
-      println("$indent  \"name\": \"Int\",")
-      println("$indent  \"value\": $value")
-    }
-    TokenKind.Float(value) => {
-      println("$indent  \"name\": \"Float\",")
-      println("$indent  \"value\": $value")
-    }
-    TokenKind.Bool(value) => {
-      println("$indent  \"name\": \"Bool\",")
-      println("$indent  \"value\": $value")
-    }
-    TokenKind.String(value) => {
-      println("$indent  \"name\": \"String\",")
-      println("$indent  \"value\": \"$value\"")
-    }
-    TokenKind.StringInterpolation => {
-      println("$indent  \"name\": \"StringInterpolation\",")
-      println("$indent  \"value\": \"not yet implemented\"")
-    }
-    TokenKind.Ident(name) => {
-      println("$indent  \"name\": \"Ident\",")
-      println("$indent  \"value\": \"$name\"")
-    }
-    TokenKind.If => println("$indent  \"name\": \"If\"")
-    TokenKind.Else => println("$indent  \"name\": \"Else\"")
-    TokenKind.Val => println("$indent  \"name\": \"Val\"")
-    TokenKind.Var => println("$indent  \"name\": \"Var\"")
-    TokenKind.Func => println("$indent  \"name\": \"Func\"")
-    TokenKind.Self => println("$indent  \"name\": \"Self\"")
-    TokenKind.While => println("$indent  \"name\": \"While\"")
-    TokenKind.Break => println("$indent  \"name\": \"Break\"")
-    TokenKind.Continue => println("$indent  \"name\": \"Continue\"")
-    TokenKind.For => println("$indent  \"name\": \"For\"")
-    TokenKind.In => println("$indent  \"name\": \"In\"")
-    TokenKind.Match => println("$indent  \"name\": \"Match\"")
-    TokenKind.Type => println("$indent  \"name\": \"Type\"")
-    TokenKind.Enum => println("$indent  \"name\": \"Enum\"")
-    TokenKind.Return => println("$indent  \"name\": \"Return\"")
-    TokenKind.Readonly => println("$indent  \"name\": \"Readonly\"")
-    TokenKind.Import => println("$indent  \"name\": \"Import\"")
-    TokenKind.Export => println("$indent  \"name\": \"Export\"")
-    TokenKind.From => println("$indent  \"name\": \"From\"")
-    TokenKind.As => println("$indent  \"name\": \"As\"")
-    TokenKind.Try => println("$indent  \"name\": \"Try\"")
-    TokenKind.None_ => println("$indent  \"name\": \"None\"")
-    TokenKind.Plus => println("$indent  \"name\": \"Plus\"")
-    TokenKind.PlusEq => println("$indent  \"name\": \"PlusEq\"")
-    TokenKind.Minus => println("$indent  \"name\": \"Minus\"")
-    TokenKind.MinusEq => println("$indent  \"name\": \"MinusEq\"")
-    TokenKind.Star => println("$indent  \"name\": \"Star\"")
-    TokenKind.StarEq => println("$indent  \"name\": \"StarEq\"")
-    TokenKind.StarStar => println("$indent  \"name\": \"StarStar\"")
-    TokenKind.Slash => println("$indent  \"name\": \"Slash\"")
-    TokenKind.SlashEq => println("$indent  \"name\": \"SlashEq\"")
-    TokenKind.Percent => println("$indent  \"name\": \"Percent\"")
-    TokenKind.PercentEq => println("$indent  \"name\": \"PercentEq\"")
-    TokenKind.LT => println("$indent  \"name\": \"LT\"")
-    TokenKind.LTE => println("$indent  \"name\": \"LTE\"")
-    TokenKind.GT => println("$indent  \"name\": \"GT\"")
-    TokenKind.GTE => println("$indent  \"name\": \"GTE\"")
-    TokenKind.Bang => println("$indent  \"name\": \"Bang\"")
-    TokenKind.Eq => println("$indent  \"name\": \"Assign\"")
-    TokenKind.EqEq => println("$indent  \"name\": \"Eq\"")
-    TokenKind.Neq => println("$indent  \"name\": \"Neq\"")
-    TokenKind.Arrow => println("$indent  \"name\": \"Arrow\"")
-    TokenKind.Dot => println("$indent  \"name\": \"Dot\"")
-    TokenKind.Or => println("$indent  \"name\": \"Or\"")
-    TokenKind.OrEq => println("$indent  \"name\": \"OrEq\"")
-    TokenKind.And => println("$indent  \"name\": \"And\"")
-    TokenKind.AndEq => println("$indent  \"name\": \"AndEq\"")
-    TokenKind.Caret => println("$indent  \"name\": \"Caret\"")
-    TokenKind.LParen => println("$indent  \"name\": \"LParen\"")
-    TokenKind.RParen => println("$indent  \"name\": \"RParen\"")
-    TokenKind.LBrack => println("$indent  \"name\": \"LBrack\"")
-    TokenKind.RBrack => println("$indent  \"name\": \"RBrack\"")
-    TokenKind.LBrace => println("$indent  \"name\": \"LBrace\"")
-    TokenKind.RBrace => println("$indent  \"name\": \"RBrace\"")
-    TokenKind.Pipe => println("$indent  \"name\": \"Pipe\"")
-    TokenKind.Comma => println("$indent  \"name\": \"Comma\"")
-    TokenKind.Colon => println("$indent  \"name\": \"Colon\"")
-    TokenKind.Question => println("$indent  \"name\": \"Question\"")
-    TokenKind.Elvis => println("$indent  \"name\": \"Elvis\"")
-    TokenKind.ElvisEq => println("$indent  \"name\": \"ElvisEq\"")
-    TokenKind.QuestionDot => println("$indent  \"name\": \"QuestionDot\"")
-    TokenKind.HashBrace => println("$indent  \"name\": \"LBraceHash\"")
-    TokenKind.At => println("$indent  \"name\": \"At\"")
-  }
-  println("$indent}")
 }
 
 if Process.args()[1] |fileName| {

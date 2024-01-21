@@ -195,3 +195,15 @@
   /// Expect: hello12.3true[1, 2, 3]
   println("hello".concat(1, 2.3, true, [1, 2, 3]))
 })()
+
+// String#repeat
+(() => {
+  /// Expect:  |
+  println("abc".repeat(0), "|")
+
+  /// Expect:  |
+  println("abc".repeat(-1), "|")
+
+  /// Expect: abcabcabc
+  println("abc".repeat(3))
+})()

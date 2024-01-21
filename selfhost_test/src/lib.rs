@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod lexer_test_utils;
+mod test_utils;
 
 #[cfg(test)]
-mod lexer_test;
+mod tests;

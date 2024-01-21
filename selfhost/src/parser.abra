@@ -1,0 +1,147 @@
+import Token, TokenKind, Position from "./lexer"
+
+export type ParsedModule {
+  nodes: AstNode[]
+}
+
+export type AstNode {
+  token: Token
+  kind: AstNodeKind
+}
+
+export enum LiteralAstNode {
+  Int(value: Int)
+  Float(value: Float)
+  Bool(value: Bool)
+  String(value: String)
+}
+
+export enum AstNodeKind {
+  Literal(value: LiteralAstNode)
+}
+
+export enum ParseErrorKind {
+  UnexpectedToken(token: Token)
+  UnexpectedEof
+  NotYetImplemented
+}
+
+export type ParseError {
+  position: Position
+  kind: ParseErrorKind
+
+  func getMessage(self, filePath: String, contents: String): String {
+    val lines = ["Error at $filePath:${self.position.line}:${self.position.col}"]
+
+    match self.kind {
+      ParseErrorKind.UnexpectedToken(token) => {
+        lines.push("Unexpected token '${token.kind.repr()}':")
+        lines.push(self._getCursorLine(self.position, contents))
+      }
+      ParseErrorKind.UnexpectedEof => {
+        lines.push("Unexpected end of file:")
+        lines.push(self._getCursorLine(self.position, contents))
+      }
+      ParseErrorKind.NotYetImplemented => {
+        lines.push("Not yet implemented:")
+        lines.push(self._getCursorLine(self.position, contents))
+      }
+    }
+
+    lines.join("\n")
+  }
+
+  // TODO: This is duplicated from Lexer, pull this out
+  func _getCursorLine(self, position: Position, contents: String, cursorLength = 1): String {
+    if contents.lines()[position.line - 1] |line| {
+      val len = position.col - 1 + cursorLength
+      val cursor = Array.fill(len, " ")
+      for i in range(len - cursorLength, len) {
+        cursor[i] = "^"
+      }
+      "  |  $line\n     ${cursor.join()}"
+    } else {
+      "unreachable"
+    }
+  }
+}
+
+export type Parser {
+  _tokens: Token[]
+  _cursor: Int = 0
+
+  func parse(tokens: Token[]): Result<ParsedModule, ParseError> {
+    val parser = Parser(_tokens: tokens)
+
+    val nodes: AstNode[] = []
+
+    while parser._peek() |token| {
+      match parser._parseStatement() {
+        Result.Ok(node) => nodes.push(node)
+        Result.Err(e) => return Result.Err(e)
+      }
+    }
+
+    Result.Ok(ParsedModule(nodes: nodes))
+  }
+
+  func _peek(self): Token? = self._tokens[self._cursor]
+
+  func _expectPeek(self): Result<Token, ParseError> {
+    if self._tokens[self._cursor] |token| {
+      Result.Ok(token)
+    } else {
+      val position = if self._tokens[self._cursor - 1] |lastToken| {
+        lastToken.position
+      } else {
+        Position(line: 1, col: 0)
+      }
+      position.col += 1
+      Result.Err(ParseError(position: position, kind: ParseErrorKind.UnexpectedEof))
+    }
+  }
+
+  func _expectNext(self): Result<Token, ParseError> {
+    val tokenRes = self._expectPeek()
+    self._cursor += 1
+    tokenRes
+  }
+
+  func _parseStatement(self): Result<AstNode, ParseError> {
+    val token = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    match token.kind {
+      _ => self._parseExpression()
+    }
+  }
+
+  func _parseExpression(self): Result<AstNode, ParseError> {
+    self._parsePrecedence(prec: 0)
+  }
+
+  func _parsePrecedence(self, prec: Int): Result<AstNode, ParseError> {
+    val prefixToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    match prefixToken.kind {
+      TokenKind.Int => self._parseLiteral()
+      TokenKind.Float => self._parseLiteral()
+      TokenKind.Bool => self._parseLiteral()
+      TokenKind.String => self._parseLiteral()
+      _ => {
+        return Result.Err(ParseError(position: prefixToken.position, kind: ParseErrorKind.UnexpectedToken(prefixToken)))
+      }
+    }
+  }
+
+  func _parseLiteral(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    val literal = match token.kind {
+      TokenKind.Int(value) => LiteralAstNode.Int(value)
+      TokenKind.Float(value) => LiteralAstNode.Float(value)
+      TokenKind.Bool(value) => LiteralAstNode.Bool(value)
+      TokenKind.String(value) => LiteralAstNode.String(value)
+      _ => return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.NotYetImplemented))
+    }
+
+    Result.Ok(AstNode(token: token, kind: AstNodeKind.Literal(literal)))
+  }
+}

@@ -1,5 +1,3 @@
-export val a = ("a", 2)
-
-export func makeAdder(a: Int): (Int) => Int {
-  x => x + a
+export type Foo {
+  name: String
 }

@@ -333,6 +333,16 @@ type String {
 
     subString
   }
+
+  func repeat(self, times: Int): String {
+    if times <= 0 return ""
+
+    val str = String.withLength(self.length * times)
+    for i in range(0, times) {
+      str._buffer.offset(self.length * i).copyFrom(self._buffer, self.length)
+    }
+    str
+  }
 }
 
 type ArrayIterator<T> {

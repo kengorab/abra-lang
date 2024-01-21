@@ -1,4 +1,8 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-"\u0450ZZ"
+import Foo from "./example2"
+import foo from "../outer/other"
+
+val f = Foo(name: "bar")
+foo(f)
