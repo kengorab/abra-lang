@@ -142,14 +142,24 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
   match kind {
     AstNodeKind.Literal(literal) => {
       val pair = match literal {
-        LiteralAstNode.Int(value) => ("Int", value.toString())
-        LiteralAstNode.Float(value) => ("Float", value.toString())
-        LiteralAstNode.Bool(value) => ("Bool", value.toString())
-        LiteralAstNode.String(value) => ("String", "\"$value\"")
+        LiteralAstNode.Int(value) => ("int", value.toString())
+        LiteralAstNode.Float(value) => ("float", value.toString())
+        LiteralAstNode.Bool(value) => ("bool", value.toString())
+        LiteralAstNode.String(value) => ("string", "\"$value\"")
       }
 
-      println("$fieldsIndent\"name\": \"${pair[0]}\",")
+      println("$fieldsIndent\"name\": \"literal\",")
+      println("$fieldsIndent\"type\": \"${pair[0]}\",")
       println("$fieldsIndent\"value\": ${pair[1]}")
+    }
+    AstNodeKind.Binary(binaryNode) => {
+      println("$fieldsIndent\"name\": \"binary\",")
+      println("$fieldsIndent\"op\": \"${binaryNode.op}\",")
+      print("$fieldsIndent\"left\": ")
+      printAstNodeAsJson(binaryNode.left, 0, currentIndentLevel + 1)
+      print(",\n$fieldsIndent\"right\": ")
+      printAstNodeAsJson(binaryNode.right, 0, currentIndentLevel + 1)
+      println()
     }
   }
   println("$endIndent}")

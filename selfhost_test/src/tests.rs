@@ -40,5 +40,7 @@ fn parser_tests() {
     TestRunner::parser_test_runner()
         // Literals
         .add_test_vs_txt("parser/literals.abra", "parser/literals.out.json")
+        // Binary
+        .add_test_vs_txt("parser/binary.abra", "parser/binary.out.json")
         .run_tests();
 }
