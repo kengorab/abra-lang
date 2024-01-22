@@ -1,5 +1,5 @@
 import Token, TokenKind from "./lexer"
-import ParsedModule, AstNode, AstNodeKind, LiteralAstNode from "./parser"
+import ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind from "./parser"
 
 export func printTokenAsJson(token: Token, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
@@ -173,6 +173,16 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
       print("$fieldsIndent\"inner\": ")
       printAstNodeAsJson(inner, 0, currentIndentLevel + 1)
       println()
+    }
+    AstNodeKind.Identifier(kind) => {
+      println("$fieldsIndent\"name\": \"identifier\",")
+      print("$fieldsIndent\"ident\": ")
+      match kind {
+        IdentifierKind.Named(name) => println("\"$name\"")
+        IdentifierKind.None_ => println("\"None\"")
+        IdentifierKind.Self => println("\"self\"")
+        IdentifierKind.Discard => println("\"_\"")
+      }
     }
   }
   println("$endIndent}")

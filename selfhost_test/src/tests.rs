@@ -50,5 +50,7 @@ fn parser_tests() {
         .add_test_vs_txt("parser/grouped.abra", "parser/grouped.out.json")
         .add_test_vs_txt("parser/grouped_error_eof.abra", "parser/grouped_error_eof.out")
         .add_test_vs_txt("parser/grouped_error_wrong_closing.abra", "parser/grouped_error_wrong_closing.out")
+        // Identifiers
+        .add_test_vs_txt("parser/identifiers.abra", "parser/identifiers.out.json")
         .run_tests();
 }
