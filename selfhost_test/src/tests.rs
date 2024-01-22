@@ -42,5 +42,13 @@ fn parser_tests() {
         .add_test_vs_txt("parser/literals.abra", "parser/literals.out.json")
         // Binary
         .add_test_vs_txt("parser/binary.abra", "parser/binary.out.json")
+        .add_test_vs_txt("parser/binary_error_eof.abra", "parser/binary_error_eof.out")
+        // Unary
+        .add_test_vs_txt("parser/unary.abra", "parser/unary.out.json")
+        .add_test_vs_txt("parser/unary_error_eof.abra", "parser/unary_error_eof.out")
+        // Grouped
+        .add_test_vs_txt("parser/grouped.abra", "parser/grouped.out.json")
+        .add_test_vs_txt("parser/grouped_error_eof.abra", "parser/grouped_error_eof.out")
+        .add_test_vs_txt("parser/grouped_error_wrong_closing.abra", "parser/grouped_error_wrong_closing.out")
         .run_tests();
 }
