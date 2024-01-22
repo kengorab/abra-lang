@@ -16,10 +16,7 @@ export enum LiteralAstNode {
   String(value: String)
 }
 
-export enum UnaryOp {
-  Minus
-  Negate
-}
+export enum UnaryOp { Minus, Negate }
 
 export type UnaryAstNode {
   op: UnaryOp
@@ -40,11 +37,19 @@ export type BinaryAstNode {
   right: AstNode
 }
 
+export enum IdentifierKind {
+  Named(name: String)
+  Self
+  None_
+  Discard
+}
+
 export enum AstNodeKind {
   Literal(value: LiteralAstNode)
   Unary(value: UnaryAstNode)
   Binary(value: BinaryAstNode)
   Grouped(inner: AstNode)
+  Identifier(kind: IdentifierKind)
 }
 
 export enum ParseErrorKind {
@@ -185,6 +190,9 @@ export type Parser {
       TokenKind.LParen => self._parseGrouped()
       TokenKind.Minus => self._parseUnary()
       TokenKind.Bang => self._parseUnary()
+      TokenKind.Ident(name) => self._parseIdentifier(kind: if name == "_" IdentifierKind.Discard else IdentifierKind.Named(name))
+      TokenKind.None_ => self._parseIdentifier(kind: IdentifierKind.None_)
+      TokenKind.Self => self._parseIdentifier(kind: IdentifierKind.Self)
       _ => Result.Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
     }
   }
@@ -237,6 +245,12 @@ export type Parser {
     }
 
     Result.Ok(AstNode(token: token, kind: AstNodeKind.Grouped(inner: inner)))
+  }
+
+  func _parseIdentifier(self, kind: IdentifierKind): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    Result.Ok(AstNode(token: token, kind: AstNodeKind.Identifier(kind)))
   }
 
   func _parseBinary(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
