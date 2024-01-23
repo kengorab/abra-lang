@@ -1,3 +1,5 @@
 foo()
 a.b.c()
-a?.b()
+a?.b(1, abc, 1.23, true)
+foo(bar(), baz())
+foo(a: abc, b: 123)
