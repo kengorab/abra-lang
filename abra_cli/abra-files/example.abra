@@ -1,8 +1,10 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-import Foo from "./example2"
-import foo from "../outer/other"
+//import Foo from "./example2"
+//import foo from "../outer/other"
+//
+//val f = Foo(name: "bar")
+//foo(f)
 
-val f = Foo(name: "bar")
-foo(f)
+func foo(self: Int) {}

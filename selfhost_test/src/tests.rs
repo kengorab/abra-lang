@@ -59,5 +59,8 @@ fn parser_tests() {
         .add_test_vs_txt("parser/accessor_error_None.abra", "parser/accessor_error_None.out")
         // Invocation
         .add_test_vs_txt("parser/invocation.abra", "parser/invocation.out.json")
+        .add_test_vs_txt("parser/invocation_error_eof.abra", "parser/invocation_error_eof.out")
+        .add_test_vs_txt("parser/invocation_error_no_comma.abra", "parser/invocation_error_no_comma.out")
+        .add_test_vs_txt("parser/invocation_error_no_rparen.abra", "parser/invocation_error_no_rparen.out")
         .run_tests();
 }

@@ -161,6 +161,8 @@ export type Parser {
       } else {
         Position(line: 1, col: 0)
       }
+      // TODO: This isn't exactly correct (it should point just past the end of the token, and this would only work if
+      // the token was of length 1), but it's close enough for now
       position.col += 1
       Result.Err(ParseError(position: position, kind: ParseErrorKind.UnexpectedEof))
     }
@@ -309,13 +311,54 @@ export type Parser {
   }
 
   func _parseInvocationArguments(self): Result<InvocationArgument[], ParseError> {
-    val nextToken = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-    match nextToken.kind {
-      TokenKind.RParen => {}
-      _ => return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.NotYetImplemented))
+    val arguments: InvocationArgument[] = []
+
+    var endExpected = false
+    while true {
+      val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      if nextToken.kind == TokenKind.RParen {
+        self._advance() // consume ')' token before exiting
+        break
+      } else if endExpected {
+        val kind = ParseErrorKind.ExpectedToken(expected: [TokenKind.Comma, TokenKind.RParen], received: nextToken.kind)
+        return Result.Err(ParseError(position: nextToken.position, kind: kind))
+      }
+
+      val expr = match self._parseExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      val arg = match expr.kind {
+        AstNodeKind.Identifier(identifierKind) => {
+          val peekToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          val arg = if peekToken.kind == TokenKind.Colon {
+            self._advance() // consume ':' token
+
+            val label = match identifierKind {
+              IdentifierKind.Named(name) => Label(name: name, position: expr.token.position)
+              _ => {
+                val kind = ParseErrorKind.ExpectedToken(expected: [TokenKind.Ident("")], received: expr.token.kind)
+                return Result.Err(ParseError(position: expr.token.position, kind: kind))
+              }
+            }
+            val value = match self._parseExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+            InvocationArgument(label: label, value: value)
+          } else {
+            InvocationArgument(label: None, value: expr)
+          }
+          arg
+        }
+        _ => InvocationArgument(label: None, value: expr)
+      }
+      arguments.push(arg)
+
+      val peekToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      if peekToken.kind == TokenKind.Comma {
+        self._advance() // consume ',' token
+      } else {
+        endExpected = true
+      }
     }
 
-    Result.Ok([])
+    Result.Ok(arguments)
   }
 
   func _parseInvocation(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
