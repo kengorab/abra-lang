@@ -184,6 +184,50 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         IdentifierKind.Discard => println("\"_\"")
       }
     }
+    AstNodeKind.Accessor(accessorNode) => {
+      println("$fieldsIndent\"name\": \"accessor\",")
+      print("$fieldsIndent\"root\": ")
+      printAstNodeAsJson(accessorNode.root, 0, currentIndentLevel + 1)
+      println(",\n$fieldsIndent\"path\": [")
+      val pathIndent = "  ".repeat(currentIndentLevel + 2)
+      val pathsIndent = "  ".repeat(currentIndentLevel + 3)
+      for seg, idx in accessorNode.path {
+        val dotToken = seg[0]
+        val label = seg[1]
+        print("$pathIndent{\n$pathsIndent\"dotToken\": ")
+        printTokenAsJson(dotToken, 0, currentIndentLevel + 3)
+        println(",\n$pathsIndent\"ident\": \"${label.name}\",")
+        println("$pathsIndent\"position\": [${label.position.line}, ${label.position.col}]")
+        val comma = if idx != accessorNode.path.length - 1 "," else ""
+        println("$pathIndent}$comma")
+      }
+      println("$fieldsIndent]")
+    }
+    AstNodeKind.Invocation(invocationNode) => {
+      println("$fieldsIndent\"name\": \"invocation\",")
+      print("$fieldsIndent\"invokee\": ")
+      printAstNodeAsJson(invocationNode.invokee, 0, currentIndentLevel + 1)
+      if invocationNode.arguments.isEmpty() {
+        println(",\n$fieldsIndent\"arguments\": []")
+      } else {
+        println(",\n$fieldsIndent\"arguments\": [")
+        val pathIndent = "  ".repeat(currentIndentLevel + 2)
+        val pathsIndent = "  ".repeat(currentIndentLevel + 3)
+        for arg, idx in invocationNode.arguments {
+          print("$pathIndent{\n$pathsIndent\"label\": ")
+          if arg.label |label| {
+            println("{ \"position\": [${label.position.line}, ${label.position.col}], \"name\": \"${label.name}\" },")
+          } else {
+            println("null,")
+          }
+          println("$pathsIndent\"value\": ")
+          printAstNodeAsJson(arg.value, 0, currentIndentLevel + 1)
+          val comma = if idx != invocationNode.arguments.length - 1 "," else ""
+          println("$pathIndent}$comma")
+        }
+        println("$fieldsIndent]")
+      }
+    }
   }
   println("$endIndent}")
 }

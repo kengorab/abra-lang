@@ -67,9 +67,9 @@ export enum TokenKind {
   OrEq
   Dot
   Caret
-  LParen
+  LParen(preceedingNewline: Bool)
   RParen
-  LBrack
+  LBrack(preceedingNewline: Bool)
   RBrack
   LBrace
   RBrace
@@ -239,7 +239,7 @@ export type Lexer {
   }
 
   func nextToken(self): Result<Token?, LexerError> {
-    self._skipWhitespace()
+    val sawNewline = self._skipWhitespace()
 
     if self._cursor >= self._input.length return Result.Ok(None)
     val ch = self._input[self._cursor]
@@ -265,7 +265,7 @@ export type Lexer {
       if self._skipComment() |error| return Result.Err(error)
       return self.nextToken()
     } else {
-      val tok = match self._tokenizeSymbol(startPos: position) {
+      val tok = match self._tokenizeSymbol(startPos: position, sawPreceedingNewline: sawNewline) {
         Result.Ok(v) => v
         Result.Err(e) => return Result.Err(error: e)
       }
@@ -282,18 +282,22 @@ export type Lexer {
     self._col += by
   }
 
-  func _skipWhitespace(self) {
-    if self._cursor >= self._input.length return
+  func _skipWhitespace(self): Bool {
+    if self._cursor >= self._input.length return false
 
+    var sawNewline = false
     var ch = self._input[self._cursor]
     while ch == " " || ch == "\n" {
       self._advance()
       if ch == "\n" {
         self._line += 1
         self._col = 1
+        sawNewline = true
       }
       ch = self._input[self._cursor]
     }
+
+    sawNewline
   }
 
   func _skipComment(self): LexerError? {
@@ -612,7 +616,7 @@ export type Lexer {
     Token(position: startPos, kind: tokenKind)
   }
 
-  func _tokenizeSymbol(self, startPos: Position): Result<Token, LexerError> {
+  func _tokenizeSymbol(self, startPos: Position, sawPreceedingNewline: Bool): Result<Token, LexerError> {
     val ch = self._input[self._cursor]
 
     val tokenKind = match ch {
@@ -627,9 +631,9 @@ export type Lexer {
       "=" => self._multiCharToken(TokenKind.Eq, [("=", TokenKind.EqEq), (">", TokenKind.Arrow)])
       "." => TokenKind.Dot
       "^" => TokenKind.Caret
-      "(" => TokenKind.LParen
+      "(" => TokenKind.LParen(preceedingNewline: sawPreceedingNewline)
       ")" => TokenKind.RParen
-      "[" => TokenKind.LBrack
+      "[" => TokenKind.LBrack(preceedingNewline: sawPreceedingNewline)
       "]" => TokenKind.RBrack
       "{" => TokenKind.LBrace
       "}" => TokenKind.RBrace

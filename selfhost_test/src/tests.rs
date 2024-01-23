@@ -52,5 +52,12 @@ fn parser_tests() {
         .add_test_vs_txt("parser/grouped_error_wrong_closing.abra", "parser/grouped_error_wrong_closing.out")
         // Identifiers
         .add_test_vs_txt("parser/identifiers.abra", "parser/identifiers.out.json")
+        // Accessors
+        .add_test_vs_txt("parser/accessor.abra", "parser/accessor.out.json")
+        .add_test_vs_txt("parser/accessor_error_eof.abra", "parser/accessor_error_eof.out")
+        .add_test_vs_txt("parser/accessor_error_self.abra", "parser/accessor_error_self.out")
+        .add_test_vs_txt("parser/accessor_error_None.abra", "parser/accessor_error_None.out")
+        // Invocation
+        .add_test_vs_txt("parser/invocation.abra", "parser/invocation.out.json")
         .run_tests();
 }
