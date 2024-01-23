@@ -44,12 +44,34 @@ export enum IdentifierKind {
   Discard
 }
 
+export type Label {
+  name: String
+  position: Position
+}
+
+export type AccessorAstNode {
+  root: AstNode
+  path: (Token, Label)[]
+}
+
+export type InvocationArgument {
+  label: Label?
+  value: AstNode
+}
+
+export type InvocationAstNode {
+  invokee: AstNode
+  arguments: InvocationArgument[]
+}
+
 export enum AstNodeKind {
   Literal(value: LiteralAstNode)
   Unary(value: UnaryAstNode)
   Binary(value: BinaryAstNode)
   Grouped(inner: AstNode)
   Identifier(kind: IdentifierKind)
+  Accessor(value: AccessorAstNode)
+  Invocation(value: InvocationAstNode)
 }
 
 export enum ParseErrorKind {
@@ -205,6 +227,9 @@ export type Parser {
       TokenKind.Star => self._parseBinary(infixToken, left)
       TokenKind.Slash => self._parseBinary(infixToken, left)
       TokenKind.Percent => self._parseBinary(infixToken, left)
+      TokenKind.Dot => self._parseAccessor(infixToken, left)
+      TokenKind.QuestionDot => self._parseAccessor(infixToken, left)
+      TokenKind.LParen => self._parseInvocation(infixToken, left)
       _ => return Result.Err(ParseError(position: infixToken.position, kind: ParseErrorKind.UnexpectedToken(infixToken)))
     }
   }
@@ -267,6 +292,37 @@ export type Parser {
     val right = match self._parsePrecedence(prec: prec) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     Result.Ok(AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: op, right: right))))
   }
+
+  func _parseAccessor(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
+    val nextToken = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    val identName = match nextToken.kind {
+      TokenKind.Ident(name) => name
+      _ => return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], nextToken.kind)))
+    }
+
+    val node = match left.kind {
+      AstNodeKind.Accessor(accessorNode) => accessorNode
+      _ => AccessorAstNode(root: left, path: [])
+    }
+    node.path.push((token, Label(name: identName, position: nextToken.position)))
+    Result.Ok(AstNode(token: token, kind: AstNodeKind.Accessor(node)))
+  }
+
+  func _parseInvocationArguments(self): Result<InvocationArgument[], ParseError> {
+    val nextToken = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    match nextToken.kind {
+      TokenKind.RParen => {}
+      _ => return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.NotYetImplemented))
+    }
+
+    Result.Ok([])
+  }
+
+  func _parseInvocation(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
+    val arguments = match self._parseInvocationArguments() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    Result.Ok(AstNode(token: token, kind: AstNodeKind.Invocation(InvocationAstNode(invokee: left, arguments: arguments))))
+  }
 }
 
 func todo(position: Position): Result<AstNode, ParseError> {
@@ -279,6 +335,7 @@ type Precedence {
   func addition(): Int = 1
   func multiplication(): Int = 2
   func unary(): Int = 3
+  func call(): Int = 4
 
   func forToken(token: Token): Int {
     match token.kind {
@@ -287,6 +344,9 @@ type Precedence {
       TokenKind.Star => Precedence.multiplication()
       TokenKind.Slash => Precedence.multiplication()
       TokenKind.Percent => Precedence.multiplication()
+      TokenKind.Dot => Precedence.call()
+      TokenKind.QuestionDot => Precedence.call()
+      TokenKind.LParen(sawNewline) => if sawNewline Precedence.none() else Precedence.call()
       _ => Precedence.none()
     }
   }
