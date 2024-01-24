@@ -1,0 +1,470 @@
+{
+  "nodes": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "LBrace"
+        }
+      },
+      "kind": {
+        "name": "map",
+        "items": []
+      }
+    },
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "LBrace"
+        }
+      },
+      "kind": {
+        "name": "map",
+        "items": [
+          {
+            "key": {
+              "token": {
+                "position": [2, 3],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              "kind": {
+                "name": "identifier",
+                "ident": "a"
+              }
+            },
+            "value": {
+              "token": {
+                "position": [2, 6],
+                "kind": {
+                  "name": "Int",
+                  "value": 1
+                }
+              },
+              "kind": {
+                "name": "literal",
+                "type": "int",
+                "value": 1
+              }
+            }
+          },
+          {
+            "key": {
+              "token": {
+                "position": [2, 9],
+                "kind": {
+                  "name": "Ident",
+                  "value": "b"
+                }
+              },
+              "kind": {
+                "name": "identifier",
+                "ident": "b"
+              }
+            },
+            "value": {
+              "token": {
+                "position": [2, 12],
+                "kind": {
+                  "name": "Int",
+                  "value": 2
+                }
+              },
+              "kind": {
+                "name": "literal",
+                "type": "int",
+                "value": 2
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [3, 1],
+        "kind": {
+          "name": "LBrace"
+        }
+      },
+      "kind": {
+        "name": "map",
+        "items": [
+          {
+            "key": {
+              "token": {
+                "position": [3, 3],
+                "kind": {
+                  "name": "String",
+                  "value": "a"
+                }
+              },
+              "kind": {
+                "name": "literal",
+                "type": "string",
+                "value": "a"
+              }
+            },
+            "value": {
+              "token": {
+                "position": [3, 8],
+                "kind": {
+                  "name": "Int",
+                  "value": 1
+                }
+              },
+              "kind": {
+                "name": "literal",
+                "type": "int",
+                "value": 1
+              }
+            }
+          },
+          {
+            "key": {
+              "token": {
+                "position": [3, 11],
+                "kind": {
+                  "name": "String",
+                  "value": "b"
+                }
+              },
+              "kind": {
+                "name": "literal",
+                "type": "string",
+                "value": "b"
+              }
+            },
+            "value": {
+              "token": {
+                "position": [3, 16],
+                "kind": {
+                  "name": "Int",
+                  "value": 2
+                }
+              },
+              "kind": {
+                "name": "literal",
+                "type": "int",
+                "value": 2
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [4, 1],
+        "kind": {
+          "name": "LBrace"
+        }
+      },
+      "kind": {
+        "name": "map",
+        "items": [
+          {
+            "key": {
+              "token": {
+                "position": [4, 4],
+                "kind": {
+                  "name": "Int",
+                  "value": 123
+                }
+              },
+              "kind": {
+                "name": "literal",
+                "type": "int",
+                "value": 123
+              }
+            },
+            "value": {
+              "token": {
+                "position": [4, 10],
+                "kind": {
+                  "name": "LBrack"
+                }
+              },
+              "kind": {
+                "name": "array",
+                "items": [
+                  {
+                    "token": {
+                      "position": [4, 11],
+                      "kind": {
+                        "name": "Int",
+                        "value": 1
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 1
+                    }
+                  },
+                  {
+                    "token": {
+                      "position": [4, 14],
+                      "kind": {
+                        "name": "Int",
+                        "value": 2
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 2
+                    }
+                  },
+                  {
+                    "token": {
+                      "position": [4, 17],
+                      "kind": {
+                        "name": "Int",
+                        "value": 3
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 3
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "key": {
+              "token": {
+                "position": [4, 22],
+                "kind": {
+                  "name": "Int",
+                  "value": 456
+                }
+              },
+              "kind": {
+                "name": "literal",
+                "type": "int",
+                "value": 456
+              }
+            },
+            "value": {
+              "token": {
+                "position": [4, 28],
+                "kind": {
+                  "name": "LBrack"
+                }
+              },
+              "kind": {
+                "name": "array",
+                "items": [
+                  {
+                    "token": {
+                      "position": [4, 29],
+                      "kind": {
+                        "name": "Int",
+                        "value": 4
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 4
+                    }
+                  },
+                  {
+                    "token": {
+                      "position": [4, 32],
+                      "kind": {
+                        "name": "Int",
+                        "value": 5
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 5
+                    }
+                  },
+                  {
+                    "token": {
+                      "position": [4, 35],
+                      "kind": {
+                        "name": "Int",
+                        "value": 6
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 6
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [5, 1],
+        "kind": {
+          "name": "LBrace"
+        }
+      },
+      "kind": {
+        "name": "map",
+        "items": [
+          {
+            "key": {
+              "token": {
+                "position": [5, 4],
+                "kind": {
+                  "name": "LBrack"
+                }
+              },
+              "kind": {
+                "name": "array",
+                "items": [
+                  {
+                    "token": {
+                      "position": [5, 5],
+                      "kind": {
+                        "name": "Int",
+                        "value": 1
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 1
+                    }
+                  },
+                  {
+                    "token": {
+                      "position": [5, 8],
+                      "kind": {
+                        "name": "Int",
+                        "value": 2
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 2
+                    }
+                  },
+                  {
+                    "token": {
+                      "position": [5, 11],
+                      "kind": {
+                        "name": "Int",
+                        "value": 3
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 3
+                    }
+                  }
+                ]
+              }
+            },
+            "value": {
+              "token": {
+                "position": [5, 16],
+                "kind": {
+                  "name": "Int",
+                  "value": 123
+                }
+              },
+              "kind": {
+                "name": "literal",
+                "type": "int",
+                "value": 123
+              }
+            }
+          },
+          {
+            "key": {
+              "token": {
+                "position": [5, 22],
+                "kind": {
+                  "name": "LBrack"
+                }
+              },
+              "kind": {
+                "name": "array",
+                "items": [
+                  {
+                    "token": {
+                      "position": [5, 23],
+                      "kind": {
+                        "name": "Int",
+                        "value": 4
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 4
+                    }
+                  },
+                  {
+                    "token": {
+                      "position": [5, 26],
+                      "kind": {
+                        "name": "Int",
+                        "value": 5
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 5
+                    }
+                  },
+                  {
+                    "token": {
+                      "position": [5, 29],
+                      "kind": {
+                        "name": "Int",
+                        "value": 6
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 6
+                    }
+                  }
+                ]
+              }
+            },
+            "value": {
+              "token": {
+                "position": [5, 34],
+                "kind": {
+                  "name": "Int",
+                  "value": 456
+                }
+              },
+              "kind": {
+                "name": "literal",
+                "type": "int",
+                "value": 456
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

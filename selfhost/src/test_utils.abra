@@ -228,6 +228,54 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         println("$fieldsIndent]")
       }
     }
+    AstNodeKind.Array(items) => {
+      println("$fieldsIndent\"name\": \"array\",")
+      if items.isEmpty() {
+        println("$fieldsIndent\"items\": []")
+      } else {
+        println("$fieldsIndent\"items\": [")
+        for item, idx in items {
+          printAstNodeAsJson(item, currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != items.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent]")
+      }
+    }
+    AstNodeKind.Set(items) => {
+      println("$fieldsIndent\"name\": \"set\",")
+      if items.isEmpty() {
+        println("$fieldsIndent\"items\": []")
+      } else {
+        println("$fieldsIndent\"items\": [")
+        for item, idx in items {
+          printAstNodeAsJson(item, currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != items.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent]")
+      }
+    }
+    AstNodeKind.Map(items) => {
+      println("$fieldsIndent\"name\": \"map\",")
+      if items.isEmpty() {
+        println("$fieldsIndent\"items\": []")
+      } else {
+        println("$fieldsIndent\"items\": [")
+        for item, idx in items {
+          val key = item[0]
+          val value = item[1]
+          println("$fieldsIndent  {")
+          print("$fieldsIndent    \"key\": ")
+          printAstNodeAsJson(key, 0, currentIndentLevel + 3)
+          print(",\n$fieldsIndent    \"value\": ")
+          printAstNodeAsJson(value, 0, currentIndentLevel + 3)
+          val comma = if idx != items.length - 1 "," else ""
+          println("\n$fieldsIndent  }$comma")
+        }
+        println("$fieldsIndent]")
+      }
+    }
   }
   println("$endIndent}")
 }

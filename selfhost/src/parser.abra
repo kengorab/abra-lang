@@ -72,6 +72,9 @@ export enum AstNodeKind {
   Identifier(kind: IdentifierKind)
   Accessor(value: AccessorAstNode)
   Invocation(value: InvocationAstNode)
+  Array(items: AstNode[])
+  Set(items: AstNode[])
+  Map(items: (AstNode, AstNode)[])
 }
 
 export enum ParseErrorKind {
@@ -217,6 +220,9 @@ export type Parser {
       TokenKind.Ident(name) => self._parseIdentifier(kind: if name == "_" IdentifierKind.Discard else IdentifierKind.Named(name))
       TokenKind.None_ => self._parseIdentifier(kind: IdentifierKind.None_)
       TokenKind.Self => self._parseIdentifier(kind: IdentifierKind.Self)
+      TokenKind.LBrack => self._parseArray()
+      TokenKind.HashBrace => self._parseSet()
+      TokenKind.LBrace => self._parseMap()
       _ => Result.Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
     }
   }
@@ -280,6 +286,63 @@ export type Parser {
     Result.Ok(AstNode(token: token, kind: AstNodeKind.Identifier(kind)))
   }
 
+  func _parseArray(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    val itemsRes = self._commaSeparated(TokenKind.RBrack, () => {
+      self._parseExpression()
+    })
+    val items = match itemsRes { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    Result.Ok(AstNode(token: token, kind: AstNodeKind.Array(items)))
+  }
+
+  func _parseSet(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    val itemsRes = self._commaSeparated(TokenKind.RBrace, () => {
+      self._parseExpression()
+    })
+    val items = match itemsRes { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    Result.Ok(AstNode(token: token, kind: AstNodeKind.Set(items)))
+  }
+
+  func _parseMap(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    val itemsRes = self._commaSeparated(TokenKind.RBrace, () => {
+      val keyToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      val keyRes = match keyToken.kind {
+        TokenKind.String => self._parseExpression()
+        TokenKind.Ident => self._parseExpression()
+        TokenKind.LParen => {
+          self._advance() // consume '('
+          val key = self._parseExpression()
+          val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          if nextToken.kind != TokenKind.RParen {
+            return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.RParen], nextToken.kind)))
+          }
+          self._advance() // consume ')'
+          key
+        }
+        _ => {
+          return Result.Err(ParseError(position: keyToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String(""), TokenKind.Ident(""), TokenKind.LParen(false)], keyToken.kind)))
+        }
+      }
+      val key = match keyRes { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+      val nextToken = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      if nextToken.kind != TokenKind.Colon {
+        return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Colon], nextToken.kind)))
+      }
+      
+      val value = match self._parseExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+      Result.Ok((key, value))
+    })
+    val items = match itemsRes { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    Result.Ok(AstNode(token: token, kind: AstNodeKind.Map(items)))
+  }
+
   func _parseBinary(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
     val prec = Precedence.forToken(token)
     val op = match token.kind {
@@ -310,20 +373,36 @@ export type Parser {
     Result.Ok(AstNode(token: token, kind: AstNodeKind.Accessor(node)))
   }
 
-  func _parseInvocationArguments(self): Result<InvocationArgument[], ParseError> {
-    val arguments: InvocationArgument[] = []
+  func _commaSeparated<T>(self, end: TokenKind, fn: () => Result<T, ParseError>): Result<T[], ParseError> {
+    val items: T[] = []
 
     var endExpected = false
     while true {
       val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-      if nextToken.kind == TokenKind.RParen {
-        self._advance() // consume ')' token before exiting
+      if nextToken.kind == end {
+        self._advance() // consume end token before exiting
         break
       } else if endExpected {
-        val kind = ParseErrorKind.ExpectedToken(expected: [TokenKind.Comma, TokenKind.RParen], received: nextToken.kind)
+        val kind = ParseErrorKind.ExpectedToken(expected: [TokenKind.Comma, end], received: nextToken.kind)
         return Result.Err(ParseError(position: nextToken.position, kind: kind))
       }
 
+      val item = match fn() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      items.push(item)
+
+      val peekToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      if peekToken.kind == TokenKind.Comma {
+        self._advance() // consume ',' token
+      } else {
+        endExpected = true
+      }
+    }
+
+    Result.Ok(items)
+  }
+
+  func _parseInvocationArguments(self): Result<InvocationArgument[], ParseError> {
+    val argsRes = self._commaSeparated(TokenKind.RParen, () => {
       val expr = match self._parseExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
       val arg = match expr.kind {
         AstNodeKind.Identifier(identifierKind) => {
@@ -348,15 +427,10 @@ export type Parser {
         }
         _ => InvocationArgument(label: None, value: expr)
       }
-      arguments.push(arg)
-
-      val peekToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-      if peekToken.kind == TokenKind.Comma {
-        self._advance() // consume ',' token
-      } else {
-        endExpected = true
-      }
-    }
+      
+      Result.Ok(arg)
+    })
+    val arguments = match argsRes { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     Result.Ok(arguments)
   }

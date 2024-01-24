@@ -667,8 +667,6 @@ export type Lexer {
           return Result.Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedChar(ch)))
         }
 
-        self._advance() // consume '{'
-
         TokenKind.HashBrace
       }
       "@" => TokenKind.At
