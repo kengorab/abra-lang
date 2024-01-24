@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:3
+Unexpected token 'int', expected one of 'string', 'identifier', '(':
+  |  { 123: 1 }
+       ^
