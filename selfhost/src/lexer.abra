@@ -306,7 +306,7 @@ export type Lexer {
     val ch = self._input[self._cursor]
     val peek = self._input[self._cursor + 1]
     if ch == "/" && peek == "/" {
-      while self._input[self._cursor] != "\n" {
+      while self._cursor < self._input.length && self._input[self._cursor] != "\n" {
         self._advance()
       }
     } else if ch == "/" && peek == "*" {

@@ -1,5 +1,5 @@
 import Token, TokenKind from "./lexer"
-import ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind from "./parser"
+import ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode from "./parser"
 
 export func printTokenAsJson(token: Token, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
@@ -275,6 +275,36 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         }
         println("$fieldsIndent]")
       }
+    }
+    AstNodeKind.Indexing(expr, indexMode) => {
+      println("$fieldsIndent\"name\": \"indexing\",")
+      print("$fieldsIndent\"expr\": ")
+      printAstNodeAsJson(expr, 0, currentIndentLevel + 1)
+      println(",\n$fieldsIndent\"index\": {")
+      match indexMode {
+        IndexingMode.Single(item) => {
+          println("$fieldsIndent  \"indexKind\": \"single\",")
+          print("$fieldsIndent  \"value\": ")
+          printAstNodeAsJson(item, 0, currentIndentLevel + 2)
+        }
+        IndexingMode.Range(start, end) => {
+          println("$fieldsIndent  \"indexKind\": \"range\",")
+          if start |start| {
+            print("$fieldsIndent  \"start\": ")
+            printAstNodeAsJson(start, 0, currentIndentLevel + 2)
+            println(",")
+          } else {
+            println("$fieldsIndent  \"start\": null,")
+          }
+          if end |end| {
+            print("$fieldsIndent  \"end\": ")
+            printAstNodeAsJson(end, 0, currentIndentLevel + 2)
+          } else {
+            print("$fieldsIndent  \"end\": null")
+          }
+        }
+      }
+      println("\n$fieldsIndent}")
     }
   }
   println("$endIndent}")
