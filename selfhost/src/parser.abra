@@ -64,6 +64,11 @@ export type InvocationAstNode {
   arguments: InvocationArgument[]
 }
 
+export enum IndexingMode {
+  Single(expr: AstNode)
+  Range(start: AstNode?, end: AstNode?)
+}
+
 export enum AstNodeKind {
   Literal(value: LiteralAstNode)
   Unary(value: UnaryAstNode)
@@ -75,6 +80,7 @@ export enum AstNodeKind {
   Array(items: AstNode[])
   Set(items: AstNode[])
   Map(items: (AstNode, AstNode)[])
+  Indexing(expr: AstNode, index: IndexingMode)
 }
 
 export enum ParseErrorKind {
@@ -238,6 +244,7 @@ export type Parser {
       TokenKind.Dot => self._parseAccessor(infixToken, left)
       TokenKind.QuestionDot => self._parseAccessor(infixToken, left)
       TokenKind.LParen => self._parseInvocation(infixToken, left)
+      TokenKind.LBrack => self._parseIndexing(infixToken, left)
       _ => return Result.Err(ParseError(position: infixToken.position, kind: ParseErrorKind.UnexpectedToken(infixToken)))
     }
   }
@@ -249,7 +256,8 @@ export type Parser {
       TokenKind.Float(value) => LiteralAstNode.Float(value)
       TokenKind.Bool(value) => LiteralAstNode.Bool(value)
       TokenKind.String(value) => LiteralAstNode.String(value)
-      _ => return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.NotYetImplemented))
+      TokenKind.StringInterpolation => return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.NotYetImplemented))
+      _ => return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
     }
 
     Result.Ok(AstNode(token: token, kind: AstNodeKind.Literal(literal)))
@@ -333,7 +341,7 @@ export type Parser {
       if nextToken.kind != TokenKind.Colon {
         return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Colon], nextToken.kind)))
       }
-      
+
       val value = match self._parseExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
       Result.Ok((key, value))
@@ -427,7 +435,7 @@ export type Parser {
         }
         _ => InvocationArgument(label: None, value: expr)
       }
-      
+
       Result.Ok(arg)
     })
     val arguments = match argsRes { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -439,6 +447,39 @@ export type Parser {
     val arguments = match self._parseInvocationArguments() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     Result.Ok(AstNode(token: token, kind: AstNodeKind.Invocation(InvocationAstNode(invokee: left, arguments: arguments))))
+  }
+
+  func _parseIndexing(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
+    val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    val index = if nextToken.kind == TokenKind.Colon {
+      self._advance() // consume ':'
+      val rangeEnd = match self._parseExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      IndexingMode.Range(start: None, end: rangeEnd)
+    } else {
+      val expr = match self._parseExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      if nextToken.kind == TokenKind.RBrack {
+        IndexingMode.Single(expr)
+      } else if nextToken.kind == TokenKind.Colon {
+        self._advance() // consume ':'
+        val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        if nextToken.kind == TokenKind.RBrack {
+          IndexingMode.Range(start: expr, end: None)
+        } else {
+          val rangeEnd = match self._parseExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          IndexingMode.Range(start: expr, end: rangeEnd)
+        }
+      } else {
+        return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Colon, TokenKind.RBrack], nextToken.kind)))
+      }
+    }
+
+    val lastToken = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    if lastToken.kind != TokenKind.RBrack {
+      return Result.Err(ParseError(position: lastToken.position, kind: ParseErrorKind.UnexpectedToken(lastToken)))
+    }
+
+    Result.Ok(AstNode(token: token, kind: AstNodeKind.Indexing(expr: left, index: index)))
   }
 }
 
@@ -464,6 +505,7 @@ type Precedence {
       TokenKind.Dot => Precedence.call()
       TokenKind.QuestionDot => Precedence.call()
       TokenKind.LParen(sawNewline) => if sawNewline Precedence.none() else Precedence.call()
+      TokenKind.LBrack(sawNewline) => if sawNewline Precedence.none() else Precedence.call()
       _ => Precedence.none()
     }
   }

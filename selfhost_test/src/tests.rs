@@ -62,5 +62,9 @@ fn parser_tests() {
         .add_test_vs_txt("parser/invocation_error_eof.abra", "parser/invocation_error_eof.out")
         .add_test_vs_txt("parser/invocation_error_no_comma.abra", "parser/invocation_error_no_comma.out")
         .add_test_vs_txt("parser/invocation_error_no_rparen.abra", "parser/invocation_error_no_rparen.out")
+        // Indexing
+        .add_test_vs_txt("parser/indexing.abra", "parser/indexing.out.json")
+        .add_test_vs_txt("parser/indexing_error_eof.abra", "parser/indexing_error_eof.out")
+        .add_test_vs_txt("parser/indexing_error_no_rbrack.abra", "parser/indexing_error_no_rbrack.out")
         .run_tests();
 }
