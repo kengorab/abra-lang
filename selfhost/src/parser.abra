@@ -16,14 +16,14 @@ export enum LiteralAstNode {
   String(value: String)
 }
 
-export enum UnaryOp { Minus, Negate }
+enum UnaryOp { Minus, Negate }
 
-export type UnaryAstNode {
+type UnaryAstNode {
   op: UnaryOp
   expr: AstNode
 }
 
-export enum BinaryOp {
+enum BinaryOp {
   Add
   Sub
   Mul
@@ -31,7 +31,7 @@ export enum BinaryOp {
   Mod
 }
 
-export type BinaryAstNode {
+type BinaryAstNode {
   left: AstNode
   op: BinaryOp
   right: AstNode
@@ -49,17 +49,17 @@ export type Label {
   position: Position
 }
 
-export type AccessorAstNode {
+type AccessorAstNode {
   root: AstNode
   path: (Token, Label)[]
 }
 
-export type InvocationArgument {
+type InvocationArgument {
   label: Label?
   value: AstNode
 }
 
-export type InvocationAstNode {
+type InvocationAstNode {
   invokee: AstNode
   arguments: InvocationArgument[]
 }
@@ -77,7 +77,7 @@ export enum TypeIdentifier {
   Function(args: TypeIdentifier[], ret: TypeIdentifier)
 }
 
-export type BindingDeclarationNode {
+type BindingDeclarationNode {
   ident: Label
   typeAnnotation: TypeIdentifier?
   expr: AstNode?
@@ -98,14 +98,14 @@ export enum AstNodeKind {
   BindingDeclaration(value: BindingDeclarationNode)
 }
 
-export enum ParseErrorKind {
+enum ParseErrorKind {
   UnexpectedToken(token: Token)
   ExpectedToken(expected: TokenKind[], received: TokenKind)
   UnexpectedEof
   NotYetImplemented
 }
 
-export type ParseError {
+type ParseError {
   position: Position
   kind: ParseErrorKind
 
@@ -260,7 +260,7 @@ export type Parser {
         // TODO: This is kind of gross, I should be able to do `if self._peek()?.kind == TokenKind.LT { ... }` here
         val typeArguments = if self._peek()?.kind |kind| {
           if kind == TokenKind.LT {
-            self._advance() // consume '<'
+            self._advance() // consume '<' token
             val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
             if nextToken.kind == TokenKind.GT {
               return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], nextToken.kind)))
@@ -281,19 +281,14 @@ export type Parser {
         val a = self._commaSeparated(TokenKind.RParen, () => self._parseTypeIdentifier())
         val args = match a { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
-        // if args.isEmpty() {
-        //   val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-        //   if nextToken.kind != TokenKind.Arrow {
-        //     return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Arrow], nextToken.kind)))
-        //   }
-        // }
-
         val nextTokenIsArrow = if self._peek()?.kind |kind| kind == TokenKind.Arrow else false
         if nextTokenIsArrow {
-          self._advance() // consume '=>'
+          self._advance() // consume '=>' token
           val retType = match self._parseTypeIdentifier() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
           TypeIdentifier.Function(args, retType)
         } else if args[0] |first| {
+          // TODO: There should be a more ergonomic way of writing this... maybe like
+          // `if args.length == 1 && args[0] |first| { ... }` ?
           if args.length == 1 {
             first
           } else {
@@ -301,9 +296,7 @@ export type Parser {
           }
         } else {
           val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-          // if nextToken.kind != TokenKind.Arrow {
           return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Arrow], nextToken.kind)))
-          // }
         }
       }
       _ => return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
@@ -461,13 +454,13 @@ export type Parser {
         TokenKind.String => self._parseExpression()
         TokenKind.Ident => self._parseExpression()
         TokenKind.LParen => {
-          self._advance() // consume '('
+          self._advance() // consume '(' token
           val key = self._parseExpression()
           val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
           if nextToken.kind != TokenKind.RParen {
             return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.RParen], nextToken.kind)))
           }
-          self._advance() // consume ')'
+          self._advance() // consume ')' token
           key
         }
         _ => {
@@ -591,7 +584,7 @@ export type Parser {
   func _parseIndexing(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
     val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     val index = if nextToken.kind == TokenKind.Colon {
-      self._advance() // consume ':'
+      self._advance() // consume ':' token
       val rangeEnd = match self._parseExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
       IndexingMode.Range(start: None, end: rangeEnd)
     } else {
@@ -600,7 +593,7 @@ export type Parser {
       if nextToken.kind == TokenKind.RBrack {
         IndexingMode.Single(expr)
       } else if nextToken.kind == TokenKind.Colon {
-        self._advance() // consume ':'
+        self._advance() // consume ':' token
         val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
         if nextToken.kind == TokenKind.RBrack {
           IndexingMode.Range(start: expr, end: None)
