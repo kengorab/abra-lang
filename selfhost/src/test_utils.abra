@@ -1,5 +1,5 @@
 import Token, TokenKind from "./lexer"
-import ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode from "./parser"
+import Label, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier from "./parser"
 
 export func printTokenAsJson(token: Token, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
@@ -121,6 +121,72 @@ export func printParsedModuleAsJson(module: ParsedModule) {
   println("}")
 }
 
+func printLabelAsJson(label: Label) {
+  print("{ \"name\": \"${label.name}\", \"position\": [${label.position.line}, ${label.position.col}] }")
+}
+
+func printTypeIdentifierAsJson(typeIdentifier: TypeIdentifier, indentLevelStart: Int, currentIndentLevel: Int) {
+  val startIndent = "  ".repeat(indentLevelStart)
+  val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
+  val endIndent = "  ".repeat(currentIndentLevel)
+
+  print("$startIndent{\n$fieldsIndent\"kind\": ")
+  match typeIdentifier {
+    TypeIdentifier.Normal(label, typeArguments) => {
+      print("\"normal\",\n$fieldsIndent\"label\": ")
+      printLabelAsJson(label)
+      if typeArguments |args| {
+        println(",\n$fieldsIndent\"typeArguments\": [")
+        for arg, idx in args {
+          printTypeIdentifierAsJson(arg, currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != args.length - 1 "," else ""
+          println(comma)
+        }
+        println("$fieldsIndent]")
+      } else {
+        println(",\n$fieldsIndent\"typeArguments\": []")
+      }
+    }
+    TypeIdentifier.Array(inner) => {
+      print("\"array\",\n$fieldsIndent\"inner\": ")
+      printTypeIdentifierAsJson(inner, 0, currentIndentLevel + 1)
+      println()
+    }
+    TypeIdentifier.Option(inner) => {
+      print("\"option\",\n$fieldsIndent\"inner\": ")
+      printTypeIdentifierAsJson(inner, 0, currentIndentLevel + 1)
+      println()
+    }
+    TypeIdentifier.Tuple(typeArguments) => {
+      println("\"tuple\",\n$fieldsIndent\"typeArguments\": [")
+      for arg, idx in typeArguments {
+        printTypeIdentifierAsJson(arg, currentIndentLevel + 2, currentIndentLevel + 2)
+        val comma = if idx != typeArguments.length - 1 "," else ""
+        println(comma)
+      }
+      println("$fieldsIndent]")
+    }
+    TypeIdentifier.Function(argTypes, retType) => {
+      println("\"function\",")
+      if argTypes.isEmpty() {
+        println("$fieldsIndent\"argumentTypes\": [],")
+      } else {
+        println("$fieldsIndent\"argumentTypes\": [")
+        for arg, idx in argTypes {
+          printTypeIdentifierAsJson(arg, currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != argTypes.length - 1 "," else ""
+          println(comma)
+        }
+        print("$fieldsIndent],\n")
+      }
+      print("$fieldsIndent\"returnType\": ")
+      printTypeIdentifierAsJson(retType, 0, currentIndentLevel + 1)
+      println()
+    }
+  }
+  print("$endIndent}")
+}
+
 func printAstNodeAsJson(node: AstNode, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
   val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
@@ -216,7 +282,8 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         for arg, idx in invocationNode.arguments {
           print("$pathIndent{\n$pathsIndent\"label\": ")
           if arg.label |label| {
-            println("{ \"position\": [${label.position.line}, ${label.position.col}], \"name\": \"${label.name}\" },")
+            printLabelAsJson(label)
+            println(",")
           } else {
             println("null,")
           }
@@ -305,6 +372,25 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         }
       }
       println("\n$fieldsIndent}")
+    }
+    AstNodeKind.BindingDeclaration(value) => {
+      println("$fieldsIndent\"name\": \"bindingDecl\",")
+      print("$fieldsIndent\"ident\": ")
+      printLabelAsJson(value.ident)
+      println(",")
+      if value.typeAnnotation |ann| {
+        print("$fieldsIndent\"typeAnnotation\": ")
+        printTypeIdentifierAsJson(ann, 0, currentIndentLevel + 1)
+      } else {
+        print("$fieldsIndent\"typeAnnotation\": null")
+      }
+      if value.expr |expr| {
+        print(",\n$fieldsIndent\"expr\": ")
+        printAstNodeAsJson(expr, 0, currentIndentLevel + 1)
+      } else {
+        print(",\n$fieldsIndent\"expr\": null")
+      }
+      print("\n")
     }
   }
   println("$endIndent}")
