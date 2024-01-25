@@ -13,3 +13,18 @@ val _: Foo<A, B[],>
 val _: Foo<A, B?[], Bar<B>>
 
 val _: Foo<A, B?[], Bar<B>>? = None
+
+val _: (Int)[]
+val _: (Int)
+val _: (A, B[], C?, D<(A, B)>)
+
+val _: (Int) => Int
+val _: (Int[], Int?) => Int
+val _: ((Int) => Int, Int?) => Int
+val _: () => Int
+val _: () => (Int) => Int
+val _: () => ((Int) => Int) => Int
+val _: () => Int[]
+val _: (() => Int)[]
+val _: () => Int?
+val _: (() => Int)?

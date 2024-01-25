@@ -75,6 +75,7 @@ fn parser_tests() {
         // Type identifiers
         .add_test_vs_txt("parser/typeidentifiers.abra", "parser/typeidentifiers.out.json")
         .add_test_vs_txt("parser/typeidentifiers_error_empty_typeargs.abra", "parser/typeidentifiers_error_empty_typeargs.out")
+        .add_test_vs_txt("parser/typeidentifiers_error_empty_tuple.abra", "parser/typeidentifiers_error_empty_tuple.out")
         .add_test_vs_txt("parser/typeidentifiers_error_misplaced_typeargs.abra", "parser/typeidentifiers_error_misplaced_typeargs.out")
         .add_test_vs_txt("parser/typeidentifiers_error_no_base_ident.abra", "parser/typeidentifiers_error_no_base_ident.out")
         .add_test_vs_txt("parser/typeidentifiers_error_no_rbrack.abra", "parser/typeidentifiers_error_no_rbrack.out")

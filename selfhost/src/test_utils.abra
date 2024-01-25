@@ -157,6 +157,32 @@ func printTypeIdentifierAsJson(typeIdentifier: TypeIdentifier, indentLevelStart:
       printTypeIdentifierAsJson(inner, 0, currentIndentLevel + 1)
       println()
     }
+    TypeIdentifier.Tuple(typeArguments) => {
+      println("\"tuple\",\n$fieldsIndent\"typeArguments\": [")
+      for arg, idx in typeArguments {
+        printTypeIdentifierAsJson(arg, currentIndentLevel + 2, currentIndentLevel + 2)
+        val comma = if idx != typeArguments.length - 1 "," else ""
+        println(comma)
+      }
+      println("$fieldsIndent]")
+    }
+    TypeIdentifier.Function(argTypes, retType) => {
+      println("\"function\",")
+      if argTypes.isEmpty() {
+        println("$fieldsIndent\"argumentTypes\": [],")
+      } else {
+        println("$fieldsIndent\"argumentTypes\": [")
+        for arg, idx in argTypes {
+          printTypeIdentifierAsJson(arg, currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != argTypes.length - 1 "," else ""
+          println(comma)
+        }
+        print("$fieldsIndent],\n")
+      }
+      print("$fieldsIndent\"returnType\": ")
+      printTypeIdentifierAsJson(retType, 0, currentIndentLevel + 1)
+      println()
+    }
   }
   print("$endIndent}")
 }
