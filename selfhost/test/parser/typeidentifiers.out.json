@@ -1,0 +1,345 @@
+{
+  "nodes": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "ident": { "name": "_", "position": [1, 5] },
+        "typeAnnotation": {
+          "kind": "normal",
+          "label": { "name": "Int", "position": [1, 8] },
+          "typeArguments": []
+        },
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "LBrack"
+        }
+      },
+      "kind": {
+        "name": "array",
+        "items": []
+      }
+    },
+    {
+      "token": {
+        "position": [4, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "ident": { "name": "_", "position": [4, 5] },
+        "typeAnnotation": {
+          "kind": "array",
+          "inner": {
+            "kind": "array",
+            "inner": {
+              "kind": "normal",
+              "label": { "name": "Int", "position": [4, 8] },
+              "typeArguments": []
+            }
+          }
+        },
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [5, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "ident": { "name": "_", "position": [5, 5] },
+        "typeAnnotation": {
+          "kind": "option",
+          "inner": {
+            "kind": "normal",
+            "label": { "name": "Int", "position": [5, 8] },
+            "typeArguments": []
+          }
+        },
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [6, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "ident": { "name": "_", "position": [6, 5] },
+        "typeAnnotation": {
+          "kind": "option",
+          "inner": {
+            "kind": "option",
+            "inner": {
+              "kind": "normal",
+              "label": { "name": "Int", "position": [6, 8] },
+              "typeArguments": []
+            }
+          }
+        },
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [7, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "ident": { "name": "_", "position": [7, 5] },
+        "typeAnnotation": {
+          "kind": "option",
+          "inner": {
+            "kind": "array",
+            "inner": {
+              "kind": "normal",
+              "label": { "name": "Int", "position": [7, 8] },
+              "typeArguments": []
+            }
+          }
+        },
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [8, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "ident": { "name": "_", "position": [8, 5] },
+        "typeAnnotation": {
+          "kind": "array",
+          "inner": {
+            "kind": "option",
+            "inner": {
+              "kind": "array",
+              "inner": {
+                "kind": "normal",
+                "label": { "name": "Int", "position": [8, 8] },
+                "typeArguments": []
+              }
+            }
+          }
+        },
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [10, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "ident": { "name": "_", "position": [10, 5] },
+        "typeAnnotation": {
+          "kind": "normal",
+          "label": { "name": "Array", "position": [10, 8] },
+          "typeArguments": [
+            {
+              "kind": "normal",
+              "label": { "name": "T", "position": [10, 14] },
+              "typeArguments": []
+            }
+          ]
+        },
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [11, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "ident": { "name": "_", "position": [11, 5] },
+        "typeAnnotation": {
+          "kind": "normal",
+          "label": { "name": "Map", "position": [11, 8] },
+          "typeArguments": [
+            {
+              "kind": "normal",
+              "label": { "name": "K", "position": [11, 12] },
+              "typeArguments": []
+            },
+            {
+              "kind": "normal",
+              "label": { "name": "V", "position": [11, 15] },
+              "typeArguments": []
+            }
+          ]
+        },
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [12, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "ident": { "name": "_", "position": [12, 5] },
+        "typeAnnotation": {
+          "kind": "normal",
+          "label": { "name": "Foo", "position": [12, 8] },
+          "typeArguments": [
+            {
+              "kind": "normal",
+              "label": { "name": "A", "position": [12, 12] },
+              "typeArguments": []
+            },
+            {
+              "kind": "array",
+              "inner": {
+                "kind": "normal",
+                "label": { "name": "B", "position": [12, 15] },
+                "typeArguments": []
+              }
+            }
+          ]
+        },
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [13, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "ident": { "name": "_", "position": [13, 5] },
+        "typeAnnotation": {
+          "kind": "normal",
+          "label": { "name": "Foo", "position": [13, 8] },
+          "typeArguments": [
+            {
+              "kind": "normal",
+              "label": { "name": "A", "position": [13, 12] },
+              "typeArguments": []
+            },
+            {
+              "kind": "array",
+              "inner": {
+                "kind": "option",
+                "inner": {
+                  "kind": "normal",
+                  "label": { "name": "B", "position": [13, 15] },
+                  "typeArguments": []
+                }
+              }
+            },
+            {
+              "kind": "normal",
+              "label": { "name": "Bar", "position": [13, 21] },
+              "typeArguments": [
+                {
+                  "kind": "normal",
+                  "label": { "name": "B", "position": [13, 25] },
+                  "typeArguments": []
+                }
+              ]
+            }
+          ]
+        },
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [15, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "ident": { "name": "_", "position": [15, 5] },
+        "typeAnnotation": {
+          "kind": "option",
+          "inner": {
+            "kind": "normal",
+            "label": { "name": "Foo", "position": [15, 8] },
+            "typeArguments": [
+              {
+                "kind": "normal",
+                "label": { "name": "A", "position": [15, 12] },
+                "typeArguments": []
+              },
+              {
+                "kind": "array",
+                "inner": {
+                  "kind": "option",
+                  "inner": {
+                    "kind": "normal",
+                    "label": { "name": "B", "position": [15, 15] },
+                    "typeArguments": []
+                  }
+                }
+              },
+              {
+                "kind": "normal",
+                "label": { "name": "Bar", "position": [15, 21] },
+                "typeArguments": [
+                  {
+                    "kind": "normal",
+                    "label": { "name": "B", "position": [15, 25] },
+                    "typeArguments": []
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "expr": {
+          "token": {
+            "position": [15, 32],
+            "kind": {
+              "name": "None"
+            }
+          },
+          "kind": {
+            "name": "identifier",
+            "ident": "None"
+          }
+        }
+      }
+    }
+  ]
+}

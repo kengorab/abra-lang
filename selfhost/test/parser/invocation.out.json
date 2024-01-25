@@ -305,7 +305,7 @@
         },
         "arguments": [
           {
-            "label": { "position": [5, 5], "name": "a" },
+            "label": { "name": "a", "position": [5, 5] },
             "value": {
               "token": {
                 "position": [5, 8],
@@ -321,7 +321,7 @@
             }
           },
           {
-            "label": { "position": [5, 13], "name": "b" },
+            "label": { "name": "b", "position": [5, 13] },
             "value": {
               "token": {
                 "position": [5, 16],

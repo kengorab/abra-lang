@@ -66,5 +66,17 @@ fn parser_tests() {
         .add_test_vs_txt("parser/indexing.abra", "parser/indexing.out.json")
         .add_test_vs_txt("parser/indexing_error_eof.abra", "parser/indexing_error_eof.out")
         .add_test_vs_txt("parser/indexing_error_no_rbrack.abra", "parser/indexing_error_no_rbrack.out")
+        // Binding declaration
+        .add_test_vs_txt("parser/bindingdecl.abra", "parser/bindingdecl.out.json")
+        .add_test_vs_txt("parser/bindingdecl_error_bad_expr.abra", "parser/bindingdecl_error_bad_expr.out")
+        .add_test_vs_txt("parser/bindingdecl_error_bad_ident.abra", "parser/bindingdecl_error_bad_ident.out")
+        .add_test_vs_txt("parser/bindingdecl_error_no_expr.abra", "parser/bindingdecl_error_no_expr.out")
+        .add_test_vs_txt("parser/bindingdecl_error_no_ident.abra", "parser/bindingdecl_error_no_ident.out")
+        // Type identifiers
+        .add_test_vs_txt("parser/typeidentifiers.abra", "parser/typeidentifiers.out.json")
+        .add_test_vs_txt("parser/typeidentifiers_error_empty_typeargs.abra", "parser/typeidentifiers_error_empty_typeargs.out")
+        .add_test_vs_txt("parser/typeidentifiers_error_misplaced_typeargs.abra", "parser/typeidentifiers_error_misplaced_typeargs.out")
+        .add_test_vs_txt("parser/typeidentifiers_error_no_base_ident.abra", "parser/typeidentifiers_error_no_base_ident.out")
+        .add_test_vs_txt("parser/typeidentifiers_error_no_rbrack.abra", "parser/typeidentifiers_error_no_rbrack.out")
         .run_tests();
 }

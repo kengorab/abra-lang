@@ -1,0 +1,15 @@
+var _: Int  // |
+[]          // | <- make sure this doesn't get parsed as `var d: Int[]`
+
+var _: Int[][]
+var _: Int?
+var _: Int??
+var _: Int[]?
+var _: Int[]?[]
+
+val _: Array<T>
+val _: Map<K, V>
+val _: Foo<A, B[],>
+val _: Foo<A, B?[], Bar<B>>
+
+val _: Foo<A, B?[], Bar<B>>? = None
