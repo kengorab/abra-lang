@@ -1,5 +1,5 @@
 import Token, TokenKind from "./lexer"
-import Label, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier from "./parser"
+import Label, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode from "./parser"
 
 export func printTokenAsJson(token: Token, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
@@ -424,6 +424,31 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
           println("$comma")
         }
         println("$fieldsIndent]")
+      }
+    }
+    AstNodeKind.Assignment(expr, mode) => {
+      println("$fieldsIndent\"name\": \"assignment\",")
+      print("$fieldsIndent\"expr\": ")
+      printAstNodeAsJson(expr, 0, currentIndentLevel + 1)
+      print(",\n$fieldsIndent\"mode\": ")
+      match mode {
+        AssignmentMode.Variable(name) => {
+          println("{\n$fieldsIndent  \"mode\": \"variable\",")
+          println("$fieldsIndent  \"variable\": \"$name\"")
+          println("$fieldsIndent}")
+        }
+        AssignmentMode.Indexing(expr, indexExpr) => {
+          println("{\n$fieldsIndent  \"mode\": \"indexing\",")
+          print("$fieldsIndent  \"expr\": ")
+          printAstNodeAsJson(expr, 0, currentIndentLevel + 2)
+          println(",")
+          print("$fieldsIndent  \"indexExpr\": ")
+          printAstNodeAsJson(indexExpr, 0, currentIndentLevel + 2)
+          println("\n$fieldsIndent}")
+        }
+        AssignmentMode.Accessor(node) => {
+          printAstNodeKindAsJson(AstNodeKind.Accessor(node), 0, currentIndentLevel + 1)
+        }
       }
     }
     AstNodeKind.BindingDeclaration(value) => {

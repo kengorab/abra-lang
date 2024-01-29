@@ -98,6 +98,13 @@ fn parser_tests() {
         .add_test_vs_txt("parser/indexing.abra", "parser/indexing.out.json")
         .add_test_vs_txt("parser/indexing_error_eof.abra", "parser/indexing_error_eof.out")
         .add_test_vs_txt("parser/indexing_error_no_rbrack.abra", "parser/indexing_error_no_rbrack.out")
+        // Assignment
+        .add_test_vs_txt("parser/assignment.abra", "parser/assignment.out.json")
+        .add_test_vs_txt("parser/assignment_error_as_expr.abra", "parser/assignment_error_as_expr.out")
+        .add_test_vs_txt("parser/assignment_error_assign_to_range.abra", "parser/assignment_error_assign_to_range.out")
+        .add_test_vs_txt("parser/assignment_error_assignment_precedence.abra", "parser/assignment_error_assignment_precedence.out")
+        .add_test_vs_txt("parser/assignment_error_illegal_target.abra", "parser/assignment_error_illegal_target.out")
+
         // Type identifiers
         .add_test_vs_txt("parser/typeidentifiers.abra", "parser/typeidentifiers.out.json")
         .add_test_vs_txt("parser/typeidentifiers_error_empty_typeargs.abra", "parser/typeidentifiers_error_empty_typeargs.out")
