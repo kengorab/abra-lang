@@ -1,0 +1,8 @@
+func foo(): Int = 123
+func foo(): Int { 123 }
+func foo(a: Int) {
+  val x = a + 1
+}
+func foo(a: Int, b: Bool = true, c = "abc") {
+  val x = a + 1
+}

@@ -343,6 +343,20 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         println("$fieldsIndent]")
       }
     }
+    AstNodeKind.Tuple(items) => {
+      println("$fieldsIndent\"name\": \"tuple\",")
+      if items.isEmpty() {
+        println("$fieldsIndent\"items\": []")
+      } else {
+        println("$fieldsIndent\"items\": [")
+        for item, idx in items {
+          printAstNodeAsJson(item, currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != items.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent]")
+      }
+    }
     AstNodeKind.Indexing(expr, indexMode) => {
       println("$fieldsIndent\"name\": \"indexing\",")
       print("$fieldsIndent\"expr\": ")
@@ -373,6 +387,45 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
       }
       println("\n$fieldsIndent}")
     }
+    AstNodeKind.Lambda(node) => {
+      println("$fieldsIndent\"name\": \"lambda\",")
+      if node.params.isEmpty() {
+        println("$fieldsIndent\"params\": [],")
+      } else {
+        println("$fieldsIndent\"params\": [")
+        for p, idx in node.params {
+          println("$fieldsIndent  {")
+          print("$fieldsIndent    \"label\": ")
+          printLabelAsJson(p.label)
+          print(",\n$fieldsIndent    \"typeAnnotation\": ")
+          if p.typeAnnotation |ann| {
+            printTypeIdentifierAsJson(ann, 0, currentIndentLevel + 3)
+          } else {
+            print("null")
+          }
+          print(",\n$fieldsIndent    \"defaultValue\": ")
+          if p.defaultValue |defaultValue| {
+            printAstNodeAsJson(defaultValue, 0, currentIndentLevel + 3)
+          } else {
+            println("null")
+          }
+          val comma = if idx != node.params.length - 1 "," else ""
+          println("\n$fieldsIndent  }$comma")
+        }
+        println("$fieldsIndent],")
+      }
+      if node.body.isEmpty() {
+        println("$fieldsIndent\"body\": []")
+      } else {
+        println("$fieldsIndent\"body\": [")
+        for n, idx in node.body {
+          printAstNodeAsJson(n, currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != node.body.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent]")
+      }
+    }
     AstNodeKind.BindingDeclaration(value) => {
       println("$fieldsIndent\"name\": \"bindingDecl\",")
       print("$fieldsIndent\"ident\": ")
@@ -391,6 +444,48 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         print(",\n$fieldsIndent\"expr\": null")
       }
       print("\n")
+    }
+    AstNodeKind.FunctionDeclaration(node) => {
+      println("$fieldsIndent\"name\": \"function\",")
+      print("$fieldsIndent\"ident\": ")
+      printLabelAsJson(node.name)
+      println(",")
+      if node.params.isEmpty() {
+        println("$fieldsIndent\"params\": [],")
+      } else {
+        println("$fieldsIndent\"params\": [")
+        for p, idx in node.params {
+          println("$fieldsIndent  {")
+          print("$fieldsIndent    \"label\": ")
+          printLabelAsJson(p.label)
+          print(",\n$fieldsIndent    \"typeAnnotation\": ")
+          if p.typeAnnotation |ann| {
+            printTypeIdentifierAsJson(ann, 0, currentIndentLevel + 3)
+          } else {
+            print("null")
+          }
+          print(",\n$fieldsIndent    \"defaultValue\": ")
+          if p.defaultValue |defaultValue| {
+            printAstNodeAsJson(defaultValue, 0, currentIndentLevel + 3)
+          } else {
+            println("null")
+          }
+          val comma = if idx != node.params.length - 1 "," else ""
+          println("\n$fieldsIndent  }$comma")
+        }
+        println("$fieldsIndent],")
+      }
+      if node.body.isEmpty() {
+        println("$fieldsIndent\"body\": []")
+      } else {
+        println("$fieldsIndent\"body\": [")
+        for n, idx in node.body {
+          printAstNodeAsJson(n, currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != node.body.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent]")
+      }
     }
   }
   println("$endIndent}")

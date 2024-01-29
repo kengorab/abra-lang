@@ -62,16 +62,42 @@ fn parser_tests() {
         .add_test_vs_txt("parser/invocation_error_eof.abra", "parser/invocation_error_eof.out")
         .add_test_vs_txt("parser/invocation_error_no_comma.abra", "parser/invocation_error_no_comma.out")
         .add_test_vs_txt("parser/invocation_error_no_rparen.abra", "parser/invocation_error_no_rparen.out")
+        // Array
+        .add_test_vs_txt("parser/array.abra", "parser/array.out.json")
+        .add_test_vs_txt("parser/array_error_eof.abra", "parser/array_error_eof.out")
+        .add_test_vs_txt("parser/array_error_no_comma.abra", "parser/array_error_no_comma.out")
+        .add_test_vs_txt("parser/array_error_no_rbrack.abra", "parser/array_error_no_rbrack.out")
+        // Set
+        .add_test_vs_txt("parser/set.abra", "parser/set.out.json")
+        .add_test_vs_txt("parser/set_error_eof.abra", "parser/set_error_eof.out")
+        .add_test_vs_txt("parser/set_error_no_comma.abra", "parser/set_error_no_comma.out")
+        .add_test_vs_txt("parser/set_error_no_rbrace.abra", "parser/set_error_no_rbrace.out")
+        // Map
+        .add_test_vs_txt("parser/map.abra", "parser/map.out.json")
+        .add_test_vs_txt("parser/map_error_bad_key.abra", "parser/map_error_bad_key.out")
+        .add_test_vs_txt("parser/map_error_no_colon.abra", "parser/map_error_no_colon.out")
+        .add_test_vs_txt("parser/map_error_no_colon_eof.abra", "parser/map_error_no_colon_eof.out")
+        .add_test_vs_txt("parser/map_error_no_comma.abra", "parser/map_error_no_comma.out")
+        .add_test_vs_txt("parser/map_error_no_rbrace.abra", "parser/map_error_no_rbrace.out")
+        .add_test_vs_txt("parser/map_error_no_value.abra", "parser/map_error_no_value.out")
+        .add_test_vs_txt("parser/map_error_no_value_eof.abra", "parser/map_error_no_value_eof.out")
+        // Tuples
+        .add_test_vs_txt("parser/tuples.abra", "parser/tuples.out.json")
+        .add_test_vs_txt("parser/tuples_error_eof.abra", "parser/tuples_error_eof.out")
+        .add_test_vs_txt("parser/tuples_error_no_comma.abra", "parser/tuples_error_no_comma.out")
+        .add_test_vs_txt("parser/tuples_error_no_rparen.abra", "parser/tuples_error_no_rparen.out")
+        // Lambdas
+        .add_test_vs_txt("parser/lambdas.abra", "parser/lambdas.out.json")
+        .add_test_vs_txt("parser/lambdas_error_bad_arg.abra", "parser/lambdas_error_bad_arg.out")
+        .add_test_vs_txt("parser/lambdas_error_badparam_None.abra", "parser/lambdas_error_badparam_None.out")
+        .add_test_vs_txt("parser/lambdas_error_badparam_nonident.abra", "parser/lambdas_error_badparam_nonident.out")
+        .add_test_vs_txt("parser/lambdas_error_badparam_self.abra", "parser/lambdas_error_badparam_self.out")
+        .add_test_vs_txt("parser/lambdas_error_noargs_no_arrow.abra", "parser/lambdas_error_noargs_no_arrow.out")
+        .add_test_vs_txt("parser/lambdas_error_statement_body.abra", "parser/lambdas_error_statement_body.out")
         // Indexing
         .add_test_vs_txt("parser/indexing.abra", "parser/indexing.out.json")
         .add_test_vs_txt("parser/indexing_error_eof.abra", "parser/indexing_error_eof.out")
         .add_test_vs_txt("parser/indexing_error_no_rbrack.abra", "parser/indexing_error_no_rbrack.out")
-        // Binding declaration
-        .add_test_vs_txt("parser/bindingdecl.abra", "parser/bindingdecl.out.json")
-        .add_test_vs_txt("parser/bindingdecl_error_bad_expr.abra", "parser/bindingdecl_error_bad_expr.out")
-        .add_test_vs_txt("parser/bindingdecl_error_bad_ident.abra", "parser/bindingdecl_error_bad_ident.out")
-        .add_test_vs_txt("parser/bindingdecl_error_no_expr.abra", "parser/bindingdecl_error_no_expr.out")
-        .add_test_vs_txt("parser/bindingdecl_error_no_ident.abra", "parser/bindingdecl_error_no_ident.out")
         // Type identifiers
         .add_test_vs_txt("parser/typeidentifiers.abra", "parser/typeidentifiers.out.json")
         .add_test_vs_txt("parser/typeidentifiers_error_empty_typeargs.abra", "parser/typeidentifiers_error_empty_typeargs.out")
@@ -79,5 +105,15 @@ fn parser_tests() {
         .add_test_vs_txt("parser/typeidentifiers_error_misplaced_typeargs.abra", "parser/typeidentifiers_error_misplaced_typeargs.out")
         .add_test_vs_txt("parser/typeidentifiers_error_no_base_ident.abra", "parser/typeidentifiers_error_no_base_ident.out")
         .add_test_vs_txt("parser/typeidentifiers_error_no_rbrack.abra", "parser/typeidentifiers_error_no_rbrack.out")
+        // Binding declaration
+        .add_test_vs_txt("parser/bindingdecl.abra", "parser/bindingdecl.out.json")
+        .add_test_vs_txt("parser/bindingdecl_error_bad_expr.abra", "parser/bindingdecl_error_bad_expr.out")
+        .add_test_vs_txt("parser/bindingdecl_error_bad_ident.abra", "parser/bindingdecl_error_bad_ident.out")
+        .add_test_vs_txt("parser/bindingdecl_error_no_expr.abra", "parser/bindingdecl_error_no_expr.out")
+        .add_test_vs_txt("parser/bindingdecl_error_no_ident.abra", "parser/bindingdecl_error_no_ident.out")
+        // Function declaration
+        .add_test_vs_txt("parser/functiondecl.abra", "parser/functiondecl.out.json")
+        .add_test_vs_txt("parser/functiondecl_error_bad_name.abra", "parser/functiondecl_error_bad_name.out")
+        .add_test_vs_txt("parser/functiondecl_error_no_parens.abra", "parser/functiondecl_error_no_parens.out")
         .run_tests();
 }
