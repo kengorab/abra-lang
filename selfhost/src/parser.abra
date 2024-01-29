@@ -69,6 +69,12 @@ export enum IndexingMode {
   Range(start: AstNode?, end: AstNode?)
 }
 
+export enum AssignmentMode {
+  Variable(name: String)
+  Indexing(expr: AstNode, indexExpr: AstNode)
+  Accessor(node: AccessorAstNode)
+}
+
 export enum TypeIdentifier {
   Normal(name: Label, typeArguments: TypeIdentifier[]?)
   Array(inner: TypeIdentifier)
@@ -115,8 +121,30 @@ export enum AstNodeKind {
   Tuple(items: AstNode[])
   Indexing(expr: AstNode, index: IndexingMode)
   Lambda(value: LambdaNode)
+  Assignment(expr: AstNode, mode: AssignmentMode)
   BindingDeclaration(value: BindingDeclarationNode)
   FunctionDeclaration(value: FunctionDeclarationNode)
+
+  func isExpression(self): Bool {
+    match self {
+      AstNodeKind.Literal => true
+      AstNodeKind.Unary => true
+      AstNodeKind.Binary => true
+      AstNodeKind.Grouped(inner) => inner.kind.isExpression()
+      AstNodeKind.Identifier => true
+      AstNodeKind.Accessor => true
+      AstNodeKind.Invocation => true
+      AstNodeKind.Array => true
+      AstNodeKind.Set => true
+      AstNodeKind.Map => true
+      AstNodeKind.Tuple => true
+      AstNodeKind.Indexing => true
+      AstNodeKind.Lambda => true
+      AstNodeKind.Assignment => false
+      AstNodeKind.BindingDeclaration => false
+      AstNodeKind.FunctionDeclaration => false
+    }
+  }
 }
 
 enum ParseErrorKind {
@@ -241,7 +269,7 @@ export type Parser {
       TokenKind.Val => self._parseBindingDeclaration(mutable: false)
       TokenKind.Var => self._parseBindingDeclaration(mutable: true)
       TokenKind.Func => self._parseFunctionDeclaration()
-      _ => self._parseExpression()
+      _ => self._parseExpressionStatement()
     }
   }
 
@@ -450,8 +478,14 @@ export type Parser {
     Result.Ok(nodes)
   }
 
+  func _parseExpressionStatement(self): Result<AstNode, ParseError> = self._parsePrecedence(prec: 0)
+
   func _parseExpression(self): Result<AstNode, ParseError> {
-    self._parsePrecedence(prec: 0)
+    val node = match self._parsePrecedence(prec: 0) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    if !node.kind.isExpression() {
+      return Result.Err(ParseError(position: node.token.position, kind: ParseErrorKind.UnexpectedToken(node.token)))
+    }
+    Result.Ok(node)
   }
 
   func _parsePrecedence(self, prec: Int): Result<AstNode, ParseError> {
@@ -502,6 +536,7 @@ export type Parser {
       TokenKind.LParen => self._parseInvocation(infixToken, left)
       TokenKind.LBrack => self._parseIndexing(infixToken, left)
       TokenKind.Arrow => self._parseLambda(infixToken, left)
+      TokenKind.Eq => self._parseAssignment(infixToken, left)
       _ => return Result.Err(ParseError(position: infixToken.position, kind: ParseErrorKind.UnexpectedToken(infixToken)))
     }
   }
@@ -812,6 +847,25 @@ export type Parser {
 
     return Result.Ok(AstNode(token: token, kind: AstNodeKind.Lambda(LambdaNode(params: params, body: body))))
   }
+
+  func _parseAssignment(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
+    val mode = match left.kind {
+      AstNodeKind.Identifier(identKind) => match identKind {
+        IdentifierKind.Named(name) => AssignmentMode.Variable(name)
+        _ => return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      }
+      AstNodeKind.Accessor(node) => AssignmentMode.Accessor(node)
+      AstNodeKind.Indexing(expr, indexMode) => match indexMode {
+        IndexingMode.Single(indexExpr) => AssignmentMode.Indexing(expr, indexExpr)
+        _ => return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      }
+      _ => return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+    }
+
+    val expr = match self._parseExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    Result.Ok(AstNode(token: token, kind: AstNodeKind.Assignment(mode: mode, expr: expr)))
+  }
 }
 
 func todo(position: Position): Result<AstNode, ParseError> {
@@ -829,6 +883,7 @@ type Precedence {
   func multiplication(): Int = 2
   func unary(): Int = 3
   func call(): Int = 4
+  func assignment(): Int = 5
 
   func forToken(token: Token): Int {
     match token.kind {
@@ -842,6 +897,7 @@ type Precedence {
       TokenKind.Arrow => Precedence.call()
       TokenKind.LParen(sawNewline) => if sawNewline Precedence.none() else Precedence.call()
       TokenKind.LBrack(sawNewline) => if sawNewline Precedence.none() else Precedence.call()
+      TokenKind.Eq => Precedence.assignment()
       _ => Precedence.none()
     }
   }
