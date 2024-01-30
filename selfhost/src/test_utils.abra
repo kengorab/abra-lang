@@ -273,10 +273,22 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
       println("$fieldsIndent\"name\": \"invocation\",")
       print("$fieldsIndent\"invokee\": ")
       printAstNodeAsJson(invocationNode.invokee, 0, currentIndentLevel + 1)
-      if invocationNode.arguments.isEmpty() {
-        println(",\n$fieldsIndent\"arguments\": []")
+      if invocationNode.typeArguments.isEmpty() {
+        println(",\n$fieldsIndent\"typeArguments\": [],")
       } else {
-        println(",\n$fieldsIndent\"arguments\": [")
+        println(",\n$fieldsIndent\"typeArguments\": [")
+        for typeArg, idx in invocationNode.typeArguments {
+          printTypeIdentifierAsJson(typeArg, currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != invocationNode.typeArguments.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent],")
+      }
+
+      if invocationNode.arguments.isEmpty() {
+        println("$fieldsIndent\"arguments\": []")
+      } else {
+        println("$fieldsIndent\"arguments\": [")
         val pathIndent = "  ".repeat(currentIndentLevel + 2)
         val pathsIndent = "  ".repeat(currentIndentLevel + 3)
         for arg, idx in invocationNode.arguments {
