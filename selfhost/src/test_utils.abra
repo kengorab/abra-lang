@@ -486,7 +486,18 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
       println("$fieldsIndent\"name\": \"function\",")
       print("$fieldsIndent\"ident\": ")
       printLabelAsJson(node.name)
-      println(",")
+      if node.typeParams.isEmpty() {
+        println(",\n$fieldsIndent\"typeParams\": [],")
+      } else {
+        println(",\n$fieldsIndent\"typeParams\": [")
+        for label, idx in node.typeParams {
+          print("$fieldsIndent  ")
+          printLabelAsJson(label)
+          val comma = if idx != node.typeParams.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent],")
+      }
       if node.params.isEmpty() {
         println("$fieldsIndent\"params\": [],")
       } else {

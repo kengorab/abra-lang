@@ -126,5 +126,7 @@ fn parser_tests() {
         .add_test_vs_txt("parser/functiondecl.abra", "parser/functiondecl.out.json")
         .add_test_vs_txt("parser/functiondecl_error_bad_name.abra", "parser/functiondecl_error_bad_name.out")
         .add_test_vs_txt("parser/functiondecl_error_no_parens.abra", "parser/functiondecl_error_no_parens.out")
+        .add_test_vs_txt("parser/functiondecl_error_empty_typeparams.abra", "parser/functiondecl_error_empty_typeparams.out")
+        .add_test_vs_txt("parser/functiondecl_error_typeparam_invalid.abra", "parser/functiondecl_error_typeparam_invalid.out")
         .run_tests();
 }

@@ -10,6 +10,7 @@
       "kind": {
         "name": "function",
         "ident": { "name": "foo", "position": [1, 6] },
+        "typeParams": [],
         "params": [],
         "body": [
           {
@@ -39,6 +40,7 @@
       "kind": {
         "name": "function",
         "ident": { "name": "foo", "position": [2, 6] },
+        "typeParams": [],
         "params": [],
         "body": [
           {
@@ -68,6 +70,7 @@
       "kind": {
         "name": "function",
         "ident": { "name": "foo", "position": [3, 6] },
+        "typeParams": [],
         "params": [
           {
             "label": { "name": "a", "position": [3, 10] },
@@ -146,6 +149,7 @@
       "kind": {
         "name": "function",
         "ident": { "name": "foo", "position": [6, 6] },
+        "typeParams": [],
         "params": [
           {
             "label": { "name": "a", "position": [6, 10] },
@@ -252,6 +256,24 @@
             }
           }
         ]
+      }
+    },
+    {
+      "token": {
+        "position": [9, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "kind": {
+        "name": "function",
+        "ident": { "name": "foo", "position": [9, 6] },
+        "typeParams": [
+          { "name": "A", "position": [9, 10] },
+          { "name": "B", "position": [9, 13] }
+        ],
+        "params": [],
+        "body": []
       }
     }
   ]
