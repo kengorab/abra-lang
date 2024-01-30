@@ -22,6 +22,7 @@
             "ident": "foo"
           }
         },
+        "typeArguments": [],
         "arguments": []
       }
     },
@@ -80,6 +81,7 @@
             ]
           }
         },
+        "typeArguments": [],
         "arguments": []
       }
     },
@@ -128,6 +130,7 @@
             ]
           }
         },
+        "typeArguments": [],
         "arguments": [
           {
             "label": null,
@@ -221,6 +224,7 @@
             "ident": "foo"
           }
         },
+        "typeArguments": [],
         "arguments": [
           {
             "label": null,
@@ -246,6 +250,7 @@
                     "ident": "bar"
                   }
                 },
+                "typeArguments": [],
                 "arguments": []
               }
             }
@@ -274,6 +279,7 @@
                     "ident": "baz"
                   }
                 },
+                "typeArguments": [],
                 "arguments": []
               }
             }
@@ -303,6 +309,7 @@
             "ident": "foo"
           }
         },
+        "typeArguments": [],
         "arguments": [
           {
             "label": { "name": "a", "position": [5, 5] },
@@ -334,6 +341,271 @@
                 "name": "literal",
                 "type": "int",
                 "value": 123
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [6, 21],
+        "kind": {
+          "name": "LParen"
+        }
+      },
+      "kind": {
+        "name": "invocation",
+        "invokee": {
+          "token": {
+            "position": [6, 1],
+            "kind": {
+              "name": "Ident",
+              "value": "foo"
+            }
+          },
+          "kind": {
+            "name": "identifier",
+            "ident": "foo"
+          }
+        },
+        "typeArguments": [
+          {
+            "kind": "normal",
+            "label": { "name": "A", "position": [6, 5] },
+            "typeArguments": []
+          },
+          {
+            "kind": "array",
+            "inner": {
+              "kind": "normal",
+              "label": { "name": "B", "position": [6, 8] },
+              "typeArguments": []
+            }
+          },
+          {
+            "kind": "normal",
+            "label": { "name": "C", "position": [6, 13] },
+            "typeArguments": [
+              {
+                "kind": "normal",
+                "label": { "name": "A", "position": [6, 15] },
+                "typeArguments": []
+              },
+              {
+                "kind": "normal",
+                "label": { "name": "B", "position": [6, 18] },
+                "typeArguments": []
+              }
+            ]
+          }
+        ],
+        "arguments": [
+          {
+            "label": null,
+            "value": {
+              "token": {
+                "position": [6, 22],
+                "kind": {
+                  "name": "Int",
+                  "value": 1
+                }
+              },
+              "kind": {
+                "name": "literal",
+                "type": "int",
+                "value": 1
+              }
+            }
+          },
+          {
+            "label": null,
+            "value": {
+              "token": {
+                "position": [6, 25],
+                "kind": {
+                  "name": "Int",
+                  "value": 2
+                }
+              },
+              "kind": {
+                "name": "literal",
+                "type": "int",
+                "value": 2
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [7, 13],
+        "kind": {
+          "name": "LParen"
+        }
+      },
+      "kind": {
+        "name": "invocation",
+        "invokee": {
+          "token": {
+            "position": [7, 4],
+            "kind": {
+              "name": "QuestionDot"
+            }
+          },
+          "kind": {
+            "name": "accessor",
+            "root": {
+              "token": {
+                "position": [7, 1],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              "kind": {
+                "name": "identifier",
+                "ident": "a"
+              }
+            },
+            "path": [
+              {
+                "dotToken": {
+                  "position": [7, 2],
+                  "kind": {
+                    "name": "Dot"
+                  }
+                },
+                "ident": "b",
+                "position": [7, 3]
+              },
+              {
+                "dotToken": {
+                  "position": [7, 4],
+                  "kind": {
+                    "name": "QuestionDot"
+                  }
+                },
+                "ident": "c",
+                "position": [7, 6]
+              }
+            ]
+          }
+        },
+        "typeArguments": [
+          {
+            "kind": "normal",
+            "label": { "name": "A", "position": [7, 8] },
+            "typeArguments": []
+          },
+          {
+            "kind": "normal",
+            "label": { "name": "B", "position": [7, 11] },
+            "typeArguments": []
+          }
+        ],
+        "arguments": []
+      }
+    },
+    {
+      "token": {
+        "position": [8, 13],
+        "kind": {
+          "name": "LParen"
+        }
+      },
+      "kind": {
+        "name": "invocation",
+        "invokee": {
+          "token": {
+            "position": [8, 4],
+            "kind": {
+              "name": "QuestionDot"
+            }
+          },
+          "kind": {
+            "name": "accessor",
+            "root": {
+              "token": {
+                "position": [8, 1],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              "kind": {
+                "name": "identifier",
+                "ident": "a"
+              }
+            },
+            "path": [
+              {
+                "dotToken": {
+                  "position": [8, 2],
+                  "kind": {
+                    "name": "Dot"
+                  }
+                },
+                "ident": "b",
+                "position": [8, 3]
+              },
+              {
+                "dotToken": {
+                  "position": [8, 4],
+                  "kind": {
+                    "name": "QuestionDot"
+                  }
+                },
+                "ident": "c",
+                "position": [8, 6]
+              }
+            ]
+          }
+        },
+        "typeArguments": [
+          {
+            "kind": "normal",
+            "label": { "name": "A", "position": [8, 8] },
+            "typeArguments": []
+          },
+          {
+            "kind": "normal",
+            "label": { "name": "B", "position": [8, 11] },
+            "typeArguments": []
+          }
+        ],
+        "arguments": [
+          {
+            "label": null,
+            "value": {
+              "token": {
+                "position": [8, 14],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              "kind": {
+                "name": "identifier",
+                "ident": "a"
+              }
+            }
+          },
+          {
+            "label": null,
+            "value": {
+              "token": {
+                "position": [8, 17],
+                "kind": {
+                  "name": "Int",
+                  "value": 2
+                }
+              },
+              "kind": {
+                "name": "literal",
+                "type": "int",
+                "value": 2
               }
             }
           }

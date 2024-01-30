@@ -62,6 +62,10 @@ fn parser_tests() {
         .add_test_vs_txt("parser/invocation_error_eof.abra", "parser/invocation_error_eof.out")
         .add_test_vs_txt("parser/invocation_error_no_comma.abra", "parser/invocation_error_no_comma.out")
         .add_test_vs_txt("parser/invocation_error_no_rparen.abra", "parser/invocation_error_no_rparen.out")
+        .add_test_vs_txt("parser/invocation_error_empty_typeargs.abra", "parser/invocation_error_empty_typeargs.out")
+        .add_test_vs_txt("parser/invocation_error_invalid_typearg.abra", "parser/invocation_error_invalid_typearg.out")
+        .add_test_vs_txt("parser/invocation_error_typeargs_eof.abra", "parser/invocation_error_typeargs_eof.out")
+        .add_test_vs_txt("parser/invocation_error_typeargs_no_lparen.abra", "parser/invocation_error_typeargs_no_lparen.out")
         // Array
         .add_test_vs_txt("parser/array.abra", "parser/array.out.json")
         .add_test_vs_txt("parser/array_error_eof.abra", "parser/array_error_eof.out")
@@ -122,5 +126,7 @@ fn parser_tests() {
         .add_test_vs_txt("parser/functiondecl.abra", "parser/functiondecl.out.json")
         .add_test_vs_txt("parser/functiondecl_error_bad_name.abra", "parser/functiondecl_error_bad_name.out")
         .add_test_vs_txt("parser/functiondecl_error_no_parens.abra", "parser/functiondecl_error_no_parens.out")
+        .add_test_vs_txt("parser/functiondecl_error_empty_typeparams.abra", "parser/functiondecl_error_empty_typeparams.out")
+        .add_test_vs_txt("parser/functiondecl_error_typeparam_invalid.abra", "parser/functiondecl_error_typeparam_invalid.out")
         .run_tests();
 }

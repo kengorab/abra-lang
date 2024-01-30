@@ -6,3 +6,4 @@ func foo(a: Int) {
 func foo(a: Int, b: Bool = true, c = "abc") {
   val x = a + 1
 }
+func foo<A, B>() {}
