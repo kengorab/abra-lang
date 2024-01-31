@@ -25,14 +25,43 @@ type UnaryAstNode {
 
 enum BinaryOp {
   Add
+  AddEq
   Sub
+  SubEq
   Mul
+  MulEq
   Div
+  DivEq
   Mod
+  ModEq
+  Pow
+  And
+  AndEq
+  Or
+  OrEq
+  Xor
+  Coalesce
+  CoalesceEq
+  Eq
+  Neq
   LT
   LTE
+  Shl
   GT
   GTE
+  Shr
+
+  func isAssignment(self): Bool = match self {
+    BinaryOp.AddEq => true
+    BinaryOp.SubEq => true
+    BinaryOp.MulEq => true
+    BinaryOp.DivEq => true
+    BinaryOp.ModEq => true
+    BinaryOp.AndEq => true
+    BinaryOp.OrEq => true
+    BinaryOp.CoalesceEq => true
+    _ => false
+  }
 }
 
 type BinaryAstNode {
@@ -549,22 +578,13 @@ export type Parser {
   func _infixRule(self, left: AstNode): Result<AstNode, ParseError> {
     val infixToken = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     match infixToken.kind {
-      TokenKind.Plus => self._parseBinary(infixToken, left)
-      TokenKind.Minus => self._parseBinary(infixToken, left)
-      TokenKind.Star => self._parseBinary(infixToken, left)
-      TokenKind.Slash => self._parseBinary(infixToken, left)
-      TokenKind.Percent => self._parseBinary(infixToken, left)
-      TokenKind.LT => self._parseBinary(infixToken, left)
-      TokenKind.LTE => self._parseBinary(infixToken, left)
-      TokenKind.GT => self._parseBinary(infixToken, left)
-      TokenKind.GTE => self._parseBinary(infixToken, left)
       TokenKind.Dot => self._parseAccessor(infixToken, left)
       TokenKind.QuestionDot => self._parseAccessor(infixToken, left)
       TokenKind.LParen => self._parseInvocation(infixToken, left)
       TokenKind.LBrack => self._parseIndexing(infixToken, left)
       TokenKind.Arrow => self._parseLambda(infixToken, left)
       TokenKind.Eq => self._parseAssignment(infixToken, left)
-      _ => return Result.Err(ParseError(position: infixToken.position, kind: ParseErrorKind.UnexpectedToken(infixToken)))
+      _ => self._parseBinary(infixToken, left)
     }
   }
 
@@ -744,15 +764,59 @@ export type Parser {
     val prec = Precedence.forToken(token)
     val op = match token.kind {
       TokenKind.Plus => BinaryOp.Add
+      TokenKind.PlusEq => BinaryOp.AddEq
       TokenKind.Minus => BinaryOp.Sub
+      TokenKind.MinusEq => BinaryOp.SubEq
       TokenKind.Star => BinaryOp.Mul
+      TokenKind.StarEq => BinaryOp.MulEq
       TokenKind.Slash => BinaryOp.Div
+      TokenKind.SlashEq => BinaryOp.DivEq
       TokenKind.Percent => BinaryOp.Mod
-      TokenKind.LT => BinaryOp.LT
+      TokenKind.PercentEq => BinaryOp.ModEq
+      TokenKind.StarStar => BinaryOp.Pow
+      TokenKind.And => BinaryOp.And
+      TokenKind.AndEq => BinaryOp.AndEq
+      TokenKind.Or => BinaryOp.Or
+      TokenKind.OrEq => BinaryOp.OrEq
+      TokenKind.Caret => BinaryOp.Xor
+      TokenKind.Elvis => BinaryOp.Coalesce
+      TokenKind.ElvisEq => BinaryOp.CoalesceEq
+      TokenKind.EqEq => BinaryOp.Eq
+      TokenKind.Neq => BinaryOp.Neq
+      TokenKind.LT => {
+        val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        if nextToken.kind == TokenKind.LT {
+          self._advance() // consume '<' token
+          BinaryOp.Shl
+        } else {
+          BinaryOp.LT
+        }
+      }
       TokenKind.LTE => BinaryOp.LTE
-      TokenKind.GT => BinaryOp.GT
+      TokenKind.GT => {
+        val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        if nextToken.kind == TokenKind.GT {
+          self._advance() // consume '>' token
+          BinaryOp.Shr
+        } else {
+          BinaryOp.GT
+        }
+      }
       TokenKind.GTE => BinaryOp.GTE
-      _ => return todo(token.position)
+      _ => return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+    }
+
+    if op.isAssignment() {
+      val isValidLvalue = match left.kind {
+        AstNodeKind.Identifier(identKind) => match identKind { IdentifierKind.Named => true, _ => false }
+        AstNodeKind.Accessor => true
+        AstNodeKind.Indexing(_, indexMode) => match indexMode { IndexingMode.Single => true, _ => false }
+        _ => false
+      }
+
+      if !isValidLvalue {
+        return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      }
     }
 
     val right = match self._parsePrecedence(prec: prec) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -950,15 +1014,26 @@ func unreachable(): Result<AstNode, ParseError> {
 type Precedence {
   // TODO: These are static functions because static constants don't yet exist
   func none(): Int = 0
-  func comparison(): Int = 1
-  func addition(): Int = 2
-  func multiplication(): Int = 3
-  func unary(): Int = 4
-  func call(): Int = 5
-  func assignment(): Int = 6
+  func coalesce(): Int = 1
+  func orAndAssign(): Int = 2
+  func or(): Int = 3
+  func and(): Int = 4
+  func equality(): Int = 5
+  func comparison(): Int = 6
+  func addMulAssign(): Int = 7
+  func addition(): Int = 8
+  func multiplication(): Int = 9
+  func unary(): Int = 11
+  func call(): Int = 12
+  func assignment(): Int = 13
 
   func forToken(token: Token): Int {
     match token.kind {
+      TokenKind.Or => Precedence.or()
+      TokenKind.Caret => Precedence.or()
+      TokenKind.And => Precedence.and()
+      TokenKind.EqEq => Precedence.equality()
+      TokenKind.Neq => Precedence.equality()
       TokenKind.LT => Precedence.comparison()
       TokenKind.LTE => Precedence.comparison()
       TokenKind.GT => Precedence.comparison()
@@ -973,7 +1048,17 @@ type Precedence {
       TokenKind.Arrow => Precedence.call()
       TokenKind.LParen(sawNewline) => if sawNewline Precedence.none() else Precedence.call()
       TokenKind.LBrack(sawNewline) => if sawNewline Precedence.none() else Precedence.call()
+      TokenKind.PlusEq => Precedence.addMulAssign()
+      TokenKind.MinusEq => Precedence.addMulAssign()
+      TokenKind.StarEq => Precedence.addMulAssign()
+      TokenKind.SlashEq => Precedence.addMulAssign()
+      TokenKind.PercentEq => Precedence.addMulAssign()
+      TokenKind.OrEq => Precedence.orAndAssign()
+      TokenKind.AndEq => Precedence.orAndAssign()
       TokenKind.Eq => Precedence.assignment()
+      TokenKind.Elvis => Precedence.coalesce()
+      TokenKind.ElvisEq => Precedence.coalesce()
+      TokenKind.StarStar => Precedence.coalesce()
       _ => Precedence.none()
     }
   }
