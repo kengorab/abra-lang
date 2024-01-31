@@ -96,7 +96,10 @@
             },
             "kind": {
               "name": "bindingDecl",
-              "ident": { "name": "x", "position": [4, 7] },
+              "bindingPattern": {
+                "kind": "variable",
+                "label": { "name": "x", "position": [4, 7] }
+              },
               "typeAnnotation": null,
               "expr": {
                 "token": {

@@ -117,8 +117,12 @@ export enum TypeIdentifier {
   Function(args: TypeIdentifier[], ret: TypeIdentifier)
 }
 
+export enum BindingPattern {
+  Variable(label: Label)
+}
+
 type BindingDeclarationNode {
-  ident: Label
+  bindingPattern: BindingPattern
   typeAnnotation: TypeIdentifier?
   expr: AstNode?
 }
@@ -308,12 +312,25 @@ export type Parser {
     }
   }
 
+  func _parseBindingPattern(self): Result<BindingPattern, ParseError> {
+    val token = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    val pat = match token.kind {
+      TokenKind.Ident => {
+        val label = match self._expectNextLabel() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        BindingPattern.Variable(label)
+      }
+      _ => return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
+    }
+
+    Result.Ok(pat)
+  }
+
   func _parseBindingDeclaration(self, mutable: Bool): Result<AstNode, ParseError> {
     val token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-    val label = match self._expectNextLabel() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    val pat = match self._parseBindingPattern() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     if self._cursor >= self._tokens.length {
-      val node = BindingDeclarationNode(ident: label, typeAnnotation: None, expr: None)
+      val node = BindingDeclarationNode(bindingPattern: pat, typeAnnotation: None, expr: None)
       return Result.Ok(AstNode(token: token, kind: AstNodeKind.BindingDeclaration(node)))
     }
 
@@ -327,7 +344,7 @@ export type Parser {
     }
 
     if self._cursor >= self._tokens.length {
-      val node = BindingDeclarationNode(ident: label, typeAnnotation: typeAnnotation, expr: None)
+      val node = BindingDeclarationNode(bindingPattern: pat, typeAnnotation: typeAnnotation, expr: None)
       return Result.Ok(AstNode(token: token, kind: AstNodeKind.BindingDeclaration(node)))
     }
 
@@ -340,7 +357,7 @@ export type Parser {
       None
     }
 
-    val node = BindingDeclarationNode(ident: label, typeAnnotation: typeAnnotation, expr: expr)
+    val node = BindingDeclarationNode(bindingPattern: pat, typeAnnotation: typeAnnotation, expr: expr)
     Result.Ok(AstNode(token: token, kind: AstNodeKind.BindingDeclaration(node)))
   }
 
@@ -1003,11 +1020,11 @@ export type Parser {
   }
 }
 
-func todo(position: Position): Result<AstNode, ParseError> {
+func todo<V>(position: Position): Result<V, ParseError> {
   Result.Err(ParseError(position: position, kind: ParseErrorKind.NotYetImplemented))
 }
 
-func unreachable(): Result<AstNode, ParseError> {
+func unreachable<V>(): Result<V, ParseError> {
   Result.Err(ParseError(position: Position(line: 0, col: 0), kind: ParseErrorKind.Unreachable))
 }
 
