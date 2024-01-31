@@ -1,5 +1,5 @@
 import Token, TokenKind from "./lexer"
-import Label, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode from "./parser"
+import Label, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode, BindingPattern from "./parser"
 
 export func printTokenAsJson(token: Token, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
@@ -185,6 +185,21 @@ func printTypeIdentifierAsJson(typeIdentifier: TypeIdentifier, indentLevelStart:
     }
   }
   print("$endIndent}")
+}
+
+func printBindingPatternAsJson(bindingPattern: BindingPattern, indentLevelStart: Int, currentIndentLevel: Int) {
+  val startIndent = "  ".repeat(indentLevelStart)
+  val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
+  val endIndent = "  ".repeat(currentIndentLevel)
+
+  print("$startIndent{\n$fieldsIndent\"kind\": ")
+  match bindingPattern {
+    BindingPattern.Variable(label) => {
+      print("\"variable\",\n$fieldsIndent\"label\": ")
+      printLabelAsJson(label)
+    }
+  }
+  print("\n$endIndent}")
 }
 
 func printAstNodeAsJson(node: AstNode, indentLevelStart: Int, currentIndentLevel: Int) {
@@ -465,8 +480,8 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
     }
     AstNodeKind.BindingDeclaration(value) => {
       println("$fieldsIndent\"name\": \"bindingDecl\",")
-      print("$fieldsIndent\"ident\": ")
-      printLabelAsJson(value.ident)
+      print("$fieldsIndent\"bindingPattern\": ")
+      printBindingPatternAsJson(value.bindingPattern, 0, currentIndentLevel + 1)
       println(",")
       if value.typeAnnotation |ann| {
         print("$fieldsIndent\"typeAnnotation\": ")

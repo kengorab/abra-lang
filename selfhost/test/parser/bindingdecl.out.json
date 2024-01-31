@@ -9,7 +9,10 @@
       },
       "kind": {
         "name": "bindingDecl",
-        "ident": { "name": "a", "position": [1, 5] },
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "a", "position": [1, 5] }
+        },
         "typeAnnotation": null,
         "expr": null
       }
@@ -23,7 +26,10 @@
       },
       "kind": {
         "name": "bindingDecl",
-        "ident": { "name": "b", "position": [2, 5] },
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "b", "position": [2, 5] }
+        },
         "typeAnnotation": null,
         "expr": null
       }
@@ -37,7 +43,10 @@
       },
       "kind": {
         "name": "bindingDecl",
-        "ident": { "name": "a", "position": [3, 5] },
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "a", "position": [3, 5] }
+        },
         "typeAnnotation": null,
         "expr": {
           "token": {
@@ -77,7 +86,10 @@
       },
       "kind": {
         "name": "bindingDecl",
-        "ident": { "name": "c", "position": [4, 5] },
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "c", "position": [4, 5] }
+        },
         "typeAnnotation": null,
         "expr": {
           "token": {
@@ -128,7 +140,10 @@
       },
       "kind": {
         "name": "bindingDecl",
-        "ident": { "name": "c", "position": [6, 5] },
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "c", "position": [6, 5] }
+        },
         "typeAnnotation": {
           "kind": "normal",
           "label": { "name": "Int", "position": [6, 8] },
@@ -159,7 +174,10 @@
       },
       "kind": {
         "name": "bindingDecl",
-        "ident": { "name": "d", "position": [7, 5] },
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "d", "position": [7, 5] }
+        },
         "typeAnnotation": {
           "kind": "option",
           "inner": {
