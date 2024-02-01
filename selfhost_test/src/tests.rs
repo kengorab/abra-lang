@@ -108,6 +108,10 @@ fn parser_tests() {
         .add_test_vs_txt("parser/assignment_error_assign_to_range.abra", "parser/assignment_error_assign_to_range.out")
         .add_test_vs_txt("parser/assignment_error_assignment_precedence.abra", "parser/assignment_error_assignment_precedence.out")
         .add_test_vs_txt("parser/assignment_error_illegal_target.abra", "parser/assignment_error_illegal_target.out")
+        // If
+        .add_test_vs_txt("parser/if.abra", "parser/if.out.json")
+        .add_test_vs_txt("parser/if_error_no_closing_pipe.abra", "parser/if_error_no_closing_pipe.out")
+        .add_test_vs_txt("parser/if_error_no_then_block.abra", "parser/if_error_no_then_block.out")
 
         // Type identifiers
         .add_test_vs_txt("parser/typeidentifiers.abra", "parser/typeidentifiers.out.json")

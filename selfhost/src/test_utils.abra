@@ -478,6 +478,43 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         }
       }
     }
+    AstNodeKind.If(condition, conditionBinding, ifBlock, elseBlock) => {
+      println("$fieldsIndent\"name\": \"if\",")
+      print("$fieldsIndent\"condition\": ")
+      printAstNodeAsJson(condition, 0, currentIndentLevel + 1)
+      if conditionBinding |pat| {
+        print(",\n$fieldsIndent\"conditionBinding\": ")
+        printBindingPatternAsJson(pat, 0, currentIndentLevel + 1)
+      } else {
+        print(",\n$fieldsIndent\"conditionBinding\": null")
+      }
+      if ifBlock.isEmpty() {
+        println(",\n$fieldsIndent\"ifBlock\": [],")
+      } else {
+        println(",\n$fieldsIndent\"ifBlock\": [")
+        for node, idx in ifBlock {
+          printAstNodeAsJson(node, currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != ifBlock.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent],")
+      }
+      if elseBlock |block| {
+        if block.isEmpty() {
+          println("$fieldsIndent\"elseBlock\": []")
+        } else {
+          println("$fieldsIndent\"elseBlock\": [")
+          for node, idx in block {
+            printAstNodeAsJson(node, currentIndentLevel + 2, currentIndentLevel + 2)
+            val comma = if idx != block.length - 1 "," else ""
+            println("$comma")
+          }
+          println("$fieldsIndent]")
+        }
+      } else {
+        println("$fieldsIndent\"elseBlock\": null")
+      }
+    }
     AstNodeKind.BindingDeclaration(value) => {
       println("$fieldsIndent\"name\": \"bindingDecl\",")
       print("$fieldsIndent\"bindingPattern\": ")
