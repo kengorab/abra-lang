@@ -1,0 +1,7 @@
+for s in ["a", "b"] {
+  val x = s + 1
+}
+
+for s, idx in arr {
+  val x = s + idx
+}
