@@ -132,5 +132,12 @@ fn parser_tests() {
         .add_test_vs_txt("parser/functiondecl_error_no_parens.abra", "parser/functiondecl_error_no_parens.out")
         .add_test_vs_txt("parser/functiondecl_error_empty_typeparams.abra", "parser/functiondecl_error_empty_typeparams.out")
         .add_test_vs_txt("parser/functiondecl_error_typeparam_invalid.abra", "parser/functiondecl_error_typeparam_invalid.out")
+        // While
+        .add_test_vs_txt("parser/while.abra", "parser/while.out.json")
+        .add_test_vs_txt("parser/while_error_as_expr.abra", "parser/while_error_as_expr.out")
+        // For
+        .add_test_vs_txt("parser/for.abra", "parser/for.out.json")
+        .add_test_vs_txt("parser/for_error_no_in.abra", "parser/for_error_no_in.out")
+        .add_test_vs_txt("parser/for_error_no_iterator.abra", "parser/for_error_no_iterator.out")
         .run_tests();
 }

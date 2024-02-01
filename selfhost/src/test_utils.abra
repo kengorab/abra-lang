@@ -515,6 +515,52 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         println("$fieldsIndent\"elseBlock\": null")
       }
     }
+    AstNodeKind.While(condition, conditionBinding, block) => {
+      println("$fieldsIndent\"name\": \"while\",")
+      print("$fieldsIndent\"condition\": ")
+      printAstNodeAsJson(condition, 0, currentIndentLevel + 1)
+      if conditionBinding |pat| {
+        print(",\n$fieldsIndent\"conditionBinding\": ")
+        printBindingPatternAsJson(pat, 0, currentIndentLevel + 1)
+      } else {
+        print(",\n$fieldsIndent\"conditionBinding\": null")
+      }
+      if block.isEmpty() {
+        println(",\n$fieldsIndent\"block\": []")
+      } else {
+        println(",\n$fieldsIndent\"block\": [")
+        for node, idx in block {
+          printAstNodeAsJson(node, currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != block.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent]")
+      }
+    }
+    AstNodeKind.For(itemPattern, indexPattern, iterator, block) => {
+      println("$fieldsIndent\"name\": \"for\",")
+      print("$fieldsIndent\"itemPattern\": ")
+      printBindingPatternAsJson(itemPattern, 0, currentIndentLevel + 1)
+      if indexPattern |pat| {
+        print(",\n$fieldsIndent\"indexPattern\": ")
+        printBindingPatternAsJson(pat, 0, currentIndentLevel + 1)
+      } else {
+        print(",\n$fieldsIndent\"indexPattern\": null")
+      }
+      print(",\n$fieldsIndent\"iterator\": ")
+      printAstNodeAsJson(iterator, 0, currentIndentLevel + 1)
+      if block.isEmpty() {
+        println(",\n$fieldsIndent\"block\": []")
+      } else {
+        println(",\n$fieldsIndent\"block\": [")
+        for node, idx in block {
+          printAstNodeAsJson(node, currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != block.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent]")
+      }
+    }
     AstNodeKind.BindingDeclaration(value) => {
       println("$fieldsIndent\"name\": \"bindingDecl\",")
       print("$fieldsIndent\"bindingPattern\": ")

@@ -1,0 +1,18 @@
+while true {}
+
+while foo && bar {
+  val x = 1
+  2
+}
+
+while foo?.someMethod() |a| {
+  2
+}
+
+if foo |a| {
+  while foo |a| {
+    2
+  }
+} else {
+  3
+}
