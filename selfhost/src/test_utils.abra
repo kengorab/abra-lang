@@ -1,5 +1,5 @@
 import Token, TokenKind from "./lexer"
-import Label, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode, BindingPattern from "./parser"
+import Label, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode, BindingPattern, MatchCaseKind from "./parser"
 
 export func printTokenAsJson(token: Token, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
@@ -513,6 +513,73 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         }
       } else {
         println("$fieldsIndent\"elseBlock\": null")
+      }
+    }
+    AstNodeKind.Match(expr, cases) => {
+      println("$fieldsIndent\"name\": \"match\",")
+      print("$fieldsIndent\"expr\": ")
+      printAstNodeAsJson(expr, 0, currentIndentLevel + 1)
+      if cases.isEmpty() {
+        println(",\n$fieldsIndent\"cases\": [],")
+      } else {
+        println(",\n$fieldsIndent\"cases\": [")
+        for case, idx in cases {
+          println("$fieldsIndent  {")
+          println("$fieldsIndent    \"caseKind\": {")
+          match case.kind {
+            MatchCaseKind.None_ => {
+              println("$fieldsIndent      \"kind\": \"none\"")
+            }
+            MatchCaseKind.Literal(literal) => {
+              println("$fieldsIndent      \"kind\": \"literal\",")
+              val pair = match literal {
+                LiteralAstNode.Int(value) => ("int", value.toString())
+                LiteralAstNode.Float(value) => ("float", value.toString())
+                LiteralAstNode.Bool(value) => ("bool", value.toString())
+                LiteralAstNode.String(value) => ("string", "\"$value\"")
+              }
+
+              println("$fieldsIndent      \"type\": \"${pair[0]}\",")
+              println("$fieldsIndent      \"value\": ${pair[1]}")
+            }
+            MatchCaseKind.Type(path) => {
+              println("$fieldsIndent      \"kind\": \"type\",")
+              println("$fieldsIndent      \"path\": [")
+              for label, idx in path {
+                print("$fieldsIndent        ")
+                printLabelAsJson(label)
+                val comma = if idx != path.length - 1 "," else ""
+                println("$comma")
+              }
+              println("$fieldsIndent      ]")
+            }
+            MatchCaseKind.Else => {
+              println("$fieldsIndent      \"kind\": \"else\"")
+            }
+          }
+          println("$fieldsIndent    },")
+          if case.binding |binding| {
+            print("$fieldsIndent    \"caseBinding\": ")
+            printLabelAsJson(binding)
+            println(",")
+          } else {
+            println("$fieldsIndent    \"caseBinding\": null,")
+          }
+          if case.body.isEmpty() {
+            println("$fieldsIndent    \"body\": []")
+          } else {
+            println("$fieldsIndent    \"body\": [")
+            for node, idx in case.body {
+              printAstNodeAsJson(node, currentIndentLevel + 4, currentIndentLevel + 4)
+              val comma = if idx != case.body.length - 1 "," else ""
+              println("$comma")
+            }
+            println("$fieldsIndent    ]")
+          }
+          val comma = if idx != cases.length - 1 "," else ""
+          println("$fieldsIndent  }$comma")
+        }
+        println("$fieldsIndent]")
       }
     }
     AstNodeKind.While(condition, conditionBinding, block) => {

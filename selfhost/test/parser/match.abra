@@ -1,0 +1,21 @@
+match foo {
+  1 => 12
+  2 two => 3 + 4
+  3.4 => "5"
+  5.6 f => { [6, 7] }
+  true => {
+    val a = 8
+    a + 9
+  }
+  false b => ten()
+  None => {}
+  None n => {}
+}
+
+val x = match foo() {
+  Int i => i + 1
+  Color.Blue => 0x0000FF
+  colors.Color.Blue => 0x0000FF
+  _ => 0
+  else f => f - 1
+}

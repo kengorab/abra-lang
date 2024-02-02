@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:16
+Unexpected token '[', expected one of 'identifier', '=>':
+  |  match foo { A.b[0].c => 123 }
+                    ^

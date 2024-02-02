@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:13
+Unexpected token '%', expected one of '}', 'int', 'float', 'true', 'string', 'identifier', 'else':
+  |  match foo { % => 123 }
+                 ^
