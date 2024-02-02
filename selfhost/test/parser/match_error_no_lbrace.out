@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:11
+Unexpected token 'identifier', expected '{':
+  |  match foo bar()
+               ^

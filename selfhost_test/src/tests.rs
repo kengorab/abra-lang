@@ -112,6 +112,16 @@ fn parser_tests() {
         .add_test_vs_txt("parser/if.abra", "parser/if.out.json")
         .add_test_vs_txt("parser/if_error_no_closing_pipe.abra", "parser/if_error_no_closing_pipe.out")
         .add_test_vs_txt("parser/if_error_no_then_block.abra", "parser/if_error_no_then_block.out")
+        // Match
+        .add_test_vs_txt("parser/match.abra", "parser/match.out.json")
+        .add_test_vs_txt("parser/match_error_case_bad_binding.abra", "parser/match_error_case_bad_binding.out")
+        .add_test_vs_txt("parser/match_error_case_bad_path.abra", "parser/match_error_case_bad_path.out")
+        .add_test_vs_txt("parser/match_error_case_bad_token.abra", "parser/match_error_case_bad_token.out")
+        .add_test_vs_txt("parser/match_error_case_expr.abra", "parser/match_error_case_expr.out")
+        .add_test_vs_txt("parser/match_error_case_no_case.abra", "parser/match_error_case_no_case.out")
+        .add_test_vs_txt("parser/match_error_no_expr.abra", "parser/match_error_no_expr.out")
+        .add_test_vs_txt("parser/match_error_no_lbrace.abra", "parser/match_error_no_lbrace.out")
+
 
         // Type identifiers
         .add_test_vs_txt("parser/typeidentifiers.abra", "parser/typeidentifiers.out.json")
