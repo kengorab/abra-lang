@@ -89,7 +89,7 @@ export enum TokenKind {
     TokenKind.Bool(value) => value.toString()
     TokenKind.String => "string"
     TokenKind.StringInterpolation => "string"
-    TokenKind.Ident => "identifier"
+    TokenKind.Ident(name) => if name == "_" { "_" } else "identifier"
     TokenKind.If => "if"
     TokenKind.Else => "else"
     TokenKind.Val => "val"

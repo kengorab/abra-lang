@@ -122,6 +122,21 @@ fn parser_tests() {
         .add_test_vs_txt("parser/match_error_no_expr.abra", "parser/match_error_no_expr.out")
         .add_test_vs_txt("parser/match_error_no_lbrace.abra", "parser/match_error_no_lbrace.out")
 
+        // Imports
+        .add_test_vs_txt("parser/import.abra", "parser/import.out.json")
+        .add_test_vs_txt("parser/import_error_alias_bad_alias.abra", "parser/import_error_alias_bad_alias.out")
+        .add_test_vs_txt("parser/import_error_alias_bad_module.abra", "parser/import_error_alias_bad_module.out")
+        .add_test_vs_txt("parser/import_error_alias_no_alias_eof.abra", "parser/import_error_alias_no_alias_eof.out")
+        .add_test_vs_txt("parser/import_error_alias_no_as.abra", "parser/import_error_alias_no_as.out")
+        .add_test_vs_txt("parser/import_error_alias_no_module.abra", "parser/import_error_alias_no_module.out")
+        .add_test_vs_txt("parser/import_error_forbidden.abra", "parser/import_error_forbidden.out")
+        .add_test_vs_txt("parser/import_error_list_2nd_nonident.abra", "parser/import_error_list_2nd_nonident.out")
+        .add_test_vs_txt("parser/import_error_list_2nd_underscore.abra", "parser/import_error_list_2nd_underscore.out")
+        .add_test_vs_txt("parser/import_error_list_bad_module.abra", "parser/import_error_list_bad_module.out")
+        .add_test_vs_txt("parser/import_error_list_first_nonident.abra", "parser/import_error_list_first_nonident.out")
+        .add_test_vs_txt("parser/import_error_list_no_comma.abra", "parser/import_error_list_no_comma.out")
+        .add_test_vs_txt("parser/import_error_list_no_from.abra", "parser/import_error_list_no_from.out")
+        .add_test_vs_txt("parser/import_error_list_no_module_eof.abra", "parser/import_error_list_no_module_eof.out")
 
         // Type identifiers
         .add_test_vs_txt("parser/typeidentifiers.abra", "parser/typeidentifiers.out.json")
