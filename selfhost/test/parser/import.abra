@@ -1,2 +1,2 @@
 import "./abc" as abc
-import a, b, c, None from "./abc"
+import a, b, c, from "./abc"
