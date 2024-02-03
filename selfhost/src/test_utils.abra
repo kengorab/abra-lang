@@ -1,5 +1,5 @@
 import Token, TokenKind from "./lexer"
-import Label, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode, BindingPattern, MatchCaseKind from "./parser"
+import Label, ImportKind, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode, BindingPattern, MatchCaseKind from "./parser"
 
 export func printTokenAsJson(token: Token, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
@@ -111,13 +111,54 @@ func printTokenKindAsJson(kind: TokenKind, indentLevelStart: Int, currentIndentL
 }
 
 export func printParsedModuleAsJson(module: ParsedModule) {
-  println("{\n  \"nodes\": [")
-  for node, idx in module.nodes {
-    printAstNodeAsJson(node, 2, 2)
-    val comma = if idx != module.nodes.length - 1 "," else ""
-    println(comma)
+  println("{")
+  if module.imports.isEmpty() {
+    println("  \"imports\": [],")
+  } else {
+    println("  \"imports\": [")
+    for importNode, idx in module.imports {
+      println("    {")
+      print("      \"token\": ")
+      printTokenAsJson(importNode.token, 0, 3)
+      print(",\n      \"moduleName\": ")
+      printLabelAsJson(importNode.moduleName)
+      println(",\n      \"importKind\": {")
+      match importNode.kind {
+        ImportKind.Alias(alias) => {
+          println("        \"kind\": \"alias\",")
+          print("        \"alias\": ")
+          printLabelAsJson(alias)
+          println()
+        }
+        ImportKind.List(names) => {
+          println("        \"kind\": \"list\",")
+          println("        \"names\": [")
+          for name, idx in names {
+            print("          ")
+            printLabelAsJson(name)
+            val comma = if idx != names.length - 1 "," else ""
+            println(comma)
+          }
+          println("        ]")
+        }
+      }
+      println("      }")
+      val comma = if idx != module.imports.length - 1 "," else ""
+      println("    }$comma")
+    }
+    println("  ],")
   }
-  println("  ]")
+  if module.nodes.isEmpty() {
+    println("  \"nodes\": []")
+  } else {
+    println("  \"nodes\": [")
+    for node, idx in module.nodes {
+      printAstNodeAsJson(node, 2, 2)
+      val comma = if idx != module.nodes.length - 1 "," else ""
+      println(comma)
+    }
+    println("  ]")
+  }
   println("}")
 }
 

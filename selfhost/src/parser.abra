@@ -1,7 +1,19 @@
 import Token, TokenKind, Position from "./lexer"
 
 export type ParsedModule {
+  imports: ImportNode[]
   nodes: AstNode[]
+}
+
+export enum ImportKind {
+  List(imports: Label[])
+  Alias(alias: Label)
+}
+
+type ImportNode {
+  token: Token
+  kind: ImportKind
+  moduleName: Label
 }
 
 export type AstNode {
@@ -258,16 +270,29 @@ export type Parser {
   func parse(tokens: Token[]): Result<ParsedModule, ParseError> {
     val parser = Parser(_tokens: tokens)
 
+    val imports: ImportNode[] = []
     val nodes: AstNode[] = []
 
+    var importsAllowed = true
     while parser._peek() |token| {
+      if token.kind == TokenKind.Import {
+        if !importsAllowed {
+          return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+        }
+
+        val importNode = match parser._parseImport() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        imports.push(importNode)
+        continue
+      }
+      importsAllowed = false
+
       match parser._parseStatement() {
         Result.Ok(node) => nodes.push(node)
         Result.Err(e) => return Result.Err(e)
       }
     }
 
-    Result.Ok(ParsedModule(nodes: nodes))
+    Result.Ok(ParsedModule(imports: imports, nodes: nodes))
   }
 
   func _peek(self, ahead = 0): Token? = self._tokens[self._cursor + ahead]
@@ -304,6 +329,52 @@ export type Parser {
       TokenKind.Ident(name) => Result.Ok(Label(name: name, position: token.position))
       _ => Result.Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
     }
+  }
+
+  func _parseImport(self): Result<ImportNode, ParseError> {
+    val token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    val importNode = match nextToken.kind {
+      TokenKind.String(string) => {
+        val moduleName = Label(name: string, position: nextToken.position)
+        self._advance() // consume string token
+
+        val nextToken = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        if nextToken.kind != TokenKind.As {
+          return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.As], nextToken.kind)))
+        }
+
+        val aliasName = match self._expectNextLabel() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        val kind = ImportKind.Alias(aliasName)
+
+        ImportNode(token: token, kind: kind, moduleName: moduleName)
+      }
+      TokenKind.Ident => {
+        val importsRes = self._commaSeparated(end: TokenKind.From, consumeFinal: true, fn: () => {
+          val label = match self._expectNextLabel() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          if label.name == "_" {
+            val tok = Token(position: label.position, kind: TokenKind.Ident(label.name))
+            Result.Err(ParseError(position: label.position, kind: ParseErrorKind.UnexpectedToken(tok)))
+          } else {
+            Result.Ok(label)
+          }
+        })
+        val imports = match importsRes { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        val kind = ImportKind.List(imports)
+
+        val nextToken = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        val moduleName = match nextToken.kind {
+          TokenKind.String(name) => Label(name: name, position: nextToken.position)
+          _ => return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String("")], nextToken.kind)))
+        }
+
+        ImportNode(token: token, kind: kind, moduleName: moduleName)
+      }
+      _ => return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String(""), TokenKind.Ident("")], nextToken.kind)))
+    }
+
+    Result.Ok(importNode)
   }
 
   func _parseStatement(self): Result<AstNode, ParseError> {
