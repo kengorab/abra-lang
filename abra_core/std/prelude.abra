@@ -545,8 +545,24 @@ type Array<T> {
     str
   }
 
-  @Stub func contains(self, item: T): Bool
-  @Stub func find(self, fn: (T) => Bool): T?
+  func contains(self, item: T): Bool {
+    for i in range(0, self.length) {
+      val selfItem = self._buffer.offset(i).load()
+      if selfItem == item return true
+    }
+
+    false
+  }
+
+  func find(self, fn: (T) => Bool): T? {
+    for i in range(0, self.length) {
+      val item = self._buffer.offset(i).load()
+      if fn(item) return item
+    }
+
+    None
+  }
+
   @Stub func findIndex(self, fn: (T) => Bool): (T, Int)?
   @Stub func any(self, fn: (T) => Bool): Bool
   @Stub func all(self, fn: (T) => Bool): Bool

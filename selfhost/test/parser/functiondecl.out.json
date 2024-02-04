@@ -10,6 +10,7 @@
       },
       "kind": {
         "name": "function",
+        "decorators": [],
         "ident": { "name": "foo", "position": [1, 6] },
         "typeParams": [],
         "params": [],
@@ -40,6 +41,7 @@
       },
       "kind": {
         "name": "function",
+        "decorators": [],
         "ident": { "name": "foo", "position": [2, 6] },
         "typeParams": [],
         "params": [],
@@ -70,6 +72,7 @@
       },
       "kind": {
         "name": "function",
+        "decorators": [],
         "ident": { "name": "foo", "position": [3, 6] },
         "typeParams": [],
         "params": [
@@ -152,6 +155,7 @@
       },
       "kind": {
         "name": "function",
+        "decorators": [],
         "ident": { "name": "foo", "position": [6, 6] },
         "typeParams": [],
         "params": [
@@ -276,6 +280,7 @@
       },
       "kind": {
         "name": "function",
+        "decorators": [],
         "ident": { "name": "foo", "position": [9, 6] },
         "typeParams": [
           { "name": "A", "position": [9, 10] },
@@ -294,6 +299,7 @@
       },
       "kind": {
         "name": "function",
+        "decorators": [],
         "ident": { "name": "foo", "position": [10, 6] },
         "typeParams": [],
         "params": [
@@ -311,6 +317,105 @@
             "defaultValue": null
           }
         ],
+        "body": []
+      }
+    },
+    {
+      "token": {
+        "position": [13, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "kind": {
+        "name": "function",
+        "decorators": [
+          {
+            "name": { "name": "Stub", "position": [12, 2] },
+            "arguments": []
+          }
+        ],
+        "ident": { "name": "stubbedFunc", "position": [13, 6] },
+        "typeParams": [],
+        "params": [],
+        "body": []
+      }
+    },
+    {
+      "token": {
+        "position": [16, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "kind": {
+        "name": "function",
+        "decorators": [
+          {
+            "name": { "name": "Intrinsic", "position": [15, 2] },
+            "arguments": [
+              {
+                "label": null,
+                "value": {
+                  "token": {
+                    "position": [15, 12],
+                    "kind": {
+                      "name": "String",
+                      "value": "foo_bar"
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "string",
+                    "value": "foo_bar"
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "ident": { "name": "stubbedFunc", "position": [16, 6] },
+        "typeParams": [],
+        "params": [],
+        "body": []
+      }
+    },
+    {
+      "token": {
+        "position": [19, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "kind": {
+        "name": "function",
+        "decorators": [
+          {
+            "name": { "name": "CBinding", "position": [18, 2] },
+            "arguments": [
+              {
+                "label": null,
+                "value": {
+                  "token": {
+                    "position": [18, 11],
+                    "kind": {
+                      "name": "String",
+                      "value": "strlen"
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "string",
+                    "value": "strlen"
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "ident": { "name": "stubbedFunc", "position": [19, 6] },
+        "typeParams": [],
+        "params": [],
         "body": []
       }
     }

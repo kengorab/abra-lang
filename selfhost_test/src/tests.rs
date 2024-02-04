@@ -122,6 +122,13 @@ fn parser_tests() {
         .add_test_vs_txt("parser/match_error_no_expr.abra", "parser/match_error_no_expr.out")
         .add_test_vs_txt("parser/match_error_no_lbrace.abra", "parser/match_error_no_lbrace.out")
 
+        // Decorators
+        .add_test_vs_txt("parser/decorator_error_bad_ident.abra", "parser/decorator_error_bad_ident.out")
+        .add_test_vs_txt("parser/decorator_error_before_expr.abra", "parser/decorator_error_before_expr.out")
+        .add_test_vs_txt("parser/decorator_error_before_invalid_stmt.abra", "parser/decorator_error_before_invalid_stmt.out")
+        .add_test_vs_txt("parser/decorator_error_non_constant_arg.abra", "parser/decorator_error_non_constant_arg.out")
+        .add_test_vs_txt("parser/decorator_functiondecl.abra", "parser/decorator_functiondecl.out.json")
+
         // Imports
         .add_test_vs_txt("parser/import.abra", "parser/import.out.json")
         .add_test_vs_txt("parser/import_error_alias_bad_alias.abra", "parser/import_error_alias_bad_alias.out")
@@ -157,6 +164,7 @@ fn parser_tests() {
         .add_test_vs_txt("parser/functiondecl_error_no_parens.abra", "parser/functiondecl_error_no_parens.out")
         .add_test_vs_txt("parser/functiondecl_error_empty_typeparams.abra", "parser/functiondecl_error_empty_typeparams.out")
         .add_test_vs_txt("parser/functiondecl_error_typeparam_invalid.abra", "parser/functiondecl_error_typeparam_invalid.out")
+        .add_test_vs_txt("parser/functiondecl_error_no_body.abra", "parser/functiondecl_error_no_body.out")
         // While
         .add_test_vs_txt("parser/while.abra", "parser/while.out.json")
         .add_test_vs_txt("parser/while_error_as_expr.abra", "parser/while_error_as_expr.out")

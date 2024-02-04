@@ -279,3 +279,41 @@ func printItem(item: Int) = println(item)
   /// Expect: 1
   println([1].join(", "))
 })()
+
+// Array#contains
+(() => {
+  val intArr = [123, 456, 789]
+  /// Expect: true
+  println(intArr.contains(123))
+  /// Expect: false
+  println(intArr.contains(10))
+
+  val empty: Int[] = []
+  /// Expect: false
+  println(empty.contains(123))
+
+  val strArr = ["hello", "world"]
+  /// Expect: true
+  println(strArr.contains("hello"))
+  /// Expect: false
+  println(strArr.contains("HELLO"))
+})()
+
+// Array#find
+(() => {
+  val intArr = [123, 456, 789]
+  /// Expect: 123
+  println(intArr.find(i => i == 123))
+  /// Expect: None
+  println(intArr.contains(i => i == 10))
+
+  val empty: Int[] = []
+  /// Expect: false
+  println(empty.find(i => i == 123))
+
+  val strArr = ["hello", "world"]
+  /// Expect: hello
+  println(strArr.find(s => s == "hello"))
+  /// Expect: None
+  println(strArr.find(s => s == "HELLO"))
+})()
