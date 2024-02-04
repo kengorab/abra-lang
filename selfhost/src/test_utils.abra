@@ -465,7 +465,8 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
           println("$fieldsIndent  {")
           print("$fieldsIndent    \"label\": ")
           printLabelAsJson(p.label)
-          print(",\n$fieldsIndent    \"typeAnnotation\": ")
+          println(",\n$fieldsIndent    \"isVariadic\": ${p.isVariadic},")
+          print("$fieldsIndent    \"typeAnnotation\": ")
           if p.typeAnnotation |ann| {
             printTypeIdentifierAsJson(ann, 0, currentIndentLevel + 3)
           } else {
@@ -475,7 +476,7 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
           if p.defaultValue |defaultValue| {
             printAstNodeAsJson(defaultValue, 0, currentIndentLevel + 3)
           } else {
-            println("null")
+            print("null")
           }
           val comma = if idx != node.params.length - 1 "," else ""
           println("\n$fieldsIndent  }$comma")
@@ -712,7 +713,8 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
           println("$fieldsIndent  {")
           print("$fieldsIndent    \"label\": ")
           printLabelAsJson(p.label)
-          print(",\n$fieldsIndent    \"typeAnnotation\": ")
+          println(",\n$fieldsIndent    \"isVariadic\": ${p.isVariadic},")
+          print("$fieldsIndent    \"typeAnnotation\": ")
           if p.typeAnnotation |ann| {
             printTypeIdentifierAsJson(ann, 0, currentIndentLevel + 3)
           } else {
@@ -722,7 +724,7 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
           if p.defaultValue |defaultValue| {
             printAstNodeAsJson(defaultValue, 0, currentIndentLevel + 3)
           } else {
-            println("null")
+            print("null")
           }
           val comma = if idx != node.params.length - 1 "," else ""
           println("\n$fieldsIndent  }$comma")

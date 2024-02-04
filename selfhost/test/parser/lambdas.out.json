@@ -41,15 +41,15 @@
         "params": [
           {
             "label": { "name": "a", "position": [2, 2] },
+            "isVariadic": false,
             "typeAnnotation": null,
             "defaultValue": null
-
           },
           {
             "label": { "name": "b", "position": [2, 5] },
+            "isVariadic": false,
             "typeAnnotation": null,
             "defaultValue": null
-
           }
         ],
         "body": [
@@ -82,9 +82,9 @@
         "params": [
           {
             "label": { "name": "a", "position": [3, 1] },
+            "isVariadic": false,
             "typeAnnotation": null,
             "defaultValue": null
-
           }
         ],
         "body": [
@@ -172,13 +172,13 @@
         "params": [
           {
             "label": { "name": "a", "position": [7, 2] },
+            "isVariadic": false,
             "typeAnnotation": {
               "kind": "normal",
               "label": { "name": "Int", "position": [7, 5] },
               "typeArguments": []
             },
             "defaultValue": null
-
           }
         ],
         "body": [
@@ -236,6 +236,7 @@
         "params": [
           {
             "label": { "name": "a", "position": [8, 2] },
+            "isVariadic": false,
             "typeAnnotation": null,
             "defaultValue": {
               "token": {
@@ -308,6 +309,7 @@
         "params": [
           {
             "label": { "name": "a", "position": [9, 2] },
+            "isVariadic": false,
             "typeAnnotation": {
               "kind": "normal",
               "label": { "name": "Int", "position": [9, 5] },
@@ -367,6 +369,70 @@
                   "value": 1
                 }
               }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [10, 13],
+        "kind": {
+          "name": "Arrow"
+        }
+      },
+      "kind": {
+        "name": "lambda",
+        "params": [
+          {
+            "label": { "name": "a", "position": [10, 3] },
+            "isVariadic": true,
+            "typeAnnotation": {
+              "kind": "array",
+              "inner": {
+                "kind": "normal",
+                "label": { "name": "Int", "position": [10, 6] },
+                "typeArguments": []
+              }
+            },
+            "defaultValue": null
+          }
+        ],
+        "body": [
+          {
+            "token": {
+              "position": [10, 17],
+              "kind": {
+                "name": "Dot"
+              }
+            },
+            "kind": {
+              "name": "accessor",
+              "root": {
+                "token": {
+                  "position": [10, 16],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "a"
+                  }
+                },
+                "kind": {
+                  "name": "identifier",
+                  "ident": "a"
+                }
+              },
+              "path": [
+                {
+                  "dotToken": {
+                    "position": [10, 17],
+                    "kind": {
+                      "name": "Dot"
+                    }
+                  },
+                  "ident": "length",
+                  "position": [10, 18]
+                }
+              ]
             }
           }
         ]

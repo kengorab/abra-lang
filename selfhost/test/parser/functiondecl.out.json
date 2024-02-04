@@ -75,13 +75,13 @@
         "params": [
           {
             "label": { "name": "a", "position": [3, 10] },
+            "isVariadic": false,
             "typeAnnotation": {
               "kind": "normal",
               "label": { "name": "Int", "position": [3, 13] },
               "typeArguments": []
             },
             "defaultValue": null
-
           }
         ],
         "body": [
@@ -157,16 +157,17 @@
         "params": [
           {
             "label": { "name": "a", "position": [6, 10] },
+            "isVariadic": false,
             "typeAnnotation": {
               "kind": "normal",
               "label": { "name": "Int", "position": [6, 13] },
               "typeArguments": []
             },
             "defaultValue": null
-
           },
           {
             "label": { "name": "b", "position": [6, 18] },
+            "isVariadic": false,
             "typeAnnotation": {
               "kind": "normal",
               "label": { "name": "Bool", "position": [6, 21] },
@@ -189,6 +190,7 @@
           },
           {
             "label": { "name": "c", "position": [6, 34] },
+            "isVariadic": false,
             "typeAnnotation": null,
             "defaultValue": {
               "token": {
@@ -280,6 +282,35 @@
           { "name": "B", "position": [9, 13] }
         ],
         "params": [],
+        "body": []
+      }
+    },
+    {
+      "token": {
+        "position": [10, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "kind": {
+        "name": "function",
+        "ident": { "name": "foo", "position": [10, 6] },
+        "typeParams": [],
+        "params": [
+          {
+            "label": { "name": "items", "position": [10, 11] },
+            "isVariadic": true,
+            "typeAnnotation": {
+              "kind": "array",
+              "inner": {
+                "kind": "normal",
+                "label": { "name": "A", "position": [10, 18] },
+                "typeArguments": []
+              }
+            },
+            "defaultValue": null
+          }
+        ],
         "body": []
       }
     }

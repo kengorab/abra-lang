@@ -154,6 +154,7 @@ type BindingDeclarationNode {
 
 type FunctionParam {
   label: Label
+  isVariadic: Bool = false
   typeAnnotation: TypeIdentifier? = None
   defaultValue: AstNode? = None
 }
@@ -566,7 +567,14 @@ export type Parser {
 
   func _parseFunctionParameters(self, allowSelf: Bool): Result<FunctionParam[], ParseError> {
     self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: paramIdx => {
-      val token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      var token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      val isVariadic = if token.kind == TokenKind.Star {
+        token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        true
+      } else {
+        false
+      }
+
       val label = match token.kind {
         TokenKind.Ident(name) => Label(name: name, position: token.position)
         TokenKind.Self => if allowSelf && paramIdx == 0 {
@@ -595,7 +603,7 @@ export type Parser {
         None
       }
 
-      val param = FunctionParam(label: label, typeAnnotation: typeAnnotation, defaultValue: defaultValue)
+      val param = FunctionParam(label: label, isVariadic: isVariadic, typeAnnotation: typeAnnotation, defaultValue: defaultValue)
       Result.Ok(param)
     })
   }
@@ -741,6 +749,18 @@ export type Parser {
 
           return Result.Ok(AstNode(token: arrowToken, kind: AstNodeKind.Lambda(LambdaNode(params: params, body: body))))
         }
+      }
+      TokenKind.Star => { // a variadic parameter could be first
+        val params = match self._parseFunctionParameters(allowSelf: false) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+        val arrowToken = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        if arrowToken.kind != TokenKind.Arrow {
+          return Result.Err(ParseError(position: arrowToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Arrow], arrowToken.kind)))
+        }
+
+        val body = match self._parseBlockOrSingleExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+        return Result.Ok(AstNode(token: arrowToken, kind: AstNodeKind.Lambda(LambdaNode(params: params, body: body))))
       }
       _ => {}
     }

@@ -7,3 +7,4 @@ a => {
 (a: Int) => a + 1
 (a = 123) => a + 1
 (a: Int = 123) => a + 1
+(*a: Int[]) => a.length
