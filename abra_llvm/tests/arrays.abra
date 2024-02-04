@@ -305,10 +305,10 @@ func printItem(item: Int) = println(item)
   /// Expect: 123
   println(intArr.find(i => i == 123))
   /// Expect: None
-  println(intArr.contains(i => i == 10))
+  println(intArr.find(i => i == 10))
 
   val empty: Int[] = []
-  /// Expect: false
+  /// Expect: None
   println(empty.find(i => i == 123))
 
   val strArr = ["hello", "world"]
