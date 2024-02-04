@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:6
+Unexpected token 'identifier', expected one of 'int', 'float', 'true', 'string':
+  |  @Foo(a)
+          ^

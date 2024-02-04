@@ -8,3 +8,12 @@ func foo(a: Int, b: Bool = true, c = "abc") {
 }
 func foo<A, B>() {}
 func foo(*items: A[]) {}
+
+@Stub
+func stubbedFunc(): String
+
+@Intrinsic("foo_bar")
+func stubbedFunc(): String
+
+@CBinding("strlen")
+func stubbedFunc(): String

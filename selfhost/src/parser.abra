@@ -165,11 +165,17 @@ type LambdaNode {
 }
 
 type FunctionDeclarationNode {
+  decorators: DecoratorNode[]
   name: Label
   typeParams: Label[]
   params: FunctionParam[]
   returnTypeAnnotation: TypeIdentifier?
   body: AstNode[]
+}
+
+export type DecoratorNode {
+  name: Label
+  arguments: InvocationArgument[]
 }
 
 export enum AstNodeKind {
@@ -267,6 +273,7 @@ type ParseError {
 export type Parser {
   _tokens: Token[]
   _cursor: Int = 0
+  _seenDecorators: DecoratorNode[] = []
 
   func parse(tokens: Token[]): Result<ParsedModule, ParseError> {
     val parser = Parser(_tokens: tokens)
@@ -381,6 +388,17 @@ export type Parser {
   func _parseStatement(self): Result<AstNode, ParseError> {
     val token = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     match token.kind {
+      TokenKind.At => {
+        match self._parseDecorator() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+        val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.At]
+        if !expected.contains(nextToken.kind) {
+          return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
+        }
+
+        self._parseStatement()
+      }
       TokenKind.Val => self._parseBindingDeclaration(mutable: false)
       TokenKind.Var => self._parseBindingDeclaration(mutable: true)
       TokenKind.Func => self._parseFunctionDeclaration()
@@ -388,6 +406,37 @@ export type Parser {
       TokenKind.For => self._parseForLoop()
       _ => self._parseExpressionStatement()
     }
+  }
+
+  func _parseDecorator(self): Result<Int, ParseError> {
+    val token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    val decoratorName = match self._expectNextLabel() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    val arguments = match nextToken.kind {
+      TokenKind.LParen => {
+        self._advance() // consume '(' token
+        val arguments = match self._parseInvocationArguments() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        arguments
+      }
+      _ => []
+    }
+
+    for arg in arguments {
+      match arg.value.kind {
+        AstNodeKind.Literal => {}
+        _ => {
+          val expected = [TokenKind.Int(0), TokenKind.Float(0.0), TokenKind.Bool(true), TokenKind.String("")]
+          return Result.Err(ParseError(position: arg.value.token.position, kind: ParseErrorKind.ExpectedToken(expected, arg.value.token.kind)))
+        }
+      }
+    }
+
+    val dec = DecoratorNode(name: decoratorName, arguments: arguments)
+    self._seenDecorators.push(dec)
+
+    Result.Ok(0) // <- unneeded, but I can't construct a Unit type, so...
   }
 
   func _parseBindingPattern(self): Result<BindingPattern, ParseError> {
@@ -440,6 +489,9 @@ export type Parser {
   }
 
   func _parseFunctionDeclaration(self): Result<AstNode, ParseError> {
+    val decorators = self._seenDecorators
+    self._seenDecorators = []
+
     val token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     val label = match self._expectNextLabel() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     var nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -477,16 +529,25 @@ export type Parser {
       None
     }
 
-    nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-    val body = if nextToken.kind == TokenKind.Eq {
-      self._advance() // consume '=' token
-      val expr = match self._parseExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-      [expr]
+    val isStub = decorators.find(dec => {
+      val decName = dec.name.name
+      decName == "Stub" || decName == "Intrinsic" || decName == "CBinding"
+    })
+
+    val body: AstNode[] = if isStub {
+      []
     } else {
-      match self._parseBlockOrSingleExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      if nextToken.kind == TokenKind.Eq {
+        self._advance() // consume '=' token
+        val expr = match self._parseExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        [expr]
+      } else {
+        match self._parseBlockOrSingleExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      }
     }
 
-    val node = FunctionDeclarationNode(name: label, typeParams: typeParams, params: params, returnTypeAnnotation: returnTypeAnnotation, body: body)
+    val node = FunctionDeclarationNode(decorators: decorators, name: label, typeParams: typeParams, params: params, returnTypeAnnotation: returnTypeAnnotation, body: body)
     Result.Ok(AstNode(token: token, kind: AstNodeKind.FunctionDeclaration(node)))
   }
 

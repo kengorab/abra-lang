@@ -1,5 +1,5 @@
 import Token, TokenKind from "./lexer"
-import Label, ImportKind, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode, BindingPattern, MatchCaseKind from "./parser"
+import Label, ImportKind, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode, BindingPattern, MatchCaseKind, DecoratorNode from "./parser"
 
 export func printTokenAsJson(token: Token, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
@@ -225,6 +225,39 @@ func printTypeIdentifierAsJson(typeIdentifier: TypeIdentifier, indentLevelStart:
       println()
     }
   }
+  print("$endIndent}")
+}
+
+func printDecoratorNodeAsJson(decorator: DecoratorNode, indentLevelStart: Int, currentIndentLevel: Int) {
+  val startIndent = "  ".repeat(indentLevelStart)
+  val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
+  val endIndent = "  ".repeat(currentIndentLevel)
+
+  print("$startIndent{\n$fieldsIndent\"name\": ")
+  printLabelAsJson(decorator.name)
+
+  if decorator.arguments.isEmpty() {
+    println(",\n$fieldsIndent\"arguments\": []")
+  } else {
+    println(",\n$fieldsIndent\"arguments\": [")
+    val pathIndent = "  ".repeat(currentIndentLevel + 2)
+    val pathsIndent = "  ".repeat(currentIndentLevel + 3)
+    for arg, idx in decorator.arguments {
+      print("$pathIndent{\n$pathsIndent\"label\": ")
+      if arg.label |label| {
+        printLabelAsJson(label)
+        println(",")
+      } else {
+        println("null,")
+      }
+      print("$pathsIndent\"value\": ")
+      printAstNodeAsJson(arg.value, 0, currentIndentLevel + 3)
+      val comma = if idx != decorator.arguments.length - 1 "," else ""
+      println("\n$pathIndent}$comma")
+    }
+    println("$fieldsIndent]")
+  }
+
   print("$endIndent}")
 }
 
@@ -691,6 +724,17 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
     }
     AstNodeKind.FunctionDeclaration(node) => {
       println("$fieldsIndent\"name\": \"function\",")
+      if node.decorators.isEmpty() {
+        println("$fieldsIndent\"decorators\": [],")
+      } else {
+        println("$fieldsIndent\"decorators\": [")
+        for dec, idx in node.decorators {
+          printDecoratorNodeAsJson(dec, currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != node.decorators.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent],")
+      }
       print("$fieldsIndent\"ident\": ")
       printLabelAsJson(node.name)
       if node.typeParams.isEmpty() {
