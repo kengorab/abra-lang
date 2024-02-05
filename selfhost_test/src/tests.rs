@@ -127,7 +127,7 @@ fn parser_tests() {
         .add_test_vs_txt("parser/decorator_error_before_expr.abra", "parser/decorator_error_before_expr.out")
         .add_test_vs_txt("parser/decorator_error_before_invalid_stmt.abra", "parser/decorator_error_before_invalid_stmt.out")
         .add_test_vs_txt("parser/decorator_error_non_constant_arg.abra", "parser/decorator_error_non_constant_arg.out")
-        .add_test_vs_txt("parser/decorator_functiondecl.abra", "parser/decorator_functiondecl.out.json")
+        .add_test_vs_txt("parser/decorator.abra", "parser/decorator.out.json")
 
         // Imports
         .add_test_vs_txt("parser/import.abra", "parser/import.out.json")
@@ -144,6 +144,11 @@ fn parser_tests() {
         .add_test_vs_txt("parser/import_error_list_no_comma.abra", "parser/import_error_list_no_comma.out")
         .add_test_vs_txt("parser/import_error_list_no_from.abra", "parser/import_error_list_no_from.out")
         .add_test_vs_txt("parser/import_error_list_no_module_eof.abra", "parser/import_error_list_no_module_eof.out")
+
+        // Exports
+        .add_test_vs_txt("parser/export.abra", "parser/export.out.json")
+        .add_test_vs_txt("parser/export_error_before_expr.abra", "parser/export_error_before_expr.out")
+        .add_test_vs_txt("parser/export_error_before_invalid_statement.abra", "parser/export_error_before_invalid_statement.out")
 
         // Type identifiers
         .add_test_vs_txt("parser/typeidentifiers.abra", "parser/typeidentifiers.out.json")

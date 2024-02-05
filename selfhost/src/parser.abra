@@ -147,6 +147,8 @@ export enum BindingPattern {
 }
 
 type BindingDeclarationNode {
+  decorators: DecoratorNode[]
+  exportToken: Token?
   bindingPattern: BindingPattern
   typeAnnotation: TypeIdentifier?
   expr: AstNode?
@@ -166,6 +168,7 @@ type LambdaNode {
 
 type FunctionDeclarationNode {
   decorators: DecoratorNode[]
+  exportToken: Token?
   name: Label
   typeParams: Label[]
   params: FunctionParam[]
@@ -274,6 +277,7 @@ export type Parser {
   _tokens: Token[]
   _cursor: Int = 0
   _seenDecorators: DecoratorNode[] = []
+  _exportToken: Token? = None
 
   func parse(tokens: Token[]): Result<ParsedModule, ParseError> {
     val parser = Parser(_tokens: tokens)
@@ -392,7 +396,19 @@ export type Parser {
         match self._parseDecorator() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
         val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.At]
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.At, TokenKind.Export]
+        if !expected.contains(nextToken.kind) {
+          return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
+        }
+
+        self._parseStatement()
+      }
+      TokenKind.Export => {
+        self._exportToken = token
+        self._advance() // consume 'export' token
+
+        val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func]
         if !expected.contains(nextToken.kind) {
           return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
         }
@@ -453,11 +469,23 @@ export type Parser {
   }
 
   func _parseBindingDeclaration(self, mutable: Bool): Result<AstNode, ParseError> {
+    val decorators = self._seenDecorators
+    self._seenDecorators = []
+
+    val exportToken = self._exportToken
+    self._exportToken = None
+
     val token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     val pat = match self._parseBindingPattern() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     if self._cursor >= self._tokens.length {
-      val node = BindingDeclarationNode(bindingPattern: pat, typeAnnotation: None, expr: None)
+      val node = BindingDeclarationNode(
+        decorators: decorators,
+        exportToken: exportToken,
+        bindingPattern: pat,
+        typeAnnotation: None,
+        expr: None,
+      )
       return Result.Ok(AstNode(token: token, kind: AstNodeKind.BindingDeclaration(node)))
     }
 
@@ -471,7 +499,13 @@ export type Parser {
     }
 
     if self._cursor >= self._tokens.length {
-      val node = BindingDeclarationNode(bindingPattern: pat, typeAnnotation: typeAnnotation, expr: None)
+      val node = BindingDeclarationNode(
+        decorators: decorators,
+        exportToken: exportToken,
+        bindingPattern: pat,
+        typeAnnotation: typeAnnotation,
+        expr: None,
+      )
       return Result.Ok(AstNode(token: token, kind: AstNodeKind.BindingDeclaration(node)))
     }
 
@@ -484,13 +518,22 @@ export type Parser {
       None
     }
 
-    val node = BindingDeclarationNode(bindingPattern: pat, typeAnnotation: typeAnnotation, expr: expr)
+    val node = BindingDeclarationNode(
+      decorators: decorators,
+      exportToken: exportToken,
+      bindingPattern: pat,
+      typeAnnotation: typeAnnotation,
+      expr: expr,
+    )
     Result.Ok(AstNode(token: token, kind: AstNodeKind.BindingDeclaration(node)))
   }
 
   func _parseFunctionDeclaration(self): Result<AstNode, ParseError> {
     val decorators = self._seenDecorators
     self._seenDecorators = []
+
+    val exportToken = self._exportToken
+    self._exportToken = None
 
     val token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     val label = match self._expectNextLabel() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -547,7 +590,15 @@ export type Parser {
       }
     }
 
-    val node = FunctionDeclarationNode(decorators: decorators, name: label, typeParams: typeParams, params: params, returnTypeAnnotation: returnTypeAnnotation, body: body)
+    val node = FunctionDeclarationNode(
+      decorators: decorators,
+      exportToken: exportToken,
+      name: label,
+      typeParams: typeParams,
+      params: params,
+      returnTypeAnnotation: returnTypeAnnotation,
+      body: body,
+    )
     Result.Ok(AstNode(token: token, kind: AstNodeKind.FunctionDeclaration(node)))
   }
 

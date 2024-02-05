@@ -1,0 +1,16 @@
+@Foo
+val a = 123
+@Foo(a: 123)
+export val a = 123
+
+@Foo
+var b = "456"
+@Foo(b: "456")
+export var b = "456"
+
+@Foo
+export func foo() {}
+
+@Foo1("abc", 123, 4.56, true)
+@Foo2(a: "abc", b: 123, c: 4.56, d: true)
+func foo() {}

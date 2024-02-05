@@ -66,6 +66,8 @@
             },
             "kind": {
               "name": "bindingDecl",
+              "decorators": [],
+              "exportToken": null,
               "bindingPattern": {
                 "kind": "variable",
                 "label": { "name": "x", "position": [2, 7] }
@@ -155,6 +157,8 @@
             },
             "kind": {
               "name": "bindingDecl",
+              "decorators": [],
+              "exportToken": null,
               "bindingPattern": {
                 "kind": "variable",
                 "label": { "name": "x", "position": [6, 7] }
