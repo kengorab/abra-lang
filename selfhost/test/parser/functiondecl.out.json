@@ -11,6 +11,7 @@
       "kind": {
         "name": "function",
         "decorators": [],
+        "exportToken": null,
         "ident": { "name": "foo", "position": [1, 6] },
         "typeParams": [],
         "params": [],
@@ -42,6 +43,7 @@
       "kind": {
         "name": "function",
         "decorators": [],
+        "exportToken": null,
         "ident": { "name": "foo", "position": [2, 6] },
         "typeParams": [],
         "params": [],
@@ -73,6 +75,7 @@
       "kind": {
         "name": "function",
         "decorators": [],
+        "exportToken": null,
         "ident": { "name": "foo", "position": [3, 6] },
         "typeParams": [],
         "params": [
@@ -97,6 +100,8 @@
             },
             "kind": {
               "name": "bindingDecl",
+              "decorators": [],
+              "exportToken": null,
               "bindingPattern": {
                 "kind": "variable",
                 "label": { "name": "x", "position": [4, 7] }
@@ -156,6 +161,7 @@
       "kind": {
         "name": "function",
         "decorators": [],
+        "exportToken": null,
         "ident": { "name": "foo", "position": [6, 6] },
         "typeParams": [],
         "params": [
@@ -222,6 +228,8 @@
             },
             "kind": {
               "name": "bindingDecl",
+              "decorators": [],
+              "exportToken": null,
               "bindingPattern": {
                 "kind": "variable",
                 "label": { "name": "x", "position": [7, 7] }
@@ -281,6 +289,7 @@
       "kind": {
         "name": "function",
         "decorators": [],
+        "exportToken": null,
         "ident": { "name": "foo", "position": [9, 6] },
         "typeParams": [
           { "name": "A", "position": [9, 10] },
@@ -300,6 +309,7 @@
       "kind": {
         "name": "function",
         "decorators": [],
+        "exportToken": null,
         "ident": { "name": "foo", "position": [10, 6] },
         "typeParams": [],
         "params": [
@@ -335,6 +345,7 @@
             "arguments": []
           }
         ],
+        "exportToken": null,
         "ident": { "name": "stubbedFunc", "position": [13, 6] },
         "typeParams": [],
         "params": [],
@@ -374,6 +385,7 @@
             ]
           }
         ],
+        "exportToken": null,
         "ident": { "name": "stubbedFunc", "position": [16, 6] },
         "typeParams": [],
         "params": [],
@@ -413,6 +425,7 @@
             ]
           }
         ],
+        "exportToken": null,
         "ident": { "name": "stubbedFunc", "position": [19, 6] },
         "typeParams": [],
         "params": [],

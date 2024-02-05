@@ -705,6 +705,24 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
     }
     AstNodeKind.BindingDeclaration(value) => {
       println("$fieldsIndent\"name\": \"bindingDecl\",")
+      if value.decorators.isEmpty() {
+        println("$fieldsIndent\"decorators\": [],")
+      } else {
+        println("$fieldsIndent\"decorators\": [")
+        for dec, idx in value.decorators {
+          printDecoratorNodeAsJson(dec, currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != value.decorators.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent],")
+      }
+      if value.exportToken |token| {
+        print("$fieldsIndent\"exportToken\": ")
+        printTokenAsJson(token, 0, currentIndentLevel + 1)
+        println(",")
+      } else {
+        println("$fieldsIndent\"exportToken\": null,")
+      }
       print("$fieldsIndent\"bindingPattern\": ")
       printBindingPatternAsJson(value.bindingPattern, 0, currentIndentLevel + 1)
       println(",")
@@ -734,6 +752,13 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
           println("$comma")
         }
         println("$fieldsIndent],")
+      }
+      if node.exportToken |token| {
+        print("$fieldsIndent\"exportToken\": ")
+        printTokenAsJson(token, 0, currentIndentLevel + 1)
+        println(",")
+      } else {
+        println("$fieldsIndent\"exportToken\": null,")
       }
       print("$fieldsIndent\"ident\": ")
       printLabelAsJson(node.name)

@@ -86,6 +86,8 @@
             },
             "kind": {
               "name": "bindingDecl",
+              "decorators": [],
+              "exportToken": null,
               "bindingPattern": {
                 "kind": "variable",
                 "label": { "name": "x", "position": [4, 7] }

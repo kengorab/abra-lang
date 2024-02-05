@@ -10,6 +10,8 @@
       },
       "kind": {
         "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "a", "position": [1, 5] }
@@ -27,6 +29,8 @@
       },
       "kind": {
         "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "b", "position": [2, 5] }
@@ -44,6 +48,8 @@
       },
       "kind": {
         "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "a", "position": [3, 5] }
@@ -87,6 +93,8 @@
       },
       "kind": {
         "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "c", "position": [4, 5] }
@@ -141,6 +149,8 @@
       },
       "kind": {
         "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "c", "position": [6, 5] }
@@ -175,6 +185,8 @@
       },
       "kind": {
         "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "d", "position": [7, 5] }
