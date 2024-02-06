@@ -1,4 +1,4 @@
 Error at %FILE_NAME%:1:8
-Unexpected token 'identifier', expected one of 'val', 'var', 'func':
+Unexpected token 'identifier', expected one of 'val', 'var', 'func', 'type':
   |  export a + 1
             ^

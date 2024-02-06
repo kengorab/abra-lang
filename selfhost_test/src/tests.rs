@@ -121,7 +121,6 @@ fn parser_tests() {
         .add_test_vs_txt("parser/match_error_case_no_case.abra", "parser/match_error_case_no_case.out")
         .add_test_vs_txt("parser/match_error_no_expr.abra", "parser/match_error_no_expr.out")
         .add_test_vs_txt("parser/match_error_no_lbrace.abra", "parser/match_error_no_lbrace.out")
-
         // Decorators
         .add_test_vs_txt("parser/decorator_error_bad_ident.abra", "parser/decorator_error_bad_ident.out")
         .add_test_vs_txt("parser/decorator_error_before_expr.abra", "parser/decorator_error_before_expr.out")
@@ -144,12 +143,18 @@ fn parser_tests() {
         .add_test_vs_txt("parser/import_error_list_no_comma.abra", "parser/import_error_list_no_comma.out")
         .add_test_vs_txt("parser/import_error_list_no_from.abra", "parser/import_error_list_no_from.out")
         .add_test_vs_txt("parser/import_error_list_no_module_eof.abra", "parser/import_error_list_no_module_eof.out")
-
         // Exports
         .add_test_vs_txt("parser/export.abra", "parser/export.out.json")
         .add_test_vs_txt("parser/export_error_before_expr.abra", "parser/export_error_before_expr.out")
         .add_test_vs_txt("parser/export_error_before_invalid_statement.abra", "parser/export_error_before_invalid_statement.out")
 
+        // While
+        .add_test_vs_txt("parser/while.abra", "parser/while.out.json")
+        .add_test_vs_txt("parser/while_error_as_expr.abra", "parser/while_error_as_expr.out")
+        // For
+        .add_test_vs_txt("parser/for.abra", "parser/for.out.json")
+        .add_test_vs_txt("parser/for_error_no_in.abra", "parser/for_error_no_in.out")
+        .add_test_vs_txt("parser/for_error_no_iterator.abra", "parser/for_error_no_iterator.out")
         // Type identifiers
         .add_test_vs_txt("parser/typeidentifiers.abra", "parser/typeidentifiers.out.json")
         .add_test_vs_txt("parser/typeidentifiers_error_empty_typeargs.abra", "parser/typeidentifiers_error_empty_typeargs.out")
@@ -170,12 +175,10 @@ fn parser_tests() {
         .add_test_vs_txt("parser/functiondecl_error_empty_typeparams.abra", "parser/functiondecl_error_empty_typeparams.out")
         .add_test_vs_txt("parser/functiondecl_error_typeparam_invalid.abra", "parser/functiondecl_error_typeparam_invalid.out")
         .add_test_vs_txt("parser/functiondecl_error_no_body.abra", "parser/functiondecl_error_no_body.out")
-        // While
-        .add_test_vs_txt("parser/while.abra", "parser/while.out.json")
-        .add_test_vs_txt("parser/while_error_as_expr.abra", "parser/while_error_as_expr.out")
-        // For
-        .add_test_vs_txt("parser/for.abra", "parser/for.out.json")
-        .add_test_vs_txt("parser/for_error_no_in.abra", "parser/for_error_no_in.out")
-        .add_test_vs_txt("parser/for_error_no_iterator.abra", "parser/for_error_no_iterator.out")
+        // Type declaration
+        .add_test_vs_txt("parser/typedecl.abra", "parser/typedecl.out.json")
+        .add_test_vs_txt("parser/typedecl_error_exporting_method.abra", "parser/typedecl_error_exporting_method.out")
+        .add_test_vs_txt("parser/typedecl_error_field_after_method.abra", "parser/typedecl_error_field_after_method.out")
+        .add_test_vs_txt("parser/typedecl_error_illegal_body_part.abra", "parser/typedecl_error_illegal_body_part.out")
         .run_tests();
 }

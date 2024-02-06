@@ -1,0 +1,868 @@
+{
+  "imports": [],
+  "nodes": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Type"
+        }
+      },
+      "kind": {
+        "name": "typeDeclaration",
+        "decorators": [],
+        "exportToken": null,
+        "typeName": { "name": "Foo", "position": [1, 6] },
+        "typeParams": [],
+        "fields": [],
+        "methods": [],
+        "nestedTypes": []
+      }
+    },
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Type"
+        }
+      },
+      "kind": {
+        "name": "typeDeclaration",
+        "decorators": [],
+        "exportToken": null,
+        "typeName": { "name": "Foo", "position": [2, 6] },
+        "typeParams": [
+          { "name": "A", "position": [2, 10] },
+          { "name": "B", "position": [2, 13] }
+        ],
+        "fields": [],
+        "methods": [],
+        "nestedTypes": []
+      }
+    },
+    {
+      "token": {
+        "position": [3, 1],
+        "kind": {
+          "name": "Type"
+        }
+      },
+      "kind": {
+        "name": "typeDeclaration",
+        "decorators": [],
+        "exportToken": null,
+        "typeName": { "name": "Foo", "position": [3, 6] },
+        "typeParams": [
+          { "name": "A", "position": [3, 10] }
+        ],
+        "fields": [
+          {
+            "label": { "name": "a", "position": [3, 15] },
+            "typeAnnotation": {
+              "kind": "normal",
+              "label": { "name": "A", "position": [3, 18] },
+              "typeArguments": []
+            },
+            "initializer": null
+          },
+          {
+            "label": { "name": "b", "position": [3, 21] },
+            "typeAnnotation": {
+              "kind": "normal",
+              "label": { "name": "Bool", "position": [3, 24] },
+              "typeArguments": []
+            },
+            "initializer": null
+          }
+        ],
+        "methods": [],
+        "nestedTypes": []
+      }
+    },
+    {
+      "token": {
+        "position": [4, 1],
+        "kind": {
+          "name": "Type"
+        }
+      },
+      "kind": {
+        "name": "typeDeclaration",
+        "decorators": [],
+        "exportToken": null,
+        "typeName": { "name": "Foo", "position": [4, 6] },
+        "typeParams": [],
+        "fields": [
+          {
+            "label": { "name": "a", "position": [5, 3] },
+            "typeAnnotation": {
+              "kind": "normal",
+              "label": { "name": "Int", "position": [5, 6] },
+              "typeArguments": []
+            },
+            "initializer": null
+          },
+          {
+            "label": { "name": "b", "position": [6, 3] },
+            "typeAnnotation": {
+              "kind": "normal",
+              "label": { "name": "Bool", "position": [6, 6] },
+              "typeArguments": []
+            },
+            "initializer": {
+              "token": {
+                "position": [6, 13],
+                "kind": {
+                  "name": "Bool",
+                  "value": true
+                }
+              },
+              "kind": {
+                "name": "literal",
+                "type": "bool",
+                "value": true
+              }
+            }
+          }
+        ],
+        "methods": [],
+        "nestedTypes": []
+      }
+    },
+    {
+      "token": {
+        "position": [9, 1],
+        "kind": {
+          "name": "Type"
+        }
+      },
+      "kind": {
+        "name": "typeDeclaration",
+        "decorators": [],
+        "exportToken": null,
+        "typeName": { "name": "FooBar123", "position": [9, 6] },
+        "typeParams": [],
+        "fields": [],
+        "methods": [
+          {
+            "name": "function",
+            "decorators": [],
+            "exportToken": null,
+            "ident": { "name": "foo", "position": [10, 8] },
+            "typeParams": [],
+            "params": [
+              {
+                "label": { "name": "self", "position": [10, 12] },
+                "isVariadic": false,
+                "typeAnnotation": null,
+                "defaultValue": null
+              },
+              {
+                "label": { "name": "b", "position": [10, 18] },
+                "isVariadic": false,
+                "typeAnnotation": {
+                  "kind": "normal",
+                  "label": { "name": "String", "position": [10, 21] },
+                  "typeArguments": []
+                },
+                "defaultValue": null
+              }
+            ],
+            "body": []
+          }
+        ],
+        "nestedTypes": []
+      }
+    },
+    {
+      "token": {
+        "position": [13, 1],
+        "kind": {
+          "name": "Type"
+        }
+      },
+      "kind": {
+        "name": "typeDeclaration",
+        "decorators": [],
+        "exportToken": null,
+        "typeName": { "name": "FooBar123", "position": [13, 6] },
+        "typeParams": [],
+        "fields": [
+          {
+            "label": { "name": "a", "position": [14, 3] },
+            "typeAnnotation": {
+              "kind": "normal",
+              "label": { "name": "Int", "position": [14, 6] },
+              "typeArguments": []
+            },
+            "initializer": null
+          }
+        ],
+        "methods": [
+          {
+            "name": "function",
+            "decorators": [],
+            "exportToken": null,
+            "ident": { "name": "foo", "position": [16, 8] },
+            "typeParams": [],
+            "params": [
+              {
+                "label": { "name": "self", "position": [16, 12] },
+                "isVariadic": false,
+                "typeAnnotation": null,
+                "defaultValue": null
+              },
+              {
+                "label": { "name": "b", "position": [16, 18] },
+                "isVariadic": false,
+                "typeAnnotation": {
+                  "kind": "normal",
+                  "label": { "name": "String", "position": [16, 21] },
+                  "typeArguments": []
+                },
+                "defaultValue": null
+              }
+            ],
+            "body": [
+              {
+                "token": {
+                  "position": [16, 37],
+                  "kind": {
+                    "name": "Int",
+                    "value": 123
+                  }
+                },
+                "kind": {
+                  "name": "literal",
+                  "type": "int",
+                  "value": 123
+                }
+              }
+            ]
+          },
+          {
+            "name": "function",
+            "decorators": [],
+            "exportToken": null,
+            "ident": { "name": "bar", "position": [17, 8] },
+            "typeParams": [],
+            "params": [
+              {
+                "label": { "name": "self", "position": [17, 12] },
+                "isVariadic": false,
+                "typeAnnotation": null,
+                "defaultValue": null
+              },
+              {
+                "label": { "name": "b", "position": [17, 18] },
+                "isVariadic": false,
+                "typeAnnotation": null,
+                "defaultValue": {
+                  "token": {
+                    "position": [17, 22],
+                    "kind": {
+                      "name": "Bool",
+                      "value": true
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "bool",
+                    "value": true
+                  }
+                }
+              }
+            ],
+            "body": [
+              {
+                "token": {
+                  "position": [17, 37],
+                  "kind": {
+                    "name": "Plus"
+                  }
+                },
+                "kind": {
+                  "name": "binary",
+                  "op": "BinaryOp.Add",
+                  "left": {
+                    "token": {
+                      "position": [17, 34],
+                      "kind": {
+                        "name": "Dot"
+                      }
+                    },
+                    "kind": {
+                      "name": "accessor",
+                      "root": {
+                        "token": {
+                          "position": [17, 30],
+                          "kind": {
+                            "name": "Self"
+                          }
+                        },
+                        "kind": {
+                          "name": "identifier",
+                          "ident": "self"
+                        }
+                      },
+                      "path": [
+                        {
+                          "dotToken": {
+                            "position": [17, 34],
+                            "kind": {
+                              "name": "Dot"
+                            }
+                          },
+                          "ident": "a",
+                          "position": [17, 35]
+                        }
+                      ]
+                    }
+                  },
+                  "right": {
+                    "token": {
+                      "position": [17, 39],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "b"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "b"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "nestedTypes": []
+      }
+    },
+    {
+      "token": {
+        "position": [20, 1],
+        "kind": {
+          "name": "Type"
+        }
+      },
+      "kind": {
+        "name": "typeDeclaration",
+        "decorators": [],
+        "exportToken": null,
+        "typeName": { "name": "FooBar123", "position": [20, 6] },
+        "typeParams": [],
+        "fields": [
+          {
+            "label": { "name": "a", "position": [21, 3] },
+            "typeAnnotation": {
+              "kind": "normal",
+              "label": { "name": "Int", "position": [21, 6] },
+              "typeArguments": []
+            },
+            "initializer": null
+          }
+        ],
+        "methods": [
+          {
+            "name": "function",
+            "decorators": [],
+            "exportToken": null,
+            "ident": { "name": "foo", "position": [23, 8] },
+            "typeParams": [],
+            "params": [
+              {
+                "label": { "name": "self", "position": [23, 12] },
+                "isVariadic": false,
+                "typeAnnotation": null,
+                "defaultValue": null
+              },
+              {
+                "label": { "name": "b", "position": [23, 18] },
+                "isVariadic": false,
+                "typeAnnotation": {
+                  "kind": "normal",
+                  "label": { "name": "String", "position": [23, 21] },
+                  "typeArguments": []
+                },
+                "defaultValue": null
+              }
+            ],
+            "body": [
+              {
+                "token": {
+                  "position": [23, 37],
+                  "kind": {
+                    "name": "Int",
+                    "value": 123
+                  }
+                },
+                "kind": {
+                  "name": "literal",
+                  "type": "int",
+                  "value": 123
+                }
+              }
+            ]
+          },
+          {
+            "name": "function",
+            "decorators": [
+              {
+                "name": { "name": "Foo", "position": [25, 4] },
+                "arguments": []
+              }
+            ],
+            "exportToken": null,
+            "ident": { "name": "bar", "position": [26, 8] },
+            "typeParams": [],
+            "params": [
+              {
+                "label": { "name": "self", "position": [26, 12] },
+                "isVariadic": false,
+                "typeAnnotation": null,
+                "defaultValue": null
+              },
+              {
+                "label": { "name": "b", "position": [26, 18] },
+                "isVariadic": false,
+                "typeAnnotation": null,
+                "defaultValue": {
+                  "token": {
+                    "position": [26, 22],
+                    "kind": {
+                      "name": "Bool",
+                      "value": true
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "bool",
+                    "value": true
+                  }
+                }
+              }
+            ],
+            "body": [
+              {
+                "token": {
+                  "position": [26, 37],
+                  "kind": {
+                    "name": "Plus"
+                  }
+                },
+                "kind": {
+                  "name": "binary",
+                  "op": "BinaryOp.Add",
+                  "left": {
+                    "token": {
+                      "position": [26, 34],
+                      "kind": {
+                        "name": "Dot"
+                      }
+                    },
+                    "kind": {
+                      "name": "accessor",
+                      "root": {
+                        "token": {
+                          "position": [26, 30],
+                          "kind": {
+                            "name": "Self"
+                          }
+                        },
+                        "kind": {
+                          "name": "identifier",
+                          "ident": "self"
+                        }
+                      },
+                      "path": [
+                        {
+                          "dotToken": {
+                            "position": [26, 34],
+                            "kind": {
+                              "name": "Dot"
+                            }
+                          },
+                          "ident": "a",
+                          "position": [26, 35]
+                        }
+                      ]
+                    }
+                  },
+                  "right": {
+                    "token": {
+                      "position": [26, 39],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "b"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "b"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "nestedTypes": []
+      }
+    },
+    {
+      "token": {
+        "position": [29, 1],
+        "kind": {
+          "name": "Type"
+        }
+      },
+      "kind": {
+        "name": "typeDeclaration",
+        "decorators": [],
+        "exportToken": null,
+        "typeName": { "name": "Outer", "position": [29, 6] },
+        "typeParams": [],
+        "fields": [
+          {
+            "label": { "name": "a", "position": [30, 3] },
+            "typeAnnotation": {
+              "kind": "normal",
+              "label": { "name": "Int", "position": [30, 6] },
+              "typeArguments": []
+            },
+            "initializer": null
+          }
+        ],
+        "methods": [
+          {
+            "name": "function",
+            "decorators": [],
+            "exportToken": null,
+            "ident": { "name": "foo", "position": [32, 8] },
+            "typeParams": [],
+            "params": [
+              {
+                "label": { "name": "self", "position": [32, 12] },
+                "isVariadic": false,
+                "typeAnnotation": null,
+                "defaultValue": null
+              },
+              {
+                "label": { "name": "b", "position": [32, 18] },
+                "isVariadic": false,
+                "typeAnnotation": {
+                  "kind": "normal",
+                  "label": { "name": "String", "position": [32, 21] },
+                  "typeArguments": []
+                },
+                "defaultValue": null
+              }
+            ],
+            "body": [
+              {
+                "token": {
+                  "position": [32, 37],
+                  "kind": {
+                    "name": "Int",
+                    "value": 123
+                  }
+                },
+                "kind": {
+                  "name": "literal",
+                  "type": "int",
+                  "value": 123
+                }
+              }
+            ]
+          }
+        ],
+        "nestedTypes": [
+          {
+            "name": "typeDeclaration",
+            "decorators": [],
+            "exportToken": null,
+            "typeName": { "name": "Inner", "position": [34, 8] },
+            "typeParams": [],
+            "fields": [
+              {
+                "label": { "name": "a", "position": [35, 5] },
+                "typeAnnotation": {
+                  "kind": "normal",
+                  "label": { "name": "Int", "position": [35, 8] },
+                  "typeArguments": []
+                },
+                "initializer": null
+              }
+            ],
+            "methods": [
+              {
+                "name": "function",
+                "decorators": [],
+                "exportToken": null,
+                "ident": { "name": "bar", "position": [37, 10] },
+                "typeParams": [],
+                "params": [
+                  {
+                    "label": { "name": "self", "position": [37, 14] },
+                    "isVariadic": false,
+                    "typeAnnotation": null,
+                    "defaultValue": null
+                  },
+                  {
+                    "label": { "name": "b", "position": [37, 20] },
+                    "isVariadic": false,
+                    "typeAnnotation": null,
+                    "defaultValue": {
+                      "token": {
+                        "position": [37, 24],
+                        "kind": {
+                          "name": "Bool",
+                          "value": true
+                        }
+                      },
+                      "kind": {
+                        "name": "literal",
+                        "type": "bool",
+                        "value": true
+                      }
+                    }
+                  }
+                ],
+                "body": [
+                  {
+                    "token": {
+                      "position": [37, 39],
+                      "kind": {
+                        "name": "Plus"
+                      }
+                    },
+                    "kind": {
+                      "name": "binary",
+                      "op": "BinaryOp.Add",
+                      "left": {
+                        "token": {
+                          "position": [37, 36],
+                          "kind": {
+                            "name": "Dot"
+                          }
+                        },
+                        "kind": {
+                          "name": "accessor",
+                          "root": {
+                            "token": {
+                              "position": [37, 32],
+                              "kind": {
+                                "name": "Self"
+                              }
+                            },
+                            "kind": {
+                              "name": "identifier",
+                              "ident": "self"
+                            }
+                          },
+                          "path": [
+                            {
+                              "dotToken": {
+                                "position": [37, 36],
+                                "kind": {
+                                  "name": "Dot"
+                                }
+                              },
+                              "ident": "a",
+                              "position": [37, 37]
+                            }
+                          ]
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [37, 41],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "b"
+                          }
+                        },
+                        "kind": {
+                          "name": "identifier",
+                          "ident": "b"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "nestedTypes": []
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [42, 8],
+        "kind": {
+          "name": "Type"
+        }
+      },
+      "kind": {
+        "name": "typeDeclaration",
+        "decorators": [
+          {
+            "name": { "name": "Bar", "position": [41, 2] },
+            "arguments": [
+              {
+                "label": null,
+                "value": {
+                  "token": {
+                    "position": [41, 6],
+                    "kind": {
+                      "name": "String",
+                      "value": "a"
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "string",
+                    "value": "a"
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "exportToken": {
+          "position": [42, 1],
+          "kind": {
+            "name": "Export"
+          }
+        },
+        "typeName": { "name": "Outer", "position": [42, 13] },
+        "typeParams": [],
+        "fields": [
+          {
+            "label": { "name": "a", "position": [43, 3] },
+            "typeAnnotation": {
+              "kind": "normal",
+              "label": { "name": "Int", "position": [43, 6] },
+              "typeArguments": []
+            },
+            "initializer": null
+          }
+        ],
+        "methods": [
+          {
+            "name": "function",
+            "decorators": [
+              {
+                "name": { "name": "Bar", "position": [45, 4] },
+                "arguments": [
+                  {
+                    "label": null,
+                    "value": {
+                      "token": {
+                        "position": [45, 8],
+                        "kind": {
+                          "name": "String",
+                          "value": "b"
+                        }
+                      },
+                      "kind": {
+                        "name": "literal",
+                        "type": "string",
+                        "value": "b"
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "exportToken": null,
+            "ident": { "name": "foo", "position": [46, 8] },
+            "typeParams": [],
+            "params": [
+              {
+                "label": { "name": "self", "position": [46, 12] },
+                "isVariadic": false,
+                "typeAnnotation": null,
+                "defaultValue": null
+              },
+              {
+                "label": { "name": "b", "position": [46, 18] },
+                "isVariadic": false,
+                "typeAnnotation": {
+                  "kind": "normal",
+                  "label": { "name": "String", "position": [46, 21] },
+                  "typeArguments": []
+                },
+                "defaultValue": null
+              }
+            ],
+            "body": [
+              {
+                "token": {
+                  "position": [46, 37],
+                  "kind": {
+                    "name": "Int",
+                    "value": 123
+                  }
+                },
+                "kind": {
+                  "name": "literal",
+                  "type": "int",
+                  "value": 123
+                }
+              }
+            ]
+          }
+        ],
+        "nestedTypes": [
+          {
+            "name": "typeDeclaration",
+            "decorators": [
+              {
+                "name": { "name": "Bar", "position": [48, 4] },
+                "arguments": [
+                  {
+                    "label": null,
+                    "value": {
+                      "token": {
+                        "position": [48, 8],
+                        "kind": {
+                          "name": "String",
+                          "value": "c"
+                        }
+                      },
+                      "kind": {
+                        "name": "literal",
+                        "type": "string",
+                        "value": "c"
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "exportToken": null,
+            "typeName": { "name": "Inner", "position": [49, 8] },
+            "typeParams": [],
+            "fields": [
+              {
+                "label": { "name": "a", "position": [49, 16] },
+                "typeAnnotation": {
+                  "kind": "normal",
+                  "label": { "name": "Int", "position": [49, 19] },
+                  "typeArguments": []
+                },
+                "initializer": null
+              }
+            ],
+            "methods": [],
+            "nestedTypes": []
+          }
+        ]
+      }
+    }
+  ]
+}
