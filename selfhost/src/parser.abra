@@ -176,6 +176,22 @@ type FunctionDeclarationNode {
   body: AstNode[]
 }
 
+type TypeField {
+  name: Label
+  typeAnnotation: TypeIdentifier
+  initializer: AstNode?
+}
+
+type TypeDeclarationNode {
+  decorators: DecoratorNode[]
+  exportToken: Token?
+  name: Label
+  typeParams: Label[]
+  fields: TypeField[]
+  methods: FunctionDeclarationNode[]
+  types: TypeDeclarationNode[]
+}
+
 export type DecoratorNode {
   name: Label
   arguments: InvocationArgument[]
@@ -202,6 +218,7 @@ export enum AstNodeKind {
   For(itemPattern: BindingPattern, indexPattern: BindingPattern?, iterator: AstNode, block: AstNode[])
   BindingDeclaration(value: BindingDeclarationNode)
   FunctionDeclaration(value: FunctionDeclarationNode)
+  TypeDeclaration(value: TypeDeclarationNode)
 
   func isAssignmentExpression(self): Bool {
     match self {
@@ -418,7 +435,7 @@ export type Parser {
         match self._parseDecorator() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
         val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.At, TokenKind.Export]
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.At, TokenKind.Export]
         if !expected.contains(nextToken.kind) {
           return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
         }
@@ -430,7 +447,7 @@ export type Parser {
         self._advance() // consume 'export' token
 
         val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func]
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type]
         if !expected.contains(nextToken.kind) {
           return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
         }
@@ -440,6 +457,7 @@ export type Parser {
       TokenKind.Val => self._parseBindingDeclaration(mutable: false)
       TokenKind.Var => self._parseBindingDeclaration(mutable: true)
       TokenKind.Func => self._parseFunctionDeclaration()
+      TokenKind.Type => self._parseTypeDeclaration()
       TokenKind.While => self._parseWhileLoop()
       TokenKind.For => self._parseForLoop()
       _ => self._parseExpressionStatement()
@@ -563,13 +581,7 @@ export type Parser {
     val typeParams = match nextToken.kind {
       TokenKind.LT => {
         self._advance() // consume '<' token
-        val labels = match self._commaSeparated(end: TokenKind.GT, consumeFinal: false, fn: () => self._expectNextLabel()) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-        if labels.isEmpty() {
-          val token = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-          return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
-        } else {
-          self._advance() // consume '>' token
-        }
+        val labels = match self._parseTypeParameters() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
         labels
       }
       TokenKind.LParen => []
@@ -619,6 +631,91 @@ export type Parser {
       body: body,
     )
     Result.Ok(AstNode(token: token, kind: AstNodeKind.FunctionDeclaration(node)))
+  }
+
+  func _parseTypeDeclaration(self): Result<AstNode, ParseError> {
+    val decorators = self._seenDecorators
+    self._seenDecorators = []
+
+    val exportToken = self._exportToken
+    self._exportToken = None
+
+    val token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    val typeName = match self._expectNextLabel() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    var nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    val typeParams = match nextToken.kind {
+      TokenKind.LT => {
+        self._advance() // consume '<' token
+        val labels = match self._parseTypeParameters() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        labels
+      }
+      TokenKind.LBrace => []
+      _ => return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
+    }
+
+    match self._expectNextTokenKind(TokenKind.LBrace) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    val fields: TypeField[] = []
+    while self._peek() |nextToken| {
+      match nextToken.kind {
+        TokenKind.Ident => {
+          val name = match self._expectNextLabel() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          match self._expectNextTokenKind(TokenKind.Colon) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          val typeAnnotation = match self._parseTypeIdentifier() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+          var nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          val initializer = if nextToken.kind == TokenKind.Eq {
+            self._advance() // consume '=' token
+            val expr = match self._parseExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            expr
+          } else {
+            None
+          }
+
+          nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          if nextToken.kind == TokenKind.Comma {
+            self._advance() // consume ',' token
+          }
+
+          fields.push(TypeField(name: name, typeAnnotation: typeAnnotation, initializer: initializer))
+        }
+        _ => break
+      }
+    }
+
+    val methods: FunctionDeclarationNode[] = []
+    val nestedTypes: TypeDeclarationNode[] = []
+    while self._peek() |nextToken| {
+      if nextToken.kind == TokenKind.RBrace break
+      val nodeRes = match nextToken.kind {
+        TokenKind.RBrace => break
+        TokenKind.At => self._parseStatement()
+        TokenKind.Func => self._parseStatement()
+        TokenKind.Type => self._parseStatement()
+        _ => return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.UnexpectedToken(nextToken)))
+      }
+
+      val node = match nodeRes { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      match node.kind {
+        AstNodeKind.FunctionDeclaration(node) => methods.push(node)
+        AstNodeKind.TypeDeclaration(node) => nestedTypes.push(node)
+        _ => return unreachable()
+      }
+    }
+
+    match self._expectNextTokenKind(TokenKind.RBrace) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    val node = TypeDeclarationNode(
+      decorators: decorators,
+      exportToken: exportToken,
+      name: typeName,
+      typeParams: typeParams,
+      fields: fields,
+      methods: methods,
+      types: nestedTypes,
+    )
+    Result.Ok(AstNode(token: token, kind: AstNodeKind.TypeDeclaration(node)))
   }
 
   func _parseTypeIdentifier(self): Result<TypeIdentifier, ParseError> {
@@ -734,6 +831,17 @@ export type Parser {
       val param = FunctionParam(label: label, isVariadic: isVariadic, typeAnnotation: typeAnnotation, defaultValue: defaultValue)
       Result.Ok(param)
     })
+  }
+
+  func _parseTypeParameters(self): Result<Label[], ParseError> {
+    val labels = match self._commaSeparated(end: TokenKind.GT, consumeFinal: false, fn: () => self._expectNextLabel()) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    if labels.isEmpty() {
+      val token = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      Result.Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
+    } else {
+      self._advance() // consume '>' token
+      Result.Ok(labels)
+    }
   }
 
   func _parseBlockOrSingleExpression(self): Result<AstNode[], ParseError> {
