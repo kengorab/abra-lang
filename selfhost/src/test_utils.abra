@@ -1,5 +1,5 @@
 import Token, TokenKind from "./lexer"
-import Label, ImportKind, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode, BindingPattern, MatchCaseKind, DecoratorNode from "./parser"
+import Label, ImportKind, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode, BindingPattern, MatchCaseKind, DecoratorNode, EnumVariant from "./parser"
 
 export func printTokenAsJson(token: Token, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
@@ -884,7 +884,7 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
       }
 
       if node.types.isEmpty() {
-        println("$fieldsIndent\"nestedTypes\": []")
+        println("$fieldsIndent\"nestedTypes\": [],")
       } else {
         println("$fieldsIndent\"nestedTypes\": [")
         for nestedType, idx in node.types {
@@ -892,7 +892,149 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
           val comma = if idx != node.types.length - 1 "," else ""
           println("$comma")
         }
+        println("$fieldsIndent],")
+      }
+
+      if node.enums.isEmpty() {
+        println("$fieldsIndent\"nestedEnums\": []")
+      } else {
+        println("$fieldsIndent\"nestedEnums\": [")
+        for nestedEnum, idx in node.enums {
+          printAstNodeKindAsJson(AstNodeKind.EnumDeclaration(nestedEnum), currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != node.types.length - 1 "," else ""
+          println("$comma")
+        }
         println("$fieldsIndent]")
+      }
+    }
+    AstNodeKind.EnumDeclaration(node) => {
+      println("$fieldsIndent\"name\": \"enumDeclaration\",")
+      if node.decorators.isEmpty() {
+        println("$fieldsIndent\"decorators\": [],")
+      } else {
+        println("$fieldsIndent\"decorators\": [")
+        for dec, idx in node.decorators {
+          printDecoratorNodeAsJson(dec, currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != node.decorators.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent],")
+      }
+      if node.exportToken |token| {
+        print("$fieldsIndent\"exportToken\": ")
+        printTokenAsJson(token, 0, currentIndentLevel + 1)
+        println(",")
+      } else {
+        println("$fieldsIndent\"exportToken\": null,")
+      }
+      print("$fieldsIndent\"typeName\": ")
+      printLabelAsJson(node.name)
+
+      if node.typeParams.isEmpty() {
+        println(",\n$fieldsIndent\"typeParams\": [],")
+      } else {
+        println(",\n$fieldsIndent\"typeParams\": [")
+        for label, idx in node.typeParams {
+          print("$fieldsIndent  ")
+          printLabelAsJson(label)
+          val comma = if idx != node.typeParams.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent],")
+      }
+
+      if node.variants.isEmpty() {
+        println("$fieldsIndent\"variants\": [],")
+      } else {
+        println("$fieldsIndent\"variants\": [")
+        for v, idx in node.variants {
+          println("$fieldsIndent  {")
+          match v {
+            EnumVariant.Constant(name) => {
+              println("$fieldsIndent    \"kind\": \"constant\",")
+              print("$fieldsIndent    \"name\": ")
+              printLabelAsJson(name)
+            }
+            EnumVariant.Container(name, fields) => {
+              println("$fieldsIndent    \"kind\": \"container\",")
+              print("$fieldsIndent    \"name\": ")
+              printLabelAsJson(name)
+              if fields.isEmpty() {
+                // unreachable
+              } else {
+                println(",\n$fieldsIndent    \"fields\": [")
+                for f, idx in fields {
+                  println("$fieldsIndent      {")
+                  print("$fieldsIndent        \"label\": ")
+                  printLabelAsJson(f.name)
+                  print(",\n$fieldsIndent        \"typeAnnotation\": ")
+                  printTypeIdentifierAsJson(f.typeAnnotation, 0, currentIndentLevel + 5)
+                  print(",\n$fieldsIndent        \"initializer\": ")
+                  if f.initializer |initializer| {
+                    printAstNodeAsJson(initializer, 0, currentIndentLevel + 5)
+                  } else {
+                    print("null")
+                  }
+                  val comma = if idx != fields.length - 1 "," else ""
+                  println("\n$fieldsIndent      }$comma")
+                }
+                print("$fieldsIndent    ]")
+              }
+            }
+          }
+          val comma = if idx != node.variants.length - 1 "," else ""
+          println("\n$fieldsIndent  }$comma")
+        }
+        println("$fieldsIndent],")
+      }
+
+      if node.methods.isEmpty() {
+        println("$fieldsIndent\"methods\": [],")
+      } else {
+        println("$fieldsIndent\"methods\": [")
+        for method, idx in node.methods {
+          printAstNodeKindAsJson(AstNodeKind.FunctionDeclaration(method), currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != node.methods.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent],")
+      }
+
+      if node.types.isEmpty() {
+        println("$fieldsIndent\"nestedTypes\": [],")
+      } else {
+        println("$fieldsIndent\"nestedTypes\": [")
+        for nestedType, idx in node.types {
+          printAstNodeKindAsJson(AstNodeKind.TypeDeclaration(nestedType), currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != node.types.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent],")
+      }
+
+      if node.enums.isEmpty() {
+        println("$fieldsIndent\"nestedEnums\": []")
+      } else {
+        println("$fieldsIndent\"nestedEnums\": [")
+        for nestedEnum, idx in node.enums {
+          printAstNodeKindAsJson(AstNodeKind.EnumDeclaration(nestedEnum), currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != node.types.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent]")
+      }
+    }
+    AstNodeKind.Break => println("$fieldsIndent\"name\": \"break\"")
+    AstNodeKind.Continue => println("$fieldsIndent\"name\": \"continue\"")
+    AstNodeKind.Return(expr) => {
+      println("$fieldsIndent\"name\": \"return\",")
+
+      if expr |expr| {
+        print("$fieldsIndent\"expr\": ")
+        printAstNodeAsJson(expr, 0, currentIndentLevel + 1)
+        println()
+      } else {
+        println("$fieldsIndent\"expr\": null")
       }
     }
   }

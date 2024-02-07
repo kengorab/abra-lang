@@ -16,7 +16,8 @@
         "typeParams": [],
         "fields": [],
         "methods": [],
-        "nestedTypes": []
+        "nestedTypes": [],
+        "nestedEnums": []
       }
     },
     {
@@ -37,7 +38,8 @@
         ],
         "fields": [],
         "methods": [],
-        "nestedTypes": []
+        "nestedTypes": [],
+        "nestedEnums": []
       }
     },
     {
@@ -76,7 +78,8 @@
           }
         ],
         "methods": [],
-        "nestedTypes": []
+        "nestedTypes": [],
+        "nestedEnums": []
       }
     },
     {
@@ -126,7 +129,8 @@
           }
         ],
         "methods": [],
-        "nestedTypes": []
+        "nestedTypes": [],
+        "nestedEnums": []
       }
     },
     {
@@ -171,7 +175,8 @@
             "body": []
           }
         ],
-        "nestedTypes": []
+        "nestedTypes": [],
+        "nestedEnums": []
       }
     },
     {
@@ -337,7 +342,8 @@
             ]
           }
         ],
-        "nestedTypes": []
+        "nestedTypes": [],
+        "nestedEnums": []
       }
     },
     {
@@ -508,7 +514,8 @@
             ]
           }
         ],
-        "nestedTypes": []
+        "nestedTypes": [],
+        "nestedEnums": []
       }
     },
     {
@@ -583,7 +590,7 @@
             "name": "typeDeclaration",
             "decorators": [],
             "exportToken": null,
-            "typeName": { "name": "Inner", "position": [34, 8] },
+            "typeName": { "name": "InnerType", "position": [34, 8] },
             "typeParams": [],
             "fields": [
               {
@@ -694,14 +701,141 @@
                 ]
               }
             ],
-            "nestedTypes": []
+            "nestedTypes": [],
+            "nestedEnums": []
+          }
+        ],
+        "nestedEnums": [
+          {
+            "name": "enumDeclaration",
+            "decorators": [],
+            "exportToken": null,
+            "typeName": { "name": "InnerEnum", "position": [40, 8] },
+            "typeParams": [],
+            "variants": [
+              {
+                "kind": "container",
+                "name": { "name": "A", "position": [41, 5] },
+                "fields": [
+                  {
+                    "label": { "name": "a", "position": [41, 7] },
+                    "typeAnnotation": {
+                      "kind": "normal",
+                      "label": { "name": "Int", "position": [41, 10] },
+                      "typeArguments": []
+                    },
+                    "initializer": null
+                  }
+                ]
+              }
+            ],
+            "methods": [
+              {
+                "name": "function",
+                "decorators": [],
+                "exportToken": null,
+                "ident": { "name": "bar", "position": [43, 10] },
+                "typeParams": [],
+                "params": [
+                  {
+                    "label": { "name": "self", "position": [43, 14] },
+                    "isVariadic": false,
+                    "typeAnnotation": null,
+                    "defaultValue": null
+                  },
+                  {
+                    "label": { "name": "b", "position": [43, 20] },
+                    "isVariadic": false,
+                    "typeAnnotation": null,
+                    "defaultValue": {
+                      "token": {
+                        "position": [43, 24],
+                        "kind": {
+                          "name": "Bool",
+                          "value": true
+                        }
+                      },
+                      "kind": {
+                        "name": "literal",
+                        "type": "bool",
+                        "value": true
+                      }
+                    }
+                  }
+                ],
+                "body": [
+                  {
+                    "token": {
+                      "position": [43, 39],
+                      "kind": {
+                        "name": "Plus"
+                      }
+                    },
+                    "kind": {
+                      "name": "binary",
+                      "op": "BinaryOp.Add",
+                      "left": {
+                        "token": {
+                          "position": [43, 36],
+                          "kind": {
+                            "name": "Dot"
+                          }
+                        },
+                        "kind": {
+                          "name": "accessor",
+                          "root": {
+                            "token": {
+                              "position": [43, 32],
+                              "kind": {
+                                "name": "Self"
+                              }
+                            },
+                            "kind": {
+                              "name": "identifier",
+                              "ident": "self"
+                            }
+                          },
+                          "path": [
+                            {
+                              "dotToken": {
+                                "position": [43, 36],
+                                "kind": {
+                                  "name": "Dot"
+                                }
+                              },
+                              "ident": "a",
+                              "position": [43, 37]
+                            }
+                          ]
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [43, 41],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "b"
+                          }
+                        },
+                        "kind": {
+                          "name": "identifier",
+                          "ident": "b"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "nestedTypes": [],
+            "nestedEnums": []
           }
         ]
       }
     },
     {
       "token": {
-        "position": [42, 8],
+        "position": [48, 8],
         "kind": {
           "name": "Type"
         }
@@ -710,13 +844,13 @@
         "name": "typeDeclaration",
         "decorators": [
           {
-            "name": { "name": "Bar", "position": [41, 2] },
+            "name": { "name": "Bar", "position": [47, 2] },
             "arguments": [
               {
                 "label": null,
                 "value": {
                   "token": {
-                    "position": [41, 6],
+                    "position": [47, 6],
                     "kind": {
                       "name": "String",
                       "value": "a"
@@ -733,19 +867,19 @@
           }
         ],
         "exportToken": {
-          "position": [42, 1],
+          "position": [48, 1],
           "kind": {
             "name": "Export"
           }
         },
-        "typeName": { "name": "Outer", "position": [42, 13] },
+        "typeName": { "name": "Outer", "position": [48, 13] },
         "typeParams": [],
         "fields": [
           {
-            "label": { "name": "a", "position": [43, 3] },
+            "label": { "name": "a", "position": [49, 3] },
             "typeAnnotation": {
               "kind": "normal",
-              "label": { "name": "Int", "position": [43, 6] },
+              "label": { "name": "Int", "position": [49, 6] },
               "typeArguments": []
             },
             "initializer": null
@@ -756,13 +890,13 @@
             "name": "function",
             "decorators": [
               {
-                "name": { "name": "Bar", "position": [45, 4] },
+                "name": { "name": "Bar", "position": [51, 4] },
                 "arguments": [
                   {
                     "label": null,
                     "value": {
                       "token": {
-                        "position": [45, 8],
+                        "position": [51, 8],
                         "kind": {
                           "name": "String",
                           "value": "b"
@@ -779,21 +913,21 @@
               }
             ],
             "exportToken": null,
-            "ident": { "name": "foo", "position": [46, 8] },
+            "ident": { "name": "foo", "position": [52, 8] },
             "typeParams": [],
             "params": [
               {
-                "label": { "name": "self", "position": [46, 12] },
+                "label": { "name": "self", "position": [52, 12] },
                 "isVariadic": false,
                 "typeAnnotation": null,
                 "defaultValue": null
               },
               {
-                "label": { "name": "b", "position": [46, 18] },
+                "label": { "name": "b", "position": [52, 18] },
                 "isVariadic": false,
                 "typeAnnotation": {
                   "kind": "normal",
-                  "label": { "name": "String", "position": [46, 21] },
+                  "label": { "name": "String", "position": [52, 21] },
                   "typeArguments": []
                 },
                 "defaultValue": null
@@ -802,7 +936,7 @@
             "body": [
               {
                 "token": {
-                  "position": [46, 37],
+                  "position": [52, 37],
                   "kind": {
                     "name": "Int",
                     "value": 123
@@ -822,13 +956,13 @@
             "name": "typeDeclaration",
             "decorators": [
               {
-                "name": { "name": "Bar", "position": [48, 4] },
+                "name": { "name": "Bar", "position": [54, 4] },
                 "arguments": [
                   {
                     "label": null,
                     "value": {
                       "token": {
-                        "position": [48, 8],
+                        "position": [54, 8],
                         "kind": {
                           "name": "String",
                           "value": "c"
@@ -845,23 +979,25 @@
               }
             ],
             "exportToken": null,
-            "typeName": { "name": "Inner", "position": [49, 8] },
+            "typeName": { "name": "Inner", "position": [55, 8] },
             "typeParams": [],
             "fields": [
               {
-                "label": { "name": "a", "position": [49, 16] },
+                "label": { "name": "a", "position": [55, 16] },
                 "typeAnnotation": {
                   "kind": "normal",
-                  "label": { "name": "Int", "position": [49, 19] },
+                  "label": { "name": "Int", "position": [55, 19] },
                   "typeArguments": []
                 },
                 "initializer": null
               }
             ],
             "methods": [],
-            "nestedTypes": []
+            "nestedTypes": [],
+            "nestedEnums": []
           }
-        ]
+        ],
+        "nestedEnums": []
       }
     }
   ]

@@ -135,7 +135,7 @@ type Bool {
 }
 
 type String {
-  length: Int readonly
+  length: Int
   _buffer: Pointer<Byte> = Pointer.null()
 
   func withLength(length: Int): String {

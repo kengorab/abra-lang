@@ -30,6 +30,45 @@
     },
     {
       "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "While"
+        }
+      },
+      "kind": {
+        "name": "while",
+        "condition": {
+          "token": {
+            "position": [2, 7],
+            "kind": {
+              "name": "Bool",
+              "value": true
+            }
+          },
+          "kind": {
+            "name": "literal",
+            "type": "bool",
+            "value": true
+          }
+        },
+        "conditionBinding": null,
+        "block": [
+          {
+            "token": {
+              "position": [2, 14],
+              "kind": {
+                "name": "Continue"
+              }
+            },
+            "kind": {
+              "name": "continue"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
         "position": [3, 1],
         "kind": {
           "name": "While"
@@ -39,7 +78,85 @@
         "name": "while",
         "condition": {
           "token": {
-            "position": [3, 11],
+            "position": [3, 7],
+            "kind": {
+              "name": "Bool",
+              "value": true
+            }
+          },
+          "kind": {
+            "name": "literal",
+            "type": "bool",
+            "value": true
+          }
+        },
+        "conditionBinding": null,
+        "block": [
+          {
+            "token": {
+              "position": [3, 14],
+              "kind": {
+                "name": "Break"
+              }
+            },
+            "kind": {
+              "name": "break"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [4, 1],
+        "kind": {
+          "name": "While"
+        }
+      },
+      "kind": {
+        "name": "while",
+        "condition": {
+          "token": {
+            "position": [4, 7],
+            "kind": {
+              "name": "Bool",
+              "value": true
+            }
+          },
+          "kind": {
+            "name": "literal",
+            "type": "bool",
+            "value": true
+          }
+        },
+        "conditionBinding": null,
+        "block": [
+          {
+            "token": {
+              "position": [4, 14],
+              "kind": {
+                "name": "Continue"
+              }
+            },
+            "kind": {
+              "name": "continue"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [6, 1],
+        "kind": {
+          "name": "While"
+        }
+      },
+      "kind": {
+        "name": "while",
+        "condition": {
+          "token": {
+            "position": [6, 11],
             "kind": {
               "name": "And"
             }
@@ -49,7 +166,7 @@
             "op": "BinaryOp.And",
             "left": {
               "token": {
-                "position": [3, 7],
+                "position": [6, 7],
                 "kind": {
                   "name": "Ident",
                   "value": "foo"
@@ -62,7 +179,7 @@
             },
             "right": {
               "token": {
-                "position": [3, 14],
+                "position": [6, 14],
                 "kind": {
                   "name": "Ident",
                   "value": "bar"
@@ -79,7 +196,7 @@
         "block": [
           {
             "token": {
-              "position": [4, 3],
+              "position": [7, 3],
               "kind": {
                 "name": "Val"
               }
@@ -90,12 +207,12 @@
               "exportToken": null,
               "bindingPattern": {
                 "kind": "variable",
-                "label": { "name": "x", "position": [4, 7] }
+                "label": { "name": "x", "position": [7, 7] }
               },
               "typeAnnotation": null,
               "expr": {
                 "token": {
-                  "position": [4, 11],
+                  "position": [7, 11],
                   "kind": {
                     "name": "Int",
                     "value": 1
@@ -111,7 +228,7 @@
           },
           {
             "token": {
-              "position": [5, 3],
+              "position": [8, 3],
               "kind": {
                 "name": "Int",
                 "value": 2
@@ -128,7 +245,7 @@
     },
     {
       "token": {
-        "position": [8, 1],
+        "position": [11, 1],
         "kind": {
           "name": "While"
         }
@@ -137,7 +254,7 @@
         "name": "while",
         "condition": {
           "token": {
-            "position": [8, 22],
+            "position": [11, 22],
             "kind": {
               "name": "LParen"
             }
@@ -146,7 +263,7 @@
             "name": "invocation",
             "invokee": {
               "token": {
-                "position": [8, 10],
+                "position": [11, 10],
                 "kind": {
                   "name": "QuestionDot"
                 }
@@ -155,7 +272,7 @@
                 "name": "accessor",
                 "root": {
                   "token": {
-                    "position": [8, 7],
+                    "position": [11, 7],
                     "kind": {
                       "name": "Ident",
                       "value": "foo"
@@ -169,13 +286,13 @@
                 "path": [
                   {
                     "dotToken": {
-                      "position": [8, 10],
+                      "position": [11, 10],
                       "kind": {
                         "name": "QuestionDot"
                       }
                     },
                     "ident": "someMethod",
-                    "position": [8, 12]
+                    "position": [11, 12]
                   }
                 ]
               }
@@ -186,12 +303,12 @@
         },
         "conditionBinding": {
           "kind": "variable",
-          "label": { "name": "a", "position": [8, 26] }
+          "label": { "name": "a", "position": [11, 26] }
         },
         "block": [
           {
             "token": {
-              "position": [9, 3],
+              "position": [12, 3],
               "kind": {
                 "name": "Int",
                 "value": 2
@@ -208,7 +325,7 @@
     },
     {
       "token": {
-        "position": [12, 1],
+        "position": [15, 1],
         "kind": {
           "name": "If"
         }
@@ -217,7 +334,7 @@
         "name": "if",
         "condition": {
           "token": {
-            "position": [12, 4],
+            "position": [15, 4],
             "kind": {
               "name": "Ident",
               "value": "foo"
@@ -230,12 +347,12 @@
         },
         "conditionBinding": {
           "kind": "variable",
-          "label": { "name": "a", "position": [12, 9] }
+          "label": { "name": "a", "position": [15, 9] }
         },
         "ifBlock": [
           {
             "token": {
-              "position": [13, 3],
+              "position": [16, 3],
               "kind": {
                 "name": "While"
               }
@@ -244,7 +361,7 @@
               "name": "while",
               "condition": {
                 "token": {
-                  "position": [13, 9],
+                  "position": [16, 9],
                   "kind": {
                     "name": "Ident",
                     "value": "foo"
@@ -257,12 +374,12 @@
               },
               "conditionBinding": {
                 "kind": "variable",
-                "label": { "name": "a", "position": [13, 14] }
+                "label": { "name": "a", "position": [16, 14] }
               },
               "block": [
                 {
                   "token": {
-                    "position": [14, 5],
+                    "position": [17, 5],
                     "kind": {
                       "name": "Int",
                       "value": 2
@@ -281,7 +398,7 @@
         "elseBlock": [
           {
             "token": {
-              "position": [17, 3],
+              "position": [20, 3],
               "kind": {
                 "name": "Int",
                 "value": 3

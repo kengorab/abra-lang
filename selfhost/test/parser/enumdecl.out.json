@@ -1,0 +1,312 @@
+{
+  "imports": [],
+  "nodes": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Enum"
+        }
+      },
+      "kind": {
+        "name": "enumDeclaration",
+        "decorators": [],
+        "exportToken": null,
+        "typeName": { "name": "Foo", "position": [1, 6] },
+        "typeParams": [],
+        "variants": [],
+        "methods": [],
+        "nestedTypes": [],
+        "nestedEnums": []
+      }
+    },
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Enum"
+        }
+      },
+      "kind": {
+        "name": "enumDeclaration",
+        "decorators": [],
+        "exportToken": null,
+        "typeName": { "name": "Foo", "position": [2, 6] },
+        "typeParams": [
+          { "name": "A", "position": [2, 10] },
+          { "name": "B", "position": [2, 13] }
+        ],
+        "variants": [],
+        "methods": [],
+        "nestedTypes": [],
+        "nestedEnums": []
+      }
+    },
+    {
+      "token": {
+        "position": [3, 1],
+        "kind": {
+          "name": "Enum"
+        }
+      },
+      "kind": {
+        "name": "enumDeclaration",
+        "decorators": [],
+        "exportToken": null,
+        "typeName": { "name": "Foo", "position": [3, 6] },
+        "typeParams": [
+          { "name": "A", "position": [3, 10] }
+        ],
+        "variants": [
+          {
+            "kind": "constant",
+            "name": { "name": "One", "position": [3, 15] }
+          },
+          {
+            "kind": "constant",
+            "name": { "name": "Two", "position": [3, 20] }
+          }
+        ],
+        "methods": [],
+        "nestedTypes": [],
+        "nestedEnums": []
+      }
+    },
+    {
+      "token": {
+        "position": [4, 1],
+        "kind": {
+          "name": "Enum"
+        }
+      },
+      "kind": {
+        "name": "enumDeclaration",
+        "decorators": [],
+        "exportToken": null,
+        "typeName": { "name": "Foo", "position": [4, 6] },
+        "typeParams": [
+          { "name": "A", "position": [4, 10] }
+        ],
+        "variants": [
+          {
+            "kind": "container",
+            "name": { "name": "One", "position": [5, 3] },
+            "fields": [
+              {
+                "label": { "name": "a", "position": [5, 7] },
+                "typeAnnotation": {
+                  "kind": "normal",
+                  "label": { "name": "A", "position": [5, 10] },
+                  "typeArguments": []
+                },
+                "initializer": null
+              },
+              {
+                "label": { "name": "b", "position": [5, 13] },
+                "typeAnnotation": {
+                  "kind": "normal",
+                  "label": { "name": "B", "position": [5, 16] },
+                  "typeArguments": []
+                },
+                "initializer": {
+                  "token": {
+                    "position": [5, 20],
+                    "kind": {
+                      "name": "String",
+                      "value": "abc"
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "string",
+                    "value": "abc"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "kind": "constant",
+            "name": { "name": "Two", "position": [6, 3] }
+          }
+        ],
+        "methods": [],
+        "nestedTypes": [],
+        "nestedEnums": []
+      }
+    },
+    {
+      "token": {
+        "position": [9, 1],
+        "kind": {
+          "name": "Enum"
+        }
+      },
+      "kind": {
+        "name": "enumDeclaration",
+        "decorators": [],
+        "exportToken": null,
+        "typeName": { "name": "FooBar123", "position": [9, 6] },
+        "typeParams": [],
+        "variants": [],
+        "methods": [
+          {
+            "name": "function",
+            "decorators": [],
+            "exportToken": null,
+            "ident": { "name": "foo", "position": [10, 8] },
+            "typeParams": [],
+            "params": [
+              {
+                "label": { "name": "self", "position": [10, 12] },
+                "isVariadic": false,
+                "typeAnnotation": null,
+                "defaultValue": null
+              },
+              {
+                "label": { "name": "b", "position": [10, 18] },
+                "isVariadic": false,
+                "typeAnnotation": {
+                  "kind": "normal",
+                  "label": { "name": "String", "position": [10, 21] },
+                  "typeArguments": []
+                },
+                "defaultValue": null
+              }
+            ],
+            "body": []
+          }
+        ],
+        "nestedTypes": [],
+        "nestedEnums": []
+      }
+    },
+    {
+      "token": {
+        "position": [14, 1],
+        "kind": {
+          "name": "Enum"
+        }
+      },
+      "kind": {
+        "name": "enumDeclaration",
+        "decorators": [
+          {
+            "name": { "name": "Abc", "position": [13, 2] },
+            "arguments": []
+          }
+        ],
+        "exportToken": null,
+        "typeName": { "name": "Outer", "position": [14, 6] },
+        "typeParams": [],
+        "variants": [
+          {
+            "kind": "constant",
+            "name": { "name": "A", "position": [15, 3] }
+          },
+          {
+            "kind": "constant",
+            "name": { "name": "B", "position": [16, 3] }
+          }
+        ],
+        "methods": [
+          {
+            "name": "function",
+            "decorators": [
+              {
+                "name": { "name": "Abc", "position": [18, 4] },
+                "arguments": []
+              }
+            ],
+            "exportToken": null,
+            "ident": { "name": "foo", "position": [19, 8] },
+            "typeParams": [],
+            "params": [
+              {
+                "label": { "name": "self", "position": [19, 12] },
+                "isVariadic": false,
+                "typeAnnotation": null,
+                "defaultValue": null
+              },
+              {
+                "label": { "name": "b", "position": [19, 18] },
+                "isVariadic": false,
+                "typeAnnotation": {
+                  "kind": "normal",
+                  "label": { "name": "String", "position": [19, 21] },
+                  "typeArguments": []
+                },
+                "defaultValue": null
+              }
+            ],
+            "body": []
+          }
+        ],
+        "nestedTypes": [
+          {
+            "name": "typeDeclaration",
+            "decorators": [
+              {
+                "name": { "name": "Abc", "position": [24, 4] },
+                "arguments": []
+              }
+            ],
+            "exportToken": null,
+            "typeName": { "name": "InnerType", "position": [25, 8] },
+            "typeParams": [],
+            "fields": [
+              {
+                "label": { "name": "a", "position": [25, 20] },
+                "typeAnnotation": {
+                  "kind": "normal",
+                  "label": { "name": "A", "position": [25, 23] },
+                  "typeArguments": []
+                },
+                "initializer": null
+              },
+              {
+                "label": { "name": "b", "position": [25, 26] },
+                "typeAnnotation": {
+                  "kind": "normal",
+                  "label": { "name": "B", "position": [25, 29] },
+                  "typeArguments": []
+                },
+                "initializer": null
+              }
+            ],
+            "methods": [],
+            "nestedTypes": [],
+            "nestedEnums": []
+          }
+        ],
+        "nestedEnums": [
+          {
+            "name": "enumDeclaration",
+            "decorators": [
+              {
+                "name": { "name": "Abc", "position": [21, 4] },
+                "arguments": []
+              }
+            ],
+            "exportToken": null,
+            "typeName": { "name": "InnerEnum", "position": [22, 8] },
+            "typeParams": [],
+            "variants": [
+              {
+                "kind": "constant",
+                "name": { "name": "A", "position": [22, 20] }
+              },
+              {
+                "kind": "constant",
+                "name": { "name": "B", "position": [22, 23] }
+              }
+            ],
+            "methods": [],
+            "nestedTypes": [],
+            "nestedEnums": []
+          }
+        ]
+      }
+    }
+  ]
+}

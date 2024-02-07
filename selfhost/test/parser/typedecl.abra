@@ -31,8 +31,14 @@ type Outer {
 
   func foo(self, b: String): X<Y> { 123 }
 
-  type Inner {
+  type InnerType {
     a: Int
+
+    func bar(self, b = true) { self.a + b }
+  }
+
+  enum InnerEnum {
+    A(a: Int)
 
     func bar(self, b = true) { self.a + b }
   }

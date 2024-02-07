@@ -180,5 +180,13 @@ fn parser_tests() {
         .add_test_vs_txt("parser/typedecl_error_exporting_method.abra", "parser/typedecl_error_exporting_method.out")
         .add_test_vs_txt("parser/typedecl_error_field_after_method.abra", "parser/typedecl_error_field_after_method.out")
         .add_test_vs_txt("parser/typedecl_error_illegal_body_part.abra", "parser/typedecl_error_illegal_body_part.out")
+        // Enum declaration
+        .add_test_vs_txt("parser/enumdecl.abra", "parser/enumdecl.out.json")
+        .add_test_vs_txt("parser/enumdecl_error_container_no_typeannotation.abra", "parser/enumdecl_error_container_no_typeannotation.out")
+        .add_test_vs_txt("parser/enumdecl_error_empty_container_variant.abra", "parser/enumdecl_error_empty_container_variant.out")
+        // Returns
+        .add_test_vs_txt("parser/return.abra", "parser/return.out.json")
+        .add_test_vs_txt("parser/return_error_nonexpr.abra", "parser/return_error_nonexpr.out")
+
         .run_tests();
 }
