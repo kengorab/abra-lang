@@ -31,7 +31,7 @@ export enum TokenKind {
   Match
   Type
   Enum
-  Return
+  Return(subsequentNewline: Bool)
   Readonly
   Import
   Export
@@ -603,7 +603,10 @@ export type Lexer {
       "match" => TokenKind.Match
       "type" => TokenKind.Type
       "enum" => TokenKind.Enum
-      "return" => TokenKind.Return
+      "return" => {
+        val sawNewline = self._skipWhitespace()
+        TokenKind.Return(sawNewline)
+      }
       "readonly" => TokenKind.Readonly
       "import" => TokenKind.Import
       "export" => TokenKind.Export

@@ -1,0 +1,26 @@
+enum Foo { }
+enum Foo<A, B> { }
+enum Foo<A> { One, Two }
+enum Foo<A> {
+  One(a: A, b: B = "abc")
+  Two
+}
+
+enum FooBar123 {
+  func foo(self, b: String) {}
+}
+
+@Abc
+enum Outer {
+  A
+  B
+
+  @Abc
+  func foo(self, b: String) {}
+
+  @Abc
+  enum InnerEnum { A, B }
+
+  @Abc
+  type InnerType { a: A, b: B }
+}
