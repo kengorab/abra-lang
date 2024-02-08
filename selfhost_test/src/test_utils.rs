@@ -32,6 +32,10 @@ impl TestRunner {
         Self::test_runner("parser", "parser.test.abra", "parser_test")
     }
 
+    pub fn typechecker_test_runner() -> Self {
+        Self::test_runner("typechecker", "typechecker.test.abra", "typechecker_test")
+    }
+
     pub fn test_runner(runner_name: &'static str, src_file: &str, output_bin_file: &str) -> Self {
         let selfhost_dir = get_project_root().unwrap().join("selfhost");
         let build_dir = if let Some(test_temp_dir) = std::env::var("TEST_TMP_DIR").ok() {

@@ -257,7 +257,7 @@ enum ParseErrorKind {
   Unreachable
 }
 
-type ParseError {
+export type ParseError {
   position: Position
   kind: ParseErrorKind
 
@@ -979,7 +979,7 @@ export type Parser {
           nodes.push(node)
         }
         nodes
-      } 
+      }
       TokenKind.Break => if allowTerminators {
         val node = match self._parseStatement() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
         [node]

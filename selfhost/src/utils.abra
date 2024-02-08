@@ -1,3 +1,5 @@
+import "fs" as fs
+
 export func valueIfValidHexDigit(ch: Int): Int? {
   if 48 <= ch && ch <= 57 { // 0-9
     (ch - 48)
@@ -8,4 +10,29 @@ export func valueIfValidHexDigit(ch: Int): Int? {
   } else {
     None
   }
+}
+
+// TODO: Move this elsewhere, probably into std somewhere
+export func getAbsolutePath(fileName: String): String[] {
+  val parts = if fileName[0] == "/" {
+    fileName.split("/")
+  } else {
+    val cwd = fs.getCurrentWorkingDirectory()
+    val path = cwd + "/" + fileName
+    path.split("/")
+  }
+
+  val sanitizedParts: String[] = []
+  for part, idx in parts {
+    if part.isEmpty() continue
+    if part == "." continue
+    if part == ".." {
+      sanitizedParts.pop()
+      continue
+    }
+
+    sanitizedParts.push(part)
+  }
+
+  sanitizedParts
 }

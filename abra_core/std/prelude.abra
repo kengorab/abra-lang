@@ -589,7 +589,12 @@ type Array<T> {
 
   func getRange(self, startIndex = 0, endIndex = self.length): T[] {
     val start = if startIndex < 0 startIndex + self.length else startIndex
-    val end = if endIndex > self.length self.length else endIndex
+    val end = if endIndex > self.length
+      self.length
+    else if endIndex < 0
+      endIndex + self.length
+    else
+      endIndex
     val length = end - start
     val subArray: T[] = Array.withCapacity(length)
     subArray.length = length
