@@ -65,8 +65,8 @@
 (() => {
   val arr = [1, 2, 3, 4, 5]
 
-  /// Expect: [2, 3, 4] [2, 3, 4]
-  println(arr[1:4], arr[-4:4])
+  /// Expect: [2, 3, 4] [2, 3, 4] [2, 3, 4]
+  println(arr[1:4], arr[-4:4], arr[1:-1])
 
   /// Expect: []
   println(arr[1:1])
