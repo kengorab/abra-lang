@@ -190,3 +190,12 @@ fn parser_tests() {
 
         .run_tests();
 }
+
+#[test]
+fn typechecker_tests() {
+    TestRunner::typechecker_test_runner()
+        // Lexer/Parser error handling
+        .add_test_vs_txt("typechecker/_lexer_error.abra", "typechecker/_lexer_error.out")
+        .add_test_vs_txt("typechecker/_parser_error.abra", "typechecker/_parser_error.out")
+        .run_tests();
+}

@@ -1,0 +1,28 @@
+// When executed directly, this will perform typechecking, starting at the module at the given path
+// and recursively loading and typechecking imported modules. When typechecking is complete, the
+// Project will be filled in with TypedModules, each of which contain a typed AST and other useful
+// data.
+// This is split out into a separate runnable file so that the test-specific code is never compiled into
+// the actual resulting binary; this results in a separate binary being compiled which is only used for
+// testing.
+
+import "fs" as fs
+import getAbsolutePath from "./utils"
+import ModuleLoader, Project, Typechecker from "./typechecker"
+
+if Process.args()[1] |fileName| {
+  val absPathSegs = getAbsolutePath(fileName)
+  val projectRoot = "/" + absPathSegs[:-1].join("/")
+  val filePathAbs = "/" + absPathSegs.join("/")
+
+  val moduleLoader = ModuleLoader(rootDirPath: projectRoot)
+  val project = Project()
+  val typechecker = Typechecker(moduleLoader: moduleLoader, project: project)
+
+  match typechecker.typecheckEntrypoint(filePathAbs) {
+    Result.Ok => println(project)
+    Result.Err(e) => println(e.getMessage())
+  }
+} else {
+  println("Missing required argument <file-name>")
+}

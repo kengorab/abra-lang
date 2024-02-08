@@ -1,0 +1,134 @@
+import "fs" as fs
+import Lexer, LexerError, Position from "./lexer"
+import Parser, ParsedModule, ParseError from "./parser"
+
+enum TokenizeAndParseError {
+  ReadFileError(path: String)
+  LexerError(inner: LexerError)
+  ParseError(inner: ParseError)
+}
+
+export type ModuleLoader {
+  rootDirPath: String
+
+  // TODO: This of course does nothing right now
+  func resolvePath(self, modulePath: String, relativeTo: String?): String = modulePath
+
+  func tokenizeAndParse(self, modulePath: String): Result<ParsedModule, TokenizeAndParseError> {
+    match fs.readFile(modulePath) {
+      Result.Ok(contents) => {
+        match Lexer.tokenize(contents) {
+          Result.Ok(tokens) => {
+            match Parser.parse(tokens) {
+              Result.Ok(parsedModule) => Result.Ok(parsedModule)
+              Result.Err(error) => Result.Err(TokenizeAndParseError.ParseError(error))
+            }
+          }
+          Result.Err(error) => Result.Err(TokenizeAndParseError.LexerError(error))
+        }
+      }
+      Result.Err => Result.Err(TokenizeAndParseError.ReadFileError(modulePath))
+    }
+  }
+}
+
+type TypedModule {
+  id: Int
+  name: String
+}
+
+export type Project {
+  modules: TypedModule[] = []
+}
+
+type TypecheckerError {
+  modulePath: String
+  kind: TypecheckerErrorKind
+
+  func getMessage(self): String {
+    match self.kind {
+      // TODO: Better error message, once imports are a thing
+      TypecheckerErrorKind.ReadFileError(path) => "Could not read file '$path'"
+      TypecheckerErrorKind.LexerError(inner) => {
+        val contents = match fs.readFile(self.modulePath) {
+          Result.Ok(v) => v
+          Result.Err => return "Could not read file '${self.modulePath}'"
+        }
+        inner.getMessage(self.modulePath, contents)
+      }
+      TypecheckerErrorKind.ParseError(inner) => {
+        val contents = match fs.readFile(self.modulePath) {
+          Result.Ok(v) => v
+          Result.Err => return "Could not read file '${self.modulePath}'"
+        }
+        inner.getMessage(self.modulePath, contents)
+      }
+      TypecheckerErrorKind.TypeError(inner) => {
+        val contents = match fs.readFile(self.modulePath) {
+          Result.Ok(v) => v
+          Result.Err => return "Could not read file '${self.modulePath}'"
+        }
+        inner.getMessage(self.modulePath, contents)
+      }
+    }
+  }
+}
+
+enum TypecheckerErrorKind {
+  ReadFileError(path: String)
+  LexerError(inner: LexerError)
+  ParseError(inner: ParseError)
+  TypeError(inner: TypeError)
+}
+
+type TypeError {
+  position: Position
+  kind: TypeErrorKind
+
+  func getMessage(self, filePath: String, contents: String): String {
+    val lines = ["Error at $filePath:${self.position.line}:${self.position.col}"]
+
+    lines.join("\n")
+  }
+}
+
+enum TypeErrorKind {
+
+}
+
+export type Typechecker {
+  moduleLoader: ModuleLoader
+  project: Project
+
+  func typecheckEntrypoint(self, modulePathAbs: String): Result<Int, TypecheckerError> {
+    self._typecheckModule(modulePathAbs)
+  }
+
+  func _tokenizeAndParse(self, modulePath: String, relativeTo: String? = None): Result<ParsedModule, TypecheckerError> {
+    val absPath = self.moduleLoader.resolvePath(modulePath, relativeTo)
+    match self.moduleLoader.tokenizeAndParse(absPath) {
+      Result.Ok(mod) => Result.Ok(mod)
+      Result.Err(e) => {
+        val kind = match e {
+          TokenizeAndParseError.ReadFileError(path) => TypecheckerErrorKind.ReadFileError(path)
+          TokenizeAndParseError.LexerError(inner) => TypecheckerErrorKind.LexerError(inner)
+          TokenizeAndParseError.ParseError(inner) => TypecheckerErrorKind.ParseError(inner)
+        }
+
+        return Result.Err(TypecheckerError(modulePath: modulePath, kind: kind))
+      }
+    }
+  }
+
+  func _typecheckModule(self, modulePath: String): Result<Int, TypecheckerError> {
+    val moduleId = self.project.modules.length
+
+    val mod = TypedModule(id: moduleId, name: modulePath)
+    self.project.modules.push(mod)
+
+    val parsedModule = match self._tokenizeAndParse(modulePath) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    println(parsedModule)
+
+    Result.Ok(moduleId)
+  }
+}
