@@ -27,10 +27,7 @@ export type ModuleLoader {
           Result.Err(error) => Result.Err(TokenizeAndParseError.LexerError(error))
         }
       }
-      Result.Err(e) => {
-        println(e)
-        Result.Err(TokenizeAndParseError.ReadFileError(modulePath))
-      }
+      Result.Err(e) => Result.Err(TokenizeAndParseError.ReadFileError(modulePath))
     }
   }
 }
