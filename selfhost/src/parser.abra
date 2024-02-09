@@ -28,9 +28,9 @@ export enum LiteralAstNode {
   String(value: String)
 }
 
-enum UnaryOp { Minus, Negate }
+export enum UnaryOp { Minus, Negate }
 
-type UnaryAstNode {
+export type UnaryAstNode {
   op: UnaryOp
   expr: AstNode
 }

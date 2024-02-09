@@ -197,5 +197,13 @@ fn typechecker_tests() {
         // Lexer/Parser error handling
         .add_test_vs_txt("typechecker/_lexer_error.abra", "typechecker/_lexer_error.out")
         .add_test_vs_txt("typechecker/_parser_error.abra", "typechecker/_parser_error.out")
+        // Literals
+        .add_test_vs_txt("typechecker/literals.abra", "typechecker/literals.out.json")
+        // Unary
+        .add_test_vs_txt("typechecker/unary.abra", "typechecker/unary.out.json")
+        .add_test_vs_txt("typechecker/unary_error_minus.1.abra", "typechecker/unary_error_minus.1.out")
+        .add_test_vs_txt("typechecker/unary_error_minus.2.abra", "typechecker/unary_error_minus.2.out")
+        .add_test_vs_txt("typechecker/unary_error_negate.1.abra", "typechecker/unary_error_negate.1.out")
+        .add_test_vs_txt("typechecker/unary_error_negate.2.abra", "typechecker/unary_error_negate.2.out")
         .run_tests();
 }

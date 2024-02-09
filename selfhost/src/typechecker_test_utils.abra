@@ -1,0 +1,119 @@
+import printTokenAsJson from "./test_utils"
+import LiteralAstNode from "./parser"
+import Type, TypedModule, TypedAstNode, TypedAstNodeKind, PrimitiveKind from "./typechecker"
+
+export type Jsonifier {
+  indentLevel: Int = 0
+
+  func printModule(self, mod: TypedModule) {
+    println("{")
+    self.indentInc()
+    
+    self.println("\"id\": ${mod.id},")
+    self.println("\"name\": \"${mod.name}\",")
+    self.print("\"code\": ")
+    self.printNodes(mod.code)
+    println()
+
+    self.indentDec()
+    self.println("}")
+  }
+
+  func printNodes(self, nodes: TypedAstNode[]) {
+    println("[")
+
+    self.indentInc()
+    for node, idx in nodes {
+      self.indent()
+      self.printNode(node)
+      val comma = if idx != nodes.length - 1 "," else ""
+      println(comma)
+    }
+
+    self.indentDec()
+    self.print("]")
+  }
+
+  func printType(self, ty: Type) {
+    println("{")
+
+    match ty {
+      Type.Primitive(kind) => {
+        self.indentInc()
+        self.println("\"kind\": \"primitive\",")
+
+        match kind {
+          PrimitiveKind.Int => self.println("\"primitive\": \"Int\"")
+          PrimitiveKind.Float => self.println("\"primitive\": \"Float\"")
+          PrimitiveKind.Bool => self.println("\"primitive\": \"Bool\"")
+          PrimitiveKind.String => self.println("\"primitive\": \"String\"")
+        }
+        self.indentDec()
+      }
+    }
+
+    self.print("}")
+  }
+
+  func printNode(self, node: TypedAstNode) {
+    println("{")
+
+    self.indentInc()
+    self.print("\"token\": ")
+    printTokenAsJson(node.token, 0, self.indentLevel)
+    println(",")
+
+    self.print("\"type\": ")
+    self.printType(node.ty)
+    println(",")
+
+    self.println("\"node\": {")
+    self.indentInc()
+    match node.kind {
+      TypedAstNodeKind.Literal(value) => {
+        self.println("\"kind\": \"literal\",")
+        match value {
+          LiteralAstNode.Int(value) => self.println("\"value\": $value")
+          LiteralAstNode.Float(value) => self.println("\"value\": $value")
+          LiteralAstNode.Bool(value) => self.println("\"value\": $value")
+          LiteralAstNode.String(value) => self.println("\"value\": \"$value\"")
+        }
+      }
+      TypedAstNodeKind.Unary(op, expr) => {
+        self.println("\"kind\": \"unary\",")
+        self.println("\"op\": \"$op\",")
+        self.print("\"expr\": ")
+        self.printNode(expr)
+        println()
+      }
+      // TypedAstNodeKind.Binary => { }
+      TypedAstNodeKind.Grouped(inner) => {
+        self.println("\"kind\": \"grouped\",")
+        self.print("\"expr\": ")
+        self.printNode(inner)
+        println()
+      }
+    }
+    self.indentDec()
+    self.println("}")
+
+    self.indentDec()
+    self.print("}")
+  }
+
+  func indent(self) = print("  ".repeat(self.indentLevel))
+
+  func indentInc(self) = self.indentLevel += 1
+
+  func indentDec(self) = self.indentLevel -= 1
+
+  func print(self, str: String) {
+    self.indent()
+    print(str)
+  }
+
+  func println(self, str: String) {
+    self.indent()
+    println(str)
+  }
+}

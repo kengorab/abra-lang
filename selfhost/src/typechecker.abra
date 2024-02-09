@@ -1,6 +1,6 @@
 import "fs" as fs
-import Lexer, LexerError, Position from "./lexer"
-import Parser, ParsedModule, ParseError from "./parser"
+import Lexer, LexerError, Token, Position from "./lexer"
+import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp from "./parser"
 
 enum TokenizeAndParseError {
   ReadFileError(path: String)
@@ -32,13 +32,44 @@ export type ModuleLoader {
   }
 }
 
-type TypedModule {
+export type TypedModule {
   id: Int
   name: String
+  code: TypedAstNode[]
 }
 
 export type Project {
   modules: TypedModule[] = []
+}
+
+export enum PrimitiveKind { Int, Float, Bool, String }
+
+export enum Type {
+  Primitive(kind: PrimitiveKind)
+
+  func repr(self): String {
+    match self {
+      Type.Primitive(kind) => match kind {
+        PrimitiveKind.Int => "Int"
+        PrimitiveKind.Float => "Float"
+        PrimitiveKind.Bool => "Bool"
+        PrimitiveKind.String => "String"
+      }
+    }
+  }
+}
+
+export type TypedAstNode {
+  token: Token
+  ty: Type
+  kind: TypedAstNodeKind
+}
+
+export enum TypedAstNodeKind {
+  Literal(value: LiteralAstNode)
+  Unary(op: UnaryOp, expr: TypedAstNode)
+  // Binary(...)
+  Grouped(inner: TypedAstNode)
 }
 
 type TypecheckerError {
@@ -88,12 +119,46 @@ type TypeError {
   func getMessage(self, filePath: String, contents: String): String {
     val lines = ["Error at $filePath:${self.position.line}:${self.position.col}"]
 
+    match self.kind {
+      TypeErrorKind.TypeMismatch(expected, received) => {
+        lines.push("Type mismatch")
+        lines.push(self._getCursorLine(self.position, contents))
+
+        val expectedReprs = expected.map(t => t.repr()).join(", ")
+        if expected.length == 1 {
+          lines.push("Expected: " + expectedReprs)
+        } else {
+          lines.push("Expected one of: " + expectedReprs)
+        }
+        lines.push("but instead found: " + received.repr())
+      }
+      TypeErrorKind.NotYetImplemented => {
+        lines.push("Not yet implemented:")
+        lines.push(self._getCursorLine(self.position, contents))
+      }
+    }
+
     lines.join("\n")
+  }
+
+  // TODO: This is duplicated from Lexer, pull this out
+  func _getCursorLine(self, position: Position, contents: String, cursorLength = 1): String {
+    if contents.lines()[position.line - 1] |line| {
+      val len = position.col - 1 + cursorLength
+      val cursor = Array.fill(len, " ")
+      for i in range(len - cursorLength, len) {
+        cursor[i] = "^"
+      }
+      "  |  $line\n     ${cursor.join()}"
+    } else {
+      "unreachable"
+    }
   }
 }
 
 enum TypeErrorKind {
-
+  NotYetImplemented
+  TypeMismatch(expected: Type[], received: Type)
 }
 
 export type Typechecker {
@@ -123,12 +188,90 @@ export type Typechecker {
   func _typecheckModule(self, modulePath: String): Result<Int, TypecheckerError> {
     val moduleId = self.project.modules.length
 
-    val mod = TypedModule(id: moduleId, name: modulePath)
+    val mod = TypedModule(id: moduleId, name: modulePath, code: [])
     self.project.modules.push(mod)
 
     val parsedModule = match self._tokenizeAndParse(modulePath) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-    println(parsedModule)
+    for importNode in parsedModule.imports { /* todo */ }
+
+    mod.code = match self._typecheckBlock(parsedModule.nodes) {
+      Result.Ok(v) => v
+      Result.Err(e) => return Result.Err(TypecheckerError(modulePath: modulePath, kind: TypecheckerErrorKind.TypeError(e)))
+    }
 
     Result.Ok(moduleId)
   }
+
+  func _typecheckBlock(self, nodes: AstNode[]): Result<TypedAstNode[], TypeError> {
+    // TODO: handle incremental passes for func/type/enum declaration
+
+    val typedNodes: TypedAstNode[] = []
+
+    for node in nodes {
+      val res = match node.kind {
+        AstNodeKind.FunctionDeclaration => return todo(node.token.position)
+        AstNodeKind.TypeDeclaration => return todo(node.token.position)
+        AstNodeKind.EnumDeclaration => return todo(node.token.position)
+        _ => self._typecheckStatement(node: node, typeHint: None)
+      }
+
+      val typedNode = match res { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      typedNodes.push(typedNode)
+    }
+
+    return Result.Ok(typedNodes)
+  }
+
+  func _typecheckStatement(self, node: AstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
+    match node.kind {
+      // TODO: switch on node type
+      _ => self._typecheckExpression(node, typeHint)
+    }
+  }
+
+  func _typecheckExpression(self, node: AstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
+    val token = node.token
+    match node.kind {
+      AstNodeKind.Literal(literal) => {
+        val primitiveKind = match literal {
+          LiteralAstNode.Int => PrimitiveKind.Int
+          LiteralAstNode.Float => PrimitiveKind.Float
+          LiteralAstNode.Bool => PrimitiveKind.Bool
+          LiteralAstNode.String => PrimitiveKind.String
+        }
+        val ty = Type.Primitive(primitiveKind)
+        Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Literal(literal)))
+      }
+      AstNodeKind.Unary(node) => self._typecheckUnary(token, node)
+      AstNodeKind.Binary => todo(node.token.position)
+      AstNodeKind.Grouped(inner) => {
+        val expr = match self._typecheckExpression(inner, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        Result.Ok(TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Grouped(expr)))
+      }
+      _ => todo(node.token.position)
+    }
+  }
+
+  func _typecheckUnary(self, token: Token, node: UnaryAstNode): Result<TypedAstNode, TypeError> {
+    val expr = match self._typecheckExpression(node: node.expr, typeHint: None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    match node.op {
+      UnaryOp.Minus => {
+        if expr.ty != Type.Primitive(PrimitiveKind.Int) && expr.ty != Type.Primitive(PrimitiveKind.Float) {
+          val expected = [Type.Primitive(PrimitiveKind.Int), Type.Primitive(PrimitiveKind.Float)]
+          return Result.Err(TypeError(position: expr.token.position, kind: TypeErrorKind.TypeMismatch(expected, expr.ty)))
+        }
+      }
+      UnaryOp.Negate => {
+        if expr.ty != Type.Primitive(PrimitiveKind.Bool) {
+          return Result.Err(TypeError(position: expr.token.position, kind: TypeErrorKind.TypeMismatch([Type.Primitive(PrimitiveKind.Bool)], expr.ty)))
+        }
+      }
+    }
+  
+    Result.Ok(TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Unary(op: node.op, expr: expr)))
+  }
+}
+
+func todo<V>(position: Position): Result<V, TypeError> {
+  Result.Err(TypeError(position: position, kind: TypeErrorKind.NotYetImplemented))
 }
