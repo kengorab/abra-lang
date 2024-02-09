@@ -25,7 +25,7 @@ export type ModuleLoader {
       print(ch)
       print(",")
     }
-    println("************")
+    println("\n************")
 
     match fs.readFile(modulePath) {
       Result.Ok(contents) => {

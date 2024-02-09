@@ -6,6 +6,7 @@
 // the actual resulting binary; this results in a separate binary being compiled which is only used for
 // testing.
 
+import "libc" as libc
 import "fs" as fs
 import getAbsolutePath from "./utils"
 import ModuleLoader, Project, Typechecker from "./typechecker"
@@ -15,6 +16,22 @@ if Process.args()[1] |fileName| {
   val absPathSegs = getAbsolutePath(fileName)
   val projectRoot = "/" + absPathSegs[:-1].join("/")
   val filePathAbs = "/" + absPathSegs.join("/")
+  /*
+    func concat<T>(self, suffix: T, *others: Any[]): String {
+    val suffixStr = suffix.toString()
+    val othersRepr = others.join()
+    var newLength = self.length + suffixStr.length + othersRepr.length
+   */
+
+  val joined = absPathSegs.join("/")
+  val joinedLen = libc.strlen(joined._buffer)
+  println("joined.length:", joined.length, "joinedLen:", joinedLen)
+  for i in range(0, joinedLen) {
+    val ch = joined._buffer.offset(i).load().asInt()
+    print(ch)
+    print(",")
+  }
+  println("\n************")
 
   val moduleLoader = ModuleLoader(rootDirPath: projectRoot)
   val project = Project()
