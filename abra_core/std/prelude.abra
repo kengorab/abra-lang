@@ -307,9 +307,11 @@ type String {
     newString._buffer
       .offset(self.length)
       .copyFrom(suffixStr._buffer, suffixStr.length)
-    newString._buffer
-      .offset(self.length + suffixStr.length)
-      .copyFrom(othersRepr._buffer, othersRepr.length)
+    if !others.isEmpty() {
+      newString._buffer
+        .offset(self.length + suffixStr.length)
+        .copyFrom(othersRepr._buffer, othersRepr.length)
+    }
     newString
   }
 
