@@ -6,48 +6,48 @@
 // the actual resulting binary; this results in a separate binary being compiled which is only used for
 // testing.
 
-import "libc" as libc
+// import "libc" as libc
 import "fs" as fs
 import getAbsolutePath from "./utils"
 import ModuleLoader, Project, Typechecker from "./typechecker"
 import Jsonifier from "./typechecker_test_utils"
 
-func join(segments: String[], joiner = ""): String {
-  val reprs: String[] = Array.withCapacity(segments.length)
-  var length = 0
-  for i in range(0, segments.length) {
-    val item = segments._buffer.offset(i).load()
-    val repr = item.toString()
-    reprs.push(repr)
-    length += repr.length
-    if i != segments.length - 1 {
-      length += joiner.length
-    }
-  }
+// func join(segments: String[], joiner = ""): String {
+//   val reprs: String[] = Array.withCapacity(segments.length)
+//   var length = 0
+//   for i in range(0, segments.length) {
+//     val item = segments._buffer.offset(i).load()
+//     val repr = item.toString()
+//     reprs.push(repr)
+//     length += repr.length
+//     if i != segments.length - 1 {
+//       length += joiner.length
+//     }
+//   }
 
-  println("[join] length:", length)
-  val str = String.withLength(length)
-  val str_len = libc.strlen(str._buffer)
-  for i in range(0, str_len) {
-    val ch = str._buffer.offset(i).load().asInt()
-    print(ch)
-    print(",")
-  }
-  println("\n************")
+//   println("[join] length:", length)
+//   val str = String.withLength(length)
+//   val str_len = libc.strlen(str._buffer)
+//   for i in range(0, str_len) {
+//     val ch = str._buffer.offset(i).load().asInt()
+//     print(ch)
+//     print(",")
+//   }
+//   println("\n************")
 
-  var offset = 0
-  for i in range(0, reprs.length) {
-    val repr = reprs._buffer.offset(i).load()
-    str._buffer.offset(offset).copyFrom(repr._buffer, repr.length)
-    offset += repr.length
-    if i != reprs.length - 1 {
-      str._buffer.offset(offset).copyFrom(joiner._buffer, joiner.length)
-      offset += joiner.length
-    }
-  }
+//   var offset = 0
+//   for i in range(0, reprs.length) {
+//     val repr = reprs._buffer.offset(i).load()
+//     str._buffer.offset(offset).copyFrom(repr._buffer, repr.length)
+//     offset += repr.length
+//     if i != reprs.length - 1 {
+//       str._buffer.offset(offset).copyFrom(joiner._buffer, joiner.length)
+//       offset += joiner.length
+//     }
+//   }
 
-  str
-}
+//   str
+// }
 
 
 if Process.args()[1] |fileName| {
@@ -61,24 +61,24 @@ if Process.args()[1] |fileName| {
     var newLength = self.length + suffixStr.length + othersRepr.length
    */
 
-  val joined1 = absPathSegs.join("/")
-  val joined1Len = libc.strlen(joined1._buffer)
-  println("joined1.length:", joined1.length, "joined1Len:", joined1Len)
-  for i in range(0, joined1Len) {
-    val ch = joined1._buffer.offset(i).load().asInt()
-    print(ch)
-    print(",")
-  }
-  println("\n************")
-  val joined2 = join(absPathSegs, "/")
-  val joined2Len = libc.strlen(joined2._buffer)
-  println("joined2.length:", joined2.length, "joined2Len:", joined2Len)
-  for i in range(0, joined2Len) {
-    val ch = joined1._buffer.offset(i).load().asInt()
-    print(ch)
-    print(",")
-  }
-  println("\n************")
+  // val joined1 = absPathSegs.join("/")
+  // val joined1Len = libc.strlen(joined1._buffer)
+  // println("joined1.length:", joined1.length, "joined1Len:", joined1Len)
+  // for i in range(0, joined1Len) {
+  //   val ch = joined1._buffer.offset(i).load().asInt()
+  //   print(ch)
+  //   print(",")
+  // }
+  // println("\n************")
+  // val joined2 = join(absPathSegs, "/")
+  // val joined2Len = libc.strlen(joined2._buffer)
+  // println("joined2.length:", joined2.length, "joined2Len:", joined2Len)
+  // for i in range(0, joined2Len) {
+  //   val ch = joined2._buffer.offset(i).load().asInt()
+  //   print(ch)
+  //   print(",")
+  // }
+  // println("\n************")
 
   val moduleLoader = ModuleLoader(rootDirPath: projectRoot)
   val project = Project()

@@ -1,4 +1,4 @@
-import "libc" as libc
+// import "libc" as libc
 import "fs" as fs
 import Lexer, LexerError, Token, Position from "./lexer"
 import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp from "./parser"
@@ -16,16 +16,16 @@ export type ModuleLoader {
   func resolvePath(self, modulePath: String, relativeTo: String?): String = modulePath
 
   func tokenizeAndParse(self, modulePath: String): Result<ParsedModule, TokenizeAndParseError> {
-    println("modulePath:", modulePath, "|")
+    // println("modulePath:", modulePath, "|")
 
-    val pathBufferLen = libc.strlen(modulePath._buffer)
-    println("[fs::readFile] strlen(modulePath._buffer) = ", pathBufferLen)
-    for i in range(0, pathBufferLen) {
-      val ch = modulePath._buffer.offset(i).load().asInt()
-      print(ch)
-      print(",")
-    }
-    println("\n************")
+    // val pathBufferLen = libc.strlen(modulePath._buffer)
+    // println("[fs::readFile] strlen(modulePath._buffer) = ", pathBufferLen)
+    // for i in range(0, pathBufferLen) {
+    //   val ch = modulePath._buffer.offset(i).load().asInt()
+    //   print(ch)
+    //   print(",")
+    // }
+    // println("\n************")
 
     match fs.readFile(modulePath) {
       Result.Ok(contents) => {

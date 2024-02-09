@@ -1,4 +1,4 @@
-import Byte from "./_intrinsics"
+import Pointer, Byte from "./_intrinsics"
 import "libc" as libc
 
 export enum ReadFileError {
@@ -9,7 +9,10 @@ export enum ReadFileError {
 }
 
 export func readFile(path: String): Result<String, ReadFileError> {
-  val fd = libc.open(path._buffer, libc.O_RDONLY)
+  val buf: Pointer<Byte> = Pointer.malloc(path.length + 1)
+  buf.copyFrom(path._buffer, path.length)
+
+  val fd = libc.open(buf, libc.O_RDONLY)
   if fd == -1 {
     val errMsg = libc.strerror(libc.errno())
     return Result.Err(error: ReadFileError.CouldNotOpen(message: errMsg))
