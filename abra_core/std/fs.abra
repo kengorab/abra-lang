@@ -9,8 +9,8 @@ export enum ReadFileError {
 }
 
 export func readFile(path: String): Result<String, ReadFileError> {
-  val len = libc.strlen(path._buffer)
-  println("[fs::readFile] strlen(path._buffer) = ", len)
+  val pathBufferLen = libc.strlen(path._buffer)
+  println("[fs::readFile] strlen(path._buffer) = ", pathBufferLen)
 
   val fd = libc.open(path._buffer, libc.O_RDONLY)
   if fd == -1 {
