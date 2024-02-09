@@ -20,6 +20,12 @@ export type ModuleLoader {
 
     val pathBufferLen = libc.strlen(modulePath._buffer)
     println("[fs::readFile] strlen(modulePath._buffer) = ", pathBufferLen)
+    for i in range(0, pathBufferLen) {
+      val ch = modulePath._buffer.offset(i).load().asInt()
+      print(ch)
+      print(",")
+    }
+    println("************")
 
     match fs.readFile(modulePath) {
       Result.Ok(contents) => {
