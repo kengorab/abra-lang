@@ -22,7 +22,6 @@ if Process.args()[1] |fileName| {
 
   match typechecker.typecheckEntrypoint(filePathAbs) {
     Result.Ok => {
-      //println(project)
       val json = Jsonifier()
       for mod in project.modules {
         json.printModule(mod)
