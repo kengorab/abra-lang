@@ -139,6 +139,9 @@ type String {
   _buffer: Pointer<Byte> = Pointer.null()
 
   func withLength(length: Int): String {
+    // Allocate length + 1 bytes; each String ends in a \0 byte. Even though we know the length, and memory-based
+    // operations on a String instance should always use the length field, it should still always be the case that
+    // `libc.strlen(self._buffer)` is equal to `self.length`.
     String(length: length, _buffer: Pointer.malloc(length + 1))
   }
 
