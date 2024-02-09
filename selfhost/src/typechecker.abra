@@ -27,7 +27,10 @@ export type ModuleLoader {
           Result.Err(error) => Result.Err(TokenizeAndParseError.LexerError(error))
         }
       }
-      Result.Err => Result.Err(TokenizeAndParseError.ReadFileError(modulePath))
+      Result.Err(e) => {
+        println(e)
+        Result.Err(TokenizeAndParseError.ReadFileError(modulePath))
+      }
     }
   }
 }
@@ -267,7 +270,7 @@ export type Typechecker {
         }
       }
     }
-  
+
     Result.Ok(TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Unary(op: node.op, expr: expr)))
   }
 }
