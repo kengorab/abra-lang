@@ -201,9 +201,9 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/literals.abra", "typechecker/literals.out.json")
         // Unary
         .add_test_vs_txt("typechecker/unary.abra", "typechecker/unary.out.json")
-        // .add_test_vs_txt("typechecker/unary_error_minus_1.abra", "typechecker/unary_error_minus_1.out")
-        // .add_test_vs_txt("typechecker/unary_error_minus_2.abra", "typechecker/unary_error_minus_2.out")
-        .add_test_vs_txt("typechecker/unary_error_negate_1.abra", "typechecker/unary_error_negate_1.out")
-        .add_test_vs_txt("typechecker/unary_error_negate_2.abra", "typechecker/unary_error_negate_2.out")
+        .add_test_vs_txt("typechecker/unary_error_minus.1.abra", "typechecker/unary_error_minus.1.out")
+        .add_test_vs_txt("typechecker/unary_error_minus.2.abra", "typechecker/unary_error_minus.2.out")
+        .add_test_vs_txt("typechecker/unary_error_neg.1.abra", "typechecker/unary_error_neg.1.out")
+        .add_test_vs_txt("typechecker/unary_error_neg.2.abra", "typechecker/unary_error_neg.2.out")
         .run_tests();
 }
