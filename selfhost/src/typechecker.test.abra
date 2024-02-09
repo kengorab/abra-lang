@@ -9,6 +9,7 @@
 import "fs" as fs
 import getAbsolutePath from "./utils"
 import ModuleLoader, Project, Typechecker from "./typechecker"
+import Jsonifier from "./typechecker_test_utils"
 
 if Process.args()[1] |fileName| {
   val absPathSegs = getAbsolutePath(fileName)
@@ -20,7 +21,13 @@ if Process.args()[1] |fileName| {
   val typechecker = Typechecker(moduleLoader: moduleLoader, project: project)
 
   match typechecker.typecheckEntrypoint(filePathAbs) {
-    Result.Ok => println(project)
+    Result.Ok => {
+      //println(project)
+      val json = Jsonifier()
+      for mod in project.modules {
+        json.printModule(mod)
+      }
+    }
     Result.Err(e) => println(e.getMessage())
   }
 } else {
