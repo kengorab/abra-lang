@@ -139,7 +139,7 @@ type String {
   _buffer: Pointer<Byte> = Pointer.null()
 
   func withLength(length: Int): String {
-    String(length: length, _buffer: Pointer.malloc(length))
+    String(length: length, _buffer: Pointer.malloc(length + 1))
   }
 
   func hash(self): Int {
