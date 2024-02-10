@@ -1,6 +1,6 @@
-import printTokenAsJson from "./test_utils"
+import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 import LiteralAstNode from "./parser"
-import Type, TypedModule, TypedAstNode, TypedAstNodeKind, PrimitiveKind from "./typechecker"
+import Type, TypedModule, TypedAstNode, TypedAstNodeKind, PrimitiveKind, Variable from "./typechecker"
 
 export type Jsonifier {
   indentLevel: Int = 0
@@ -21,8 +21,8 @@ export type Jsonifier {
 
   func printNodes(self, nodes: TypedAstNode[]) {
     println("[")
-
     self.indentInc()
+
     for node, idx in nodes {
       self.indent()
       self.printNode(node)
@@ -36,29 +36,30 @@ export type Jsonifier {
 
   func printType(self, ty: Type) {
     println("{")
+    self.indentInc()
 
     match ty {
       Type.Primitive(kind) => {
-        self.indentInc()
         self.println("\"kind\": \"primitive\",")
 
         match kind {
+          PrimitiveKind.Unit => self.println("\"primitive\": \"Unit\"")
           PrimitiveKind.Int => self.println("\"primitive\": \"Int\"")
           PrimitiveKind.Float => self.println("\"primitive\": \"Float\"")
           PrimitiveKind.Bool => self.println("\"primitive\": \"Bool\"")
           PrimitiveKind.String => self.println("\"primitive\": \"String\"")
         }
-        self.indentDec()
       }
     }
 
+    self.indentDec()
     self.print("}")
   }
 
   func printNode(self, node: TypedAstNode) {
     println("{")
-
     self.indentInc()
+
     self.print("\"token\": ")
     printTokenAsJson(node.token, 0, self.indentLevel)
     println(",")
@@ -93,9 +94,43 @@ export type Jsonifier {
         self.printNode(inner)
         println()
       }
+
+      // Statements
+      TypedAstNodeKind.BindingDeclaration(node) => {
+        self.println("\"kind\": \"bindingDeclaration\",")
+
+        self.print("\"pattern\": ")
+        printBindingPatternAsJson(node.bindingPattern, 0, self.indentLevel)
+        println(",")
+
+        self.print("\"variables\": ")
+        self.array(node.variables, v => self.printVariable(v))
+        println(",")
+
+        self.print("\"expr\": ")
+        self.opt(node.expr, n => self.printNode(n))
+      }
     }
     self.indentDec()
     self.println("}")
+
+    self.indentDec()
+    self.print("}")
+  }
+
+  func printVariable(self, variable: Variable) {
+    println("{")
+    self.indentInc()
+
+    self.print("\"label\": ")
+    printLabelAsJson(variable.label)
+    println(",")
+
+    self.println("\"mutable\": ${variable.mutable},")
+
+    self.print("\"type\": ")
+    self.printType(variable.ty)
+    println()
 
     self.indentDec()
     self.print("}")
@@ -115,5 +150,34 @@ export type Jsonifier {
   func println(self, str: String) {
     self.indent()
     println(str)
+  }
+
+  func array<T>(self, arr: T[], fn: (T) => Unit) {
+    if arr.isEmpty() {
+      println("[]")
+    } else {
+      println("[")
+      self.indentInc()
+
+      for item, idx in arr {
+        self.indent()
+        fn(item)
+
+        val comma = if idx != arr.length - 1 "," else ""
+        println(comma)
+      }
+
+      self.indentDec()
+      self.print("]")
+    }
+  }
+
+  func opt<T>(self, v: T?, fn: (T) => Unit) {
+    if v |v| {
+      fn(v)
+      println()
+    } else {
+      println("null")
+    }
   }
 }

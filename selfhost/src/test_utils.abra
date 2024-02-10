@@ -162,7 +162,7 @@ export func printParsedModuleAsJson(module: ParsedModule) {
   println("}")
 }
 
-func printLabelAsJson(label: Label) {
+export func printLabelAsJson(label: Label) {
   print("{ \"name\": \"${label.name}\", \"position\": [${label.position.line}, ${label.position.col}] }")
 }
 
@@ -261,7 +261,7 @@ func printDecoratorNodeAsJson(decorator: DecoratorNode, indentLevelStart: Int, c
   print("$endIndent}")
 }
 
-func printBindingPatternAsJson(bindingPattern: BindingPattern, indentLevelStart: Int, currentIndentLevel: Int) {
+export func printBindingPatternAsJson(bindingPattern: BindingPattern, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
   val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
   val endIndent = "  ".repeat(currentIndentLevel)

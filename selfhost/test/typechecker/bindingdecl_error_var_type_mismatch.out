@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:1:17
+Type mismatch
+  |  var a: String = -1
+                     ^
+Expected: String
+but instead found: Int
