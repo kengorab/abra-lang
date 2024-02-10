@@ -185,6 +185,106 @@
         ],
         "expr": null
       }
+    },
+    {
+      "token": {
+        "position": [8, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "i1", "position": [8, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "i1", "position": [8, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "option",
+              "inner": {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [8, 16],
+            "kind": {
+              "name": "None"
+            }
+          },
+          "type": {
+            "kind": "option",
+            "inner": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "None"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [9, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "i2", "position": [9, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "i2", "position": [9, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "option",
+              "inner": {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [9, 16],
+            "kind": {
+              "name": "Int",
+              "value": 16
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 16
+          }
+        }
+      }
     }
   ]
 }

@@ -205,6 +205,12 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/unary_error_minus.2.abra", "typechecker/unary_error_minus.2.out")
         .add_test_vs_txt("typechecker/unary_error_neg.1.abra", "typechecker/unary_error_neg.1.out")
         .add_test_vs_txt("typechecker/unary_error_neg.2.abra", "typechecker/unary_error_neg.2.out")
+        // Identifier
+        .add_test_vs_txt("typechecker/identifier.abra", "typechecker/identifier.out.json")
+        .add_test_vs_txt("typechecker/identifier_error_discard.abra", "typechecker/identifier_error_discard.out")
+        .add_test_vs_txt("typechecker/identifier_error_type_mismatch.abra", "typechecker/identifier_error_type_mismatch.out")
+        .add_test_vs_txt("typechecker/identifier_error_type_mismatch_None.abra", "typechecker/identifier_error_type_mismatch_None.out")
+        .add_test_vs_txt("typechecker/identifier_error_unknown_ident.abra", "typechecker/identifier_error_unknown_ident.out")
 
         // Binding declaration
         .add_test_vs_txt("typechecker/bindingdecl.abra", "typechecker/bindingdecl.out.json")
@@ -213,8 +219,11 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/bindingdecl_error_uninitialized_val.1.abra", "typechecker/bindingdecl_error_uninitialized_val.1.out")
         .add_test_vs_txt("typechecker/bindingdecl_error_uninitialized_val.2.abra", "typechecker/bindingdecl_error_uninitialized_val.2.out")
         .add_test_vs_txt("typechecker/bindingdecl_error_unknown_type.abra", "typechecker/bindingdecl_error_unknown_type.out")
-        .add_test_vs_txt("typechecker/bindingdecl_error_val_type_mismatch.abra", "typechecker/bindingdecl_error_val_type_mismatch.out")
-        .add_test_vs_txt("typechecker/bindingdecl_error_var_type_mismatch.abra", "typechecker/bindingdecl_error_var_type_mismatch.out")
+        .add_test_vs_txt("typechecker/bindingdecl_error_type_mismatch_val.abra", "typechecker/bindingdecl_error_type_mismatch_val.out")
+        .add_test_vs_txt("typechecker/bindingdecl_error_type_mismatch_var.abra", "typechecker/bindingdecl_error_type_mismatch_var.out")
+        .add_test_vs_txt("typechecker/bindingdecl_error_type_mismatch_option.1.abra", "typechecker/bindingdecl_error_type_mismatch_option.1.out")
+        .add_test_vs_txt("typechecker/bindingdecl_error_type_mismatch_option.2.abra", "typechecker/bindingdecl_error_type_mismatch_option.2.out")
+        .add_test_vs_txt("typechecker/bindingdecl_error_unfilled_holes.abra", "typechecker/bindingdecl_error_unfilled_holes.out")
 
         .run_tests();
 }

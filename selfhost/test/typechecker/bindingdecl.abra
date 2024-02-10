@@ -3,3 +3,7 @@ var _ = "abc"
 var _ = -1.43
 
 var y: Int
+
+// Option
+val i1: Int? = None
+val i2: Int? = 16

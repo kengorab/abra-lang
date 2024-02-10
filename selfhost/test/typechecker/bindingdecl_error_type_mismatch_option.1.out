@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:1:15
+Type mismatch
+  |  val a: Int? = "abc"
+                   ^
+Expected: Int?
+but instead found: String

@@ -1,6 +1,6 @@
 import "fs" as fs
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
-import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label from "./parser"
+import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind from "./parser"
 
 enum TokenizeAndParseError {
   ReadFileError(path: String)
@@ -61,6 +61,8 @@ export enum PrimitiveKind { Unit, Int, Float, Bool, String }
 
 export enum Type {
   Primitive(kind: PrimitiveKind)
+  Option(inner: Type)
+  Hole
 
   func repr(self): String {
     match self {
@@ -71,6 +73,19 @@ export enum Type {
         PrimitiveKind.Bool => "Bool"
         PrimitiveKind.String => "String"
       }
+      Type.Option(inner) => "${inner.repr()}?"
+      Type.Hole => "<unknown>"
+    }
+  }
+
+  func hasUnfilledHoles(self): Bool = match self {
+    Type.Primitive => false
+    Type.Option(inner) => inner == Type.Hole
+    Type.Hole => {
+      // Should be unreachable as Type.Hole is never instantiated directly. This println statement will cause
+      // tests to fail if this ever somehow happens though.
+      println("[Type#hasUnfilledHoles] unreachable")
+      true
     }
   }
 }
@@ -92,6 +107,7 @@ export enum TypedAstNodeKind {
   Unary(op: UnaryOp, expr: TypedAstNode)
   // Binary(...)
   Grouped(inner: TypedAstNode)
+  Identifier(kind: IdentifierKind)
 
   BindingDeclaration(node: TypedBindingDeclarationNode)
 }
@@ -162,10 +178,14 @@ type TypeError {
         lines.push("This $kind is already declared at (${original.position.line}:${original.position.col})")
         lines.push(self._getCursorLine(original.position, contents))
       }
-      TypeErrorKind.UnknownType(name) => {
-        lines.push("Unknown type '$name'")
+      TypeErrorKind.UnknownName(name, kind) => {
+        lines.push("Unknown $kind '$name'")
         lines.push(self._getCursorLine(self.position, contents))
-        lines.push("No type with that name is visible in current scope")
+        if name == "_" {
+          lines.push("The '_' identifier is a special name used to discard values, and it cannot be referenced")
+        } else {
+          lines.push("No $kind with that name is visible in current scope")
+        }
       }
       TypeErrorKind.MissingValExpr(name) => {
         lines.push("Missing initializer for immutable variable '$name'")
@@ -175,6 +195,17 @@ type TypeError {
         lines.push("Could not determine type of mutable variable '$name'")
         lines.push(self._getCursorLine(self.position, contents))
         lines.push("A 'var' must have either an initial value or a type annotation (or both)")
+      }
+      TypeErrorKind.IllegalValueType(ty, purpose) => {
+        if ty == Type.Primitive(PrimitiveKind.Unit) {
+          lines.push("Forbidden type for $purpose")
+          lines.push(self._getCursorLine(self.position, contents))
+          lines.push("Instances of type ${ty.repr()} cannot be used as $purpose values")
+        } else {
+          lines.push("Could not determine type for $purpose")
+          lines.push(self._getCursorLine(self.position, contents))
+          lines.push("Type '${ty.repr()}' has unfilled holes. Please use an explicit type annotation to denote the type")
+        }
       }
       TypeErrorKind.NotYetImplemented => {
         lines.push("Not yet implemented:")
@@ -204,9 +235,10 @@ enum TypeErrorKind {
   NotYetImplemented
   TypeMismatch(expected: Type[], received: Type)
   DuplicateName(original: Label, kind: String)
-  UnknownType(name: String)
+  UnknownName(name: String, kind: String)
   MissingValExpr(name: String)
   MissingVarExprAndTypeAnn(name: String)
+  IllegalValueType(ty: Type, purpose: String)
 }
 
 export type Typechecker {
@@ -256,10 +288,13 @@ export type Typechecker {
         "Float" => Type.Primitive(PrimitiveKind.Float)
         "Bool" => Type.Primitive(PrimitiveKind.Bool)
         "String" => Type.Primitive(PrimitiveKind.String)
-        _ => return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownType(label.name)))
+        _ => return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
       }
       TypeIdentifier.Array => return todo(Position(line: 0, col: 0))
-      TypeIdentifier.Option => return todo(Position(line: 0, col: 0))
+      TypeIdentifier.Option(inner) => {
+        val innerTy = match self._resolveTypeIdentifier(inner) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        Type.Option(innerTy)
+      }
       TypeIdentifier.Tuple => return todo(Position(line: 0, col: 0))
       TypeIdentifier.Function => return todo(Position(line: 0, col: 0))
     }
@@ -267,9 +302,23 @@ export type Typechecker {
     Result.Ok(ty)
   }
 
+  func _resolveIdentifier(self, ident: String): Variable? {
+    var scope: Scope? = self.currentScope
+    while scope |s| {
+      for v in s.variables {
+        if v.label.name == ident return v
+      }
+      scope = s.parent
+    }
+
+    None
+  }
+
   func _typeSatisfiesRequired(self, ty: Type, required: Type): Bool {
-    // TODO: this logic will of course need to be expanded upon 
-    ty == required
+    match required {
+      Type.Option(inner) => match ty { Type.Option => ty == required, _ => ty == inner }
+      _ => ty == required
+    }
   }
 
   func _typecheckModule(self, modulePath: String): Result<Int, TypecheckerError> {
@@ -328,7 +377,7 @@ export type Typechecker {
     val label = match node.bindingPattern {
       BindingPattern.Variable(label) => label
     }
-    
+
     val annType = if node.typeAnnotation |typeAnn| {
       val ty = match self._resolveTypeIdentifier(typeAnn) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
       ty
@@ -346,6 +395,10 @@ export type Typechecker {
         annotatedType
       } else {
         typedExpr.ty
+      }
+
+      if ty == Type.Primitive(PrimitiveKind.Unit) || ty.hasUnfilledHoles() {
+        return Result.Err(TypeError(position: expr.token.position, kind: TypeErrorKind.IllegalValueType(ty: ty, purpose: "assignment")))
       }
 
       // TODO: type could not be auto-coerced to `TypedAstNode?` on its own
@@ -388,6 +441,7 @@ export type Typechecker {
         val expr = match self._typecheckExpression(inner, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
         Result.Ok(TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Grouped(expr)))
       }
+      AstNodeKind.Identifier(kind) => self._typecheckIdentifier(token, kind, typeHint)
       _ => todo(node.token.position)
     }
   }
@@ -409,6 +463,29 @@ export type Typechecker {
     }
 
     Result.Ok(TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Unary(op: node.op, expr: expr)))
+  }
+
+  func _typecheckIdentifier(self, token: Token, kind: IdentifierKind, typeHint: Type?): Result<TypedAstNode, TypeError> {
+    val ty = match kind {
+      IdentifierKind.Named(name) => {
+        val t = if self._resolveIdentifier(name) |variable| {
+          variable.ty
+        } else {
+          return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName(name, "variable")))
+        }
+        t
+      }
+      IdentifierKind.Discard => return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName("_", "variable")))
+      IdentifierKind.None_ => {
+        match typeHint {
+          Type.Option t => t
+          _ => Type.Option(Type.Hole)
+        }
+      }
+      IdentifierKind.Self => return todo(token.position)
+    }
+
+    Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Identifier(kind)))
   }
 }
 

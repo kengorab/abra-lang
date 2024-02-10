@@ -1,5 +1,5 @@
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
-import LiteralAstNode from "./parser"
+import LiteralAstNode, IdentifierKind from "./parser"
 import Type, TypedModule, TypedAstNode, TypedAstNodeKind, PrimitiveKind, Variable from "./typechecker"
 
 export type Jsonifier {
@@ -8,7 +8,7 @@ export type Jsonifier {
   func printModule(self, mod: TypedModule) {
     println("{")
     self.indentInc()
-    
+
     self.println("\"id\": ${mod.id},")
     self.println("\"name\": \"${mod.name}\",")
     self.print("\"code\": ")
@@ -50,6 +50,13 @@ export type Jsonifier {
           PrimitiveKind.String => self.println("\"primitive\": \"String\"")
         }
       }
+      Type.Option(inner) => {
+        self.println("\"kind\": \"option\",")
+        self.print("\"inner\": ")
+        self.printType(inner)
+        println()
+      }
+      Type.Hole => self.println("\"kind\": \"hole\"")
     }
 
     self.indentDec()
@@ -92,6 +99,18 @@ export type Jsonifier {
         self.println("\"kind\": \"grouped\",")
         self.print("\"expr\": ")
         self.printNode(inner)
+        println()
+      }
+      TypedAstNodeKind.Identifier(kind) => {
+        self.println("\"kind\": \"identifier\",")
+
+        val name = match kind {
+          IdentifierKind.Named(name) => name
+          IdentifierKind.Discard => "_"
+          IdentifierKind.None_ => "None"
+          IdentifierKind.Self => "self"
+        }
+        self.print("\"name\": \"$name\"")
         println()
       }
 
