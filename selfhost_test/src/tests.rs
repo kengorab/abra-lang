@@ -205,5 +205,16 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/unary_error_minus.2.abra", "typechecker/unary_error_minus.2.out")
         .add_test_vs_txt("typechecker/unary_error_neg.1.abra", "typechecker/unary_error_neg.1.out")
         .add_test_vs_txt("typechecker/unary_error_neg.2.abra", "typechecker/unary_error_neg.2.out")
+
+        // Binding declaration
+        .add_test_vs_txt("typechecker/bindingdecl.abra", "typechecker/bindingdecl.out.json")
+        .add_test_vs_txt("typechecker/bindingdecl_error_bare_var.abra", "typechecker/bindingdecl_error_bare_var.out")
+        .add_test_vs_txt("typechecker/bindingdecl_error_duplicate_name.abra", "typechecker/bindingdecl_error_duplicate_name.out")
+        .add_test_vs_txt("typechecker/bindingdecl_error_uninitialized_val.1.abra", "typechecker/bindingdecl_error_uninitialized_val.1.out")
+        .add_test_vs_txt("typechecker/bindingdecl_error_uninitialized_val.2.abra", "typechecker/bindingdecl_error_uninitialized_val.2.out")
+        .add_test_vs_txt("typechecker/bindingdecl_error_unknown_type.abra", "typechecker/bindingdecl_error_unknown_type.out")
+        .add_test_vs_txt("typechecker/bindingdecl_error_val_type_mismatch.abra", "typechecker/bindingdecl_error_val_type_mismatch.out")
+        .add_test_vs_txt("typechecker/bindingdecl_error_var_type_mismatch.abra", "typechecker/bindingdecl_error_var_type_mismatch.out")
+
         .run_tests();
 }
