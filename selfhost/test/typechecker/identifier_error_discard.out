@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:2:9
+Unknown variable '_'
+  |  val b = _
+             ^
+The '_' identifier is a special name used to discard values, and it cannot be referenced
