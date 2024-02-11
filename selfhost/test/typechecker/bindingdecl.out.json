@@ -10,6 +10,7 @@
         }
       },
       "type": {
+        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -24,6 +25,7 @@
             "label": { "name": "x", "position": [1, 5] },
             "mutable": false,
             "type": {
+              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -38,6 +40,7 @@
             }
           },
           "type": {
+            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },
@@ -56,6 +59,7 @@
         }
       },
       "type": {
+        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -70,6 +74,7 @@
             "label": { "name": "_", "position": [2, 5] },
             "mutable": true,
             "type": {
+              "nullable": false,
               "kind": "primitive",
               "primitive": "String"
             }
@@ -84,6 +89,7 @@
             }
           },
           "type": {
+            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
@@ -102,6 +108,7 @@
         }
       },
       "type": {
+        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -116,6 +123,7 @@
             "label": { "name": "_", "position": [3, 5] },
             "mutable": true,
             "type": {
+              "nullable": false,
               "kind": "primitive",
               "primitive": "Float"
             }
@@ -129,6 +137,7 @@
             }
           },
           "type": {
+            "nullable": false,
             "kind": "primitive",
             "primitive": "Float"
           },
@@ -144,6 +153,7 @@
                 }
               },
               "type": {
+                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Float"
               },
@@ -164,6 +174,7 @@
         }
       },
       "type": {
+        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -178,6 +189,7 @@
             "label": { "name": "y", "position": [5, 5] },
             "mutable": true,
             "type": {
+              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -194,6 +206,7 @@
         }
       },
       "type": {
+        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -208,11 +221,9 @@
             "label": { "name": "i1", "position": [8, 5] },
             "mutable": false,
             "type": {
-              "kind": "option",
-              "inner": {
-                "kind": "primitive",
-                "primitive": "Int"
-              }
+              "nullable": true,
+              "kind": "primitive",
+              "primitive": "Int"
             }
           }
         ],
@@ -224,11 +235,9 @@
             }
           },
           "type": {
-            "kind": "option",
-            "inner": {
-              "kind": "primitive",
-              "primitive": "Int"
-            }
+            "nullable": true,
+            "kind": "primitive",
+            "primitive": "Int"
           },
           "node": {
             "kind": "identifier",
@@ -245,6 +254,7 @@
         }
       },
       "type": {
+        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -259,11 +269,9 @@
             "label": { "name": "i2", "position": [9, 5] },
             "mutable": false,
             "type": {
-              "kind": "option",
-              "inner": {
-                "kind": "primitive",
-                "primitive": "Int"
-              }
+              "nullable": true,
+              "kind": "primitive",
+              "primitive": "Int"
             }
           }
         ],
@@ -276,6 +284,7 @@
             }
           },
           "type": {
+            "nullable": true,
             "kind": "primitive",
             "primitive": "Int"
           },
