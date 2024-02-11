@@ -23,7 +23,14 @@ if Process.args()[1] |fileName| {
   match typechecker.typecheckEntrypoint(filePathAbs) {
     Result.Ok => {
       val json = Jsonifier()
-      for mod in project.modules {
+      if project.modules[0] |prelude| {
+        if prelude.id != 0 && prelude.name != "prelude" {
+          println("Error: prelude module misconfigured")
+        }
+      } else {
+        println("Error: no prelude module defined!")
+      }
+      for mod in project.modules[1:] {
         json.printModule(mod)
       }
     }

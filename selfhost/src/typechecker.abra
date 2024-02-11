@@ -55,13 +55,21 @@ type Scope {
 
 export type Project {
   modules: TypedModule[] = []
+  preludeArrayStruct: Struct = Struct(moduleId: 0, name: "Array", generics: ["T"])
 }
 
 export enum PrimitiveKind { Unit, Int, Float, Bool, String }
 
+type Struct {
+  moduleId: Int
+  name: String
+  generics: String[] = []
+}
+
 export enum Type {
   Primitive(kind: PrimitiveKind)
   Option(inner: Type)
+  Instance(struct: Struct, generics: Type[])
   Hole
 
   func repr(self): String {
@@ -74,6 +82,18 @@ export enum Type {
         PrimitiveKind.String => "String"
       }
       Type.Option(inner) => "${inner.repr()}?"
+      Type.Instance(struct, typeParams) => {
+        if struct.moduleId == 0 && struct.name == "Array" {
+          val repr = (typeParams[0] ?: Type.Hole).repr()
+          return "$repr[]"
+        }
+
+        val generics = if typeParams.isEmpty() "" else {
+          val reprs = typeParams.map(t => t.repr()).join(", ")
+          "<$reprs>"
+        }
+        "${struct.name}$generics"
+      }
       Type.Hole => "<unknown>"
     }
   }
@@ -81,12 +101,8 @@ export enum Type {
   func hasUnfilledHoles(self): Bool = match self {
     Type.Primitive => false
     Type.Option(inner) => inner == Type.Hole
-    Type.Hole => {
-      // Should be unreachable as Type.Hole is never instantiated directly. This println statement will cause
-      // tests to fail if this ever somehow happens though.
-      println("[Type#hasUnfilledHoles] unreachable")
-      true
-    }
+    Type.Instance(_, generics) => generics.any(t => t.hasUnfilledHoles())
+    Type.Hole => true
   }
 }
 
@@ -108,6 +124,7 @@ export enum TypedAstNodeKind {
   // Binary(...)
   Grouped(inner: TypedAstNode)
   Identifier(kind: IdentifierKind)
+  Array(items: TypedAstNode[])
 
   BindingDeclaration(node: TypedBindingDeclarationNode)
 }
@@ -247,6 +264,9 @@ export type Typechecker {
   currentScope: Scope = Scope(name: "\$root")
 
   func typecheckEntrypoint(self, modulePathAbs: String): Result<Int, TypecheckerError> {
+    val mod = TypedModule(id: 0, name: "prelude", code: [], rootScope: self.currentScope.makeChild("module_0"))
+    self.project.modules.push(mod)
+
     self._typecheckModule(modulePathAbs)
   }
 
@@ -290,7 +310,10 @@ export type Typechecker {
         "String" => Type.Primitive(PrimitiveKind.String)
         _ => return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
       }
-      TypeIdentifier.Array => return todo(Position(line: 0, col: 0))
+      TypeIdentifier.Array(inner) => {
+        val innerTy = match self._resolveTypeIdentifier(inner) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        Type.Instance(self.project.preludeArrayStruct, [innerTy])
+      }
       TypeIdentifier.Option(inner) => {
         val innerTy = match self._resolveTypeIdentifier(inner) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
         Type.Option(innerTy)
@@ -442,6 +465,7 @@ export type Typechecker {
         Result.Ok(TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Grouped(expr)))
       }
       AstNodeKind.Identifier(kind) => self._typecheckIdentifier(token, kind, typeHint)
+      AstNodeKind.Array(items) => self._typecheckArray(token, items, typeHint)
       _ => todo(node.token.position)
     }
   }
@@ -486,6 +510,38 @@ export type Typechecker {
     }
 
     Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Identifier(kind)))
+  }
+
+  func _typecheckArray(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
+    var innerType = match typeHint {
+      Type.Instance(struct, generics) => if struct == self.project.preludeArrayStruct { generics[0] } else None
+      _ => None
+    }
+
+    val typedItems: TypedAstNode[] = []
+    for node in items {
+      val typedItem = match self._typecheckExpression(node: node, typeHint: innerType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      if innerType |ty| {
+        if !self._typeSatisfiesRequired(ty: typedItem.ty, required: ty) {
+          // if typedItem.ty == Type.Option(Type.Hole) {
+          //   innerType = Type.Option(ty)
+          // } else {
+            return Result.Err(TypeError(position: typedItem.token.position, kind: TypeErrorKind.TypeMismatch([ty], typedItem.ty)))
+          // }
+        }
+      } else {
+        innerType = typedItem.ty
+      }
+      typedItems.push(typedItem)
+    }
+
+    val ty = if innerType |ty| {
+      Type.Instance(self.project.preludeArrayStruct, [ty])
+    } else {
+      Type.Instance(self.project.preludeArrayStruct, [Type.Hole])
+    }
+
+    Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Array(typedItems)))
   }
 }
 
