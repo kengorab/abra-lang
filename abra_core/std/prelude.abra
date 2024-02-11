@@ -569,8 +569,25 @@ type Array<T> {
   }
 
   @Stub func findIndex(self, fn: (T) => Bool): (T, Int)?
-  @Stub func any(self, fn: (T) => Bool): Bool
-  @Stub func all(self, fn: (T) => Bool): Bool
+
+  func any(self, fn: (T) => Bool): Bool {
+    for i in range(0, self.length) {
+      val item = self._buffer.offset(i).load()
+      if fn(item) return true
+    }
+
+    false
+  }
+
+  func all(self, fn: (T) => Bool): Bool {
+    for i in range(0, self.length) {
+      val item = self._buffer.offset(i).load()
+      if !fn(item) return false
+    }
+
+    true
+  }
+
   @Stub func none(self, fn: (T) => Bool): Bool
   @Stub func sortBy(self, fn: (T) => Int, reverse = false): T[]
   @Stub func dedupe(self): T[]

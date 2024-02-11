@@ -56,6 +56,13 @@ export type Jsonifier {
         self.printType(inner)
         println()
       }
+      Type.Instance(struct, generics) => {
+        self.println("\"kind\": \"instance\",")
+        self.println("\"struct\": { \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.name}\" },")
+        self.print("\"typeParams\": ")
+        self.array(generics, t => self.printType(t))
+        println()
+      }
       Type.Hole => self.println("\"kind\": \"hole\"")
     }
 
@@ -111,6 +118,13 @@ export type Jsonifier {
           IdentifierKind.Self => "self"
         }
         self.print("\"name\": \"$name\"")
+        println()
+      }
+      TypedAstNodeKind.Array(items) => {
+        self.println("\"kind\": \"array\",")
+
+        self.print("\"items\": ")
+        self.array(items, n => self.printNode(n))
         println()
       }
 

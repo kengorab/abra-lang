@@ -317,3 +317,41 @@ func printItem(item: Int) = println(item)
   /// Expect: None
   println(strArr.find(s => s == "HELLO"))
 })()
+
+// Array#any
+(() => {
+  val intArr = [123, 456, 789]
+  /// Expect: true
+  println(intArr.any(i => i == 123))
+  /// Expect: false
+  println(intArr.any(i => i == 10))
+
+  val empty: Int[] = []
+  /// Expect: false
+  println(empty.any(i => i == 123))
+
+  val strArr = ["hello", "world"]
+  /// Expect: true
+  println(strArr.any(s => s == "hello"))
+  /// Expect: false
+  println(strArr.any(s => s == "HELLO"))
+})()
+
+// Array#all
+(() => {
+  val intArr = [123, 456, 789]
+  /// Expect: true
+  println(intArr.all(i => i > 0))
+  /// Expect: false
+  println(intArr.all(i => i == 10))
+
+  val empty: Int[] = []
+  /// Expect: true
+  println(empty.all(i => i == 123))
+
+  val strArr = ["hello", "world"]
+  /// Expect: true
+  println(strArr.all(s => s.length > 0))
+  /// Expect: false
+  println(strArr.all(s => s == "HELLO"))
+})()

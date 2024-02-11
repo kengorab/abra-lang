@@ -211,6 +211,13 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/identifier_error_type_mismatch.abra", "typechecker/identifier_error_type_mismatch.out")
         .add_test_vs_txt("typechecker/identifier_error_type_mismatch_None.abra", "typechecker/identifier_error_type_mismatch_None.out")
         .add_test_vs_txt("typechecker/identifier_error_unknown_ident.abra", "typechecker/identifier_error_unknown_ident.out")
+        // Array
+        .add_test_vs_txt("typechecker/array.abra", "typechecker/array.out.json")
+        .add_test_vs_txt("typechecker/array_error_bindingdecl_empty.abra", "typechecker/array_error_bindingdecl_empty.out")
+        .add_test_vs_txt("typechecker/array_error_type_mismatch_bindingdecl.abra", "typechecker/array_error_type_mismatch_bindingdecl.out")
+        .add_test_vs_txt("typechecker/array_error_type_mismatch_item.abra", "typechecker/array_error_type_mismatch_item.out")
+        .add_test_vs_txt("typechecker/array_error_type_mismatch_item_nested.abra", "typechecker/array_error_type_mismatch_item_nested.out")
+
 
         // Binding declaration
         .add_test_vs_txt("typechecker/bindingdecl.abra", "typechecker/bindingdecl.out.json")
