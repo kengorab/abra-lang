@@ -60,12 +60,6 @@ export type Jsonifier {
         self.println("\"kind\": \"primitive\",")
         self.println("\"primitive\": \"String\"")
       }
-      // Type.Option(inner) => {
-      //   self.println("\"kind\": \"option\",")
-      //   self.print("\"inner\": ")
-      //   self.printType(inner)
-      //   println()
-      // }
       TypeKind.Instance(struct, generics) => {
         self.println("\"kind\": \"instance\",")
         self.println("\"struct\": { \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.name}\" },")
