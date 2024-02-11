@@ -10,6 +10,7 @@
         }
       },
       "type": {
+        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -24,6 +25,7 @@
             "label": { "name": "a", "position": [1, 5] },
             "mutable": false,
             "type": {
+              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -38,6 +40,7 @@
             }
           },
           "type": {
+            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },
@@ -56,6 +59,7 @@
         }
       },
       "type": {
+        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -70,6 +74,7 @@
             "label": { "name": "b", "position": [2, 5] },
             "mutable": false,
             "type": {
+              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -83,6 +88,7 @@
             }
           },
           "type": {
+            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },
@@ -98,6 +104,7 @@
                 }
               },
               "type": {
+                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -118,6 +125,7 @@
         }
       },
       "type": {
+        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -132,11 +140,9 @@
             "label": { "name": "x", "position": [4, 5] },
             "mutable": false,
             "type": {
-              "kind": "option",
-              "inner": {
-                "kind": "primitive",
-                "primitive": "Int"
-              }
+              "nullable": true,
+              "kind": "primitive",
+              "primitive": "Int"
             }
           }
         ],
@@ -148,11 +154,9 @@
             }
           },
           "type": {
-            "kind": "option",
-            "inner": {
-              "kind": "primitive",
-              "primitive": "Int"
-            }
+            "nullable": true,
+            "kind": "primitive",
+            "primitive": "Int"
           },
           "node": {
             "kind": "identifier",

@@ -1,6 +1,6 @@
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 import LiteralAstNode, IdentifierKind from "./parser"
-import Type, TypedModule, TypedAstNode, TypedAstNodeKind, PrimitiveKind, Variable from "./typechecker"
+import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable from "./typechecker"
 
 export type Jsonifier {
   indentLevel: Int = 0
@@ -38,32 +38,42 @@ export type Jsonifier {
     println("{")
     self.indentInc()
 
-    match ty {
-      Type.Primitive(kind) => {
+    self.println("\"nullable\": ${ty.nullable},")
+    match ty.kind {
+      TypeKind.PrimitiveUnit => {
         self.println("\"kind\": \"primitive\",")
-
-        match kind {
-          PrimitiveKind.Unit => self.println("\"primitive\": \"Unit\"")
-          PrimitiveKind.Int => self.println("\"primitive\": \"Int\"")
-          PrimitiveKind.Float => self.println("\"primitive\": \"Float\"")
-          PrimitiveKind.Bool => self.println("\"primitive\": \"Bool\"")
-          PrimitiveKind.String => self.println("\"primitive\": \"String\"")
-        }
+        self.println("\"primitive\": \"Unit\"")
       }
-      Type.Option(inner) => {
-        self.println("\"kind\": \"option\",")
-        self.print("\"inner\": ")
-        self.printType(inner)
-        println()
+      TypeKind.PrimitiveInt => {
+        self.println("\"kind\": \"primitive\",")
+        self.println("\"primitive\": \"Int\"")
       }
-      Type.Instance(struct, generics) => {
+      TypeKind.PrimitiveFloat => {
+        self.println("\"kind\": \"primitive\",")
+        self.println("\"primitive\": \"Float\"")
+      }
+      TypeKind.PrimitiveBool => {
+        self.println("\"kind\": \"primitive\",")
+        self.println("\"primitive\": \"Bool\"")
+      }
+      TypeKind.PrimitiveString => {
+        self.println("\"kind\": \"primitive\",")
+        self.println("\"primitive\": \"String\"")
+      }
+      // Type.Option(inner) => {
+      //   self.println("\"kind\": \"option\",")
+      //   self.print("\"inner\": ")
+      //   self.printType(inner)
+      //   println()
+      // }
+      TypeKind.Instance(struct, generics) => {
         self.println("\"kind\": \"instance\",")
         self.println("\"struct\": { \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.name}\" },")
         self.print("\"typeParams\": ")
         self.array(generics, t => self.printType(t))
         println()
       }
-      Type.Hole => self.println("\"kind\": \"hole\"")
+      TypeKind.Hole => self.println("\"kind\": \"hole\"")
     }
 
     self.indentDec()

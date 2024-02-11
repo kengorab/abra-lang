@@ -58,52 +58,60 @@ export type Project {
   preludeArrayStruct: Struct = Struct(moduleId: 0, name: "Array", generics: ["T"])
 }
 
-export enum PrimitiveKind { Unit, Int, Float, Bool, String }
-
 type Struct {
   moduleId: Int
   name: String
   generics: String[] = []
 }
 
-export enum Type {
-  Primitive(kind: PrimitiveKind)
-  Option(inner: Type)
-  Instance(struct: Struct, generics: Type[])
-  Hole
+export type Type {
+  kind: TypeKind
+  nullable: Bool = false
 
   func repr(self): String {
-    match self {
-      Type.Primitive(kind) => match kind {
-        PrimitiveKind.Unit => "Unit"
-        PrimitiveKind.Int => "Int"
-        PrimitiveKind.Float => "Float"
-        PrimitiveKind.Bool => "Bool"
-        PrimitiveKind.String => "String"
-      }
-      Type.Option(inner) => "${inner.repr()}?"
-      Type.Instance(struct, typeParams) => {
+    val repr = match self.kind {
+      TypeKind.PrimitiveUnit => "Unit"
+      TypeKind.PrimitiveInt => "Int"
+      TypeKind.PrimitiveFloat => "Float"
+      TypeKind.PrimitiveBool => "Bool"
+      TypeKind.PrimitiveString => "String"
+      TypeKind.Instance(struct, typeParams) => {
         if struct.moduleId == 0 && struct.name == "Array" {
-          val repr = (typeParams[0] ?: Type.Hole).repr()
-          return "$repr[]"
+          val innerRepr = typeParams[0]?.repr() ?: "<unknown>"
+          "$innerRepr[]"
+        } else {
+          val genericsRepr = if typeParams.isEmpty() "" else {
+            val reprs = typeParams.map(t => t.repr()).join(", ")
+            "<$reprs>"
+          }
+          "${struct.name}$genericsRepr"
         }
-
-        val generics = if typeParams.isEmpty() "" else {
-          val reprs = typeParams.map(t => t.repr()).join(", ")
-          "<$reprs>"
-        }
-        "${struct.name}$generics"
       }
-      Type.Hole => "<unknown>"
+      TypeKind.Hole => "<unknown>"
     }
+
+    if self.nullable "$repr?" else repr
   }
 
-  func hasUnfilledHoles(self): Bool = match self {
-    Type.Primitive => false
-    Type.Option(inner) => inner == Type.Hole
-    Type.Instance(_, generics) => generics.any(t => t.hasUnfilledHoles())
-    Type.Hole => true
+  func hasUnfilledHoles(self): Bool = match self.kind {
+    TypeKind.PrimitiveUnit => false
+    TypeKind.PrimitiveInt => false
+    TypeKind.PrimitiveFloat => false
+    TypeKind.PrimitiveBool => false
+    TypeKind.PrimitiveString => false
+    TypeKind.Instance(_, generics) => generics.any(t => t.hasUnfilledHoles())
+    TypeKind.Hole => true
   }
+}
+
+export enum TypeKind {
+  PrimitiveUnit
+  PrimitiveInt
+  PrimitiveFloat
+  PrimitiveBool
+  PrimitiveString
+  Instance(struct: Struct, generics: Type[])
+  Hole
 }
 
 export type TypedAstNode {
@@ -214,7 +222,7 @@ type TypeError {
         lines.push("A 'var' must have either an initial value or a type annotation (or both)")
       }
       TypeErrorKind.IllegalValueType(ty, purpose) => {
-        if ty == Type.Primitive(PrimitiveKind.Unit) {
+        if ty.kind == TypeKind.PrimitiveUnit {
           lines.push("Forbidden type for $purpose")
           lines.push(self._getCursorLine(self.position, contents))
           lines.push("Instances of type ${ty.repr()} cannot be used as $purpose values")
@@ -304,19 +312,20 @@ export type Typechecker {
   func _resolveTypeIdentifier(self, typeIdent: TypeIdentifier): Result<Type, TypeError> {
     val ty = match typeIdent {
       TypeIdentifier.Normal(label) => match label.name {
-        "Int" => Type.Primitive(PrimitiveKind.Int)
-        "Float" => Type.Primitive(PrimitiveKind.Float)
-        "Bool" => Type.Primitive(PrimitiveKind.Bool)
-        "String" => Type.Primitive(PrimitiveKind.String)
+        "Int" => Type(kind: TypeKind.PrimitiveInt)
+        "Float" => Type(kind: TypeKind.PrimitiveFloat)
+        "Bool" => Type(kind: TypeKind.PrimitiveBool)
+        "String" => Type(kind: TypeKind.PrimitiveString)
         _ => return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
       }
       TypeIdentifier.Array(inner) => {
         val innerTy = match self._resolveTypeIdentifier(inner) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-        Type.Instance(self.project.preludeArrayStruct, [innerTy])
+        Type(kind: TypeKind.Instance(self.project.preludeArrayStruct, [innerTy]))
       }
       TypeIdentifier.Option(inner) => {
         val innerTy = match self._resolveTypeIdentifier(inner) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-        Type.Option(innerTy)
+        innerTy.nullable = true
+        innerTy
       }
       TypeIdentifier.Tuple => return todo(Position(line: 0, col: 0))
       TypeIdentifier.Function => return todo(Position(line: 0, col: 0))
@@ -338,10 +347,9 @@ export type Typechecker {
   }
 
   func _typeSatisfiesRequired(self, ty: Type, required: Type): Bool {
-    match required {
-      Type.Option(inner) => match ty { Type.Option => ty == required, _ => ty == inner }
-      _ => ty == required
-    }
+    if ty.nullable && !required.nullable return false
+
+    ty.kind == required.kind
   }
 
   func _typecheckModule(self, modulePath: String): Result<Int, TypecheckerError> {
@@ -420,7 +428,7 @@ export type Typechecker {
         typedExpr.ty
       }
 
-      if ty == Type.Primitive(PrimitiveKind.Unit) || ty.hasUnfilledHoles() {
+      if ty.kind == TypeKind.PrimitiveUnit || ty.hasUnfilledHoles() {
         return Result.Err(TypeError(position: expr.token.position, kind: TypeErrorKind.IllegalValueType(ty: ty, purpose: "assignment")))
       }
 
@@ -442,21 +450,21 @@ export type Typechecker {
     match self._addVariableToScope(variable) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     val typedNode = TypedBindingDeclarationNode(bindingPattern: node.bindingPattern, variables: [variable], expr: expr)
-    Result.Ok(TypedAstNode(token: token, ty: Type.Primitive(PrimitiveKind.Unit), kind: TypedAstNodeKind.BindingDeclaration(typedNode)))
+    Result.Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.BindingDeclaration(typedNode)))
   }
 
   func _typecheckExpression(self, node: AstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
     val token = node.token
-    match node.kind {
+    val typedExprRes: Result<TypedAstNode, TypeError> = match node.kind {
       AstNodeKind.Literal(literal) => {
-        val primitiveKind = match literal {
-          LiteralAstNode.Int => PrimitiveKind.Int
-          LiteralAstNode.Float => PrimitiveKind.Float
-          LiteralAstNode.Bool => PrimitiveKind.Bool
-          LiteralAstNode.String => PrimitiveKind.String
+        val kind = match literal {
+          LiteralAstNode.Int => TypeKind.PrimitiveInt
+          LiteralAstNode.Float => TypeKind.PrimitiveFloat
+          LiteralAstNode.Bool => TypeKind.PrimitiveBool
+          LiteralAstNode.String => TypeKind.PrimitiveString
         }
-        val ty = Type.Primitive(primitiveKind)
-        Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Literal(literal)))
+
+        Result.Ok(TypedAstNode(token: token, ty: Type(kind: kind), kind: TypedAstNodeKind.Literal(literal)))
       }
       AstNodeKind.Unary(node) => self._typecheckUnary(token, node)
       AstNodeKind.Binary => todo(node.token.position)
@@ -468,20 +476,33 @@ export type Typechecker {
       AstNodeKind.Array(items) => self._typecheckArray(token, items, typeHint)
       _ => todo(node.token.position)
     }
+
+    val typedExpr = match typedExprRes { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    // If we're parsing an expression in a context where we have a type hint and where that type hint is nullable, we
+    // may want to make the expression's type nullable as well, if the types' kinds are equivalent. If the types' kinds
+    // are _not_ equivalent, don't do anything because this mismatch will be raised at the callsite.
+    if typeHint |hint| {
+      if hint.kind == typedExpr.ty.kind && hint.nullable {
+        typedExpr.ty.nullable = true
+      }
+    }
+
+    Result.Ok(typedExpr)
   }
 
   func _typecheckUnary(self, token: Token, node: UnaryAstNode): Result<TypedAstNode, TypeError> {
     val expr = match self._typecheckExpression(node: node.expr, typeHint: None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     match node.op {
       UnaryOp.Minus => {
-        if expr.ty != Type.Primitive(PrimitiveKind.Int) && expr.ty != Type.Primitive(PrimitiveKind.Float) {
-          val expected = [Type.Primitive(PrimitiveKind.Int), Type.Primitive(PrimitiveKind.Float)]
+        if expr.ty.kind != TypeKind.PrimitiveInt && expr.ty.kind != TypeKind.PrimitiveFloat {
+          val expected = [Type(kind: TypeKind.PrimitiveInt), Type(kind: TypeKind.PrimitiveFloat)]
           return Result.Err(TypeError(position: expr.token.position, kind: TypeErrorKind.TypeMismatch(expected, expr.ty)))
         }
       }
       UnaryOp.Negate => {
-        if expr.ty != Type.Primitive(PrimitiveKind.Bool) {
-          return Result.Err(TypeError(position: expr.token.position, kind: TypeErrorKind.TypeMismatch([Type.Primitive(PrimitiveKind.Bool)], expr.ty)))
+        if expr.ty.kind != TypeKind.PrimitiveBool {
+          return Result.Err(TypeError(position: expr.token.position, kind: TypeErrorKind.TypeMismatch([Type(kind: TypeKind.PrimitiveBool)], expr.ty)))
         }
       }
     }
@@ -501,10 +522,8 @@ export type Typechecker {
       }
       IdentifierKind.Discard => return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName("_", "variable")))
       IdentifierKind.None_ => {
-        match typeHint {
-          Type.Option t => t
-          _ => Type.Option(Type.Hole)
-        }
+        val kind = typeHint?.kind ?: TypeKind.Hole
+        Type(kind: kind, nullable: true)
       }
       IdentifierKind.Self => return todo(token.position)
     }
@@ -513,21 +532,23 @@ export type Typechecker {
   }
 
   func _typecheckArray(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
-    var innerType = match typeHint {
-      Type.Instance(struct, generics) => if struct == self.project.preludeArrayStruct { generics[0] } else None
+    var innerType = match typeHint?.kind {
+      TypeKind.Instance(struct, generics) => if struct == self.project.preludeArrayStruct { generics[0] } else None
       _ => None
     }
 
+    var makeItemsNullable = false
     val typedItems: TypedAstNode[] = []
     for node in items {
       val typedItem = match self._typecheckExpression(node: node, typeHint: innerType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
       if innerType |ty| {
         if !self._typeSatisfiesRequired(ty: typedItem.ty, required: ty) {
-          // if typedItem.ty == Type.Option(Type.Hole) {
-          //   innerType = Type.Option(ty)
-          // } else {
+          if typedItem.ty.nullable && !ty.nullable {
+            ty.nullable = true
+            makeItemsNullable = true
+          } else {
             return Result.Err(TypeError(position: typedItem.token.position, kind: TypeErrorKind.TypeMismatch([ty], typedItem.ty)))
-          // }
+          }
         }
       } else {
         innerType = typedItem.ty
@@ -535,11 +556,14 @@ export type Typechecker {
       typedItems.push(typedItem)
     }
 
-    val ty = if innerType |ty| {
-      Type.Instance(self.project.preludeArrayStruct, [ty])
-    } else {
-      Type.Instance(self.project.preludeArrayStruct, [Type.Hole])
+    if makeItemsNullable {
+      for item in typedItems {
+        item.ty.nullable = true
+      }
     }
+
+    val inner = innerType ?: Type(kind: TypeKind.Hole)
+    val ty = Type(kind: TypeKind.Instance(self.project.preludeArrayStruct, [inner]))
 
     Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Array(typedItems)))
   }

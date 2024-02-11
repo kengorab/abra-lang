@@ -197,9 +197,9 @@ fn typechecker_tests() {
         // Lexer/Parser error handling
         .add_test_vs_txt("typechecker/_lexer_error.abra", "typechecker/_lexer_error.out")
         .add_test_vs_txt("typechecker/_parser_error.abra", "typechecker/_parser_error.out")
-        // Literals
+        // // Literals
         .add_test_vs_txt("typechecker/literals.abra", "typechecker/literals.out.json")
-        // Unary
+        // // Unary
         .add_test_vs_txt("typechecker/unary.abra", "typechecker/unary.out.json")
         .add_test_vs_txt("typechecker/unary_error_minus.1.abra", "typechecker/unary_error_minus.1.out")
         .add_test_vs_txt("typechecker/unary_error_minus.2.abra", "typechecker/unary_error_minus.2.out")
@@ -211,15 +211,15 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/identifier_error_type_mismatch.abra", "typechecker/identifier_error_type_mismatch.out")
         .add_test_vs_txt("typechecker/identifier_error_type_mismatch_None.abra", "typechecker/identifier_error_type_mismatch_None.out")
         .add_test_vs_txt("typechecker/identifier_error_unknown_ident.abra", "typechecker/identifier_error_unknown_ident.out")
-        // Array
+        // // Array
         .add_test_vs_txt("typechecker/array.abra", "typechecker/array.out.json")
         .add_test_vs_txt("typechecker/array_error_bindingdecl_empty.abra", "typechecker/array_error_bindingdecl_empty.out")
-        .add_test_vs_txt("typechecker/array_error_type_mismatch_bindingdecl.abra", "typechecker/array_error_type_mismatch_bindingdecl.out")
+        .add_test_vs_txt("typechecker/array_error_type_mismatch_bindingdecl.1.abra", "typechecker/array_error_type_mismatch_bindingdecl.1.out")
+        .add_test_vs_txt("typechecker/array_error_type_mismatch_bindingdecl.2.abra", "typechecker/array_error_type_mismatch_bindingdecl.2.out")
         .add_test_vs_txt("typechecker/array_error_type_mismatch_item.abra", "typechecker/array_error_type_mismatch_item.out")
         .add_test_vs_txt("typechecker/array_error_type_mismatch_item_nested.abra", "typechecker/array_error_type_mismatch_item_nested.out")
-
-
-        // Binding declaration
+        //
+        // // Binding declaration
         .add_test_vs_txt("typechecker/bindingdecl.abra", "typechecker/bindingdecl.out.json")
         .add_test_vs_txt("typechecker/bindingdecl_error_bare_var.abra", "typechecker/bindingdecl_error_bare_var.out")
         .add_test_vs_txt("typechecker/bindingdecl_error_duplicate_name.abra", "typechecker/bindingdecl_error_duplicate_name.out")
@@ -228,8 +228,7 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/bindingdecl_error_unknown_type.abra", "typechecker/bindingdecl_error_unknown_type.out")
         .add_test_vs_txt("typechecker/bindingdecl_error_type_mismatch_val.abra", "typechecker/bindingdecl_error_type_mismatch_val.out")
         .add_test_vs_txt("typechecker/bindingdecl_error_type_mismatch_var.abra", "typechecker/bindingdecl_error_type_mismatch_var.out")
-        .add_test_vs_txt("typechecker/bindingdecl_error_type_mismatch_option.1.abra", "typechecker/bindingdecl_error_type_mismatch_option.1.out")
-        .add_test_vs_txt("typechecker/bindingdecl_error_type_mismatch_option.2.abra", "typechecker/bindingdecl_error_type_mismatch_option.2.out")
+        .add_test_vs_txt("typechecker/bindingdecl_error_type_mismatch_option.abra", "typechecker/bindingdecl_error_type_mismatch_option.out")
         .add_test_vs_txt("typechecker/bindingdecl_error_unfilled_holes.abra", "typechecker/bindingdecl_error_unfilled_holes.out")
 
         .run_tests();
