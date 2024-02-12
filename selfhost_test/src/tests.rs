@@ -218,6 +218,23 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/array_error_type_mismatch_bindingdecl.2.abra", "typechecker/array_error_type_mismatch_bindingdecl.2.out")
         .add_test_vs_txt("typechecker/array_error_type_mismatch_item.abra", "typechecker/array_error_type_mismatch_item.out")
         .add_test_vs_txt("typechecker/array_error_type_mismatch_item_nested.abra", "typechecker/array_error_type_mismatch_item_nested.out")
+        // If expressions & statements
+        .add_test_vs_txt("typechecker/if_error_bad_cond_type.abra", "typechecker/if_error_bad_cond_type.out")
+        .add_test_vs_txt("typechecker/if_error_block_mismatch.1.abra", "typechecker/if_error_block_mismatch.1.out")
+        .add_test_vs_txt("typechecker/if_error_block_mismatch.2.abra", "typechecker/if_error_block_mismatch.2.out")
+        .add_test_vs_txt("typechecker/if_error_empty_else_block.abra", "typechecker/if_error_empty_else_block.out")
+        .add_test_vs_txt("typechecker/if_error_empty_if_block.abra", "typechecker/if_error_empty_if_block.out")
+        .add_test_vs_txt("typechecker/if_error_mismatch_bindingdecl.1.abra", "typechecker/if_error_mismatch_bindingdecl.1.out")
+        .add_test_vs_txt("typechecker/if_error_mismatch_bindingdecl.2.abra", "typechecker/if_error_mismatch_bindingdecl.2.out")
+        .add_test_vs_txt("typechecker/if_error_mismatch_bindingdecl.3.abra", "typechecker/if_error_mismatch_bindingdecl.3.out")
+        .add_test_vs_txt("typechecker/if_error_no_else_block.abra", "typechecker/if_error_no_else_block.out")
+        .add_test_vs_txt("typechecker/if_error_unfilled_holes_bindingdecl.1.abra", "typechecker/if_error_unfilled_holes_bindingdecl.1.out")
+        .add_test_vs_txt("typechecker/if_error_unfilled_holes_bindingdecl.2.abra", "typechecker/if_error_unfilled_holes_bindingdecl.2.out")
+        .add_test_vs_txt("typechecker/if_error_unfilled_holes_bindingdecl.3.abra", "typechecker/if_error_unfilled_holes_bindingdecl.3.out")
+        .add_test_vs_txt("typechecker/if_error_unfilled_holes_bindingdecl.4.abra", "typechecker/if_error_unfilled_holes_bindingdecl.4.out")
+        .add_test_vs_txt("typechecker/if_expr.abra", "typechecker/if_expr.out.json")
+        .add_test_vs_txt("typechecker/if_stmt.abra", "typechecker/if_stmt.out.json")
+
 
         // Binding declaration
         .add_test_vs_txt("typechecker/bindingdecl.abra", "typechecker/bindingdecl.out.json")

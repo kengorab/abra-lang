@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:1:43
+Type mismatch
+  |  val a: Int[] = if true { [1, 2] } else { ["3", "4"] }
+                                               ^
+Expected: Int
+but instead found: String

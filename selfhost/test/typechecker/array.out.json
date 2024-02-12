@@ -293,7 +293,6 @@
           "node": {
             "kind": "array",
             "items": []
-
           }
         }
       }
@@ -759,7 +758,6 @@
             "node": {
               "kind": "array",
               "items": []
-
             }
           },
           {

@@ -1,0 +1,50 @@
+val a = if true 123 else 456
+val _: Int = a
+
+val b = if true {
+  val x = 1
+  [x]
+} else {
+  []
+}
+val _: Int[] = b
+
+val c = if true {
+  []
+} else {
+  val y = 1
+  [y]
+}
+val _: Int[] = c
+
+val d = if true {
+  None
+} else {
+  val z = 1
+  [z]
+}
+val _: Int[]? = d
+
+val e = if true {
+  val q = 1
+  [q]
+} else {
+  None
+}
+val _: Int[]? = e
+
+val f = if true { 123 } else { None }
+val _: Int? = f
+
+val g = if true { None } else { 123 }
+val _: Int? = g
+
+val h = if true {
+  if false 123 else 456
+} else {
+  None
+}
+val _: Int? = h
+
+val i = if (if None true else false) 123 else 456
+val _: Int = i
