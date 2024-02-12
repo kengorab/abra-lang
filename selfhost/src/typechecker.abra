@@ -68,6 +68,8 @@ export type Type {
   kind: TypeKind
   nullable: Bool = false
 
+  func clone(self): Type = Type(kind: self.kind, nullable: self.nullable)
+
   func repr(self): String {
     val repr = match self.kind {
       TypeKind.PrimitiveUnit => "Unit"
@@ -102,6 +104,29 @@ export type Type {
     TypeKind.Instance(_, generics) => generics.any(t => t.hasUnfilledHoles())
     TypeKind.Hole => true
   }
+
+  func tryFillHoles(self, other: Type) {
+    // TODO: this code is pretty ugly - I really need a way of destructuring multiple values simultaneously in `match`es
+    match self.kind {
+      TypeKind.Instance(selfStruct, selfGenerics) => {
+        match other.kind {
+          TypeKind.Instance(otherStruct, otherGenerics) => {
+            if selfStruct != otherStruct return
+
+            for generic, idx in selfGenerics {
+              generic.tryFillHoles(otherGenerics[idx] ?: Type(kind: TypeKind.Hole))
+            }
+          }
+          _ => {}
+        }
+      }
+      _ => {
+        if self.kind == TypeKind.Hole {
+          self.kind = other.kind
+        }
+      }
+    }
+  }
 }
 
 export enum TypeKind {
@@ -133,6 +158,7 @@ export enum TypedAstNodeKind {
   Grouped(inner: TypedAstNode)
   Identifier(kind: IdentifierKind)
   Array(items: TypedAstNode[])
+  If(isStatement: Bool, typedCondition: TypedAstNode, typedIfBlock: TypedAstNode[], typedElseBlock: TypedAstNode[])
 
   BindingDeclaration(node: TypedBindingDeclarationNode)
 }
@@ -232,9 +258,25 @@ type TypeError {
           lines.push("Type '${ty.repr()}' has unfilled holes. Please use an explicit type annotation to denote the type")
         }
       }
-      TypeErrorKind.NotYetImplemented => {
+      TypeErrorKind.IllegalConditionType(ty, purpose) => {
+        lines.push("Forbidden type for $purpose-condition")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Conditions must either be Bool or Option types")
+        lines.push("but instead found " + ty.repr())
+      }
+      TypeErrorKind.MissingRequiredIfExprBlock(clause, missing) => {
+        lines.push("Incomplete if-expression")
+        lines.push(self._getCursorLine(self.position, contents))
+        if missing {
+          lines.push("The $clause-block must exist and contain a value")
+        } else {
+          lines.push("The $clause-block must contain a value")
+        }
+      }
+      TypeErrorKind.NotYetImplemented(reason) => {
         lines.push("Not yet implemented:")
         lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Reason: $reason")
       }
     }
 
@@ -257,13 +299,15 @@ type TypeError {
 }
 
 enum TypeErrorKind {
-  NotYetImplemented
+  NotYetImplemented(reason: String)
   TypeMismatch(expected: Type[], received: Type)
   DuplicateName(original: Label, kind: String)
   UnknownName(name: String, kind: String)
   MissingValExpr(name: String)
   MissingVarExprAndTypeAnn(name: String)
   IllegalValueType(ty: Type, purpose: String)
+  IllegalConditionType(ty: Type, purpose: String)
+  MissingRequiredIfExprBlock(clause: String, missing: Bool)
 }
 
 export type Typechecker {
@@ -349,6 +393,8 @@ export type Typechecker {
   func _typeSatisfiesRequired(self, ty: Type, required: Type): Bool {
     if ty.nullable && !required.nullable return false
 
+    if required.kind == TypeKind.Hole return true
+
     ty.kind == required.kind
   }
 
@@ -398,7 +444,7 @@ export type Typechecker {
 
     match node.kind {
       AstNodeKind.BindingDeclaration(node) => self._typecheckBindingDeclaration(token, node)
-      _ => self._typecheckExpression(node, typeHint)
+      _ => self._typecheckExpression(node, Type(kind: TypeKind.PrimitiveUnit))
     }
   }
 
@@ -453,6 +499,81 @@ export type Typechecker {
     Result.Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.BindingDeclaration(typedNode)))
   }
 
+  func _typecheckIf(
+    self,
+    token: Token,
+    condition: AstNode,
+    conditionBinding: BindingPattern?,
+    ifBlock: AstNode[],
+    elseBlock: AstNode[]?,
+    typeHint: Type?,
+  ): Result<TypedAstNode, TypeError> {
+    val isStatement = if typeHint |hint| hint.kind == TypeKind.PrimitiveUnit else false
+
+    val typedCondition = match self._typecheckExpression(condition, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    if typedCondition.ty.kind != TypeKind.PrimitiveBool && !typedCondition.ty.nullable {
+      return Result.Err(TypeError(position: typedCondition.token.position, kind: TypeErrorKind.IllegalConditionType(ty: typedCondition.ty, purpose: "if")))
+    }
+
+    val typedIfBlock: TypedAstNode[] = []
+    for node, idx in ifBlock {
+      if idx == ifBlock.length - 1 && !isStatement {
+        val typedNode = match self._typecheckExpression(node, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        typedIfBlock.push(typedNode)
+      } else {
+        val typedNode = match self._typecheckStatement(node, typeHint) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        typedIfBlock.push(typedNode)
+      }
+    }
+    val ifType = typedIfBlock[-1]?.ty
+
+    var hasElseBlock = false
+    val typedElseBlock: TypedAstNode[] = []
+    if elseBlock |elseBlock| {
+      hasElseBlock = true
+      for node, idx in elseBlock {
+        if idx == elseBlock.length - 1 && !isStatement {
+          val typedNode = match self._typecheckExpression(node, ifType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          typedElseBlock.push(typedNode)
+        } else {
+          val typedNode = match self._typecheckStatement(node, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          typedElseBlock.push(typedNode)
+        }
+      }
+    }
+
+    val ty = if !isStatement {
+      val t = if ifType |ifType| {
+        if typedElseBlock[-1] |lastElseNode| {
+          val elseType = lastElseNode.ty
+
+          if ifType.hasUnfilledHoles() {
+            ifType.tryFillHoles(elseType)
+          }
+          if elseType.nullable && !ifType.nullable {
+            ifType.nullable = true
+          }
+
+          if !self._typeSatisfiesRequired(ty: elseType, required: ifType) {
+            return Result.Err(TypeError(position: lastElseNode.token.position, kind: TypeErrorKind.TypeMismatch([ifType], elseType)))
+          }
+
+          ifType.clone()
+        } else {
+          return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.MissingRequiredIfExprBlock(clause: "else", missing: !hasElseBlock)))
+        }
+      } else {
+        return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.MissingRequiredIfExprBlock(clause: "if", missing: false)))
+      }
+      t
+    } else {
+      Type(kind: TypeKind.PrimitiveUnit)
+    }
+
+    val kind = TypedAstNodeKind.If(isStatement, typedCondition, typedIfBlock, typedElseBlock)
+    Result.Ok(TypedAstNode(token: token, ty: ty, kind: kind))
+  }
+
   func _typecheckExpression(self, node: AstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
     val token = node.token
     val typedExprRes: Result<TypedAstNode, TypeError> = match node.kind {
@@ -467,14 +588,15 @@ export type Typechecker {
         Result.Ok(TypedAstNode(token: token, ty: Type(kind: kind), kind: TypedAstNodeKind.Literal(literal)))
       }
       AstNodeKind.Unary(node) => self._typecheckUnary(token, node)
-      AstNodeKind.Binary => todo(node.token.position)
+      AstNodeKind.Binary => todo(node.token.position, "binary expression")
       AstNodeKind.Grouped(inner) => {
         val expr = match self._typecheckExpression(inner, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
         Result.Ok(TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Grouped(expr)))
       }
       AstNodeKind.Identifier(kind) => self._typecheckIdentifier(token, kind, typeHint)
       AstNodeKind.Array(items) => self._typecheckArray(token, items, typeHint)
-      _ => todo(node.token.position)
+      AstNodeKind.If(condition, conditionBinding, ifBlock, elseBlock) => self._typecheckIf(token, condition, conditionBinding, ifBlock, elseBlock, typeHint)
+      _ => todo(node.token.position, "all other expressions")
     }
 
     val typedExpr = match typedExprRes { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -483,7 +605,7 @@ export type Typechecker {
     // may want to make the expression's type nullable as well, if the types' kinds are equivalent. If the types' kinds
     // are _not_ equivalent, don't do anything because this mismatch will be raised at the callsite.
     if typeHint |hint| {
-      if hint.kind == typedExpr.ty.kind && hint.nullable {
+      if (hint.kind == typedExpr.ty.kind || hint.kind == TypeKind.Hole) && hint.nullable {
         typedExpr.ty.nullable = true
       }
     }
@@ -533,7 +655,10 @@ export type Typechecker {
 
   func _typecheckArray(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
     var innerType = match typeHint?.kind {
-      TypeKind.Instance(struct, generics) => if struct == self.project.preludeArrayStruct { generics[0] } else None
+      TypeKind.Instance(struct, generics) => if struct == self.project.preludeArrayStruct {
+        val arrayInnerType = generics[0] ?: Type(kind: TypeKind.Hole) // <- should be unreachable, array instance should always have generics[0] populated
+        if arrayInnerType.kind == TypeKind.Hole { None } else generics[0]
+      } else None
       _ => None
     }
 
@@ -569,6 +694,6 @@ export type Typechecker {
   }
 }
 
-func todo<V>(position: Position): Result<V, TypeError> {
-  Result.Err(TypeError(position: position, kind: TypeErrorKind.NotYetImplemented))
+func todo<V>(position: Position, reason = ""): Result<V, TypeError> {
+  Result.Err(TypeError(position: position, kind: TypeErrorKind.NotYetImplemented(reason)))
 }

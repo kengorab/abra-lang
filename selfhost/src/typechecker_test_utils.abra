@@ -131,6 +131,23 @@ export type Jsonifier {
         self.array(items, n => self.printNode(n))
         println()
       }
+      TypedAstNodeKind.If(isStatement, condition, ifBlock, elseBlock) => {
+        self.println("\"kind\": \"if\",")
+
+        self.println("\"isStatement\": $isStatement,")
+
+        self.print("\"condition\": ")
+        self.printNode(condition)
+        println(",")
+
+        self.print("\"ifBlock\": ")
+        self.array(ifBlock, n => self.printNode(n))
+        println(",")
+
+        self.print("\"elseBlock\": ")
+        self.array(elseBlock, n => self.printNode(n))
+        println()
+      }
 
       // Statements
       TypedAstNodeKind.BindingDeclaration(node) => {
@@ -191,7 +208,7 @@ export type Jsonifier {
 
   func array<T>(self, arr: T[], fn: (T) => Unit) {
     if arr.isEmpty() {
-      println("[]")
+      print("[]")
     } else {
       println("[")
       self.indentInc()

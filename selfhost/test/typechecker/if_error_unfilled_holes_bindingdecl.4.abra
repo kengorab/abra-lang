@@ -1,0 +1,1 @@
+val a = if true { [] } else None
