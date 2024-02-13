@@ -1,0 +1,7 @@
+Error at %FILE_NAME%:2:6
+Duplicate name 'foo'
+  |  func foo() {}
+          ^
+This name is also declared at (1:6)
+  |  func foo() {}
+          ^

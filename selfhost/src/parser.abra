@@ -166,7 +166,7 @@ type LambdaNode {
   body: AstNode[]
 }
 
-type FunctionDeclarationNode {
+export type FunctionDeclarationNode {
   decorators: DecoratorNode[]
   exportToken: Token?
   name: Label
@@ -175,6 +175,7 @@ type FunctionDeclarationNode {
   returnTypeAnnotation: TypeIdentifier?
   body: AstNode[]
 }
+
 type TypeField {
   name: Label
   typeAnnotation: TypeIdentifier

@@ -247,6 +247,22 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/bindingdecl_error_type_mismatch_var.abra", "typechecker/bindingdecl_error_type_mismatch_var.out")
         .add_test_vs_txt("typechecker/bindingdecl_error_type_mismatch_option.abra", "typechecker/bindingdecl_error_type_mismatch_option.out")
         .add_test_vs_txt("typechecker/bindingdecl_error_unfilled_holes.abra", "typechecker/bindingdecl_error_unfilled_holes.out")
+        // Function declaration
+        .add_test_vs_txt("typechecker/funcdecl_error_duplicate_func.abra", "typechecker/funcdecl_error_duplicate_func.out")
+        .add_test_vs_txt("typechecker/funcdecl_error_duplicate_param.abra", "typechecker/funcdecl_error_duplicate_param.out")
+        .add_test_vs_txt("typechecker/funcdecl_error_duplicate_variable.abra", "typechecker/funcdecl_error_duplicate_variable.out")
+        .add_test_vs_txt("typechecker/funcdecl_error_invalid_param_type.abra", "typechecker/funcdecl_error_invalid_param_type.out")
+        .add_test_vs_txt("typechecker/funcdecl_error_invalid_req_param_position.abra", "typechecker/funcdecl_error_invalid_req_param_position.out")
+        .add_test_vs_txt("typechecker/funcdecl_error_invalid_return_type.abra", "typechecker/funcdecl_error_invalid_return_type.out")
+        .add_test_vs_txt("typechecker/funcdecl_error_invalid_vararg_position.abra", "typechecker/funcdecl_error_invalid_vararg_position.out")
+        .add_test_vs_txt("typechecker/funcdecl_error_invalid_vararg_type.abra", "typechecker/funcdecl_error_invalid_vararg_type.out")
+        .add_test_vs_txt("typechecker/funcdecl_error_param_unfilled_holes.1.abra", "typechecker/funcdecl_error_param_unfilled_holes.1.out")
+        .add_test_vs_txt("typechecker/funcdecl_error_param_unfilled_holes.2.abra", "typechecker/funcdecl_error_param_unfilled_holes.2.out")
+        .add_test_vs_txt("typechecker/funcdecl_error_type_mismatch_param_default_value.1.abra", "typechecker/funcdecl_error_type_mismatch_param_default_value.1.out")
+        .add_test_vs_txt("typechecker/funcdecl_error_type_mismatch_param_default_value.2.abra", "typechecker/funcdecl_error_type_mismatch_param_default_value.2.out")
+        .add_test_vs_txt("typechecker/funcdecl_error_type_mismatch_param_default_value.3.abra", "typechecker/funcdecl_error_type_mismatch_param_default_value.3.out")
+        .add_test_vs_txt("typechecker/funcdecl_error_type_mismatch_param_default_value.4.abra", "typechecker/funcdecl_error_type_mismatch_param_default_value.4.out")
+
 
         .run_tests();
 }
