@@ -226,6 +226,16 @@ type TypeError {
     val lines = ["Error at $filePath:${self.position.line}:${self.position.col}"]
 
     match self.kind {
+      TypeErrorKind.NotYetImplemented(reason) => {
+        lines.push("Not yet implemented:")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Reason: $reason")
+      }
+      TypeErrorKind.Unreachable(message) => {
+        lines.push("Unreachable code reached")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Internal error: $message")
+      }
       TypeErrorKind.TypeMismatch(expected, received) => {
         lines.push("Type mismatch")
         lines.push(self._getCursorLine(self.position, contents))
@@ -312,16 +322,6 @@ type TypeError {
         lines.push(self._getCursorLine(self.position, contents))
         lines.push("Vararg parameters must be an Array type, but got ${ty.repr()}")
       }
-      TypeErrorKind.CannotDetermineType(name, purpose) => {
-        lines.push("Could not determine type for $purpose '$name'")
-        lines.push(self._getCursorLine(self.position, contents))
-        lines.push("Consider adding a type annotation")
-      }
-      TypeErrorKind.NotYetImplemented(reason) => {
-        lines.push("Not yet implemented:")
-        lines.push(self._getCursorLine(self.position, contents))
-        lines.push("Reason: $reason")
-      }
     }
 
     lines.join("\n")
@@ -344,6 +344,7 @@ type TypeError {
 
 enum TypeErrorKind {
   NotYetImplemented(reason: String)
+  Unreachable(message: String)
   TypeMismatch(expected: Type[], received: Type)
   DuplicateName(original: Label)
   UnknownName(name: String, kind: String)
@@ -355,7 +356,6 @@ enum TypeErrorKind {
   InvalidParamPosition(purpose: String)
   DuplicateParameter(name: String)
   InvalidVarargType(ty: Type)
-  CannotDetermineType(name: String, purpose: String)
 }
 
 export type Typechecker {
@@ -548,7 +548,7 @@ export type Typechecker {
         if defaultValue |defaultValue| {
           defaultValue.ty
         } else {
-          return Result.Err(TypeError(position: param.label.position, kind: TypeErrorKind.CannotDetermineType(name: param.label.name, purpose: "parameter")))
+          return unreachable(param.label.position, "parser requires at least a type annotation or default value")
         }
       }
 
@@ -864,4 +864,8 @@ export type Typechecker {
 
 func todo<V>(position: Position, reason = ""): Result<V, TypeError> {
   Result.Err(TypeError(position: position, kind: TypeErrorKind.NotYetImplemented(reason)))
+}
+
+func unreachable<V>(position: Position, message: String): Result<V, TypeError> {
+  Result.Err(TypeError(position: position, kind: TypeErrorKind.Unreachable(message)))
 }
