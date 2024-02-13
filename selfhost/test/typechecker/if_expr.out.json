@@ -539,11 +539,11 @@
                   "kind": "bindingDeclaration",
                   "pattern": {
                     "kind": "variable",
-                    "label": { "name": "y", "position": [15, 7] }
+                    "label": { "name": "x", "position": [15, 7] }
                   },
                   "variables": [
                     {
-                      "label": { "name": "y", "position": [15, 7] },
+                      "label": { "name": "x", "position": [15, 7] },
                       "mutable": false,
                       "type": {
                         "nullable": false,
@@ -599,7 +599,7 @@
                         "position": [16, 4],
                         "kind": {
                           "name": "Ident",
-                          "value": "y"
+                          "value": "x"
                         }
                       },
                       "type": {
@@ -609,7 +609,7 @@
                       },
                       "node": {
                         "kind": "identifier",
-                        "name": "y"
+                        "name": "x"
                       }
                     }
                   ]
@@ -802,11 +802,11 @@
                   "kind": "bindingDeclaration",
                   "pattern": {
                     "kind": "variable",
-                    "label": { "name": "z", "position": [23, 7] }
+                    "label": { "name": "x", "position": [23, 7] }
                   },
                   "variables": [
                     {
-                      "label": { "name": "z", "position": [23, 7] },
+                      "label": { "name": "x", "position": [23, 7] },
                       "mutable": false,
                       "type": {
                         "nullable": false,
@@ -862,7 +862,7 @@
                         "position": [24, 4],
                         "kind": {
                           "name": "Ident",
-                          "value": "z"
+                          "value": "x"
                         }
                       },
                       "type": {
@@ -872,7 +872,7 @@
                       },
                       "node": {
                         "kind": "identifier",
-                        "name": "z"
+                        "name": "x"
                       }
                     }
                   ]
@@ -1039,11 +1039,11 @@
                   "kind": "bindingDeclaration",
                   "pattern": {
                     "kind": "variable",
-                    "label": { "name": "q", "position": [29, 7] }
+                    "label": { "name": "x", "position": [29, 7] }
                   },
                   "variables": [
                     {
-                      "label": { "name": "q", "position": [29, 7] },
+                      "label": { "name": "x", "position": [29, 7] },
                       "mutable": false,
                       "type": {
                         "nullable": false,
@@ -1099,7 +1099,7 @@
                         "position": [30, 4],
                         "kind": {
                           "name": "Ident",
-                          "value": "q"
+                          "value": "x"
                         }
                       },
                       "type": {
@@ -1109,7 +1109,7 @@
                       },
                       "node": {
                         "kind": "identifier",
-                        "name": "q"
+                        "name": "x"
                       }
                     }
                   ]

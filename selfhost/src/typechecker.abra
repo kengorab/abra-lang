@@ -161,6 +161,7 @@ type TypedFunctionParam {
 
 type Function {
   label: Label
+  scope: Scope
   params: TypedFunctionParam[]
   returnType: Type
   body: TypedAstNode[]
@@ -501,13 +502,17 @@ export type Typechecker {
       Type(kind: TypeKind.PrimitiveUnit)
     }
 
-    val fn = Function(label: node.name, params: [], returnType: returnType, body: [])
+    val fnScope = self.currentScope.makeChild(node.name.name)
+    val fn = Function(label: node.name, scope: fnScope, params: [], returnType: returnType, body: [])
     match self._addFunctionToScope(fn) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     Result.Ok(fn)
   }
 
   func _typecheckFunctionPass2(self, fn: Function, node: FunctionDeclarationNode): Result<Int, TypeError> {
+    val prevScope = self.currentScope
+    self.currentScope = fn.scope
+
     val seenParamNames: Set<String> = #{}
     var startedOptionalParams = false
     for param, idx in node.params {
@@ -552,7 +557,8 @@ export type Typechecker {
         }
       }
 
-      // todo: add variable to function's scope
+      val variable = Variable(label: param.label, mutable: false, ty: ty)
+      match self._addVariableToScope(variable) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
       if param.isVariadic {
         if self._typeAsArray(ty) |innerType| {
@@ -568,6 +574,8 @@ export type Typechecker {
 
       fn.params.push(TypedFunctionParam(label: param.label, ty: ty, defaultValue: defaultValue, isVariadic: param.isVariadic))
     }
+
+    self.currentScope = prevScope
 
     Result.Ok(0)
   }
@@ -684,6 +692,8 @@ export type Typechecker {
     }
 
     val typedIfBlock: TypedAstNode[] = []
+    var prevScope = self.currentScope
+    self.currentScope = self.currentScope.makeChild("if_then")
     for node, idx in ifBlock {
       if idx == ifBlock.length - 1 && !isStatement {
         val typedNode = match self._typecheckExpression(node, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -694,9 +704,12 @@ export type Typechecker {
       }
     }
     val ifType = typedIfBlock[-1]?.ty
+    self.currentScope = prevScope
 
     var hasElseBlock = false
     val typedElseBlock: TypedAstNode[] = []
+    prevScope = self.currentScope
+    self.currentScope = self.currentScope.makeChild("if_else")
     if elseBlock |elseBlock| {
       hasElseBlock = true
       for node, idx in elseBlock {
@@ -709,6 +722,7 @@ export type Typechecker {
         }
       }
     }
+    self.currentScope = prevScope
 
     val ty = if !isStatement {
       val t = if ifType |ifType| {
