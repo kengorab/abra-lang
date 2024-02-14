@@ -1,0 +1,5 @@
+// Test referencing the function from within its body
+func f(a: Int[]): Int {
+  val fn = f
+  123
+}

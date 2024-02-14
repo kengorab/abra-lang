@@ -12,22 +12,22 @@ val _: Int[] = b
 val c = if true {
   []
 } else {
-  val y = 1
-  [y]
+  val x = 1
+  [x]
 }
 val _: Int[] = c
 
 val d = if true {
   None
 } else {
-  val z = 1
-  [z]
+  val x = 1
+  [x]
 }
 val _: Int[]? = d
 
 val e = if true {
-  val q = 1
-  [q]
+  val x = 1
+  [x]
 } else {
   None
 }

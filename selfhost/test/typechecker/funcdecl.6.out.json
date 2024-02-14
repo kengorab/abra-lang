@@ -1,0 +1,138 @@
+{
+  "id": 1,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo1", "position": [2, 6] },
+          "scope": {
+            "name": "$root::module_1::foo1",
+            "variables": [
+              {
+                "label": { "name": "a", "position": [2, 12] },
+                "mutable": false,
+                "type": {
+                  "nullable": false,
+                  "kind": "instance",
+                  "struct": { "moduleId": 0, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                }
+              }
+            ],
+            "functions": []
+          },
+          "parameters": [
+            {
+              "label": { "name": "a", "position": [2, 12] },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "defaultValue": null,
+              "isVariadic": true
+            }
+          ],
+          "returnType": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Unit"
+          },
+          "body": []
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [3, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo2", "position": [3, 6] },
+          "scope": {
+            "name": "$root::module_1::foo2",
+            "variables": [
+              {
+                "label": { "name": "arrs", "position": [3, 12] },
+                "mutable": false,
+                "type": {
+                  "nullable": false,
+                  "kind": "instance",
+                  "struct": { "moduleId": 0, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "nullable": false,
+                      "kind": "instance",
+                      "struct": { "moduleId": 0, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "functions": []
+          },
+          "parameters": [
+            {
+              "label": { "name": "arrs", "position": [3, 12] },
+              "type": {
+                "nullable": false,
+                "kind": "instance",
+                "struct": { "moduleId": 0, "name": "Array" },
+                "typeParams": [
+                  {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
+              },
+              "defaultValue": null,
+              "isVariadic": true
+            }
+          ],
+          "returnType": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Unit"
+          },
+          "body": []
+        }
+      }
+    }
+  ]
+}

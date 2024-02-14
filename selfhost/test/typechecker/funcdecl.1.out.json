@@ -1,0 +1,56 @@
+{
+  "id": 1,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo", "position": [2, 6] },
+          "scope": {
+            "name": "$root::module_1::foo",
+            "variables": [],
+            "functions": []
+          },
+          "parameters": [],
+          "returnType": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "body": [
+            {
+              "token": {
+                "position": [2, 19],
+                "kind": {
+                  "name": "Int",
+                  "value": 123
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 123
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
