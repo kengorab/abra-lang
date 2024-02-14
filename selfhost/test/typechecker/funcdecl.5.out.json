@@ -1,0 +1,619 @@
+{
+  "id": 1,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo1", "position": [2, 6] },
+          "scope": {
+            "name": "$root::module_1::foo1",
+            "variables": [],
+            "functions": []
+          },
+          "parameters": [],
+          "returnType": {
+            "nullable": false,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Array" },
+            "typeParams": [
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          },
+          "body": [
+            {
+              "token": {
+                "position": [2, 22],
+                "kind": {
+                  "name": "LBrack"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "instance",
+                "struct": { "moduleId": 0, "name": "Array" },
+                "typeParams": [
+                  {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
+              },
+              "node": {
+                "kind": "array",
+                "items": []
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [3, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo2", "position": [3, 6] },
+          "scope": {
+            "name": "$root::module_1::foo2",
+            "variables": [],
+            "functions": []
+          },
+          "parameters": [],
+          "returnType": {
+            "nullable": true,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Array" },
+            "typeParams": [
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          },
+          "body": [
+            {
+              "token": {
+                "position": [3, 23],
+                "kind": {
+                  "name": "If"
+                }
+              },
+              "type": {
+                "nullable": true,
+                "kind": "instance",
+                "struct": { "moduleId": 0, "name": "Array" },
+                "typeParams": [
+                  {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
+              },
+              "node": {
+                "kind": "if",
+                "isStatement": false,
+                "condition": {
+                  "token": {
+                    "position": [3, 26],
+                    "kind": {
+                      "name": "Bool",
+                      "value": true
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Bool"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": true
+                  }
+                },
+                "ifBlock": [
+                  {
+                    "token": {
+                      "position": [3, 33],
+                      "kind": {
+                        "name": "LBrack"
+                      }
+                    },
+                    "type": {
+                      "nullable": true,
+                      "kind": "instance",
+                      "struct": { "moduleId": 0, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "array",
+                      "items": []
+                    }
+                  }
+                ],
+                "elseBlock": [
+                  {
+                    "token": {
+                      "position": [3, 43],
+                      "kind": {
+                        "name": "None"
+                      }
+                    },
+                    "type": {
+                      "nullable": true,
+                      "kind": "instance",
+                      "struct": { "moduleId": 0, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "None"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [4, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo3", "position": [4, 6] },
+          "scope": {
+            "name": "$root::module_1::foo3",
+            "variables": [],
+            "functions": []
+          },
+          "parameters": [],
+          "returnType": {
+            "nullable": true,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Array" },
+            "typeParams": [
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          },
+          "body": [
+            {
+              "token": {
+                "position": [4, 23],
+                "kind": {
+                  "name": "If"
+                }
+              },
+              "type": {
+                "nullable": true,
+                "kind": "instance",
+                "struct": { "moduleId": 0, "name": "Array" },
+                "typeParams": [
+                  {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
+              },
+              "node": {
+                "kind": "if",
+                "isStatement": false,
+                "condition": {
+                  "token": {
+                    "position": [4, 26],
+                    "kind": {
+                      "name": "Bool",
+                      "value": true
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Bool"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": true
+                  }
+                },
+                "ifBlock": [
+                  {
+                    "token": {
+                      "position": [4, 31],
+                      "kind": {
+                        "name": "None"
+                      }
+                    },
+                    "type": {
+                      "nullable": true,
+                      "kind": "instance",
+                      "struct": { "moduleId": 0, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "None"
+                    }
+                  }
+                ],
+                "elseBlock": [
+                  {
+                    "token": {
+                      "position": [4, 41],
+                      "kind": {
+                        "name": "LBrack"
+                      }
+                    },
+                    "type": {
+                      "nullable": true,
+                      "kind": "instance",
+                      "struct": { "moduleId": 0, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "array",
+                      "items": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [5, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo4", "position": [5, 6] },
+          "scope": {
+            "name": "$root::module_1::foo4",
+            "variables": [],
+            "functions": []
+          },
+          "parameters": [],
+          "returnType": {
+            "nullable": true,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Array" },
+            "typeParams": [
+              {
+                "nullable": true,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          },
+          "body": [
+            {
+              "token": {
+                "position": [5, 24],
+                "kind": {
+                  "name": "If"
+                }
+              },
+              "type": {
+                "nullable": true,
+                "kind": "instance",
+                "struct": { "moduleId": 0, "name": "Array" },
+                "typeParams": [
+                  {
+                    "nullable": true,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
+              },
+              "node": {
+                "kind": "if",
+                "isStatement": false,
+                "condition": {
+                  "token": {
+                    "position": [5, 27],
+                    "kind": {
+                      "name": "Bool",
+                      "value": true
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Bool"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": true
+                  }
+                },
+                "ifBlock": [
+                  {
+                    "token": {
+                      "position": [5, 32],
+                      "kind": {
+                        "name": "None"
+                      }
+                    },
+                    "type": {
+                      "nullable": true,
+                      "kind": "instance",
+                      "struct": { "moduleId": 0, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "nullable": true,
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "None"
+                    }
+                  }
+                ],
+                "elseBlock": [
+                  {
+                    "token": {
+                      "position": [5, 42],
+                      "kind": {
+                        "name": "LBrack"
+                      }
+                    },
+                    "type": {
+                      "nullable": true,
+                      "kind": "instance",
+                      "struct": { "moduleId": 0, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "nullable": true,
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "array",
+                      "items": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [6, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo5", "position": [6, 6] },
+          "scope": {
+            "name": "$root::module_1::foo5",
+            "variables": [],
+            "functions": []
+          },
+          "parameters": [],
+          "returnType": {
+            "nullable": true,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Array" },
+            "typeParams": [
+              {
+                "nullable": true,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          },
+          "body": [
+            {
+              "token": {
+                "position": [6, 24],
+                "kind": {
+                  "name": "If"
+                }
+              },
+              "type": {
+                "nullable": true,
+                "kind": "instance",
+                "struct": { "moduleId": 0, "name": "Array" },
+                "typeParams": [
+                  {
+                    "nullable": true,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
+              },
+              "node": {
+                "kind": "if",
+                "isStatement": false,
+                "condition": {
+                  "token": {
+                    "position": [6, 27],
+                    "kind": {
+                      "name": "Bool",
+                      "value": true
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Bool"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": true
+                  }
+                },
+                "ifBlock": [
+                  {
+                    "token": {
+                      "position": [6, 32],
+                      "kind": {
+                        "name": "None"
+                      }
+                    },
+                    "type": {
+                      "nullable": true,
+                      "kind": "instance",
+                      "struct": { "moduleId": 0, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "nullable": true,
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "None"
+                    }
+                  }
+                ],
+                "elseBlock": [
+                  {
+                    "token": {
+                      "position": [6, 42],
+                      "kind": {
+                        "name": "LBrack"
+                      }
+                    },
+                    "type": {
+                      "nullable": true,
+                      "kind": "instance",
+                      "struct": { "moduleId": 0, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "nullable": true,
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "array",
+                      "items": [
+                        {
+                          "token": {
+                            "position": [6, 43],
+                            "kind": {
+                              "name": "None"
+                            }
+                          },
+                          "type": {
+                            "nullable": true,
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          },
+                          "node": {
+                            "kind": "identifier",
+                            "name": "None"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

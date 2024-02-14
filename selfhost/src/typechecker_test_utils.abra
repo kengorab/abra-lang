@@ -1,6 +1,6 @@
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 import LiteralAstNode, IdentifierKind from "./parser"
-import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable from "./typechecker"
+import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope from "./typechecker"
 
 export type Jsonifier {
   indentLevel: Int = 0
@@ -65,6 +65,15 @@ export type Jsonifier {
         self.println("\"struct\": { \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.name}\" },")
         self.print("\"typeParams\": ")
         self.array(generics, t => self.printType(t))
+        println()
+      }
+      TypeKind.Func(params, ret) => {
+        self.println("\"kind\": \"function\",")
+        self.print("\"paramTypes\": ")
+        self.array(params, t => self.printType(t))
+        println(",")
+        self.print("\"returnType\": ")
+        self.printType(ret)
         println()
       }
       TypeKind.Hole => self.println("\"kind\": \"hole\"")
@@ -163,6 +172,13 @@ export type Jsonifier {
 
         self.print("\"expr\": ")
         self.opt(node.expr, n => self.printNode(n))
+        println()
+      }
+      TypedAstNodeKind.FunctionDeclaration(fn) => {
+        self.println("\"kind\": \"functionDeclaration\",")
+        self.print("\"function\": ")
+        self.printFunc(fn)
+        println()
       }
     }
     self.indentDec()
@@ -184,6 +200,88 @@ export type Jsonifier {
 
     self.print("\"type\": ")
     self.printType(variable.ty)
+    println()
+
+    self.indentDec()
+    self.print("}")
+  }
+
+  func printFunc(self, function: Function) {
+/*
+type TypedFunctionParam {
+  label: Label
+  ty: Type
+  defaultValue: TypedAstNode?
+  isVariadic: Bool = false
+}
+
+export type Function {
+  label: Label
+  scope: Scope
+  params: TypedFunctionParam[]
+  returnType: Type
+  body: TypedAstNode[]
+}
+*/
+    println("{")
+    self.indentInc()
+
+    self.print("\"label\": ")
+    printLabelAsJson(function.label)
+    println(",")
+
+    self.print("\"scope\": ")
+    self.printScope(function.scope)
+    println(",")
+
+    self.print("\"parameters\": ")
+    self.array(function.params, param => {
+      println("{")
+      self.indentInc()
+
+      self.print("\"label\": ")
+      printLabelAsJson(param.label)
+      println(",")
+
+      self.print("\"type\": ")
+      self.printType(param.ty)
+      println(",")
+
+      self.print("\"defaultValue\": ")
+      self.opt(param.defaultValue, v => self.printNode(v))
+      println(",")
+
+      self.println("\"isVariadic\": ${param.isVariadic}")
+
+      self.indentDec()
+      self.print("}")
+    })
+    println(",")
+
+    self.print("\"returnType\": ")
+    self.printType(function.returnType)
+    println(",")
+
+    self.print("\"body\": ")
+    self.array(function.body, n => self.printNode(n))
+    println()
+
+    self.indentDec()
+    self.print("}")
+  }
+
+  func printScope(self, scope: Scope) {
+    println("{")
+    self.indentInc()
+
+    self.println("\"name\": \"${scope.name}\",")
+
+    self.print("\"variables\": ")
+    self.array(scope.variables, v => self.printVariable(v))
+    println(",")
+
+    self.print("\"functions\": ")
+    self.array(scope.functions, f => self.printFunc(f))
     println()
 
     self.indentDec()
@@ -229,9 +327,8 @@ export type Jsonifier {
   func opt<T>(self, v: T?, fn: (T) => Unit) {
     if v |v| {
       fn(v)
-      println()
     } else {
-      println("null")
+      print("null")
     }
   }
 }

@@ -1,0 +1,203 @@
+{
+  "id": 1,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "f", "position": [2, 6] },
+          "scope": {
+            "name": "$root::module_1::f",
+            "variables": [
+              {
+                "label": { "name": "a", "position": [2, 8] },
+                "mutable": false,
+                "type": {
+                  "nullable": false,
+                  "kind": "instance",
+                  "struct": { "moduleId": 0, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                }
+              },
+              {
+                "label": { "name": "fn", "position": [3, 7] },
+                "mutable": false,
+                "type": {
+                  "nullable": false,
+                  "kind": "function",
+                  "paramTypes": [
+                    {
+                      "nullable": false,
+                      "kind": "instance",
+                      "struct": { "moduleId": 0, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    }
+                  ],
+                  "returnType": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                }
+              }
+            ],
+            "functions": []
+          },
+          "parameters": [
+            {
+              "label": { "name": "a", "position": [2, 8] },
+              "type": {
+                "nullable": false,
+                "kind": "instance",
+                "struct": { "moduleId": 0, "name": "Array" },
+                "typeParams": [
+                  {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
+              },
+              "defaultValue": null,
+              "isVariadic": false
+            }
+          ],
+          "returnType": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "body": [
+            {
+              "token": {
+                "position": [3, 3],
+                "kind": {
+                  "name": "Val"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Unit"
+              },
+              "node": {
+                "kind": "bindingDeclaration",
+                "pattern": {
+                  "kind": "variable",
+                  "label": { "name": "fn", "position": [3, 7] }
+                },
+                "variables": [
+                  {
+                    "label": { "name": "fn", "position": [3, 7] },
+                    "mutable": false,
+                    "type": {
+                      "nullable": false,
+                      "kind": "function",
+                      "paramTypes": [
+                        {
+                          "nullable": false,
+                          "kind": "instance",
+                          "struct": { "moduleId": 0, "name": "Array" },
+                          "typeParams": [
+                            {
+                              "nullable": false,
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            }
+                          ]
+                        }
+                      ],
+                      "returnType": {
+                        "nullable": false,
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    }
+                  }
+                ],
+                "expr": {
+                  "token": {
+                    "position": [3, 12],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "f"
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "function",
+                    "paramTypes": [
+                      {
+                        "nullable": false,
+                        "kind": "instance",
+                        "struct": { "moduleId": 0, "name": "Array" },
+                        "typeParams": [
+                          {
+                            "nullable": false,
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
+                      }
+                    ],
+                    "returnType": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  },
+                  "node": {
+                    "kind": "identifier",
+                    "name": "f"
+                  }
+                }
+              }
+            },
+            {
+              "token": {
+                "position": [4, 3],
+                "kind": {
+                  "name": "Int",
+                  "value": 123
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 123
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

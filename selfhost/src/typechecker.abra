@@ -39,13 +39,18 @@ export type TypedModule {
   rootScope: Scope
 }
 
+export enum VariableAlias {
+  Function(fn: Function)
+}
+
 export type Variable {
   label: Label
   mutable: Bool
   ty: Type
+  alias: VariableAlias? = None
 }
 
-type Scope {
+export type Scope {
   name: String
   variables: Variable[] = []
   functions: Function[] = []
@@ -90,6 +95,14 @@ export type Type {
           "${struct.name}$genericsRepr"
         }
       }
+      TypeKind.Func(paramTypes, returnType) => {
+        val paramsRepr = paramTypes.map(t => t.repr()).join(", ")
+        val returnTypeRepr = returnType.repr()
+        val repr = "($paramsRepr) => $returnTypeRepr"
+
+        if self.nullable return "($repr)?"
+        repr
+      }
       TypeKind.Hole => "<unknown>"
     }
 
@@ -103,6 +116,7 @@ export type Type {
     TypeKind.PrimitiveBool => false
     TypeKind.PrimitiveString => false
     TypeKind.Instance(_, generics) => generics.any(t => t.hasUnfilledHoles())
+    TypeKind.Func(paramTypes, returnType) => paramTypes.any(t => t.hasUnfilledHoles()) || returnType.hasUnfilledHoles()
     TypeKind.Hole => true
   }
 
@@ -137,6 +151,7 @@ export enum TypeKind {
   PrimitiveBool
   PrimitiveString
   Instance(struct: Struct, generics: Type[])
+  Func(paramTypes: Type[], returnType: Type)
   Hole
 }
 
@@ -159,7 +174,7 @@ type TypedFunctionParam {
   isVariadic: Bool = false
 }
 
-type Function {
+export type Function {
   label: Label
   scope: Scope
   params: TypedFunctionParam[]
@@ -177,6 +192,7 @@ export enum TypedAstNodeKind {
   If(isStatement: Bool, typedCondition: TypedAstNode, typedIfBlock: TypedAstNode[], typedElseBlock: TypedAstNode[])
 
   BindingDeclaration(node: TypedBindingDeclarationNode)
+  FunctionDeclaration(fn: Function)
 }
 
 type TypecheckerError {
@@ -321,7 +337,27 @@ type TypeError {
       TypeErrorKind.InvalidVarargType(ty) => {
         lines.push("Invalid type for vararg parameter")
         lines.push(self._getCursorLine(self.position, contents))
-        lines.push("Vararg parameters must be an Array type, but got ${ty.repr()}")
+        if ty.nullable {
+          lines.push("Vararg parameters must be a non-Option Array type, but got ${ty.repr()}")
+        } else {
+          lines.push("Vararg parameters must be an Array type, but got ${ty.repr()}")
+        }
+      }
+      TypeErrorKind.ReturnTypeMismatch(fnName, expected, received) => {
+        if fnName |name| {
+          lines.push("Return type mismatch for function '$name'")
+        } else {
+          lines.push("Return type mismatch for lambda function")
+        }
+
+        lines.push(self._getCursorLine(self.position, contents))
+
+        lines.push("Expected ${expected.repr()}")
+        if received |received| {
+          lines.push("but instead found ${received.repr()}")
+        } else {
+          lines.push("but function had empty body")
+        }
       }
     }
 
@@ -357,6 +393,7 @@ enum TypeErrorKind {
   InvalidParamPosition(purpose: String)
   DuplicateParameter(name: String)
   InvalidVarargType(ty: Type)
+  ReturnTypeMismatch(fnName: String?, expected: Type, received: Type?)
 }
 
 export type Typechecker {
@@ -438,7 +475,16 @@ export type Typechecker {
         innerTy
       }
       TypeIdentifier.Tuple => return todo(Position(line: 0, col: 0))
-      TypeIdentifier.Function => return todo(Position(line: 0, col: 0))
+      TypeIdentifier.Function(params, ret) => {
+        val paramTypes: Type[] = []
+        for p in params {
+          val t = match self._resolveTypeIdentifier(p) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          paramTypes.push(t)
+        }
+
+        val returnType = match self._resolveTypeIdentifier(ret) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        Type(kind: TypeKind.Func(paramTypes, returnType))
+      }
     }
 
     Result.Ok(ty)
@@ -465,8 +511,6 @@ export type Typechecker {
   }
 
   func _typeAsArray(self, ty: Type): Type? {
-    if ty.nullable return None
-
     match ty.kind {
       TypeKind.Instance(struct, generics) => if struct == self.project.preludeArrayStruct { generics[0] } else None
       _ => None
@@ -561,7 +605,9 @@ export type Typechecker {
       match self._addVariableToScope(variable) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
       if param.isVariadic {
-        if self._typeAsArray(ty) |innerType| {
+        if ty.nullable {
+          return Result.Err(TypeError(position: param.label.position, kind: TypeErrorKind.InvalidVarargType(ty)))
+        } else if self._typeAsArray(ty) |innerType| {
           ty = innerType
         } else {
           return Result.Err(TypeError(position: param.label.position, kind: TypeErrorKind.InvalidVarargType(ty)))
@@ -580,13 +626,44 @@ export type Typechecker {
     Result.Ok(0)
   }
 
+  func _typecheckFunctionPass3(self, fn: Function, fnDeclNode: FunctionDeclarationNode): Result<Int, TypeError> {
+    val prevScope = self.currentScope
+    self.currentScope = fn.scope
+
+    val hasReturnValue = fn.returnType.kind != TypeKind.PrimitiveUnit
+    if hasReturnValue && fnDeclNode.body.isEmpty() {
+      return Result.Err(TypeError(position: fn.label.position, kind: TypeErrorKind.ReturnTypeMismatch(fn.label.name, fn.returnType, None)))
+    }
+
+    for node, idx in fnDeclNode.body {
+      val typedNode = if idx == fnDeclNode.body.length - 1 && hasReturnValue {
+        val expr = match self._typecheckExpression(node, fn.returnType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        if !self._typeSatisfiesRequired(ty: expr.ty, required: fn.returnType) {
+          return Result.Err(TypeError(position: expr.token.position, kind: TypeErrorKind.ReturnTypeMismatch(fn.label.name, fn.returnType, expr.ty)))
+        }
+        expr
+      } else {
+        val stmt = match self._typecheckStatement(node, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        stmt
+      }
+      fn.body.push(typedNode)
+    }
+
+    self.currentScope = prevScope
+
+    Result.Ok(0)
+  }
+
   func _typecheckBlock(self, nodes: AstNode[]): Result<TypedAstNode[], TypeError> {
-    val functions: (Function, FunctionDeclarationNode)[] = []
+    val functions: (Function, Variable, FunctionDeclarationNode)[] = []
     for node in nodes {
       match node.kind {
         AstNodeKind.FunctionDeclaration(node) => {
           val fn = match self._typecheckFunctionPass1(node) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-          functions.push((fn, node))
+          val fnType = Type(kind: TypeKind.Func(paramTypes: [], returnType: fn.returnType))
+          val aliasVar = Variable(label: fn.label, mutable: false, ty: fnType, alias: VariableAlias.Function(fn))
+          self.currentScope.variables.push(aliasVar)
+          functions.push((fn, aliasVar, node))
         }
         _ => {}
       }
@@ -594,15 +671,33 @@ export type Typechecker {
 
     for fnPair in functions {
       val fn = fnPair[0]
-      val node = fnPair[1]
+      val aliasVar = fnPair[1]
+      val node = fnPair[2]
       match self._typecheckFunctionPass2(fn, node) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+      val fnType = Type(kind: TypeKind.Func(paramTypes: fn.params.map(p => p.ty), returnType: fn.returnType))
+      aliasVar.ty = fnType
     }
+
+    val functionsIter = functions.iterator()
 
     val typedNodes: TypedAstNode[] = []
 
     for node in nodes {
       val res = match node.kind {
-        AstNodeKind.FunctionDeclaration => return todo(node.token.position)
+        AstNodeKind.FunctionDeclaration => {
+          val typedNode = if functionsIter.next() |pair| {
+            val fn = pair[0]
+            val fnDeclNode = pair[2]
+            match self._typecheckFunctionPass3(fn, fnDeclNode) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.FunctionDeclaration(fn))
+          } else {
+            return unreachable(node.token.position, "there should be as many functions as there are functiondecl nodes")
+          }
+
+          typedNodes.push(typedNode)
+          continue
+        }
         AstNodeKind.TypeDeclaration => return todo(node.token.position)
         AstNodeKind.EnumDeclaration => return todo(node.token.position)
         _ => self._typecheckStatement(node: node, typeHint: None)
@@ -696,10 +791,10 @@ export type Typechecker {
     self.currentScope = self.currentScope.makeChild("if_then")
     for node, idx in ifBlock {
       if idx == ifBlock.length - 1 && !isStatement {
-        val typedNode = match self._typecheckExpression(node, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        val typedNode = match self._typecheckExpression(node, typeHint) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
         typedIfBlock.push(typedNode)
       } else {
-        val typedNode = match self._typecheckStatement(node, typeHint) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        val typedNode = match self._typecheckStatement(node, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
         typedIfBlock.push(typedNode)
       }
     }
@@ -836,12 +931,10 @@ export type Typechecker {
   }
 
   func _typecheckArray(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
-    var innerType = match typeHint?.kind {
-      TypeKind.Instance(struct, generics) => if struct == self.project.preludeArrayStruct {
-        val arrayInnerType = generics[0] ?: Type(kind: TypeKind.Hole) // <- should be unreachable, array instance should always have generics[0] populated
-        if arrayInnerType.kind == TypeKind.Hole { None } else generics[0]
-      } else None
-      _ => None
+    var innerType = if typeHint |hint| {
+      if self._typeAsArray(hint) |inner| if inner.kind == TypeKind.Hole None else inner
+    } else {
+      None
     }
 
     var makeItemsNullable = false
