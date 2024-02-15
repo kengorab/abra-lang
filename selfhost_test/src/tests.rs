@@ -254,6 +254,7 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/funcdecl.4.abra", "typechecker/funcdecl.4.out.json")
         .add_test_vs_txt("typechecker/funcdecl.5.abra", "typechecker/funcdecl.5.out.json")
         .add_test_vs_txt("typechecker/funcdecl.6.abra", "typechecker/funcdecl.6.out.json")
+        .add_test_vs_txt("typechecker/funcdecl.7.abra", "typechecker/funcdecl.7.out.json")
         .add_test_vs_txt("typechecker/funcdecl_error_duplicate_func.abra", "typechecker/funcdecl_error_duplicate_func.out")
         .add_test_vs_txt("typechecker/funcdecl_error_duplicate_param.abra", "typechecker/funcdecl_error_duplicate_param.out")
         .add_test_vs_txt("typechecker/funcdecl_error_duplicate_variable.abra", "typechecker/funcdecl_error_duplicate_variable.out")
@@ -273,7 +274,17 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/funcdecl_error_param_default_value_ident.abra", "typechecker/funcdecl_error_param_default_value_ident.out")
         .add_test_vs_txt("typechecker/funcdecl_error_return_type_mismatch.abra", "typechecker/funcdecl_error_return_type_mismatch.out")
         .add_test_vs_txt("typechecker/funcdecl_error_return_type_mismatch_empty.abra", "typechecker/funcdecl_error_return_type_mismatch_empty.out")
-
+        .add_test_vs_txt("typechecker/funcdecl_error_return_type_mismatch_stmt.abra", "typechecker/funcdecl_error_return_type_mismatch_stmt.out")
+        // Returns
+        .add_test_vs_txt("typechecker/return.1.abra", "typechecker/return.1.out.json")
+        .add_test_vs_txt("typechecker/return.2.abra", "typechecker/return.2.out.json")
+        .add_test_vs_txt("typechecker/return.3.abra", "typechecker/return.3.out.json")
+        .add_test_vs_txt("typechecker/return_as_expr_error_never.abra", "typechecker/return_as_expr_error_never.out")
+        .add_test_vs_txt("typechecker/return_error_location.abra", "typechecker/return_error_location.out")
+        .add_test_vs_txt("typechecker/return_error_type_mismatch.abra", "typechecker/return_error_type_mismatch.out")
+        .add_test_vs_txt("typechecker/return_error_type_mismatch_unit.abra", "typechecker/return_error_type_mismatch_unit.out")
+        .add_test_vs_txt("typechecker/return_error_unreachable_stmt_if.abra", "typechecker/return_error_unreachable_stmt_if.out")
+        .add_test_vs_txt("typechecker/return_error_unreachable_stmt_plain.abra", "typechecker/return_error_unreachable_stmt_plain.out")
 
 
         .run_tests();

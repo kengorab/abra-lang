@@ -1,0 +1,8 @@
+func foo(): String {
+  val s = if true {
+    return "early"
+  } else {
+    "other"
+  }
+  s
+}

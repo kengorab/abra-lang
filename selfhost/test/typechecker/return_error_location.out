@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:1:1
+Invalid location for return statement
+  |  return 123
+     ^
+Return statements can only be used within function bodies

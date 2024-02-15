@@ -60,6 +60,9 @@ export type Jsonifier {
         self.println("\"kind\": \"primitive\",")
         self.println("\"primitive\": \"String\"")
       }
+      TypeKind.Never => {
+        self.println("\"kind\": \"never\"")
+      }
       TypeKind.Instance(struct, generics) => {
         self.println("\"kind\": \"instance\",")
         self.println("\"struct\": { \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.name}\" },")
@@ -178,6 +181,12 @@ export type Jsonifier {
         self.println("\"kind\": \"functionDeclaration\",")
         self.print("\"function\": ")
         self.printFunc(fn)
+        println()
+      }
+      TypedAstNodeKind.Return(expr) => {
+        self.println("\"kind\": \"return\",")
+        self.print("\"expr\": ")
+        self.opt(expr, n => self.printNode(n))
         println()
       }
     }
