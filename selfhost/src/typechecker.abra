@@ -50,11 +50,30 @@ export type Variable {
   alias: VariableAlias? = None
 }
 
+export enum Terminator {
+  Returning
+  NonReturning
+
+  func combine(t1: Terminator?, t2: Terminator?): Terminator? {
+    val t1Returns = if t1 |t1| t1 == Terminator.Returning else false
+    val t1NonReturns = if t1 |t1| t1 == Terminator.NonReturning else false
+    val t2Returns = if t2 |t2| t2 == Terminator.Returning else false
+    val t2NonReturns = if t2 |t2| t2 == Terminator.NonReturning else false
+
+    if t1Returns && t2Returns return Terminator.Returning
+
+    if (t1NonReturns && !!t2) || (t2NonReturns && !!t1) return Terminator.NonReturning
+
+    None
+  }
+}
+
 export type Scope {
   name: String
   variables: Variable[] = []
   functions: Function[] = []
   parent: Scope? = None
+  terminator: Terminator? = None
 
   func makeChild(self, name: String): Scope = Scope(name: "${self.name}::$name", parent: self)
 }
@@ -83,6 +102,7 @@ export type Type {
       TypeKind.PrimitiveFloat => "Float"
       TypeKind.PrimitiveBool => "Bool"
       TypeKind.PrimitiveString => "String"
+      TypeKind.Never => "Never"
       TypeKind.Instance(struct, typeParams) => {
         if struct.moduleId == 0 && struct.name == "Array" {
           val innerRepr = typeParams[0]?.repr() ?: "<unknown>"
@@ -115,10 +135,13 @@ export type Type {
     TypeKind.PrimitiveFloat => false
     TypeKind.PrimitiveBool => false
     TypeKind.PrimitiveString => false
+    TypeKind.Never => false
     TypeKind.Instance(_, generics) => generics.any(t => t.hasUnfilledHoles())
     TypeKind.Func(paramTypes, returnType) => paramTypes.any(t => t.hasUnfilledHoles()) || returnType.hasUnfilledHoles()
     TypeKind.Hole => true
   }
+
+  func isInvalidValueType(self): Bool = self.kind == TypeKind.PrimitiveUnit || self.kind == TypeKind.Never || self.hasUnfilledHoles()
 
   func tryFillHoles(self, other: Type) {
     // TODO: this code is pretty ugly - I really need a way of destructuring multiple values simultaneously in `match`es
@@ -150,6 +173,7 @@ export enum TypeKind {
   PrimitiveFloat
   PrimitiveBool
   PrimitiveString
+  Never
   Instance(struct: Struct, generics: Type[])
   Func(paramTypes: Type[], returnType: Type)
   Hole
@@ -193,6 +217,7 @@ export enum TypedAstNodeKind {
 
   BindingDeclaration(node: TypedBindingDeclarationNode)
   FunctionDeclaration(fn: Function)
+  Return(expr: TypedAstNode?)
 }
 
 type TypecheckerError {
@@ -294,6 +319,10 @@ type TypeError {
           lines.push("Forbidden type for $purpose")
           lines.push(self._getCursorLine(self.position, contents))
           lines.push("Instances of type ${ty.repr()} cannot be used as $purpose values")
+        } else if ty.kind == TypeKind.Never {
+          lines.push("Forbidden type for $purpose")
+          lines.push(self._getCursorLine(self.position, contents))
+          lines.push("Expression has type ${ty.repr()}, which can never be used for $purpose")
         } else {
           lines.push("Could not determine type for $purpose")
           lines.push(self._getCursorLine(self.position, contents))
@@ -322,12 +351,12 @@ type TypeError {
       TypeErrorKind.InvalidParamPosition(purpose) => {
         match purpose {
           "vararg" => {
-            lines.push("Invalid position for variadic parameter")
+            lines.push("Invalid location for variadic parameter")
             lines.push(self._getCursorLine(self.position, contents))
             lines.push("Variadic parameters must be the last in the parameter list")
           }
           "required" => {
-            lines.push("Invalid position for required parameter")
+            lines.push("Invalid location for required parameter")
             lines.push(self._getCursorLine(self.position, contents))
             lines.push("Required parameters must all be listed before any optional parameters")
           }
@@ -358,6 +387,16 @@ type TypeError {
         } else {
           lines.push("but function had empty body")
         }
+      }
+      TypeErrorKind.InvalidReturnPosition => {
+        lines.push("Invalid location for return statement")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Return statements can only be used within function bodies")
+      }
+      TypeErrorKind.UnreachableCode => {
+        lines.push("Unreachable code")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Control flow exits before this code is reached")
       }
     }
 
@@ -394,12 +433,15 @@ enum TypeErrorKind {
   DuplicateParameter(name: String)
   InvalidVarargType(ty: Type)
   ReturnTypeMismatch(fnName: String?, expected: Type, received: Type?)
+  InvalidReturnPosition
+  UnreachableCode
 }
 
 export type Typechecker {
   moduleLoader: ModuleLoader
   project: Project
   currentScope: Scope = Scope(name: "\$root")
+  currentFunction: Function? = None
 
   func typecheckEntrypoint(self, modulePathAbs: String): Result<Int, TypecheckerError> {
     val mod = TypedModule(id: 0, name: "prelude", code: [], rootScope: self.currentScope.makeChild("module_0"))
@@ -506,6 +548,7 @@ export type Typechecker {
     if ty.nullable && !required.nullable return false
 
     if required.kind == TypeKind.Hole return true
+    if required.kind == TypeKind.Never || ty.kind == TypeKind.Never return true
 
     ty.kind == required.kind
   }
@@ -629,6 +672,8 @@ export type Typechecker {
   func _typecheckFunctionPass3(self, fn: Function, fnDeclNode: FunctionDeclarationNode): Result<Int, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = fn.scope
+    val prevFn = self.currentFunction
+    self.currentFunction = fn
 
     val hasReturnValue = fn.returnType.kind != TypeKind.PrimitiveUnit
     if hasReturnValue && fnDeclNode.body.isEmpty() {
@@ -636,8 +681,23 @@ export type Typechecker {
     }
 
     for node, idx in fnDeclNode.body {
+      if self.currentScope.terminator {
+        return Result.Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+      }
+
       val typedNode = if idx == fnDeclNode.body.length - 1 && hasReturnValue {
-        val expr = match self._typecheckExpression(node, fn.returnType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        val err = TypeError(position: node.token.position, kind: TypeErrorKind.ReturnTypeMismatch(fn.label.name, fn.returnType, Type(kind: TypeKind.PrimitiveUnit)))
+        match node.kind {
+          AstNodeKind.While => return Result.Err(err)
+          AstNodeKind.For => return Result.Err(err)
+          AstNodeKind.BindingDeclaration => return Result.Err(err)
+          AstNodeKind.FunctionDeclaration => return Result.Err(err)
+          AstNodeKind.TypeDeclaration => return Result.Err(err)
+          AstNodeKind.EnumDeclaration => return Result.Err(err)
+          _ => {}
+        }
+
+        val expr = match self._typecheckExpressionOrTerminator(node, fn.returnType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
         if !self._typeSatisfiesRequired(ty: expr.ty, required: fn.returnType) {
           return Result.Err(TypeError(position: expr.token.position, kind: TypeErrorKind.ReturnTypeMismatch(fn.label.name, fn.returnType, expr.ty)))
         }
@@ -649,6 +709,7 @@ export type Typechecker {
       fn.body.push(typedNode)
     }
 
+    self.currentFunction = prevFn
     self.currentScope = prevScope
 
     Result.Ok(0)
@@ -715,6 +776,9 @@ export type Typechecker {
 
     match node.kind {
       AstNodeKind.BindingDeclaration(node) => self._typecheckBindingDeclaration(token, node)
+      // AstNodeKind.Break => self._typecheckBreak(token)
+      // AstNodeKind.Continue => self._typecheckContinue(token)
+      AstNodeKind.Return(expr) => self._typecheckReturn(token, expr)
       _ => self._typecheckExpression(node, Type(kind: TypeKind.PrimitiveUnit))
     }
   }
@@ -745,7 +809,7 @@ export type Typechecker {
         typedExpr.ty
       }
 
-      if ty.kind == TypeKind.PrimitiveUnit || ty.hasUnfilledHoles() {
+      if ty.isInvalidValueType() {
         return Result.Err(TypeError(position: expr.token.position, kind: TypeErrorKind.IllegalValueType(ty: ty, purpose: "assignment")))
       }
 
@@ -770,6 +834,35 @@ export type Typechecker {
     Result.Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.BindingDeclaration(typedNode)))
   }
 
+  // func _typecheckBreak(self, token: Token): Result<TypedAstNode, TypeError> { }
+
+  // func _typecheckContinue(self, token: Token): Result<TypedAstNode, TypeError> { }
+
+  func _typecheckReturn(self, token: Token, expr: AstNode?): Result<TypedAstNode, TypeError> {
+    val fn = if self.currentFunction |fn| fn else {
+      return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidReturnPosition))
+    }
+
+    val typedExpr = if expr |expr| {
+      val typedExpr = match self._typecheckExpression(expr, fn.returnType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      if !self._typeSatisfiesRequired(ty: typedExpr.ty, required: fn.returnType) {
+        return Result.Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.ReturnTypeMismatch(fn.label.name, fn.returnType, typedExpr.ty)))
+      }
+
+      typedExpr
+    } else {
+      if fn.returnType.kind != TypeKind.PrimitiveUnit {
+        return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.ReturnTypeMismatch(fn.label.name, fn.returnType, Type(kind: TypeKind.PrimitiveUnit))))
+      }
+
+      None
+    }
+
+    self.currentScope.terminator = Terminator.Returning
+
+    Result.Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.Never), kind: TypedAstNodeKind.Return(typedExpr)))
+  }
+
   func _typecheckIf(
     self,
     token: Token,
@@ -791,7 +884,7 @@ export type Typechecker {
     self.currentScope = self.currentScope.makeChild("if_then")
     for node, idx in ifBlock {
       if idx == ifBlock.length - 1 && !isStatement {
-        val typedNode = match self._typecheckExpression(node, typeHint) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        val typedNode = match self._typecheckExpressionOrTerminator(node, typeHint) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
         typedIfBlock.push(typedNode)
       } else {
         val typedNode = match self._typecheckStatement(node, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -799,6 +892,7 @@ export type Typechecker {
       }
     }
     val ifType = typedIfBlock[-1]?.ty
+    val ifBlockTerminator = self.currentScope.terminator
     self.currentScope = prevScope
 
     var hasElseBlock = false
@@ -809,7 +903,7 @@ export type Typechecker {
       hasElseBlock = true
       for node, idx in elseBlock {
         if idx == elseBlock.length - 1 && !isStatement {
-          val typedNode = match self._typecheckExpression(node, ifType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          val typedNode = match self._typecheckExpressionOrTerminator(node, ifType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
           typedElseBlock.push(typedNode)
         } else {
           val typedNode = match self._typecheckStatement(node, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -817,7 +911,10 @@ export type Typechecker {
         }
       }
     }
+    val elseBlockTerminator = self.currentScope.terminator
     self.currentScope = prevScope
+
+    self.currentScope.terminator = Terminator.combine(ifBlockTerminator, elseBlockTerminator)
 
     val ty = if !isStatement {
       val t = if ifType |ifType| {
@@ -835,7 +932,8 @@ export type Typechecker {
             return Result.Err(TypeError(position: lastElseNode.token.position, kind: TypeErrorKind.TypeMismatch([ifType], elseType)))
           }
 
-          ifType.clone()
+          val t = if ifType.kind == TypeKind.Never { elseType.clone() } else { ifType.clone() }
+          t
         } else {
           return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.MissingRequiredIfExprBlock(clause: "else", missing: !hasElseBlock)))
         }
@@ -888,6 +986,13 @@ export type Typechecker {
     }
 
     Result.Ok(typedExpr)
+  }
+
+  func _typecheckExpressionOrTerminator(self, node: AstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
+    match node.kind {
+      AstNodeKind.Return(expr) => self._typecheckReturn(node.token, expr)
+      _ => self._typecheckExpression(node, typeHint)
+    }
   }
 
   func _typecheckUnary(self, token: Token, node: UnaryAstNode): Result<TypedAstNode, TypeError> {

@@ -100,7 +100,10 @@ impl TestRunner {
                     println!("Running {runner_name} test (vs file) {test_path}");
 
                     let comparison_path = selfhost_dir.join("test").join(comparison_file_path);
-                    let comparison = std::fs::read_to_string(&comparison_path).unwrap();
+                    let comparison = std::fs::read_to_string(&comparison_path).unwrap_or_else(|_| {
+                        println!("No such file {}", &comparison_file_path);
+                        panic!();
+                    });
                     let comparison = comparison.replace("%FILE_NAME%", &test_path);
 
                     (test_path, comparison)
