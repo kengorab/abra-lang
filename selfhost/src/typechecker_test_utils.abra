@@ -162,6 +162,35 @@ export type Jsonifier {
       }
 
       // Statements
+      TypedAstNodeKind.While(condition, conditionBindingPattern, block) => {
+        self.println("\"kind\": \"while\",")
+
+        self.print("\"condition\": ")
+        self.printNode(condition)
+        println(",")
+
+        self.print("\"bindingPattern\": ")
+        self.opt(conditionBindingPattern, pair => {
+          println("{")
+          self.indentInc()
+
+          self.print("\"bindingPattern\": ")
+          printBindingPatternAsJson(pair[0], 0, self.indentLevel)
+          println(",")
+
+          self.print("\"variables\": ")
+          self.array(pair[1], v => self.printVariable(v))
+          println()
+
+          self.indentDec()
+          self.print("}")
+        })
+        println(",")
+
+        self.print("\"block\": ")
+        self.array(block, n => self.printNode(n))
+        println()
+      }
       TypedAstNodeKind.BindingDeclaration(node) => {
         self.println("\"kind\": \"bindingDeclaration\",")
 
@@ -182,6 +211,12 @@ export type Jsonifier {
         self.print("\"function\": ")
         self.printFunc(fn)
         println()
+      }
+      TypedAstNodeKind.Break => {
+        self.println("\"kind\": \"break\"")
+      }
+      TypedAstNodeKind.Continue => {
+        self.println("\"kind\": \"continue\"")
       }
       TypedAstNodeKind.Return(expr) => {
         self.println("\"kind\": \"return\",")
@@ -216,22 +251,6 @@ export type Jsonifier {
   }
 
   func printFunc(self, function: Function) {
-/*
-type TypedFunctionParam {
-  label: Label
-  ty: Type
-  defaultValue: TypedAstNode?
-  isVariadic: Bool = false
-}
-
-export type Function {
-  label: Label
-  scope: Scope
-  params: TypedFunctionParam[]
-  returnType: Type
-  body: TypedAstNode[]
-}
-*/
     println("{")
     self.indentInc()
 

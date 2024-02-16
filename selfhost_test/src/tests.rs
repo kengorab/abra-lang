@@ -234,6 +234,23 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/if_error_unfilled_holes_bindingdecl.4.abra", "typechecker/if_error_unfilled_holes_bindingdecl.4.out")
         .add_test_vs_txt("typechecker/if_expr.abra", "typechecker/if_expr.out.json")
         .add_test_vs_txt("typechecker/if_stmt.abra", "typechecker/if_stmt.out.json")
+        // Break
+        .add_test_vs_txt("typechecker/break_as_expr.abra", "typechecker/break_as_expr.out.json")
+        .add_test_vs_txt("typechecker/break_error_location_module.abra", "typechecker/break_error_location_module.out")
+        .add_test_vs_txt("typechecker/break_error_location_module_func.abra", "typechecker/break_error_location_module_func.out")
+        .add_test_vs_txt("typechecker/break_error_location_module_if.abra", "typechecker/break_error_location_module_if.out")
+        .add_test_vs_txt("typechecker/break_error_unreachable_inside_while.abra", "typechecker/break_error_unreachable_inside_while.out")
+        // Continue
+        .add_test_vs_txt("typechecker/continue_as_expr.abra", "typechecker/continue_as_expr.out.json")
+        .add_test_vs_txt("typechecker/continue_error_location_module.abra", "typechecker/continue_error_location_module.out")
+        .add_test_vs_txt("typechecker/continue_error_location_module_func.abra", "typechecker/continue_error_location_module_func.out")
+        .add_test_vs_txt("typechecker/continue_error_location_module_if.abra", "typechecker/continue_error_location_module_if.out")
+        .add_test_vs_txt("typechecker/continue_error_unreachable_inside_while.abra", "typechecker/continue_error_unreachable_inside_while.out")
+        // While
+        .add_test_vs_txt("typechecker/while.1.abra", "typechecker/while.1.out.json")
+        .add_test_vs_txt("typechecker/while.2.abra", "typechecker/while.2.out.json")
+        .add_test_vs_txt("typechecker/while.3.abra", "typechecker/while.3.out.json")
+        .add_test_vs_txt("typechecker/while_error_bad_cond_type.abra", "typechecker/while_error_bad_cond_type.out")
 
 
         // Binding declaration
@@ -285,7 +302,10 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/return_error_type_mismatch_unit.abra", "typechecker/return_error_type_mismatch_unit.out")
         .add_test_vs_txt("typechecker/return_error_unreachable_stmt_if.abra", "typechecker/return_error_unreachable_stmt_if.out")
         .add_test_vs_txt("typechecker/return_error_unreachable_stmt_plain.abra", "typechecker/return_error_unreachable_stmt_plain.out")
-
+        .add_test_vs_txt("typechecker/return_error_unreachable_stmt_while_inside.1.abra", "typechecker/return_error_unreachable_stmt_while_inside.1.out")
+        .add_test_vs_txt("typechecker/return_error_unreachable_stmt_while_inside.2.abra", "typechecker/return_error_unreachable_stmt_while_inside.2.out")
+        .add_test_vs_txt("typechecker/return_error_unreachable_stmt_while_outside.1.abra", "typechecker/return_error_unreachable_stmt_while_outside.1.out")
+        .add_test_vs_txt("typechecker/return_error_unreachable_stmt_while_outside.2.abra", "typechecker/return_error_unreachable_stmt_while_outside.2.out")
 
         .run_tests();
 }

@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:1:1
+Invalid location for continue statement
+  |  continue
+     ^
+Continue statements can only be used within loop bodies

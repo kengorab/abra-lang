@@ -1,0 +1,107 @@
+{
+  "id": 1,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "While"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "while",
+        "condition": {
+          "token": {
+            "position": [2, 7],
+            "kind": {
+              "name": "Bool",
+              "value": true
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Bool"
+          },
+          "node": {
+            "kind": "literal",
+            "value": true
+          }
+        },
+        "bindingPattern": null,
+        "block": [
+          {
+            "token": {
+              "position": [3, 3],
+              "kind": {
+                "name": "Break"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "never"
+            },
+            "node": {
+              "kind": "break"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [5, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "xyz", "position": [5, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "xyz", "position": [5, 5] },
+            "mutable": false,
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "String"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [5, 11],
+            "kind": {
+              "name": "String",
+              "value": "abc"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "String"
+          },
+          "node": {
+            "kind": "literal",
+            "value": "abc"
+          }
+        }
+      }
+    }
+  ]
+}

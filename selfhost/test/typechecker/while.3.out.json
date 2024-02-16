@@ -1,0 +1,173 @@
+{
+  "id": 1,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "x", "position": [1, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "x", "position": [1, 5] },
+            "mutable": false,
+            "type": {
+              "nullable": true,
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [1, 15],
+            "kind": {
+              "name": "None"
+            }
+          },
+          "type": {
+            "nullable": true,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "None"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "While"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "while",
+        "condition": {
+          "token": {
+            "position": [2, 7],
+            "kind": {
+              "name": "Ident",
+              "value": "x"
+            }
+          },
+          "type": {
+            "nullable": true,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "x"
+          }
+        },
+        "bindingPattern": {
+          "bindingPattern": {
+            "kind": "variable",
+            "label": { "name": "x", "position": [2, 10] }
+          },
+          "variables": [
+            {
+              "label": { "name": "x", "position": [2, 10] },
+              "mutable": false,
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            }
+          ]
+        },
+        "block": [
+          {
+            "token": {
+              "position": [3, 3],
+              "kind": {
+                "name": "Val"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Unit"
+            },
+            "node": {
+              "kind": "bindingDeclaration",
+              "pattern": {
+                "kind": "variable",
+                "label": { "name": "y", "position": [3, 7] }
+              },
+              "variables": [
+                {
+                  "label": { "name": "y", "position": [3, 7] },
+                  "mutable": false,
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                }
+              ],
+              "expr": {
+                "token": {
+                  "position": [3, 16],
+                  "kind": {
+                    "name": "Minus"
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "unary",
+                  "op": "UnaryOp.Minus",
+                  "expr": {
+                    "token": {
+                      "position": [3, 17],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "x"
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "x"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

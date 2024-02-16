@@ -1,0 +1,212 @@
+{
+  "id": 1,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "While"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "while",
+        "condition": {
+          "token": {
+            "position": [1, 7],
+            "kind": {
+              "name": "Bool",
+              "value": true
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Bool"
+          },
+          "node": {
+            "kind": "literal",
+            "value": true
+          }
+        },
+        "bindingPattern": null,
+        "block": [
+          {
+            "token": {
+              "position": [2, 3],
+              "kind": {
+                "name": "Val"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Unit"
+            },
+            "node": {
+              "kind": "bindingDeclaration",
+              "pattern": {
+                "kind": "variable",
+                "label": { "name": "x", "position": [2, 7] }
+              },
+              "variables": [
+                {
+                  "label": { "name": "x", "position": [2, 7] },
+                  "mutable": false,
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                }
+              ],
+              "expr": {
+                "token": {
+                  "position": [2, 11],
+                  "kind": {
+                    "name": "If"
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "if",
+                  "isStatement": false,
+                  "condition": {
+                    "token": {
+                      "position": [2, 14],
+                      "kind": {
+                        "name": "Bool",
+                        "value": true
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Bool"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": true
+                    }
+                  },
+                  "ifBlock": [
+                    {
+                      "token": {
+                        "position": [2, 19],
+                        "kind": {
+                          "name": "Break"
+                        }
+                      },
+                      "type": {
+                        "nullable": false,
+                        "kind": "never"
+                      },
+                      "node": {
+                        "kind": "break"
+                      }
+                    }
+                  ],
+                  "elseBlock": [
+                    {
+                      "token": {
+                        "position": [2, 30],
+                        "kind": {
+                          "name": "Int",
+                          "value": 123
+                        }
+                      },
+                      "type": {
+                        "nullable": false,
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      },
+                      "node": {
+                        "kind": "literal",
+                        "value": 123
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "token": {
+              "position": [3, 3],
+              "kind": {
+                "name": "Val"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Unit"
+            },
+            "node": {
+              "kind": "bindingDeclaration",
+              "pattern": {
+                "kind": "variable",
+                "label": { "name": "y", "position": [3, 7] }
+              },
+              "variables": [
+                {
+                  "label": { "name": "y", "position": [3, 7] },
+                  "mutable": false,
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                }
+              ],
+              "expr": {
+                "token": {
+                  "position": [3, 11],
+                  "kind": {
+                    "name": "Minus"
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "unary",
+                  "op": "UnaryOp.Minus",
+                  "expr": {
+                    "token": {
+                      "position": [3, 12],
+                      "kind": {
+                        "name": "Int",
+                        "value": 123
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 123
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
