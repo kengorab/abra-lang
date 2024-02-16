@@ -858,8 +858,6 @@ export type Typechecker {
     val expr = _pair[0]
     val ty = _pair[1]
 
-    // val variable = Variable(label: label, mutable: isMutable, ty: ty)
-    // match self._addVariableToScope(variable) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     val variables = match self._typecheckBindingPattern(isMutable, node.bindingPattern, ty) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     val typedNode = TypedBindingDeclarationNode(bindingPattern: node.bindingPattern, variables: variables, expr: expr)
