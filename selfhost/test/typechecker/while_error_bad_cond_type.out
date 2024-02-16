@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:1:7
+Forbidden type for while-condition
+  |  while 123 {
+           ^
+Conditions must either be Bool or Option types
+but instead found Int
