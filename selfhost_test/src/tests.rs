@@ -240,17 +240,25 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/break_error_location_module_func.abra", "typechecker/break_error_location_module_func.out")
         .add_test_vs_txt("typechecker/break_error_location_module_if.abra", "typechecker/break_error_location_module_if.out")
         .add_test_vs_txt("typechecker/break_error_unreachable_inside_while.abra", "typechecker/break_error_unreachable_inside_while.out")
+        .add_test_vs_txt("typechecker/break_error_unreachable_inside_for.abra", "typechecker/break_error_unreachable_inside_for.out")
         // Continue
         .add_test_vs_txt("typechecker/continue_as_expr.abra", "typechecker/continue_as_expr.out.json")
         .add_test_vs_txt("typechecker/continue_error_location_module.abra", "typechecker/continue_error_location_module.out")
         .add_test_vs_txt("typechecker/continue_error_location_module_func.abra", "typechecker/continue_error_location_module_func.out")
         .add_test_vs_txt("typechecker/continue_error_location_module_if.abra", "typechecker/continue_error_location_module_if.out")
         .add_test_vs_txt("typechecker/continue_error_unreachable_inside_while.abra", "typechecker/continue_error_unreachable_inside_while.out")
+        .add_test_vs_txt("typechecker/continue_error_unreachable_inside_for.abra", "typechecker/continue_error_unreachable_inside_for.out")
         // While
         .add_test_vs_txt("typechecker/while.1.abra", "typechecker/while.1.out.json")
         .add_test_vs_txt("typechecker/while.2.abra", "typechecker/while.2.out.json")
         .add_test_vs_txt("typechecker/while.3.abra", "typechecker/while.3.out.json")
         .add_test_vs_txt("typechecker/while_error_bad_cond_type.abra", "typechecker/while_error_bad_cond_type.out")
+        // For
+        .add_test_vs_txt("typechecker/for.1.abra", "typechecker/for.1.out.json")
+        .add_test_vs_txt("typechecker/for.2.abra", "typechecker/for.2.out.json")
+        .add_test_vs_txt("typechecker/for_error_bad_iterator.abra", "typechecker/for_error_bad_iterator.out")
+        .add_test_vs_txt("typechecker/for_error_bad_iterator_unfilled_hole.abra", "typechecker/for_error_bad_iterator_unfilled_hole.out")
+        .add_test_vs_txt("typechecker/for_error_duplicate_ident.abra", "typechecker/for_error_duplicate_ident.out")
 
 
         // Binding declaration
@@ -306,6 +314,10 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/return_error_unreachable_stmt_while_inside.2.abra", "typechecker/return_error_unreachable_stmt_while_inside.2.out")
         .add_test_vs_txt("typechecker/return_error_unreachable_stmt_while_outside.1.abra", "typechecker/return_error_unreachable_stmt_while_outside.1.out")
         .add_test_vs_txt("typechecker/return_error_unreachable_stmt_while_outside.2.abra", "typechecker/return_error_unreachable_stmt_while_outside.2.out")
+        .add_test_vs_txt("typechecker/return_error_unreachable_stmt_for_inside.1.abra", "typechecker/return_error_unreachable_stmt_for_inside.1.out")
+        .add_test_vs_txt("typechecker/return_error_unreachable_stmt_for_inside.2.abra", "typechecker/return_error_unreachable_stmt_for_inside.2.out")
+        .add_test_vs_txt("typechecker/return_error_unreachable_stmt_for_outside.1.abra", "typechecker/return_error_unreachable_stmt_for_outside.1.out")
+        .add_test_vs_txt("typechecker/return_error_unreachable_stmt_for_outside.2.abra", "typechecker/return_error_unreachable_stmt_for_outside.2.out")
 
         .run_tests();
 }

@@ -1,0 +1,3 @@
+for x in 123 {
+  val _: Int = x
+}

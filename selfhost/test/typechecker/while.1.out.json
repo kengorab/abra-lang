@@ -34,7 +34,7 @@
             "value": true
           }
         },
-        "bindingPattern": null,
+        "conditionBindingPattern": null,
         "block": [
           {
             "token": {

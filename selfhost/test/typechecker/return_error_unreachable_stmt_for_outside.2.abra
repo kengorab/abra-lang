@@ -1,0 +1,6 @@
+func foo(): Int {
+  for x in [1, 2, 3] {
+    if true return x else return x
+  }
+  val x = 123
+}

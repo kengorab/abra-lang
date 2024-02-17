@@ -102,6 +102,7 @@
                         "value": true
                       }
                     },
+                    "conditionBindingPattern": null,
                     "ifBlock": [
                       {
                         "token": {

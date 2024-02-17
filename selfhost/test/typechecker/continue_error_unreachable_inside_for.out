@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:3:3
+Unreachable code
+  |    val y = -123
+       ^
+Control flow exits before this code is reached

@@ -64,6 +64,7 @@
                 "value": true
               }
             },
+            "conditionBindingPattern": null,
             "ifBlock": [
               {
                 "token": {
@@ -233,6 +234,7 @@
                 "value": true
               }
             },
+            "conditionBindingPattern": null,
             "ifBlock": [
               {
                 "token": {
@@ -496,6 +498,7 @@
                 "value": true
               }
             },
+            "conditionBindingPattern": null,
             "ifBlock": [
               {
                 "token": {
@@ -759,6 +762,7 @@
                 "value": true
               }
             },
+            "conditionBindingPattern": null,
             "ifBlock": [
               {
                 "token": {
@@ -1022,6 +1026,7 @@
                 "value": true
               }
             },
+            "conditionBindingPattern": null,
             "ifBlock": [
               {
                 "token": {
@@ -1271,6 +1276,7 @@
                 "value": true
               }
             },
+            "conditionBindingPattern": null,
             "ifBlock": [
               {
                 "token": {
@@ -1425,6 +1431,7 @@
                 "value": true
               }
             },
+            "conditionBindingPattern": null,
             "ifBlock": [
               {
                 "token": {
@@ -1579,6 +1586,7 @@
                 "value": true
               }
             },
+            "conditionBindingPattern": null,
             "ifBlock": [
               {
                 "token": {
@@ -1613,6 +1621,7 @@
                       "value": false
                     }
                   },
+                  "conditionBindingPattern": null,
                   "ifBlock": [
                     {
                       "token": {
@@ -1817,6 +1826,7 @@
                         "name": "None"
                       }
                     },
+                    "conditionBindingPattern": null,
                     "ifBlock": [
                       {
                         "token": {
@@ -1861,6 +1871,7 @@
                 }
               }
             },
+            "conditionBindingPattern": null,
             "ifBlock": [
               {
                 "token": {
@@ -1950,6 +1961,227 @@
           "node": {
             "kind": "identifier",
             "name": "i"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [52, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "j_", "position": [52, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "j_", "position": [52, 5] },
+            "mutable": false,
+            "type": {
+              "nullable": true,
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [52, 16],
+            "kind": {
+              "name": "Int",
+              "value": 123
+            }
+          },
+          "type": {
+            "nullable": true,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 123
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [53, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "j", "position": [53, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "j", "position": [53, 5] },
+            "mutable": false,
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [53, 9],
+            "kind": {
+              "name": "If"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "if",
+            "isStatement": false,
+            "condition": {
+              "token": {
+                "position": [53, 12],
+                "kind": {
+                  "name": "Ident",
+                  "value": "j_"
+                }
+              },
+              "type": {
+                "nullable": true,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "j_"
+              }
+            },
+            "conditionBindingPattern": {
+              "bindingPattern": {
+                "kind": "variable",
+                "label": { "name": "j", "position": [53, 16] }
+              },
+              "variables": [
+                {
+                  "label": { "name": "j", "position": [53, 16] },
+                  "mutable": false,
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                }
+              ]
+            },
+            "ifBlock": [
+              {
+                "token": {
+                  "position": [53, 21],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "j"
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "j"
+                }
+              }
+            ],
+            "elseBlock": [
+              {
+                "token": {
+                  "position": [53, 30],
+                  "kind": {
+                    "name": "Int",
+                    "value": 0
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [54, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [54, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [54, 5] },
+            "mutable": false,
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [54, 14],
+            "kind": {
+              "name": "Ident",
+              "value": "j"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "j"
           }
         }
       }

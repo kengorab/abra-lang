@@ -140,6 +140,7 @@
                     "value": true
                   }
                 },
+                "conditionBindingPattern": null,
                 "ifBlock": [
                   {
                     "token": {
@@ -273,6 +274,7 @@
                     "value": true
                   }
                 },
+                "conditionBindingPattern": null,
                 "ifBlock": [
                   {
                     "token": {
@@ -406,6 +408,7 @@
                     "value": true
                   }
                 },
+                "conditionBindingPattern": null,
                 "ifBlock": [
                   {
                     "token": {
@@ -539,6 +542,7 @@
                     "value": true
                   }
                 },
+                "conditionBindingPattern": null,
                 "ifBlock": [
                   {
                     "token": {

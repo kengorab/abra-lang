@@ -48,3 +48,7 @@ val _: Int? = h
 
 val i = if (if None true else false) 123 else 456
 val _: Int = i
+
+val j_: Int? = 123
+val j = if j_ |j| { j } else 0
+val _: Int = j
