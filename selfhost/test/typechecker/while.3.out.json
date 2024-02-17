@@ -82,7 +82,7 @@
             "name": "x"
           }
         },
-        "bindingPattern": {
+        "conditionBindingPattern": {
           "bindingPattern": {
             "kind": "variable",
             "label": { "name": "x", "position": [2, 10] }

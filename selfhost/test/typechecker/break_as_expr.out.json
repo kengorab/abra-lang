@@ -34,7 +34,7 @@
             "value": true
           }
         },
-        "bindingPattern": null,
+        "conditionBindingPattern": null,
         "block": [
           {
             "token": {
@@ -98,6 +98,7 @@
                       "value": true
                     }
                   },
+                  "conditionBindingPattern": null,
                   "ifBlock": [
                     {
                       "token": {

@@ -1,0 +1,235 @@
+{
+  "id": 1,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "arr", "position": [1, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "arr", "position": [1, 5] },
+            "mutable": false,
+            "type": {
+              "nullable": true,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Array" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "String"
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [1, 22],
+            "kind": {
+              "name": "None"
+            }
+          },
+          "type": {
+            "nullable": true,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Array" },
+            "typeParams": [
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            ]
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "None"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "For"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "for",
+        "iterator": {
+          "token": {
+            "position": [2, 15],
+            "kind": {
+              "name": "Ident",
+              "value": "arr"
+            }
+          },
+          "type": {
+            "nullable": true,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Array" },
+            "typeParams": [
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            ]
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "arr"
+          }
+        },
+        "itemBindingPattern": {
+          "bindingPattern": {
+            "kind": "variable",
+            "label": { "name": "x", "position": [2, 5] }
+          },
+          "variables": [
+            {
+              "label": { "name": "x", "position": [2, 5] },
+              "mutable": false,
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            }
+          ]
+        },
+        "indexBinding": {
+          "label": { "name": "idx", "position": [2, 8] },
+          "mutable": false,
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Int"
+          }
+        },
+        "block": [
+          {
+            "token": {
+              "position": [3, 3],
+              "kind": {
+                "name": "Val"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Unit"
+            },
+            "node": {
+              "kind": "bindingDeclaration",
+              "pattern": {
+                "kind": "variable",
+                "label": { "name": "_", "position": [3, 7] }
+              },
+              "variables": [
+                {
+                  "label": { "name": "_", "position": [3, 7] },
+                  "mutable": false,
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "String"
+                  }
+                }
+              ],
+              "expr": {
+                "token": {
+                  "position": [3, 19],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "x"
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "x"
+                }
+              }
+            }
+          },
+          {
+            "token": {
+              "position": [4, 3],
+              "kind": {
+                "name": "Val"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Unit"
+            },
+            "node": {
+              "kind": "bindingDeclaration",
+              "pattern": {
+                "kind": "variable",
+                "label": { "name": "_", "position": [4, 7] }
+              },
+              "variables": [
+                {
+                  "label": { "name": "_", "position": [4, 7] },
+                  "mutable": false,
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                }
+              ],
+              "expr": {
+                "token": {
+                  "position": [4, 16],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "idx"
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "idx"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

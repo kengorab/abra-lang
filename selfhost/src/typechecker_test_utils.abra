@@ -143,13 +143,31 @@ export type Jsonifier {
         self.array(items, n => self.printNode(n))
         println()
       }
-      TypedAstNodeKind.If(isStatement, condition, ifBlock, elseBlock) => {
+      TypedAstNodeKind.If(isStatement, condition, conditionBindingPattern, ifBlock, elseBlock) => {
         self.println("\"kind\": \"if\",")
 
         self.println("\"isStatement\": $isStatement,")
 
         self.print("\"condition\": ")
         self.printNode(condition)
+        println(",")
+
+        self.print("\"conditionBindingPattern\": ")
+        self.opt(conditionBindingPattern, pair => {
+          println("{")
+          self.indentInc()
+
+          self.print("\"bindingPattern\": ")
+          printBindingPatternAsJson(pair[0], 0, self.indentLevel)
+          println(",")
+
+          self.print("\"variables\": ")
+          self.array(pair[1], v => self.printVariable(v))
+          println()
+
+          self.indentDec()
+          self.print("}")
+        })
         println(",")
 
         self.print("\"ifBlock\": ")
@@ -169,7 +187,7 @@ export type Jsonifier {
         self.printNode(condition)
         println(",")
 
-        self.print("\"bindingPattern\": ")
+        self.print("\"conditionBindingPattern\": ")
         self.opt(conditionBindingPattern, pair => {
           println("{")
           self.indentInc()
@@ -185,6 +203,32 @@ export type Jsonifier {
           self.indentDec()
           self.print("}")
         })
+        println(",")
+
+        self.print("\"block\": ")
+        self.array(block, n => self.printNode(n))
+        println()
+      }
+      TypedAstNodeKind.For(iterator, itemBindingPattern, indexBinding, block) => {
+        self.println("\"kind\": \"for\",")
+
+        self.print("\"iterator\": ")
+        self.printNode(iterator)
+        println(",")
+
+        self.println("\"itemBindingPattern\": {")
+        self.indentInc()
+        self.print("\"bindingPattern\": ")
+        printBindingPatternAsJson(itemBindingPattern[0], 0, self.indentLevel)
+        println(",")
+        self.print("\"variables\": ")
+        self.array(itemBindingPattern[1], v => self.printVariable(v))
+        println()
+        self.indentDec()
+        self.println("},")
+
+        self.print("\"indexBinding\": ")
+        self.opt(indexBinding, v => self.printVariable(v))
         println(",")
 
         self.print("\"block\": ")

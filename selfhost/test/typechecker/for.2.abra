@@ -1,0 +1,5 @@
+val arr: String[]? = None
+for x, idx in arr {
+  val _: String = x
+  val _: Int = idx
+}

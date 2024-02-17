@@ -1,0 +1,4 @@
+for _ in [1, 2] {
+  if true continue else continue
+  val y = -123
+}

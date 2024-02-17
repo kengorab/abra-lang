@@ -74,6 +74,7 @@ export enum ScopeKind {
   Func
   If
   While
+  For
 }
 
 export type Scope {
@@ -222,8 +223,9 @@ export enum TypedAstNodeKind {
   Grouped(inner: TypedAstNode)
   Identifier(kind: IdentifierKind)
   Array(items: TypedAstNode[])
-  If(isStatement: Bool, typedCondition: TypedAstNode, typedIfBlock: TypedAstNode[], typedElseBlock: TypedAstNode[])
+  If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], typedElseBlock: TypedAstNode[])
   While(typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, block: TypedAstNode[])
+  For(typedIterator: TypedAstNode, itemBinding: (BindingPattern, Variable[]), indexBinding: Variable?, block: TypedAstNode[])
   BindingDeclaration(node: TypedBindingDeclarationNode)
   FunctionDeclaration(fn: Function)
   Break
@@ -340,11 +342,21 @@ type TypeError {
           lines.push("Type '${ty.repr()}' has unfilled holes. Please use an explicit type annotation to denote the type")
         }
       }
-      TypeErrorKind.IllegalConditionType(ty, purpose) => {
-        lines.push("Forbidden type for $purpose-condition")
-        lines.push(self._getCursorLine(self.position, contents))
-        lines.push("Conditions must either be Bool or Option types")
-        lines.push("but instead found " + ty.repr())
+      TypeErrorKind.IllegalControlFlowType(ty, purpose) => {
+        if purpose == "if" || purpose == "while" {
+          lines.push("Forbidden type for $purpose-condition")
+          lines.push(self._getCursorLine(self.position, contents))
+          lines.push("Conditions must either be Bool or Option types")
+          lines.push("but instead found " + ty.repr())
+        } else if purpose == "for" {
+          lines.push("Forbidden type for for-loop target")
+          lines.push(self._getCursorLine(self.position, contents))
+          if ty.hasUnfilledHoles() {
+            lines.push("Type '${ty.repr()}' has unfilled holes")
+          } else {
+            lines.push("Type ${ty.repr()} is not iterable")
+          }
+        }
       }
       TypeErrorKind.MissingRequiredIfExprBlock(clause, missing) => {
         lines.push("Incomplete if-expression")
@@ -443,7 +455,7 @@ enum TypeErrorKind {
   MissingValExpr(name: String)
   MissingVarExprAndTypeAnn(name: String)
   IllegalValueType(ty: Type, purpose: String)
-  IllegalConditionType(ty: Type, purpose: String)
+  IllegalControlFlowType(ty: Type, purpose: String)
   MissingRequiredIfExprBlock(clause: String, missing: Bool)
   InvalidParamPosition(purpose: String)
   DuplicateParameter(name: String)
@@ -867,7 +879,7 @@ export type Typechecker {
   func _typecheckWhile(self, token: Token, condition: AstNode, conditionBinding: BindingPattern?, block: AstNode[]): Result<TypedAstNode, TypeError> {
     val typedCondition = match self._typecheckExpression(condition, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     if typedCondition.ty.kind != TypeKind.PrimitiveBool && !typedCondition.ty.nullable {
-      return Result.Err(TypeError(position: typedCondition.token.position, kind: TypeErrorKind.IllegalConditionType(ty: typedCondition.ty, purpose: "while")))
+      return Result.Err(TypeError(position: typedCondition.token.position, kind: TypeErrorKind.IllegalControlFlowType(ty: typedCondition.ty, purpose: "while")))
     }
 
     val prevScope = self.currentScope
@@ -901,7 +913,39 @@ export type Typechecker {
   }
 
   func _typecheckFor(self, token: Token, itemPattern: BindingPattern, indexPattern: BindingPattern?, iterator: AstNode, block: AstNode[]): Result<TypedAstNode, TypeError> {
-    todo(token.position)
+    val typedIterator = match self._typecheckExpression(iterator, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    val itemType = if self._typeAsArray(typedIterator.ty) |innerTy| innerTy else {
+      return Result.Err(TypeError(position: typedIterator.token.position, kind: TypeErrorKind.IllegalControlFlowType(ty: typedIterator.ty, purpose: "for")))
+    }
+    if itemType.kind == TypeKind.Hole {
+      return Result.Err(TypeError(position: typedIterator.token.position, kind: TypeErrorKind.IllegalControlFlowType(ty: typedIterator.ty, purpose: "for")))
+    }
+
+    val prevScope = self.currentScope
+    self.currentScope = self.currentScope.makeChild("for", ScopeKind.For)
+
+    val variables = match self._typecheckBindingPattern(false, itemPattern, itemType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    val indexBinding = if indexPattern |pat| {
+      val variables = match self._typecheckBindingPattern(false, pat, Type(kind: TypeKind.PrimitiveInt)) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      variables[0]
+    } else {
+      None
+    }
+
+    val typedNodes: TypedAstNode[] = []
+    for node in block {
+      if self.currentScope.terminator return Result.Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+
+      val typedNode = match self._typecheckStatement(node, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      typedNodes.push(typedNode)
+    }
+    val terminator = self.currentScope.terminator
+
+    self.currentScope = prevScope
+    self.currentScope.terminator = terminator
+
+    val kind = TypedAstNodeKind.For(typedIterator, (itemPattern, variables), indexBinding, typedNodes)
+    Result.Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: kind))
   }
 
   func _typecheckBreak(self, token: Token): Result<TypedAstNode, TypeError> = self._typecheckBreakContinue(token, "break", TypedAstNodeKind.Break)
@@ -920,6 +964,7 @@ export type Typechecker {
           continue
         }
         ScopeKind.While => true
+        ScopeKind.For => true
       }
 
       if !isValid return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTerminatorPosition(terminator)))
@@ -968,12 +1013,25 @@ export type Typechecker {
 
     val typedCondition = match self._typecheckExpression(condition, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     if typedCondition.ty.kind != TypeKind.PrimitiveBool && !typedCondition.ty.nullable {
-      return Result.Err(TypeError(position: typedCondition.token.position, kind: TypeErrorKind.IllegalConditionType(ty: typedCondition.ty, purpose: "if")))
+      return Result.Err(TypeError(position: typedCondition.token.position, kind: TypeErrorKind.IllegalControlFlowType(ty: typedCondition.ty, purpose: "if")))
     }
 
     val typedIfBlock: TypedAstNode[] = []
     var prevScope = self.currentScope
     self.currentScope = self.currentScope.makeChild("if_then", ScopeKind.If)
+
+    val conditionBindingPattern = if conditionBinding |pattern| {
+      val ty = typedCondition.ty.clone()
+      if ty.nullable {
+        ty.nullable = false
+      }
+
+      val vars = match self._typecheckBindingPattern(false, pattern, ty) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      (pattern, vars)
+    } else {
+      None
+    }
+
     for node, idx in ifBlock {
       if self.currentScope.terminator return Result.Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
 
@@ -1043,7 +1101,7 @@ export type Typechecker {
       Type(kind: TypeKind.PrimitiveUnit)
     }
 
-    val kind = TypedAstNodeKind.If(isStatement, typedCondition, typedIfBlock, typedElseBlock)
+    val kind = TypedAstNodeKind.If(isStatement, typedCondition, conditionBindingPattern, typedIfBlock, typedElseBlock)
     Result.Ok(TypedAstNode(token: token, ty: ty, kind: kind))
   }
 
