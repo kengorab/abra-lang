@@ -801,6 +801,7 @@ export type Typechecker {
     val token = node.token
 
     match node.kind {
+      AstNodeKind.Assignment(expr, mode) => todo(token.position, "assignment statement")
       AstNodeKind.While(condition, conditionBinding, block) => self._typecheckWhile(token, condition, conditionBinding, block)
       AstNodeKind.For(itemPattern, indexPattern, iterator, block) => self._typecheckFor(token, itemPattern, indexPattern, iterator, block)
       AstNodeKind.BindingDeclaration(node) => self._typecheckBindingDeclaration(token, node)
@@ -1125,9 +1126,16 @@ export type Typechecker {
         Result.Ok(TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Grouped(expr)))
       }
       AstNodeKind.Identifier(kind) => self._typecheckIdentifier(token, kind, typeHint)
+      AstNodeKind.Accessor(value) => todo(node.token.position, "accessor expression")
+      AstNodeKind.Invocation(value) => todo(node.token.position, "invocation expression")
       AstNodeKind.Array(items) => self._typecheckArray(token, items, typeHint)
+      AstNodeKind.Set(items) => todo(node.token.position, "set expression")
+      AstNodeKind.Map(items) => todo(node.token.position, "map expression")
+      AstNodeKind.Tuple(items) => todo(node.token.position, "tuple expression")
+      AstNodeKind.Indexing(expr, index) => todo(node.token.position, "indexing expression")
+      AstNodeKind.Lambda(value) => todo(node.token.position, "lambda expression")
       AstNodeKind.If(condition, conditionBinding, ifBlock, elseBlock) => self._typecheckIf(token, condition, conditionBinding, ifBlock, elseBlock, typeHint)
-      _ => todo(node.token.position, "all other expressions")
+      _ => unreachable(node.token.position, "all other node types should have already been handled")
     }
 
     val typedExpr = match typedExprRes { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
