@@ -136,6 +136,17 @@ export type Jsonifier {
         self.print("\"name\": \"$name\"")
         println()
       }
+      TypedAstNodeKind.Invocation(invokee, arguments) => {
+        self.println("\"kind\": \"invocation\",")
+
+        self.print("\"invokee\": ")
+        self.printNode(invokee)
+        println(",")
+
+        self.print("\"arguments\": ")
+        self.array(arguments, n => self.opt(n, n => self.printNode(n)))
+        println()
+      }
       TypedAstNodeKind.Array(items) => {
         self.println("\"kind\": \"array\",")
 

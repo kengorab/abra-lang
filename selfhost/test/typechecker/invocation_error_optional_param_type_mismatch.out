@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:2:8
+Type mismatch for parameter 'b'
+  |  foo(1, false, "hello")
+            ^
+Expected: Int
+but instead found: Bool

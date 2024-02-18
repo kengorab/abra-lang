@@ -1,0 +1,8 @@
+Error at %FILE_NAME%:2:18
+Cannot mix labeled and positional optional arguments
+  |  foo(1, c: false, "hello")
+                      ^
+This argument requires a label because a prior optional parameter has been labeled:
+  |  foo(1, c: false, "hello")
+            ^
+(Optional parameters may be listed positionally until a label is encountered. After that point, parameter values cannot be unambiguously determined without labels)

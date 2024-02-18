@@ -355,3 +355,25 @@ func printItem(item: Int) = println(item)
   /// Expect: false
   println(strArr.all(s => s == "HELLO"))
 })()
+
+// Array#keyBy
+(() => {
+  val empty: String[] = []
+  /// Expect: {}
+  println(empty.keyBy(s => s.length))
+
+  val strArr = "The quick brown fox jumped over the lazy dog".split(" ")
+  /// Expect: { 3: dog, 4: lazy, 5: brown, 6: jumped }
+  println(strArr.keyBy(s => s.length))
+})()
+
+// Array#indexBy
+(() => {
+  val empty: String[] = []
+  /// Expect: {}
+  println(empty.indexBy(s => s.length))
+
+  val strArr = "The quick brown fox jumped over the lazy dog".split(" ")
+  /// Expect: { 3: [The, fox, the, dog], 4: [over, lazy], 5: [quick, brown], 6: [jumped] }
+  println(strArr.indexBy(s => s.length))
+})()
