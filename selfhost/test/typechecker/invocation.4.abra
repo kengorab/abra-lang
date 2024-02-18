@@ -1,0 +1,17 @@
+// Test calling function which has multiple optional parameters
+func foo(a: Int, b: Bool, c = 1.23, d = "abc"): Int = a
+
+// Don't pass value for any optional parameters
+val _: Int = foo(123, b: true)
+
+// Pass value positionally for first optional parameter, no value for second
+val _: Int = foo(123, b: true, 4.56)
+
+// Pass labeled value for first optional parameter, no value for second
+val _: Int = foo(123, b: true, c: 4.56)
+
+// Pass labeled value for second optional parameter, no value for first
+val _: Int = foo(123, b: true, d: "foo")
+
+// Pass labeled value for first and second optional parameters, but out of order
+val _: Int = foo(123, b: true, d: "foo", c: 4.56)

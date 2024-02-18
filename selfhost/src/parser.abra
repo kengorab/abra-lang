@@ -102,9 +102,11 @@ type AccessorAstNode {
 type InvocationArgument {
   label: Label?
   value: AstNode
+
+  func position(self): Position = self.label?.position ?: self.value.token.position
 }
 
-type InvocationAstNode {
+export type InvocationAstNode {
   invokee: AstNode
   typeArguments: TypeIdentifier[]
   arguments: InvocationArgument[]

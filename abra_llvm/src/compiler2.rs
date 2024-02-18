@@ -2463,6 +2463,31 @@ impl<'a> LLVMCompiler2<'a> {
                             resolved_type_id: *resolved_type_id,
                         }, resolved_generics);
                     }
+                    IndexingMode::Index(idx_expr) if target_struct_id == &self.project.prelude_map_struct_id => {
+                        let map_key_type_id = &target_generics[0];
+                        let map_value_type_id = &target_generics[1];
+                        let (map_get_member_idx, map_get_func_id) = target_ty.find_method_by_name(self.project, "get").unwrap();
+                        let map_get_function = self.project.get_func_by_id(map_get_func_id);
+
+                        return self.visit_expression(&TypedNode::Invocation {
+                            target: Box::new(TypedNode::Accessor {
+                                target: target.clone(),
+                                kind: AccessorKind::Method,
+                                is_opt_safe: false,
+                                member_idx: map_get_member_idx,
+                                member_span: target.span(),
+                                type_id: map_get_function.fn_type_id,
+                                type_arg_ids: vec![],
+                                resolved_type_id: map_get_function.fn_type_id,
+                            }),
+                            arguments: vec![
+                                Some(*idx_expr.clone()),
+                            ],
+                            type_arg_ids: vec![*map_key_type_id, *map_value_type_id],
+                            type_id: *type_id,
+                            resolved_type_id: *resolved_type_id,
+                        }, resolved_generics);
+                    }
                     IndexingMode::Range(start_expr, end_expr) if target_struct_id == &self.project.prelude_array_struct_id => {
                         let array_inner_type_id = &target_generics[0];
                         let (array_get_range_member_idx, array_get_range_func_id) = target_ty.find_method_by_name(self.project, "getRange").unwrap();

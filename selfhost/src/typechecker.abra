@@ -1,6 +1,6 @@
 import "fs" as fs
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
-import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode from "./parser"
+import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, InvocationAstNode from "./parser"
 
 enum TokenizeAndParseError {
   ReadFileError(path: String)
@@ -222,6 +222,7 @@ export enum TypedAstNodeKind {
   // Binary(...)
   Grouped(inner: TypedAstNode)
   Identifier(kind: IdentifierKind)
+  Invocation(invokee: TypedAstNode, arguments: TypedAstNode?[])
   Array(items: TypedAstNode[])
   If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], typedElseBlock: TypedAstNode[])
   While(typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, block: TypedAstNode[])
@@ -426,6 +427,43 @@ type TypeError {
         lines.push(self._getCursorLine(self.position, contents))
         lines.push("Control flow exits before this code is reached")
       }
+      TypeErrorKind.WrongInvocationArity(expected, given) => {
+        val argumentsStr = if expected == 1 "argument" else "arguments"
+        val verbStr = if given == 1 "was" else "were"
+
+        if given > expected {
+          lines.push("Too many arguments for invocation")
+          lines.push(self._getCursorLine(self.position, contents))
+          lines.push("Expected no more than $expected $argumentsStr, but $given $verbStr passed")
+        } else {
+          lines.push("Not enough arguments for invocation")
+          lines.push(self._getCursorLine(self.position, contents))
+          lines.push("$expected $argumentsStr required, but $given $verbStr passed")
+        }
+      }
+      TypeErrorKind.ParameterLabelMismatch(expected, given) => {
+        lines.push("Incorrect label for parameter")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("The parameter's name is '$expected', but instead found '$given'")
+      }
+      TypeErrorKind.MixedArgumentType(label) => {
+        lines.push("Cannot mix labeled and positional optional arguments")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("This argument requires a label because a prior optional parameter has been labeled:")
+        lines.push(self._getCursorLine(label.position, contents))
+        lines.push("(Optional parameters may be listed positionally until a label is encountered. After that point, parameter values cannot be unambiguously determined without labels)")
+      }
+      TypeErrorKind.UnknownParameterName(name) => {
+        lines.push("Unknown parameter label")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("This function doesn't have a parameter named '$name'")
+      }
+      TypeErrorKind.ParameterTypeMismatch(name, expected, given) => {
+        lines.push("Type mismatch for parameter '$name'")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Expected: ${expected.repr()}")
+        lines.push("but instead found: ${given.repr()}")
+      }
     }
 
     lines.join("\n")
@@ -463,6 +501,11 @@ enum TypeErrorKind {
   ReturnTypeMismatch(fnName: String?, expected: Type, received: Type?)
   InvalidTerminatorPosition(terminator: String)
   UnreachableCode
+  WrongInvocationArity(expected: Int, given: Int)
+  ParameterLabelMismatch(expected: String, given: String)
+  MixedArgumentType(label: Label)
+  UnknownParameterName(name: String)
+  ParameterTypeMismatch(name: String, expected: Type, given: Type)
 }
 
 export type Typechecker {
@@ -1127,7 +1170,7 @@ export type Typechecker {
       }
       AstNodeKind.Identifier(kind) => self._typecheckIdentifier(token, kind, typeHint)
       AstNodeKind.Accessor(value) => todo(node.token.position, "accessor expression")
-      AstNodeKind.Invocation(value) => todo(node.token.position, "invocation expression")
+      AstNodeKind.Invocation(node) => self._typecheckInvocation(token, node)
       AstNodeKind.Array(items) => self._typecheckArray(token, items, typeHint)
       AstNodeKind.Set(items) => todo(node.token.position, "set expression")
       AstNodeKind.Map(items) => todo(node.token.position, "map expression")
@@ -1199,6 +1242,80 @@ export type Typechecker {
     }
 
     Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Identifier(kind)))
+  }
+
+  func _typecheckInvocation(self, token: Token, node: InvocationAstNode): Result<TypedAstNode, TypeError> {
+    val invokee = match self._typecheckExpression(node.invokee, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    val fn = match invokee.kind {
+      TypedAstNodeKind.Identifier(identKind) => match identKind {
+        IdentifierKind.Named(name) => {
+          // todo: create TypedIdentifierKind with TypedIdentifiefKind.Named(name: String, variable: Variable) to save from doing this lookup twice
+          val variable = if self._resolveIdentifier(name) |v| v else {
+            return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName(name, "variable")))
+          }
+          val fn = match variable.alias {
+            VariableAlias.Function(fn) => fn
+            _ => return todo(invokee.token.position, "other types of variable aliases for identifier invocation")
+          }
+          fn
+        }
+        _ => return todo(invokee.token.position, "other types of identifier targets for invocation")
+      }
+      _ => return todo(invokee.token.position, "other types of target expressions for invocation")
+    }
+
+    // Function invocation is position-based for required parameters, with optional parameter labels to express call-site intent (ie. for Bool params), and it's
+    // an error if a positional parameter's label is incorrect. Once we reach any optional parameters in the argument list, parameters can either be positional
+    // OR labeled, but once a labeled optional parameter is seen, all subsequent arguments in the argument list must also be labeled.
+    val paramsByName = fn.params.keyBy(p => p.label.name)
+    val typedArgumentsByName: Map<String, TypedAstNode> = {}
+    var hasBegunOptionalParams = false
+    var mostRecentLabeledOptionalParam: Label? = None
+    for arg, idx in node.arguments {
+      var param = if fn.params[idx] |param| param else {
+        return Result.Err(TypeError(position: arg.position(), kind: TypeErrorKind.WrongInvocationArity(expected: fn.params.length, given: node.arguments.length)))
+      }
+      if param.defaultValue { hasBegunOptionalParams = true }
+      if param.isVariadic { return todo(arg.position(), "variadic parameters") }
+
+      if arg.label |label| {
+        if label.name != param.label.name {
+          if !hasBegunOptionalParams {
+            return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.ParameterLabelMismatch(expected: param.label.name, given: label.name)))
+          }
+
+          param = if paramsByName[label.name] |p| p else {
+            return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownParameterName(label.name)))
+          }
+        }
+        if hasBegunOptionalParams && !mostRecentLabeledOptionalParam {
+          mostRecentLabeledOptionalParam = label
+        }
+      } else if mostRecentLabeledOptionalParam |label| {
+        return Result.Err(TypeError(position: arg.position(), kind: TypeErrorKind.MixedArgumentType(label)))
+      }
+
+      val typedArg = match self._typecheckExpression(arg.value, param.ty) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      if !self._typeSatisfiesRequired(ty: typedArg.ty, required: param.ty) {
+        return Result.Err(TypeError(position: typedArg.token.position, kind: TypeErrorKind.ParameterTypeMismatch(param.label.name, param.ty, typedArg.ty)))
+      }
+      typedArgumentsByName[param.label.name] = typedArg
+    }
+
+    val typedArguments: TypedAstNode?[] = []
+    for param in fn.params {
+      if typedArgumentsByName[param.label.name] |argValue| {
+        typedArguments.push(argValue)
+      } else if param.defaultValue {
+        typedArguments.push(None)
+      } else {
+        val numRequired = fn.params.filter(p => !p.defaultValue).length
+        return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.WrongInvocationArity(expected: numRequired, given: node.arguments.length)))
+      }
+    }
+
+    Result.Ok(TypedAstNode(token: token, ty: fn.returnType, kind: TypedAstNodeKind.Invocation(invokee, typedArguments)))
   }
 
   func _typecheckArray(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {

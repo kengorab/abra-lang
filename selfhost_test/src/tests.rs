@@ -234,6 +234,20 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/if_error_unfilled_holes_bindingdecl.4.abra", "typechecker/if_error_unfilled_holes_bindingdecl.4.out")
         .add_test_vs_txt("typechecker/if_expr.abra", "typechecker/if_expr.out.json")
         .add_test_vs_txt("typechecker/if_stmt.abra", "typechecker/if_stmt.out.json")
+        // Invocation
+        .add_test_vs_txt("typechecker/invocation.1.abra", "typechecker/invocation.1.out.json")
+        .add_test_vs_txt("typechecker/invocation.2.abra", "typechecker/invocation.2.out.json")
+        .add_test_vs_txt("typechecker/invocation.3.abra", "typechecker/invocation.3.out.json")
+        .add_test_vs_txt("typechecker/invocation.4.abra", "typechecker/invocation.4.out.json")
+        .add_test_vs_txt("typechecker/invocation.5.abra", "typechecker/invocation.5.out.json")
+        .add_test_vs_txt("typechecker/invocation_error_incorrect_label.abra", "typechecker/invocation_error_incorrect_label.out")
+        .add_test_vs_txt("typechecker/invocation_error_mixed_label_optional.abra", "typechecker/invocation_error_mixed_label_optional.out")
+        .add_test_vs_txt("typechecker/invocation_error_optional_param_type_mismatch.abra", "typechecker/invocation_error_optional_param_type_mismatch.out")
+        .add_test_vs_txt("typechecker/invocation_error_optional_param_unknown.abra", "typechecker/invocation_error_optional_param_unknown.out")
+        .add_test_vs_txt("typechecker/invocation_error_too_few_args.abra", "typechecker/invocation_error_too_few_args.out")
+        .add_test_vs_txt("typechecker/invocation_error_too_many_args.abra", "typechecker/invocation_error_too_many_args.out")
+
+
         // Break
         .add_test_vs_txt("typechecker/break_as_expr.abra", "typechecker/break_as_expr.out.json")
         .add_test_vs_txt("typechecker/break_error_location_module.abra", "typechecker/break_error_location_module.out")
@@ -259,8 +273,6 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/for_error_bad_iterator.abra", "typechecker/for_error_bad_iterator.out")
         .add_test_vs_txt("typechecker/for_error_bad_iterator_unfilled_hole.abra", "typechecker/for_error_bad_iterator_unfilled_hole.out")
         .add_test_vs_txt("typechecker/for_error_duplicate_ident.abra", "typechecker/for_error_duplicate_ident.out")
-
-
         // Binding declaration
         .add_test_vs_txt("typechecker/bindingdecl.abra", "typechecker/bindingdecl.out.json")
         .add_test_vs_txt("typechecker/bindingdecl_error_bare_var.abra", "typechecker/bindingdecl_error_bare_var.out")
