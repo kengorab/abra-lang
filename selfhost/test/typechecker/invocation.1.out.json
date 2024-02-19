@@ -127,11 +127,14 @@
               "type": {
                 "nullable": false,
                 "kind": "function",
-                "paramTypes": [
+                "parameters": [
                   {
-                    "nullable": false,
-                    "kind": "primitive",
-                    "primitive": "Int"
+                    "required": true,
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
                   }
                 ],
                 "returnType": {

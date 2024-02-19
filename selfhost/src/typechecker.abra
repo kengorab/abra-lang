@@ -1,6 +1,6 @@
 import "fs" as fs
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
-import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, InvocationAstNode from "./parser"
+import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, InvocationAstNode, InvocationArgument from "./parser"
 
 enum TokenizeAndParseError {
   ReadFileError(path: String)
@@ -126,7 +126,7 @@ export type Type {
         }
       }
       TypeKind.Func(paramTypes, returnType) => {
-        val paramsRepr = paramTypes.map(t => t.repr()).join(", ")
+        val paramsRepr = paramTypes.filter(p => p[1]).map(p => p[0].repr()).join(", ")
         val returnTypeRepr = returnType.repr()
         val repr = "($paramsRepr) => $returnTypeRepr"
 
@@ -147,7 +147,7 @@ export type Type {
     TypeKind.PrimitiveString => false
     TypeKind.Never => false
     TypeKind.Instance(_, generics) => generics.any(t => t.hasUnfilledHoles())
-    TypeKind.Func(paramTypes, returnType) => paramTypes.any(t => t.hasUnfilledHoles()) || returnType.hasUnfilledHoles()
+    TypeKind.Func(paramTypes, returnType) => paramTypes.any(t => t[0].hasUnfilledHoles()) || returnType.hasUnfilledHoles()
     TypeKind.Hole => true
   }
 
@@ -185,7 +185,7 @@ export enum TypeKind {
   PrimitiveString
   Never
   Instance(struct: Struct, generics: Type[])
-  Func(paramTypes: Type[], returnType: Type)
+  Func(paramTypes: (Type, Bool)[], returnType: Type)
   Hole
 }
 
@@ -446,6 +446,11 @@ type TypeError {
         lines.push(self._getCursorLine(self.position, contents))
         lines.push("The parameter's name is '$expected', but instead found '$given'")
       }
+      TypeErrorKind.IllegalParameterLabel => {
+        lines.push("Incorrect use of label for parameter")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Parameter labels are not allowed here because parameters' names cannot be determined")
+      }
       TypeErrorKind.MixedArgumentType(label) => {
         lines.push("Cannot mix labeled and positional optional arguments")
         lines.push(self._getCursorLine(self.position, contents))
@@ -459,10 +464,19 @@ type TypeError {
         lines.push("This function doesn't have a parameter named '$name'")
       }
       TypeErrorKind.ParameterTypeMismatch(name, expected, given) => {
-        lines.push("Type mismatch for parameter '$name'")
+        if name |name| {
+          lines.push("Type mismatch for parameter '$name'")
+        } else {
+          lines.push("Type mismatch for parameter")
+        }
         lines.push(self._getCursorLine(self.position, contents))
         lines.push("Expected: ${expected.repr()}")
         lines.push("but instead found: ${given.repr()}")
+      }
+      TypeErrorKind.IllegalCallableType(ty) => {
+        lines.push("Cannot invoke target as function")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Type '${ty.repr()}' is not callable")
       }
     }
 
@@ -503,9 +517,11 @@ enum TypeErrorKind {
   UnreachableCode
   WrongInvocationArity(expected: Int, given: Int)
   ParameterLabelMismatch(expected: String, given: String)
+  IllegalParameterLabel
   MixedArgumentType(label: Label)
   UnknownParameterName(name: String)
-  ParameterTypeMismatch(name: String, expected: Type, given: Type)
+  ParameterTypeMismatch(name: String?, expected: Type, given: Type)
+  IllegalCallableType(ty: Type)
 }
 
 export type Typechecker {
@@ -589,10 +605,10 @@ export type Typechecker {
       }
       TypeIdentifier.Tuple => return todo(Position(line: 0, col: 0))
       TypeIdentifier.Function(params, ret) => {
-        val paramTypes: Type[] = []
+        val paramTypes: (Type, Bool)[] = []
         for p in params {
           val t = match self._resolveTypeIdentifier(p) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-          paramTypes.push(t)
+          paramTypes.push((t, true))
         }
 
         val returnType = match self._resolveTypeIdentifier(ret) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -621,7 +637,30 @@ export type Typechecker {
     if required.kind == TypeKind.Hole return true
     if required.kind == TypeKind.Never || ty.kind == TypeKind.Never return true
 
-    ty.kind == required.kind
+    match required.kind {
+      TypeKind.Func(reqParamTypes, reqRetType) => match ty.kind {
+        TypeKind.Func(paramTypes, retType) => {
+          if !self._typeSatisfiesRequired(ty: retType, required: reqRetType) return false
+
+          var idx = 0
+          for reqParamType, i in reqParamTypes {
+            val paramType = if paramTypes[i] |t| t[0] else { return true }
+            if !self._typeSatisfiesRequired(ty: paramType, required: reqParamType[0]) return false
+
+            idx = i
+          }
+          if paramTypes[idx + 1] |nextParam| {
+            if nextParam[1] return false
+          }
+
+          true
+        }
+        _ => false
+      }
+      _ => {
+        ty.kind == required.kind
+      }
+    }
   }
 
   func _typeAsArray(self, ty: Type): Type? {
@@ -805,7 +844,7 @@ export type Typechecker {
       val node = fnPair[2]
       match self._typecheckFunctionPass2(fn, node) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
-      val fnType = Type(kind: TypeKind.Func(paramTypes: fn.params.map(p => p.ty), returnType: fn.returnType))
+      val fnType = Type(kind: TypeKind.Func(paramTypes: fn.params.map(p => (p.ty, !p.defaultValue)), returnType: fn.returnType))
       aliasVar.ty = fnType
     }
 
@@ -1247,24 +1286,58 @@ export type Typechecker {
   func _typecheckInvocation(self, token: Token, node: InvocationAstNode): Result<TypedAstNode, TypeError> {
     val invokee = match self._typecheckExpression(node.invokee, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
-    val fn = match invokee.kind {
+    match invokee.kind {
       TypedAstNodeKind.Identifier(identKind) => match identKind {
         IdentifierKind.Named(name) => {
           // todo: create TypedIdentifierKind with TypedIdentifiefKind.Named(name: String, variable: Variable) to save from doing this lookup twice
           val variable = if self._resolveIdentifier(name) |v| v else {
             return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName(name, "variable")))
           }
-          val fn = match variable.alias {
-            VariableAlias.Function(fn) => fn
-            _ => return todo(invokee.token.position, "other types of variable aliases for identifier invocation")
+          match variable.alias {
+            VariableAlias.Function(fn) => self._typecheckInvocationOfFunction(token, invokee, fn, node.arguments)
+            None => self._typecheckInvocationOfExpression(token, invokee, node.arguments)
           }
-          fn
         }
         _ => return todo(invokee.token.position, "other types of identifier targets for invocation")
       }
       _ => return todo(invokee.token.position, "other types of target expressions for invocation")
     }
+  }
 
+  func _typecheckInvocationOfExpression(self, token: Token, invokeeExpr: TypedAstNode, arguments: InvocationArgument[]): Result<TypedAstNode, TypeError> {
+    val _pair = match invokeeExpr.ty.kind {
+      TypeKind.Func(paramTypes, returnType) => (paramTypes.map(p => p[0]), returnType)
+      _ => return Result.Err(TypeError(position: invokeeExpr.token.position, kind: TypeErrorKind.IllegalCallableType(invokeeExpr.ty)))
+    }
+    // TODO: destructuring
+    val paramTypes = _pair[0]
+    val returnType = _pair[1]
+
+    val typedArguments: TypedAstNode?[] = []
+    for arg, idx in arguments {
+      if arg.label |label| {
+        return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalParameterLabel))
+      }
+
+      var paramType = if paramTypes[idx] |t| t else {
+        return Result.Err(TypeError(position: arg.position(), kind: TypeErrorKind.WrongInvocationArity(expected: paramTypes.length, given: arguments.length)))
+      }
+
+      val typedArg = match self._typecheckExpression(arg.value, paramType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      if !self._typeSatisfiesRequired(ty: typedArg.ty, required: paramType) {
+        return Result.Err(TypeError(position: typedArg.token.position, kind: TypeErrorKind.ParameterTypeMismatch(None, paramType, typedArg.ty)))
+      }
+      typedArguments.push(typedArg)
+    }
+
+    if typedArguments.length < paramTypes.length {
+      return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.WrongInvocationArity(expected: paramTypes.length, given: typedArguments.length)))
+    }
+
+    Result.Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(invokeeExpr, typedArguments)))
+  }
+
+  func _typecheckInvocationOfFunction(self, token: Token, invokee: TypedAstNode, fn: Function, arguments: InvocationArgument[]): Result<TypedAstNode, TypeError> {
     // Function invocation is position-based for required parameters, with optional parameter labels to express call-site intent (ie. for Bool params), and it's
     // an error if a positional parameter's label is incorrect. Once we reach any optional parameters in the argument list, parameters can either be positional
     // OR labeled, but once a labeled optional parameter is seen, all subsequent arguments in the argument list must also be labeled.
@@ -1272,9 +1345,9 @@ export type Typechecker {
     val typedArgumentsByName: Map<String, TypedAstNode> = {}
     var hasBegunOptionalParams = false
     var mostRecentLabeledOptionalParam: Label? = None
-    for arg, idx in node.arguments {
+    for arg, idx in arguments {
       var param = if fn.params[idx] |param| param else {
-        return Result.Err(TypeError(position: arg.position(), kind: TypeErrorKind.WrongInvocationArity(expected: fn.params.length, given: node.arguments.length)))
+        return Result.Err(TypeError(position: arg.position(), kind: TypeErrorKind.WrongInvocationArity(expected: fn.params.length, given: arguments.length)))
       }
       if param.defaultValue { hasBegunOptionalParams = true }
       if param.isVariadic { return todo(arg.position(), "variadic parameters") }
@@ -1311,7 +1384,7 @@ export type Typechecker {
         typedArguments.push(None)
       } else {
         val numRequired = fn.params.filter(p => !p.defaultValue).length
-        return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.WrongInvocationArity(expected: numRequired, given: node.arguments.length)))
+        return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.WrongInvocationArity(expected: numRequired, given: arguments.length)))
       }
     }
 

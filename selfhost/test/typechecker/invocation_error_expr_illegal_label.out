@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:1:38
+Incorrect use of label for parameter
+  |  func foo(fn: (Int) => Int): Int = fn(hmm: 123)
+                                          ^
+Parameter labels are not allowed here because parameters' names cannot be determined

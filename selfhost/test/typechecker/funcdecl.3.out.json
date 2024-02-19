@@ -43,18 +43,21 @@
                 "type": {
                   "nullable": false,
                   "kind": "function",
-                  "paramTypes": [
+                  "parameters": [
                     {
-                      "nullable": false,
-                      "kind": "instance",
-                      "struct": { "moduleId": 0, "name": "Array" },
-                      "typeParams": [
-                        {
-                          "nullable": false,
-                          "kind": "primitive",
-                          "primitive": "Int"
-                        }
-                      ]
+                      "required": true,
+                      "type": {
+                        "nullable": false,
+                        "kind": "instance",
+                        "struct": { "moduleId": 0, "name": "Array" },
+                        "typeParams": [
+                          {
+                            "nullable": false,
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
+                      }
                     }
                   ],
                   "returnType": {
@@ -117,18 +120,21 @@
                     "type": {
                       "nullable": false,
                       "kind": "function",
-                      "paramTypes": [
+                      "parameters": [
                         {
-                          "nullable": false,
-                          "kind": "instance",
-                          "struct": { "moduleId": 0, "name": "Array" },
-                          "typeParams": [
-                            {
-                              "nullable": false,
-                              "kind": "primitive",
-                              "primitive": "Int"
-                            }
-                          ]
+                          "required": true,
+                          "type": {
+                            "nullable": false,
+                            "kind": "instance",
+                            "struct": { "moduleId": 0, "name": "Array" },
+                            "typeParams": [
+                              {
+                                "nullable": false,
+                                "kind": "primitive",
+                                "primitive": "Int"
+                              }
+                            ]
+                          }
                         }
                       ],
                       "returnType": {
@@ -150,18 +156,21 @@
                   "type": {
                     "nullable": false,
                     "kind": "function",
-                    "paramTypes": [
+                    "parameters": [
                       {
-                        "nullable": false,
-                        "kind": "instance",
-                        "struct": { "moduleId": 0, "name": "Array" },
-                        "typeParams": [
-                          {
-                            "nullable": false,
-                            "kind": "primitive",
-                            "primitive": "Int"
-                          }
-                        ]
+                        "required": true,
+                        "type": {
+                          "nullable": false,
+                          "kind": "instance",
+                          "struct": { "moduleId": 0, "name": "Array" },
+                          "typeParams": [
+                            {
+                              "nullable": false,
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            }
+                          ]
+                        }
                       }
                     ],
                     "returnType": {
