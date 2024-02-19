@@ -1,0 +1,441 @@
+{
+  "id": 1,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo", "position": [1, 6] },
+          "scope": {
+            "name": "$root::module_1::foo",
+            "variables": [
+              {
+                "label": { "name": "fn", "position": [1, 10] },
+                "mutable": false,
+                "type": {
+                  "nullable": false,
+                  "kind": "function",
+                  "parameters": [
+                    {
+                      "required": true,
+                      "type": {
+                        "nullable": false,
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    }
+                  ],
+                  "returnType": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                }
+              }
+            ],
+            "functions": []
+          },
+          "parameters": [
+            {
+              "label": { "name": "fn", "position": [1, 10] },
+              "type": {
+                "nullable": false,
+                "kind": "function",
+                "parameters": [
+                  {
+                    "required": true,
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  }
+                ],
+                "returnType": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              },
+              "defaultValue": null,
+              "isVariadic": false
+            }
+          ],
+          "returnType": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "body": [
+            {
+              "token": {
+                "position": [1, 37],
+                "kind": {
+                  "name": "LParen"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "invocation",
+                "invokee": {
+                  "token": {
+                    "position": [1, 35],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "fn"
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "function",
+                    "parameters": [
+                      {
+                        "required": true,
+                        "type": {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      }
+                    ],
+                    "returnType": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  },
+                  "node": {
+                    "kind": "identifier",
+                    "name": "fn"
+                  }
+                },
+                "arguments": [
+                  {
+                    "token": {
+                      "position": [1, 38],
+                      "kind": {
+                        "name": "Int",
+                        "value": 123
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 123
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [3, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "negateMaybe", "position": [3, 6] },
+          "scope": {
+            "name": "$root::module_1::negateMaybe",
+            "variables": [
+              {
+                "label": { "name": "i", "position": [3, 18] },
+                "mutable": false,
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              },
+              {
+                "label": { "name": "doIt", "position": [3, 26] },
+                "mutable": false,
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                }
+              }
+            ],
+            "functions": []
+          },
+          "parameters": [
+            {
+              "label": { "name": "i", "position": [3, 18] },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "defaultValue": null,
+              "isVariadic": false
+            },
+            {
+              "label": { "name": "doIt", "position": [3, 26] },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Bool"
+              },
+              "defaultValue": {
+                "token": {
+                  "position": [3, 33],
+                  "kind": {
+                    "name": "Bool",
+                    "value": true
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": true
+                }
+              },
+              "isVariadic": false
+            }
+          ],
+          "returnType": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "body": [
+            {
+              "token": {
+                "position": [3, 46],
+                "kind": {
+                  "name": "If"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "if",
+                "isStatement": false,
+                "condition": {
+                  "token": {
+                    "position": [3, 49],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "doIt"
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Bool"
+                  },
+                  "node": {
+                    "kind": "identifier",
+                    "name": "doIt"
+                  }
+                },
+                "conditionBindingPattern": null,
+                "ifBlock": [
+                  {
+                    "token": {
+                      "position": [3, 56],
+                      "kind": {
+                        "name": "Minus"
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "unary",
+                      "op": "UnaryOp.Minus",
+                      "expr": {
+                        "token": {
+                          "position": [3, 57],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "i"
+                          }
+                        },
+                        "type": {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "i"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "elseBlock": [
+                  {
+                    "token": {
+                      "position": [3, 68],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "i"
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "i"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [4, 4],
+        "kind": {
+          "name": "LParen"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Int"
+      },
+      "node": {
+        "kind": "invocation",
+        "invokee": {
+          "token": {
+            "position": [4, 1],
+            "kind": {
+              "name": "Ident",
+              "value": "foo"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "function",
+            "parameters": [
+              {
+                "required": true,
+                "type": {
+                  "nullable": false,
+                  "kind": "function",
+                  "parameters": [
+                    {
+                      "required": true,
+                      "type": {
+                        "nullable": false,
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    }
+                  ],
+                  "returnType": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                }
+              }
+            ],
+            "returnType": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "foo"
+          }
+        },
+        "arguments": [
+          {
+            "token": {
+              "position": [4, 5],
+              "kind": {
+                "name": "Ident",
+                "value": "negateMaybe"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "function",
+              "parameters": [
+                {
+                  "required": true,
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                },
+                {
+                  "required": false,
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Bool"
+                  }
+                }
+              ],
+              "returnType": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            },
+            "node": {
+              "kind": "identifier",
+              "name": "negateMaybe"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

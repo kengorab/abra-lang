@@ -1,0 +1,4 @@
+func foo(fn: (Int) => Int): Int = fn(123)
+
+func negativeOne(): Int = -1
+foo(negativeOne)

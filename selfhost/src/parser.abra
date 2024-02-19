@@ -99,7 +99,7 @@ type AccessorAstNode {
   path: (Token, Label)[]
 }
 
-type InvocationArgument {
+export type InvocationArgument {
   label: Label?
   value: AstNode
 

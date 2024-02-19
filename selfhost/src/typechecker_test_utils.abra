@@ -72,8 +72,20 @@ export type Jsonifier {
       }
       TypeKind.Func(params, ret) => {
         self.println("\"kind\": \"function\",")
-        self.print("\"paramTypes\": ")
-        self.array(params, t => self.printType(t))
+        self.print("\"parameters\": ")
+        self.array(params, p => {
+          println("{")
+          self.indentInc()
+
+          self.println("\"required\": ${p[1]},")
+
+          self.print("\"type\": ")
+          self.printType(p[0])
+          println()
+
+          self.indentDec()
+          self.print("}")
+        })
         println(",")
         self.print("\"returnType\": ")
         self.printType(ret)

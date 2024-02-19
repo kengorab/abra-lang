@@ -112,23 +112,29 @@
           "type": {
             "nullable": false,
             "kind": "function",
-            "paramTypes": [
+            "parameters": [
               {
-                "nullable": false,
-                "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
-                "typeParams": [
-                  {
-                    "nullable": false,
-                    "kind": "primitive",
-                    "primitive": "Int"
-                  }
-                ]
+                "required": true,
+                "type": {
+                  "nullable": false,
+                  "kind": "instance",
+                  "struct": { "moduleId": 0, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                }
               },
               {
-                "nullable": true,
-                "kind": "primitive",
-                "primitive": "Bool"
+                "required": true,
+                "type": {
+                  "nullable": true,
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                }
               }
             ],
             "returnType": {
@@ -213,23 +219,29 @@
           "type": {
             "nullable": false,
             "kind": "function",
-            "paramTypes": [
+            "parameters": [
               {
-                "nullable": false,
-                "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
-                "typeParams": [
-                  {
-                    "nullable": false,
-                    "kind": "primitive",
-                    "primitive": "Int"
-                  }
-                ]
+                "required": true,
+                "type": {
+                  "nullable": false,
+                  "kind": "instance",
+                  "struct": { "moduleId": 0, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                }
               },
               {
-                "nullable": true,
-                "kind": "primitive",
-                "primitive": "Bool"
+                "required": true,
+                "type": {
+                  "nullable": true,
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                }
               }
             ],
             "returnType": {

@@ -246,6 +246,16 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/invocation_error_optional_param_unknown.abra", "typechecker/invocation_error_optional_param_unknown.out")
         .add_test_vs_txt("typechecker/invocation_error_too_few_args.abra", "typechecker/invocation_error_too_few_args.out")
         .add_test_vs_txt("typechecker/invocation_error_too_many_args.abra", "typechecker/invocation_error_too_many_args.out")
+        .add_test_vs_txt("typechecker/invocation_error_expr_illegal_label.abra", "typechecker/invocation_error_expr_illegal_label.out")
+        .add_test_vs_txt("typechecker/invocation_error_expr_not_callable.abra", "typechecker/invocation_error_expr_not_callable.out")
+        .add_test_vs_txt("typechecker/invocation_error_expr_too_few_args.abra", "typechecker/invocation_error_expr_too_few_args.out")
+        .add_test_vs_txt("typechecker/invocation_error_expr_too_many_args.abra", "typechecker/invocation_error_expr_too_many_args.out")
+        .add_test_vs_txt("typechecker/invocation_function_as_param.1.abra", "typechecker/invocation_function_as_param.1.out.json")
+        .add_test_vs_txt("typechecker/invocation_function_as_param.2.abra", "typechecker/invocation_function_as_param.2.out.json")
+        .add_test_vs_txt("typechecker/invocation_function_as_param.3.abra", "typechecker/invocation_function_as_param.3.out.json")
+        .add_test_vs_txt("typechecker/invocation_function_as_param_error_arity.abra", "typechecker/invocation_function_as_param_error_arity.out")
+        .add_test_vs_txt("typechecker/invocation_function_value.abra", "typechecker/invocation_function_value.out.json")
+
 
 
         // Break

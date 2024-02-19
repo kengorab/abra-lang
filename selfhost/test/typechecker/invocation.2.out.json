@@ -165,21 +165,30 @@
               "type": {
                 "nullable": false,
                 "kind": "function",
-                "paramTypes": [
+                "parameters": [
                   {
-                    "nullable": false,
-                    "kind": "primitive",
-                    "primitive": "Int"
+                    "required": true,
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
                   },
                   {
-                    "nullable": false,
-                    "kind": "primitive",
-                    "primitive": "Bool"
+                    "required": true,
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Bool"
+                    }
                   },
                   {
-                    "nullable": false,
-                    "kind": "primitive",
-                    "primitive": "Float"
+                    "required": true,
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Float"
+                    }
                   }
                 ],
                 "returnType": {
