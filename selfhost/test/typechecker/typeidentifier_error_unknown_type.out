@@ -1,5 +1,5 @@
 Error at %FILE_NAME%:1:8
 Unknown type 'Foobar'
-  |  val a: Foobar = 123
+  |  var _: Foobar
             ^
 No type with that name is visible in current scope

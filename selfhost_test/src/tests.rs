@@ -253,10 +253,28 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/invocation_function_as_param.1.abra", "typechecker/invocation_function_as_param.1.out.json")
         .add_test_vs_txt("typechecker/invocation_function_as_param.2.abra", "typechecker/invocation_function_as_param.2.out.json")
         .add_test_vs_txt("typechecker/invocation_function_as_param.3.abra", "typechecker/invocation_function_as_param.3.out.json")
+        .add_test_vs_txt("typechecker/invocation_function_as_param_generic.abra", "typechecker/invocation_function_as_param_generic.out.json")
         .add_test_vs_txt("typechecker/invocation_function_as_param_error_arity.abra", "typechecker/invocation_function_as_param_error_arity.out")
         .add_test_vs_txt("typechecker/invocation_function_value.abra", "typechecker/invocation_function_value.out.json")
+        .add_test_vs_txt("typechecker/invocation_generics.1.abra", "typechecker/invocation_generics.1.out.json")
+        .add_test_vs_txt("typechecker/invocation_generics.2.abra", "typechecker/invocation_generics.2.out.json")
+        .add_test_vs_txt("typechecker/invocation_generics.3.abra", "typechecker/invocation_generics.3.out.json")
+        .add_test_vs_txt("typechecker/invocation_generics.4.abra", "typechecker/invocation_generics.4.out.json")
+        .add_test_vs_txt("typechecker/invocation_generics.5.abra", "typechecker/invocation_generics.5.out.json")
+        .add_test_vs_txt("typechecker/invocation_generics_error_inferred_from_ret.1.abra", "typechecker/invocation_generics_error_inferred_from_ret.1.out")
+        .add_test_vs_txt("typechecker/invocation_generics_error_inferred_from_ret.2.abra", "typechecker/invocation_generics_error_inferred_from_ret.2.out")
+        .add_test_vs_txt("typechecker/invocation_generics_error_type_mismatch.abra", "typechecker/invocation_generics_error_type_mismatch.out")
+        .add_test_vs_txt("typechecker/invocation_generics_error_unfilled_holes.abra", "typechecker/invocation_generics_error_unfilled_holes.out")
+        .add_test_vs_txt("typechecker/invocation_generics_given_error_type_mismatch.abra", "typechecker/invocation_generics_given_error_type_mismatch.out")
 
 
+        // Type identifiers
+        .add_test_vs_txt("typechecker/typeidentifier_error_typearg_unknown.abra", "typechecker/typeidentifier_error_typearg_unknown.out")
+        .add_test_vs_txt("typechecker/typeidentifier_error_typeargs_missing.abra", "typechecker/typeidentifier_error_typeargs_missing.out")
+        .add_test_vs_txt("typechecker/typeidentifier_error_typeargs_too_few.abra", "typechecker/typeidentifier_error_typeargs_too_few.out")
+        .add_test_vs_txt("typechecker/typeidentifier_error_typeargs_too_many.abra", "typechecker/typeidentifier_error_typeargs_too_many.out")
+        .add_test_vs_txt("typechecker/typeidentifier_error_typeargs_unexpected.abra", "typechecker/typeidentifier_error_typeargs_unexpected.out")
+        .add_test_vs_txt("typechecker/typeidentifier_error_unknown_type.abra", "typechecker/typeidentifier_error_unknown_type.out")
 
         // Break
         .add_test_vs_txt("typechecker/break_as_expr.abra", "typechecker/break_as_expr.out.json")
@@ -289,7 +307,6 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/bindingdecl_error_duplicate_name.abra", "typechecker/bindingdecl_error_duplicate_name.out")
         .add_test_vs_txt("typechecker/bindingdecl_error_uninitialized_val.1.abra", "typechecker/bindingdecl_error_uninitialized_val.1.out")
         .add_test_vs_txt("typechecker/bindingdecl_error_uninitialized_val.2.abra", "typechecker/bindingdecl_error_uninitialized_val.2.out")
-        .add_test_vs_txt("typechecker/bindingdecl_error_unknown_type.abra", "typechecker/bindingdecl_error_unknown_type.out")
         .add_test_vs_txt("typechecker/bindingdecl_error_type_mismatch_val.abra", "typechecker/bindingdecl_error_type_mismatch_val.out")
         .add_test_vs_txt("typechecker/bindingdecl_error_type_mismatch_var.abra", "typechecker/bindingdecl_error_type_mismatch_var.out")
         .add_test_vs_txt("typechecker/bindingdecl_error_type_mismatch_option.abra", "typechecker/bindingdecl_error_type_mismatch_option.out")
@@ -322,6 +339,8 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/funcdecl_error_return_type_mismatch.abra", "typechecker/funcdecl_error_return_type_mismatch.out")
         .add_test_vs_txt("typechecker/funcdecl_error_return_type_mismatch_empty.abra", "typechecker/funcdecl_error_return_type_mismatch_empty.out")
         .add_test_vs_txt("typechecker/funcdecl_error_return_type_mismatch_stmt.abra", "typechecker/funcdecl_error_return_type_mismatch_stmt.out")
+        .add_test_vs_txt("typechecker/funcdecl_generics.abra", "typechecker/funcdecl_generics.out.json")
+        .add_test_vs_txt("typechecker/funcdecl_generics_error_type_mismatch.abra", "typechecker/funcdecl_generics_error_type_mismatch.out")
         // Returns
         .add_test_vs_txt("typechecker/return.1.abra", "typechecker/return.1.out.json")
         .add_test_vs_txt("typechecker/return.2.abra", "typechecker/return.2.out.json")

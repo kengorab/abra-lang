@@ -38,8 +38,10 @@
                 }
               }
             ],
-            "functions": []
+            "functions": [],
+            "types": []
           },
+          "typeParameters": [],
           "parameters": [
             {
               "label": { "name": "a", "position": [2, 12] },
@@ -104,8 +106,10 @@
                 }
               }
             ],
-            "functions": []
+            "functions": [],
+            "types": []
           },
+          "typeParameters": [],
           "parameters": [
             {
               "label": { "name": "arrs", "position": [3, 12] },

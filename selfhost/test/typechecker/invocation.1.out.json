@@ -31,8 +31,10 @@
                 }
               }
             ],
-            "functions": []
+            "functions": [],
+            "types": []
           },
+          "typeParameters": [],
           "parameters": [
             {
               "label": { "name": "a", "position": [1, 10] },

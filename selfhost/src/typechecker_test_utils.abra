@@ -63,6 +63,10 @@ export type Jsonifier {
       TypeKind.Never => {
         self.println("\"kind\": \"never\"")
       }
+      TypeKind.Generic(name) => {
+        self.println("\"kind\": \"generic\",")
+        self.println("\"name\": \"$name\"")
+      }
       TypeKind.Instance(struct, generics) => {
         self.println("\"kind\": \"instance\",")
         self.println("\"struct\": { \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.name}\" },")
@@ -329,6 +333,24 @@ export type Jsonifier {
     self.printScope(function.scope)
     println(",")
 
+    self.print("\"typeParameters\": ")
+    self.array(function.typeParams, typeParam => {
+      println("{")
+      self.indentInc()
+
+      self.print("\"label\": ")
+      printLabelAsJson(typeParam[1])
+      println(",")
+
+      self.print("\"type\": ")
+      self.printType(typeParam[0])
+      println()
+
+      self.indentDec()
+      self.print("}")
+    })
+    println(",")
+
     self.print("\"parameters\": ")
     self.array(function.params, param => {
       println("{")
@@ -377,6 +399,10 @@ export type Jsonifier {
 
     self.print("\"functions\": ")
     self.array(scope.functions, f => self.printFunc(f))
+    println(",")
+
+    self.print("\"types\": ")
+    self.array(scope.types, t => self.printType(t))
     println()
 
     self.indentDec()

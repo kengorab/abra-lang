@@ -45,8 +45,10 @@
                 }
               }
             ],
-            "functions": []
+            "functions": [],
+            "types": []
           },
+          "typeParameters": [],
           "parameters": [
             {
               "label": { "name": "fn", "position": [1, 10] },

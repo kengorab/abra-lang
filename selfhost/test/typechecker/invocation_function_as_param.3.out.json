@@ -45,8 +45,10 @@
                 }
               }
             ],
-            "functions": []
+            "functions": [],
+            "types": []
           },
+          "typeParameters": [],
           "parameters": [
             {
               "label": { "name": "fn", "position": [1, 10] },
@@ -170,8 +172,10 @@
           "scope": {
             "name": "$root::module_1::negativeOne",
             "variables": [],
-            "functions": []
+            "functions": [],
+            "types": []
           },
+          "typeParameters": [],
           "parameters": [],
           "returnType": {
             "nullable": false,

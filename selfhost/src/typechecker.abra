@@ -81,6 +81,7 @@ export type Scope {
   name: String
   variables: Variable[] = []
   functions: Function[] = []
+  types: Type[] = []
   kind: ScopeKind = ScopeKind.Root
   parent: Scope? = None
   terminator: Terminator? = None
@@ -91,6 +92,7 @@ export type Scope {
 export type Project {
   modules: TypedModule[] = []
   preludeArrayStruct: Struct = Struct(moduleId: 0, name: "Array", generics: ["T"])
+  preludeMapStruct: Struct = Struct(moduleId: 0, name: "Map", generics: ["K", "V"])
 }
 
 type Struct {
@@ -113,6 +115,7 @@ export type Type {
       TypeKind.PrimitiveBool => "Bool"
       TypeKind.PrimitiveString => "String"
       TypeKind.Never => "Never"
+      TypeKind.Generic(name) => name
       TypeKind.Instance(struct, typeParams) => {
         if struct.moduleId == 0 && struct.name == "Array" {
           val innerRepr = typeParams[0]?.repr() ?: "<unknown>"
@@ -146,6 +149,7 @@ export type Type {
     TypeKind.PrimitiveBool => false
     TypeKind.PrimitiveString => false
     TypeKind.Never => false
+    TypeKind.Generic => false
     TypeKind.Instance(_, generics) => generics.any(t => t.hasUnfilledHoles())
     TypeKind.Func(paramTypes, returnType) => paramTypes.any(t => t[0].hasUnfilledHoles()) || returnType.hasUnfilledHoles()
     TypeKind.Hole => true
@@ -184,6 +188,7 @@ export enum TypeKind {
   PrimitiveBool
   PrimitiveString
   Never
+  Generic(name: String)
   Instance(struct: Struct, generics: Type[])
   Func(paramTypes: (Type, Bool)[], returnType: Type)
   Hole
@@ -211,6 +216,7 @@ type TypedFunctionParam {
 export type Function {
   label: Label
   scope: Scope
+  typeParams: (Type, Label)[]
   params: TypedFunctionParam[]
   returnType: Type
   body: TypedAstNode[]
@@ -478,6 +484,13 @@ type TypeError {
         lines.push(self._getCursorLine(self.position, contents))
         lines.push("Type '${ty.repr()}' is not callable")
       }
+      TypeErrorKind.WrongTypeArgumentArity(expected, given) => {
+        val verbStr = if given == 1 "was" else "were"
+
+        lines.push("Incorrect number of type arguments")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Expected $expected, but $given $verbStr passed")
+      }
     }
 
     lines.join("\n")
@@ -522,6 +535,7 @@ enum TypeErrorKind {
   UnknownParameterName(name: String)
   ParameterTypeMismatch(name: String?, expected: Type, given: Type)
   IllegalCallableType(ty: Type)
+  WrongTypeArgumentArity(expected: Int, given: Int)
 }
 
 export type Typechecker {
@@ -585,14 +599,72 @@ export type Typechecker {
     Result.Ok(0) // <- unnecessary 0
   }
 
+  func _addTypeToScope(self, ty: Type, scope = self.currentScope): Result<Int, TypeError> {
+    scope.types.push(ty)
+
+    Result.Ok(0) // <- unnecessary 0
+  }
+
+  func _verifyNoTypeArgs(self, position: Position, typeArguments: TypeIdentifier[]?): Result<Int, TypeError> =
+    if typeArguments |typeArgs| Result.Err(TypeError(position: position, kind: TypeErrorKind.WrongTypeArgumentArity(expected: 0, given: typeArgs.length))) else Result.Ok(0)
+
   func _resolveTypeIdentifier(self, typeIdent: TypeIdentifier): Result<Type, TypeError> {
     val ty = match typeIdent {
-      TypeIdentifier.Normal(label) => match label.name {
-        "Int" => Type(kind: TypeKind.PrimitiveInt)
-        "Float" => Type(kind: TypeKind.PrimitiveFloat)
-        "Bool" => Type(kind: TypeKind.PrimitiveBool)
-        "String" => Type(kind: TypeKind.PrimitiveString)
-        _ => return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
+      TypeIdentifier.Normal(label, typeArguments) => match label.name {
+        "Int" => {
+          match self._verifyNoTypeArgs(label.position, typeArguments) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          Type(kind: TypeKind.PrimitiveInt)
+        }
+        "Float" => {
+          match self._verifyNoTypeArgs(label.position, typeArguments) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          Type(kind: TypeKind.PrimitiveFloat)
+        }
+        "Bool" => {
+          match self._verifyNoTypeArgs(label.position, typeArguments) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          Type(kind: TypeKind.PrimitiveBool)
+        }
+        "String" => {
+          match self._verifyNoTypeArgs(label.position, typeArguments) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          Type(kind: TypeKind.PrimitiveString)
+        }
+        "Map" => {
+          val _t = if typeArguments |typeArguments| {
+            val keyTypeIdent = if typeArguments?.get(0) |keyTypeIdent| keyTypeIdent else {
+              return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.WrongTypeArgumentArity(expected: 2, given: 0)))
+            }
+            val keyTy = match self._resolveTypeIdentifier(keyTypeIdent) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            val valTypeIdent = if typeArguments?.get(1) |valTypeIdent| valTypeIdent else {
+              return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.WrongTypeArgumentArity(expected: 2, given: 1)))
+            }
+            val valTy = match self._resolveTypeIdentifier(valTypeIdent) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+            if typeArguments.length > 2 {
+              return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.WrongTypeArgumentArity(expected: 2, given: typeArguments.length)))
+            }
+
+            (keyTy, valTy)
+          } else {
+            return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.WrongTypeArgumentArity(expected: 2, given: 0)))
+          }
+          // TODO: destructuring
+          val keyTy = _t[0]
+          val valTy = _t[1]
+
+          Type(kind: TypeKind.Instance(self.project.preludeMapStruct, [keyTy, valTy]))
+        }
+        _ => {
+          var scope: Scope? = self.currentScope
+          while scope |sc| {
+            for ty in sc.types {
+              match ty.kind {
+                TypeKind.Generic(name) => { if label.name == name return Result.Ok(ty) }
+                _ => continue
+              }
+            }
+            scope = sc.parent
+          }
+          return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
+        }
       }
       TypeIdentifier.Array(inner) => {
         val innerTy = match self._resolveTypeIdentifier(inner) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -663,6 +735,88 @@ export type Typechecker {
     }
   }
 
+  func _containsGenerics(self, ty: Type): Bool {
+    match ty.kind {
+      TypeKind.Generic(name) => true
+      TypeKind.Instance(_, typeArgs) => typeArgs.any(t => self._containsGenerics(t))
+      TypeKind.Func(paramTypes, returnType) => {
+        if self._containsGenerics(returnType) return true
+
+        paramTypes.any(p => self._containsGenerics(p[0]))
+      }
+      _ => false
+    }
+  }
+
+  func _substituteGenerics(self, ty: Type, resolvedGenerics: Map<String, Type>): Type {
+    val resultType = match ty.kind {
+      TypeKind.Generic(name) => resolvedGenerics[name]?.clone() ?: Type(kind: TypeKind.Hole)
+      TypeKind.Instance(struct, typeArgs) => {
+        val substTypeArgs = typeArgs.map(ty => self._substituteGenerics(ty, resolvedGenerics))
+        Type(kind: TypeKind.Instance(struct, substTypeArgs))
+      }
+      TypeKind.Func(paramTypes, returnType) => {
+        val substParamTypes = paramTypes.map(p => {
+          val t = self._substituteGenerics(p[0], resolvedGenerics)
+          (t, p[1])
+        })
+        val substReturnType = self._substituteGenerics(returnType, resolvedGenerics)
+        Type(kind: TypeKind.Func(substParamTypes, substReturnType))
+      }
+      _ => ty
+    }
+    resultType.nullable = ty.nullable
+
+    resultType
+  }
+
+  func __extractGenerics(self, template: Type, source: Type, extracted: (String, Type)[]) {
+    match template.kind {
+      TypeKind.Generic(name) => {
+        extracted.push((name, source))
+      }
+      TypeKind.Instance(_, templateTypeArgs) => {
+        match source.kind {
+          TypeKind.Instance(_, sourceTypeArgs) => {
+            if templateTypeArgs.length != sourceTypeArgs.length {
+              // There's currently no notion of asserts, but this will show up in output files and fail tests so it won't go unnoticed.
+              println("templateTypeArgs.length != sourceTypeArgs.length")
+              return
+            }
+            for tplTypeArg, idx in templateTypeArgs {
+              val srcTypeArg = if sourceTypeArgs[idx] |t| t else {
+                println("templateTypeArgs.length != sourceTypeArgs.length")
+                return
+              }
+              self.__extractGenerics(template: tplTypeArg, source: srcTypeArg, extracted: extracted)
+            }
+          }
+          _ => {}
+        }
+      }
+      TypeKind.Func(templateParamTypes, templateReturnType) => {
+        match source.kind {
+          TypeKind.Func(sourceParamTypes, sourceReturnType) => {
+            self.__extractGenerics(template: templateReturnType, source: sourceReturnType, extracted: extracted)
+
+            for tplParamType, idx in templateParamTypes {
+              val srcParamType = if sourceParamTypes[idx] |t| t else break
+              self.__extractGenerics(template: tplParamType[0], source: srcParamType[0], extracted: extracted)
+            }
+          }
+          _ => {}
+        }
+      }
+      _ => {}
+    }
+  }
+
+  func _extractGenerics(self, template: Type, source: Type): (String, Type)[] {
+    val extracted: (String, Type)[] = []
+    self.__extractGenerics(template, source, extracted)
+    extracted
+  }
+
   func _typeAsArray(self, ty: Type): Type? {
     match ty.kind {
       TypeKind.Instance(struct, generics) => if struct == self.project.preludeArrayStruct { generics[0] } else None
@@ -692,6 +846,23 @@ export type Typechecker {
   }
 
   func _typecheckFunctionPass1(self, node: FunctionDeclarationNode): Result<Function, TypeError> {
+    val fnScope = self.currentScope.makeChild(node.name.name, ScopeKind.Func)
+    val prevScope = self.currentScope
+    self.currentScope = fnScope
+
+    val typeParams: (Type, Label)[] = []
+    val seenTypeParams: Map<String, Label> = {}
+    for label in node.typeParams {
+      if seenTypeParams[label.name] |original| {
+        return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.DuplicateName(original)))
+      }
+      seenTypeParams[label.name] = label
+
+      val generic = Type(kind: TypeKind.Generic(label.name))
+      match self._addTypeToScope(generic) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      typeParams.push((generic, label))
+    }
+
     val returnType = if node.returnTypeAnnotation |typeAnn| {
       val ty = match self._resolveTypeIdentifier(typeAnn) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
       ty
@@ -699,8 +870,9 @@ export type Typechecker {
       Type(kind: TypeKind.PrimitiveUnit)
     }
 
-    val fnScope = self.currentScope.makeChild(node.name.name, ScopeKind.Func)
-    val fn = Function(label: node.name, scope: fnScope, params: [], returnType: returnType, body: [])
+    self.currentScope = prevScope
+
+    val fn = Function(label: node.name, scope: fnScope, typeParams: typeParams, params: [], returnType: returnType, body: [])
     match self._addFunctionToScope(fn) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     Result.Ok(fn)
@@ -1209,7 +1381,7 @@ export type Typechecker {
       }
       AstNodeKind.Identifier(kind) => self._typecheckIdentifier(token, kind, typeHint)
       AstNodeKind.Accessor(value) => todo(node.token.position, "accessor expression")
-      AstNodeKind.Invocation(node) => self._typecheckInvocation(token, node)
+      AstNodeKind.Invocation(node) => self._typecheckInvocation(token, node, typeHint)
       AstNodeKind.Array(items) => self._typecheckArray(token, items, typeHint)
       AstNodeKind.Set(items) => todo(node.token.position, "set expression")
       AstNodeKind.Map(items) => todo(node.token.position, "map expression")
@@ -1283,7 +1455,7 @@ export type Typechecker {
     Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Identifier(kind)))
   }
 
-  func _typecheckInvocation(self, token: Token, node: InvocationAstNode): Result<TypedAstNode, TypeError> {
+  func _typecheckInvocation(self, token: Token, node: InvocationAstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
     val invokee = match self._typecheckExpression(node.invokee, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     match invokee.kind {
@@ -1294,8 +1466,8 @@ export type Typechecker {
             return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName(name, "variable")))
           }
           match variable.alias {
-            VariableAlias.Function(fn) => self._typecheckInvocationOfFunction(token, invokee, fn, node.arguments)
-            None => self._typecheckInvocationOfExpression(token, invokee, node.arguments)
+            VariableAlias.Function(fn) => self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint)
+            None => self._typecheckInvocationOfExpression(token, invokee, node)
           }
         }
         _ => return todo(invokee.token.position, "other types of identifier targets for invocation")
@@ -1304,7 +1476,7 @@ export type Typechecker {
     }
   }
 
-  func _typecheckInvocationOfExpression(self, token: Token, invokeeExpr: TypedAstNode, arguments: InvocationArgument[]): Result<TypedAstNode, TypeError> {
+  func _typecheckInvocationOfExpression(self, token: Token, invokeeExpr: TypedAstNode, invocationNode: InvocationAstNode): Result<TypedAstNode, TypeError> {
     val _pair = match invokeeExpr.ty.kind {
       TypeKind.Func(paramTypes, returnType) => (paramTypes.map(p => p[0]), returnType)
       _ => return Result.Err(TypeError(position: invokeeExpr.token.position, kind: TypeErrorKind.IllegalCallableType(invokeeExpr.ty)))
@@ -1314,13 +1486,13 @@ export type Typechecker {
     val returnType = _pair[1]
 
     val typedArguments: TypedAstNode?[] = []
-    for arg, idx in arguments {
+    for arg, idx in invocationNode.arguments {
       if arg.label |label| {
         return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalParameterLabel))
       }
 
       var paramType = if paramTypes[idx] |t| t else {
-        return Result.Err(TypeError(position: arg.position(), kind: TypeErrorKind.WrongInvocationArity(expected: paramTypes.length, given: arguments.length)))
+        return Result.Err(TypeError(position: arg.position(), kind: TypeErrorKind.WrongInvocationArity(expected: paramTypes.length, given: invocationNode.arguments.length)))
       }
 
       val typedArg = match self._typecheckExpression(arg.value, paramType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -1337,17 +1509,55 @@ export type Typechecker {
     Result.Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(invokeeExpr, typedArguments)))
   }
 
-  func _typecheckInvocationOfFunction(self, token: Token, invokee: TypedAstNode, fn: Function, arguments: InvocationArgument[]): Result<TypedAstNode, TypeError> {
+  func _typecheckInvocationOfFunction(self, token: Token, invokee: TypedAstNode, fn: Function, invocationNode: InvocationAstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
     // Function invocation is position-based for required parameters, with optional parameter labels to express call-site intent (ie. for Bool params), and it's
     // an error if a positional parameter's label is incorrect. Once we reach any optional parameters in the argument list, parameters can either be positional
     // OR labeled, but once a labeled optional parameter is seen, all subsequent arguments in the argument list must also be labeled.
     val paramsByName = fn.params.keyBy(p => p.label.name)
     val typedArgumentsByName: Map<String, TypedAstNode> = {}
+    val resolvedGenerics: Map<String, Type> = {}
     var hasBegunOptionalParams = false
     var mostRecentLabeledOptionalParam: Label? = None
-    for arg, idx in arguments {
+
+    if !invocationNode.typeArguments.isEmpty() {
+      for generic, idx in fn.typeParams {
+        val typeArg = if invocationNode.typeArguments[idx] |typeArg| typeArg else {
+          return Result.Err(TypeError(position: invokee.token.position, kind: TypeErrorKind.WrongTypeArgumentArity(expected: fn.typeParams.length, given: invocationNode.typeArguments.length)))
+        }
+        val typeArgTy = match self._resolveTypeIdentifier(typeArg) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        resolvedGenerics[generic[1].name] = typeArgTy
+      }
+      if invocationNode.typeArguments.length > fn.typeParams.length {
+        return Result.Err(TypeError(position: invokee.token.position, kind: TypeErrorKind.WrongTypeArgumentArity(expected: fn.typeParams.length, given: invocationNode.typeArguments.length)))
+      }
+    }
+
+    if typeHint |hint| {
+      if self._containsGenerics(fn.returnType) {
+        val extractedGenerics = self._extractGenerics(template: fn.returnType, source: hint)
+
+        for _p in extractedGenerics {
+          if resolvedGenerics[_p[0]] |original| {
+            if original != _p[1] {
+              var returnType = self._substituteGenerics(fn.returnType, resolvedGenerics)
+              return Result.Err(TypeError(position: invokee.token.position, kind: TypeErrorKind.TypeMismatch([hint], returnType)))
+            }
+            continue
+          }
+          resolvedGenerics[_p[0]] = _p[1]
+        }
+      }
+    }
+
+    val argumentsQueue = invocationNode.arguments.map((arg, idx) => (arg, idx, 0))
+    for _a in argumentsQueue {
+      // TODO: destructuring
+      val arg = _a[0]
+      val idx = _a[1]
+      val numAttempts = _a[2]
+
       var param = if fn.params[idx] |param| param else {
-        return Result.Err(TypeError(position: arg.position(), kind: TypeErrorKind.WrongInvocationArity(expected: fn.params.length, given: arguments.length)))
+        return Result.Err(TypeError(position: arg.position(), kind: TypeErrorKind.WrongInvocationArity(expected: fn.params.length, given: invocationNode.arguments.length)))
       }
       if param.defaultValue { hasBegunOptionalParams = true }
       if param.isVariadic { return todo(arg.position(), "variadic parameters") }
@@ -1369,9 +1579,38 @@ export type Typechecker {
         return Result.Err(TypeError(position: arg.position(), kind: TypeErrorKind.MixedArgumentType(label)))
       }
 
-      val typedArg = match self._typecheckExpression(arg.value, param.ty) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-      if !self._typeSatisfiesRequired(ty: typedArg.ty, required: param.ty) {
-        return Result.Err(TypeError(position: typedArg.token.position, kind: TypeErrorKind.ParameterTypeMismatch(param.label.name, param.ty, typedArg.ty)))
+      val _p = if self._containsGenerics(param.ty) {
+        var paramType = self._substituteGenerics(param.ty, resolvedGenerics)
+
+        val typedArg = match self._typecheckExpression(arg.value, paramType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        if numAttempts < 1 && typedArg.ty.hasUnfilledHoles() {
+          argumentsQueue.push((_a[0], _a[1], numAttempts + 1))
+          continue
+        }
+
+        val extractedGenerics = self._extractGenerics(template: param.ty, source: typedArg.ty)
+
+        for _p in extractedGenerics {
+          if resolvedGenerics[_p[0]] |original| {
+            if original != _p[1] {
+              return Result.Err(TypeError(position: typedArg.token.position, kind: TypeErrorKind.ParameterTypeMismatch(param.label.name, original, typedArg.ty)))
+            }
+            continue
+          }
+          resolvedGenerics[_p[0]] = _p[1]
+        }
+
+        paramType = self._substituteGenerics(param.ty, resolvedGenerics)
+        (typedArg, paramType)
+      } else {
+        val typedArg = match self._typecheckExpression(arg.value, param.ty) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        (typedArg, param.ty)
+      }
+      // TODO: destructuring
+      val typedArg = _p[0]
+      val paramType = _p[1]
+      if !self._typeSatisfiesRequired(ty: typedArg.ty, required: paramType) {
+        return Result.Err(TypeError(position: typedArg.token.position, kind: TypeErrorKind.ParameterTypeMismatch(param.label.name, paramType, typedArg.ty)))
       }
       typedArgumentsByName[param.label.name] = typedArg
     }
@@ -1384,11 +1623,13 @@ export type Typechecker {
         typedArguments.push(None)
       } else {
         val numRequired = fn.params.filter(p => !p.defaultValue).length
-        return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.WrongInvocationArity(expected: numRequired, given: arguments.length)))
+        return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.WrongInvocationArity(expected: numRequired, given: invocationNode.arguments.length)))
       }
     }
 
-    Result.Ok(TypedAstNode(token: token, ty: fn.returnType, kind: TypedAstNodeKind.Invocation(invokee, typedArguments)))
+    val returnType = if self._containsGenerics(fn.returnType) self._substituteGenerics(fn.returnType, resolvedGenerics) else fn.returnType
+
+    Result.Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(invokee, typedArguments)))
   }
 
   func _typecheckArray(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
