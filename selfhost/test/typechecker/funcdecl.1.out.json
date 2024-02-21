@@ -21,8 +21,10 @@
           "scope": {
             "name": "$root::module_1::foo",
             "variables": [],
-            "functions": []
+            "functions": [],
+            "types": []
           },
+          "typeParameters": [],
           "parameters": [],
           "returnType": {
             "nullable": false,

@@ -89,8 +89,10 @@
                 }
               }
             ],
-            "functions": []
+            "functions": [],
+            "types": []
           },
+          "typeParameters": [],
           "parameters": [
             {
               "label": { "name": "x", "position": [3, 10] },

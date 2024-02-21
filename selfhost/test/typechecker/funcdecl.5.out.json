@@ -21,8 +21,10 @@
           "scope": {
             "name": "$root::module_1::foo1",
             "variables": [],
-            "functions": []
+            "functions": [],
+            "types": []
           },
+          "typeParameters": [],
           "parameters": [],
           "returnType": {
             "nullable": false,
@@ -84,8 +86,10 @@
           "scope": {
             "name": "$root::module_1::foo2",
             "variables": [],
-            "functions": []
+            "functions": [],
+            "types": []
           },
+          "typeParameters": [],
           "parameters": [],
           "returnType": {
             "nullable": true,
@@ -218,8 +222,10 @@
           "scope": {
             "name": "$root::module_1::foo3",
             "variables": [],
-            "functions": []
+            "functions": [],
+            "types": []
           },
+          "typeParameters": [],
           "parameters": [],
           "returnType": {
             "nullable": true,
@@ -352,8 +358,10 @@
           "scope": {
             "name": "$root::module_1::foo4",
             "variables": [],
-            "functions": []
+            "functions": [],
+            "types": []
           },
+          "typeParameters": [],
           "parameters": [],
           "returnType": {
             "nullable": true,
@@ -486,8 +494,10 @@
           "scope": {
             "name": "$root::module_1::foo5",
             "variables": [],
-            "functions": []
+            "functions": [],
+            "types": []
           },
+          "typeParameters": [],
           "parameters": [],
           "returnType": {
             "nullable": true,

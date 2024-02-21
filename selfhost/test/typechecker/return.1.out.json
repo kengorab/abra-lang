@@ -31,8 +31,10 @@
                 }
               }
             ],
-            "functions": []
+            "functions": [],
+            "types": []
           },
+          "typeParameters": [],
           "parameters": [],
           "returnType": {
             "nullable": false,

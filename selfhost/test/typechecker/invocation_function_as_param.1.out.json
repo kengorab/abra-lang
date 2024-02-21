@@ -45,8 +45,10 @@
                 }
               }
             ],
-            "functions": []
+            "functions": [],
+            "types": []
           },
+          "typeParameters": [],
           "parameters": [
             {
               "label": { "name": "fn", "position": [1, 10] },
@@ -180,8 +182,10 @@
                 }
               }
             ],
-            "functions": []
+            "functions": [],
+            "types": []
           },
+          "typeParameters": [],
           "parameters": [
             {
               "label": { "name": "i", "position": [3, 13] },
