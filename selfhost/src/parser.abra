@@ -156,7 +156,7 @@ export type BindingDeclarationNode {
   expr: AstNode?
 }
 
-type FunctionParam {
+export type FunctionParam {
   label: Label
   isVariadic: Bool = false
   typeAnnotation: TypeIdentifier? = None

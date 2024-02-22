@@ -1,0 +1,2 @@
+func foo(a = bar(), b = -a): Int = b
+func bar(): Int = 123

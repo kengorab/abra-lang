@@ -1,6 +1,6 @@
 import "fs" as fs
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
-import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, InvocationAstNode, InvocationArgument from "./parser"
+import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument from "./parser"
 
 enum TokenizeAndParseError {
   ReadFileError(path: String)
@@ -238,6 +238,8 @@ export enum TypedAstNodeKind {
   Break
   Continue
   Return(expr: TypedAstNode?)
+
+  Placeholder
 }
 
 type TypecheckerError {
@@ -538,11 +540,17 @@ enum TypeErrorKind {
   WrongTypeArgumentArity(expected: Int, given: Int)
 }
 
+type ParamDefaultValueContext {
+  exprContainsFunctionCall: Bool = false
+  exprContainsVariableRef: Bool = false
+}
+
 export type Typechecker {
   moduleLoader: ModuleLoader
   project: Project
   currentScope: Scope = Scope(name: "\$root")
   currentFunction: Function? = None
+  paramDefaultValueContext: ParamDefaultValueContext? = None
 
   func typecheckEntrypoint(self, modulePathAbs: String): Result<Int, TypecheckerError> {
     val mod = TypedModule(id: 0, name: "prelude", code: [], rootScope: self.currentScope.makeChild("module_0", ScopeKind.Module))
@@ -878,10 +886,85 @@ export type Typechecker {
     Result.Ok(fn)
   }
 
-  func _typecheckFunctionPass2(self, fn: Function, node: FunctionDeclarationNode): Result<Int, TypeError> {
+  func _typecheckFunctionParam(self, param: FunctionParam, isRevisit = false): Result<(TypedFunctionParam, Bool), TypeError> {
+    val paramType = if param.typeAnnotation |typeAnn| {
+      val ty = match self._resolveTypeIdentifier(typeAnn) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      ty
+    } else {
+      None
+    }
+
+    var defaultValue: TypedAstNode? = None
+    if param.defaultValue |node| {
+      if isRevisit {
+        val expr = match self._typecheckExpression(node, paramType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        defaultValue = expr
+      } else {
+        // TODO: There has to be a cleaner way of representing this
+        val ctx = ParamDefaultValueContext()
+        self.paramDefaultValueContext = ctx
+        val expr = match self._typecheckExpression(node, paramType) {
+          Result.Ok(v) => v
+          Result.Err(e) => {
+            self.paramDefaultValueContext = None
+            if ctx.exprContainsFunctionCall || ctx.exprContainsVariableRef {
+              val typedParam = TypedFunctionParam(label: param.label, ty: Type(kind: TypeKind.Hole), defaultValue: None, isVariadic: param.isVariadic)
+              return Result.Ok((typedParam, true))
+            }
+            return Result.Err(e)
+          }
+        }
+        self.paramDefaultValueContext = None
+        if ctx.exprContainsFunctionCall || ctx.exprContainsVariableRef {
+          val typedParam = TypedFunctionParam(label: param.label, ty: paramType ?: expr.ty, defaultValue: expr, isVariadic: param.isVariadic)
+          return Result.Ok((typedParam, true))
+        }
+        defaultValue = expr
+      }
+    }
+
+    var ty = if paramType |paramType| {
+      if defaultValue |defaultValue| {
+        if !self._typeSatisfiesRequired(ty: defaultValue.ty, required: paramType) {
+          return Result.Err(TypeError(position: defaultValue.token.position, kind: TypeErrorKind.TypeMismatch([paramType], defaultValue.ty)))
+        }
+      }
+
+      paramType
+    } else {
+      if defaultValue |defaultValue| {
+        defaultValue.ty
+      } else {
+        return unreachable(param.label.position, "parser requires at least a type annotation or default value")
+      }
+    }
+
+    val variable = Variable(label: param.label, mutable: false, ty: ty)
+    match self._addVariableToScope(variable) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    if param.isVariadic {
+      if ty.nullable {
+        return Result.Err(TypeError(position: param.label.position, kind: TypeErrorKind.InvalidVarargType(ty)))
+      } else if self._typeAsArray(ty) |innerType| {
+        ty = innerType
+      } else {
+        return Result.Err(TypeError(position: param.label.position, kind: TypeErrorKind.InvalidVarargType(ty)))
+      }
+    }
+
+    if ty.hasUnfilledHoles() {
+      return Result.Err(TypeError(position: param.label.position, kind: TypeErrorKind.IllegalValueType(ty: ty, purpose: "parameter")))
+    }
+
+    val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: defaultValue, isVariadic: param.isVariadic)
+    Result.Ok((typedParam, false))
+  }
+
+  func _typecheckFunctionPass2(self, fn: Function, node: FunctionDeclarationNode): Result<Int[], TypeError> {
     val prevScope = self.currentScope
     self.currentScope = fn.scope
 
+    val paramsNeedingRevisit: Int[] = []
     val seenParamNames: Set<String> = #{}
     var startedOptionalParams = false
     for param, idx in node.params {
@@ -894,64 +977,26 @@ export type Typechecker {
       }
       seenParamNames.insert(param.label.name)
 
-      val paramType = if param.typeAnnotation |typeAnn| {
-        val ty = match self._resolveTypeIdentifier(typeAnn) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-        ty
-      } else {
-        None
-      }
-
-      var defaultValue: TypedAstNode? = None
-      if param.defaultValue |node| {
+      if param.defaultValue {
         startedOptionalParams = true
-        val expr = match self._typecheckExpression(node, paramType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-        defaultValue = expr
       } else if startedOptionalParams {
         return Result.Err(TypeError(position: param.label.position, kind: TypeErrorKind.InvalidParamPosition(purpose: "required")))
       }
 
-      var ty = if paramType |paramType| {
-        if defaultValue |defaultValue| {
-          if !self._typeSatisfiesRequired(ty: defaultValue.ty, required: paramType) {
-            return Result.Err(TypeError(position: defaultValue.token.position, kind: TypeErrorKind.TypeMismatch([paramType], defaultValue.ty)))
-          }
-        }
-
-        paramType
-      } else {
-        if defaultValue |defaultValue| {
-          defaultValue.ty
-        } else {
-          return unreachable(param.label.position, "parser requires at least a type annotation or default value")
-        }
-      }
-
-      val variable = Variable(label: param.label, mutable: false, ty: ty)
-      match self._addVariableToScope(variable) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-
-      if param.isVariadic {
-        if ty.nullable {
-          return Result.Err(TypeError(position: param.label.position, kind: TypeErrorKind.InvalidVarargType(ty)))
-        } else if self._typeAsArray(ty) |innerType| {
-          ty = innerType
-        } else {
-          return Result.Err(TypeError(position: param.label.position, kind: TypeErrorKind.InvalidVarargType(ty)))
-        }
-      }
-
-      if ty.hasUnfilledHoles() {
-        return Result.Err(TypeError(position: param.label.position, kind: TypeErrorKind.IllegalValueType(ty: ty, purpose: "parameter")))
-      }
-
-      fn.params.push(TypedFunctionParam(label: param.label, ty: ty, defaultValue: defaultValue, isVariadic: param.isVariadic))
+      val _p = match self._typecheckFunctionParam(param) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      // TODO: destructuring
+      val typedParam = _p[0]
+      val needsRevisit = _p[1]
+      fn.params.push(typedParam)
+      if needsRevisit { paramsNeedingRevisit.push(idx) }
     }
 
     self.currentScope = prevScope
 
-    Result.Ok(0)
+    Result.Ok(paramsNeedingRevisit)
   }
 
-  func _typecheckFunctionPass3(self, fn: Function, fnDeclNode: FunctionDeclarationNode): Result<Int, TypeError> {
+  func _typecheckFunctionPass3(self, fn: Function, fnDeclNode: FunctionDeclarationNode, paramsNeedingRevisit: Int[]): Result<Int, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = fn.scope
     val prevFn = self.currentFunction
@@ -960,6 +1005,20 @@ export type Typechecker {
     val hasReturnValue = fn.returnType.kind != TypeKind.PrimitiveUnit
     if hasReturnValue && fnDeclNode.body.isEmpty() {
       return Result.Err(TypeError(position: fn.label.position, kind: TypeErrorKind.ReturnTypeMismatch(fn.label.name, fn.returnType, None)))
+    }
+
+    for param, idx in fn.params {
+      if !paramsNeedingRevisit.contains(idx) continue
+
+      val paramNode = if fnDeclNode.params[idx] |p| p else return unreachable(param.label.position, "there should be as many parameter nodes as typed parameters")
+      val defaultValueNode = if paramNode.defaultValue |n| n else return unreachable(param.label.position, "the only way a parameter needs revisiting is if it has a default value")
+
+      val _p = match self._typecheckFunctionParam(param: paramNode, isRevisit: true) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      // TODO: destructuring
+      val typedParam = _p[0]
+      val needsRevisit = _p[1]
+      if needsRevisit return unreachable(param.label.position, "parameters should not need to be revisited more than once")
+      fn.params[idx] = typedParam
     }
 
     for node, idx in fnDeclNode.body {
@@ -996,7 +1055,7 @@ export type Typechecker {
   }
 
   func _typecheckBlock(self, nodes: AstNode[]): Result<TypedAstNode[], TypeError> {
-    val functions: (Function, Variable, FunctionDeclarationNode)[] = []
+    val functionsPass1: (Function, Variable, FunctionDeclarationNode)[] = []
     for node in nodes {
       match node.kind {
         AstNodeKind.FunctionDeclaration(node) => {
@@ -1004,23 +1063,25 @@ export type Typechecker {
           val fnType = Type(kind: TypeKind.Func(paramTypes: [], returnType: fn.returnType))
           val aliasVar = Variable(label: fn.label, mutable: false, ty: fnType, alias: VariableAlias.Function(fn))
           self.currentScope.variables.push(aliasVar)
-          functions.push((fn, aliasVar, node))
+          functionsPass1.push((fn, aliasVar, node))
         }
         _ => {}
       }
     }
 
-    for fnPair in functions {
+    val functionsPass2: (Function, FunctionDeclarationNode, Int[])[] = []
+    for fnPair in functionsPass1 {
       val fn = fnPair[0]
       val aliasVar = fnPair[1]
       val node = fnPair[2]
-      match self._typecheckFunctionPass2(fn, node) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      val paramsNeedingRevisit = match self._typecheckFunctionPass2(fn, node) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
       val fnType = Type(kind: TypeKind.Func(paramTypes: fn.params.map(p => (p.ty, !p.defaultValue)), returnType: fn.returnType))
       aliasVar.ty = fnType
+      functionsPass2.push((fn, node, paramsNeedingRevisit))
     }
 
-    val functionsIter = functions.iterator()
+    val functionsIter = functionsPass2.iterator()
 
     val typedNodes: TypedAstNode[] = []
 
@@ -1029,8 +1090,9 @@ export type Typechecker {
         AstNodeKind.FunctionDeclaration => {
           val typedNode = if functionsIter.next() |pair| {
             val fn = pair[0]
-            val fnDeclNode = pair[2]
-            match self._typecheckFunctionPass3(fn, fnDeclNode) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            val fnDeclNode = pair[1]
+            val paramsNeedingRevisit = pair[2]
+            match self._typecheckFunctionPass3(fn, fnDeclNode, paramsNeedingRevisit) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
             TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.FunctionDeclaration(fn))
           } else {
             return unreachable(node.token.position, "there should be as many functions as there are functiondecl nodes")
@@ -1440,6 +1502,9 @@ export type Typechecker {
         val t = if self._resolveIdentifier(name) |variable| {
           variable.ty
         } else {
+          if self.paramDefaultValueContext |ctx| {
+            ctx.exprContainsVariableRef = true
+          }
           return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName(name, "variable")))
         }
         t
@@ -1484,6 +1549,11 @@ export type Typechecker {
     // TODO: destructuring
     val paramTypes = _pair[0]
     val returnType = _pair[1]
+
+    if self.paramDefaultValueContext |ctx| {
+      ctx.exprContainsFunctionCall = true
+      return Result.Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Placeholder))
+    }
 
     val typedArguments: TypedAstNode?[] = []
     for arg, idx in invocationNode.arguments {
@@ -1539,7 +1609,7 @@ export type Typechecker {
         for _p in extractedGenerics {
           if resolvedGenerics[_p[0]] |original| {
             if original != _p[1] {
-              var returnType = self._substituteGenerics(fn.returnType, resolvedGenerics)
+              val returnType = self._substituteGenerics(fn.returnType, resolvedGenerics)
               return Result.Err(TypeError(position: invokee.token.position, kind: TypeErrorKind.TypeMismatch([hint], returnType)))
             }
             continue
@@ -1547,6 +1617,13 @@ export type Typechecker {
           resolvedGenerics[_p[0]] = _p[1]
         }
       }
+    }
+
+    if self.paramDefaultValueContext |ctx| {
+      ctx.exprContainsFunctionCall = true
+
+      val returnType = if self._containsGenerics(fn.returnType) self._substituteGenerics(fn.returnType, resolvedGenerics) else fn.returnType
+      return Result.Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Placeholder))
     }
 
     val argumentsQueue = invocationNode.arguments.map((arg, idx) => (arg, idx, 0))

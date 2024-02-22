@@ -1,0 +1,6 @@
+// Recursive references
+func foo(a: Int, b = foo(1)): Int = -1
+
+// Mutually-recursive references
+func baz(a: Int, b = bar()): Int = -1
+func bar(a = baz(1)): Int = 1
