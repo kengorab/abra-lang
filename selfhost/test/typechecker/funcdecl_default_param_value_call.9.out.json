@@ -1,0 +1,223 @@
+{
+  "id": 1,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo", "position": [1, 6] },
+          "scope": {
+            "name": "$root::module_1::foo",
+            "variables": [
+              {
+                "label": { "name": "a", "position": [1, 10] },
+                "mutable": false,
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              },
+              {
+                "label": { "name": "b", "position": [1, 21] },
+                "mutable": false,
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              }
+            ],
+            "functions": [],
+            "types": []
+          },
+          "typeParameters": [],
+          "parameters": [
+            {
+              "label": { "name": "a", "position": [1, 10] },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "defaultValue": {
+                "token": {
+                  "position": [1, 17],
+                  "kind": {
+                    "name": "LParen"
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "invocation",
+                  "invokee": {
+                    "token": {
+                      "position": [1, 14],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "bar"
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "function",
+                      "parameters": [],
+                      "returnType": {
+                        "nullable": false,
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "bar"
+                    }
+                  },
+                  "arguments": []
+                }
+              },
+              "isVariadic": false
+            },
+            {
+              "label": { "name": "b", "position": [1, 21] },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "defaultValue": {
+                "token": {
+                  "position": [1, 25],
+                  "kind": {
+                    "name": "Minus"
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "unary",
+                  "op": "UnaryOp.Minus",
+                  "expr": {
+                    "token": {
+                      "position": [1, 26],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "a"
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "a"
+                    }
+                  }
+                }
+              },
+              "isVariadic": false
+            }
+          ],
+          "returnType": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "body": [
+            {
+              "token": {
+                "position": [1, 36],
+                "kind": {
+                  "name": "Ident",
+                  "value": "b"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "b"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "bar", "position": [2, 6] },
+          "scope": {
+            "name": "$root::module_1::bar",
+            "variables": [],
+            "functions": [],
+            "types": []
+          },
+          "typeParameters": [],
+          "parameters": [],
+          "returnType": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "body": [
+            {
+              "token": {
+                "position": [2, 19],
+                "kind": {
+                  "name": "Int",
+                  "value": 123
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 123
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

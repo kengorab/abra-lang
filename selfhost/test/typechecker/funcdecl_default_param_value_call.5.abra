@@ -1,0 +1,3 @@
+// Treating `bar` as a variable, used as a default value
+func foo(a: Int, c: (Int, Int) => Int = bar): Int = 1
+func bar(a: Int): Int = a

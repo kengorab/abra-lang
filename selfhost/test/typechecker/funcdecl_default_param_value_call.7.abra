@@ -1,0 +1,5 @@
+// `bar` contains generics, and is defined after the `foo` functions
+func foo1(a: Int, b = bar(123)): Int[] = [a, b]
+func foo2(a: Int, b = -bar(1)): Int[] = [a, b]
+
+func bar<T>(t: T): T = t

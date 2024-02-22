@@ -295,6 +295,9 @@ export type Jsonifier {
         self.opt(expr, n => self.printNode(n))
         println()
       }
+      TypedAstNodeKind.Placeholder => {
+        self.println("ERROR: There should never be a Placeholder node emitted")
+      }
     }
     self.indentDec()
     self.println("}")
