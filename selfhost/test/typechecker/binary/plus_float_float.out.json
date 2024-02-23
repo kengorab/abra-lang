@@ -1,0 +1,59 @@
+{
+  "id": 1,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 5],
+        "kind": {
+          "name": "Plus"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Float"
+      },
+      "node": {
+        "kind": "binary",
+        "op": "BinaryOp.Add",
+        "left": {
+          "token": {
+            "position": [1, 1],
+            "kind": {
+              "name": "Float",
+              "value": 1
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Float"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 1
+          }
+        },
+        "right": {
+          "token": {
+            "position": [1, 7],
+            "kind": {
+              "name": "Float",
+              "value": 12.3
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Float"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 12.3
+          }
+        }
+      }
+    }
+  ]
+}

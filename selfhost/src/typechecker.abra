@@ -1,6 +1,6 @@
 import "fs" as fs
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
-import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument from "./parser"
+import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument from "./parser"
 
 enum TokenizeAndParseError {
   ReadFileError(path: String)
@@ -225,7 +225,7 @@ export type Function {
 export enum TypedAstNodeKind {
   Literal(value: LiteralAstNode)
   Unary(op: UnaryOp, expr: TypedAstNode)
-  // Binary(...)
+  Binary(left: TypedAstNode, op: BinaryOp, right: TypedAstNode)
   Grouped(inner: TypedAstNode)
   Identifier(kind: IdentifierKind)
   Invocation(invokee: TypedAstNode, arguments: TypedAstNode?[])
@@ -493,6 +493,11 @@ type TypeError {
         lines.push(self._getCursorLine(self.position, contents))
         lines.push("Expected $expected, but $given $verbStr passed")
       }
+      TypeErrorKind.NoSuchOperator(leftTy, opToken, rightTy) => {
+        lines.push("Illegal operator")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("No operator '${opToken.kind.repr()}' exists between types ${leftTy.repr()} and ${rightTy.repr()}")
+      }
     }
 
     lines.join("\n")
@@ -538,6 +543,7 @@ enum TypeErrorKind {
   ParameterTypeMismatch(name: String?, expected: Type, given: Type)
   IllegalCallableType(ty: Type)
   WrongTypeArgumentArity(expected: Int, given: Int)
+  NoSuchOperator(leftTy: Type, opToken: Token, rightTy: Type)
 }
 
 type ParamDefaultValueContext {
@@ -1436,7 +1442,7 @@ export type Typechecker {
         Result.Ok(TypedAstNode(token: token, ty: Type(kind: kind), kind: TypedAstNodeKind.Literal(literal)))
       }
       AstNodeKind.Unary(node) => self._typecheckUnary(token, node)
-      AstNodeKind.Binary => todo(node.token.position, "binary expression")
+      AstNodeKind.Binary(node) => self._typecheckBinary(token, node)
       AstNodeKind.Grouped(inner) => {
         val expr = match self._typecheckExpression(inner, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
         Result.Ok(TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Grouped(expr)))
@@ -1494,6 +1500,147 @@ export type Typechecker {
     }
 
     Result.Ok(TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Unary(op: node.op, expr: expr)))
+  }
+
+  func _typecheckBinary(self, token: Token, node: BinaryAstNode): Result<TypedAstNode, TypeError> {
+    val left = match self._typecheckExpression(node.left, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    val right = match self._typecheckExpression(node.right, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    val handleCases: ((TypeKind, TypeKind, TypeKind)[]) => Result<TypedAstNode, TypeError> = (cases) => {
+      for _case in cases {
+        // TODO: destructuring
+        val lTy = _case[0]
+        val rTy = _case[1]
+        val outTy = _case[2]
+
+        if (lTy == TypeKind.Hole || (lTy == left.ty.kind && !left.ty.nullable)) && (rTy == TypeKind.Hole || (rTy == right.ty.kind && !right.ty.nullable)) {
+          return Result.Ok(TypedAstNode(token: token, ty: Type(kind: outTy), kind: TypedAstNodeKind.Binary(left, node.op, right)))
+        }
+      }
+
+      return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.NoSuchOperator(left.ty, token, right.ty)))
+    }
+
+    // TODO: combine match cases, this can be cleaned up a lot
+    match node.op {
+      BinaryOp.Add => {
+        handleCases([
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
+          (TypeKind.Hole, TypeKind.PrimitiveString, TypeKind.PrimitiveString),
+          (TypeKind.PrimitiveString, TypeKind.Hole, TypeKind.PrimitiveString),
+        ])
+      }
+      BinaryOp.AddEq => todo(token.position, "assignment binary ops")
+      BinaryOp.Sub => {
+        handleCases([
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
+        ])
+      }
+      BinaryOp.SubEq => todo(token.position, "assignment binary ops")
+      BinaryOp.Mul => {
+        handleCases([
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
+        ])
+      }
+      BinaryOp.MulEq => todo(token.position, "assignment binary ops")
+      BinaryOp.Div => {
+        handleCases([
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
+        ])
+      }
+      BinaryOp.DivEq => todo(token.position, "assignment binary ops")
+      BinaryOp.Mod => {
+        handleCases([
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
+        ])
+      }
+      BinaryOp.ModEq => todo(token.position, "assignment binary ops")
+      BinaryOp.Pow => {
+        handleCases([
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
+        ])
+      }
+      BinaryOp.And => {
+        handleCases([
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt),
+          (TypeKind.PrimitiveBool, TypeKind.PrimitiveBool, TypeKind.PrimitiveBool),
+        ])
+      }
+      BinaryOp.AndEq => todo(token.position, "assignment binary ops")
+      BinaryOp.Or => {
+        handleCases([
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt),
+          (TypeKind.PrimitiveBool, TypeKind.PrimitiveBool, TypeKind.PrimitiveBool),
+        ])
+      }
+      BinaryOp.OrEq => todo(token.position, "assignment binary ops")
+      BinaryOp.Xor => {
+        handleCases([
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt),
+          (TypeKind.PrimitiveBool, TypeKind.PrimitiveBool, TypeKind.PrimitiveBool),
+        ])
+      }
+      BinaryOp.Coalesce => todo(token.position, "coalesce operator")
+      BinaryOp.CoalesceEq => todo(token.position, "assignment binary ops")
+      BinaryOp.Eq => todo(token.position, "eq operator")
+      BinaryOp.Neq => todo(token.position, "neq operator")
+      BinaryOp.LT => {
+        handleCases([
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
+        ])
+      }
+      BinaryOp.LTE => {
+        handleCases([
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
+        ])
+      }
+      BinaryOp.Shl => {
+        handleCases([(TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt)])
+      }
+      BinaryOp.GT => {
+        handleCases([
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
+        ])
+      }
+      BinaryOp.GTE => {
+        handleCases([
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
+          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
+          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
+        ])
+      }
+      BinaryOp.Shr => {
+        handleCases([(TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt)])
+      }
+    }
   }
 
   func _typecheckIdentifier(self, token: Token, kind: IdentifierKind, typeHint: Type?): Result<TypedAstNode, TypeError> {

@@ -205,6 +205,14 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/unary_error_minus.2.abra", "typechecker/unary_error_minus.2.out")
         .add_test_vs_txt("typechecker/unary_error_neg.1.abra", "typechecker/unary_error_neg.1.out")
         .add_test_vs_txt("typechecker/unary_error_neg.2.abra", "typechecker/unary_error_neg.2.out")
+        // Binary
+        .add_test_vs_txt("typechecker/binary/plus_error.1.abra", "typechecker/binary/plus_error.1.out")
+        .add_test_vs_txt("typechecker/binary/plus_error.2.abra", "typechecker/binary/plus_error.2.out")
+        .add_test_vs_txt("typechecker/binary/plus_error.3.abra", "typechecker/binary/plus_error.3.out")
+        .add_test_vs_txt("typechecker/binary/plus_int_int.abra", "typechecker/binary/plus_int_int.out.json")
+        .add_test_vs_txt("typechecker/binary/plus_int_float.abra", "typechecker/binary/plus_int_float.out.json")
+        .add_test_vs_txt("typechecker/binary/plus_float_float.abra", "typechecker/binary/plus_float_float.out.json")
+        .add_test_vs_txt("typechecker/binary/plus_float_int.abra", "typechecker/binary/plus_float_int.out.json")
         // Identifier
         .add_test_vs_txt("typechecker/identifier.abra", "typechecker/identifier.out.json")
         .add_test_vs_txt("typechecker/identifier_error_discard.abra", "typechecker/identifier_error_discard.out")

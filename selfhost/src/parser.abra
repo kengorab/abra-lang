@@ -35,7 +35,7 @@ export type UnaryAstNode {
   expr: AstNode
 }
 
-enum BinaryOp {
+export enum BinaryOp {
   Add
   AddEq
   Sub
@@ -76,7 +76,7 @@ enum BinaryOp {
   }
 }
 
-type BinaryAstNode {
+export type BinaryAstNode {
   left: AstNode
   op: BinaryOp
   right: AstNode
