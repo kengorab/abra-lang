@@ -1,0 +1,3 @@
+val a: Int? = 123
+a == None
+a == 456

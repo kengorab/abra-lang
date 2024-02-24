@@ -1,0 +1,160 @@
+{
+  "id": 1,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "a", "position": [1, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "a", "position": [1, 5] },
+            "mutable": false,
+            "type": {
+              "nullable": true,
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [1, 15],
+            "kind": {
+              "name": "Int",
+              "value": 123
+            }
+          },
+          "type": {
+            "nullable": true,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 123
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [2, 3],
+        "kind": {
+          "name": "Eq"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Bool"
+      },
+      "node": {
+        "kind": "binary",
+        "op": "BinaryOp.Eq",
+        "left": {
+          "token": {
+            "position": [2, 1],
+            "kind": {
+              "name": "Ident",
+              "value": "a"
+            }
+          },
+          "type": {
+            "nullable": true,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "a"
+          }
+        },
+        "right": {
+          "token": {
+            "position": [2, 6],
+            "kind": {
+              "name": "None"
+            }
+          },
+          "type": {
+            "nullable": true,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "None"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [3, 3],
+        "kind": {
+          "name": "Eq"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Bool"
+      },
+      "node": {
+        "kind": "binary",
+        "op": "BinaryOp.Eq",
+        "left": {
+          "token": {
+            "position": [3, 1],
+            "kind": {
+              "name": "Ident",
+              "value": "a"
+            }
+          },
+          "type": {
+            "nullable": true,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "a"
+          }
+        },
+        "right": {
+          "token": {
+            "position": [3, 6],
+            "kind": {
+              "name": "Int",
+              "value": 456
+            }
+          },
+          "type": {
+            "nullable": true,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 456
+          }
+        }
+      }
+    }
+  ]
+}

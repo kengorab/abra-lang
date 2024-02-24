@@ -133,6 +133,16 @@ export type Jsonifier {
         self.printNode(expr)
         println()
       }
+      TypedAstNodeKind.Binary(left, op, right) => {
+        self.println("\"kind\": \"binary\",")
+        self.println("\"op\": \"$op\",")
+        self.print("\"left\": ")
+        self.printNode(left)
+        println(",")
+        self.print("\"right\": ")
+        self.printNode(right)
+        println()
+      }
       // TypedAstNodeKind.Binary => { }
       TypedAstNodeKind.Grouped(inner) => {
         self.println("\"kind\": \"grouped\",")
