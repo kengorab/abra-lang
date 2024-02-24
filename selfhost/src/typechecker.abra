@@ -493,10 +493,10 @@ type TypeError {
         lines.push(self._getCursorLine(self.position, contents))
         lines.push("Expected $expected, but $given $verbStr passed")
       }
-      TypeErrorKind.NoSuchOperator(leftTy, opToken, rightTy) => {
+      TypeErrorKind.NoSuchOperator(leftTy, op, rightTy) => {
         lines.push("Illegal operator")
         lines.push(self._getCursorLine(self.position, contents))
-        lines.push("No operator '${opToken.kind.repr()}' exists between types ${leftTy.repr()} and ${rightTy.repr()}")
+        lines.push("No operator '${op.repr()}' exists between types ${leftTy.repr()} and ${rightTy.repr()}")
       }
     }
 
@@ -543,7 +543,7 @@ enum TypeErrorKind {
   ParameterTypeMismatch(name: String?, expected: Type, given: Type)
   IllegalCallableType(ty: Type)
   WrongTypeArgumentArity(expected: Int, given: Int)
-  NoSuchOperator(leftTy: Type, opToken: Token, rightTy: Type)
+  NoSuchOperator(leftTy: Type, op: BinaryOp, rightTy: Type)
 }
 
 type ParamDefaultValueContext {
@@ -1518,8 +1518,31 @@ export type Typechecker {
         }
       }
 
-      return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.NoSuchOperator(left.ty, token, right.ty)))
+      return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.NoSuchOperator(left.ty, node.op, right.ty)))
     }
+
+    val standardArithmeticCases = [
+      (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt),
+      (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
+      (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
+      (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
+    ]
+    val allFloatArithmeticCases = [
+      (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
+      (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
+      (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
+      (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
+    ]
+    val boolOpCases = [
+      (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt),
+      (TypeKind.PrimitiveBool, TypeKind.PrimitiveBool, TypeKind.PrimitiveBool),
+    ]
+    val comparisonCases = [
+      (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
+      (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
+      (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
+      (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
+    ]
 
     // TODO: combine match cases, this can be cleaned up a lot
     match node.op {
@@ -1534,112 +1557,30 @@ export type Typechecker {
         ])
       }
       BinaryOp.AddEq => todo(token.position, "assignment binary ops")
-      BinaryOp.Sub => {
-        handleCases([
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
-        ])
-      }
+      BinaryOp.Sub => handleCases(standardArithmeticCases)
       BinaryOp.SubEq => todo(token.position, "assignment binary ops")
-      BinaryOp.Mul => {
-        handleCases([
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
-        ])
-      }
+      BinaryOp.Mul => handleCases(standardArithmeticCases)
       BinaryOp.MulEq => todo(token.position, "assignment binary ops")
-      BinaryOp.Div => {
-        handleCases([
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
-        ])
-      }
+      BinaryOp.Div => handleCases(allFloatArithmeticCases)
       BinaryOp.DivEq => todo(token.position, "assignment binary ops")
-      BinaryOp.Mod => {
-        handleCases([
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
-        ])
-      }
+      BinaryOp.Mod => handleCases(standardArithmeticCases)
       BinaryOp.ModEq => todo(token.position, "assignment binary ops")
-      BinaryOp.Pow => {
-        handleCases([
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat),
-        ])
-      }
-      BinaryOp.And => {
-        handleCases([
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt),
-          (TypeKind.PrimitiveBool, TypeKind.PrimitiveBool, TypeKind.PrimitiveBool),
-        ])
-      }
+      BinaryOp.Pow => handleCases(allFloatArithmeticCases)
+      BinaryOp.And => handleCases(boolOpCases)
       BinaryOp.AndEq => todo(token.position, "assignment binary ops")
-      BinaryOp.Or => {
-        handleCases([
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt),
-          (TypeKind.PrimitiveBool, TypeKind.PrimitiveBool, TypeKind.PrimitiveBool),
-        ])
-      }
+      BinaryOp.Or => handleCases(boolOpCases)
       BinaryOp.OrEq => todo(token.position, "assignment binary ops")
-      BinaryOp.Xor => {
-        handleCases([
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt),
-          (TypeKind.PrimitiveBool, TypeKind.PrimitiveBool, TypeKind.PrimitiveBool),
-        ])
-      }
+      BinaryOp.Xor => handleCases(boolOpCases)
       BinaryOp.Coalesce => todo(token.position, "coalesce operator")
       BinaryOp.CoalesceEq => todo(token.position, "assignment binary ops")
       BinaryOp.Eq => todo(token.position, "eq operator")
       BinaryOp.Neq => todo(token.position, "neq operator")
-      BinaryOp.LT => {
-        handleCases([
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
-        ])
-      }
-      BinaryOp.LTE => {
-        handleCases([
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
-        ])
-      }
-      BinaryOp.Shl => {
-        handleCases([(TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt)])
-      }
-      BinaryOp.GT => {
-        handleCases([
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
-        ])
-      }
-      BinaryOp.GTE => {
-        handleCases([
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveBool),
-          (TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
-          (TypeKind.PrimitiveFloat, TypeKind.PrimitiveFloat, TypeKind.PrimitiveBool),
-        ])
-      }
-      BinaryOp.Shr => {
-        handleCases([(TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt)])
-      }
+      BinaryOp.LT => handleCases(comparisonCases)
+      BinaryOp.LTE => handleCases(comparisonCases)
+      BinaryOp.Shl => handleCases([(TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt)])
+      BinaryOp.GT => handleCases(comparisonCases)
+      BinaryOp.GTE => handleCases(comparisonCases)
+      BinaryOp.Shr => handleCases([(TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt)])
     }
   }
 

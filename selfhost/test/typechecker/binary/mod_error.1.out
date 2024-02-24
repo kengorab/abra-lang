@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:1:6
+Illegal operator
+  |  true % 123
+          ^
+No operator '%' exists between types Bool and Int

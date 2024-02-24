@@ -74,6 +74,35 @@ export enum BinaryOp {
     BinaryOp.CoalesceEq => true
     _ => false
   }
+
+  func repr(self): String = match self {
+    BinaryOp.Add => "+"
+    BinaryOp.AddEq => "+="
+    BinaryOp.Sub => "-"
+    BinaryOp.SubEq => "-="
+    BinaryOp.Mul => "*"
+    BinaryOp.MulEq => "*="
+    BinaryOp.Div => "/"
+    BinaryOp.DivEq => "/="
+    BinaryOp.Mod => "%"
+    BinaryOp.ModEq => "%="
+    BinaryOp.Pow => "**"
+    BinaryOp.And => "&&"
+    BinaryOp.AndEq => "&&="
+    BinaryOp.Or => "||"
+    BinaryOp.OrEq => "||="
+    BinaryOp.Xor => "^"
+    BinaryOp.Coalesce => "?:"
+    BinaryOp.CoalesceEq => "?:="
+    BinaryOp.Eq => "=="
+    BinaryOp.Neq => "!="
+    BinaryOp.LT => "<"
+    BinaryOp.LTE => "<="
+    BinaryOp.Shl => "<<"
+    BinaryOp.GT => ">"
+    BinaryOp.GTE => ">="
+    BinaryOp.Shr => ">>"
+  }
 }
 
 export type BinaryAstNode {

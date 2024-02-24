@@ -4,31 +4,31 @@
   "code": [
     {
       "token": {
-        "position": [1, 5],
+        "position": [1, 3],
         "kind": {
-          "name": "Plus"
+          "name": "GT"
         }
       },
       "type": {
         "nullable": false,
         "kind": "primitive",
-        "primitive": "Float"
+        "primitive": "Int"
       },
       "node": {
         "kind": "binary",
-        "op": "BinaryOp.Add",
+        "op": "BinaryOp.Shr",
         "left": {
           "token": {
             "position": [1, 1],
             "kind": {
-              "name": "Float",
+              "name": "Int",
               "value": 1
             }
           },
           "type": {
             "nullable": false,
             "kind": "primitive",
-            "primitive": "Float"
+            "primitive": "Int"
           },
           "node": {
             "kind": "literal",
@@ -37,7 +37,7 @@
         },
         "right": {
           "token": {
-            "position": [1, 7],
+            "position": [1, 6],
             "kind": {
               "name": "Int",
               "value": 123
