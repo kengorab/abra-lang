@@ -1526,6 +1526,21 @@ export type Typechecker {
       return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.NoSuchOperator(left.ty, node.op, right.ty)))
     }
 
+    val handleEquality: () => Result<TypedAstNode, TypeError> = () => {
+      val left = match self._typecheckExpression(node.left, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      val right = match self._typecheckExpression(node.right, left.ty) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+      if !left.ty.nullable && right.ty.nullable {
+        return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.NoSuchOperator(left.ty, node.op, right.ty)))
+      }
+
+      if !self._typeSatisfiesRequired(ty: right.ty, required: left.ty) {
+        return Result.Err(TypeError(position: right.token.position, kind: TypeErrorKind.TypeMismatch([left.ty], right.ty)))
+      }
+
+      Result.Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveBool), kind: TypedAstNodeKind.Binary(left, node.op, right)))
+    }
+
     val standardArithmeticCases = [
       (TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt),
       (TypeKind.PrimitiveFloat, TypeKind.PrimitiveInt, TypeKind.PrimitiveFloat),
@@ -1597,8 +1612,8 @@ export type Typechecker {
         Result.Ok(TypedAstNode(token: token, ty: right.ty, kind: TypedAstNodeKind.Binary(left, node.op, right)))
       }
       BinaryOp.CoalesceEq => todo(token.position, "assignment binary ops")
-      BinaryOp.Eq => todo(token.position, "eq operator")
-      BinaryOp.Neq => todo(token.position, "neq operator")
+      BinaryOp.Eq => handleEquality()
+      BinaryOp.Neq => handleEquality()
       BinaryOp.LT => handleCases(comparisonCases)
       BinaryOp.LTE => handleCases(comparisonCases)
       BinaryOp.Shl => handleCases([(TypeKind.PrimitiveInt, TypeKind.PrimitiveInt, TypeKind.PrimitiveInt)])
