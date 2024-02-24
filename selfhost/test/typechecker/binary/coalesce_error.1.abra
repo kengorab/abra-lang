@@ -1,0 +1,2 @@
+val a: Int? = 123
+a ?: "foo"
