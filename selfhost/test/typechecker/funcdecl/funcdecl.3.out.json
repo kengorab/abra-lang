@@ -71,6 +71,7 @@
             "functions": [],
             "types": []
           },
+          "kind": "FunctionKind.Standalone",
           "typeParameters": [],
           "parameters": [
             {

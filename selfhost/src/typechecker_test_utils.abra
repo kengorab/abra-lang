@@ -1,6 +1,6 @@
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 import LiteralAstNode, IdentifierKind from "./parser"
-import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope from "./typechecker"
+import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct from "./typechecker"
 
 export type Jsonifier {
   indentLevel: Int = 0
@@ -69,7 +69,7 @@ export type Jsonifier {
       }
       TypeKind.Instance(struct, generics) => {
         self.println("\"kind\": \"instance\",")
-        self.println("\"struct\": { \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.name}\" },")
+        self.println("\"struct\": { \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.label.name}\" },")
         self.print("\"typeParams\": ")
         self.array(generics, t => self.printType(t))
         println()
@@ -95,8 +95,59 @@ export type Jsonifier {
         self.printType(ret)
         println()
       }
+      TypeKind.Struct(struct) => {
+        self.println("\"kind\": \"struct\",")
+        self.print("\"struct\": ")
+        self.printStruct(struct: struct, abridged: true)
+        println()
+      }
       TypeKind.Hole => self.println("\"kind\": \"hole\"")
     }
+
+    self.indentDec()
+    self.print("}")
+  }
+
+  func printStruct(self, struct: Struct, abridged: Bool) {
+    if abridged {
+      print("{ \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.label.name}\" }")
+      return
+    }
+
+    println("{")
+    self.indentInc()
+
+    self.println("\"moduleId\": ${struct.moduleId},")
+
+    self.print("\"name\": ")
+    printLabelAsJson(struct.label)
+    println(",")
+
+    self.print("\"typeParams\": ")
+    self.array(struct.typeParams, p => print("\"$p\""))
+    println(",")
+
+    self.print("\"fields\": ")
+    self.array(struct.fields, f => {
+      println("{")
+      self.indentInc()
+
+      self.print("\"name\": ")
+      printLabelAsJson(f.name)
+      println(",")
+
+      self.print("\"type\": ")
+      self.printType(f.ty)
+      println(",")
+
+      self.print("\"initializer\": ")
+      self.opt(f.initializer, n => self.printNode(n))
+      println()
+
+      self.indentDec()
+      self.print("}")
+    })
+    println()
 
     self.indentDec()
     self.print("}")
@@ -293,6 +344,12 @@ export type Jsonifier {
         self.printFunc(fn)
         println()
       }
+      TypedAstNodeKind.TypeDeclaration(struct) => {
+        self.println("\"kind\": \"typeDeclaration\",")
+        self.print("\"struct\": ")
+        self.printStruct(struct: struct, abridged: false)
+        println()
+      }
       TypedAstNodeKind.Break => {
         self.println("\"kind\": \"break\"")
       }
@@ -345,6 +402,8 @@ export type Jsonifier {
     self.print("\"scope\": ")
     self.printScope(function.scope)
     println(",")
+
+    self.println("\"kind\": \"${function.kind}\",")
 
     self.print("\"typeParameters\": ")
     self.array(function.typeParams, typeParam => {
