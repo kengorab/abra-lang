@@ -227,6 +227,14 @@ val one = 1
   println(arr.map((i, _, x = "!") => "$i$x"))
 })()
 
+// Array#flatMap
+(() => {
+  val arr = [1, 2, 3, 4]
+
+  /// Expect: [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
+  println(arr.flatMap(i => Array.fill(i, i)))
+})()
+
 // Array#filter
 func isEven(i: Int): Bool = i % 2 == 0
 (() => {
@@ -376,4 +384,16 @@ func printItem(item: Int) = println(item)
   val strArr = "The quick brown fox jumped over the lazy dog".split(" ")
   /// Expect: { 3: [The, fox, the, dog], 4: [over, lazy], 5: [quick, brown], 6: [jumped] }
   println(strArr.indexBy(s => s.length))
+})()
+
+// Array#asSet
+(() => {
+  val empty: String[] = []
+  val emptySet: Set<String> = #{}
+  /// Expect: true
+  println(empty.asSet() == emptySet)
+
+  val arr = [1, 2, 3, 4, 3, 2, 1]
+  /// Expect: true
+  println(arr.asSet() == #{1, 2, 3, 4})
 })()

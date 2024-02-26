@@ -164,6 +164,22 @@
   println("a\ns\nd\nf".lines())
 })()
 
+// String#startsWith
+(() => {
+  /// Expect: true
+  println("".startsWith(""))
+  /// Expect: true
+  println("hello".startsWith(""))
+  /// Expect: true
+  println("hello".startsWith("he"))
+  /// Expect: true
+  println("hello".startsWith("hello"))
+  /// Expect: false
+  println("hello".startsWith("hex"))
+  /// Expect: false
+  println("hello".startsWith("hhello"))
+})()
+
 // String#endsWith
 (() => {
   /// Expect: true
