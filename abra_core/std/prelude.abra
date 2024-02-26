@@ -284,6 +284,21 @@ type String {
   @Stub func parseInt(self, radix = 10): Int?
   @Stub func parseFloat(self): Float?
 
+  func startsWith(self, prefix: String): Bool {
+    if self.length < prefix.length return false
+    if prefix.isEmpty() return true
+
+    var i = 0
+    while i < prefix.length {
+      val selfCh = self._buffer.offset(i).load().asInt()
+      val otherCh = prefix._buffer.offset(i).load().asInt()
+      if selfCh != otherCh return false
+      i += 1
+    }
+
+    true
+  }
+
   func endsWith(self, suffix: String): Bool {
     if self.length < suffix.length return false
     if suffix.isEmpty() return true
@@ -493,6 +508,19 @@ type Array<T> {
     newArray
   }
 
+  func flatMap<U>(self, fn: (T, Int) => U[]): U[] {
+    val newArray: U[] = Array.withCapacity(self.length)
+    for i in range(0, self.length) {
+      val item = self._buffer.offset(i).load()
+      val result = fn(item, i)
+      for resultItem in result {
+        newArray.push(resultItem)
+      }
+    }
+
+    newArray
+  }
+
   func filter(self, fn: (T, Int) => Bool): T[] {
     val newArray: T[] = Array.withCapacity(self.length)
     for i in range(0, self.length) {
@@ -624,7 +652,16 @@ type Array<T> {
     map
   }
 
-  @Stub func asSet(self): Set<T>
+  func asSet(self): Set<T> {
+    val set: Set<T> = Set.new()
+
+    for i in range(0, self.length) {
+      val item = self._buffer.offset(i).load()
+      set.insert(item)
+    }
+
+    set
+  }
 
   func get(self, index: Int): T? {
     val idx = if index < 0 index + self.length else index
@@ -787,6 +824,10 @@ type Set<T> {
     }
 
     arr
+  }
+
+  func join(self, joiner = ""): String {
+    self.asArray().join(joiner)
   }
 
   func union(self, other: Set<T>): Set<T> {

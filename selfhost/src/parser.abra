@@ -213,7 +213,7 @@ type TypeField {
   initializer: AstNode?
 }
 
-type TypeDeclarationNode {
+export type TypeDeclarationNode {
   decorators: DecoratorNode[]
   exportToken: Token?
   name: Label
@@ -943,7 +943,9 @@ export type Parser {
   func _parseFunctionParameters(self, allowSelf: Bool): Result<FunctionParam[], ParseError> {
     self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: paramIdx => {
       var token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      var starToken: Token? = None
       val isVariadic = if token.kind == TokenKind.Star {
+        starToken = token
         token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
         true
       } else {
@@ -953,11 +955,17 @@ export type Parser {
       val label = match token.kind {
         TokenKind.Ident(name) => Label(name: name, position: token.position)
         TokenKind.Self => if allowSelf && paramIdx == 0 {
+          if starToken |token| return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+
           Label(name: "self", position: token.position)
         } else {
           return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
         }
         _ => return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
+      }
+
+      if label.name == "self" {
+        return Result.Ok(FunctionParam(label: label, isVariadic: false, typeAnnotation: None, defaultValue: None))
       }
 
       var nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }

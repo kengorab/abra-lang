@@ -40,6 +40,7 @@
               }
             ]
           },
+          "kind": "FunctionKind.Standalone",
           "typeParameters": [
             {
               "label": { "name": "T", "position": [1, 10] },

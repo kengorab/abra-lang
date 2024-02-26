@@ -24,6 +24,7 @@
             "functions": [],
             "types": []
           },
+          "kind": "FunctionKind.Standalone",
           "typeParameters": [],
           "parameters": [],
           "returnType": {
@@ -89,6 +90,7 @@
             "functions": [],
             "types": []
           },
+          "kind": "FunctionKind.Standalone",
           "typeParameters": [],
           "parameters": [],
           "returnType": {
@@ -225,6 +227,7 @@
             "functions": [],
             "types": []
           },
+          "kind": "FunctionKind.Standalone",
           "typeParameters": [],
           "parameters": [],
           "returnType": {
@@ -361,6 +364,7 @@
             "functions": [],
             "types": []
           },
+          "kind": "FunctionKind.Standalone",
           "typeParameters": [],
           "parameters": [],
           "returnType": {
@@ -497,6 +501,7 @@
             "functions": [],
             "types": []
           },
+          "kind": "FunctionKind.Standalone",
           "typeParameters": [],
           "parameters": [],
           "returnType": {

@@ -1,0 +1,8 @@
+type Foo {
+  a: Int
+  b: String
+
+  func foo(self): Int = 123
+}
+
+var f: Foo

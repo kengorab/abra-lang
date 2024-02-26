@@ -43,6 +43,7 @@
             "functions": [],
             "types": []
           },
+          "kind": "FunctionKind.Standalone",
           "typeParameters": [],
           "parameters": [
             {
@@ -189,6 +190,7 @@
             "functions": [],
             "types": []
           },
+          "kind": "FunctionKind.Standalone",
           "typeParameters": [],
           "parameters": [],
           "returnType": {

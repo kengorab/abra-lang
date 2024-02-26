@@ -175,6 +175,9 @@ fn parser_tests() {
         .add_test_vs_txt("parser/functiondecl_error_empty_typeparams.abra", "parser/functiondecl_error_empty_typeparams.out")
         .add_test_vs_txt("parser/functiondecl_error_typeparam_invalid.abra", "parser/functiondecl_error_typeparam_invalid.out")
         .add_test_vs_txt("parser/functiondecl_error_no_body.abra", "parser/functiondecl_error_no_body.out")
+        .add_test_vs_txt("parser/functiondecl_error_self_default_value.abra", "parser/functiondecl_error_self_default_value.out")
+        .add_test_vs_txt("parser/functiondecl_error_self_type_annotation.abra", "parser/functiondecl_error_self_type_annotation.out")
+        .add_test_vs_txt("parser/functiondecl_error_self_variadic.abra", "parser/functiondecl_error_self_variadic.out")
         // Type declaration
         .add_test_vs_txt("parser/typedecl.abra", "parser/typedecl.out.json")
         .add_test_vs_txt("parser/typedecl_error_exporting_method.abra", "parser/typedecl_error_exporting_method.out")
@@ -339,7 +342,6 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/invocation/generics_error_unfilled_holes.abra", "typechecker/invocation/generics_error_unfilled_holes.out")
         .add_test_vs_txt("typechecker/invocation/generics_given_error_type_mismatch.abra", "typechecker/invocation/generics_given_error_type_mismatch.out")
 
-
         // Type identifiers
         .add_test_vs_txt("typechecker/typeidentifier/error_typearg_unknown.abra", "typechecker/typeidentifier/error_typearg_unknown.out")
         .add_test_vs_txt("typechecker/typeidentifier/error_typeargs_missing.abra", "typechecker/typeidentifier/error_typeargs_missing.out")
@@ -422,6 +424,12 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/funcdecl/default_param_value_call.7.abra", "typechecker/funcdecl/default_param_value_call.7.out.json")
         .add_test_vs_txt("typechecker/funcdecl/default_param_value_call.8.abra", "typechecker/funcdecl/default_param_value_call.8.out.json")
         .add_test_vs_txt("typechecker/funcdecl/default_param_value_call.9.abra", "typechecker/funcdecl/default_param_value_call.9.out.json")
+        .add_test_vs_txt("typechecker/funcdecl/error_self_standalone.abra", "typechecker/funcdecl/error_self_standalone.out")
+        // Type declaration
+        .add_test_vs_txt("typechecker/typedecl/error_duplicate_field.abra", "typechecker/typedecl/error_duplicate_field.out")
+        .add_test_vs_txt("typechecker/typedecl/error_method_bad_self_position.abra", "typechecker/typedecl/error_method_bad_self_position.out")
+        .add_test_vs_txt("typechecker/typedecl/typedecl.1.abra", "typechecker/typedecl/typedecl.1.out.json")
+
         // Returns
         .add_test_vs_txt("typechecker/return/return.1.abra", "typechecker/return/return.1.out.json")
         .add_test_vs_txt("typechecker/return/return.2.abra", "typechecker/return/return.2.out.json")
