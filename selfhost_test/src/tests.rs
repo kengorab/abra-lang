@@ -429,6 +429,11 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/typedecl/error_duplicate_field.abra", "typechecker/typedecl/error_duplicate_field.out")
         .add_test_vs_txt("typechecker/typedecl/error_method_bad_self_position.abra", "typechecker/typedecl/error_method_bad_self_position.out")
         .add_test_vs_txt("typechecker/typedecl/typedecl.1.abra", "typechecker/typedecl/typedecl.1.out.json")
+        .add_test_vs_txt("typechecker/typedecl/error_field_initializer_type_mismatch.abra", "typechecker/typedecl/error_field_initializer_type_mismatch.out")
+        .add_test_vs_txt("typechecker/typedecl/error_invalid_eq_signature.1.abra", "typechecker/typedecl/error_invalid_eq_signature.1.out")
+        .add_test_vs_txt("typechecker/typedecl/error_invalid_eq_signature.2.abra", "typechecker/typedecl/error_invalid_eq_signature.2.out")
+        .add_test_vs_txt("typechecker/typedecl/error_invalid_hash_signature.abra", "typechecker/typedecl/error_invalid_hash_signature.out")
+        .add_test_vs_txt("typechecker/typedecl/error_invalid_tostring_signature.abra", "typechecker/typedecl/error_invalid_tostring_signature.out")
 
         // Returns
         .add_test_vs_txt("typechecker/return/return.1.abra", "typechecker/return/return.1.out.json")

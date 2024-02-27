@@ -147,6 +147,14 @@ export type Jsonifier {
       self.indentDec()
       self.print("}")
     })
+    println(",")
+
+    self.print("\"instanceMethods\": ")
+    self.array(struct.instanceMethods, m => self.printFunc(m))
+    println(",")
+
+    self.print("\"staticMethods\": ")
+    self.array(struct.staticMethods, m => self.printFunc(m))
     println()
 
     self.indentDec()
@@ -402,6 +410,10 @@ export type Jsonifier {
     self.print("\"scope\": ")
     self.printScope(function.scope)
     println(",")
+
+    if function.isGenerated {
+      self.println("\"isGenerated\": ${function.isGenerated},")
+    }
 
     self.println("\"kind\": \"${function.kind}\",")
 
