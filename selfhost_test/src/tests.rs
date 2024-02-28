@@ -434,6 +434,10 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/typedecl/error_invalid_eq_signature.2.abra", "typechecker/typedecl/error_invalid_eq_signature.2.out")
         .add_test_vs_txt("typechecker/typedecl/error_invalid_hash_signature.abra", "typechecker/typedecl/error_invalid_hash_signature.out")
         .add_test_vs_txt("typechecker/typedecl/error_invalid_tostring_signature.abra", "typechecker/typedecl/error_invalid_tostring_signature.out")
+        .add_test_vs_txt("typechecker/typedecl/error_duplicate_type_func.abra", "typechecker/typedecl/error_duplicate_type_func.out")
+        .add_test_vs_txt("typechecker/typedecl/error_duplicate_type_type.abra", "typechecker/typedecl/error_duplicate_type_type.out")
+        .add_test_vs_txt("typechecker/typedecl/typedecl.2.abra", "typechecker/typedecl/typedecl.2.out.json")
+
 
         // Returns
         .add_test_vs_txt("typechecker/return/return.1.abra", "typechecker/return/return.1.out.json")

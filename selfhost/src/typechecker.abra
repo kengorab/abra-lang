@@ -654,6 +654,12 @@ export type Typechecker {
       }
     }
 
+    for s in scope.structs {
+      if s.label.name == label.name {
+        return TypeError(position: label.position, kind: TypeErrorKind.DuplicateName(original: s.label))
+      }
+    }
+
     None
   }
 
