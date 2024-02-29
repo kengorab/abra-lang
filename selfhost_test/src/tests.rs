@@ -341,6 +341,14 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/invocation/generics_error_type_mismatch.abra", "typechecker/invocation/generics_error_type_mismatch.out")
         .add_test_vs_txt("typechecker/invocation/generics_error_unfilled_holes.abra", "typechecker/invocation/generics_error_unfilled_holes.out")
         .add_test_vs_txt("typechecker/invocation/generics_given_error_type_mismatch.abra", "typechecker/invocation/generics_given_error_type_mismatch.out")
+        // Accessor
+        .add_test_vs_txt("typechecker/accessor/accessor.1.abra", "typechecker/accessor/accessor.1.out.json")
+        .add_test_vs_txt("typechecker/accessor/error_unknown_field.abra", "typechecker/accessor/error_unknown_field.out")
+        .add_test_vs_txt("typechecker/accessor/error_unknown_field_fn.abra", "typechecker/accessor/error_unknown_field_fn.out")
+        .add_test_vs_txt("typechecker/accessor/error_unknown_field_opt_known.abra", "typechecker/accessor/error_unknown_field_opt_known.out")
+        .add_test_vs_txt("typechecker/accessor/error_unknown_field_opt_unknown.abra", "typechecker/accessor/error_unknown_field_opt_unknown.out")
+        .add_test_vs_txt("typechecker/accessor/error_unknown_field_unit.abra", "typechecker/accessor/error_unknown_field_unit.out")
+        .add_test_vs_txt("typechecker/accessor/error_unnecessary_optsafe.abra", "typechecker/accessor/error_unnecessary_optsafe.out")
 
         // Type identifiers
         .add_test_vs_txt("typechecker/typeidentifier/error_typearg_unknown.abra", "typechecker/typeidentifier/error_typearg_unknown.out")

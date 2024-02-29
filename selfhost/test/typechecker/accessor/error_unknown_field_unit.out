@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:3:8
+Unknown field 'foo'
+  |  noop().foo
+            ^
+No field 'foo' found on type Unit

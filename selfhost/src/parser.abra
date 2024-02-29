@@ -123,7 +123,7 @@ export type Label {
   position: Position
 }
 
-type AccessorAstNode {
+export type AccessorAstNode {
   root: AstNode
   path: (Token, Label)[]
 }

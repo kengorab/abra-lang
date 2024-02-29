@@ -148,19 +148,7 @@
               },
               "kind": "FunctionKind.InstanceMethod",
               "typeParameters": [],
-              "parameters": [
-                {
-                  "label": { "name": "self", "position": [5, 12] },
-                  "type": {
-                    "nullable": false,
-                    "kind": "instance",
-                    "struct": { "moduleId": 1, "name": "Foo" },
-                    "typeParams": []
-                  },
-                  "defaultValue": null,
-                  "isVariadic": false
-                }
-              ],
+              "parameters": [],
               "returnType": {
                 "nullable": false,
                 "kind": "primitive",
@@ -254,8 +242,9 @@
             "mutable": true,
             "type": {
               "nullable": false,
-              "kind": "struct",
-              "struct": { "moduleId": 1, "name": "Foo" }
+              "kind": "instance",
+              "struct": { "moduleId": 1, "name": "Foo" },
+              "typeParams": []
             }
           }
         ],

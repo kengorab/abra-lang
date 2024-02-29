@@ -200,17 +200,6 @@
               "typeParameters": [],
               "parameters": [
                 {
-                  "label": { "name": "self", "position": [4, 12] },
-                  "type": {
-                    "nullable": false,
-                    "kind": "instance",
-                    "struct": { "moduleId": 1, "name": "Foo" },
-                    "typeParams": []
-                  },
-                  "defaultValue": null,
-                  "isVariadic": false
-                },
-                {
                   "label": { "name": "s", "position": [4, 18] },
                   "type": {
                     "nullable": false,
@@ -452,8 +441,9 @@
             "mutable": true,
             "type": {
               "nullable": false,
-              "kind": "struct",
-              "struct": { "moduleId": 1, "name": "Foo" }
+              "kind": "instance",
+              "struct": { "moduleId": 1, "name": "Foo" },
+              "typeParams": []
             }
           }
         ],

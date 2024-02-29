@@ -1,6 +1,6 @@
 import "fs" as fs
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
-import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode from "./parser"
+import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, AccessorAstNode from "./parser"
 
 enum TokenizeAndParseError {
   ReadFileError(path: String)
@@ -269,6 +269,7 @@ export enum TypedAstNodeKind {
   Binary(left: TypedAstNode, op: BinaryOp, right: TypedAstNode)
   Grouped(inner: TypedAstNode)
   Identifier(kind: IdentifierKind)
+  Accessor(root: TypedAstNode, path: AccessorPathSegment[], tail: AccessorPathSegment)
   Invocation(invokee: TypedAstNode, arguments: TypedAstNode?[])
   Array(items: TypedAstNode[])
   If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], typedElseBlock: TypedAstNode[])
@@ -282,6 +283,11 @@ export enum TypedAstNodeKind {
   Return(expr: TypedAstNode?)
 
   Placeholder
+}
+
+export enum AccessorPathSegment {
+  Method(fn: Function)
+  Field(f: Field)
 }
 
 type TypecheckerError {
@@ -367,6 +373,22 @@ type TypeError {
           lines.push("The '_' identifier is a special name used to discard values, and it cannot be referenced")
         } else {
           lines.push("No $kind with that name is visible in current scope")
+        }
+      }
+      TypeErrorKind.UnknownField(ty, name, isPresentOnNonNullable) => {
+        lines.push("Unknown field '$name'")
+        lines.push(self._getCursorLine(self.position, contents))
+        match ty.kind {
+          TypeKind.Func => lines.push("Functions don't have any fields or methods")
+          _ => {
+            if ty.nullable && isPresentOnNonNullable {
+              val nonNullableVersion = Type(kind: ty.kind, nullable: false)
+              lines.push("Type '${nonNullableVersion.repr()}' has field '$name', but lhs is of type '${ty.repr()}'")
+              lines.push("(You can use the '?.' operator instead of '.')")
+            } else {
+              lines.push("No field '$name' found on type ${ty.repr()}")
+            }
+          }
         }
       }
       TypeErrorKind.MissingValExpr(name) => {
@@ -551,6 +573,11 @@ type TypeError {
           lines.push("No operator '${op.repr()}' exists between types ${leftTy.repr()} and ${rightTy.repr()}")
         }
       }
+      TypeErrorKind.UnnecessaryOptSafety => {
+        lines.push("Unnecessary use of '?.' operator")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("(The lhs value's type here is known to be a non-Option type)")
+      }
       TypeErrorKind.InvalidTraitMethodSignature(givenFn) => {
         lines.push("Invalid signature for method '${givenFn.label.name}'")
         lines.push(self._getCursorLine(self.position, contents))
@@ -581,6 +608,7 @@ enum TypeErrorKind {
   TypeMismatch(expected: Type[], received: Type)
   DuplicateName(original: Label)
   UnknownName(name: String, kind: String)
+  UnknownField(ty: Type, name: String, isPresentOnNonNullable: Bool)
   MissingValExpr(name: String)
   MissingVarExprAndTypeAnn(name: String)
   IllegalValueType(ty: Type, purpose: String)
@@ -601,6 +629,7 @@ enum TypeErrorKind {
   IllegalCallableType(ty: Type)
   WrongTypeArgumentArity(expected: Int, given: Int)
   NoSuchOperator(leftTy: Type, op: BinaryOp, rightTy: Type)
+  UnnecessaryOptSafety
   InvalidTraitMethodSignature(fn: Function)
 }
 
@@ -745,7 +774,11 @@ export type Typechecker {
             for ty in sc.types {
               match ty.kind {
                 TypeKind.Generic(name) => { if label.name == name return Result.Ok(ty) }
-                TypeKind.Struct(struct) => { if label.name == struct.label.name return Result.Ok(ty) }
+                TypeKind.Struct(struct) => {
+                  if label.name == struct.label.name {
+                    return Result.Ok(Type(kind: TypeKind.Instance(struct, []))) // TODO generic instances
+                  }
+                }
                 _ => continue
               }
             }
@@ -1113,8 +1146,14 @@ export type Typechecker {
       // TODO: destructuring
       val typedParam = _p[0]
       val needsRevisit = _p[1]
-      fn.params.push(typedParam)
-      if needsRevisit { paramsNeedingRevisit.push(idx) }
+      val paramName = typedParam.label.name
+      // This is a bit messy - if param is `self` then don't add here; it's already denoted as an instance method via its FunctionKind
+      if paramName != "self" { fn.params.push(typedParam) }
+      // Adjust the index value if we're in an instance method, since `self` isn't included in the fn.params array
+      if needsRevisit {
+        val paramIdx = if fn.kind == FunctionKind.InstanceMethod idx - 1 else idx
+        paramsNeedingRevisit.push(paramIdx)
+      }
     }
 
     self.currentScope = prevScope
@@ -1136,7 +1175,9 @@ export type Typechecker {
     for param, idx in fn.params {
       if !paramsNeedingRevisit.contains(idx) continue
 
-      val paramNode = if fnDeclNode.params[idx] |p| p else return unreachable(param.label.position, "there should be as many parameter nodes as typed parameters")
+      // Since `self` is not included in the fn.params array, but it is in the untyped AST, when referring to the untyped AST, we need to adjust
+      val origNodeParamIdx = if fn.kind == FunctionKind.InstanceMethod idx - 1 else idx
+      val paramNode = if fnDeclNode.params[origNodeParamIdx] |p| p else return unreachable(param.label.position, "there should be as many parameter nodes as typed parameters")
       val defaultValueNode = if paramNode.defaultValue |n| n else return unreachable(param.label.position, "the only way a parameter needs revisiting is if it has a default value")
 
       val _p = match self._typecheckFunctionParam(param: paramNode, isRevisit: true) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -1772,7 +1813,7 @@ export type Typechecker {
         Result.Ok(TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Grouped(expr)))
       }
       AstNodeKind.Identifier(kind) => self._typecheckIdentifier(token, kind, typeHint)
-      AstNodeKind.Accessor(value) => todo(node.token.position, "accessor expression")
+      AstNodeKind.Accessor(node) => self._typecheckAccessor(token, node, typeHint)
       AstNodeKind.Invocation(node) => self._typecheckInvocation(token, node, typeHint)
       AstNodeKind.Array(items) => self._typecheckArray(token, items, typeHint)
       AstNodeKind.Set(items) => todo(node.token.position, "set expression")
@@ -1963,6 +2004,75 @@ export type Typechecker {
     }
 
     Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Identifier(kind)))
+  }
+
+  func _resolveAccessorPathSegment(self, ty: Type, name: String): AccessorPathSegment? {
+    match ty.kind {
+      TypeKind.PrimitiveUnit => None
+      TypeKind.PrimitiveInt => None // TODO
+      TypeKind.PrimitiveFloat => None // TODO
+      TypeKind.PrimitiveBool => None // TODO
+      TypeKind.PrimitiveString => None // TODO
+      TypeKind.Never => None
+      TypeKind.Generic => None // TODO
+      TypeKind.Instance(struct, generics) => {
+        for field in struct.fields {
+          if field.name.name == name return AccessorPathSegment.Field(field)
+        }
+
+        for method in struct.instanceMethods {
+          if method.label.name == name return AccessorPathSegment.Method(method)
+        }
+
+        None
+      }
+      TypeKind.Func => None
+      TypeKind.Struct(struct) => None // TODO
+      TypeKind.Hole => None
+    }
+  }
+
+  func _typecheckAccessor(self, token: Token, node: AccessorAstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
+    val typedRoot = match self._typecheckExpression(node.root, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    val path: AccessorPathSegment[] = []
+    var isNullable = false
+    var ty = typedRoot.ty
+    for _p, idx in node.path {
+      // TODO: destructuring
+      val token = _p[0]
+      val label = _p[1]
+      val isOptSafe = token.kind == TokenKind.QuestionDot
+      if isOptSafe && !ty.nullable {
+        return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.UnnecessaryOptSafety))
+      }
+      isNullable ||= isOptSafe
+
+      ty = match self._resolveAccessorPathSegment(ty, label.name) {
+        AccessorPathSegment.Method(fn) seg => {
+          if ty.nullable && !isOptSafe {
+            return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownField(ty, label.name, true)))
+          }
+
+          path.push(seg)
+          fn.getType()
+        }
+        AccessorPathSegment.Field(field) seg => {
+          if ty.nullable && !isOptSafe {
+            return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownField(ty, label.name, true)))
+          }
+
+          path.push(seg)
+          field.ty
+        }
+        None => return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownField(ty, label.name, false)))
+      }
+    }
+
+    val finalField = if path.pop() |f| f else return unreachable(node.root.token.position, "the accessor path should not be empty")
+
+    val resTy = Type(kind: ty.kind, nullable: isNullable)
+    Result.Ok(TypedAstNode(token: token, ty: resTy, kind: TypedAstNodeKind.Accessor(typedRoot, path, finalField)))
   }
 
   func _typecheckInvocation(self, token: Token, node: InvocationAstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
