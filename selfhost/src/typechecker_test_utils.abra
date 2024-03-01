@@ -221,15 +221,15 @@ export type Jsonifier {
         self.print("\"name\": \"$name\"")
         println()
       }
-      TypedAstNodeKind.Accessor(root, path, tail) => {
+      TypedAstNodeKind.Accessor(head, middle, tail) => {
         self.println("\"kind\": \"accessor\",")
 
-        self.print("\"root\": ")
-        self.printNode(root)
+        self.print("\"head\": ")
+        self.printNode(head)
         println(",")
 
-        self.print("\"path\": ")
-        self.array(path, seg => {
+        self.print("\"middle\": ")
+        self.array(middle, seg => {
           println("{")
           self.indentInc()
 

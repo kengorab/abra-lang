@@ -269,7 +269,7 @@ export enum TypedAstNodeKind {
   Binary(left: TypedAstNode, op: BinaryOp, right: TypedAstNode)
   Grouped(inner: TypedAstNode)
   Identifier(kind: IdentifierKind)
-  Accessor(root: TypedAstNode, path: AccessorPathSegment[], tail: AccessorPathSegment)
+  Accessor(head: TypedAstNode, middle: AccessorPathSegment[], tail: AccessorPathSegment)
   Invocation(invokee: TypedAstNode, arguments: TypedAstNode?[])
   Array(items: TypedAstNode[])
   If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], typedElseBlock: TypedAstNode[])
@@ -381,9 +381,14 @@ type TypeError {
         match ty.kind {
           TypeKind.Func => lines.push("Functions don't have any fields or methods")
           _ => {
-            if ty.nullable && isPresentOnNonNullable {
-              val nonNullableVersion = Type(kind: ty.kind, nullable: false)
-              lines.push("Type '${nonNullableVersion.repr()}' has field '$name', but lhs is of type '${ty.repr()}'")
+            if isPresentOnNonNullable {
+              if ty.nullable {
+                val nonNullableVersion = Type(kind: ty.kind, nullable: false)
+                lines.push("Type '${nonNullableVersion.repr()}' has field '$name', but lhs is of type '${ty.repr()}'")
+              } else {
+                val nullableVersion = Type(kind: ty.kind, nullable: true)
+                lines.push("Type '${ty.repr()}' has field '$name', but lhs here is of type '${nullableVersion.repr()}' due to prior '?.'")
+              }
               lines.push("(You can use the '?.' operator instead of '.')")
             } else {
               lines.push("No field '$name' found on type ${ty.repr()}")
@@ -2036,21 +2041,21 @@ export type Typechecker {
     val typedRoot = match self._typecheckExpression(node.root, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     val path: AccessorPathSegment[] = []
-    var isNullable = false
     var ty = typedRoot.ty
+    var isNullable = false
     for _p, idx in node.path {
       // TODO: destructuring
       val token = _p[0]
       val label = _p[1]
       val isOptSafe = token.kind == TokenKind.QuestionDot
-      if isOptSafe && !ty.nullable {
+      isNullable ||= ty.nullable
+      if isOptSafe && !isNullable {
         return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.UnnecessaryOptSafety))
       }
-      isNullable ||= isOptSafe
 
       ty = match self._resolveAccessorPathSegment(ty, label.name) {
         AccessorPathSegment.Method(fn) seg => {
-          if ty.nullable && !isOptSafe {
+          if isNullable && !isOptSafe {
             return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownField(ty, label.name, true)))
           }
 
@@ -2058,7 +2063,7 @@ export type Typechecker {
           fn.getType()
         }
         AccessorPathSegment.Field(field) seg => {
-          if ty.nullable && !isOptSafe {
+          if isNullable && !isOptSafe {
             return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownField(ty, label.name, true)))
           }
 
