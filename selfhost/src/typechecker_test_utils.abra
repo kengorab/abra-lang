@@ -1,6 +1,6 @@
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 import LiteralAstNode, IdentifierKind from "./parser"
-import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct from "./typechecker"
+import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct, AccessorPathSegment from "./typechecker"
 
 export type Jsonifier {
   indentLevel: Int = 0
@@ -220,6 +220,49 @@ export type Jsonifier {
         }
         self.print("\"name\": \"$name\"")
         println()
+      }
+      TypedAstNodeKind.Accessor(head, middle, tail) => {
+        self.println("\"kind\": \"accessor\",")
+
+        self.print("\"head\": ")
+        self.printNode(head)
+        println(",")
+
+        self.print("\"middle\": ")
+        self.array(middle, seg => {
+          println("{")
+          self.indentInc()
+
+          match seg {
+            AccessorPathSegment.Method(f) => {
+              self.println("\"kind\": \"method\",")
+              self.println("\"name\": \"${f.label.name}\"")
+            }
+            AccessorPathSegment.Field(f) => {
+              self.println("\"kind\": \"field\",")
+              self.println("\"name\": \"${f.name.name}\"")
+            }
+          }
+
+          self.indentDec()
+          self.print("}")
+        })
+        println(",")
+
+        self.println("\"tail\": {")
+        self.indentInc()
+        match tail {
+          AccessorPathSegment.Method(f) => {
+            self.println("\"kind\": \"method\",")
+            self.println("\"name\": \"${f.label.name}\"")
+          }
+          AccessorPathSegment.Field(f) => {
+            self.println("\"kind\": \"field\",")
+            self.println("\"name\": \"${f.name.name}\"")
+          }
+        }
+        self.indentDec()
+        self.println("}")
       }
       TypedAstNodeKind.Invocation(invokee, arguments) => {
         self.println("\"kind\": \"invocation\",")

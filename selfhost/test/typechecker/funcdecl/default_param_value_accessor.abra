@@ -1,0 +1,3 @@
+type Foo { int: Int }
+
+func foo(a: Foo, b = a.int): Int = b + 1

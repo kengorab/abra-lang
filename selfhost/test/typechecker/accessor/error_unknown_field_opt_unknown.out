@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:4:3
+Unknown field 'bogus'
+  |  f.bogus
+       ^
+No field 'bogus' found on type Foo?

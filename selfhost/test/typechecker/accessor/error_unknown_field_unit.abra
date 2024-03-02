@@ -1,0 +1,3 @@
+func noop() {}
+
+noop().foo

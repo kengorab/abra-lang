@@ -1,0 +1,4 @@
+type Foo { str: String }
+
+var f: Foo?
+f.str
