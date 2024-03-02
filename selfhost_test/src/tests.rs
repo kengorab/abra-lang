@@ -344,6 +344,7 @@ fn typechecker_tests() {
         // Accessor
         .add_test_vs_txt("typechecker/accessor/accessor.1.abra", "typechecker/accessor/accessor.1.out.json")
         .add_test_vs_txt("typechecker/accessor/accessor.2.abra", "typechecker/accessor/accessor.2.out.json")
+        .add_test_vs_txt("typechecker/accessor/accessor.3.abra", "typechecker/accessor/accessor.3.out.json")
         .add_test_vs_txt("typechecker/accessor/error_unknown_field.abra", "typechecker/accessor/error_unknown_field.out")
         .add_test_vs_txt("typechecker/accessor/error_unknown_field_fn.abra", "typechecker/accessor/error_unknown_field_fn.out")
         .add_test_vs_txt("typechecker/accessor/error_unknown_field_opt_known.abra", "typechecker/accessor/error_unknown_field_opt_known.out")
@@ -352,6 +353,7 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/accessor/error_unnecessary_optsafe.abra", "typechecker/accessor/error_unnecessary_optsafe.out")
         .add_test_vs_txt("typechecker/accessor/error_unknown_field_chain_opt_known.abra", "typechecker/accessor/error_unknown_field_chain_opt_known.out")
         .add_test_vs_txt("typechecker/accessor/error_unknown_field_chain_opt_unknown.abra", "typechecker/accessor/error_unknown_field_chain_opt_unknown.out")
+        .add_test_vs_txt("typechecker/accessor/error_static_member_referenced_by_instance.abra", "typechecker/accessor/error_static_member_referenced_by_instance.out")
 
 
         // Type identifiers
