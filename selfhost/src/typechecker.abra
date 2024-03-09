@@ -41,6 +41,7 @@ export type TypedModule {
 
 export enum VariableAlias {
   Function(fn: Function)
+  Struct(struct: Struct)
 }
 
 export type Variable {
@@ -105,6 +106,9 @@ export type Struct {
   fields: Field[] = []
   instanceMethods: Function[] = []
   staticMethods: Function[] = []
+
+  // Override eq method since default implementation recurses infinitely (scope -> variables -> TypeKind.Struct)
+  func eq(self, other: Struct): Bool = self.moduleId == other.moduleId && self.label == other.label
 }
 
 export type Project {
@@ -148,7 +152,7 @@ export type Type {
         if self.nullable return "($repr)?"
         repr
       }
-      TypeKind.Struct(struct) => struct.label.name
+      TypeKind.Struct(struct) => "<#type ${struct.label.name}>"
       TypeKind.Hole => "<unknown>"
     }
 
@@ -215,6 +219,12 @@ export type TypedAstNode {
   kind: TypedAstNodeKind
 }
 
+export enum TypedIdentifierKind {
+  Named(name: String, variable: Variable)
+  None_
+  Discard
+}
+
 type TypedBindingDeclarationNode {
   bindingPattern: BindingPattern
   variables: Variable[]
@@ -260,7 +270,27 @@ export type Function {
     Function(label: label, scope: fnScope, kind: kind, typeParams: typeParams, params: fnParams, returnType: returnType, body: [], isGenerated: true)
   }
 
+  func initializer(
+    scope: Scope,
+    struct: Struct,
+  ): Function {
+    val bogusPosition = Position(line: 0, col: 0)
+
+    val fnScope = scope.makeChild(struct.label.name, ScopeKind.Func)
+    val structTypeParams = struct.typeParams.map(t => (Type(kind: TypeKind.Generic(t)), Label(name: t, position: bogusPosition)))
+    val params = struct.fields.map(f => TypedFunctionParam(label: Label(name: f.name.name, position: bogusPosition), ty: f.ty, defaultValue: f.initializer))
+    val typeArgs = struct.typeParams.map(t => Type(kind: TypeKind.Generic(t)))
+    val returnType = Type(kind: TypeKind.Instance(struct, typeArgs))
+
+    Function(label: struct.label, scope: fnScope, kind: FunctionKind.Standalone, typeParams: structTypeParams, params: params, returnType: returnType, body: [], isGenerated: true)
+  }
+
   func getType(self): Type = Type(kind: TypeKind.Func(paramTypes: self.params.map(p => (p.ty, !p.defaultValue)), returnType: self.returnType))
+}
+
+export enum TypedInvokee {
+  Struct(struct: Struct)
+  Expr(expr: TypedAstNode)
 }
 
 export enum TypedAstNodeKind {
@@ -268,9 +298,9 @@ export enum TypedAstNodeKind {
   Unary(op: UnaryOp, expr: TypedAstNode)
   Binary(left: TypedAstNode, op: BinaryOp, right: TypedAstNode)
   Grouped(inner: TypedAstNode)
-  Identifier(kind: IdentifierKind)
+  Identifier(kind: TypedIdentifierKind)
   Accessor(head: TypedAstNode, middle: AccessorPathSegment[], tail: AccessorPathSegment)
-  Invocation(invokee: TypedAstNode, arguments: TypedAstNode?[])
+  Invocation(invokee: TypedInvokee, arguments: TypedAstNode?[])
   Array(items: TypedAstNode[])
   If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], typedElseBlock: TypedAstNode[])
   While(typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, block: TypedAstNode[])
@@ -286,8 +316,8 @@ export enum TypedAstNodeKind {
 }
 
 export enum AccessorPathSegment {
-  Method(fn: Function)
-  Field(f: Field)
+  Method(label: Label, fn: Function)
+  Field(label: Label, f: Field)
 }
 
 type TypecheckerError {
@@ -547,6 +577,22 @@ type TypeError {
         lines.push(self._getCursorLine(label.position, contents))
         lines.push("(Optional parameters may be listed positionally until a label is encountered. After that point, parameter values cannot be unambiguously determined without labels)")
       }
+      TypeErrorKind.MissingRequiredArgumentLabel => {
+        lines.push("Invalid instantiation")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Calls of type constructors must include argument labels")
+      }
+      TypeErrorKind.MissingRequiredFields(names) => {
+        lines.push("Invalid instantiation")
+        lines.push(self._getCursorLine(self.position, contents))
+
+        val maxToShow = 3
+        val missing = names[:maxToShow].map(n => "'$n'")
+        if names.length > maxToShow {
+          missing.push("and ${names.length - maxToShow} more")
+        }
+        lines.push("The following required fields are missing: ${missing.join(", ")}")
+      }
       TypeErrorKind.UnknownParameterName(name) => {
         lines.push("Unknown parameter label")
         lines.push(self._getCursorLine(self.position, contents))
@@ -641,6 +687,8 @@ enum TypeErrorKind {
   ParameterLabelMismatch(expected: String, given: String)
   IllegalParameterLabel
   MixedArgumentType(label: Label)
+  MissingRequiredArgumentLabel
+  MissingRequiredFields(names: String[])
   UnknownParameterName(name: String)
   ParameterTypeMismatch(name: String?, expected: Type, given: Type)
   IllegalCallableType(ty: Type)
@@ -729,7 +777,7 @@ export type Typechecker {
     val structTy = Type(kind: TypeKind.Struct(struct))
     match self._addTypeToScope(structTy) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
-    val variable = Variable(label: struct.label, mutable: false, ty: structTy)
+    val variable = Variable(label: struct.label, mutable: false, ty: structTy, alias: VariableAlias.Struct(struct))
     match self._addVariableToScope(variable) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     scope.structs.push(struct)
@@ -767,11 +815,11 @@ export type Typechecker {
         }
         "Map" => {
           val _t = if typeArguments |typeArguments| {
-            val keyTypeIdent = if typeArguments?.get(0) |keyTypeIdent| keyTypeIdent else {
+            val keyTypeIdent = if typeArguments.get(0) |keyTypeIdent| keyTypeIdent else {
               return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.WrongTypeArgumentArity(expected: 2, given: 0)))
             }
             val keyTy = match self._resolveTypeIdentifier(keyTypeIdent) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-            val valTypeIdent = if typeArguments?.get(1) |valTypeIdent| valTypeIdent else {
+            val valTypeIdent = if typeArguments.get(1) |valTypeIdent| valTypeIdent else {
               return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.WrongTypeArgumentArity(expected: 2, given: 1)))
             }
             val valTy = match self._resolveTypeIdentifier(valTypeIdent) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -798,7 +846,31 @@ export type Typechecker {
                 TypeKind.Generic(name) => { if label.name == name return Result.Ok(ty) }
                 TypeKind.Struct(struct) => {
                   if label.name == struct.label.name {
-                    return Result.Ok(Type(kind: TypeKind.Instance(struct, []))) // TODO generic instances
+                    val instanceTypeArgs = if !struct.typeParams.isEmpty() {
+                      if typeArguments |typeArguments| {
+                        if struct.typeParams.length != typeArguments.length {
+                          return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.WrongTypeArgumentArity(expected: struct.typeParams.length, given: typeArguments.length)))
+                        }
+
+                        val typeArgs: Type[] = []
+                        for typeIdent in typeArguments {
+                          val ty = match self._resolveTypeIdentifier(typeIdent) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+                          typeArgs.push(ty)
+                        }
+
+                        typeArgs
+                      } else {
+                        return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.WrongTypeArgumentArity(expected: struct.typeParams.length, given: 0)))
+                      }
+                    } else {
+                      if typeArguments |typeArguments| {
+                        return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.WrongTypeArgumentArity(expected: 0, given: typeArguments.length)))
+                      } else {
+                        []
+                      }
+                    }
+
+                    return Result.Ok(Type(kind: TypeKind.Instance(struct, instanceTypeArgs)))
                   }
                 }
                 _ => continue
@@ -1089,7 +1161,7 @@ export type Typechecker {
           Result.Err(e) => {
             self.paramDefaultValueContext = None
             if ctx.exprContainsFunctionCall || ctx.exprContainsVariableRef {
-              val typedParam = TypedFunctionParam(label: param.label, ty: Type(kind: TypeKind.Hole), defaultValue: None, isVariadic: param.isVariadic)
+              val typedParam = TypedFunctionParam(label: param.label, ty: Type(kind: TypeKind.Hole), defaultValue: TypedAstNode(token: node.token, ty: Type(kind: TypeKind.Hole), kind: TypedAstNodeKind.Placeholder), isVariadic: param.isVariadic)
               return Result.Ok((typedParam, true))
             }
             return Result.Err(e)
@@ -1198,7 +1270,7 @@ export type Typechecker {
       if !paramsNeedingRevisit.contains(idx) continue
 
       // Since `self` is not included in the fn.params array, but it is in the untyped AST, when referring to the untyped AST, we need to adjust
-      val origNodeParamIdx = if fn.kind == FunctionKind.InstanceMethod idx - 1 else idx
+      val origNodeParamIdx = if fn.kind == FunctionKind.InstanceMethod idx + 1 else idx
       val paramNode = if fnDeclNode.params[origNodeParamIdx] |p| p else return unreachable(param.label.position, "there should be as many parameter nodes as typed parameters")
       val defaultValueNode = if paramNode.defaultValue |n| n else return unreachable(param.label.position, "the only way a parameter needs revisiting is if it has a default value")
 
@@ -1272,6 +1344,8 @@ export type Typechecker {
   func _typecheckStructPass2_1(self, struct: Struct, node: TypeDeclarationNode): Result<Int, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = struct.scope
+    val prevTypeDecl = self.currentTypeDecl
+    self.currentTypeDecl = struct
 
     val seenFields: Map<String, Label> = {}
     for field in node.fields {
@@ -1284,6 +1358,16 @@ export type Typechecker {
       struct.fields.push(Field(name: field.name, ty: ty, initializer: None))
     }
 
+    for funcDeclNode in node.methods {
+      val fn = match self._typecheckFunctionPass1(funcDeclNode) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      match fn.kind {
+        FunctionKind.InstanceMethod => struct.instanceMethods.push(fn)
+        FunctionKind.StaticMethod => struct.staticMethods.push(fn)
+        FunctionKind.Standalone => return unreachable(fn.label.position, "method has invalid function kind at this point")
+      }
+    }
+
+    self.currentTypeDecl = prevTypeDecl
     self.currentScope = prevScope
 
     Result.Ok(0)
@@ -1297,6 +1381,8 @@ export type Typechecker {
 
     val allParamsNeedingRevisit: Map<String, Int[]> = {}
 
+    val instanceMethodsByName = struct.instanceMethods.keyBy(f => f.label)
+    val staticMethodsByName = struct.staticMethods.keyBy(f => f.label)
     var toStringFn: Function? = None
     var hashFn: Function? = None
     var eqFn: Function? = None
@@ -1304,16 +1390,26 @@ export type Typechecker {
       var isToString = false
       var isHash = false
       var isEq = false
-      val fn = match self._typecheckFunctionPass1(funcDeclNode) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-      match fn.kind {
-        FunctionKind.InstanceMethod => {
-          isToString = fn.label.name == "toString"
-          isHash = fn.label.name == "hash"
-          isEq = fn.label.name == "eq"
-          struct.instanceMethods.push(fn)
-        }
-        FunctionKind.StaticMethod => struct.staticMethods.push(fn)
-        FunctionKind.Standalone => return unreachable(fn.label.position, "method has invalid function kind at this point")
+      // val fn = match self._typecheckFunctionPass1(funcDeclNode) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      // match fn.kind {
+      //   FunctionKind.InstanceMethod => {
+      //     isToString = fn.label.name == "toString"
+      //     isHash = fn.label.name == "hash"
+      //     isEq = fn.label.name == "eq"
+      //     struct.instanceMethods.push(fn)
+      //   }
+      //   FunctionKind.StaticMethod => struct.staticMethods.push(fn)
+      //   FunctionKind.Standalone => return unreachable(fn.label.position, "method has invalid function kind at this point")
+      // }
+      val fn = if instanceMethodsByName[funcDeclNode.name] |fn| {
+        isToString = fn.label.name == "toString"
+        isHash = fn.label.name == "hash"
+        isEq = fn.label.name == "eq"
+        fn
+      } else if staticMethodsByName[funcDeclNode.name] |fn| {
+        fn
+      } else {
+        return unreachable(funcDeclNode.name.position, "could not find function among instance/static methods")
       }
       val paramsNeedingRevisit = match self._typecheckFunctionPass2(fn, funcDeclNode) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
       allParamsNeedingRevisit[fn.label.name] = paramsNeedingRevisit
@@ -1376,19 +1472,20 @@ export type Typechecker {
       structField.initializer = typedInitializer
     }
 
-    val instanceMethods = struct.instanceMethods.keyBy(f => f.label.name)
-    val staticMethods = struct.staticMethods.keyBy(f => f.label.name)
+    val instanceMethods = struct.instanceMethods.keyBy(f => f.label)
+    val staticMethods = struct.staticMethods.keyBy(f => f.label)
     for funcDeclNode in node.methods {
-      val fnName = funcDeclNode.name.name
-      val fn = if instanceMethods[fnName] |f| {
+      val fnLabel = funcDeclNode.name
+      val fn = if instanceMethods[fnLabel] |f| {
         f
-      } else if staticMethods[fnName] |f| {
+      } else if staticMethods[fnLabel] |f| {
         f
       } else {
         return unreachable(funcDeclNode.name.position, "method not visited in prior pass")
       }
 
-      val toRevisit = if paramsNeedingRevisit[fnName] |paramIds| paramIds else {
+      // TODO: index paramsneedingrevisit by label rather than by string to prevent against name collisions between static/instance methods
+      val toRevisit = if paramsNeedingRevisit[fnLabel.name] |paramIds| paramIds else {
         return unreachable(funcDeclNode.name.position, "params improperly visited in prior pass")
       }
       match self._typecheckFunctionPass3(fn, funcDeclNode, toRevisit) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -2004,40 +2101,38 @@ export type Typechecker {
   }
 
   func _typecheckIdentifier(self, token: Token, kind: IdentifierKind, typeHint: Type?): Result<TypedAstNode, TypeError> {
-    val ty = match kind {
+    val _p = match kind {
       IdentifierKind.Named(name) => {
-        val t = if self._resolveIdentifier(name) |variable| {
-          variable.ty
-        } else {
+        val variable = if self._resolveIdentifier(name) |variable| variable else {
           if self.paramDefaultValueContext |ctx| {
             ctx.exprContainsVariableRef = true
           }
           return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName(name, "variable")))
         }
-        t
+        (variable.ty, TypedIdentifierKind.Named(name, variable))
       }
       IdentifierKind.Discard => return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName("_", "variable")))
       IdentifierKind.None_ => {
         val kind = typeHint?.kind ?: TypeKind.Hole
-        Type(kind: kind, nullable: true)
+        val ty = Type(kind: kind, nullable: true)
+        (ty, TypedIdentifierKind.None_)
       }
       IdentifierKind.Self => {
-        val t = if self._resolveIdentifier("self") |variable| {
-          variable.ty
-        } else {
+        val variable = if self._resolveIdentifier("self") |variable| variable else {
           if self.paramDefaultValueContext |ctx| {
             ctx.exprContainsVariableRef = true
           }
           return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName("self", "variable")))
         }
-        t
+        (variable.ty, TypedIdentifierKind.Named("self", variable))
       }
     }
 
-    Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Identifier(kind)))
+    // TODO: destructuring
+    Result.Ok(TypedAstNode(token: token, ty: _p[0], kind: TypedAstNodeKind.Identifier(_p[1])))
   }
 
-  func _resolveAccessorPathSegment(self, ty: Type, name: String): AccessorPathSegment? {
+  func _resolveAccessorPathSegment(self, ty: Type, label: Label): AccessorPathSegment? {
     match ty.kind {
       TypeKind.PrimitiveUnit => None
       TypeKind.PrimitiveInt => None // TODO
@@ -2048,11 +2143,11 @@ export type Typechecker {
       TypeKind.Generic => None // TODO
       TypeKind.Instance(struct, generics) => {
         for field in struct.fields {
-          if field.name.name == name return AccessorPathSegment.Field(field)
+          if field.name.name == label.name return AccessorPathSegment.Field(label, field)
         }
 
         for method in struct.instanceMethods {
-          if method.label.name == name return AccessorPathSegment.Method(method)
+          if method.label.name == label.name return AccessorPathSegment.Method(label, method)
         }
 
         None
@@ -2062,7 +2157,7 @@ export type Typechecker {
         // TODO: static fields
 
         for method in struct.staticMethods {
-          if method.label.name == name return AccessorPathSegment.Method(method)
+          if method.label.name == label.name return AccessorPathSegment.Method(label, method)
         }
 
         None
@@ -2087,8 +2182,8 @@ export type Typechecker {
         return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.UnnecessaryOptSafety))
       }
 
-      ty = match self._resolveAccessorPathSegment(ty, label.name) {
-        AccessorPathSegment.Method(fn) seg => {
+      ty = match self._resolveAccessorPathSegment(ty, label) {
+        AccessorPathSegment.Method(_, fn) seg => {
           if isNullable && !isOptSafe {
             return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownField(ty, label.name, UnknownFieldSpecialCase.ExistsButTypeIsNullable)))
           }
@@ -2096,7 +2191,7 @@ export type Typechecker {
           path.push(seg)
           fn.getType()
         }
-        AccessorPathSegment.Field(field) seg => {
+        AccessorPathSegment.Field(_, field) seg => {
           if isNullable && !isOptSafe {
             return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownField(ty, label.name, UnknownFieldSpecialCase.ExistsButTypeIsNullable)))
           }
@@ -2106,7 +2201,7 @@ export type Typechecker {
         }
         None => {
           val seg = match ty.kind {
-            TypeKind.Instance(struct, _) => self._resolveAccessorPathSegment(Type(kind: TypeKind.Struct(struct)), label.name)
+            TypeKind.Instance(struct, _) => self._resolveAccessorPathSegment(Type(kind: TypeKind.Struct(struct)), label)
             _ => None
           }
 
@@ -2128,26 +2223,33 @@ export type Typechecker {
 
     match invokee.kind {
       TypedAstNodeKind.Identifier(identKind) => match identKind {
-        IdentifierKind.Named(name) => {
-          // todo: create TypedIdentifierKind with TypedIdentifiefKind.Named(name: String, variable: Variable) to save from doing this lookup twice
-          val variable = if self._resolveIdentifier(name) |v| v else {
-            return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName(name, "variable")))
-          }
+        TypedIdentifierKind.Named(name, variable) => {
           match variable.alias {
             VariableAlias.Function(fn) => self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint)
-            None => self._typecheckInvocationOfExpression(token, invokee, node)
+            VariableAlias.Struct(struct) => {
+              val initializerFn = Function.initializer(self.currentScope, struct)
+              self._typecheckInvocationOfFunction(token, invokee, initializerFn, node, typeHint, struct)
+            }
+            None => self._typecheckInvocationOfExpression(token, invokee, invokee.token.position, node)
           }
         }
-        _ => return todo(invokee.token.position, "other types of identifier targets for invocation")
+        TypedIdentifierKind.None_ => return Result.Err(TypeError(position: invokee.token.position, kind: TypeErrorKind.IllegalCallableType(Type(kind: TypeKind.Hole, nullable: true))))
+        TypedIdentifierKind.Discard => return unreachable(invokee.token.position, "resolving '_' should fail before reaching here")
       }
-      _ => return todo(invokee.token.position, "other types of target expressions for invocation")
+      TypedAstNodeKind.Accessor(_, _, finalField) => {
+        match finalField {
+          AccessorPathSegment.Method(_, fn) => self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint)
+          AccessorPathSegment.Field(label) => self._typecheckInvocationOfExpression(token, invokee, label.position, node)
+        }
+      }
+      _ => self._typecheckInvocationOfExpression(token, invokee, invokee.token.position, node)
     }
   }
 
-  func _typecheckInvocationOfExpression(self, token: Token, invokeeExpr: TypedAstNode, invocationNode: InvocationAstNode): Result<TypedAstNode, TypeError> {
+  func _typecheckInvocationOfExpression(self, token: Token, invokeeExpr: TypedAstNode, exprPos: Position, invocationNode: InvocationAstNode): Result<TypedAstNode, TypeError> {
     val _pair = match invokeeExpr.ty.kind {
       TypeKind.Func(paramTypes, returnType) => (paramTypes.map(p => p[0]), returnType)
-      _ => return Result.Err(TypeError(position: invokeeExpr.token.position, kind: TypeErrorKind.IllegalCallableType(invokeeExpr.ty)))
+      _ => return Result.Err(TypeError(position: exprPos, kind: TypeErrorKind.IllegalCallableType(invokeeExpr.ty)))
     }
     // TODO: destructuring
     val paramTypes = _pair[0]
@@ -2179,10 +2281,11 @@ export type Typechecker {
       return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.WrongInvocationArity(expected: paramTypes.length, given: typedArguments.length)))
     }
 
-    Result.Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(invokeeExpr, typedArguments)))
+    val typedInvokee = TypedInvokee.Expr(invokeeExpr)
+    Result.Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(typedInvokee, typedArguments)))
   }
 
-  func _typecheckInvocationOfFunction(self, token: Token, invokee: TypedAstNode, fn: Function, invocationNode: InvocationAstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
+  func _typecheckInvocationOfFunction(self, token: Token, invokee: TypedAstNode, fn: Function, invocationNode: InvocationAstNode, typeHint: Type?, instantiationOf: Struct? = None): Result<TypedAstNode, TypeError> {
     // Function invocation is position-based for required parameters, with optional parameter labels to express call-site intent (ie. for Bool params), and it's
     // an error if a positional parameter's label is incorrect. Once we reach any optional parameters in the argument list, parameters can either be positional
     // OR labeled, but once a labeled optional parameter is seen, all subsequent arguments in the argument list must also be labeled.
@@ -2255,6 +2358,8 @@ export type Typechecker {
         if hasBegunOptionalParams && !mostRecentLabeledOptionalParam {
           mostRecentLabeledOptionalParam = label
         }
+      } else if instantiationOf {
+        return Result.Err(TypeError(position: arg.position(), kind: TypeErrorKind.MissingRequiredArgumentLabel))
       } else if mostRecentLabeledOptionalParam |label| {
         return Result.Err(TypeError(position: arg.position(), kind: TypeErrorKind.MixedArgumentType(label)))
       }
@@ -2302,14 +2407,29 @@ export type Typechecker {
       } else if param.defaultValue {
         typedArguments.push(None)
       } else {
-        val numRequired = fn.params.filter(p => !p.defaultValue).length
-        return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.WrongInvocationArity(expected: numRequired, given: invocationNode.arguments.length)))
+        val errorKind = if instantiationOf |struct| {
+          val missing = struct.fields
+            .filter(f => !f.initializer && !typedArgumentsByName.containsKey(f.name.name))
+            .map(f => f.name.name)
+          TypeErrorKind.MissingRequiredFields(missing)
+        } else {
+          val numRequired = fn.params.filter(p => !p.defaultValue).length
+          TypeErrorKind.WrongInvocationArity(expected: numRequired, given: invocationNode.arguments.length)
+        }
+
+        return Result.Err(TypeError(position: token.position, kind: errorKind))
       }
     }
 
     val returnType = if self._containsGenerics(fn.returnType) self._substituteGenerics(fn.returnType, resolvedGenerics) else fn.returnType
 
-    Result.Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(invokee, typedArguments)))
+    val typedInvokee = if instantiationOf |struct| {
+      TypedInvokee.Struct(struct)
+    } else {
+      TypedInvokee.Expr(invokee)
+    }
+
+    Result.Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(typedInvokee, typedArguments)))
   }
 
   func _typecheckArray(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
