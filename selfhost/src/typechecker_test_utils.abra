@@ -1,6 +1,6 @@
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
-import LiteralAstNode, IdentifierKind from "./parser"
-import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct, AccessorPathSegment from "./typechecker"
+import LiteralAstNode from "./parser"
+import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct, AccessorPathSegment, TypedIdentifierKind, TypedInvokee from "./typechecker"
 
 export type Jsonifier {
   indentLevel: Int = 0
@@ -213,10 +213,9 @@ export type Jsonifier {
         self.println("\"kind\": \"identifier\",")
 
         val name = match kind {
-          IdentifierKind.Named(name) => name
-          IdentifierKind.Discard => "_"
-          IdentifierKind.None_ => "None"
-          IdentifierKind.Self => "self"
+          TypedIdentifierKind.Named(name) => name
+          TypedIdentifierKind.Discard => "_"
+          TypedIdentifierKind.None_ => "None"
         }
         self.print("\"name\": \"$name\"")
         println()
@@ -234,11 +233,11 @@ export type Jsonifier {
           self.indentInc()
 
           match seg {
-            AccessorPathSegment.Method(f) => {
+            AccessorPathSegment.Method(_, f) => {
               self.println("\"kind\": \"method\",")
               self.println("\"name\": \"${f.label.name}\"")
             }
-            AccessorPathSegment.Field(f) => {
+            AccessorPathSegment.Field(_, f) => {
               self.println("\"kind\": \"field\",")
               self.println("\"name\": \"${f.name.name}\"")
             }
@@ -252,11 +251,11 @@ export type Jsonifier {
         self.println("\"tail\": {")
         self.indentInc()
         match tail {
-          AccessorPathSegment.Method(f) => {
+          AccessorPathSegment.Method(_, f) => {
             self.println("\"kind\": \"method\",")
             self.println("\"name\": \"${f.label.name}\"")
           }
-          AccessorPathSegment.Field(f) => {
+          AccessorPathSegment.Field(_, f) => {
             self.println("\"kind\": \"field\",")
             self.println("\"name\": \"${f.name.name}\"")
           }
@@ -268,7 +267,10 @@ export type Jsonifier {
         self.println("\"kind\": \"invocation\",")
 
         self.print("\"invokee\": ")
-        self.printNode(invokee)
+        match invokee {
+          TypedInvokee.Struct(struct) => self.printStruct(struct: struct, abridged: true)
+          TypedInvokee.Expr(expr) => self.printNode(expr)
+        }
         println(",")
 
         self.print("\"arguments\": ")
