@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:1:14
+Type mismatch
+  |  #{#{1, 2}, #{"3", "4"}}
+                  ^
+Expected: Int
+but instead found: String
