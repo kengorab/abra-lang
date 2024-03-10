@@ -284,6 +284,13 @@ export type Jsonifier {
         self.array(items, n => self.printNode(n))
         println()
       }
+      TypedAstNodeKind.Set(items) => {
+        self.println("\"kind\": \"set\",")
+
+        self.print("\"items\": ")
+        self.array(items, n => self.printNode(n))
+        println()
+      }
       TypedAstNodeKind.If(isStatement, condition, conditionBindingPattern, ifBlock, elseBlock) => {
         self.println("\"kind\": \"if\",")
 

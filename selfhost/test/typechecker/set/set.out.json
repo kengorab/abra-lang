@@ -1,0 +1,1243 @@
+{
+  "id": 1,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "LBraceHash"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "instance",
+        "struct": { "moduleId": 0, "name": "Set" },
+        "typeParams": [
+          {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Int"
+          }
+        ]
+      },
+      "node": {
+        "kind": "set",
+        "items": [
+          {
+            "token": {
+              "position": [1, 3],
+              "kind": {
+                "name": "Int",
+                "value": 1
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Int"
+            },
+            "node": {
+              "kind": "literal",
+              "value": 1
+            }
+          },
+          {
+            "token": {
+              "position": [1, 6],
+              "kind": {
+                "name": "Int",
+                "value": 2
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Int"
+            },
+            "node": {
+              "kind": "literal",
+              "value": 2
+            }
+          },
+          {
+            "token": {
+              "position": [1, 9],
+              "kind": {
+                "name": "Int",
+                "value": 3
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Int"
+            },
+            "node": {
+              "kind": "literal",
+              "value": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "LBraceHash"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "instance",
+        "struct": { "moduleId": 0, "name": "Set" },
+        "typeParams": [
+          {
+            "nullable": false,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Set" },
+            "typeParams": [
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            ]
+          }
+        ]
+      },
+      "node": {
+        "kind": "set",
+        "items": [
+          {
+            "token": {
+              "position": [2, 3],
+              "kind": {
+                "name": "LBraceHash"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "String"
+                }
+              ]
+            },
+            "node": {
+              "kind": "set",
+              "items": [
+                {
+                  "token": {
+                    "position": [2, 5],
+                    "kind": {
+                      "name": "String",
+                      "value": "a"
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "String"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": "a"
+                  }
+                },
+                {
+                  "token": {
+                    "position": [2, 10],
+                    "kind": {
+                      "name": "String",
+                      "value": "b"
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "String"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": "b"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "token": {
+              "position": [2, 16],
+              "kind": {
+                "name": "LBraceHash"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "String"
+                }
+              ]
+            },
+            "node": {
+              "kind": "set",
+              "items": [
+                {
+                  "token": {
+                    "position": [2, 18],
+                    "kind": {
+                      "name": "String",
+                      "value": "c"
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "String"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": "c"
+                  }
+                },
+                {
+                  "token": {
+                    "position": [2, 23],
+                    "kind": {
+                      "name": "String",
+                      "value": "d"
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "String"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": "d"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [4, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "a1", "position": [4, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "a1", "position": [4, 5] },
+            "mutable": false,
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [4, 20],
+            "kind": {
+              "name": "LBraceHash"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Set" },
+            "typeParams": [
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          },
+          "node": {
+            "kind": "set",
+            "items": []
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [5, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "a2", "position": [5, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "a2", "position": [5, 5] },
+            "mutable": false,
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [5, 20],
+            "kind": {
+              "name": "LBraceHash"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Set" },
+            "typeParams": [
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          },
+          "node": {
+            "kind": "set",
+            "items": [
+              {
+                "token": {
+                  "position": [5, 22],
+                  "kind": {
+                    "name": "Int",
+                    "value": 1
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 1
+                }
+              },
+              {
+                "token": {
+                  "position": [5, 25],
+                  "kind": {
+                    "name": "Int",
+                    "value": 2
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 2
+                }
+              },
+              {
+                "token": {
+                  "position": [5, 28],
+                  "kind": {
+                    "name": "Int",
+                    "value": 3
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 3
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [7, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "a3", "position": [7, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "a3", "position": [7, 5] },
+            "mutable": false,
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": true,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [7, 21],
+            "kind": {
+              "name": "LBraceHash"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Set" },
+            "typeParams": [
+              {
+                "nullable": true,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          },
+          "node": {
+            "kind": "set",
+            "items": [
+              {
+                "token": {
+                  "position": [7, 23],
+                  "kind": {
+                    "name": "Int",
+                    "value": 1
+                  }
+                },
+                "type": {
+                  "nullable": true,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 1
+                }
+              },
+              {
+                "token": {
+                  "position": [7, 26],
+                  "kind": {
+                    "name": "None"
+                  }
+                },
+                "type": {
+                  "nullable": true,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "None"
+                }
+              },
+              {
+                "token": {
+                  "position": [7, 32],
+                  "kind": {
+                    "name": "Int",
+                    "value": 3
+                  }
+                },
+                "type": {
+                  "nullable": true,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 3
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [8, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "a4", "position": [8, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "a4", "position": [8, 5] },
+            "mutable": false,
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": true,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [8, 21],
+            "kind": {
+              "name": "LBraceHash"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Set" },
+            "typeParams": [
+              {
+                "nullable": true,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          },
+          "node": {
+            "kind": "set",
+            "items": [
+              {
+                "token": {
+                  "position": [8, 23],
+                  "kind": {
+                    "name": "None"
+                  }
+                },
+                "type": {
+                  "nullable": true,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "None"
+                }
+              },
+              {
+                "token": {
+                  "position": [8, 29],
+                  "kind": {
+                    "name": "Int",
+                    "value": 2
+                  }
+                },
+                "type": {
+                  "nullable": true,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 2
+                }
+              },
+              {
+                "token": {
+                  "position": [8, 32],
+                  "kind": {
+                    "name": "Int",
+                    "value": 3
+                  }
+                },
+                "type": {
+                  "nullable": true,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 3
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [10, 1],
+        "kind": {
+          "name": "LBraceHash"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "instance",
+        "struct": { "moduleId": 0, "name": "Set" },
+        "typeParams": [
+          {
+            "nullable": false,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Set" },
+            "typeParams": [
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          }
+        ]
+      },
+      "node": {
+        "kind": "set",
+        "items": [
+          {
+            "token": {
+              "position": [10, 3],
+              "kind": {
+                "name": "LBraceHash"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "set",
+              "items": [
+                {
+                  "token": {
+                    "position": [10, 5],
+                    "kind": {
+                      "name": "Int",
+                      "value": 1
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 1
+                  }
+                },
+                {
+                  "token": {
+                    "position": [10, 8],
+                    "kind": {
+                      "name": "Int",
+                      "value": 2
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "token": {
+              "position": [10, 12],
+              "kind": {
+                "name": "LBraceHash"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "set",
+              "items": []
+            }
+          },
+          {
+            "token": {
+              "position": [10, 17],
+              "kind": {
+                "name": "LBraceHash"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "set",
+              "items": [
+                {
+                  "token": {
+                    "position": [10, 19],
+                    "kind": {
+                      "name": "Int",
+                      "value": 3
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 3
+                  }
+                },
+                {
+                  "token": {
+                    "position": [10, 22],
+                    "kind": {
+                      "name": "Int",
+                      "value": 4
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 4
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [11, 1],
+        "kind": {
+          "name": "LBraceHash"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "instance",
+        "struct": { "moduleId": 0, "name": "Set" },
+        "typeParams": [
+          {
+            "nullable": true,
+            "kind": "primitive",
+            "primitive": "Int"
+          }
+        ]
+      },
+      "node": {
+        "kind": "set",
+        "items": [
+          {
+            "token": {
+              "position": [11, 3],
+              "kind": {
+                "name": "Int",
+                "value": 1
+              }
+            },
+            "type": {
+              "nullable": true,
+              "kind": "primitive",
+              "primitive": "Int"
+            },
+            "node": {
+              "kind": "literal",
+              "value": 1
+            }
+          },
+          {
+            "token": {
+              "position": [11, 6],
+              "kind": {
+                "name": "Int",
+                "value": 2
+              }
+            },
+            "type": {
+              "nullable": true,
+              "kind": "primitive",
+              "primitive": "Int"
+            },
+            "node": {
+              "kind": "literal",
+              "value": 2
+            }
+          },
+          {
+            "token": {
+              "position": [11, 9],
+              "kind": {
+                "name": "None"
+              }
+            },
+            "type": {
+              "nullable": true,
+              "kind": "primitive",
+              "primitive": "Int"
+            },
+            "node": {
+              "kind": "identifier",
+              "name": "None"
+            }
+          },
+          {
+            "token": {
+              "position": [11, 15],
+              "kind": {
+                "name": "Int",
+                "value": 4
+              }
+            },
+            "type": {
+              "nullable": true,
+              "kind": "primitive",
+              "primitive": "Int"
+            },
+            "node": {
+              "kind": "literal",
+              "value": 4
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [12, 1],
+        "kind": {
+          "name": "LBraceHash"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "instance",
+        "struct": { "moduleId": 0, "name": "Set" },
+        "typeParams": [
+          {
+            "nullable": true,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Set" },
+            "typeParams": [
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          }
+        ]
+      },
+      "node": {
+        "kind": "set",
+        "items": [
+          {
+            "token": {
+              "position": [12, 3],
+              "kind": {
+                "name": "LBraceHash"
+              }
+            },
+            "type": {
+              "nullable": true,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "set",
+              "items": [
+                {
+                  "token": {
+                    "position": [12, 5],
+                    "kind": {
+                      "name": "Int",
+                      "value": 1
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 1
+                  }
+                },
+                {
+                  "token": {
+                    "position": [12, 8],
+                    "kind": {
+                      "name": "Int",
+                      "value": 2
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "token": {
+              "position": [12, 12],
+              "kind": {
+                "name": "LBraceHash"
+              }
+            },
+            "type": {
+              "nullable": true,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "set",
+              "items": [
+                {
+                  "token": {
+                    "position": [12, 14],
+                    "kind": {
+                      "name": "Int",
+                      "value": 3
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 3
+                  }
+                },
+                {
+                  "token": {
+                    "position": [12, 17],
+                    "kind": {
+                      "name": "Int",
+                      "value": 4
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 4
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "token": {
+              "position": [12, 21],
+              "kind": {
+                "name": "None"
+              }
+            },
+            "type": {
+              "nullable": true,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "identifier",
+              "name": "None"
+            }
+          },
+          {
+            "token": {
+              "position": [12, 27],
+              "kind": {
+                "name": "LBraceHash"
+              }
+            },
+            "type": {
+              "nullable": true,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "set",
+              "items": [
+                {
+                  "token": {
+                    "position": [12, 29],
+                    "kind": {
+                      "name": "Int",
+                      "value": 5
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 5
+                  }
+                },
+                {
+                  "token": {
+                    "position": [12, 32],
+                    "kind": {
+                      "name": "Int",
+                      "value": 6
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 6
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [14, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "s5", "position": [14, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "s5", "position": [14, 5] },
+            "mutable": false,
+            "type": {
+              "nullable": true,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": true,
+                  "kind": "primitive",
+                  "primitive": "String"
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [14, 25],
+            "kind": {
+              "name": "LBraceHash"
+            }
+          },
+          "type": {
+            "nullable": true,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Set" },
+            "typeParams": [
+              {
+                "nullable": true,
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            ]
+          },
+          "node": {
+            "kind": "set",
+            "items": [
+              {
+                "token": {
+                  "position": [14, 27],
+                  "kind": {
+                    "name": "None"
+                  }
+                },
+                "type": {
+                  "nullable": true,
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "None"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
