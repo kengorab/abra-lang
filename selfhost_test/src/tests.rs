@@ -361,6 +361,7 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/invocation/invocation_method_generics.1.abra", "typechecker/invocation/invocation_method_generics.1.out.json")
         .add_test_vs_txt("typechecker/invocation/generics_error_field.1.abra", "typechecker/invocation/generics_error_field.1.out")
         .add_test_vs_txt("typechecker/invocation/invocation_method_generics.1.abra", "typechecker/invocation/invocation_method_generics.1.out.json")
+        .add_test_vs_txt("typechecker/invocation/invocation_method_generics.2.abra", "typechecker/invocation/invocation_method_generics.2.out.json")
 
         // Accessor
         .add_test_vs_txt("typechecker/accessor/accessor.1.abra", "typechecker/accessor/accessor.1.out.json")

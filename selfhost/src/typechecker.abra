@@ -198,19 +198,19 @@ export type Type {
     }
   }
 
-  func withSubstitutedGenerics(self, resolvedGenerics: Map<String, Type>): Type {
+  func withSubstitutedGenerics(self, resolvedGenerics: Map<String, Type>, retainUnknown: Bool): Type {
     val resultType = match self.kind {
-      TypeKind.Generic(name) => resolvedGenerics[name]?.clone() ?: Type(kind: TypeKind.Hole)
+      TypeKind.Generic(name) => resolvedGenerics[name]?.clone() ?: (if retainUnknown self else Type(kind: TypeKind.Hole))
       TypeKind.Instance(struct, typeArgs) => {
-        val substTypeArgs = typeArgs.map(ty => ty.withSubstitutedGenerics(resolvedGenerics))
+        val substTypeArgs = typeArgs.map(ty => ty.withSubstitutedGenerics(resolvedGenerics, retainUnknown))
         Type(kind: TypeKind.Instance(struct, substTypeArgs))
       }
       TypeKind.Func(paramTypes, returnType) => {
         val substParamTypes = paramTypes.map(p => {
-          val t = p[0].withSubstitutedGenerics(resolvedGenerics)
+          val t = p[0].withSubstitutedGenerics(resolvedGenerics, retainUnknown)
           (t, p[1])
         })
-        val substReturnType = returnType.withSubstitutedGenerics(resolvedGenerics)
+        val substReturnType = returnType.withSubstitutedGenerics(resolvedGenerics, retainUnknown)
         Type(kind: TypeKind.Func(substParamTypes, substReturnType))
       }
       _ => self
@@ -309,12 +309,12 @@ export type Function {
 
   func getType(self): Type = Type(kind: TypeKind.Func(paramTypes: self.params.map(p => (p.ty, !p.defaultValue)), returnType: self.returnType))
 
-  func withSubstitutedGenerics(self, resolvedGenerics: Map<String, Type>): Function {
+  func withSubstitutedGenerics(self, resolvedGenerics: Map<String, Type>, retainUnknown: Bool): Function {
     val params = self.params.map(p => {
-      val ty = p.ty.withSubstitutedGenerics(resolvedGenerics)
+      val ty = p.ty.withSubstitutedGenerics(resolvedGenerics, retainUnknown)
       TypedFunctionParam(label: p.label, ty: ty, defaultValue: p.defaultValue, isVariadic: p.isVariadic)
     })
-    val returnType = self.returnType.withSubstitutedGenerics(resolvedGenerics)
+    val returnType = self.returnType.withSubstitutedGenerics(resolvedGenerics, retainUnknown)
 
     Function(
       label: self.label,
@@ -2170,7 +2170,7 @@ export type Typechecker {
                 break
               }
             }
-            val ty = field.ty.withSubstitutedGenerics(resolvedGenerics)
+            val ty = field.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false)
             return (AccessorPathSegment.Field(label, field), ty)
           }
         }
@@ -2184,7 +2184,7 @@ export type Typechecker {
                 break
               }
             }
-            val method = if resolvedGenerics.isEmpty() fn else fn.withSubstitutedGenerics(resolvedGenerics)
+            val method = if resolvedGenerics.isEmpty() fn else fn.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: true)
             return (AccessorPathSegment.Method(label, method), method.getType())
           }
         }
@@ -2345,7 +2345,7 @@ export type Typechecker {
         for _p in extractedGenerics {
           if resolvedGenerics[_p[0]] |original| {
             if original != _p[1] {
-              val returnType = fn.returnType.withSubstitutedGenerics(resolvedGenerics)
+              val returnType = fn.returnType.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false)
               return Result.Err(TypeError(position: invokee.token.position, kind: TypeErrorKind.TypeMismatch([hint], returnType)))
             }
             continue
@@ -2358,7 +2358,11 @@ export type Typechecker {
     if self.paramDefaultValueContext |ctx| {
       ctx.exprContainsFunctionCall = true
 
-      val returnType = if self._containsGenerics(fn.returnType) fn.returnType.withSubstitutedGenerics(resolvedGenerics) else fn.returnType
+      val returnType = if self._containsGenerics(fn.returnType) {
+        fn.returnType.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false)
+      } else {
+        fn.returnType
+      }
       return Result.Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Placeholder))
     }
 
@@ -2395,7 +2399,7 @@ export type Typechecker {
       }
 
       val _p = if self._containsGenerics(param.ty) {
-        var paramType = param.ty.withSubstitutedGenerics(resolvedGenerics)
+        var paramType = param.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false)
 
         val typedArg = match self._typecheckExpression(arg.value, paramType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
         if numAttempts < 1 && typedArg.ty.hasUnfilledHoles() {
@@ -2415,7 +2419,7 @@ export type Typechecker {
           resolvedGenerics[_p[0]] = _p[1]
         }
 
-        paramType = param.ty.withSubstitutedGenerics(resolvedGenerics)
+        paramType = param.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false)
         (typedArg, paramType)
       } else {
         val typedArg = match self._typecheckExpression(arg.value, param.ty) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -2451,7 +2455,9 @@ export type Typechecker {
       }
     }
 
-    val returnType = if self._containsGenerics(fn.returnType) fn.returnType.withSubstitutedGenerics(resolvedGenerics) else fn.returnType
+    val returnType = if self._containsGenerics(fn.returnType) {
+      fn.returnType.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false)
+    } else fn.returnType
 
     val typedInvokee = if instantiationOf |struct| {
       TypedInvokee.Struct(struct)
