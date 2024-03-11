@@ -2525,12 +2525,6 @@ export type Typechecker {
       typedItems.push(typedItem)
     }
 
-    // if makeItemsNullable {
-    //   for item in typedItems {
-    //     item.ty.nullable = true
-    //   }
-    // }
-
     val inner = innerType ?: Type(kind: TypeKind.Hole)
     val ty = Type(kind: TypeKind.Instance(self.project.preludeSetStruct, [inner]))
     val tyHasUnfilledHoles = ty.hasUnfilledHoles()
