@@ -300,6 +300,13 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/set/error_type_mismatch_bindingdecl.2.abra", "typechecker/set/error_type_mismatch_bindingdecl.2.out")
         .add_test_vs_txt("typechecker/set/error_type_mismatch_item.abra", "typechecker/set/error_type_mismatch_item.out")
         .add_test_vs_txt("typechecker/set/error_type_mismatch_item_nested.abra", "typechecker/set/error_type_mismatch_item_nested.out")
+        // Map
+        .add_test_vs_txt("typechecker/map/map.abra", "typechecker/map/map.out.json")
+        .add_test_vs_txt("typechecker/map/error_bindingdecl_empty.abra", "typechecker/map/error_bindingdecl_empty.out")
+        .add_test_vs_txt("typechecker/map/error_type_mismatch_bindingdecl.1.abra", "typechecker/map/error_type_mismatch_bindingdecl.1.out")
+        .add_test_vs_txt("typechecker/map/error_type_mismatch_bindingdecl.2.abra", "typechecker/map/error_type_mismatch_bindingdecl.2.out")
+        .add_test_vs_txt("typechecker/map/error_type_mismatch_item.abra", "typechecker/map/error_type_mismatch_item.out")
+        .add_test_vs_txt("typechecker/map/error_type_mismatch_item_nested.abra", "typechecker/map/error_type_mismatch_item_nested.out")
 
         // If expressions & statements
         .add_test_vs_txt("typechecker/if/error_bad_cond_type.abra", "typechecker/if/error_bad_cond_type.out")

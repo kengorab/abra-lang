@@ -291,6 +291,15 @@ export type Jsonifier {
         self.array(items, n => self.printNode(n))
         println()
       }
+      TypedAstNodeKind.Map(pairs) => {
+        self.println("\"kind\": \"map\",")
+
+        self.print("\"pairs\": ")
+        self.array(pairs, p => {
+          self.array([p[0], p[1]], n => self.printNode(n))
+        })
+        println()
+      }
       TypedAstNodeKind.If(isStatement, condition, conditionBindingPattern, ifBlock, elseBlock) => {
         self.println("\"kind\": \"if\",")
 

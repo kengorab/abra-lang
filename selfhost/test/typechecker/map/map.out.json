@@ -1,0 +1,337 @@
+{
+  "id": 1,
+  "name": "/Users/kengorab/Desktop/abra-lang/selfhost/test/typechecker/map/map.abra",
+  "code": [
+    {
+      "token": {
+        "position": [16, 1],
+        "kind": {
+          "name": "LBrace"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "instance",
+        "struct": { "moduleId": 0, "name": "Map" },
+        "typeParams": [
+          {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "String"
+          },
+          {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Int"
+          }
+        ]
+      },
+      "node": {
+        "kind": "map",
+        "pairs": [
+          [
+            {
+              "token": {
+                "position": [16, 3],
+                "kind": {
+                  "name": "String",
+                  "value": "a"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "node": {
+                "kind": "literal",
+                "value": "a"
+              }
+            },
+            {
+              "token": {
+                "position": [16, 8],
+                "kind": {
+                  "name": "Int",
+                  "value": 1
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 1
+              }
+            }
+          ],
+          [
+            {
+              "token": {
+                "position": [16, 11],
+                "kind": {
+                  "name": "String",
+                  "value": "b"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "node": {
+                "kind": "literal",
+                "value": "b"
+              }
+            },
+            {
+              "token": {
+                "position": [16, 16],
+                "kind": {
+                  "name": "Int",
+                  "value": 2
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 2
+              }
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [17, 1],
+        "kind": {
+          "name": "LBrace"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "instance",
+        "struct": { "moduleId": 0, "name": "Map" },
+        "typeParams": [
+          {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "String"
+          },
+          {
+            "nullable": false,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Map" },
+            "typeParams": [
+              {
+                "nullable": false,
+                "kind": "hole"
+              },
+              {
+                "nullable": false,
+                "kind": "hole"
+              }
+            ]
+          }
+        ]
+      },
+      "node": {
+        "kind": "map",
+        "pairs": [
+          [
+            {
+              "token": {
+                "position": [17, 3],
+                "kind": {
+                  "name": "String",
+                  "value": "a"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "node": {
+                "kind": "literal",
+                "value": "a"
+              }
+            },
+            {
+              "token": {
+                "position": [17, 8],
+                "kind": {
+                  "name": "LBrace"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "instance",
+                "struct": { "moduleId": 0, "name": "Map" },
+                "typeParams": [
+                  {
+                    "nullable": false,
+                    "kind": "hole"
+                  },
+                  {
+                    "nullable": false,
+                    "kind": "hole"
+                  }
+                ]
+              },
+              "node": {
+                "kind": "map",
+                "pairs": []
+              }
+            }
+          ],
+          [
+            {
+              "token": {
+                "position": [17, 12],
+                "kind": {
+                  "name": "String",
+                  "value": "b"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "node": {
+                "kind": "literal",
+                "value": "b"
+              }
+            },
+            {
+              "token": {
+                "position": [17, 17],
+                "kind": {
+                  "name": "LBrace"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "instance",
+                "struct": { "moduleId": 0, "name": "Map" },
+                "typeParams": [
+                  {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "String"
+                  },
+                  {
+                    "nullable": false,
+                    "kind": "instance",
+                    "struct": { "moduleId": 0, "name": "Array" },
+                    "typeParams": [
+                      {
+                        "nullable": false,
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "node": {
+                "kind": "map",
+                "pairs": [
+                  [
+                    {
+                      "token": {
+                        "position": [17, 18],
+                        "kind": {
+                          "name": "String",
+                          "value": "b1"
+                        }
+                      },
+                      "type": {
+                        "nullable": false,
+                        "kind": "primitive",
+                        "primitive": "String"
+                      },
+                      "node": {
+                        "kind": "literal",
+                        "value": "b1"
+                      }
+                    },
+                    {
+                      "token": {
+                        "position": [17, 24],
+                        "kind": {
+                          "name": "LBrack"
+                        }
+                      },
+                      "type": {
+                        "nullable": false,
+                        "kind": "instance",
+                        "struct": { "moduleId": 0, "name": "Array" },
+                        "typeParams": [
+                          {
+                            "nullable": false,
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
+                      },
+                      "node": {
+                        "kind": "array",
+                        "items": [
+                          {
+                            "token": {
+                              "position": [17, 25],
+                              "kind": {
+                                "name": "Int",
+                                "value": 3
+                              }
+                            },
+                            "type": {
+                              "nullable": false,
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            },
+                            "node": {
+                              "kind": "literal",
+                              "value": 3
+                            }
+                          },
+                          {
+                            "token": {
+                              "position": [17, 28],
+                              "kind": {
+                                "name": "Int",
+                                "value": 4
+                              }
+                            },
+                            "type": {
+                              "nullable": false,
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            },
+                            "node": {
+                              "kind": "literal",
+                              "value": 4
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                ]
+              }
+            }
+          ]
+        ]
+      }
+    }
+  ]
+}

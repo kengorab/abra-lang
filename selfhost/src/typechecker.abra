@@ -345,6 +345,7 @@ export enum TypedAstNodeKind {
   Invocation(invokee: TypedInvokee, arguments: TypedAstNode?[])
   Array(items: TypedAstNode[])
   Set(items: TypedAstNode[])
+  Map(items: (TypedAstNode, TypedAstNode)[])
   If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], typedElseBlock: TypedAstNode[])
   While(typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, block: TypedAstNode[])
   For(typedIterator: TypedAstNode, itemBinding: (BindingPattern, Variable[]), indexBinding: Variable?, block: TypedAstNode[])
@@ -1048,6 +1049,15 @@ export type Typechecker {
   func _typeAsInstance1(self, ty: Type, struct: Struct): Type? {
     match ty.kind {
       TypeKind.Instance(s, generics) => if s == struct { generics[0] } else None
+      _ => None
+    }
+  }
+
+  func _typeAsInstance2(self, ty: Type, struct: Struct): (Type, Type)? {
+    match ty.kind {
+      TypeKind.Instance(s, generics) => if s == struct {
+        if generics[0] |g1| (if generics[1] |g2| (g1, g2) else None) else None
+      } else None
       _ => None
     }
   }
@@ -1934,7 +1944,7 @@ export type Typechecker {
       AstNodeKind.Invocation(node) => self._typecheckInvocation(token, node, typeHint)
       AstNodeKind.Array(items) => self._typecheckArray(token, items, typeHint)
       AstNodeKind.Set(items) => self._typecheckSet(token, items, typeHint)
-      AstNodeKind.Map(items) => todo(node.token.position, "map expression")
+      AstNodeKind.Map(items) => self._typecheckMap(token, items, typeHint)
       AstNodeKind.Tuple(items) => todo(node.token.position, "tuple expression")
       AstNodeKind.Indexing(expr, index) => todo(node.token.position, "indexing expression")
       AstNodeKind.Lambda(value) => todo(node.token.position, "lambda expression")
@@ -2468,20 +2478,23 @@ export type Typechecker {
             return Result.Err(TypeError(position: typedItem.token.position, kind: TypeErrorKind.TypeMismatch([ty], typedItem.ty)))
           }
         }
-      } else {
+      } else if !typedItem.ty.hasUnfilledHoles() {
         innerType = typedItem.ty
       }
       typedItems.push(typedItem)
     }
 
-    if makeItemsNullable {
-      for item in typedItems {
-        item.ty.nullable = true
-      }
-    }
-
     val inner = innerType ?: Type(kind: TypeKind.Hole)
     val ty = Type(kind: TypeKind.Instance(self.project.preludeArrayStruct, [inner]))
+    val tyHasUnfilledHoles = ty.hasUnfilledHoles()
+
+    for item in typedItems {
+      if makeItemsNullable { item.ty.nullable = true }
+
+      if !tyHasUnfilledHoles && item.ty.hasUnfilledHoles() {
+        item.ty.tryFillHoles(ty)
+      }
+    }
 
     Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Array(typedItems)))
   }
@@ -2506,22 +2519,98 @@ export type Typechecker {
             return Result.Err(TypeError(position: typedItem.token.position, kind: TypeErrorKind.TypeMismatch([ty], typedItem.ty)))
           }
         }
-      } else {
+      } else if !typedItem.ty.hasUnfilledHoles() {
         innerType = typedItem.ty
       }
       typedItems.push(typedItem)
     }
 
-    if makeItemsNullable {
-      for item in typedItems {
-        item.ty.nullable = true
-      }
-    }
+    // if makeItemsNullable {
+    //   for item in typedItems {
+    //     item.ty.nullable = true
+    //   }
+    // }
 
     val inner = innerType ?: Type(kind: TypeKind.Hole)
     val ty = Type(kind: TypeKind.Instance(self.project.preludeSetStruct, [inner]))
+    val tyHasUnfilledHoles = ty.hasUnfilledHoles()
+
+    for item in typedItems {
+      if makeItemsNullable { item.ty.nullable = true }
+
+      if !tyHasUnfilledHoles && item.ty.hasUnfilledHoles() {
+        item.ty.tryFillHoles(ty)
+      }
+    }
 
     Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Set(typedItems)))
+  }
+
+  func _typecheckMap(self, token: Token, items: (AstNode, AstNode)[], typeHint: Type?): Result<TypedAstNode, TypeError> {
+    var keyTy: Type? = None
+    var valTy: Type? = None
+    if typeHint |hint| {
+      if self._typeAsInstance2(hint, self.project.preludeMapStruct) |_p| {
+        // TODO: destructuring
+        if _p[0].kind != TypeKind.Hole { keyTy = _p[0] }
+        if _p[1].kind != TypeKind.Hole { valTy = _p[1] }
+      }
+    }
+
+    var makeKeysNullable = false
+    var makeValsNullable = false
+    val typedItems: (TypedAstNode, TypedAstNode)[] = []
+    for _p in items {
+      // TODO: destructuring
+      val keyNode = _p[0]
+      val valNode = _p[1]
+
+      val typedKey = match self._typecheckExpression(node: keyNode, typeHint: keyTy) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      if keyTy |ty| {
+        if !self._typeSatisfiesRequired(ty: typedKey.ty, required: ty) {
+          if typedKey.ty.nullable && !ty.nullable {
+            ty.nullable = true
+            makeKeysNullable = true
+          } else {
+            return Result.Err(TypeError(position: typedKey.token.position, kind: TypeErrorKind.TypeMismatch([ty], typedKey.ty)))
+          }
+        }
+      } else {
+        keyTy = typedKey.ty
+      }
+
+      val typedVal = match self._typecheckExpression(node: valNode, typeHint: valTy) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      if valTy |ty| {
+        if !self._typeSatisfiesRequired(ty: typedVal.ty, required: ty) {
+          if typedVal.ty.nullable && !ty.nullable {
+            ty.nullable = true
+            makeValsNullable = true
+          } else {
+            return Result.Err(TypeError(position: typedVal.token.position, kind: TypeErrorKind.TypeMismatch([ty], typedVal.ty)))
+          }
+        }
+      } else {
+        valTy = typedVal.ty
+      }
+
+      typedItems.push((typedKey, typedVal))
+    }
+
+    if makeKeysNullable || makeValsNullable {
+      for _p in typedItems {
+        // TODO: destructuring
+        val typedKey = _p[0]
+        val typedVal = _p[0]
+        if makeKeysNullable { typedKey.ty.nullable = true }
+        if makeValsNullable { typedVal.ty.nullable = true }
+      }
+    }
+
+    val kTy = keyTy ?: Type(kind: TypeKind.Hole)
+    val vTy = valTy ?: Type(kind: TypeKind.Hole)
+    val ty = Type(kind: TypeKind.Instance(self.project.preludeMapStruct, [kTy, vTy]))
+
+    Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Map(typedItems)))
   }
 }
 
