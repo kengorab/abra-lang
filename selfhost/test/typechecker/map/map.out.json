@@ -1,6 +1,6 @@
 {
   "id": 1,
-  "name": "/Users/kengorab/Desktop/abra-lang/selfhost/test/typechecker/map/map.abra",
+  "name": "%FILE_NAME",
   "code": [
     {
       "token": {
