@@ -345,6 +345,7 @@ export enum TypedAstNodeKind {
   Invocation(invokee: TypedInvokee, arguments: TypedAstNode?[])
   Array(items: TypedAstNode[])
   Set(items: TypedAstNode[])
+  Map(items: (TypedAstNode, TypedAstNode)[])
   If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], typedElseBlock: TypedAstNode[])
   While(typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, block: TypedAstNode[])
   For(typedIterator: TypedAstNode, itemBinding: (BindingPattern, Variable[]), indexBinding: Variable?, block: TypedAstNode[])
@@ -1052,6 +1053,15 @@ export type Typechecker {
     }
   }
 
+  func _typeAsInstance2(self, ty: Type, struct: Struct): (Type, Type)? {
+    match ty.kind {
+      TypeKind.Instance(s, generics) => if s == struct {
+        if generics[0] |g1| (if generics[1] |g2| (g1, g2) else None) else None
+      } else None
+      _ => None
+    }
+  }
+
   func _typecheckModule(self, modulePath: String): Result<Int, TypecheckerError> {
     val moduleId = self.project.modules.length
     self.currentModuleId = moduleId
@@ -1389,17 +1399,6 @@ export type Typechecker {
       var isToString = false
       var isHash = false
       var isEq = false
-      // val fn = match self._typecheckFunctionPass1(funcDeclNode) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-      // match fn.kind {
-      //   FunctionKind.InstanceMethod => {
-      //     isToString = fn.label.name == "toString"
-      //     isHash = fn.label.name == "hash"
-      //     isEq = fn.label.name == "eq"
-      //     struct.instanceMethods.push(fn)
-      //   }
-      //   FunctionKind.StaticMethod => struct.staticMethods.push(fn)
-      //   FunctionKind.Standalone => return unreachable(fn.label.position, "method has invalid function kind at this point")
-      // }
       val fn = if instanceMethodsByName[funcDeclNode.name] |fn| {
         isToString = fn.label.name == "toString"
         isHash = fn.label.name == "hash"
@@ -1934,7 +1933,7 @@ export type Typechecker {
       AstNodeKind.Invocation(node) => self._typecheckInvocation(token, node, typeHint)
       AstNodeKind.Array(items) => self._typecheckArray(token, items, typeHint)
       AstNodeKind.Set(items) => self._typecheckSet(token, items, typeHint)
-      AstNodeKind.Map(items) => todo(node.token.position, "map expression")
+      AstNodeKind.Map(items) => self._typecheckMap(token, items, typeHint)
       AstNodeKind.Tuple(items) => todo(node.token.position, "tuple expression")
       AstNodeKind.Indexing(expr, index) => todo(node.token.position, "indexing expression")
       AstNodeKind.Lambda(value) => todo(node.token.position, "lambda expression")
@@ -2449,79 +2448,198 @@ export type Typechecker {
   }
 
   func _typecheckArray(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
-    var innerType = if typeHint |hint| {
-      if self._typeAsInstance1(hint, self.project.preludeArrayStruct) |inner| if inner.kind == TypeKind.Hole None else inner
-    } else {
-      None
+    var innerHintIsNullable = true
+    var innerType: Type? = None
+    if typeHint |hint| {
+      if self._typeAsInstance1(hint, self.project.preludeArrayStruct) |inner| {
+        if inner.kind != TypeKind.Hole {
+          innerHintIsNullable = inner.nullable
+          innerType = inner
+        }
+      }
     }
 
     var makeItemsNullable = false
     val typedItems: TypedAstNode[] = []
     for node in items {
       val typedItem = match self._typecheckExpression(node: node, typeHint: innerType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      makeItemsNullable ||= typedItem.ty.nullable
       if innerType |ty| {
-        if !self._typeSatisfiesRequired(ty: typedItem.ty, required: ty) {
-          if typedItem.ty.nullable && !ty.nullable {
-            ty.nullable = true
-            makeItemsNullable = true
-          } else {
-            return Result.Err(TypeError(position: typedItem.token.position, kind: TypeErrorKind.TypeMismatch([ty], typedItem.ty)))
-          }
+        // Working inner type becomes nullable if we've discovered a nullable type and if the hint allows nullness (an absent hint allows nullness).
+        if makeItemsNullable && innerHintIsNullable {
+          ty.nullable = true
         }
-      } else {
+
+        if !self._typeSatisfiesRequired(ty: typedItem.ty, required: ty) {
+          return Result.Err(TypeError(position: typedItem.token.position, kind: TypeErrorKind.TypeMismatch([ty], typedItem.ty)))
+        }
+      } else if !typedItem.ty.hasUnfilledHoles() {
         innerType = typedItem.ty
       }
       typedItems.push(typedItem)
     }
 
-    if makeItemsNullable {
-      for item in typedItems {
-        item.ty.nullable = true
-      }
-    }
-
     val inner = innerType ?: Type(kind: TypeKind.Hole)
     val ty = Type(kind: TypeKind.Instance(self.project.preludeArrayStruct, [inner]))
+    val innerHasUnfilledHoles = inner.hasUnfilledHoles()
+
+    for item in typedItems {
+      if makeItemsNullable { item.ty.nullable = true }
+
+      if !innerHasUnfilledHoles && item.ty.hasUnfilledHoles() {
+        item.ty.tryFillHoles(inner)
+      }
+    }
 
     Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Array(typedItems)))
   }
 
   func _typecheckSet(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
-    var innerType = if typeHint |hint| {
-      if self._typeAsInstance1(hint, self.project.preludeSetStruct) |inner| if inner.kind == TypeKind.Hole None else inner
-    } else {
-      None
+    var innerHintIsNullable = true
+    var innerType: Type? = None
+    if typeHint |hint| {
+      if self._typeAsInstance1(hint, self.project.preludeSetStruct) |inner| {
+        if inner.kind != TypeKind.Hole {
+          innerHintIsNullable = inner.nullable
+          innerType = inner
+        }
+      }
     }
 
     var makeItemsNullable = false
     val typedItems: TypedAstNode[] = []
     for node in items {
       val typedItem = match self._typecheckExpression(node: node, typeHint: innerType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      makeItemsNullable ||= typedItem.ty.nullable
       if innerType |ty| {
-        if !self._typeSatisfiesRequired(ty: typedItem.ty, required: ty) {
-          if typedItem.ty.nullable && !ty.nullable {
-            ty.nullable = true
-            makeItemsNullable = true
-          } else {
-            return Result.Err(TypeError(position: typedItem.token.position, kind: TypeErrorKind.TypeMismatch([ty], typedItem.ty)))
-          }
+        // Working inner type becomes nullable if we've discovered a nullable type and if the hint allows nullness (an absent hint allows nullness).
+        if makeItemsNullable && innerHintIsNullable {
+          ty.nullable = true
         }
-      } else {
+
+        if !self._typeSatisfiesRequired(ty: typedItem.ty, required: ty) {
+          return Result.Err(TypeError(position: typedItem.token.position, kind: TypeErrorKind.TypeMismatch([ty], typedItem.ty)))
+        }
+      } else if !typedItem.ty.hasUnfilledHoles() {
         innerType = typedItem.ty
       }
       typedItems.push(typedItem)
     }
 
-    if makeItemsNullable {
-      for item in typedItems {
-        item.ty.nullable = true
+    val inner = innerType ?: Type(kind: TypeKind.Hole)
+    val ty = Type(kind: TypeKind.Instance(self.project.preludeSetStruct, [inner]))
+    val innerHasUnfilledHoles = inner.hasUnfilledHoles()
+
+    for item in typedItems {
+      if makeItemsNullable { item.ty.nullable = true }
+
+      if !innerHasUnfilledHoles && item.ty.hasUnfilledHoles() {
+        item.ty.tryFillHoles(inner)
       }
     }
 
-    val inner = innerType ?: Type(kind: TypeKind.Hole)
-    val ty = Type(kind: TypeKind.Instance(self.project.preludeSetStruct, [inner]))
-
     Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Set(typedItems)))
+  }
+
+  func _typecheckMap(self, token: Token, items: (AstNode, AstNode)[], typeHint: Type?): Result<TypedAstNode, TypeError> {
+    var keyHintIsNullable = true
+    var keyTy: Type? = None
+    var valHintIsNullable = true
+    var valTy: Type? = None
+    if typeHint |hint| {
+      if self._typeAsInstance2(hint, self.project.preludeMapStruct) |_p| {
+        // TODO: destructuring
+        val keyHintTy = _p[0]
+        val valHintTy = _p[1]
+        if keyHintTy.kind != TypeKind.Hole {
+          keyHintIsNullable = keyHintTy.nullable
+          keyTy = keyHintTy
+        }
+        if valHintTy.kind != TypeKind.Hole {
+          valHintIsNullable = valHintTy.nullable
+          valTy = valHintTy
+        }
+      }
+    }
+
+    var makeKeysNullable = false
+    var makeValsNullable = false
+    val typedItems: (TypedAstNode, TypedAstNode)[] = []
+    for _p in items {
+      // TODO: destructuring
+      val keyNode = _p[0]
+      val valNode = _p[1]
+
+      val typedKey = match keyNode.kind {
+        AstNodeKind.Identifier(identKind) => match identKind {
+          IdentifierKind.Named(name) => TypedAstNode(token: keyNode.token, ty: Type(kind: TypeKind.PrimitiveString), kind: TypedAstNodeKind.Literal(LiteralAstNode.String(name)))
+          IdentifierKind.Discard => TypedAstNode(token: keyNode.token, ty: Type(kind: TypeKind.PrimitiveString), kind: TypedAstNodeKind.Literal(LiteralAstNode.String("_")))
+          IdentifierKind.Self => {
+            val e = match self._typecheckExpression(node: keyNode, typeHint: keyTy) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            e
+          }
+          IdentifierKind.None_ => {
+            val e = match self._typecheckExpression(node: keyNode, typeHint: keyTy) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            e
+          }
+        }
+        _ => {
+          val e = match self._typecheckExpression(node: keyNode, typeHint: keyTy) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          e
+        }
+      }
+      makeKeysNullable ||= typedKey.ty.nullable
+
+      if keyTy |ty| {
+        // Working inner type for key becomes nullable if we've discovered a nullable key and if the key hint allows nullness (an absent hint allows nullness).
+        if makeKeysNullable && keyHintIsNullable {
+          ty.nullable = true
+        }
+
+        if !self._typeSatisfiesRequired(ty: typedKey.ty, required: ty) {
+          return Result.Err(TypeError(position: typedKey.token.position, kind: TypeErrorKind.TypeMismatch([ty], typedKey.ty)))
+        }
+      } else if !typedKey.ty.hasUnfilledHoles() {
+        keyTy = typedKey.ty
+      }
+
+      val typedVal = match self._typecheckExpression(node: valNode, typeHint: valTy) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      makeValsNullable ||= typedVal.ty.nullable
+      if valTy |ty| {
+        // Working inner type for val becomes nullable if we've discovered a nullable val and if the val hint allows nullness (an absent hint allows nullness).
+        if makeValsNullable && valHintIsNullable {
+          ty.nullable = true
+        }
+
+        if !self._typeSatisfiesRequired(ty: typedVal.ty, required: ty) {
+          return Result.Err(TypeError(position: typedVal.token.position, kind: TypeErrorKind.TypeMismatch([ty], typedVal.ty)))
+        }
+      } else if !typedVal.ty.hasUnfilledHoles() {
+        valTy = typedVal.ty
+      }
+
+      typedItems.push((typedKey, typedVal))
+    }
+
+    val kTy = keyTy ?: Type(kind: TypeKind.Hole)
+    val vTy = valTy ?: Type(kind: TypeKind.Hole)
+    val ty = Type(kind: TypeKind.Instance(self.project.preludeMapStruct, [kTy, vTy]))
+    val keyTyHasUnfilledHoles = kTy.hasUnfilledHoles()
+    val valTyHasUnfilledHoles = vTy.hasUnfilledHoles()
+
+    for _p in typedItems {
+      // TODO: destructuring
+      val typedKey = _p[0]
+      val typedVal = _p[1]
+
+      if makeKeysNullable { typedKey.ty.nullable = true }
+      if makeValsNullable { typedVal.ty.nullable = true }
+
+      if !keyTyHasUnfilledHoles && typedKey.ty.hasUnfilledHoles() { typedKey.ty.tryFillHoles(kTy) }
+      if !valTyHasUnfilledHoles && typedVal.ty.hasUnfilledHoles() { typedVal.ty.tryFillHoles(vTy) }
+     }
+
+    Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Map(typedItems)))
   }
 }
 

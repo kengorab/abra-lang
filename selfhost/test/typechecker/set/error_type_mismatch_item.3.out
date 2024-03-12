@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:2:6
+Type mismatch
+  |  #{1, s}
+          ^
+Expected: Int?
+but instead found: String?

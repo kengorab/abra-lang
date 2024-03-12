@@ -1238,6 +1238,503 @@
           }
         }
       }
+    },
+    {
+      "token": {
+        "position": [16, 1],
+        "kind": {
+          "name": "LBrack"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "instance",
+        "struct": { "moduleId": 0, "name": "Array" },
+        "typeParams": [
+          {
+            "nullable": false,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Array" },
+            "typeParams": [
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          }
+        ]
+      },
+      "node": {
+        "kind": "array",
+        "items": [
+          {
+            "token": {
+              "position": [16, 2],
+              "kind": {
+                "name": "LBrack"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Array" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "array",
+              "items": []
+            }
+          },
+          {
+            "token": {
+              "position": [16, 6],
+              "kind": {
+                "name": "LBrack"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Array" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "array",
+              "items": [
+                {
+                  "token": {
+                    "position": [16, 7],
+                    "kind": {
+                      "name": "Int",
+                      "value": 1
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 1
+                  }
+                },
+                {
+                  "token": {
+                    "position": [16, 10],
+                    "kind": {
+                      "name": "Int",
+                      "value": 2
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "token": {
+              "position": [16, 14],
+              "kind": {
+                "name": "LBrack"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Array" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "array",
+              "items": [
+                {
+                  "token": {
+                    "position": [16, 15],
+                    "kind": {
+                      "name": "Int",
+                      "value": 3
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 3
+                  }
+                },
+                {
+                  "token": {
+                    "position": [16, 18],
+                    "kind": {
+                      "name": "Int",
+                      "value": 4
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 4
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [17, 1],
+        "kind": {
+          "name": "LBrack"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "instance",
+        "struct": { "moduleId": 0, "name": "Array" },
+        "typeParams": [
+          {
+            "nullable": false,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Set" },
+            "typeParams": [
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          }
+        ]
+      },
+      "node": {
+        "kind": "array",
+        "items": [
+          {
+            "token": {
+              "position": [17, 2],
+              "kind": {
+                "name": "LBraceHash"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "set",
+              "items": []
+            }
+          },
+          {
+            "token": {
+              "position": [17, 7],
+              "kind": {
+                "name": "LBraceHash"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "set",
+              "items": [
+                {
+                  "token": {
+                    "position": [17, 9],
+                    "kind": {
+                      "name": "Int",
+                      "value": 1
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 1
+                  }
+                },
+                {
+                  "token": {
+                    "position": [17, 12],
+                    "kind": {
+                      "name": "Int",
+                      "value": 2
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "token": {
+              "position": [17, 16],
+              "kind": {
+                "name": "LBraceHash"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "set",
+              "items": [
+                {
+                  "token": {
+                    "position": [17, 18],
+                    "kind": {
+                      "name": "Int",
+                      "value": 3
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 3
+                  }
+                },
+                {
+                  "token": {
+                    "position": [17, 21],
+                    "kind": {
+                      "name": "Int",
+                      "value": 4
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 4
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [18, 1],
+        "kind": {
+          "name": "LBrack"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "instance",
+        "struct": { "moduleId": 0, "name": "Array" },
+        "typeParams": [
+          {
+            "nullable": true,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Array" },
+            "typeParams": [
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          }
+        ]
+      },
+      "node": {
+        "kind": "array",
+        "items": [
+          {
+            "token": {
+              "position": [18, 2],
+              "kind": {
+                "name": "LBrack"
+              }
+            },
+            "type": {
+              "nullable": true,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Array" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "array",
+              "items": []
+            }
+          },
+          {
+            "token": {
+              "position": [18, 6],
+              "kind": {
+                "name": "None"
+              }
+            },
+            "type": {
+              "nullable": true,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Array" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "identifier",
+              "name": "None"
+            }
+          },
+          {
+            "token": {
+              "position": [18, 12],
+              "kind": {
+                "name": "LBrack"
+              }
+            },
+            "type": {
+              "nullable": true,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Array" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "array",
+              "items": [
+                {
+                  "token": {
+                    "position": [18, 13],
+                    "kind": {
+                      "name": "Int",
+                      "value": 1
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 1
+                  }
+                },
+                {
+                  "token": {
+                    "position": [18, 16],
+                    "kind": {
+                      "name": "Int",
+                      "value": 2
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 2
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
     }
   ]
 }
