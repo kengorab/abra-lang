@@ -1,17 +1,12 @@
-// [1, 2, 3]
-// [["a", "b"], ["c", "d"]]
-
-// val a1: Int[] = []
-// val a2: Int[] = [1, 2, 3]
-
-// val a3: Int?[] = [1, None, 3]
-// val a4: Int?[] = [None, 2, 3]
-
-// [[1, 2], [], [3, 4]]
-// [1, 2, None, 4]
-// [[1, 2], [3, 4], None, [5, 6]]
-
-// val s5: String?[]? = [None]
-
 { "a": 1, "b": 2 }
-// { "a": {}, "b": {"b1": [3, 4] } }
+{ a: { a1: [1, 2] }, b: {} }
+{ a: {}, b: { b1: [3, 4] } }
+
+val m1: Map<String, Int> = {}
+val m2: Map<String, Int> = { a: 3 }
+
+val m3: Map<String?, Int> = {}
+val m4: Map<String?, Int> = { a: 3, (None): 345 }
+
+val m5 = { a: [], (None): None, b: [1, 2] }
+val _: Map<String?, Int[]?> = m5

@@ -1282,7 +1282,8 @@
               "typeParams": [
                 {
                   "nullable": false,
-                  "kind": "hole"
+                  "kind": "primitive",
+                  "primitive": "Int"
                 }
               ]
             },
@@ -1459,15 +1460,8 @@
               "typeParams": [
                 {
                   "nullable": false,
-                  "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Set" },
-                  "typeParams": [
-                    {
-                      "nullable": false,
-                      "kind": "primitive",
-                      "primitive": "Int"
-                    }
-                  ]
+                  "kind": "primitive",
+                  "primitive": "Int"
                 }
               ]
             },
@@ -1593,6 +1587,147 @@
                   "node": {
                     "kind": "literal",
                     "value": 4
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [18, 1],
+        "kind": {
+          "name": "LBraceHash"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "instance",
+        "struct": { "moduleId": 0, "name": "Set" },
+        "typeParams": [
+          {
+            "nullable": true,
+            "kind": "instance",
+            "struct": { "moduleId": 0, "name": "Set" },
+            "typeParams": [
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          }
+        ]
+      },
+      "node": {
+        "kind": "set",
+        "items": [
+          {
+            "token": {
+              "position": [18, 3],
+              "kind": {
+                "name": "LBraceHash"
+              }
+            },
+            "type": {
+              "nullable": true,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "set",
+              "items": []
+            }
+          },
+          {
+            "token": {
+              "position": [18, 8],
+              "kind": {
+                "name": "None"
+              }
+            },
+            "type": {
+              "nullable": true,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "identifier",
+              "name": "None"
+            }
+          },
+          {
+            "token": {
+              "position": [18, 14],
+              "kind": {
+                "name": "LBraceHash"
+              }
+            },
+            "type": {
+              "nullable": true,
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Set" },
+              "typeParams": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            },
+            "node": {
+              "kind": "set",
+              "items": [
+                {
+                  "token": {
+                    "position": [18, 16],
+                    "kind": {
+                      "name": "Int",
+                      "value": 1
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 1
+                  }
+                },
+                {
+                  "token": {
+                    "position": [18, 19],
+                    "kind": {
+                      "name": "Int",
+                      "value": 2
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 2
                   }
                 }
               ]

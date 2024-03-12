@@ -1,1 +1,1 @@
-val a: Int[] = ["1", "2", "3"]
+val m: Map<String, Int[]> = { a: 123 }
