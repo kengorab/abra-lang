@@ -1,0 +1,9 @@
+val m1 = { a: 2, b: 24 }
+
+val i = m1["a"]
+val _: Int? = i
+
+val m2 = { (1 + 2): "a", (3 + 4): "b" }
+
+val s = m2[12]
+val _: String? = s

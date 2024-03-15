@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:2:1
+Unsupported indexing operation
+  |  str[0]
+     ^
+Type 'String?' is not indexable

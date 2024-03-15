@@ -1,0 +1,2 @@
+val s: String? = None
+val t: (Int, String) = (1, s)

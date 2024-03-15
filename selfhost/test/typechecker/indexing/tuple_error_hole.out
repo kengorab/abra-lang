@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:1:30
+Type mismatch
+  |  val _: Int[] = (1, "two", [])[2]
+                                  ^
+Expected: Int[]
+but instead found: <unknown>[]

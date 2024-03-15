@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:2:3
+Type mismatch
+  |  m[1]
+       ^
+Expected: String
+but instead found: Int

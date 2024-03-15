@@ -141,9 +141,9 @@ export type InvocationAstNode {
   arguments: InvocationArgument[]
 }
 
-export enum IndexingMode {
-  Single(expr: AstNode)
-  Range(start: AstNode?, end: AstNode?)
+export enum IndexingMode<N> {
+  Single(expr: N)
+  Range(start: N?, end: N?)
 }
 
 export enum AssignmentMode {
@@ -257,7 +257,7 @@ export enum AstNodeKind {
   Set(items: AstNode[])
   Map(items: (AstNode, AstNode)[])
   Tuple(items: AstNode[])
-  Indexing(expr: AstNode, index: IndexingMode)
+  Indexing(expr: AstNode, index: IndexingMode<AstNode>)
   Lambda(value: LambdaNode)
   Assignment(expr: AstNode, mode: AssignmentMode)
   If(condition: AstNode, conditionBinding: BindingPattern?, ifBlock: AstNode[], elseBlock: AstNode[]?)
@@ -1614,7 +1614,8 @@ export type Parser {
 
   func _parseIndexing(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
     val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-    val index = if nextToken.kind == TokenKind.Colon {
+    // TODO: ensure this type annotation is unnecessary
+    val index: IndexingMode<AstNode> = if nextToken.kind == TokenKind.Colon {
       self._advance() // consume ':' token
       val rangeEnd = match self._parseExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
       IndexingMode.Range(start: None, end: rangeEnd)

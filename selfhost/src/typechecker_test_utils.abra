@@ -1,6 +1,6 @@
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
-import LiteralAstNode from "./parser"
-import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct, AccessorPathSegment, TypedIdentifierKind, TypedInvokee from "./typechecker"
+import LiteralAstNode, IndexingMode from "./parser"
+import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct, AccessorPathSegment, TypedIdentifierKind, TypedInvokee, TypedIndexingNode from "./typechecker"
 
 export type Jsonifier {
   indentLevel: Int = 0
@@ -72,6 +72,12 @@ export type Jsonifier {
         self.println("\"struct\": { \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.label.name}\" },")
         self.print("\"typeParams\": ")
         self.array(generics, t => self.printType(t))
+        println()
+      }
+      TypeKind.Tuple(types) => {
+        self.println("\"kind\": \"tuple\",")
+        self.print("\"types\": ")
+        self.array(types, t => self.printType(t))
         println()
       }
       TypeKind.Func(params, ret) => {
@@ -298,6 +304,65 @@ export type Jsonifier {
         self.array(pairs, p => {
           self.array([p[0], p[1]], n => self.printNode(n))
         })
+        println()
+      }
+      TypedAstNodeKind.Tuple(items) => {
+        self.println("\"kind\": \"tuple\",")
+
+        self.print("\"items\": ")
+        self.array(items, n => self.printNode(n))
+        println()
+      }
+      TypedAstNodeKind.Indexing(node) => {
+        self.println("\"kind\": \"indexing\",")
+
+        self.println("\"node\": {")
+        self.indentInc()
+
+        match node {
+          TypedIndexingNode.ArrayLike(expr, indexingMode) => {
+            self.println("\"kind\": \"arraylike\",")
+            self.print("\"expr\": ")
+            self.printNode(expr)
+            println(",")
+
+            val i: IndexingMode<TypedAstNode> = indexingMode
+            match i {
+              IndexingMode.Single(idxNode) => {
+                self.print("\"index\": ")
+                self.printNode(idxNode)
+                println()
+              }
+              IndexingMode.Range(startNode, endNode) => {
+                self.print("\"startIndex\": ")
+                if startNode |n| self.printNode(n) else print("null")
+                println(",")
+                self.print("\"endIndex\": ")
+                if endNode |n| self.printNode(n) else print("null")
+                println()
+              }
+            }
+          }
+          TypedIndexingNode.Map(expr, idx) => {
+            self.println("\"kind\": \"map\",")
+            self.print("\"expr\": ")
+            self.printNode(expr)
+            println(",")
+            self.print("\"index\": ")
+            self.printNode(idx)
+            println()
+          }
+          TypedIndexingNode.Tuple(expr, idx) => {
+            self.println("\"kind\": \"tuple\",")
+            self.println("\"index\": $idx,")
+            self.print("\"expr\": ")
+            self.printNode(expr)
+            println()
+          }
+        }
+
+        self.indentDec()
+        self.print("}")
         println()
       }
       TypedAstNodeKind.If(isStatement, condition, conditionBindingPattern, ifBlock, elseBlock) => {

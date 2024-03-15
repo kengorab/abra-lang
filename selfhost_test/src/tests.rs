@@ -315,6 +315,44 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/map/error_type_mismatch_value.2.abra", "typechecker/map/error_type_mismatch_value.2.out")
         .add_test_vs_txt("typechecker/map/error_unfilled_holes.1.abra", "typechecker/map/error_unfilled_holes.1.out")
         .add_test_vs_txt("typechecker/map/error_unfilled_holes.2.abra", "typechecker/map/error_unfilled_holes.2.out")
+        // Tuple
+        .add_test_vs_txt("typechecker/tuple/error_type_mismatch.1.abra", "typechecker/tuple/error_type_mismatch.1.out")
+        .add_test_vs_txt("typechecker/tuple/error_type_mismatch.2.abra", "typechecker/tuple/error_type_mismatch.2.out")
+        .add_test_vs_txt("typechecker/tuple/error_type_mismatch_too_big.1.abra", "typechecker/tuple/error_type_mismatch_too_big.1.out")
+        .add_test_vs_txt("typechecker/tuple/error_type_mismatch_too_big.2.abra", "typechecker/tuple/error_type_mismatch_too_big.2.out")
+        .add_test_vs_txt("typechecker/tuple/error_type_mismatch_too_small.1.abra", "typechecker/tuple/error_type_mismatch_too_small.1.out")
+        .add_test_vs_txt("typechecker/tuple/tuple.abra", "typechecker/tuple/tuple.out.json")
+        // Indexing
+        .add_test_vs_txt("typechecker/indexing/error_indexing_array_nullable.abra", "typechecker/indexing/error_indexing_array_nullable.out")
+        .add_test_vs_txt("typechecker/indexing/error_indexing_string_nullable.abra", "typechecker/indexing/error_indexing_string_nullable.out")
+        .add_test_vs_txt("typechecker/indexing/error_indexing_tuple_nullable.abra", "typechecker/indexing/error_indexing_tuple_nullable.out")
+        .add_test_vs_txt("typechecker/indexing/error_indexing_map_nullable.abra", "typechecker/indexing/error_indexing_map_nullable.out")
+        .add_test_vs_txt("typechecker/indexing/error_unindexable_type.1.abra", "typechecker/indexing/error_unindexable_type.1.out")
+        .add_test_vs_txt("typechecker/indexing/error_unindexable_type.2.abra", "typechecker/indexing/error_unindexable_type.2.out")
+        .add_test_vs_txt("typechecker/indexing/array_error_idx_non_int.abra", "typechecker/indexing/array_error_idx_non_int.out")
+        .add_test_vs_txt("typechecker/indexing/array_error_idx_nullable.abra", "typechecker/indexing/array_error_idx_nullable.out")
+        .add_test_vs_txt("typechecker/indexing/array_error_range_non_int.1.abra", "typechecker/indexing/array_error_range_non_int.1.out")
+        .add_test_vs_txt("typechecker/indexing/array_error_range_non_int.2.abra", "typechecker/indexing/array_error_range_non_int.2.out")
+        .add_test_vs_txt("typechecker/indexing/array_error_range_nullable.1.abra", "typechecker/indexing/array_error_range_nullable.1.out")
+        .add_test_vs_txt("typechecker/indexing/array_error_range_nullable.2.abra", "typechecker/indexing/array_error_range_nullable.2.out")
+        .add_test_vs_txt("typechecker/indexing/indexing_array.abra", "typechecker/indexing/indexing_array.out.json")
+        .add_test_vs_txt("typechecker/indexing/indexing_map.abra", "typechecker/indexing/indexing_map.out.json")
+        .add_test_vs_txt("typechecker/indexing/indexing_string.abra", "typechecker/indexing/indexing_string.out.json")
+        .add_test_vs_txt("typechecker/indexing/indexing_tuple.abra", "typechecker/indexing/indexing_tuple.out.json")
+        .add_test_vs_txt("typechecker/indexing/map_error_key_type_mismatch.abra", "typechecker/indexing/map_error_key_type_mismatch.out")
+        .add_test_vs_txt("typechecker/indexing/string_error_idx_non_int.abra", "typechecker/indexing/string_error_idx_non_int.out")
+        .add_test_vs_txt("typechecker/indexing/string_error_idx_nullable.abra", "typechecker/indexing/string_error_idx_nullable.out")
+        .add_test_vs_txt("typechecker/indexing/string_error_range_non_int.1.abra", "typechecker/indexing/string_error_range_non_int.1.out")
+        .add_test_vs_txt("typechecker/indexing/string_error_range_non_int.2.abra", "typechecker/indexing/string_error_range_non_int.2.out")
+        .add_test_vs_txt("typechecker/indexing/string_error_range_nullable.1.abra", "typechecker/indexing/string_error_range_nullable.1.out")
+        .add_test_vs_txt("typechecker/indexing/string_error_range_nullable.2.abra", "typechecker/indexing/string_error_range_nullable.2.out")
+        .add_test_vs_txt("typechecker/indexing/tuple_error_hole.abra", "typechecker/indexing/tuple_error_hole.out")
+        .add_test_vs_txt("typechecker/indexing/tuple_error_negative.abra", "typechecker/indexing/tuple_error_negative.out")
+        .add_test_vs_txt("typechecker/indexing/tuple_error_non_int_literal.abra", "typechecker/indexing/tuple_error_non_int_literal.out")
+        .add_test_vs_txt("typechecker/indexing/tuple_error_non_literal.abra", "typechecker/indexing/tuple_error_non_literal.out")
+        .add_test_vs_txt("typechecker/indexing/tuple_error_out_of_bounds.abra", "typechecker/indexing/tuple_error_out_of_bounds.out")
+        .add_test_vs_txt("typechecker/indexing/tuple_error_range.abra", "typechecker/indexing/tuple_error_range.out")
+        .add_test_vs_txt("typechecker/indexing/tuple_error_type_mismatch.abra", "typechecker/indexing/tuple_error_type_mismatch.out")
 
 
         // If expressions & statements
@@ -386,7 +424,6 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/invocation/generics_error_field.1.abra", "typechecker/invocation/generics_error_field.1.out")
         .add_test_vs_txt("typechecker/invocation/invocation_method_generics.1.abra", "typechecker/invocation/invocation_method_generics.1.out.json")
         .add_test_vs_txt("typechecker/invocation/invocation_method_generics.2.abra", "typechecker/invocation/invocation_method_generics.2.out.json")
-
         // Accessor
         .add_test_vs_txt("typechecker/accessor/accessor.1.abra", "typechecker/accessor/accessor.1.out.json")
         .add_test_vs_txt("typechecker/accessor/accessor.2.abra", "typechecker/accessor/accessor.2.out.json")
@@ -400,7 +437,6 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/accessor/error_unknown_field_chain_opt_known.abra", "typechecker/accessor/error_unknown_field_chain_opt_known.out")
         .add_test_vs_txt("typechecker/accessor/error_unknown_field_chain_opt_unknown.abra", "typechecker/accessor/error_unknown_field_chain_opt_unknown.out")
         .add_test_vs_txt("typechecker/accessor/error_static_member_referenced_by_instance.abra", "typechecker/accessor/error_static_member_referenced_by_instance.out")
-
 
         // Type identifiers
         .add_test_vs_txt("typechecker/typeidentifier/error_typearg_unknown.abra", "typechecker/typeidentifier/error_typearg_unknown.out")
@@ -474,7 +510,6 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/funcdecl/error_return_type_mismatch_empty.abra", "typechecker/funcdecl/error_return_type_mismatch_empty.out")
         .add_test_vs_txt("typechecker/funcdecl/error_return_type_mismatch_stmt.abra", "typechecker/funcdecl/error_return_type_mismatch_stmt.out")
         .add_test_vs_txt("typechecker/funcdecl/funcdecl_generics.abra", "typechecker/funcdecl/funcdecl_generics.out.json")
-        .add_test_vs_txt("typechecker/funcdecl/generics_error_type_mismatch.abra", "typechecker/funcdecl/generics_error_type_mismatch.out")
         .add_test_vs_txt("typechecker/funcdecl/default_param_value_call.1.abra", "typechecker/funcdecl/default_param_value_call.1.out.json")
         .add_test_vs_txt("typechecker/funcdecl/default_param_value_call.2.abra", "typechecker/funcdecl/default_param_value_call.2.out.json")
         .add_test_vs_txt("typechecker/funcdecl/default_param_value_call.3.abra", "typechecker/funcdecl/default_param_value_call.3.out.json")
@@ -486,6 +521,8 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/funcdecl/default_param_value_call.9.abra", "typechecker/funcdecl/default_param_value_call.9.out.json")
         .add_test_vs_txt("typechecker/funcdecl/default_param_value_accessor.abra", "typechecker/funcdecl/default_param_value_accessor.out.json")
         .add_test_vs_txt("typechecker/funcdecl/error_self_standalone.abra", "typechecker/funcdecl/error_self_standalone.out")
+        .add_test_vs_txt("typechecker/funcdecl/error_generics_param_type_mismatch.abra", "typechecker/funcdecl/error_generics_param_type_mismatch.out")
+        .add_test_vs_txt("typechecker/funcdecl/error_generics_return_type_mismatch.abra", "typechecker/funcdecl/error_generics_return_type_mismatch.out")
         // Type declaration
         .add_test_vs_txt("typechecker/typedecl/error_duplicate_field.abra", "typechecker/typedecl/error_duplicate_field.out")
         .add_test_vs_txt("typechecker/typedecl/error_method_bad_self_position.abra", "typechecker/typedecl/error_method_bad_self_position.out")
