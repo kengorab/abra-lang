@@ -1,0 +1,247 @@
+{
+  "id": 1,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "t1", "position": [1, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "t1", "position": [1, 5] },
+            "mutable": false,
+            "type": {
+              "nullable": false,
+              "kind": "tuple",
+              "types": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                },
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "String"
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [1, 10],
+            "kind": {
+              "name": "LParen"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "tuple",
+            "types": [
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Bool"
+              },
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            ]
+          },
+          "node": {
+            "kind": "tuple",
+            "items": [
+              {
+                "token": {
+                  "position": [1, 11],
+                  "kind": {
+                    "name": "Int",
+                    "value": 1
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 1
+                }
+              },
+              {
+                "token": {
+                  "position": [1, 14],
+                  "kind": {
+                    "name": "Bool",
+                    "value": true
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": true
+                }
+              },
+              {
+                "token": {
+                  "position": [1, 20],
+                  "kind": {
+                    "name": "String",
+                    "value": "three"
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": "three"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "t2", "position": [2, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "t2", "position": [2, 5] },
+            "mutable": false,
+            "type": {
+              "nullable": false,
+              "kind": "tuple",
+              "types": [
+                {
+                  "nullable": true,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "String"
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [2, 26],
+            "kind": {
+              "name": "LParen"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "tuple",
+            "types": [
+              {
+                "nullable": true,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            ]
+          },
+          "node": {
+            "kind": "tuple",
+            "items": [
+              {
+                "token": {
+                  "position": [2, 27],
+                  "kind": {
+                    "name": "None"
+                  }
+                },
+                "type": {
+                  "nullable": true,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "None"
+                }
+              },
+              {
+                "token": {
+                  "position": [2, 33],
+                  "kind": {
+                    "name": "String",
+                    "value": "foo"
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": "foo"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

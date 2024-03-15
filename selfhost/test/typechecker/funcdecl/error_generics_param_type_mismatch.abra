@@ -1,0 +1,3 @@
+// Test to ensure the generics are realized using the tuple
+func foo<T, U>(pair: (T, U), t: T, u: U) {}
+foo((1, "two"), "one", 2)

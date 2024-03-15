@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:3:5
+Type mismatch
+  |  arr[a:2]
+         ^
+Expected: Int
+but instead found: Int?

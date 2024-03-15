@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:2:1
+Unsupported indexing operation
+  |  arr[0]
+     ^
+Type 'Int[]?' is not indexable

@@ -1,6 +1,6 @@
 import "fs" as fs
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
-import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, AccessorAstNode from "./parser"
+import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, AccessorAstNode, IndexingMode from "./parser"
 
 enum TokenizeAndParseError {
   ReadFileError(path: String)
@@ -145,6 +145,7 @@ export type Type {
           "${struct.label.name}$genericsRepr"
         }
       }
+      TypeKind.Tuple(types) => "(${types.map(t => t.repr()).join(", ")})"
       TypeKind.Func(paramTypes, returnType) => {
         val paramsRepr = paramTypes.filter(p => p[1]).map(p => p[0].repr()).join(", ")
         val returnTypeRepr = returnType.repr()
@@ -169,6 +170,7 @@ export type Type {
     TypeKind.Never => false
     TypeKind.Generic => false
     TypeKind.Instance(_, generics) => generics.any(t => t.hasUnfilledHoles())
+    TypeKind.Tuple(types) => types.any(t => t.hasUnfilledHoles())
     TypeKind.Func(paramTypes, returnType) => paramTypes.any(t => t[0].hasUnfilledHoles()) || returnType.hasUnfilledHoles()
     TypeKind.Struct => false
     TypeKind.Hole => true
@@ -179,13 +181,23 @@ export type Type {
   func tryFillHoles(self, other: Type) {
     // TODO: this code is pretty ugly - I really need a way of destructuring multiple values simultaneously in `match`es
     match self.kind {
-      TypeKind.Instance(selfStruct, selfGenerics) => {
+      TypeKind.Instance(selfStruct, selfTypeArgs) => {
         match other.kind {
-          TypeKind.Instance(otherStruct, otherGenerics) => {
+          TypeKind.Instance(otherStruct, otherTypeArgs) => {
             if selfStruct != otherStruct return
 
-            for generic, idx in selfGenerics {
-              generic.tryFillHoles(otherGenerics[idx] ?: Type(kind: TypeKind.Hole))
+            for typeArg, idx in selfTypeArgs {
+              typeArg.tryFillHoles(otherTypeArgs[idx] ?: Type(kind: TypeKind.Hole))
+            }
+          }
+          _ => {}
+        }
+      }
+      TypeKind.Tuple(selfTypeArgs) => {
+        match other.kind {
+          TypeKind.Tuple(otherTypeArgs) => {
+            for typeArg, idx in selfTypeArgs {
+              typeArg.tryFillHoles(otherTypeArgs[idx] ?: Type(kind: TypeKind.Hole))
             }
           }
           _ => {}
@@ -205,6 +217,10 @@ export type Type {
       TypeKind.Instance(struct, typeArgs) => {
         val substTypeArgs = typeArgs.map(ty => ty.withSubstitutedGenerics(resolvedGenerics, retainUnknown))
         Type(kind: TypeKind.Instance(struct, substTypeArgs))
+      }
+      TypeKind.Tuple(typeArgs) => {
+        val substTypeArgs = typeArgs.map(ty => ty.withSubstitutedGenerics(resolvedGenerics, retainUnknown))
+        Type(kind: TypeKind.Tuple(substTypeArgs))
       }
       TypeKind.Func(paramTypes, returnType) => {
         val substParamTypes = paramTypes.map(p => {
@@ -233,6 +249,7 @@ export enum TypeKind {
   Instance(struct: Struct, generics: Type[])
   Func(paramTypes: (Type, Bool)[], returnType: Type)
   Struct(struct: Struct)
+  Tuple(types: Type[])
   Hole
 }
 
@@ -335,6 +352,12 @@ export enum TypedInvokee {
   Expr(expr: TypedAstNode)
 }
 
+export enum TypedIndexingNode {
+  ArrayLike(expr: TypedAstNode, indexingMode: IndexingMode<TypedAstNode>)
+  Map(expr: TypedAstNode, idx: TypedAstNode)
+  Tuple(tupleExpr: TypedAstNode, idx: Int)
+}
+
 export enum TypedAstNodeKind {
   Literal(value: LiteralAstNode)
   Unary(op: UnaryOp, expr: TypedAstNode)
@@ -346,6 +369,8 @@ export enum TypedAstNodeKind {
   Array(items: TypedAstNode[])
   Set(items: TypedAstNode[])
   Map(items: (TypedAstNode, TypedAstNode)[])
+  Tuple(items: TypedAstNode[])
+  Indexing(node: TypedIndexingNode)
   If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], typedElseBlock: TypedAstNode[])
   While(typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, block: TypedAstNode[])
   For(typedIterator: TypedAstNode, itemBinding: (BindingPattern, Variable[]), indexBinding: Variable?, block: TypedAstNode[])
@@ -675,6 +700,33 @@ type TypeError {
           lines.push("No operator '${op.repr()}' exists between types ${leftTy.repr()} and ${rightTy.repr()}")
         }
       }
+      TypeErrorKind.IllegalIndexableType(ty, isRange) => {
+        lines.push("Unsupported indexing operation")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Type '${ty.repr()}' is not indexable" + if isRange " as a range" else "")
+      }
+      TypeErrorKind.IllegalTupleIndexing(ty, reason) => {
+        lines.push("Unsupported tuple indexing operation")
+        lines.push(self._getCursorLine(self.position, contents))
+        match reason {
+          IllegalTupleIndexingReason.IndexOutOfBounds => {
+            lines.push("No value at index for tuple of type '${ty.repr()}'")
+            match ty.kind {
+              TypeKind.Tuple(types) => lines.push("(Valid index values are from 0-${types.length - 1}, inclusive)")
+              _ => println("The type here should always be a tuple")
+            }
+          }
+          IllegalTupleIndexingReason.IndexNegative => {
+            lines.push("Tuple index values must always be a non-negative integer")
+            match ty.kind {
+              TypeKind.Tuple(types) => lines.push("(Valid index values are from 0-${types.length - 1}, inclusive)")
+              _ => println("The type here should always be a tuple")
+            }
+          }
+          IllegalTupleIndexingReason.NotIntLiteral => lines.push("Cannot use non-Int literal as index value. Tuple index values must always be Int literals")
+          IllegalTupleIndexingReason.NotLiteralNode => lines.push("Cannot use this expression as index value. Tuple index values must always be Int literals")
+        }
+      }
       TypeErrorKind.UnnecessaryOptSafety => {
         lines.push("Unnecessary use of '?.' operator")
         lines.push(self._getCursorLine(self.position, contents))
@@ -709,6 +761,13 @@ enum UnknownFieldSpecialCase {
   StaticFieldReferencedAsInstance
 }
 
+enum IllegalTupleIndexingReason {
+  IndexOutOfBounds
+  IndexNegative
+  NotIntLiteral
+  NotLiteralNode
+}
+
 enum TypeErrorKind {
   NotYetImplemented(reason: String)
   Unreachable(message: String)
@@ -738,6 +797,8 @@ enum TypeErrorKind {
   IllegalCallableType(ty: Type)
   WrongTypeArgumentArity(expected: Int, given: Int)
   NoSuchOperator(leftTy: Type, op: BinaryOp, rightTy: Type)
+  IllegalIndexableType(ty: Type, isRange: Bool)
+  IllegalTupleIndexing(ty: Type, reason: IllegalTupleIndexingReason)
   UnnecessaryOptSafety
   InvalidTraitMethodSignature(fn: Function)
 }
@@ -912,7 +973,15 @@ export type Typechecker {
         innerTy.nullable = true
         innerTy
       }
-      TypeIdentifier.Tuple => return todo(Position(line: 0, col: 0))
+      TypeIdentifier.Tuple(typeIdents) => {
+        val types: Type[] = []
+        for typeIdent in typeIdents {
+          val ty = match self._resolveTypeIdentifier(typeIdent) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          types.push(ty)
+        }
+
+        Type(kind: TypeKind.Tuple(types))
+      }
       TypeIdentifier.Function(params, ret) => {
         val paramTypes: (Type, Bool)[] = []
         for p in params {
@@ -980,6 +1049,18 @@ export type Typechecker {
         }
         _ => false
       }
+      TypeKind.Tuple(reqTypes) => match ty.kind {
+        TypeKind.Tuple(types) => {
+          if reqTypes.length != types.length return false
+          for reqTy, i in reqTypes {
+            val ty = if types[i] |t| t else { /* unreachable, length verified above to be equal */ return false }
+            if !self._typeSatisfiesRequired(ty: ty, required: reqTy) return false
+          }
+
+          true
+        }
+        _ => false
+      }
       _ => {
         ty.kind == required.kind
       }
@@ -990,6 +1071,7 @@ export type Typechecker {
     match ty.kind {
       TypeKind.Generic(name) => true
       TypeKind.Instance(_, typeArgs) => typeArgs.any(t => self._containsGenerics(t))
+      TypeKind.Tuple(typeArgs) => typeArgs.any(t => self._containsGenerics(t))
       TypeKind.Func(paramTypes, returnType) => {
         if self._containsGenerics(returnType) return true
 
@@ -1018,6 +1100,17 @@ export type Typechecker {
                 return
               }
               self.__extractGenerics(template: tplTypeArg, source: srcTypeArg, extracted: extracted)
+            }
+          }
+          _ => {}
+        }
+      }
+      TypeKind.Tuple(templateTypes) => {
+        match source.kind {
+          TypeKind.Tuple(sourceTypes) => {
+            for tplType, idx in templateTypes {
+              val srcType = if sourceTypes[idx] |t| t else break
+              self.__extractGenerics(template: tplType, source: srcType, extracted: extracted)
             }
           }
           _ => {}
@@ -1934,8 +2027,8 @@ export type Typechecker {
       AstNodeKind.Array(items) => self._typecheckArray(token, items, typeHint)
       AstNodeKind.Set(items) => self._typecheckSet(token, items, typeHint)
       AstNodeKind.Map(items) => self._typecheckMap(token, items, typeHint)
-      AstNodeKind.Tuple(items) => todo(node.token.position, "tuple expression")
-      AstNodeKind.Indexing(expr, index) => todo(node.token.position, "indexing expression")
+      AstNodeKind.Tuple(items) => self._typecheckTuple(token, items, typeHint)
+      AstNodeKind.Indexing(expr, index) => self._typecheckIndexing(token, expr, index, typeHint)
       AstNodeKind.Lambda(value) => todo(node.token.position, "lambda expression")
       AstNodeKind.If(condition, conditionBinding, ifBlock, elseBlock) => self._typecheckIf(token, condition, conditionBinding, ifBlock, elseBlock, typeHint)
       _ => unreachable(node.token.position, "all other node types should have already been handled")
@@ -2170,6 +2263,7 @@ export type Typechecker {
 
         None
       }
+      TypeKind.Tuple => None
       TypeKind.Func => None
       TypeKind.Struct(struct) => {
         // TODO: static fields
@@ -2640,6 +2734,139 @@ export type Typechecker {
      }
 
     Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Map(typedItems)))
+  }
+
+  func _typecheckTuple(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
+    var typeHints: Type[]? = None
+    if typeHint |hint| {
+      match hint.kind {
+        TypeKind.Tuple(types) => typeHints = types
+        _ => {}
+      }
+    }
+
+    val typedItems: TypedAstNode[] = []
+    for node, idx in items {
+      val typeHint = if typeHints |typeHints| typeHints[idx]
+      val typedExpr = match self._typecheckExpression(node, typeHint) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      if typeHint |hint| {
+        if !self._typeSatisfiesRequired(ty: typedExpr.ty, required: hint) {
+          return Result.Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.TypeMismatch([hint], typedExpr.ty)))
+        }
+      }
+      typedItems.push(typedExpr)
+    }
+    val ty = Type(kind: TypeKind.Tuple(typedItems.map(item => item.ty)))
+    if typeHints |typeHints| {
+      val hintTy = Type(kind: TypeKind.Tuple(typeHints))
+      if !self._typeSatisfiesRequired(ty: ty, required: hintTy) {
+        return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.TypeMismatch([hintTy], ty)))
+      }
+    }
+
+    Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Tuple(typedItems)))
+  }
+
+  func _typecheckIndexing(self, token: Token, expr: AstNode, indexMode: IndexingMode<AstNode>, typeHint: Type?): Result<TypedAstNode, TypeError> {
+    val typedExpr = match self._typecheckExpression(expr, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    if typedExpr.ty.nullable {
+      return Result.Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.IllegalIndexableType(ty: typedExpr.ty, isRange: false)))
+    }
+
+    val res = match typedExpr.ty.kind {
+      TypeKind.PrimitiveString => {
+        val resTy = Type(kind: TypeKind.PrimitiveString)
+        self._typecheckIndexingArraylike(token: token, typedExpr: typedExpr, indexMode: indexMode, singleModeType: resTy, rangeModeType: resTy)
+      }
+      TypeKind.Tuple(types) => self._typecheckIndexingTuple(token, types, typedExpr, indexMode)
+      TypeKind.Instance(struct, typeArgs) => {
+        if self._typeAsInstance1(typedExpr.ty, self.project.preludeArrayStruct) |inner| {
+          self._typecheckIndexingArraylike(token: token, typedExpr: typedExpr, indexMode: indexMode, singleModeType: Type(kind: inner.kind, nullable: true), rangeModeType: typedExpr.ty)
+        } else if self._typeAsInstance2(typedExpr.ty, self.project.preludeMapStruct) |_p| {
+          // TODO: destructuring
+          val keyTy = _p[0]
+          val valTy = _p[1]
+
+          match indexMode {
+            IndexingMode.Single(idxExpr) => {
+              val typedIdxExpr = match self._typecheckExpression(idxExpr, keyTy) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+              if !self._typeSatisfiesRequired(ty: typedIdxExpr.ty, required: keyTy) {
+                return Result.Err(TypeError(position: typedIdxExpr.token.position, kind: TypeErrorKind.TypeMismatch([keyTy], typedIdxExpr.ty)))
+              }
+
+              val ty = Type(kind: valTy.kind, nullable: true)
+              Result.Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Indexing(TypedIndexingNode.Map(typedExpr, typedIdxExpr))))
+            }
+            IndexingMode.Range => return Result.Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.IllegalIndexableType(ty: typedExpr.ty, isRange: true)))
+          }
+        } else {
+          return Result.Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.IllegalIndexableType(ty: typedExpr.ty, isRange: false)))
+        }
+      }
+      _ => return Result.Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.IllegalIndexableType(ty: typedExpr.ty, isRange: false)))
+    }
+
+    res
+  }
+
+  func _typecheckIndexingArraylike(self, token: Token, typedExpr: TypedAstNode, indexMode: IndexingMode<AstNode>, singleModeType: Type, rangeModeType: Type): Result<TypedAstNode, TypeError> {
+    match indexMode {
+      IndexingMode.Single(idxExpr) => {
+        val typedIdxExpr = match self._typecheckExpression(idxExpr, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        val idxTy = typedIdxExpr.ty
+        if idxTy.nullable || idxTy.kind != TypeKind.PrimitiveInt {
+          return Result.Err(TypeError(position: typedIdxExpr.token.position, kind: TypeErrorKind.TypeMismatch([Type(kind: TypeKind.PrimitiveInt)], idxTy)))
+        }
+
+        val typedIndexMode = IndexingMode.Single(typedIdxExpr)
+        return Result.Ok(TypedAstNode(token: token, ty: singleModeType, kind: TypedAstNodeKind.Indexing(TypedIndexingNode.ArrayLike(typedExpr, typedIndexMode))))
+      }
+      IndexingMode.Range(startExpr, endExpr) => {
+        val typedStartExpr = if startExpr |expr| {
+          val e = match self._typecheckExpression(expr, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          if e.ty.nullable || e.ty.kind != TypeKind.PrimitiveInt {
+            return Result.Err(TypeError(position: e.token.position, kind: TypeErrorKind.TypeMismatch([Type(kind: TypeKind.PrimitiveInt)], e.ty)))
+          }
+          e
+        }
+        val typedEndExpr = if endExpr |expr| {
+          val e = match self._typecheckExpression(expr, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          if e.ty.nullable || e.ty.kind != TypeKind.PrimitiveInt {
+            return Result.Err(TypeError(position: e.token.position, kind: TypeErrorKind.TypeMismatch([Type(kind: TypeKind.PrimitiveInt)], e.ty)))
+          }
+          e
+        }
+        val typedIndexMode = IndexingMode.Range(typedStartExpr, typedEndExpr)
+        return Result.Ok(TypedAstNode(token: token, ty: rangeModeType, kind: TypedAstNodeKind.Indexing(TypedIndexingNode.ArrayLike(typedExpr, typedIndexMode))))
+      }
+    }
+  }
+
+  func _typecheckIndexingTuple(self, token: Token, tupleItemTypes: Type[], tupleExpr: TypedAstNode, indexMode: IndexingMode<AstNode>): Result<TypedAstNode, TypeError> {
+    match indexMode {
+      IndexingMode.Single(idxExpr) => {
+        match idxExpr.kind {
+          AstNodeKind.Literal(lit) => {
+            match lit {
+              LiteralAstNode.Int(i) => {
+                val itemTy = if i < 0
+                  return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.IllegalTupleIndexing(tupleExpr.ty, IllegalTupleIndexingReason.IndexNegative)))
+                else if tupleItemTypes[i] |ty|
+                  ty
+                else
+                  return Result.Err(TypeError(position: token.position, kind: TypeErrorKind.IllegalTupleIndexing(tupleExpr.ty, IllegalTupleIndexingReason.IndexOutOfBounds)))
+
+                Result.Ok(TypedAstNode(token: token, ty: itemTy, kind: TypedAstNodeKind.Indexing(TypedIndexingNode.Tuple(tupleExpr, i))))
+              }
+              _ => Result.Err(TypeError(position: token.position, kind: TypeErrorKind.IllegalTupleIndexing(tupleExpr.ty, IllegalTupleIndexingReason.NotIntLiteral)))
+            }
+          }
+          _ => Result.Err(TypeError(position: token.position, kind: TypeErrorKind.IllegalTupleIndexing(tupleExpr.ty, IllegalTupleIndexingReason.NotLiteralNode)))
+        }
+      }
+      // TODO: should tuples be indexable as a range? it could just create a sub-tuple copy? is that useful at all? seems silly to forbid it
+      IndexingMode.Range => Result.Err(TypeError(position: token.position, kind: TypeErrorKind.IllegalIndexableType(ty: tupleExpr.ty, isRange: true)))
+    }
   }
 }
 

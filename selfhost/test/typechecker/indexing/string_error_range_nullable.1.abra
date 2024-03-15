@@ -1,0 +1,3 @@
+val str = "abcd"
+val a: Int? = 1
+str[a:2]

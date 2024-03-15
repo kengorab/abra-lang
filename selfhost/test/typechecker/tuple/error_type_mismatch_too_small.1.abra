@@ -1,0 +1,1 @@
+val t: (Int, String, Int[]) = (1, "two")

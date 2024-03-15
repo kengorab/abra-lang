@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:1:24
+Type mismatch
+  |  val t: (Int, String) = (1, "two", [1, 2, 3])
+                            ^
+Expected: (Int, String)
+but instead found: (Int, String, Int[])
