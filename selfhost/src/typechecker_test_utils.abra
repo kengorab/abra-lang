@@ -1,6 +1,6 @@
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 import LiteralAstNode, IndexingMode from "./parser"
-import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct, AccessorPathSegment, TypedIdentifierKind, TypedInvokee, TypedIndexingNode from "./typechecker"
+import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct, AccessorPathSegment, TypedIdentifierKind, TypedInvokee, TypedIndexingNode, TypedAssignmentMode from "./typechecker"
 
 export type Jsonifier {
   indentLevel: Int = 0
@@ -326,8 +326,7 @@ export type Jsonifier {
             self.printNode(expr)
             println(",")
 
-            val i: IndexingMode<TypedAstNode> = indexingMode
-            match i {
+            match indexingMode {
               IndexingMode.Single(idxNode) => {
                 self.print("\"index\": ")
                 self.printNode(idxNode)
@@ -357,6 +356,29 @@ export type Jsonifier {
             self.println("\"index\": $idx,")
             self.print("\"expr\": ")
             self.printNode(expr)
+            println()
+          }
+        }
+
+        self.indentDec()
+        self.print("}")
+        println()
+      }
+      TypedAstNodeKind.Assignment(mode, expr) => {
+        self.println("\"kind\": \"assignment\",")
+
+        self.print("\"expr\": ")
+        self.printNode(expr)
+        println(",")
+
+        self.println("\"mode\": {")
+        self.indentInc()
+
+        match mode {
+          TypedAssignmentMode.Variable(v) => {
+            self.println("\"kind\": \"variable\",")
+            self.print("\"variable\": ")
+            self.printVariable(v)
             println()
           }
         }
