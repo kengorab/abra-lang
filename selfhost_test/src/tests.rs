@@ -446,6 +446,23 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/typeidentifier/error_typeargs_unexpected.abra", "typechecker/typeidentifier/error_typeargs_unexpected.out")
         .add_test_vs_txt("typechecker/typeidentifier/error_unknown_type.abra", "typechecker/typeidentifier/error_unknown_type.out")
 
+        // Assignment
+        .add_test_vs_txt("typechecker/assignment/assignment_accessor.abra", "typechecker/assignment/assignment_accessor.out.json")
+        .add_test_vs_txt("typechecker/assignment/assignment_indexing.abra", "typechecker/assignment/assignment_indexing.out.json")
+        .add_test_vs_txt("typechecker/assignment/assignment_variable.abra", "typechecker/assignment/assignment_variable.out.json")
+        .add_test_vs_txt("typechecker/assignment/accessor_error_method.1.abra", "typechecker/assignment/accessor_error_method.1.out")
+        .add_test_vs_txt("typechecker/assignment/accessor_error_method.2.abra", "typechecker/assignment/accessor_error_method.2.out")
+        .add_test_vs_txt("typechecker/assignment/accessor_error_type_mismatch.1.abra", "typechecker/assignment/accessor_error_type_mismatch.1.out")
+        .add_test_vs_txt("typechecker/assignment/accessor_error_type_mismatch.2.abra", "typechecker/assignment/accessor_error_type_mismatch.2.out")
+        .add_test_vs_txt("typechecker/assignment/variable_error_alias_fn.abra", "typechecker/assignment/variable_error_alias_fn.out")
+        .add_test_vs_txt("typechecker/assignment/indexing_error_type_mismatch.1.abra", "typechecker/assignment/indexing_error_type_mismatch.1.out")
+        .add_test_vs_txt("typechecker/assignment/indexing_error_type_mismatch.2.abra", "typechecker/assignment/indexing_error_type_mismatch.2.out")
+        .add_test_vs_txt("typechecker/assignment/variable_error_alias_type.abra", "typechecker/assignment/variable_error_alias_type.out")
+        .add_test_vs_txt("typechecker/assignment/variable_error_immutable.abra", "typechecker/assignment/variable_error_immutable.out")
+        .add_test_vs_txt("typechecker/assignment/variable_error_type_mismatch.1.abra", "typechecker/assignment/variable_error_type_mismatch.1.out")
+        .add_test_vs_txt("typechecker/assignment/variable_error_type_mismatch.2.abra", "typechecker/assignment/variable_error_type_mismatch.2.out")
+        .add_test_vs_txt("typechecker/assignment/variable_error_unknown.abra", "typechecker/assignment/variable_error_unknown.out")
+
         // Break
         .add_test_vs_txt("typechecker/break/break_as_expr.abra", "typechecker/break/break_as_expr.out.json")
         .add_test_vs_txt("typechecker/break/error_location_module.abra", "typechecker/break/error_location_module.out")

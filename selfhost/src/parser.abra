@@ -147,7 +147,7 @@ export enum IndexingMode<N> {
 }
 
 export enum AssignmentMode {
-  Variable(name: String)
+  Variable(name: String, token: Token)
   Indexing(expr: AstNode, indexExpr: AstNode)
   Accessor(node: AccessorAstNode)
 }
@@ -1688,7 +1688,7 @@ export type Parser {
   func _parseAssignment(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
     val mode = match left.kind {
       AstNodeKind.Identifier(identKind) => match identKind {
-        IdentifierKind.Named(name) => AssignmentMode.Variable(name)
+        IdentifierKind.Named(name) => AssignmentMode.Variable(name, left.token)
         _ => return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
       }
       AstNodeKind.Accessor(node) => AssignmentMode.Accessor(node)

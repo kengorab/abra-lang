@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:2:13
+Type mismatch
+  |  arr[0] = arr[1]
+                 ^
+Expected: Int
+but instead found: Int?

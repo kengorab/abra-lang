@@ -1,0 +1,8 @@
+val arr = [1, 2, 3]
+arr[0] = 1
+
+val tuple = (1, "two", [3])
+tuple[0] = 3
+
+val map = { ((1, 2)): "a", ((2, 3)): "b" }
+map[(3, 4)] = "c"
