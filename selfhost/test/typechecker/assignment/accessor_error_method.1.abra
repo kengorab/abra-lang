@@ -1,0 +1,6 @@
+type Foo {
+  func foo(self) {}
+}
+
+val f = Foo()
+f.foo = "abcd"

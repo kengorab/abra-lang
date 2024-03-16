@@ -361,7 +361,7 @@ export enum TypedIndexingNode {
 export enum TypedAssignmentMode {
   Variable(variable: Variable)
   Indexing(node: TypedIndexingNode)
-  // Accessor(node: AccessorAstNode)
+  Accessor(head: TypedAstNode, middle: AccessorPathSegment[], tail: AccessorPathSegment)
 }
 
 export enum TypedAstNodeKind {
@@ -750,6 +750,8 @@ type TypeError {
           IllegalAssignmentReason.ImmutableVariable => lines.push("'$name' is declared as immutable")
           IllegalAssignmentReason.TypeAlias => lines.push("'$name' is a type, which cannot be overwritten")
           IllegalAssignmentReason.FunctionAlias => lines.push("'$name' is a function, which cannot be overwritten")
+          IllegalAssignmentReason.Method => lines.push("'$name' is a method, which cannot be overwritten")
+          IllegalAssignmentReason.StaticMethod => lines.push("'$name' is a static method, which cannot be overwritten")
         }
       }
     }
@@ -788,6 +790,8 @@ enum IllegalAssignmentReason {
   ImmutableVariable
   TypeAlias
   FunctionAlias
+  Method
+  StaticMethod
 }
 
 enum TypeErrorKind {
@@ -1796,12 +1800,6 @@ export type Typechecker {
   }
 
   func _typecheckAssignment(self, token: Token, expr: AstNode, mode: AssignmentMode): Result<TypedAstNode, TypeError> {
-    // export enum AssignmentMode {
-    //   Variable(name: String)
-    //   Indexing(expr: AstNode, indexExpr: AstNode)
-    //   Accessor(node: AccessorAstNode)
-    // }
-
     match mode {
       AssignmentMode.Variable(name, varToken) => {
         val pos = varToken.position
@@ -1827,11 +1825,11 @@ export type Typechecker {
       }
       AssignmentMode.Indexing(targetExpr, indexExpr) => {
         val typedLhs = match self._typecheckIndexing(token, targetExpr, IndexingMode.Single(indexExpr), None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-        val assignmentTy = Type(kind: typedLhs.ty.kind, nullable: false)
         val typedIndexingNode = match typedLhs.kind {
           TypedAstNodeKind.Indexing(node) => node
           _ => return unreachable(typedLhs.token.position, "_typecheckIndexing returned unexpected TypedAstNodeKind")
         }
+        val assignmentTy = Type(kind: typedLhs.ty.kind, nullable: false)
 
         val typedExpr = match self._typecheckExpression(expr, assignmentTy) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
         if !self._typeSatisfiesRequired(ty: typedExpr.ty, required: assignmentTy) {
@@ -1841,7 +1839,44 @@ export type Typechecker {
         val mode = TypedAssignmentMode.Indexing(typedIndexingNode)
         return Result.Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, typedExpr)))
       }
-      _ => return todo(token.position, "other assignment modes")
+      AssignmentMode.Accessor(accessorNode) => {
+        val typedLhs = match self._typecheckAccessor(token, accessorNode, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        val _p = match typedLhs.kind {
+          TypedAstNodeKind.Accessor(head, mid, tail) => {
+            val t = match tail {
+              AccessorPathSegment.Method(label, fn) => {
+                val _p = if fn.kind == FunctionKind.StaticMethod {
+                  ("static method", IllegalAssignmentReason.StaticMethod)
+                } else {
+                  ("method", IllegalAssignmentReason.Method)
+                }
+                // TODO: destructuring
+                val kind = _p[0]
+                val reason = _p[1]
+
+                return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAssignment(kind, fn.label.name, reason)))
+              }
+              AccessorPathSegment.Field(label, field) => {
+                val mode = TypedAssignmentMode.Accessor(head, mid, tail)
+                (mode, label, field)
+              }
+            }
+            t
+          }
+          _ => return unreachable(typedLhs.token.position, "_typecheckAccessor returned unexpected TypedAstNodeKind")
+        }
+        // TODO: destructuring
+        val mode = _p[0]
+        val fieldLabel = _p[1]
+        val field = _p[2]
+
+        val typedExpr = match self._typecheckExpression(expr, field.ty) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        if !self._typeSatisfiesRequired(ty: typedExpr.ty, required: field.ty) {
+          return Result.Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.TypeMismatch([field.ty], typedExpr.ty)))
+        }
+
+        return Result.Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, typedExpr)))
+      }
     }
   }
 

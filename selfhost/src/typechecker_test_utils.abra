@@ -179,9 +179,19 @@ export type Jsonifier {
     self.printType(node.ty)
     println(",")
 
-    self.println("\"node\": {")
+    self.print("\"node\": ")
+    self.printNodeKind(node.kind)
+    println()
+
+    self.indentDec()
+    self.print("}")
+  }
+
+  func printNodeKind(self, kind: TypedAstNodeKind) {
+    println("{")
     self.indentInc()
-    match node.kind {
+
+    match kind {
       TypedAstNodeKind.Literal(value) => {
         self.println("\"kind\": \"literal\",")
         match value {
@@ -208,7 +218,6 @@ export type Jsonifier {
         self.printNode(right)
         println()
       }
-      // TypedAstNodeKind.Binary => { }
       TypedAstNodeKind.Grouped(inner) => {
         self.println("\"kind\": \"grouped\",")
         self.print("\"expr\": ")
@@ -327,27 +336,40 @@ export type Jsonifier {
         self.printNode(expr)
         println(",")
 
-        self.println("\"mode\": {")
-        self.indentInc()
+        self.print("\"mode\": ")
 
         match mode {
           TypedAssignmentMode.Variable(v) => {
+            println("{")
+            self.indentInc()
+
             self.println("\"kind\": \"variable\",")
             self.print("\"variable\": ")
             self.printVariable(v)
             println()
+
+            self.indentDec()
+            self.print("}")
+            println()
           }
           TypedAssignmentMode.Indexing(typedIndexingNode) => {
+            println("{")
+            self.indentInc()
+
             self.println("\"kind\": \"indexing\",")
             self.print("\"indexNode\": ")
             self.printTypedIndexingNode(typedIndexingNode)
             println()
+
+            self.indentDec()
+            self.print("}")
+            println()
+          }
+          TypedAssignmentMode.Accessor(head, mid, tail) => {
+            self.printNodeKind(TypedAstNodeKind.Accessor(head, mid, tail))
+            println()
           }
         }
-
-        self.indentDec()
-        self.print("}")
-        println()
       }
       TypedAstNodeKind.If(isStatement, condition, conditionBindingPattern, ifBlock, elseBlock) => {
         self.println("\"kind\": \"if\",")
@@ -484,8 +506,6 @@ export type Jsonifier {
         self.println("ERROR: There should never be a Placeholder node emitted")
       }
     }
-    self.indentDec()
-    self.println("}")
 
     self.indentDec()
     self.print("}")
