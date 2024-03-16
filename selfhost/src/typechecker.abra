@@ -360,7 +360,7 @@ export enum TypedIndexingNode {
 
 export enum TypedAssignmentMode {
   Variable(variable: Variable)
-  // Indexing(expr: AstNode, indexExpr: AstNode)
+  Indexing(node: TypedIndexingNode)
   // Accessor(node: AccessorAstNode)
 }
 
@@ -1823,6 +1823,22 @@ export type Typechecker {
         }
 
         val mode = TypedAssignmentMode.Variable(variable)
+        return Result.Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, typedExpr)))
+      }
+      AssignmentMode.Indexing(targetExpr, indexExpr) => {
+        val typedLhs = match self._typecheckIndexing(token, targetExpr, IndexingMode.Single(indexExpr), None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        val assignmentTy = Type(kind: typedLhs.ty.kind, nullable: false)
+        val typedIndexingNode = match typedLhs.kind {
+          TypedAstNodeKind.Indexing(node) => node
+          _ => return unreachable(typedLhs.token.position, "_typecheckIndexing returned unexpected TypedAstNodeKind")
+        }
+
+        val typedExpr = match self._typecheckExpression(expr, assignmentTy) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        if !self._typeSatisfiesRequired(ty: typedExpr.ty, required: assignmentTy) {
+          return Result.Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.TypeMismatch([assignmentTy], typedExpr.ty)))
+        }
+
+        val mode = TypedAssignmentMode.Indexing(typedIndexingNode)
         return Result.Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, typedExpr)))
       }
       _ => return todo(token.position, "other assignment modes")

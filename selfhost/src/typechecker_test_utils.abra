@@ -316,52 +316,8 @@ export type Jsonifier {
       TypedAstNodeKind.Indexing(node) => {
         self.println("\"kind\": \"indexing\",")
 
-        self.println("\"node\": {")
-        self.indentInc()
-
-        match node {
-          TypedIndexingNode.ArrayLike(expr, indexingMode) => {
-            self.println("\"kind\": \"arraylike\",")
-            self.print("\"expr\": ")
-            self.printNode(expr)
-            println(",")
-
-            match indexingMode {
-              IndexingMode.Single(idxNode) => {
-                self.print("\"index\": ")
-                self.printNode(idxNode)
-                println()
-              }
-              IndexingMode.Range(startNode, endNode) => {
-                self.print("\"startIndex\": ")
-                if startNode |n| self.printNode(n) else print("null")
-                println(",")
-                self.print("\"endIndex\": ")
-                if endNode |n| self.printNode(n) else print("null")
-                println()
-              }
-            }
-          }
-          TypedIndexingNode.Map(expr, idx) => {
-            self.println("\"kind\": \"map\",")
-            self.print("\"expr\": ")
-            self.printNode(expr)
-            println(",")
-            self.print("\"index\": ")
-            self.printNode(idx)
-            println()
-          }
-          TypedIndexingNode.Tuple(expr, idx) => {
-            self.println("\"kind\": \"tuple\",")
-            self.println("\"index\": $idx,")
-            self.print("\"expr\": ")
-            self.printNode(expr)
-            println()
-          }
-        }
-
-        self.indentDec()
-        self.print("}")
+        self.print("\"node\": ")
+        self.printTypedIndexingNode(node)
         println()
       }
       TypedAstNodeKind.Assignment(mode, expr) => {
@@ -379,6 +335,12 @@ export type Jsonifier {
             self.println("\"kind\": \"variable\",")
             self.print("\"variable\": ")
             self.printVariable(v)
+            println()
+          }
+          TypedAssignmentMode.Indexing(typedIndexingNode) => {
+            self.println("\"kind\": \"indexing\",")
+            self.print("\"indexNode\": ")
+            self.printTypedIndexingNode(typedIndexingNode)
             println()
           }
         }
@@ -636,6 +598,55 @@ export type Jsonifier {
     self.print("\"types\": ")
     self.array(scope.types, t => self.printType(t))
     println()
+
+    self.indentDec()
+    self.print("}")
+  }
+
+  func printTypedIndexingNode(self, node: TypedIndexingNode) {
+    println("{")
+    self.indentInc()
+
+    match node {
+      TypedIndexingNode.ArrayLike(expr, indexingMode) => {
+        self.println("\"kind\": \"arraylike\",")
+        self.print("\"expr\": ")
+        self.printNode(expr)
+        println(",")
+
+        match indexingMode {
+          IndexingMode.Single(idxNode) => {
+            self.print("\"index\": ")
+            self.printNode(idxNode)
+            println()
+          }
+          IndexingMode.Range(startNode, endNode) => {
+            self.print("\"startIndex\": ")
+            if startNode |n| self.printNode(n) else print("null")
+            println(",")
+            self.print("\"endIndex\": ")
+            if endNode |n| self.printNode(n) else print("null")
+            println()
+          }
+        }
+      }
+      TypedIndexingNode.Map(expr, idx) => {
+        self.println("\"kind\": \"map\",")
+        self.print("\"expr\": ")
+        self.printNode(expr)
+        println(",")
+        self.print("\"index\": ")
+        self.printNode(idx)
+        println()
+      }
+      TypedIndexingNode.Tuple(expr, idx) => {
+        self.println("\"kind\": \"tuple\",")
+        self.println("\"index\": $idx,")
+        self.print("\"expr\": ")
+        self.printNode(expr)
+        println()
+      }
+    }
 
     self.indentDec()
     self.print("}")
