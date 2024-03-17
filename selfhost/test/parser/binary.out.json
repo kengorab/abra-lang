@@ -1033,26 +1033,12 @@
         }
       },
       "kind": {
-        "name": "binary",
-        "op": "BinaryOp.AddEq",
-        "left": {
+        "name": "assignment",
+        "expr": {
           "token": {
-            "position": [15, 1],
+            "position": [15, 3],
             "kind": {
-              "name": "Ident",
-              "value": "a"
-            }
-          },
-          "kind": {
-            "name": "identifier",
-            "ident": "a"
-          }
-        },
-        "right": {
-          "token": {
-            "position": [15, 8],
-            "kind": {
-              "name": "Plus"
+              "name": "PlusEq"
             }
           },
           "kind": {
@@ -1060,58 +1046,7 @@
             "op": "BinaryOp.Add",
             "left": {
               "token": {
-                "position": [15, 6],
-                "kind": {
-                  "name": "Int",
-                  "value": 1
-                }
-              },
-              "kind": {
-                "name": "literal",
-                "type": "int",
-                "value": 1
-              }
-            },
-            "right": {
-              "token": {
-                "position": [15, 10],
-                "kind": {
-                  "name": "Int",
-                  "value": 2
-                }
-              },
-              "kind": {
-                "name": "literal",
-                "type": "int",
-                "value": 2
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "token": {
-        "position": [16, 6],
-        "kind": {
-          "name": "PlusEq"
-        }
-      },
-      "kind": {
-        "name": "binary",
-        "op": "BinaryOp.AddEq",
-        "left": {
-          "token": {
-            "position": [16, 2],
-            "kind": {
-              "name": "LBrack"
-            }
-          },
-          "kind": {
-            "name": "indexing",
-            "expr": {
-              "token": {
-                "position": [16, 1],
+                "position": [15, 1],
                 "kind": {
                   "name": "Ident",
                   "value": "a"
@@ -1122,201 +1057,9 @@
                 "ident": "a"
               }
             },
-            "index": {
-              "indexKind": "single",
-              "value": {
-                "token": {
-                  "position": [16, 3],
-                  "kind": {
-                    "name": "Int",
-                    "value": 0
-                  }
-                },
-                "kind": {
-                  "name": "literal",
-                  "type": "int",
-                  "value": 0
-                }
-              }
-            }
-          }
-        },
-        "right": {
-          "token": {
-            "position": [16, 11],
-            "kind": {
-              "name": "Plus"
-            }
-          },
-          "kind": {
-            "name": "binary",
-            "op": "BinaryOp.Add",
-            "left": {
-              "token": {
-                "position": [16, 9],
-                "kind": {
-                  "name": "Int",
-                  "value": 1
-                }
-              },
-              "kind": {
-                "name": "literal",
-                "type": "int",
-                "value": 1
-              }
-            },
             "right": {
               "token": {
-                "position": [16, 13],
-                "kind": {
-                  "name": "Int",
-                  "value": 2
-                }
-              },
-              "kind": {
-                "name": "literal",
-                "type": "int",
-                "value": 2
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "token": {
-        "position": [17, 7],
-        "kind": {
-          "name": "PlusEq"
-        }
-      },
-      "kind": {
-        "name": "binary",
-        "op": "BinaryOp.AddEq",
-        "left": {
-          "token": {
-            "position": [17, 4],
-            "kind": {
-              "name": "Dot"
-            }
-          },
-          "kind": {
-            "name": "accessor",
-            "root": {
-              "token": {
-                "position": [17, 1],
-                "kind": {
-                  "name": "Ident",
-                  "value": "a"
-                }
-              },
-              "kind": {
-                "name": "identifier",
-                "ident": "a"
-              }
-            },
-            "path": [
-              {
-                "dotToken": {
-                  "position": [17, 2],
-                  "kind": {
-                    "name": "Dot"
-                  }
-                },
-                "ident": "b",
-                "position": [17, 3]
-              },
-              {
-                "dotToken": {
-                  "position": [17, 4],
-                  "kind": {
-                    "name": "Dot"
-                  }
-                },
-                "ident": "c",
-                "position": [17, 5]
-              }
-            ]
-          }
-        },
-        "right": {
-          "token": {
-            "position": [17, 12],
-            "kind": {
-              "name": "Plus"
-            }
-          },
-          "kind": {
-            "name": "binary",
-            "op": "BinaryOp.Add",
-            "left": {
-              "token": {
-                "position": [17, 10],
-                "kind": {
-                  "name": "Int",
-                  "value": 1
-                }
-              },
-              "kind": {
-                "name": "literal",
-                "type": "int",
-                "value": 1
-              }
-            },
-            "right": {
-              "token": {
-                "position": [17, 14],
-                "kind": {
-                  "name": "Int",
-                  "value": 2
-                }
-              },
-              "kind": {
-                "name": "literal",
-                "type": "int",
-                "value": 2
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "token": {
-        "position": [18, 3],
-        "kind": {
-          "name": "OrEq"
-        }
-      },
-      "kind": {
-        "name": "binary",
-        "op": "BinaryOp.OrEq",
-        "left": {
-          "token": {
-            "position": [18, 1],
-            "kind": {
-              "name": "Ident",
-              "value": "a"
-            }
-          },
-          "kind": {
-            "name": "identifier",
-            "ident": "a"
-          }
-        },
-        "right": {
-          "token": {
-            "position": [18, 13],
-            "kind": {
-              "name": "GT"
-            }
-          },
-          "kind": {
-            "name": "binary",
-            "op": "BinaryOp.GT",
-            "left": {
-              "token": {
-                "position": [18, 9],
+                "position": [15, 8],
                 "kind": {
                   "name": "Plus"
                 }
@@ -1326,7 +1069,7 @@
                 "op": "BinaryOp.Add",
                 "left": {
                   "token": {
-                    "position": [18, 7],
+                    "position": [15, 6],
                     "kind": {
                       "name": "Int",
                       "value": 1
@@ -1340,7 +1083,7 @@
                 },
                 "right": {
                   "token": {
-                    "position": [18, 11],
+                    "position": [15, 10],
                     "kind": {
                       "name": "Int",
                       "value": 2
@@ -1353,22 +1096,403 @@
                   }
                 }
               }
-            },
-            "right": {
+            }
+          }
+        },
+        "op": "AssignOp.AddEq",
+        "mode": {
+          "mode": "variable",
+          "variable": "a"
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [16, 6],
+        "kind": {
+          "name": "PlusEq"
+        }
+      },
+      "kind": {
+        "name": "assignment",
+        "expr": {
+          "token": {
+            "position": [16, 6],
+            "kind": {
+              "name": "PlusEq"
+            }
+          },
+          "kind": {
+            "name": "binary",
+            "op": "BinaryOp.Add",
+            "left": {
               "token": {
-                "position": [18, 15],
+                "position": [16, 2],
                 "kind": {
-                  "name": "Int",
-                  "value": 3
+                  "name": "LBrack"
                 }
               },
               "kind": {
-                "name": "literal",
-                "type": "int",
-                "value": 3
+                "name": "indexing",
+                "expr": {
+                  "token": {
+                    "position": [16, 1],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "a"
+                    }
+                  },
+                  "kind": {
+                    "name": "identifier",
+                    "ident": "a"
+                  }
+                },
+                "index": {
+                  "indexKind": "single",
+                  "value": {
+                    "token": {
+                      "position": [16, 3],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 0
+                    }
+                  }
+                }
+              }
+            },
+            "right": {
+              "token": {
+                "position": [16, 11],
+                "kind": {
+                  "name": "Plus"
+                }
+              },
+              "kind": {
+                "name": "binary",
+                "op": "BinaryOp.Add",
+                "left": {
+                  "token": {
+                    "position": [16, 9],
+                    "kind": {
+                      "name": "Int",
+                      "value": 1
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "int",
+                    "value": 1
+                  }
+                },
+                "right": {
+                  "token": {
+                    "position": [16, 13],
+                    "kind": {
+                      "name": "Int",
+                      "value": 2
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "int",
+                    "value": 2
+                  }
+                }
               }
             }
           }
+        },
+        "op": "AssignOp.AddEq",
+        "mode": {
+          "mode": "indexing",
+          "expr": {
+            "token": {
+              "position": [16, 1],
+              "kind": {
+                "name": "Ident",
+                "value": "a"
+              }
+            },
+            "kind": {
+              "name": "identifier",
+              "ident": "a"
+            }
+          },
+          "indexExpr": {
+            "token": {
+              "position": [16, 3],
+              "kind": {
+                "name": "Int",
+                "value": 0
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "int",
+              "value": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [17, 7],
+        "kind": {
+          "name": "PlusEq"
+        }
+      },
+      "kind": {
+        "name": "assignment",
+        "expr": {
+          "token": {
+            "position": [17, 7],
+            "kind": {
+              "name": "PlusEq"
+            }
+          },
+          "kind": {
+            "name": "binary",
+            "op": "BinaryOp.Add",
+            "left": {
+              "token": {
+                "position": [17, 4],
+                "kind": {
+                  "name": "Dot"
+                }
+              },
+              "kind": {
+                "name": "accessor",
+                "root": {
+                  "token": {
+                    "position": [17, 1],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "a"
+                    }
+                  },
+                  "kind": {
+                    "name": "identifier",
+                    "ident": "a"
+                  }
+                },
+                "path": [
+                  {
+                    "dotToken": {
+                      "position": [17, 2],
+                      "kind": {
+                        "name": "Dot"
+                      }
+                    },
+                    "ident": "b",
+                    "position": [17, 3]
+                  },
+                  {
+                    "dotToken": {
+                      "position": [17, 4],
+                      "kind": {
+                        "name": "Dot"
+                      }
+                    },
+                    "ident": "c",
+                    "position": [17, 5]
+                  }
+                ]
+              }
+            },
+            "right": {
+              "token": {
+                "position": [17, 12],
+                "kind": {
+                  "name": "Plus"
+                }
+              },
+              "kind": {
+                "name": "binary",
+                "op": "BinaryOp.Add",
+                "left": {
+                  "token": {
+                    "position": [17, 10],
+                    "kind": {
+                      "name": "Int",
+                      "value": 1
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "int",
+                    "value": 1
+                  }
+                },
+                "right": {
+                  "token": {
+                    "position": [17, 14],
+                    "kind": {
+                      "name": "Int",
+                      "value": 2
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "int",
+                    "value": 2
+                  }
+                }
+              }
+            }
+          }
+        },
+        "op": "AssignOp.AddEq",
+        "mode": {
+          "name": "accessor",
+          "root": {
+            "token": {
+              "position": [17, 1],
+              "kind": {
+                "name": "Ident",
+                "value": "a"
+              }
+            },
+            "kind": {
+              "name": "identifier",
+              "ident": "a"
+            }
+          },
+          "path": [
+            {
+              "dotToken": {
+                "position": [17, 2],
+                "kind": {
+                  "name": "Dot"
+                }
+              },
+              "ident": "b",
+              "position": [17, 3]
+            },
+            {
+              "dotToken": {
+                "position": [17, 4],
+                "kind": {
+                  "name": "Dot"
+                }
+              },
+              "ident": "c",
+              "position": [17, 5]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [18, 3],
+        "kind": {
+          "name": "OrEq"
+        }
+      },
+      "kind": {
+        "name": "assignment",
+        "expr": {
+          "token": {
+            "position": [18, 3],
+            "kind": {
+              "name": "OrEq"
+            }
+          },
+          "kind": {
+            "name": "binary",
+            "op": "BinaryOp.Or",
+            "left": {
+              "token": {
+                "position": [18, 1],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              "kind": {
+                "name": "identifier",
+                "ident": "a"
+              }
+            },
+            "right": {
+              "token": {
+                "position": [18, 13],
+                "kind": {
+                  "name": "GT"
+                }
+              },
+              "kind": {
+                "name": "binary",
+                "op": "BinaryOp.GT",
+                "left": {
+                  "token": {
+                    "position": [18, 9],
+                    "kind": {
+                      "name": "Plus"
+                    }
+                  },
+                  "kind": {
+                    "name": "binary",
+                    "op": "BinaryOp.Add",
+                    "left": {
+                      "token": {
+                        "position": [18, 7],
+                        "kind": {
+                          "name": "Int",
+                          "value": 1
+                        }
+                      },
+                      "kind": {
+                        "name": "literal",
+                        "type": "int",
+                        "value": 1
+                      }
+                    },
+                    "right": {
+                      "token": {
+                        "position": [18, 11],
+                        "kind": {
+                          "name": "Int",
+                          "value": 2
+                        }
+                      },
+                      "kind": {
+                        "name": "literal",
+                        "type": "int",
+                        "value": 2
+                      }
+                    }
+                  }
+                },
+                "right": {
+                  "token": {
+                    "position": [18, 15],
+                    "kind": {
+                      "name": "Int",
+                      "value": 3
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "int",
+                    "value": 3
+                  }
+                }
+              }
+            }
+          }
+        },
+        "op": "AssignOp.OrEq",
+        "mode": {
+          "mode": "variable",
+          "variable": "a"
         }
       }
     },
@@ -1380,26 +1504,12 @@
         }
       },
       "kind": {
-        "name": "binary",
-        "op": "BinaryOp.OrEq",
-        "left": {
+        "name": "assignment",
+        "expr": {
           "token": {
-            "position": [19, 1],
+            "position": [19, 3],
             "kind": {
-              "name": "Ident",
-              "value": "a"
-            }
-          },
-          "kind": {
-            "name": "identifier",
-            "ident": "a"
-          }
-        },
-        "right": {
-          "token": {
-            "position": [19, 12],
-            "kind": {
-              "name": "Or"
+              "name": "OrEq"
             }
           },
           "kind": {
@@ -1407,33 +1517,63 @@
             "op": "BinaryOp.Or",
             "left": {
               "token": {
-                "position": [19, 7],
+                "position": [19, 1],
                 "kind": {
-                  "name": "Bool",
-                  "value": true
+                  "name": "Ident",
+                  "value": "a"
                 }
               },
               "kind": {
-                "name": "literal",
-                "type": "bool",
-                "value": true
+                "name": "identifier",
+                "ident": "a"
               }
             },
             "right": {
               "token": {
-                "position": [19, 15],
+                "position": [19, 12],
                 "kind": {
-                  "name": "Bool",
-                  "value": false
+                  "name": "Or"
                 }
               },
               "kind": {
-                "name": "literal",
-                "type": "bool",
-                "value": false
+                "name": "binary",
+                "op": "BinaryOp.Or",
+                "left": {
+                  "token": {
+                    "position": [19, 7],
+                    "kind": {
+                      "name": "Bool",
+                      "value": true
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "bool",
+                    "value": true
+                  }
+                },
+                "right": {
+                  "token": {
+                    "position": [19, 15],
+                    "kind": {
+                      "name": "Bool",
+                      "value": false
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "bool",
+                    "value": false
+                  }
+                }
               }
             }
           }
+        },
+        "op": "AssignOp.OrEq",
+        "mode": {
+          "mode": "variable",
+          "variable": "a"
         }
       }
     },
@@ -1445,60 +1585,76 @@
         }
       },
       "kind": {
-        "name": "binary",
-        "op": "BinaryOp.OrEq",
-        "left": {
+        "name": "assignment",
+        "expr": {
           "token": {
-            "position": [20, 1],
+            "position": [20, 3],
             "kind": {
-              "name": "Ident",
-              "value": "a"
-            }
-          },
-          "kind": {
-            "name": "identifier",
-            "ident": "a"
-          }
-        },
-        "right": {
-          "token": {
-            "position": [20, 12],
-            "kind": {
-              "name": "And"
+              "name": "OrEq"
             }
           },
           "kind": {
             "name": "binary",
-            "op": "BinaryOp.And",
+            "op": "BinaryOp.Or",
             "left": {
               "token": {
-                "position": [20, 7],
+                "position": [20, 1],
                 "kind": {
-                  "name": "Bool",
-                  "value": true
+                  "name": "Ident",
+                  "value": "a"
                 }
               },
               "kind": {
-                "name": "literal",
-                "type": "bool",
-                "value": true
+                "name": "identifier",
+                "ident": "a"
               }
             },
             "right": {
               "token": {
-                "position": [20, 15],
+                "position": [20, 12],
                 "kind": {
-                  "name": "Bool",
-                  "value": false
+                  "name": "And"
                 }
               },
               "kind": {
-                "name": "literal",
-                "type": "bool",
-                "value": false
+                "name": "binary",
+                "op": "BinaryOp.And",
+                "left": {
+                  "token": {
+                    "position": [20, 7],
+                    "kind": {
+                      "name": "Bool",
+                      "value": true
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "bool",
+                    "value": true
+                  }
+                },
+                "right": {
+                  "token": {
+                    "position": [20, 15],
+                    "kind": {
+                      "name": "Bool",
+                      "value": false
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "bool",
+                    "value": false
+                  }
+                }
               }
             }
           }
+        },
+        "op": "AssignOp.OrEq",
+        "mode": {
+          "mode": "variable",
+          "variable": "a"
         }
       }
     },
@@ -1510,60 +1666,76 @@
         }
       },
       "kind": {
-        "name": "binary",
-        "op": "BinaryOp.AndEq",
-        "left": {
+        "name": "assignment",
+        "expr": {
           "token": {
-            "position": [21, 1],
+            "position": [21, 3],
             "kind": {
-              "name": "Ident",
-              "value": "a"
-            }
-          },
-          "kind": {
-            "name": "identifier",
-            "ident": "a"
-          }
-        },
-        "right": {
-          "token": {
-            "position": [21, 12],
-            "kind": {
-              "name": "Or"
+              "name": "AndEq"
             }
           },
           "kind": {
             "name": "binary",
-            "op": "BinaryOp.Or",
+            "op": "BinaryOp.And",
             "left": {
               "token": {
-                "position": [21, 7],
+                "position": [21, 1],
                 "kind": {
-                  "name": "Bool",
-                  "value": true
+                  "name": "Ident",
+                  "value": "a"
                 }
               },
               "kind": {
-                "name": "literal",
-                "type": "bool",
-                "value": true
+                "name": "identifier",
+                "ident": "a"
               }
             },
             "right": {
               "token": {
-                "position": [21, 15],
+                "position": [21, 12],
                 "kind": {
-                  "name": "Bool",
-                  "value": false
+                  "name": "Or"
                 }
               },
               "kind": {
-                "name": "literal",
-                "type": "bool",
-                "value": false
+                "name": "binary",
+                "op": "BinaryOp.Or",
+                "left": {
+                  "token": {
+                    "position": [21, 7],
+                    "kind": {
+                      "name": "Bool",
+                      "value": true
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "bool",
+                    "value": true
+                  }
+                },
+                "right": {
+                  "token": {
+                    "position": [21, 15],
+                    "kind": {
+                      "name": "Bool",
+                      "value": false
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "bool",
+                    "value": false
+                  }
+                }
               }
             }
           }
+        },
+        "op": "AssignOp.AndEq",
+        "mode": {
+          "mode": "variable",
+          "variable": "a"
         }
       }
     },
@@ -1575,26 +1747,12 @@
         }
       },
       "kind": {
-        "name": "binary",
-        "op": "BinaryOp.AndEq",
-        "left": {
+        "name": "assignment",
+        "expr": {
           "token": {
-            "position": [22, 1],
+            "position": [22, 3],
             "kind": {
-              "name": "Ident",
-              "value": "a"
-            }
-          },
-          "kind": {
-            "name": "identifier",
-            "ident": "a"
-          }
-        },
-        "right": {
-          "token": {
-            "position": [22, 12],
-            "kind": {
-              "name": "And"
+              "name": "AndEq"
             }
           },
           "kind": {
@@ -1602,33 +1760,63 @@
             "op": "BinaryOp.And",
             "left": {
               "token": {
-                "position": [22, 7],
+                "position": [22, 1],
                 "kind": {
-                  "name": "Bool",
-                  "value": true
+                  "name": "Ident",
+                  "value": "a"
                 }
               },
               "kind": {
-                "name": "literal",
-                "type": "bool",
-                "value": true
+                "name": "identifier",
+                "ident": "a"
               }
             },
             "right": {
               "token": {
-                "position": [22, 15],
+                "position": [22, 12],
                 "kind": {
-                  "name": "Bool",
-                  "value": false
+                  "name": "And"
                 }
               },
               "kind": {
-                "name": "literal",
-                "type": "bool",
-                "value": false
+                "name": "binary",
+                "op": "BinaryOp.And",
+                "left": {
+                  "token": {
+                    "position": [22, 7],
+                    "kind": {
+                      "name": "Bool",
+                      "value": true
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "bool",
+                    "value": true
+                  }
+                },
+                "right": {
+                  "token": {
+                    "position": [22, 15],
+                    "kind": {
+                      "name": "Bool",
+                      "value": false
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "bool",
+                    "value": false
+                  }
+                }
               }
             }
           }
+        },
+        "op": "AssignOp.AndEq",
+        "mode": {
+          "mode": "variable",
+          "variable": "a"
         }
       }
     },
@@ -1863,60 +2051,76 @@
         }
       },
       "kind": {
-        "name": "binary",
-        "op": "BinaryOp.CoalesceEq",
-        "left": {
+        "name": "assignment",
+        "expr": {
           "token": {
-            "position": [26, 1],
+            "position": [26, 3],
             "kind": {
-              "name": "Ident",
-              "value": "a"
-            }
-          },
-          "kind": {
-            "name": "identifier",
-            "ident": "a"
-          }
-        },
-        "right": {
-          "token": {
-            "position": [26, 9],
-            "kind": {
-              "name": "Plus"
+              "name": "ElvisEq"
             }
           },
           "kind": {
             "name": "binary",
-            "op": "BinaryOp.Add",
+            "op": "BinaryOp.Coalesce",
             "left": {
               "token": {
-                "position": [26, 7],
+                "position": [26, 1],
                 "kind": {
-                  "name": "Int",
-                  "value": 1
+                  "name": "Ident",
+                  "value": "a"
                 }
               },
               "kind": {
-                "name": "literal",
-                "type": "int",
-                "value": 1
+                "name": "identifier",
+                "ident": "a"
               }
             },
             "right": {
               "token": {
-                "position": [26, 11],
+                "position": [26, 9],
                 "kind": {
-                  "name": "Int",
-                  "value": 2
+                  "name": "Plus"
                 }
               },
               "kind": {
-                "name": "literal",
-                "type": "int",
-                "value": 2
+                "name": "binary",
+                "op": "BinaryOp.Add",
+                "left": {
+                  "token": {
+                    "position": [26, 7],
+                    "kind": {
+                      "name": "Int",
+                      "value": 1
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "int",
+                    "value": 1
+                  }
+                },
+                "right": {
+                  "token": {
+                    "position": [26, 11],
+                    "kind": {
+                      "name": "Int",
+                      "value": 2
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "int",
+                    "value": 2
+                  }
+                }
               }
             }
           }
+        },
+        "op": "AssignOp.CoalesceEq",
+        "mode": {
+          "mode": "variable",
+          "variable": "a"
         }
       }
     },

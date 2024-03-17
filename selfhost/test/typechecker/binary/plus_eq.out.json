@@ -1,0 +1,1615 @@
+{
+  "id": 1,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "a", "position": [1, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "a", "position": [1, 5] },
+            "mutable": true,
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [1, 9],
+            "kind": {
+              "name": "Int",
+              "value": 1
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 1
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [2, 3],
+        "kind": {
+          "name": "PlusEq"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "assignment",
+        "expr": {
+          "token": {
+            "position": [2, 3],
+            "kind": {
+              "name": "PlusEq"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "binary",
+            "op": "BinaryOp.Add",
+            "left": {
+              "token": {
+                "position": [2, 1],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "a"
+              }
+            },
+            "right": {
+              "token": {
+                "position": [2, 6],
+                "kind": {
+                  "name": "Int",
+                  "value": 2
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 2
+              }
+            }
+          }
+        },
+        "op": "AssignOp.AddEq",
+        "mode": {
+          "kind": "variable",
+          "variable": {
+            "label": { "name": "a", "position": [1, 5] },
+            "mutable": true,
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [4, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "b", "position": [4, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "b", "position": [4, 5] },
+            "mutable": true,
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Float"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [4, 9],
+            "kind": {
+              "name": "Float",
+              "value": 1.2
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Float"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 1.2
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [5, 3],
+        "kind": {
+          "name": "PlusEq"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "assignment",
+        "expr": {
+          "token": {
+            "position": [5, 3],
+            "kind": {
+              "name": "PlusEq"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Float"
+          },
+          "node": {
+            "kind": "binary",
+            "op": "BinaryOp.Add",
+            "left": {
+              "token": {
+                "position": [5, 1],
+                "kind": {
+                  "name": "Ident",
+                  "value": "b"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Float"
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "b"
+              }
+            },
+            "right": {
+              "token": {
+                "position": [5, 6],
+                "kind": {
+                  "name": "Float",
+                  "value": 2
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Float"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 2
+              }
+            }
+          }
+        },
+        "op": "AssignOp.AddEq",
+        "mode": {
+          "kind": "variable",
+          "variable": {
+            "label": { "name": "b", "position": [4, 5] },
+            "mutable": true,
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Float"
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [7, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "c", "position": [7, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "c", "position": [7, 5] },
+            "mutable": true,
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "String"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [7, 9],
+            "kind": {
+              "name": "String",
+              "value": "foo"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "String"
+          },
+          "node": {
+            "kind": "literal",
+            "value": "foo"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [8, 3],
+        "kind": {
+          "name": "PlusEq"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "assignment",
+        "expr": {
+          "token": {
+            "position": [8, 3],
+            "kind": {
+              "name": "PlusEq"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "String"
+          },
+          "node": {
+            "kind": "binary",
+            "op": "BinaryOp.Add",
+            "left": {
+              "token": {
+                "position": [8, 1],
+                "kind": {
+                  "name": "Ident",
+                  "value": "c"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "c"
+              }
+            },
+            "right": {
+              "token": {
+                "position": [8, 6],
+                "kind": {
+                  "name": "String",
+                  "value": "bar"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "node": {
+                "kind": "literal",
+                "value": "bar"
+              }
+            }
+          }
+        },
+        "op": "AssignOp.AddEq",
+        "mode": {
+          "kind": "variable",
+          "variable": {
+            "label": { "name": "c", "position": [7, 5] },
+            "mutable": true,
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "String"
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [9, 3],
+        "kind": {
+          "name": "PlusEq"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "assignment",
+        "expr": {
+          "token": {
+            "position": [9, 3],
+            "kind": {
+              "name": "PlusEq"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "String"
+          },
+          "node": {
+            "kind": "binary",
+            "op": "BinaryOp.Add",
+            "left": {
+              "token": {
+                "position": [9, 1],
+                "kind": {
+                  "name": "Ident",
+                  "value": "c"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "c"
+              }
+            },
+            "right": {
+              "token": {
+                "position": [9, 6],
+                "kind": {
+                  "name": "Int",
+                  "value": 123
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 123
+              }
+            }
+          }
+        },
+        "op": "AssignOp.AddEq",
+        "mode": {
+          "kind": "variable",
+          "variable": {
+            "label": { "name": "c", "position": [7, 5] },
+            "mutable": true,
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "String"
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [11, 1],
+        "kind": {
+          "name": "Type"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "typeDeclaration",
+        "struct": {
+          "moduleId": 1,
+          "name": { "name": "Foo", "position": [11, 6] },
+          "typeParams": [],
+          "fields": [
+            {
+              "name": { "name": "a", "position": [11, 12] },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "initializer": null
+            },
+            {
+              "name": { "name": "s", "position": [11, 20] },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "initializer": null
+            }
+          ],
+          "instanceMethods": [
+            {
+              "label": { "name": "toString", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_1::Foo::toString",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "hash", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_1::Foo::hash",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "eq", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_1::Foo::eq",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [
+                {
+                  "label": { "name": "other", "position": [0, 0] },
+                  "type": {
+                    "nullable": false,
+                    "kind": "instance",
+                    "struct": { "moduleId": 1, "name": "Foo" },
+                    "typeParams": []
+                  },
+                  "defaultValue": null,
+                  "isVariadic": false
+                }
+              ],
+              "returnType": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Bool"
+              },
+              "body": []
+            }
+          ],
+          "staticMethods": []
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [12, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "f", "position": [12, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "f", "position": [12, 5] },
+            "mutable": false,
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 1, "name": "Foo" },
+              "typeParams": []
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [12, 12],
+            "kind": {
+              "name": "LParen"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "instance",
+            "struct": { "moduleId": 1, "name": "Foo" },
+            "typeParams": []
+          },
+          "node": {
+            "kind": "invocation",
+            "invokee": { "moduleId": 1, "name": "Foo" },
+            "arguments": [
+              {
+                "token": {
+                  "position": [12, 16],
+                  "kind": {
+                    "name": "Int",
+                    "value": 1
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 1
+                }
+              },
+              {
+                "token": {
+                  "position": [12, 22],
+                  "kind": {
+                    "name": "String",
+                    "value": "foo"
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": "foo"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [13, 5],
+        "kind": {
+          "name": "PlusEq"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "assignment",
+        "expr": {
+          "token": {
+            "position": [13, 5],
+            "kind": {
+              "name": "PlusEq"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "binary",
+            "op": "BinaryOp.Add",
+            "left": {
+              "token": {
+                "position": [13, 2],
+                "kind": {
+                  "name": "Dot"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "accessor",
+                "head": {
+                  "token": {
+                    "position": [13, 1],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "f"
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "instance",
+                    "struct": { "moduleId": 1, "name": "Foo" },
+                    "typeParams": []
+                  },
+                  "node": {
+                    "kind": "identifier",
+                    "name": "f"
+                  }
+                },
+                "middle": [],
+                "tail": {
+                  "kind": "field",
+                  "name": "a"
+                }
+              }
+            },
+            "right": {
+              "token": {
+                "position": [13, 8],
+                "kind": {
+                  "name": "Int",
+                  "value": 3
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 3
+              }
+            }
+          }
+        },
+        "op": "AssignOp.AddEq",
+        "mode": {
+          "kind": "accessor",
+          "head": {
+            "token": {
+              "position": [13, 1],
+              "kind": {
+                "name": "Ident",
+                "value": "f"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 1, "name": "Foo" },
+              "typeParams": []
+            },
+            "node": {
+              "kind": "identifier",
+              "name": "f"
+            }
+          },
+          "middle": [],
+          "tail": {
+            "kind": "field",
+            "name": "a"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [14, 5],
+        "kind": {
+          "name": "PlusEq"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "assignment",
+        "expr": {
+          "token": {
+            "position": [14, 5],
+            "kind": {
+              "name": "PlusEq"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "String"
+          },
+          "node": {
+            "kind": "binary",
+            "op": "BinaryOp.Add",
+            "left": {
+              "token": {
+                "position": [14, 2],
+                "kind": {
+                  "name": "Dot"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "node": {
+                "kind": "accessor",
+                "head": {
+                  "token": {
+                    "position": [14, 1],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "f"
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "instance",
+                    "struct": { "moduleId": 1, "name": "Foo" },
+                    "typeParams": []
+                  },
+                  "node": {
+                    "kind": "identifier",
+                    "name": "f"
+                  }
+                },
+                "middle": [],
+                "tail": {
+                  "kind": "field",
+                  "name": "s"
+                }
+              }
+            },
+            "right": {
+              "token": {
+                "position": [14, 8],
+                "kind": {
+                  "name": "String",
+                  "value": "bar"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "node": {
+                "kind": "literal",
+                "value": "bar"
+              }
+            }
+          }
+        },
+        "op": "AssignOp.AddEq",
+        "mode": {
+          "kind": "accessor",
+          "head": {
+            "token": {
+              "position": [14, 1],
+              "kind": {
+                "name": "Ident",
+                "value": "f"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 1, "name": "Foo" },
+              "typeParams": []
+            },
+            "node": {
+              "kind": "identifier",
+              "name": "f"
+            }
+          },
+          "middle": [],
+          "tail": {
+            "kind": "field",
+            "name": "s"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [15, 5],
+        "kind": {
+          "name": "PlusEq"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "assignment",
+        "expr": {
+          "token": {
+            "position": [15, 5],
+            "kind": {
+              "name": "PlusEq"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "String"
+          },
+          "node": {
+            "kind": "binary",
+            "op": "BinaryOp.Add",
+            "left": {
+              "token": {
+                "position": [15, 2],
+                "kind": {
+                  "name": "Dot"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "node": {
+                "kind": "accessor",
+                "head": {
+                  "token": {
+                    "position": [15, 1],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "f"
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "instance",
+                    "struct": { "moduleId": 1, "name": "Foo" },
+                    "typeParams": []
+                  },
+                  "node": {
+                    "kind": "identifier",
+                    "name": "f"
+                  }
+                },
+                "middle": [],
+                "tail": {
+                  "kind": "field",
+                  "name": "s"
+                }
+              }
+            },
+            "right": {
+              "token": {
+                "position": [15, 8],
+                "kind": {
+                  "name": "Int",
+                  "value": 123
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 123
+              }
+            }
+          }
+        },
+        "op": "AssignOp.AddEq",
+        "mode": {
+          "kind": "accessor",
+          "head": {
+            "token": {
+              "position": [15, 1],
+              "kind": {
+                "name": "Ident",
+                "value": "f"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "instance",
+              "struct": { "moduleId": 1, "name": "Foo" },
+              "typeParams": []
+            },
+            "node": {
+              "kind": "identifier",
+              "name": "f"
+            }
+          },
+          "middle": [],
+          "tail": {
+            "kind": "field",
+            "name": "s"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [17, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "t", "position": [17, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "t", "position": [17, 5] },
+            "mutable": false,
+            "type": {
+              "nullable": false,
+              "kind": "tuple",
+              "types": [
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                },
+                {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "String"
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [17, 9],
+            "kind": {
+              "name": "LParen"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "tuple",
+            "types": [
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Bool"
+              },
+              {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            ]
+          },
+          "node": {
+            "kind": "tuple",
+            "items": [
+              {
+                "token": {
+                  "position": [17, 10],
+                  "kind": {
+                    "name": "Int",
+                    "value": 1
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 1
+                }
+              },
+              {
+                "token": {
+                  "position": [17, 13],
+                  "kind": {
+                    "name": "Bool",
+                    "value": true
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": true
+                }
+              },
+              {
+                "token": {
+                  "position": [17, 19],
+                  "kind": {
+                    "name": "String",
+                    "value": "three"
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": "three"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [18, 6],
+        "kind": {
+          "name": "PlusEq"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "assignment",
+        "expr": {
+          "token": {
+            "position": [18, 6],
+            "kind": {
+              "name": "PlusEq"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "binary",
+            "op": "BinaryOp.Add",
+            "left": {
+              "token": {
+                "position": [18, 2],
+                "kind": {
+                  "name": "LBrack"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "indexing",
+                "node": {
+                  "kind": "tuple",
+                  "index": 0,
+                  "expr": {
+                    "token": {
+                      "position": [18, 1],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "t"
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "tuple",
+                      "types": [
+                        {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "Bool"
+                        },
+                        {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "String"
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "t"
+                    }
+                  }
+                }
+              }
+            },
+            "right": {
+              "token": {
+                "position": [18, 9],
+                "kind": {
+                  "name": "Int",
+                  "value": 2
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 2
+              }
+            }
+          }
+        },
+        "op": "AssignOp.AddEq",
+        "mode": {
+          "kind": "indexing",
+          "indexNode": {
+            "kind": "tuple",
+            "index": 0,
+            "expr": {
+              "token": {
+                "position": [18, 1],
+                "kind": {
+                  "name": "Ident",
+                  "value": "t"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "tuple",
+                "types": [
+                  {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Bool"
+                  },
+                  {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "String"
+                  }
+                ]
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "t"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [19, 6],
+        "kind": {
+          "name": "PlusEq"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "assignment",
+        "expr": {
+          "token": {
+            "position": [19, 6],
+            "kind": {
+              "name": "PlusEq"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "String"
+          },
+          "node": {
+            "kind": "binary",
+            "op": "BinaryOp.Add",
+            "left": {
+              "token": {
+                "position": [19, 2],
+                "kind": {
+                  "name": "LBrack"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "node": {
+                "kind": "indexing",
+                "node": {
+                  "kind": "tuple",
+                  "index": 2,
+                  "expr": {
+                    "token": {
+                      "position": [19, 1],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "t"
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "tuple",
+                      "types": [
+                        {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "Bool"
+                        },
+                        {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "String"
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "t"
+                    }
+                  }
+                }
+              }
+            },
+            "right": {
+              "token": {
+                "position": [19, 9],
+                "kind": {
+                  "name": "String",
+                  "value": "bar"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "node": {
+                "kind": "literal",
+                "value": "bar"
+              }
+            }
+          }
+        },
+        "op": "AssignOp.AddEq",
+        "mode": {
+          "kind": "indexing",
+          "indexNode": {
+            "kind": "tuple",
+            "index": 2,
+            "expr": {
+              "token": {
+                "position": [19, 1],
+                "kind": {
+                  "name": "Ident",
+                  "value": "t"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "tuple",
+                "types": [
+                  {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Bool"
+                  },
+                  {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "String"
+                  }
+                ]
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "t"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [20, 6],
+        "kind": {
+          "name": "PlusEq"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "assignment",
+        "expr": {
+          "token": {
+            "position": [20, 6],
+            "kind": {
+              "name": "PlusEq"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "String"
+          },
+          "node": {
+            "kind": "binary",
+            "op": "BinaryOp.Add",
+            "left": {
+              "token": {
+                "position": [20, 2],
+                "kind": {
+                  "name": "LBrack"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "node": {
+                "kind": "indexing",
+                "node": {
+                  "kind": "tuple",
+                  "index": 2,
+                  "expr": {
+                    "token": {
+                      "position": [20, 1],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "t"
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "tuple",
+                      "types": [
+                        {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "Bool"
+                        },
+                        {
+                          "nullable": false,
+                          "kind": "primitive",
+                          "primitive": "String"
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "t"
+                    }
+                  }
+                }
+              }
+            },
+            "right": {
+              "token": {
+                "position": [20, 9],
+                "kind": {
+                  "name": "Int",
+                  "value": 123
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 123
+              }
+            }
+          }
+        },
+        "op": "AssignOp.AddEq",
+        "mode": {
+          "kind": "indexing",
+          "indexNode": {
+            "kind": "tuple",
+            "index": 2,
+            "expr": {
+              "token": {
+                "position": [20, 1],
+                "kind": {
+                  "name": "Ident",
+                  "value": "t"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "tuple",
+                "types": [
+                  {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Bool"
+                  },
+                  {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "String"
+                  }
+                ]
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "t"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

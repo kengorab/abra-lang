@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:3:5
+Unexpected token '/=':
+  |  i() /= 2.3
+         ^

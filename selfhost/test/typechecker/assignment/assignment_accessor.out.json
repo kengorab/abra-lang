@@ -303,6 +303,7 @@
             "value": 2
           }
         },
+        "op": "AssignOp.Assign",
         "mode": {
           "kind": "accessor",
           "head": {
@@ -370,6 +371,7 @@
             "items": []
           }
         },
+        "op": "AssignOp.Assign",
         "mode": {
           "kind": "accessor",
           "head": {

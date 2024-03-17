@@ -24,6 +24,7 @@
             "value": 123
           }
         },
+        "op": "AssignOp.Assign",
         "mode": {
           "mode": "variable",
           "variable": "a"
@@ -75,6 +76,7 @@
             ]
           }
         },
+        "op": "AssignOp.Assign",
         "mode": {
           "name": "accessor",
           "root": {
@@ -153,6 +155,7 @@
             }
           }
         },
+        "op": "AssignOp.Assign",
         "mode": {
           "mode": "indexing",
           "expr": {
