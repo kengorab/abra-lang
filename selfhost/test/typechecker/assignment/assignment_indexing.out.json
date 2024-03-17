@@ -151,6 +151,7 @@
             "value": 1
           }
         },
+        "op": "AssignOp.Assign",
         "mode": {
           "kind": "indexing",
           "indexNode": {
@@ -408,6 +409,7 @@
             "value": 3
           }
         },
+        "op": "AssignOp.Assign",
         "mode": {
           "kind": "indexing",
           "indexNode": {
@@ -755,6 +757,7 @@
             "value": "c"
           }
         },
+        "op": "AssignOp.Assign",
         "mode": {
           "kind": "indexing",
           "indexNode": {

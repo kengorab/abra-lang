@@ -37,23 +37,15 @@ export type UnaryAstNode {
 
 export enum BinaryOp {
   Add
-  AddEq
   Sub
-  SubEq
   Mul
-  MulEq
   Div
-  DivEq
   Mod
-  ModEq
   Pow
   And
-  AndEq
   Or
-  OrEq
   Xor
   Coalesce
-  CoalesceEq
   Eq
   Neq
   LT
@@ -63,37 +55,17 @@ export enum BinaryOp {
   GTE
   Shr
 
-  func isAssignment(self): Bool = match self {
-    BinaryOp.AddEq => true
-    BinaryOp.SubEq => true
-    BinaryOp.MulEq => true
-    BinaryOp.DivEq => true
-    BinaryOp.ModEq => true
-    BinaryOp.AndEq => true
-    BinaryOp.OrEq => true
-    BinaryOp.CoalesceEq => true
-    _ => false
-  }
-
   func repr(self): String = match self {
     BinaryOp.Add => "+"
-    BinaryOp.AddEq => "+="
     BinaryOp.Sub => "-"
-    BinaryOp.SubEq => "-="
     BinaryOp.Mul => "*"
-    BinaryOp.MulEq => "*="
     BinaryOp.Div => "/"
-    BinaryOp.DivEq => "/="
     BinaryOp.Mod => "%"
-    BinaryOp.ModEq => "%="
     BinaryOp.Pow => "**"
     BinaryOp.And => "&&"
-    BinaryOp.AndEq => "&&="
     BinaryOp.Or => "||"
-    BinaryOp.OrEq => "||="
     BinaryOp.Xor => "^"
     BinaryOp.Coalesce => "?:"
-    BinaryOp.CoalesceEq => "?:="
     BinaryOp.Eq => "=="
     BinaryOp.Neq => "!="
     BinaryOp.LT => "<"
@@ -102,6 +74,30 @@ export enum BinaryOp {
     BinaryOp.GT => ">"
     BinaryOp.GTE => ">="
     BinaryOp.Shr => ">>"
+  }
+}
+
+export enum AssignOp {
+  Assign
+  AddEq
+  SubEq
+  MulEq
+  DivEq
+  ModEq
+  AndEq
+  OrEq
+  CoalesceEq
+
+  func repr(self): String = match self {
+    AssignOp.Assign => "="
+    AssignOp.AddEq => "+="
+    AssignOp.SubEq => "-="
+    AssignOp.MulEq => "*="
+    AssignOp.DivEq => "/="
+    AssignOp.ModEq => "%="
+    AssignOp.AndEq => "&&="
+    AssignOp.OrEq => "||="
+    AssignOp.CoalesceEq => "?:="
   }
 }
 
@@ -259,7 +255,7 @@ export enum AstNodeKind {
   Tuple(items: AstNode[])
   Indexing(expr: AstNode, index: IndexingMode<AstNode>)
   Lambda(value: LambdaNode)
-  Assignment(expr: AstNode, mode: AssignmentMode)
+  Assignment(expr: AstNode, op: AssignOp, mode: AssignmentMode)
   If(condition: AstNode, conditionBinding: BindingPattern?, ifBlock: AstNode[], elseBlock: AstNode[]?)
   Match(expr: AstNode, cases: MatchCase[])
   While(condition: AstNode, conditionBinding: BindingPattern?, block: AstNode[])
@@ -1465,23 +1461,23 @@ export type Parser {
     val prec = Precedence.forToken(token)
     val op = match token.kind {
       TokenKind.Plus => BinaryOp.Add
-      TokenKind.PlusEq => BinaryOp.AddEq
+      TokenKind.PlusEq => return self._parseAssignment(token, left, AssignOp.AddEq)
       TokenKind.Minus => BinaryOp.Sub
-      TokenKind.MinusEq => BinaryOp.SubEq
+      TokenKind.MinusEq => return self._parseAssignment(token, left, AssignOp.SubEq)
       TokenKind.Star => BinaryOp.Mul
-      TokenKind.StarEq => BinaryOp.MulEq
+      TokenKind.StarEq => return self._parseAssignment(token, left, AssignOp.MulEq)
       TokenKind.Slash => BinaryOp.Div
-      TokenKind.SlashEq => BinaryOp.DivEq
+      TokenKind.SlashEq => return self._parseAssignment(token, left, AssignOp.DivEq)
       TokenKind.Percent => BinaryOp.Mod
-      TokenKind.PercentEq => BinaryOp.ModEq
+      TokenKind.PercentEq => return self._parseAssignment(token, left, AssignOp.ModEq)
       TokenKind.StarStar => BinaryOp.Pow
       TokenKind.And => BinaryOp.And
-      TokenKind.AndEq => BinaryOp.AndEq
+      TokenKind.AndEq => return self._parseAssignment(token, left, AssignOp.AndEq)
       TokenKind.Or => BinaryOp.Or
-      TokenKind.OrEq => BinaryOp.OrEq
+      TokenKind.OrEq => return self._parseAssignment(token, left, AssignOp.OrEq)
       TokenKind.Caret => BinaryOp.Xor
       TokenKind.Elvis => BinaryOp.Coalesce
-      TokenKind.ElvisEq => BinaryOp.CoalesceEq
+      TokenKind.ElvisEq => return self._parseAssignment(token, left, AssignOp.CoalesceEq)
       TokenKind.EqEq => BinaryOp.Eq
       TokenKind.Neq => BinaryOp.Neq
       TokenKind.LT => {
@@ -1505,19 +1501,6 @@ export type Parser {
       }
       TokenKind.GTE => BinaryOp.GTE
       _ => return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
-    }
-
-    if op.isAssignment() {
-      val isValidLvalue = match left.kind {
-        AstNodeKind.Identifier(identKind) => match identKind { IdentifierKind.Named => true, _ => false }
-        AstNodeKind.Accessor => true
-        AstNodeKind.Indexing(_, indexMode) => match indexMode { IndexingMode.Single => true, _ => false }
-        _ => false
-      }
-
-      if !isValidLvalue {
-        return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
-      }
     }
 
     val right = match self._parsePrecedence(prec: prec) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -1685,7 +1668,7 @@ export type Parser {
     return Result.Ok(AstNode(token: token, kind: AstNodeKind.Lambda(LambdaNode(params: params, body: body))))
   }
 
-  func _parseAssignment(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
+  func _parseAssignment(self, token: Token, left: AstNode, assignOp: AssignOp = AssignOp.Assign): Result<AstNode, ParseError> {
     val mode = match left.kind {
       AstNodeKind.Identifier(identKind) => match identKind {
         IdentifierKind.Named(name) => AssignmentMode.Variable(name, left.token)
@@ -1699,9 +1682,21 @@ export type Parser {
       _ => return Result.Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
     }
 
-    val expr = match self._parseExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    val rhs = match self._parseExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
-    Result.Ok(AstNode(token: token, kind: AstNodeKind.Assignment(mode: mode, expr: expr)))
+    val expr = match assignOp {
+      AssignOp.Assign => rhs
+      AssignOp.AddEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Add, right: rhs)))
+      AssignOp.SubEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Sub, right: rhs)))
+      AssignOp.MulEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Mul, right: rhs)))
+      AssignOp.DivEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Div, right: rhs)))
+      AssignOp.ModEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Mod, right: rhs)))
+      AssignOp.AndEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.And, right: rhs)))
+      AssignOp.OrEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Or, right: rhs)))
+      AssignOp.CoalesceEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Coalesce, right: rhs)))
+    }
+
+    Result.Ok(AstNode(token: token, kind: AstNodeKind.Assignment(mode: mode, op: assignOp, expr: expr)))
   }
 }
 

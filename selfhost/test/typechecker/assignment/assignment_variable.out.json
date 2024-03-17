@@ -83,6 +83,7 @@
             "value": 6
           }
         },
+        "op": "AssignOp.Assign",
         "mode": {
           "kind": "variable",
           "variable": {
@@ -252,6 +253,7 @@
             "items": []
           }
         },
+        "op": "AssignOp.Assign",
         "mode": {
           "kind": "variable",
           "variable": {

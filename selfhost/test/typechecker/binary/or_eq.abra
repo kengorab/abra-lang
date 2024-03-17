@@ -1,0 +1,14 @@
+var a = 1
+a ||= 2
+
+var b = true
+b ||= false
+
+type Foo { a: Bool, b: Int }
+val f = Foo(a: true, b: 12)
+f.a ||= true
+f.b ||= 3
+
+val t = (1, true, "three")
+t[0] ||= 2
+t[1] ||= true
