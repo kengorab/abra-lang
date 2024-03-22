@@ -1,6 +1,6 @@
 import "fs" as fs
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
-import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode from "./parser"
+import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode from "./parser"
 
 enum TokenizeAndParseError {
   ReadFileError(path: String)
@@ -42,6 +42,7 @@ export type TypedModule {
 export enum VariableAlias {
   Function(fn: Function)
   Struct(struct: Struct)
+  Enum(enum_: Enum)
 }
 
 export type Variable {
@@ -85,6 +86,7 @@ export type Scope {
   functions: Function[] = []
   types: Type[] = []
   structs: Struct[] = []
+  enums: Enum[] = []
   kind: ScopeKind = ScopeKind.Root
   parent: Scope? = None
   terminator: Terminator? = None
@@ -110,6 +112,30 @@ export type Struct {
   // Override eq method since default implementation recurses infinitely (scope -> variables -> TypeKind.Struct)
   func eq(self, other: Struct): Bool = self.moduleId == other.moduleId && self.label == other.label
 }
+
+export type TypedEnumVariant {
+  label: Label
+  kind: EnumVariantKind
+}
+
+export enum EnumVariantKind {
+  Constant
+  Container(fields: Field[])
+}
+
+export type Enum {
+  moduleId: Int
+  label: Label
+  scope: Scope
+  typeParams: String[]
+  variants: TypedEnumVariant[] = []
+  instanceMethods: Function[] = []
+  staticMethods: Function[] = []
+
+  // Override eq method since default implementation recurses infinitely (scope -> variables -> TypeKind.Enum)
+  func eq(self, other: Enum): Bool = self.moduleId == other.moduleId && self.label == other.label
+}
+
 
 export type Project {
   modules: TypedModule[] = []
@@ -145,6 +171,13 @@ export type Type {
           "${struct.label.name}$genericsRepr"
         }
       }
+      TypeKind.EnumInstance(enum_, typeParams) => {
+        val genericsRepr = if typeParams.isEmpty() "" else {
+          val reprs = typeParams.map(t => t.repr()).join(", ")
+          "<$reprs>"
+        }
+        "${enum_.label.name}$genericsRepr"
+      }
       TypeKind.Tuple(types) => "(${types.map(t => t.repr()).join(", ")})"
       TypeKind.Func(paramTypes, returnType) => {
         val paramsRepr = paramTypes.filter(p => p[1]).map(p => p[0].repr()).join(", ")
@@ -154,7 +187,10 @@ export type Type {
         if self.nullable return "($repr)?"
         repr
       }
-      TypeKind.Struct(struct) => "<#type ${struct.label.name}>"
+      TypeKind.Type(structOrEnum) => match structOrEnum {
+        StructOrEnum.Struct(struct) => "<#type ${struct.label.name}>"
+        StructOrEnum.Enum(enum_) => "<#enum ${enum_.label.name}>"
+      }
       TypeKind.Hole => "<unknown>"
     }
 
@@ -170,9 +206,10 @@ export type Type {
     TypeKind.Never => false
     TypeKind.Generic => false
     TypeKind.Instance(_, generics) => generics.any(t => t.hasUnfilledHoles())
+    TypeKind.EnumInstance(_, generics) => generics.any(t => t.hasUnfilledHoles())
     TypeKind.Tuple(types) => types.any(t => t.hasUnfilledHoles())
     TypeKind.Func(paramTypes, returnType) => paramTypes.any(t => t[0].hasUnfilledHoles()) || returnType.hasUnfilledHoles()
-    TypeKind.Struct => false
+    TypeKind.Type => false
     TypeKind.Hole => true
   }
 
@@ -238,6 +275,11 @@ export type Type {
   }
 }
 
+export enum StructOrEnum {
+  Struct(struct: Struct)
+  Enum(enum_: Enum)
+}
+
 export enum TypeKind {
   PrimitiveUnit
   PrimitiveInt
@@ -247,8 +289,9 @@ export enum TypeKind {
   Never
   Generic(name: String)
   Instance(struct: Struct, generics: Type[])
+  EnumInstance(enum_: Enum, generics: Type[])
   Func(paramTypes: (Type, Bool)[], returnType: Type)
-  Struct(struct: Struct)
+  Type(type_: StructOrEnum)
   Tuple(types: Type[])
   Hole
 }
@@ -384,6 +427,7 @@ export enum TypedAstNodeKind {
   BindingDeclaration(node: TypedBindingDeclarationNode)
   FunctionDeclaration(fn: Function)
   TypeDeclaration(struct: Struct)
+  EnumDeclaration(enum_: Enum)
   Break
   Continue
   Return(expr: TypedAstNode?)
@@ -840,7 +884,7 @@ export type Typechecker {
   project: Project
   currentModuleId: Int = -1
   currentScope: Scope = Scope(name: "\$root")
-  currentTypeDecl: Struct? = None
+  currentTypeDecl: StructOrEnum? = None
   currentFunction: Function? = None
   paramDefaultValueContext: ParamDefaultValueContext? = None
 
@@ -906,13 +950,25 @@ export type Typechecker {
   }
 
   func _addStructToScope(self, struct: Struct, scope = self.currentScope): Result<Int, TypeError> {
-    val structTy = Type(kind: TypeKind.Struct(struct))
+    val structTy = Type(kind: TypeKind.Type(type_: StructOrEnum.Struct(struct)))
     match self._addTypeToScope(structTy) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     val variable = Variable(label: struct.label, mutable: false, ty: structTy, alias: VariableAlias.Struct(struct))
     match self._addVariableToScope(variable) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     scope.structs.push(struct)
+
+    Result.Ok(0) // <- unnecessary 0
+  }
+
+  func _addEnumToScope(self, enum_: Enum, scope = self.currentScope): Result<Int, TypeError> {
+    val enumTy = Type(kind: TypeKind.Type(type_: StructOrEnum.Enum(enum_)))
+    match self._addTypeToScope(enumTy) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    val variable = Variable(label: enum_.label, mutable: false, ty: enumTy, alias: VariableAlias.Enum(enum_))
+    match self._addVariableToScope(variable) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    scope.enums.push(enum_)
 
     Result.Ok(0) // <- unnecessary 0
   }
@@ -977,10 +1033,20 @@ export type Typechecker {
             for ty in sc.types {
               match ty.kind {
                 TypeKind.Generic(name) => { if label.name == name return Result.Ok(ty) }
-                TypeKind.Struct(struct) => {
-                  if label.name == struct.label.name {
-                    val instanceTypeArgs = match self._verifyNumTypeArgs(label.position, typeArguments, struct.typeParams.length) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-                    return Result.Ok(Type(kind: TypeKind.Instance(struct, instanceTypeArgs)))
+                TypeKind.Type(structOrEnum) => {
+                  match structOrEnum {
+                    StructOrEnum.Struct(struct) => {
+                      if label.name == struct.label.name {
+                        val instanceTypeArgs = match self._verifyNumTypeArgs(label.position, typeArguments, struct.typeParams.length) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+                        return Result.Ok(Type(kind: TypeKind.Instance(struct, instanceTypeArgs)))
+                      }
+                    }
+                    StructOrEnum.Enum(enum_) => {
+                      if label.name == enum_.label.name {
+                        val instanceTypeArgs = match self._verifyNumTypeArgs(label.position, typeArguments, enum_.typeParams.length) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+                        return Result.Ok(Type(kind: TypeKind.EnumInstance(enum_, instanceTypeArgs)))
+                      }
+                    }
                   }
                 }
                 _ => continue
@@ -1253,20 +1319,28 @@ export type Typechecker {
 
   func _typecheckFunctionParam(self, param: FunctionParam, isRevisit = false): Result<(TypedFunctionParam, Bool), TypeError> {
     if param.label.name == "self" {
-      val ty = if self.currentTypeDecl |struct| {
-        val typeArgs = struct.typeParams.map(p => Type(kind: TypeKind.Generic(p)))
+      if self.currentTypeDecl |structOrEnum| {
+        val ty = match structOrEnum {
+          StructOrEnum.Struct(struct) => {
+            val typeArgs = struct.typeParams.map(p => Type(kind: TypeKind.Generic(p)))
 
-        Type(kind: TypeKind.Instance(struct, typeArgs))
-      } else {
-        // Should be unreachable since _typecheckFunctionPass2 already emits this error, but better safe than sorry
-        return Result.Err(TypeError(position: param.label.position, kind: TypeErrorKind.InvalidParamPosition(purpose: "self")))
+            Type(kind: TypeKind.Instance(struct, typeArgs))
+          }
+          StructOrEnum.Enum(enum_) => {
+            val typeArgs = enum_.typeParams.map(p => Type(kind: TypeKind.Generic(p)))
+
+            Type(kind: TypeKind.EnumInstance(enum_, typeArgs))
+          }
+        }
+
+        val variable = Variable(label: param.label, mutable: false, ty: ty)
+        match self._addVariableToScope(variable) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+        val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: None, isVariadic: false)
+        return Result.Ok((typedParam, false))
       }
 
-      val variable = Variable(label: param.label, mutable: false, ty: ty)
-      match self._addVariableToScope(variable) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-
-      val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: None, isVariadic: false)
-      return Result.Ok((typedParam, false))
+      return Result.Err(TypeError(position: param.label.position, kind: TypeErrorKind.InvalidParamPosition(purpose: "self")))
     }
 
     val paramType = if param.typeAnnotation |typeAnn| {
@@ -1474,7 +1548,7 @@ export type Typechecker {
     val prevScope = self.currentScope
     self.currentScope = struct.scope
     val prevTypeDecl = self.currentTypeDecl
-    self.currentTypeDecl = struct
+    self.currentTypeDecl = StructOrEnum.Struct(struct)
 
     val seenFields: Map<String, Label> = {}
     for field in node.fields {
@@ -1502,20 +1576,29 @@ export type Typechecker {
     Result.Ok(0)
   }
 
-  func _typecheckStructPass2_2(self, struct: Struct, node: TypeDeclarationNode): Result<Map<String, Int[]>, TypeError> {
-    val prevScope = self.currentScope
-    self.currentScope = struct.scope
-    val prevTypeDecl = self.currentTypeDecl
-    self.currentTypeDecl = struct
+  func _typecheckMethodsPass2(self, structOrEnum: StructOrEnum, funcDeclNodes: FunctionDeclarationNode[]): Result<Map<Label, Int[]>, TypeError> {
+    val allParamsNeedingRevisit: Map<Label, Int[]> = {}
 
-    val allParamsNeedingRevisit: Map<String, Int[]> = {}
+    val _p = match structOrEnum {
+      StructOrEnum.Struct(struct) => (struct.scope, struct.instanceMethods, struct.staticMethods)
+      StructOrEnum.Enum(enum_) => (enum_.scope, enum_.instanceMethods, enum_.staticMethods)
+    }
+    // TODO: destructuring
+    val scope = _p[0]
+    val instanceMethods = _p[1]
+    val staticMethods = _p[2]
 
-    val instanceMethodsByName = struct.instanceMethods.keyBy(f => f.label)
-    val staticMethodsByName = struct.staticMethods.keyBy(f => f.label)
+    val selfInstanceType = match structOrEnum {
+      StructOrEnum.Struct(struct) => Type(kind: TypeKind.Instance(struct, []))
+      StructOrEnum.Enum(enum_) => Type(kind: TypeKind.EnumInstance(enum_, []))
+    }
+
+    val instanceMethodsByName = instanceMethods.keyBy(f => f.label)
+    val staticMethodsByName = staticMethods.keyBy(f => f.label)
     var toStringFn: Function? = None
     var hashFn: Function? = None
     var eqFn: Function? = None
-    for funcDeclNode in node.methods {
+    for funcDeclNode in funcDeclNodes {
       var isToString = false
       var isHash = false
       var isEq = false
@@ -1530,7 +1613,7 @@ export type Typechecker {
         return unreachable(funcDeclNode.name.position, "could not find function among instance/static methods")
       }
       val paramsNeedingRevisit = match self._typecheckFunctionPass2(fn, funcDeclNode) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-      allParamsNeedingRevisit[fn.label.name] = paramsNeedingRevisit
+      allParamsNeedingRevisit[fn.label] = paramsNeedingRevisit
 
       if isToString {
         val required = Type(kind: TypeKind.Func([], Type(kind: TypeKind.PrimitiveString)))
@@ -1547,7 +1630,7 @@ export type Typechecker {
         hashFn = fn
       }
       if isEq {
-        val required = Type(kind: TypeKind.Func([(Type(kind: TypeKind.Instance(struct, [])), true)], Type(kind: TypeKind.PrimitiveBool)))
+        val required = Type(kind: TypeKind.Func([(selfInstanceType, true)], Type(kind: TypeKind.PrimitiveBool)))
         if !self._typeSatisfiesRequired(ty: fn.getType(), required: required) {
           return Result.Err(TypeError(position: fn.label.position, kind: TypeErrorKind.InvalidTraitMethodSignature(fn)))
         }
@@ -1556,16 +1639,31 @@ export type Typechecker {
     }
 
     // Ensure toString/hash/eq methods exist (include generated stubs if not), and sure the proper order
-    val instanceMethods = struct.instanceMethods
-    struct.instanceMethods = [
-      toStringFn ?: Function.generated(struct.scope, "toString", [], Type(kind: TypeKind.PrimitiveString)),
-      hashFn ?: Function.generated(struct.scope, "hash", [], Type(kind: TypeKind.PrimitiveInt)),
-      eqFn ?: Function.generated(struct.scope, "eq", [("other", Type(kind: TypeKind.Instance(struct, [])))], Type(kind: TypeKind.PrimitiveBool)),
+    val reorderedInstanceMethods = [
+      toStringFn ?: Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString)),
+      hashFn ?: Function.generated(scope, "hash", [], Type(kind: TypeKind.PrimitiveInt)),
+      eqFn ?: Function.generated(scope, "eq", [("other", selfInstanceType)], Type(kind: TypeKind.PrimitiveBool)),
     ]
     for m in instanceMethods {
       if m.label.name == "toString" || m.label.name == "hash" || m.label.name == "eq" continue
-      struct.instanceMethods.push(m)
+      reorderedInstanceMethods.push(m)
     }
+
+    match structOrEnum {
+      StructOrEnum.Struct(struct) => struct.instanceMethods = reorderedInstanceMethods
+      StructOrEnum.Enum(enum_) => enum_.instanceMethods = reorderedInstanceMethods
+    }
+
+    Result.Ok(allParamsNeedingRevisit)
+  }
+
+  func _typecheckStructPass2_2(self, struct: Struct, node: TypeDeclarationNode): Result<Map<Label, Int[]>, TypeError> {
+    val prevScope = self.currentScope
+    self.currentScope = struct.scope
+    val prevTypeDecl = self.currentTypeDecl
+    self.currentTypeDecl = StructOrEnum.Struct(struct)
+
+    val allParamsNeedingRevisit = match self._typecheckMethodsPass2(StructOrEnum.Struct(struct), node.methods) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     self.currentTypeDecl = prevTypeDecl
     self.currentScope = prevScope
@@ -1573,11 +1671,11 @@ export type Typechecker {
     Result.Ok(allParamsNeedingRevisit)
   }
 
-  func _typecheckStructPass3(self, struct: Struct, node: TypeDeclarationNode, paramsNeedingRevisit: Map<String, Int[]>): Result<Int, TypeError> {
+  func _typecheckStructPass3(self, struct: Struct, node: TypeDeclarationNode, paramsNeedingRevisit: Map<Label, Int[]>): Result<Int, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = struct.scope
     val prevTypeDecl = self.currentTypeDecl
-    self.currentTypeDecl = struct
+    self.currentTypeDecl = StructOrEnum.Struct(struct)
 
     for field, idx in node.fields {
       val initializer = if field.initializer |v| v else continue
@@ -1602,10 +1700,156 @@ export type Typechecker {
         return unreachable(funcDeclNode.name.position, "method not visited in prior pass")
       }
 
-      // TODO: index paramsneedingrevisit by label rather than by string to prevent against name collisions between static/instance methods
-      val toRevisit = if paramsNeedingRevisit[fnLabel.name] |paramIds| paramIds else {
-        return unreachable(funcDeclNode.name.position, "params improperly visited in prior pass")
+      val toRevisit = if paramsNeedingRevisit[fnLabel] |paramIds| paramIds else return unreachable(funcDeclNode.name.position, "params improperly visited in prior pass")
+      match self._typecheckFunctionPass3(fn, funcDeclNode, toRevisit) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    }
+
+    self.currentTypeDecl = prevTypeDecl
+    self.currentScope = prevScope
+
+    Result.Ok(0)
+  }
+
+  func _typecheckEnumPass1(self, node: EnumDeclarationNode): Result<Enum, TypeError> {
+    val typeScope = self.currentScope.makeChild(node.name.name, ScopeKind.Type)
+    val prevScope = self.currentScope
+    self.currentScope = typeScope
+
+    val typeParams: String[] = []
+    val seenTypeParams: Map<String, Label> = {}
+    for label in node.typeParams {
+      if seenTypeParams[label.name] |original| {
+        return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.DuplicateName(original)))
       }
+      seenTypeParams[label.name] = label
+
+      val generic = Type(kind: TypeKind.Generic(label.name))
+      match self._addTypeToScope(generic) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      typeParams.push(label.name)
+    }
+
+    self.currentScope = prevScope
+
+    val enum_ = Enum(moduleId: self.currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams)
+    match self._addEnumToScope(enum_) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    Result.Ok(enum_)
+  }
+
+  func _typecheckEnumPass2_1(self, enum_: Enum, node: EnumDeclarationNode): Result<Int, TypeError> {
+    val prevScope = self.currentScope
+    self.currentScope = enum_.scope
+    val prevTypeDecl = self.currentTypeDecl
+    self.currentTypeDecl = StructOrEnum.Enum(enum_)
+
+    var allVariantsConstant = true
+    val seenVariants: Map<String, Label> = {}
+    for variant, idx in node.variants {
+      val variantLabel = match variant { EnumVariant.Constant(label) => label, EnumVariant.Container(label) => label }
+      if seenVariants[variantLabel.name] |original| {
+        return Result.Err(TypeError(position: variantLabel.position, kind: TypeErrorKind.DuplicateName(original)))
+      }
+      seenVariants[variantLabel.name] = variantLabel
+
+      match variant {
+        EnumVariant.Constant(label) => {
+          enum_.variants.push(TypedEnumVariant(label: label, kind: EnumVariantKind.Constant))
+        }
+        EnumVariant.Container(label, fields) => {
+          allVariantsConstant = false
+
+          val typedFields: Field[] = []
+          val seenFields: Map<String, Label> = {}
+          for field in fields {
+            if seenFields[field.name.name] |original| {
+              return Result.Err(TypeError(position: field.name.position, kind: TypeErrorKind.DuplicateName(original)))
+            }
+            seenFields[field.name.name] = field.name
+
+            val ty = match self._resolveTypeIdentifier(field.typeAnnotation) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            // The initializer (if present) will be filled in during the next pass
+            typedFields.push(Field(name: field.name, ty: ty, initializer: None))
+          }
+
+          enum_.variants.push(TypedEnumVariant(label: label, kind: EnumVariantKind.Container(typedFields)))
+        }
+      }
+    }
+
+    for funcDeclNode in node.methods {
+      val fn = match self._typecheckFunctionPass1(funcDeclNode) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      match fn.kind {
+        FunctionKind.InstanceMethod => enum_.instanceMethods.push(fn)
+        FunctionKind.StaticMethod => enum_.staticMethods.push(fn)
+        FunctionKind.Standalone => return unreachable(fn.label.position, "method has invalid function kind at this point")
+      }
+    }
+
+    self.currentTypeDecl = prevTypeDecl
+    self.currentScope = prevScope
+
+    Result.Ok(0)
+  }
+
+  func _typecheckEnumPass2_2(self, enum_: Enum, node: EnumDeclarationNode): Result<Map<Label, Int[]>, TypeError> {
+    val prevScope = self.currentScope
+    self.currentScope = enum_.scope
+    val prevTypeDecl = self.currentTypeDecl
+    self.currentTypeDecl = StructOrEnum.Enum(enum_)
+
+    for typedVariant, idx in enum_.variants {
+      match typedVariant.kind {
+        EnumVariantKind.Constant => continue
+        EnumVariantKind.Container(typedFields) => {
+          val fields = match node.variants[idx] {
+            EnumVariant.Container(_, fields) => fields
+            _ => return unreachable(typedVariant.label.position, "the untyped enum variant must exist at index, and must also be a Container")
+          }
+
+          for typedField, idx in typedFields {
+            val field = if fields[idx] |f| f else return unreachable(typedField.name.position, "the untyped field must exist at index")
+            if field.initializer |initializer| {
+              val typedInitializer = match self._typecheckExpression(initializer, typedField.ty) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+              if !self._typeSatisfiesRequired(ty: typedInitializer.ty, required: typedField.ty) {
+                return Result.Err(TypeError(position: typedInitializer.token.position, kind: TypeErrorKind.TypeMismatch([typedField.ty], typedInitializer.ty)))
+              }
+
+              typedField.initializer = typedInitializer
+            } else {
+              continue
+            }
+          }
+        }
+      }
+    }
+
+    val allParamsNeedingRevisit = match self._typecheckMethodsPass2(StructOrEnum.Enum(enum_), node.methods) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+    self.currentTypeDecl = prevTypeDecl
+    self.currentScope = prevScope
+
+    Result.Ok(allParamsNeedingRevisit)
+  }
+
+  func _typecheckEnumPass3(self, enum_: Enum, node: EnumDeclarationNode, paramsNeedingRevisit: Map<Label, Int[]>): Result<Int, TypeError> {
+    val prevScope = self.currentScope
+    self.currentScope = enum_.scope
+    val prevTypeDecl = self.currentTypeDecl
+    self.currentTypeDecl = StructOrEnum.Enum(enum_)
+
+    val instanceMethods = enum_.instanceMethods.keyBy(f => f.label)
+    val staticMethods = enum_.staticMethods.keyBy(f => f.label)
+    for funcDeclNode in node.methods {
+      val fnLabel = funcDeclNode.name
+      val fn = if instanceMethods[fnLabel] |f| {
+        f
+      } else if staticMethods[fnLabel] |f| {
+        f
+      } else {
+        return unreachable(funcDeclNode.name.position, "method not visited in prior pass")
+      }
+
+      val toRevisit = if paramsNeedingRevisit[fnLabel] |paramIds| paramIds else return unreachable(funcDeclNode.name.position, "params improperly visited in prior pass")
       match self._typecheckFunctionPass3(fn, funcDeclNode, toRevisit) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     }
 
@@ -1618,20 +1862,28 @@ export type Typechecker {
   func _typecheckBlock(self, nodes: AstNode[]): Result<TypedAstNode[], TypeError> {
     val funcDecls: FunctionDeclarationNode[] = []
     val typeDecls: TypeDeclarationNode[] = []
+    val enumDecls: EnumDeclarationNode[] = []
     for node in nodes {
       match node.kind {
         AstNodeKind.FunctionDeclaration(node) => funcDecls.push(node)
         AstNodeKind.TypeDeclaration(node) => typeDecls.push(node)
+        AstNodeKind.EnumDeclaration(node) => enumDecls.push(node)
         _ => {}
       }
     }
 
-    // --- Pass 1 for types, (todo: enums), and functions
+    // --- Pass 1 for types, enums, and functions
 
     val structsPass1: (Struct, TypeDeclarationNode)[] = []
     for node in typeDecls {
       val struct = match self._typecheckStructPass1(node) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
       structsPass1.push((struct, node))
+    }
+
+    val enumsPass1: (Enum, EnumDeclarationNode)[] = []
+    for node in enumDecls {
+      val enum_ = match self._typecheckEnumPass1(node) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      enumsPass1.push((enum_, node))
     }
 
     val functionsPass1: (Function, Variable, FunctionDeclarationNode)[] = []
@@ -1642,7 +1894,7 @@ export type Typechecker {
       functionsPass1.push((fn, aliasVar, node))
     }
 
-    // --- Pass 2 for types, (todo: enums), and functions
+    // --- Pass 2 for types, enums, and functions
 
     val structsPass2_1: (Struct, TypeDeclarationNode)[] = []
     for pair in structsPass1 {
@@ -1653,13 +1905,31 @@ export type Typechecker {
       structsPass2_1.push((struct, node))
     }
 
-    val structsPass2_2: (Struct, TypeDeclarationNode, Map<String, Int[]>)[] = []
+    val enumsPass2_1: (Enum, EnumDeclarationNode)[] = []
+    for pair in enumsPass1 {
+      val enum_ = pair[0]
+      val node = pair[1]
+      match self._typecheckEnumPass2_1(enum_, node) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+      enumsPass2_1.push((enum_, node))
+    }
+
+    val structsPass2_2: (Struct, TypeDeclarationNode, Map<Label, Int[]>)[] = []
     for pair in structsPass1 {
       val struct = pair[0]
       val node = pair[1]
       val toRevisit = match self._typecheckStructPass2_2(struct, node) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
       structsPass2_2.push((struct, node, toRevisit))
+    }
+
+    val enumsPass2_2: (Enum, EnumDeclarationNode, Map<Label, Int[]>)[] = []
+    for pair in enumsPass2_1 {
+      val enum_ = pair[0]
+      val node = pair[1]
+      val toRevisit = match self._typecheckEnumPass2_2(enum_, node) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+
+      enumsPass2_2.push((enum_, node, toRevisit))
     }
 
     val functionsPass2: (Function, FunctionDeclarationNode, Int[])[] = []
@@ -1675,6 +1945,7 @@ export type Typechecker {
 
     val functionsIter = functionsPass2.iterator()
     val structsIter = structsPass2_2.iterator()
+    val enumsIter = enumsPass2_2.iterator()
 
     val typedNodes: TypedAstNode[] = []
     for node in nodes {
@@ -1708,7 +1979,21 @@ export type Typechecker {
           typedNodes.push(typedNode)
           continue
         }
-        AstNodeKind.EnumDeclaration => return todo(node.token.position)
+        AstNodeKind.EnumDeclaration => {
+          val typedNode = if enumsIter.next() |pair| {
+            val enum_ = pair[0]
+            val enumDeclNode = pair[1]
+            val toRevisit = pair[2]
+
+            match self._typecheckEnumPass3(enum_, enumDeclNode, toRevisit) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.EnumDeclaration(enum_))
+          } else {
+            return unreachable(node.token.position, "there should be as many enums as there are enumdecl nodes")
+          }
+
+          typedNodes.push(typedNode)
+          continue
+        }
         _ => self._typecheckStatement(node: node, typeHint: None)
       }
 
@@ -2363,12 +2648,34 @@ export type Typechecker {
 
         None
       }
+      TypeKind.EnumInstance(enum_, generics) => {
+        for fn in enum_.instanceMethods {
+          if fn.label.name == label.name {
+            val resolvedGenerics: Map<String, Type> = {}
+            for name, idx in enum_.typeParams {
+              resolvedGenerics[name] = if generics[idx] |g| g else {
+                println("enum_.typeParams.length != generics.length") // Pseudo-assert
+                break
+              }
+            }
+            val method = if resolvedGenerics.isEmpty() fn else fn.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: true)
+            return (AccessorPathSegment.Method(label, method), method.getType())
+          }
+        }
+
+        None
+      }
       TypeKind.Tuple => None
       TypeKind.Func => None
-      TypeKind.Struct(struct) => {
+      TypeKind.Type(structOrEnum) => {
         // TODO: static fields
 
-        for method in struct.staticMethods {
+        val staticMethods = match structOrEnum {
+          StructOrEnum.Struct(struct) => struct.staticMethods
+          StructOrEnum.Enum(enum_) => enum_.staticMethods
+        }
+
+        for method in staticMethods {
           if method.label.name == label.name return (AccessorPathSegment.Method(label, method), method.getType())
         }
 
@@ -2406,7 +2713,7 @@ export type Typechecker {
         nextTy
       } else {
         val isSpecialCase = match ty.kind {
-          TypeKind.Instance(struct, _) => !!self._resolveAccessorPathSegment(Type(kind: TypeKind.Struct(struct)), label)
+          TypeKind.Instance(struct, _) => !!self._resolveAccessorPathSegment(Type(kind: TypeKind.Type(StructOrEnum.Struct(struct))), label)
           _ => false
         }
 
@@ -2433,6 +2740,7 @@ export type Typechecker {
               val initializerFn = Function.initializer(self.currentScope, struct)
               self._typecheckInvocationOfFunction(token, invokee, initializerFn, node, typeHint, struct)
             }
+            VariableAlias.Enum(enum_) => return Result.Err(TypeError(position: invokee.token.position, kind: TypeErrorKind.IllegalCallableType(Type(kind: TypeKind.Type(StructOrEnum.Enum(enum_))))))
             None => self._typecheckInvocationOfExpression(token, invokee, invokee.token.position, node)
           }
         }

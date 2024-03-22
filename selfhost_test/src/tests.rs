@@ -379,7 +379,6 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/indexing/tuple_error_range.abra", "typechecker/indexing/tuple_error_range.out")
         .add_test_vs_txt("typechecker/indexing/tuple_error_type_mismatch.abra", "typechecker/indexing/tuple_error_type_mismatch.out")
 
-
         // If expressions & statements
         .add_test_vs_txt("typechecker/if/error_bad_cond_type.abra", "typechecker/if/error_bad_cond_type.out")
         .add_test_vs_txt("typechecker/if/error_block_mismatch.1.abra", "typechecker/if/error_block_mismatch.1.out")
@@ -569,6 +568,7 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/typedecl/error_duplicate_field.abra", "typechecker/typedecl/error_duplicate_field.out")
         .add_test_vs_txt("typechecker/typedecl/error_method_bad_self_position.abra", "typechecker/typedecl/error_method_bad_self_position.out")
         .add_test_vs_txt("typechecker/typedecl/typedecl.1.abra", "typechecker/typedecl/typedecl.1.out.json")
+        .add_test_vs_txt("typechecker/typedecl/typedecl.2.abra", "typechecker/typedecl/typedecl.2.out.json")
         .add_test_vs_txt("typechecker/typedecl/error_field_initializer_type_mismatch.abra", "typechecker/typedecl/error_field_initializer_type_mismatch.out")
         .add_test_vs_txt("typechecker/typedecl/error_invalid_eq_signature.1.abra", "typechecker/typedecl/error_invalid_eq_signature.1.out")
         .add_test_vs_txt("typechecker/typedecl/error_invalid_eq_signature.2.abra", "typechecker/typedecl/error_invalid_eq_signature.2.out")
@@ -576,8 +576,20 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/typedecl/error_invalid_tostring_signature.abra", "typechecker/typedecl/error_invalid_tostring_signature.out")
         .add_test_vs_txt("typechecker/typedecl/error_duplicate_type_func.abra", "typechecker/typedecl/error_duplicate_type_func.out")
         .add_test_vs_txt("typechecker/typedecl/error_duplicate_type_type.abra", "typechecker/typedecl/error_duplicate_type_type.out")
-        .add_test_vs_txt("typechecker/typedecl/typedecl.2.abra", "typechecker/typedecl/typedecl.2.out.json")
-
+        .add_test_vs_txt("typechecker/typedecl/error_duplicate_type_enum.abra", "typechecker/typedecl/error_duplicate_type_enum.out")
+        // Enum declaration
+        .add_test_vs_txt("typechecker/enumdecl/enumdecl.1.abra", "typechecker/enumdecl/enumdecl.1.out.json")
+        .add_test_vs_txt("typechecker/enumdecl/error_duplicate_enum_enum.abra", "typechecker/enumdecl/error_duplicate_enum_enum.out")
+        .add_test_vs_txt("typechecker/enumdecl/error_duplicate_enum_func.abra", "typechecker/enumdecl/error_duplicate_enum_func.out")
+        .add_test_vs_txt("typechecker/enumdecl/error_duplicate_enum_type.abra", "typechecker/enumdecl/error_duplicate_enum_type.out")
+        .add_test_vs_txt("typechecker/enumdecl/error_duplicate_variant.abra", "typechecker/enumdecl/error_duplicate_variant.out")
+        .add_test_vs_txt("typechecker/enumdecl/error_duplicate_variant_field.abra", "typechecker/enumdecl/error_duplicate_variant_field.out")
+        .add_test_vs_txt("typechecker/enumdecl/error_invalid_eq_signature.1.abra", "typechecker/enumdecl/error_invalid_eq_signature.1.out")
+        .add_test_vs_txt("typechecker/enumdecl/error_invalid_eq_signature.2.abra", "typechecker/enumdecl/error_invalid_eq_signature.2.out")
+        .add_test_vs_txt("typechecker/enumdecl/error_invalid_hash_signature.abra", "typechecker/enumdecl/error_invalid_hash_signature.out")
+        .add_test_vs_txt("typechecker/enumdecl/error_invalid_tostring_signature.abra", "typechecker/enumdecl/error_invalid_tostring_signature.out")
+        .add_test_vs_txt("typechecker/enumdecl/error_method_bad_self_position.abra", "typechecker/enumdecl/error_method_bad_self_position.out")
+        .add_test_vs_txt("typechecker/enumdecl/error_variant_field_initializer_type_mismatch.abra", "typechecker/enumdecl/error_variant_field_initializer_type_mismatch.out")
 
         // Returns
         .add_test_vs_txt("typechecker/return/return.1.abra", "typechecker/return/return.1.out.json")
