@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:3:13
+Unknown field 'Baz'
+  |  val f = Foo.Baz
+                 ^
+No field 'Baz' found on type <#enum Foo>

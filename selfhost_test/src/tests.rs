@@ -461,6 +461,9 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/accessor/error_unknown_field_chain_opt_known.abra", "typechecker/accessor/error_unknown_field_chain_opt_known.out")
         .add_test_vs_txt("typechecker/accessor/error_unknown_field_chain_opt_unknown.abra", "typechecker/accessor/error_unknown_field_chain_opt_unknown.out")
         .add_test_vs_txt("typechecker/accessor/error_static_member_referenced_by_instance.abra", "typechecker/accessor/error_static_member_referenced_by_instance.out")
+        .add_test_vs_txt("typechecker/accessor/accessor.4.abra", "typechecker/accessor/accessor.4.out.json")
+        .add_test_vs_txt("typechecker/accessor/error_unknown_enum_variant.1.abra", "typechecker/accessor/error_unknown_enum_variant.1.out")
+
 
         // Type identifiers
         .add_test_vs_txt("typechecker/typeidentifier/error_typearg_unknown.abra", "typechecker/typeidentifier/error_typearg_unknown.out")
@@ -476,6 +479,7 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/assignment/assignment_variable.abra", "typechecker/assignment/assignment_variable.out.json")
         .add_test_vs_txt("typechecker/assignment/accessor_error_method.1.abra", "typechecker/assignment/accessor_error_method.1.out")
         .add_test_vs_txt("typechecker/assignment/accessor_error_method.2.abra", "typechecker/assignment/accessor_error_method.2.out")
+        .add_test_vs_txt("typechecker/assignment/accessor_error_enum_variant.abra", "typechecker/assignment/accessor_error_enum_variant.out")
         .add_test_vs_txt("typechecker/assignment/accessor_error_type_mismatch.1.abra", "typechecker/assignment/accessor_error_type_mismatch.1.out")
         .add_test_vs_txt("typechecker/assignment/accessor_error_type_mismatch.2.abra", "typechecker/assignment/accessor_error_type_mismatch.2.out")
         .add_test_vs_txt("typechecker/assignment/variable_error_alias_fn.abra", "typechecker/assignment/variable_error_alias_fn.out")
@@ -522,6 +526,9 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/bindingdecl/error_type_mismatch_var.abra", "typechecker/bindingdecl/error_type_mismatch_var.out")
         .add_test_vs_txt("typechecker/bindingdecl/error_type_mismatch_option.abra", "typechecker/bindingdecl/error_type_mismatch_option.out")
         .add_test_vs_txt("typechecker/bindingdecl/error_unfilled_holes.abra", "typechecker/bindingdecl/error_unfilled_holes.out")
+        .add_test_vs_txt("typechecker/bindingdecl/error_illegal_value_type_enum.abra", "typechecker/bindingdecl/error_illegal_value_type_enum.out")
+        .add_test_vs_txt("typechecker/bindingdecl/error_illegal_value_type_enum_container_variant.abra", "typechecker/bindingdecl/error_illegal_value_type_enum_container_variant.out")
+        .add_test_vs_txt("typechecker/bindingdecl/error_illegal_value_type_type.abra", "typechecker/bindingdecl/error_illegal_value_type_type.out")
         // Function declaration
         .add_test_vs_txt("typechecker/funcdecl/funcdecl.1.abra", "typechecker/funcdecl/funcdecl.1.out.json")
         .add_test_vs_txt("typechecker/funcdecl/funcdecl.2.abra", "typechecker/funcdecl/funcdecl.2.out.json")

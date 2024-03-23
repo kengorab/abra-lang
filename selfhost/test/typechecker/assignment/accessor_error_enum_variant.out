@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:5:5
+Cannot assign to enum variant 'Bar'
+  |  Foo.Bar = "abcd"
+         ^
+'Bar' is an enum variant, which cannot be overwritten

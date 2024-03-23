@@ -75,7 +75,7 @@ export type Jsonifier {
         println()
       }
       TypeKind.EnumInstance(enum_, generics) => {
-        self.println("\"kind\": \"instance\",")
+        self.println("\"kind\": \"enumInstance\",")
         self.println("\"enum\": { \"moduleId\": ${enum_.moduleId}, \"name\": \"${enum_.label.name}\" },")
         self.print("\"typeParams\": ")
         self.array(generics, t => self.printType(t))
@@ -297,6 +297,10 @@ export type Jsonifier {
           self.indentInc()
 
           match seg {
+            AccessorPathSegment.EnumVariant(_, enum_, variant) => {
+              self.println("\"kind\": \"enumVariant\",")
+              self.println("\"name\": \"${enum_.label.name}.${variant.label.name}\"")
+            }
             AccessorPathSegment.Method(_, f) => {
               self.println("\"kind\": \"method\",")
               self.println("\"name\": \"${f.label.name}\"")
@@ -315,6 +319,10 @@ export type Jsonifier {
         self.println("\"tail\": {")
         self.indentInc()
         match tail {
+          AccessorPathSegment.EnumVariant(_, enum_, variant) => {
+            self.println("\"kind\": \"enumVariant\",")
+            self.println("\"name\": \"${enum_.label.name}.${variant.label.name}\"")
+          }
           AccessorPathSegment.Method(_, f) => {
             self.println("\"kind\": \"method\",")
             self.println("\"name\": \"${f.label.name}\"")

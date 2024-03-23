@@ -90,103 +90,17 @@
                 "primitive": "Bool"
               },
               "body": []
-            },
-            {
-              "label": { "name": "foo", "position": [6, 8] },
-              "scope": {
-                "name": "$root::module_1::Foo::foo",
-                "variables": [
-                  {
-                    "label": { "name": "self", "position": [6, 12] },
-                    "mutable": false,
-                    "type": {
-                      "nullable": false,
-                      "kind": "enumInstance",
-                      "enum": { "moduleId": 1, "name": "Foo" },
-                      "typeParams": []
-                    }
-                  }
-                ],
-                "functions": [],
-                "types": []
-              },
-              "kind": "FunctionKind.InstanceMethod",
-              "typeParameters": [],
-              "parameters": [],
-              "returnType": {
-                "nullable": false,
-                "kind": "primitive",
-                "primitive": "Int"
-              },
-              "body": [
-                {
-                  "token": {
-                    "position": [6, 25],
-                    "kind": {
-                      "name": "Int",
-                      "value": 123
-                    }
-                  },
-                  "type": {
-                    "nullable": false,
-                    "kind": "primitive",
-                    "primitive": "Int"
-                  },
-                  "node": {
-                    "kind": "literal",
-                    "value": 123
-                  }
-                }
-              ]
             }
           ],
-          "staticMethods": [
-            {
-              "label": { "name": "fooStatic", "position": [7, 8] },
-              "scope": {
-                "name": "$root::module_1::Foo::fooStatic",
-                "variables": [],
-                "functions": [],
-                "types": []
-              },
-              "kind": "FunctionKind.StaticMethod",
-              "typeParameters": [],
-              "parameters": [],
-              "returnType": {
-                "nullable": false,
-                "kind": "primitive",
-                "primitive": "Int"
-              },
-              "body": [
-                {
-                  "token": {
-                    "position": [7, 27],
-                    "kind": {
-                      "name": "Int",
-                      "value": 123
-                    }
-                  },
-                  "type": {
-                    "nullable": false,
-                    "kind": "primitive",
-                    "primitive": "Int"
-                  },
-                  "node": {
-                    "kind": "literal",
-                    "value": 123
-                  }
-                }
-              ]
-            }
-          ]
+          "staticMethods": []
         }
       }
     },
     {
       "token": {
-        "position": [10, 1],
+        "position": [3, 1],
         "kind": {
-          "name": "Var"
+          "name": "Val"
         }
       },
       "type": {
@@ -198,12 +112,12 @@
         "kind": "bindingDeclaration",
         "pattern": {
           "kind": "variable",
-          "label": { "name": "f", "position": [10, 5] }
+          "label": { "name": "f", "position": [3, 5] }
         },
         "variables": [
           {
-            "label": { "name": "f", "position": [10, 5] },
-            "mutable": true,
+            "label": { "name": "f", "position": [3, 5] },
+            "mutable": false,
             "type": {
               "nullable": false,
               "kind": "enumInstance",
@@ -212,7 +126,46 @@
             }
           }
         ],
-        "expr": null
+        "expr": {
+          "token": {
+            "position": [3, 12],
+            "kind": {
+              "name": "Dot"
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "enumInstance",
+            "enum": { "moduleId": 1, "name": "Foo" },
+            "typeParams": []
+          },
+          "node": {
+            "kind": "accessor",
+            "head": {
+              "token": {
+                "position": [3, 9],
+                "kind": {
+                  "name": "Ident",
+                  "value": "Foo"
+                }
+              },
+              "type": {
+                "nullable": false,
+                "kind": "enum",
+                "enum": { "moduleId": 1, "name": "Foo" }
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "Foo"
+              }
+            },
+            "middle": [],
+            "tail": {
+              "kind": "enumVariant",
+              "name": "Foo.Bar"
+            }
+          }
+        }
       }
     }
   ]
