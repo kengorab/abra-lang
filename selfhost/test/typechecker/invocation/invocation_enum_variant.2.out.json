@@ -22,8 +22,45 @@
           "typeParams": [],
           "variants": [
             {
-              "label": { "name": "Bar", "position": [1, 12] },
-              "kind": "constant"
+              "label": { "name": "Bar", "position": [2, 3] },
+              "kind": "container",
+              "fields": [
+                {
+                  "name": { "name": "a", "position": [2, 7] },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "initializer": null
+                },
+                {
+                  "name": { "name": "b", "position": [2, 15] },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "String"
+                  },
+                  "initializer": {
+                    "token": {
+                      "position": [2, 27],
+                      "kind": {
+                        "name": "String",
+                        "value": "abc"
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "String"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": "abc"
+                    }
+                  }
+                }
+              ]
             }
           ],
           "instanceMethods": [
@@ -103,7 +140,7 @@
     },
     {
       "token": {
-        "position": [3, 1],
+        "position": [5, 1],
         "kind": {
           "name": "Val"
         }
@@ -117,11 +154,11 @@
         "kind": "bindingDeclaration",
         "pattern": {
           "kind": "variable",
-          "label": { "name": "f", "position": [3, 5] }
+          "label": { "name": "f", "position": [5, 5] }
         },
         "variables": [
           {
-            "label": { "name": "f", "position": [3, 5] },
+            "label": { "name": "f", "position": [5, 5] },
             "mutable": false,
             "type": {
               "nullable": false,
@@ -133,9 +170,9 @@
         ],
         "expr": {
           "token": {
-            "position": [3, 12],
+            "position": [5, 16],
             "kind": {
-              "name": "Dot"
+              "name": "LParen"
             }
           },
           "type": {
@@ -145,30 +182,29 @@
             "typeParams": []
           },
           "node": {
-            "kind": "accessor",
-            "head": {
-              "token": {
-                "position": [3, 9],
-                "kind": {
-                  "name": "Ident",
-                  "value": "Foo"
+            "kind": "invocation",
+            "invokee": "Foo.Bar",
+            "arguments": [
+              {
+                "token": {
+                  "position": [5, 20],
+                  "kind": {
+                    "name": "Int",
+                    "value": 123
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 123
                 }
               },
-              "type": {
-                "nullable": false,
-                "kind": "enum",
-                "enum": { "moduleId": 1, "name": "Foo" }
-              },
-              "node": {
-                "kind": "identifier",
-                "name": "Foo"
-              }
-            },
-            "middle": [],
-            "tail": {
-              "kind": "enumVariant",
-              "name": "Foo.Bar"
-            }
+              null
+            ]
           }
         }
       }

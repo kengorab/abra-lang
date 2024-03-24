@@ -434,6 +434,7 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/invocation/error_instantiation_too_few_args.1.abra", "typechecker/invocation/error_instantiation_too_few_args.1.out")
         .add_test_vs_txt("typechecker/invocation/error_instantiation_too_few_args.2.abra", "typechecker/invocation/error_instantiation_too_few_args.2.out")
         .add_test_vs_txt("typechecker/invocation/error_invalid_ident_kind.abra", "typechecker/invocation/error_invalid_ident_kind.out")
+        .add_test_vs_txt("typechecker/invocation/error_enum_variant_constant.abra", "typechecker/invocation/error_enum_variant_constant.out")
         .add_test_vs_txt("typechecker/invocation/invocation_arbitrary_expr.1.abra", "typechecker/invocation/invocation_arbitrary_expr.1.out.json")
         .add_test_vs_txt("typechecker/invocation/invocation_arbitrary_expr.2.abra", "typechecker/invocation/invocation_arbitrary_expr.2.out.json")
         .add_test_vs_txt("typechecker/invocation/invocation_field.abra", "typechecker/invocation/invocation_field.out.json")
@@ -448,6 +449,10 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/invocation/generics_error_field.1.abra", "typechecker/invocation/generics_error_field.1.out")
         .add_test_vs_txt("typechecker/invocation/invocation_method_generics.1.abra", "typechecker/invocation/invocation_method_generics.1.out.json")
         .add_test_vs_txt("typechecker/invocation/invocation_method_generics.2.abra", "typechecker/invocation/invocation_method_generics.2.out.json")
+        .add_test_vs_txt("typechecker/invocation/invocation_enum_variant.1.abra", "typechecker/invocation/invocation_enum_variant.1.out.json")
+        .add_test_vs_txt("typechecker/invocation/invocation_enum_variant.2.abra", "typechecker/invocation/invocation_enum_variant.2.out.json")
+        .add_test_vs_txt("typechecker/invocation/invocation_enum_variant.3.abra", "typechecker/invocation/invocation_enum_variant.3.out.json")
+
         // Accessor
         .add_test_vs_txt("typechecker/accessor/accessor.1.abra", "typechecker/accessor/accessor.1.out.json")
         .add_test_vs_txt("typechecker/accessor/accessor.2.abra", "typechecker/accessor/accessor.2.out.json")

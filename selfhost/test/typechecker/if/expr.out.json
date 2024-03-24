@@ -2508,7 +2508,16 @@
           "moduleId": 1,
           "name": { "name": "Foo2", "position": [60, 6] },
           "typeParams": [],
-          "variants": [],
+          "variants": [
+            {
+              "label": { "name": "Bar", "position": [60, 13] },
+              "kind": "constant"
+            },
+            {
+              "label": { "name": "Baz", "position": [60, 18] },
+              "kind": "constant"
+            }
+          ],
           "instanceMethods": [
             {
               "label": { "name": "toString", "position": [0, 0] },

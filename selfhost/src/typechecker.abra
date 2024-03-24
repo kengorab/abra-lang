@@ -94,7 +94,7 @@ export type Scope {
   func makeChild(self, name: String, kind: ScopeKind): Scope = Scope(name: "${self.name}::$name", kind: kind, parent: self)
 }
 
-type Field {
+export type Field {
   name: Label
   ty: Type
   initializer: TypedAstNode?
@@ -134,6 +134,11 @@ export type Enum {
 
   // Override eq method since default implementation recurses infinitely (scope -> variables -> TypeKind.Enum)
   func eq(self, other: Enum): Bool = self.moduleId == other.moduleId && self.label == other.label
+}
+
+enum Instantiatable {
+  Struct(struct: Struct)
+  EnumContainerVariant(enum_: Enum, variant: TypedEnumVariant, fields: Field[])
 }
 
 
@@ -255,6 +260,10 @@ export type Type {
         val substTypeArgs = typeArgs.map(ty => ty.withSubstitutedGenerics(resolvedGenerics, retainUnknown))
         Type(kind: TypeKind.Instance(struct, substTypeArgs))
       }
+      TypeKind.EnumInstance(enum_, typeArgs) => {
+        val substTypeArgs = typeArgs.map(ty => ty.withSubstitutedGenerics(resolvedGenerics, retainUnknown))
+        Type(kind: TypeKind.EnumInstance(enum_, substTypeArgs))
+      }
       TypeKind.Tuple(typeArgs) => {
         val substTypeArgs = typeArgs.map(ty => ty.withSubstitutedGenerics(resolvedGenerics, retainUnknown))
         Type(kind: TypeKind.Tuple(substTypeArgs))
@@ -368,6 +377,23 @@ export type Function {
     Function(label: struct.label, scope: fnScope, kind: FunctionKind.Standalone, typeParams: structTypeParams, params: params, returnType: returnType, body: [], isGenerated: true)
   }
 
+  func forEnumVariant(
+    scope: Scope,
+    enum_: Enum,
+    variantLabel: Label,
+    variantFields: Field[],
+  ): Function {
+    val bogusPosition = Position(line: 0, col: 0)
+
+    val fnScope = scope.makeChild("${enum_.label.name}.${variantLabel.name}", ScopeKind.Func)
+    val typeParams = enum_.typeParams.map(t => (Type(kind: TypeKind.Generic(t)), Label(name: t, position: bogusPosition)))
+    val params = variantFields.map(f => TypedFunctionParam(label: Label(name: f.name.name, position: bogusPosition), ty: f.ty, defaultValue: f.initializer))
+    val typeArgs = enum_.typeParams.map(t => Type(kind: TypeKind.Generic(t)))
+    val returnType = Type(kind: TypeKind.EnumInstance(enum_, typeArgs))
+
+    Function(label: variantLabel, scope: fnScope, kind: FunctionKind.Standalone, typeParams: typeParams, params: params, returnType: returnType, body: [], isGenerated: true)
+  }
+
   func getType(self): Type = Type(kind: TypeKind.Func(paramTypes: self.params.map(p => (p.ty, !p.defaultValue)), returnType: self.returnType))
 
   func withSubstitutedGenerics(self, resolvedGenerics: Map<String, Type>, retainUnknown: Bool): Function {
@@ -393,6 +419,7 @@ export type Function {
 export enum TypedInvokee {
   Struct(struct: Struct)
   Expr(expr: TypedAstNode)
+  EnumVariant(enum_: Enum, variant: TypedEnumVariant)
 }
 
 export enum TypedIndexingNode {
@@ -746,7 +773,10 @@ type TypeError {
       TypeErrorKind.IllegalCallableType(ty) => {
         lines.push("Cannot invoke target as function")
         lines.push(self._getCursorLine(self.position, contents))
-        lines.push("Type '${ty.repr()}' is not callable")
+        match ty.kind {
+          TypeKind.EnumInstance => lines.push("This is a constant enum variant, and it accepts no arguments")
+          _ => lines.push("Type '${ty.repr()}' is not callable")
+        }
       }
       TypeErrorKind.WrongTypeArgumentArity(expected, given) => {
         val verbStr = if given == 1 "was" else "were"
@@ -1161,6 +1191,20 @@ export type Typechecker {
         }
         _ => false
       }
+      TypeKind.EnumInstance(reqEnum, reqTypeArgs) => match ty.kind {
+        TypeKind.EnumInstance(enum_, typeArgs) => {
+          if reqEnum.moduleId != enum_.moduleId || reqEnum.label != enum_.label return false
+
+          if reqTypeArgs.length != typeArgs.length return false
+          for reqTypeArg, i in reqTypeArgs {
+            val typeArg = if typeArgs[i] |t| t else { return true }
+            if !self._typeSatisfiesRequired(ty: typeArg, required: reqTypeArg) return false
+          }
+
+          true
+        }
+        _ => false
+      }
       TypeKind.Tuple(reqTypes) => match ty.kind {
         TypeKind.Tuple(types) => {
           if reqTypes.length != types.length return false
@@ -1183,6 +1227,7 @@ export type Typechecker {
     match ty.kind {
       TypeKind.Generic(name) => true
       TypeKind.Instance(_, typeArgs) => typeArgs.any(t => self._containsGenerics(t))
+      TypeKind.EnumInstance(_, typeArgs) => typeArgs.any(t => self._containsGenerics(t))
       TypeKind.Tuple(typeArgs) => typeArgs.any(t => self._containsGenerics(t))
       TypeKind.Func(paramTypes, returnType) => {
         if self._containsGenerics(returnType) return true
@@ -1201,6 +1246,25 @@ export type Typechecker {
       TypeKind.Instance(_, templateTypeArgs) => {
         match source.kind {
           TypeKind.Instance(_, sourceTypeArgs) => {
+            if templateTypeArgs.length != sourceTypeArgs.length {
+              // There's currently no notion of asserts, but this will show up in output files and fail tests so it won't go unnoticed.
+              println("templateTypeArgs.length != sourceTypeArgs.length")
+              return
+            }
+            for tplTypeArg, idx in templateTypeArgs {
+              val srcTypeArg = if sourceTypeArgs[idx] |t| t else {
+                println("templateTypeArgs.length != sourceTypeArgs.length")
+                return
+              }
+              self.__extractGenerics(template: tplTypeArg, source: srcTypeArg, extracted: extracted)
+            }
+          }
+          _ => {}
+        }
+      }
+      TypeKind.EnumInstance(_, templateTypeArgs) => {
+        match source.kind {
+          TypeKind.EnumInstance(_, sourceTypeArgs) => {
             if templateTypeArgs.length != sourceTypeArgs.length {
               // There's currently no notion of asserts, but this will show up in output files and fail tests so it won't go unnoticed.
               println("templateTypeArgs.length != sourceTypeArgs.length")
@@ -2793,7 +2857,7 @@ export type Typechecker {
             VariableAlias.Function(fn) => self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint)
             VariableAlias.Struct(struct) => {
               val initializerFn = Function.initializer(self.currentScope, struct)
-              self._typecheckInvocationOfFunction(token, invokee, initializerFn, node, typeHint, struct)
+              self._typecheckInvocationOfFunction(token, invokee, initializerFn, node, typeHint, Instantiatable.Struct(struct))
             }
             VariableAlias.Enum(enum_) => return Result.Err(TypeError(position: invokee.token.position, kind: TypeErrorKind.IllegalCallableType(Type(kind: TypeKind.Type(StructOrEnum.Enum(enum_))))))
             None => self._typecheckInvocationOfExpression(token, invokee, invokee.token.position, node)
@@ -2804,7 +2868,16 @@ export type Typechecker {
       }
       TypedAstNodeKind.Accessor(_, _, tail) => {
         match tail {
-          AccessorPathSegment.EnumVariant(_, enum_, variant) => return todo(token.position, "invocation of enum variants")
+          AccessorPathSegment.EnumVariant(label, enum_, variant) => {
+            val fields = match variant.kind {
+              EnumVariantKind.Constant => return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalCallableType(invokee.ty)))
+              EnumVariantKind.Container(fields) => fields
+            }
+
+            val enumVariantAsFn = Function.forEnumVariant(self.currentScope, enum_, variant.label, fields)
+
+            self._typecheckInvocationOfFunction(token, invokee, enumVariantAsFn, node, typeHint, Instantiatable.EnumContainerVariant(enum_, variant, fields))
+          }
           AccessorPathSegment.Method(_, fn) => self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint)
           AccessorPathSegment.Field(label) => self._typecheckInvocationOfExpression(token, invokee, label.position, node)
         }
@@ -2852,7 +2925,7 @@ export type Typechecker {
     Result.Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(typedInvokee, typedArguments)))
   }
 
-  func _typecheckInvocationOfFunction(self, token: Token, invokee: TypedAstNode, fn: Function, invocationNode: InvocationAstNode, typeHint: Type?, instantiationOf: Struct? = None): Result<TypedAstNode, TypeError> {
+  func _typecheckInvocationOfFunction(self, token: Token, invokee: TypedAstNode, fn: Function, invocationNode: InvocationAstNode, typeHint: Type?, instantiationOf: Instantiatable? = None): Result<TypedAstNode, TypeError> {
     // Function invocation is position-based for required parameters, with optional parameter labels to express call-site intent (ie. for Bool params), and it's
     // an error if a positional parameter's label is incorrect. Once we reach any optional parameters in the argument list, parameters can either be positional
     // OR labeled, but once a labeled optional parameter is seen, all subsequent arguments in the argument list must also be labeled.
@@ -2978,10 +3051,19 @@ export type Typechecker {
       } else if param.defaultValue {
         typedArguments.push(None)
       } else {
-        val errorKind = if instantiationOf |struct| {
-          val missing = struct.fields
-            .filter(f => !f.initializer && !typedArgumentsByName.containsKey(f.name.name))
-            .map(f => f.name.name)
+        val errorKind = if instantiationOf |i| {
+          val missing = match i {
+            Instantiatable.Struct(struct) => {
+              struct.fields
+                .filter(f => !f.initializer && !typedArgumentsByName.containsKey(f.name.name))
+                .map(f => f.name.name)
+            }
+            Instantiatable.EnumContainerVariant(_, _, fields) => {
+              fields
+                .filter(f => !f.initializer && !typedArgumentsByName.containsKey(f.name.name))
+                .map(f => f.name.name)
+            }
+          }
           TypeErrorKind.MissingRequiredFields(missing)
         } else {
           val numRequired = fn.params.filter(p => !p.defaultValue).length
@@ -2996,8 +3078,12 @@ export type Typechecker {
       fn.returnType.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false)
     } else fn.returnType
 
-    val typedInvokee = if instantiationOf |struct| {
-      TypedInvokee.Struct(struct)
+    val typedInvokee = if instantiationOf |i| {
+      val v = match i {
+        Instantiatable.Struct(struct) => TypedInvokee.Struct(struct)
+        Instantiatable.EnumContainerVariant(enum_, variant, _) => TypedInvokee.EnumVariant(enum_, variant)
+      }
+      v
     } else {
       TypedInvokee.Expr(invokee)
     }

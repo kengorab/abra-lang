@@ -1,6 +1,6 @@
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 import LiteralAstNode, IndexingMode from "./parser"
-import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct, Enum, StructOrEnum, AccessorPathSegment, TypedIdentifierKind, TypedInvokee, TypedIndexingNode, TypedAssignmentMode from "./typechecker"
+import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct, Enum, StructOrEnum, AccessorPathSegment, TypedIdentifierKind, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind from "./typechecker"
 
 export type Jsonifier {
   indentLevel: Int = 0
@@ -150,25 +150,7 @@ export type Jsonifier {
     println(",")
 
     self.print("\"fields\": ")
-    self.array(struct.fields, f => {
-      println("{")
-      self.indentInc()
-
-      self.print("\"name\": ")
-      printLabelAsJson(f.name)
-      println(",")
-
-      self.print("\"type\": ")
-      self.printType(f.ty)
-      println(",")
-
-      self.print("\"initializer\": ")
-      self.opt(f.initializer, n => self.printNode(n))
-      println()
-
-      self.indentDec()
-      self.print("}")
-    })
+    self.array(struct.fields, f => self.printField(f))
     println(",")
 
     self.print("\"instanceMethods\": ")
@@ -177,6 +159,26 @@ export type Jsonifier {
 
     self.print("\"staticMethods\": ")
     self.array(struct.staticMethods, m => self.printFunc(m))
+    println()
+
+    self.indentDec()
+    self.print("}")
+  }
+
+  func printField(self, field: Field) {
+    println("{")
+    self.indentInc()
+
+    self.print("\"name\": ")
+    printLabelAsJson(field.name)
+    println(",")
+
+    self.print("\"type\": ")
+    self.printType(field.ty)
+    println(",")
+
+    self.print("\"initializer\": ")
+    self.opt(field.initializer, n => self.printNode(n))
     println()
 
     self.indentDec()
@@ -202,7 +204,31 @@ export type Jsonifier {
     self.array(enum_.typeParams, p => print("\"$p\""))
     println(",")
 
-    self.println("\"variants\": [],")
+    self.print("\"variants\": ")
+    self.array(enum_.variants, v => {
+      println("{")
+      self.indentInc()
+
+      self.print("\"label\": ")
+      printLabelAsJson(v.label)
+      println(",")
+
+      match v.kind {
+        EnumVariantKind.Constant => {
+          self.println("\"kind\": \"constant\"")
+        }
+        EnumVariantKind.Container(fields) => {
+          self.println("\"kind\": \"container\",")
+          self.print("\"fields\": ")
+          self.array(fields, f => self.printField(f))
+          println()
+        }
+      }
+
+      self.indentDec()
+      self.print("}")
+    })
+    println(",")
 
     self.print("\"instanceMethods\": ")
     self.array(enum_.instanceMethods, m => self.printFunc(m))
@@ -342,6 +368,7 @@ export type Jsonifier {
         match invokee {
           TypedInvokee.Struct(struct) => self.printStruct(struct: struct, abridged: true)
           TypedInvokee.Expr(expr) => self.printNode(expr)
+          TypedInvokee.EnumVariant(enum_, variant) => print("\"${enum_.label.name}.${variant.label.name}\"")
         }
         println(",")
 
