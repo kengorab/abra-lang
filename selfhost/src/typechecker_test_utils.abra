@@ -67,20 +67,28 @@ export type Jsonifier {
         self.println("\"kind\": \"generic\",")
         self.println("\"name\": \"$name\"")
       }
-      TypeKind.Instance(struct, generics) => {
-        self.println("\"kind\": \"instance\",")
-        self.println("\"struct\": { \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.label.name}\" },")
+      TypeKind.Instance(structOrEnum, generics) => {
+        match structOrEnum {
+          StructOrEnum.Struct(struct) => {
+            self.println("\"kind\": \"instance\",")
+            self.println("\"struct\": { \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.label.name}\" },")
+          }
+          StructOrEnum.Enum(enum_) => {
+            self.println("\"kind\": \"enumInstance\",")
+            self.println("\"enum\": { \"moduleId\": ${enum_.moduleId}, \"name\": \"${enum_.label.name}\" },")
+          }
+        }
         self.print("\"typeParams\": ")
         self.array(generics, t => self.printType(t))
         println()
       }
-      TypeKind.EnumInstance(enum_, generics) => {
-        self.println("\"kind\": \"enumInstance\",")
-        self.println("\"enum\": { \"moduleId\": ${enum_.moduleId}, \"name\": \"${enum_.label.name}\" },")
-        self.print("\"typeParams\": ")
-        self.array(generics, t => self.printType(t))
-        println()
-      }
+      // TypeKind.EnumInstance(enum_, generics) => {
+      //   self.println("\"kind\": \"enumInstance\",")
+      //   self.println("\"enum\": { \"moduleId\": ${enum_.moduleId}, \"name\": \"${enum_.label.name}\" },")
+      //   self.print("\"typeParams\": ")
+      //   self.array(generics, t => self.printType(t))
+      //   println()
+      // }
       TypeKind.Tuple(types) => {
         self.println("\"kind\": \"tuple\",")
         self.print("\"types\": ")
