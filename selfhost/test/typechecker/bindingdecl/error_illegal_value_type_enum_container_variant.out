@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:5:13
+Forbidden type for value
+  |  val f = Foo.Bar
+                 ^
+This enum variant is non-constant and must be constructed

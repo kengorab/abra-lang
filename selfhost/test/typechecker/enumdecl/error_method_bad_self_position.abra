@@ -1,0 +1,6 @@
+enum Foo {
+  Bar
+  Baz
+
+  func foo(a: Int, self, b: Int): Int = a + b
+}

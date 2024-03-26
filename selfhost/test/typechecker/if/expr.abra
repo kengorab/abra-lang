@@ -52,3 +52,11 @@ val _: Int = i
 val j_: Int? = 123
 val j = if j_ |j| { j } else 0
 val _: Int = j
+
+type Foo1 { a: Int }
+val k = if true Foo1(a: 1) else Foo1(a: 2)
+val _: Foo1 = k
+
+enum Foo2 { Bar, Baz }
+val l = if true Foo2.Bar else Foo2.Baz
+val _: Foo2 = l

@@ -225,7 +225,7 @@ export enum EnumVariant {
   Container(label: Label, fields: TypeField[])
 }
 
-type EnumDeclarationNode {
+export type EnumDeclarationNode {
   decorators: DecoratorNode[]
   exportToken: Token?
   name: Label
