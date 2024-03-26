@@ -1324,6 +1324,10 @@ export type Typechecker {
     self.project.modules.push(mod)
 
     val parsedModule = match self._tokenizeAndParse(modulePath) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    if parsedModule.imports[0] |importNode| {
+      val kind = TypecheckerErrorKind.TypeError(TypeError(position: importNode.token.position, kind: TypeErrorKind.NotYetImplemented("import nodes")))
+      return Result.Err(TypecheckerError(modulePath: modulePath, kind: kind))
+    }
     for importNode in parsedModule.imports { /* todo */ }
 
     mod.code = match self._typecheckBlock(parsedModule.nodes) {
@@ -2490,6 +2494,7 @@ export type Typechecker {
       AstNodeKind.Indexing(expr, index) => self._typecheckIndexing(token, expr, index, typeHint)
       AstNodeKind.Lambda(value) => todo(node.token.position, "lambda expression")
       AstNodeKind.If(condition, conditionBinding, ifBlock, elseBlock) => self._typecheckIf(token, condition, conditionBinding, ifBlock, elseBlock, typeHint)
+      AstNodeKind.Match => todo(node.token.position, "match expression")
       _ => unreachable(node.token.position, "all other node types should have already been handled")
     }
 
