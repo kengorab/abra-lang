@@ -1,6 +1,7 @@
 import "fs" as fs
+import resolveRelativePath from "./utils"
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
-import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode from "./parser"
+import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode from "./parser"
 
 enum TokenizeAndParseError {
   ReadFileError(path: String)
@@ -10,25 +11,41 @@ enum TokenizeAndParseError {
 
 export type ModuleLoader {
   rootDirPath: String
+  parsedModules: Map<String, ParsedModule> = {}
 
-  // TODO: This of course does nothing right now
-  func resolvePath(self, modulePath: String, relativeTo: String?): String = modulePath
+  func resolvePath(self, modulePath: String, relativeTo: String?): String {
+    if relativeTo |relativeTo| {
+      val pathParts = resolveRelativePath(path: modulePath, relativeTo: relativeTo)
+      "/" + pathParts.join("/")
+    } else {
+      modulePath
+    }
+  }
+
+  func hasSeenModule(self, modulePathAbs: String): Bool = self.parsedModules.containsKey(modulePathAbs)
 
   func tokenizeAndParse(self, modulePath: String): Result<ParsedModule, TokenizeAndParseError> {
-    match fs.readFile(modulePath) {
+    if self.parsedModules[modulePath] |m| return Result.Ok(m)
+
+    val parsedModule = match fs.readFile(modulePath) {
       Result.Ok(contents) => {
-        match Lexer.tokenize(contents) {
+        val m = match Lexer.tokenize(contents) {
           Result.Ok(tokens) => {
-            match Parser.parse(tokens) {
-              Result.Ok(parsedModule) => Result.Ok(parsedModule)
-              Result.Err(error) => Result.Err(TokenizeAndParseError.ParseError(error))
+            val m = match Parser.parse(tokens) {
+              Result.Ok(parsedModule) => parsedModule
+              Result.Err(error) => return Result.Err(TokenizeAndParseError.ParseError(error))
             }
+            m
           }
-          Result.Err(error) => Result.Err(TokenizeAndParseError.LexerError(error))
+          Result.Err(error) => return Result.Err(TokenizeAndParseError.LexerError(error))
         }
+        m
       }
-      Result.Err(e) => Result.Err(TokenizeAndParseError.ReadFileError(modulePath))
+      Result.Err(e) => return Result.Err(TokenizeAndParseError.ReadFileError(modulePath))
     }
+    self.parsedModules[modulePath] = parsedModule
+
+    Result.Ok(parsedModule)
   }
 }
 
@@ -860,6 +877,16 @@ type TypeError {
           IllegalAssignmentReason.StaticMethod => lines.push("'$name' is a static method, which cannot be overwritten")
         }
       }
+      TypeErrorKind.UnknownModule(modulePathAbs) => {
+        lines.push("Could not import module")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("No file exists at path '$modulePathAbs'")
+      }
+      TypeErrorKind.CircularDependency => {
+        lines.push("Could not import module due to circular dependency")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("The current module is imported by the imported module (or one of its imports), resulting in a cycle")
+      }
     }
 
     lines.join("\n")
@@ -935,6 +962,8 @@ enum TypeErrorKind {
   UnnecessaryOptSafety
   InvalidTraitMethodSignature(fn: Function)
   IllegalAssignment(kind: String, name: String, reason: IllegalAssignmentReason)
+  UnknownModule(modulePathAbs: String)
+  CircularDependency
 }
 
 type ParamDefaultValueContext {
@@ -954,15 +983,17 @@ export type Typechecker {
   isEnumContainerValueAllowed: Bool = false
 
   func typecheckEntrypoint(self, modulePathAbs: String): Result<Int, TypecheckerError> {
-    val mod = TypedModule(id: 0, name: "prelude", code: [], rootScope: self.currentScope.makeChild("module_0", ScopeKind.Module))
+    val preludeMod = TypedModule(id: 0, name: "prelude", code: [], rootScope: self.currentScope.makeChild("module_0", ScopeKind.Module))
+    self.project.modules.push(preludeMod)
+
+    val mod = match self._typecheckModule(modulePathAbs) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     self.project.modules.push(mod)
 
-    self._typecheckModule(modulePathAbs)
+    Result.Ok(0)
   }
 
-  func _tokenizeAndParse(self, modulePath: String, relativeTo: String? = None): Result<ParsedModule, TypecheckerError> {
-    val absPath = self.moduleLoader.resolvePath(modulePath, relativeTo)
-    match self.moduleLoader.tokenizeAndParse(absPath) {
+  func _tokenizeAndParse(self, modulePathAbs: String): Result<ParsedModule, TypecheckerError> {
+    match self.moduleLoader.tokenizeAndParse(modulePathAbs) {
       Result.Ok(mod) => Result.Ok(mod)
       Result.Err(e) => {
         val kind = match e {
@@ -971,7 +1002,7 @@ export type Typechecker {
           TokenizeAndParseError.ParseError(inner) => TypecheckerErrorKind.ParseError(inner)
         }
 
-        return Result.Err(TypecheckerError(modulePath: modulePath, kind: kind))
+        return Result.Err(TypecheckerError(modulePath: modulePathAbs, kind: kind))
       }
     }
   }
@@ -1313,30 +1344,57 @@ export type Typechecker {
     }
   }
 
-  func _typecheckModule(self, modulePath: String): Result<Int, TypecheckerError> {
+  func _typecheckModule(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
     val moduleId = self.project.modules.length
     self.currentModuleId = moduleId
 
     val moduleScope = self.currentScope.makeChild("module_$moduleId", ScopeKind.Module)
     val prevScope = self.currentScope
     self.currentScope = moduleScope
-    val mod = TypedModule(id: moduleId, name: modulePath, code: [], rootScope: moduleScope)
+    val mod = TypedModule(id: moduleId, name: modulePathAbs, code: [], rootScope: moduleScope)
     self.project.modules.push(mod)
 
-    val parsedModule = match self._tokenizeAndParse(modulePath) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-    if parsedModule.imports[0] |importNode| {
-      val kind = TypecheckerErrorKind.TypeError(TypeError(position: importNode.token.position, kind: TypeErrorKind.NotYetImplemented("import nodes")))
-      return Result.Err(TypecheckerError(modulePath: modulePath, kind: kind))
+    val parsedModule = match self._tokenizeAndParse(modulePathAbs) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    for importNode in parsedModule.imports {
+      var importNodePath = importNode.moduleName.name
+      if !importNodePath.endsWith(".abra") importNodePath += ".abra"
+
+      val importPathAbs = self.moduleLoader.resolvePath(modulePath: importNodePath, relativeTo: modulePathAbs)
+      if self.moduleLoader.hasSeenModule(importPathAbs) {
+        val err = TypeError(position: importNode.moduleName.position, kind: TypeErrorKind.CircularDependency)
+        return Result.Err(TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(err)))
+      }
+
+      val childTypechecker = Typechecker(moduleLoader: self.moduleLoader, project: self.project)
+      val typedImportModule = match childTypechecker._typecheckModule(importPathAbs) {
+        Result.Ok(m) => m
+        Result.Err(e) => {
+          val err = match e.kind {
+            TypecheckerErrorKind.ReadFileError => {
+              val err = TypeError(position: importNode.moduleName.position, kind: TypeErrorKind.UnknownModule(importPathAbs))
+              TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(err))
+            }
+            _ => e
+          }
+
+          return Result.Err(err)
+        }
+      }
+
+      match self._typecheckImport(typedImportModule, importNode) {
+        Result.Ok(v) => v
+        Result.Err(e) => return Result.Err(TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(e)))
+      }
     }
-    for importNode in parsedModule.imports { /* todo */ }
 
     mod.code = match self._typecheckBlock(parsedModule.nodes) {
       Result.Ok(v) => v
-      Result.Err(e) => return Result.Err(TypecheckerError(modulePath: modulePath, kind: TypecheckerErrorKind.TypeError(e)))
+      Result.Err(e) => return Result.Err(TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(e)))
     }
 
     self.currentScope = prevScope
-    Result.Ok(moduleId)
+
+    Result.Ok(mod)
   }
 
   func _typecheckFunctionPass1(self, node: FunctionDeclarationNode): Result<Function, TypeError> {
@@ -1924,6 +1982,12 @@ export type Typechecker {
     self.currentScope = prevScope
 
     Result.Ok(0)
+  }
+
+  func _typecheckImport(self, importModule: TypedModule, importNode: ImportNode): Result<Int, TypeError> {
+    if !importNode.moduleName.name.startsWith(".") return todo(importNode.moduleName.position, "nonrelative imports")
+
+    todo(importNode.token.position, "_typecheckImport")
   }
 
   func _typecheckBlock(self, nodes: AstNode[]): Result<TypedAstNode[], TypeError> {

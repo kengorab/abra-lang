@@ -23,9 +23,8 @@ export func getAbsolutePath(fileName: String): String[] {
   }
 
   val sanitizedParts: String[] = []
-  for part, idx in parts {
-    if part.isEmpty() continue
-    if part == "." continue
+  for part in parts {
+    if part.isEmpty() || part == "." continue
     if part == ".." {
       sanitizedParts.pop()
       continue
@@ -35,4 +34,23 @@ export func getAbsolutePath(fileName: String): String[] {
   }
 
   sanitizedParts
+}
+
+// TODO: Move this elsewhere, probably into std somewhere
+export func resolveRelativePath(path: String, relativeTo: String): String[] {
+  val absParentPath = getAbsolutePath(fileName: relativeTo)
+  absParentPath.pop() // remove file part to obtain parent dir
+
+  val pathSegs = path.split("/")
+
+  for part in pathSegs {
+    if part.isEmpty() || part == "." continue
+    if part == ".." {
+      absParentPath.pop()
+    }
+
+    absParentPath.push(part)
+  }
+
+  absParentPath
 }

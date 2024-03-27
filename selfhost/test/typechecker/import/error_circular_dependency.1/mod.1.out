@@ -1,0 +1,5 @@
+Error at /Users/kengorab/Desktop/abra-lang/selfhost/test/typechecker/import/error_circular_dependency.1/mod.2.abra:1:15
+Could not import module due to circular dependency
+  |  import a from "./mod.1"
+                   ^
+The current module is imported by the imported module (or one of its imports), resulting in a cycle
