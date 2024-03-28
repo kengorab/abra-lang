@@ -1352,7 +1352,6 @@ export type Typechecker {
     val prevScope = self.currentScope
     self.currentScope = moduleScope
     val mod = TypedModule(id: moduleId, name: modulePathAbs, code: [], rootScope: moduleScope)
-    self.project.modules.push(mod)
 
     val parsedModule = match self._tokenizeAndParse(modulePathAbs) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     for importNode in parsedModule.imports {
