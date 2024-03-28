@@ -10,7 +10,7 @@ export enum ImportKind {
   Alias(alias: Label)
 }
 
-type ImportNode {
+export type ImportNode {
   token: Token
   kind: ImportKind
   moduleName: Label
