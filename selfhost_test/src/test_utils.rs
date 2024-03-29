@@ -95,16 +95,20 @@ impl TestRunner {
                     (test_path, rust_output)
                 }
                 TestType::VsTxt(test_file_path, comparison_file_path) => {
-                    let test_path = selfhost_dir.join("test").join(test_file_path);
+                    let test_dir = selfhost_dir.join("test");
+                    let test_path = test_dir.join(test_file_path);
                     let test_path = test_path.to_str().unwrap().to_string();
                     println!("Running {runner_name} test (vs file) {test_path}");
 
-                    let comparison_path = selfhost_dir.join("test").join(comparison_file_path);
+                    let comparison_path = test_dir.join(comparison_file_path);
                     let comparison = std::fs::read_to_string(&comparison_path).unwrap_or_else(|_| {
                         println!("No such file {}", &comparison_file_path);
                         panic!();
                     });
                     let comparison = comparison.replace("%FILE_NAME%", &test_path);
+
+                    let test_dir_path = test_dir.to_str().unwrap().to_string();
+                    let comparison = comparison.replace("%TEST_DIR%", &test_dir_path);
 
                     (test_path, comparison)
                 }

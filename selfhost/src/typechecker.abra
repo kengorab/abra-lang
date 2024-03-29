@@ -1356,6 +1356,12 @@ export type Typechecker {
     val parsedModule = match self._tokenizeAndParse(modulePathAbs) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     for importNode in parsedModule.imports {
       var importNodePath = importNode.moduleName.name
+
+      if !importNodePath.startsWith(".") {
+        val err = TypeError(position: importNode.moduleName.position, kind: TypeErrorKind.NotYetImplemented("nonrelative imports"))
+        return Result.Err(TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(err)))
+      }
+
       if !importNodePath.endsWith(".abra") importNodePath += ".abra"
 
       val importPathAbs = self.moduleLoader.resolvePath(modulePath: importNodePath, relativeTo: modulePathAbs)
@@ -1984,8 +1990,6 @@ export type Typechecker {
   }
 
   func _typecheckImport(self, importModule: TypedModule, importNode: ImportNode): Result<Int, TypeError> {
-    if !importNode.moduleName.name.startsWith(".") return todo(importNode.moduleName.position, "nonrelative imports")
-
     todo(importNode.token.position, "_typecheckImport")
   }
 

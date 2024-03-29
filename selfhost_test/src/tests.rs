@@ -622,5 +622,11 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/return/error_unreachable_stmt_for_outside.1.abra", "typechecker/return/error_unreachable_stmt_for_outside.1.out")
         .add_test_vs_txt("typechecker/return/error_unreachable_stmt_for_outside.2.abra", "typechecker/return/error_unreachable_stmt_for_outside.2.out")
 
+        // Imports
+        .add_test_vs_txt("typechecker/import/error_no_file_exists.abra", "typechecker/import/error_no_file_exists.out")
+        .add_test_vs_txt("typechecker/import/error_unimplemented_nonrelative.abra", "typechecker/import/error_unimplemented_nonrelative.out")
+        .add_test_vs_txt("typechecker/import/error_circular_dependency.1/mod.1.abra", "typechecker/import/error_circular_dependency.1/mod.1.out")
+        .add_test_vs_txt("typechecker/import/error_circular_dependency.2/mod.1.abra", "typechecker/import/error_circular_dependency.2/mod.1.out")
+
         .run_tests();
 }
