@@ -23,16 +23,34 @@ if Process.args()[1] |fileName| {
   match typechecker.typecheckEntrypoint(filePathAbs) {
     Result.Ok => {
       val json = Jsonifier()
-      if project.modules[0] |prelude| {
+      if project.modules["prelude"] |prelude| {
         if prelude.id != 0 && prelude.name != "prelude" {
           println("Error: prelude module misconfigured")
         }
       } else {
         println("Error: no prelude module defined!")
       }
-      for mod in project.modules[1:] {
-        json.printModule(mod)
-      }
+
+      val modules = project.modules.values().filter(mod => mod.name != "prelude")
+      // val manyModules = modules.length > 1
+
+      // if manyModules {
+      //   println("[")
+      //   json.indentInc()
+      // }
+
+      // for mod, idx in modules {
+      //   json.printModule(mod)
+      //   if manyModules && idx != modules.length - 1 {
+      //     println(",")
+      //   }
+      // }
+
+      // if manyModules {
+      //   json.indentDec()
+      //   println("]")
+      // }
+      json.printModules(modules)
     }
     Result.Err(e) => println(e.getMessage())
   }

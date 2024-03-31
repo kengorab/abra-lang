@@ -523,6 +523,7 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/for/error_duplicate_ident.abra", "typechecker/for/error_duplicate_ident.out")
         // Binding declaration
         .add_test_vs_txt("typechecker/bindingdecl/bindingdecl.abra", "typechecker/bindingdecl/bindingdecl.out.json")
+        .add_test_vs_txt("typechecker/bindingdecl/bindingdecl_exported.abra", "typechecker/bindingdecl/bindingdecl_exported.out.json")
         .add_test_vs_txt("typechecker/bindingdecl/error_bare_var.abra", "typechecker/bindingdecl/error_bare_var.out")
         .add_test_vs_txt("typechecker/bindingdecl/error_duplicate_name.abra", "typechecker/bindingdecl/error_duplicate_name.out")
         .add_test_vs_txt("typechecker/bindingdecl/error_uninitialized_val.1.abra", "typechecker/bindingdecl/error_uninitialized_val.1.out")
@@ -534,6 +535,7 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/bindingdecl/error_illegal_value_type_enum.abra", "typechecker/bindingdecl/error_illegal_value_type_enum.out")
         .add_test_vs_txt("typechecker/bindingdecl/error_illegal_value_type_enum_container_variant.abra", "typechecker/bindingdecl/error_illegal_value_type_enum_container_variant.out")
         .add_test_vs_txt("typechecker/bindingdecl/error_illegal_value_type_type.abra", "typechecker/bindingdecl/error_illegal_value_type_type.out")
+        .add_test_vs_txt("typechecker/bindingdecl/error_export_bad_scope.abra", "typechecker/bindingdecl/error_export_bad_scope.out")
         // Function declaration
         .add_test_vs_txt("typechecker/funcdecl/funcdecl.1.abra", "typechecker/funcdecl/funcdecl.1.out.json")
         .add_test_vs_txt("typechecker/funcdecl/funcdecl.2.abra", "typechecker/funcdecl/funcdecl.2.out.json")
@@ -623,10 +625,15 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/return/error_unreachable_stmt_for_outside.2.abra", "typechecker/return/error_unreachable_stmt_for_outside.2.out")
 
         // Imports
+        .add_test_vs_txt("typechecker/import/import.1.abra", "typechecker/import/import.1.out.json")
         .add_test_vs_txt("typechecker/import/error_no_file_exists.abra", "typechecker/import/error_no_file_exists.out")
         .add_test_vs_txt("typechecker/import/error_unimplemented_nonrelative.abra", "typechecker/import/error_unimplemented_nonrelative.out")
         .add_test_vs_txt("typechecker/import/error_circular_dependency.1/mod.1.abra", "typechecker/import/error_circular_dependency.1/mod.1.out")
         .add_test_vs_txt("typechecker/import/error_circular_dependency.2/mod.1.abra", "typechecker/import/error_circular_dependency.2/mod.1.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_import_name.abra", "typechecker/import/error_duplicate_import_name.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_variable_name.abra", "typechecker/import/error_duplicate_variable_name.out")
+        .add_test_vs_txt("typechecker/import/error_imported_value_type_mismatch.abra", "typechecker/import/error_imported_value_type_mismatch.out")
+        .add_test_vs_txt("typechecker/import/error_no_exported_value.abra", "typechecker/import/error_no_exported_value.out")
 
         .run_tests();
 }

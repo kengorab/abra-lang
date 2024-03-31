@@ -78,6 +78,28 @@
   println(m)
 })()
 
+// Map#keys
+(() => {
+  val map1 = { a: 1, b: 2 }
+  /// Expect: #{b, a}
+  println(map1.keys())
+
+  val map2 = { ((1, 1)): true, ((0, 1)): false }
+  /// Expect: #{(0, 1), (1, 1)}
+  println(map2.keys())
+})()
+
+// Map#values
+(() => {
+  val map1 = { a: 1, b: 2 }
+  /// Expect: [2, 1]
+  println(map1.values())
+
+  val map2 = { ((1, 1)): true, ((0, 1)): false }
+  /// Expect: [false, true]
+  println(map2.values())
+})()
+
 // Map#entries
 (() => {
   val map1 = { a: 1, b: 2 }

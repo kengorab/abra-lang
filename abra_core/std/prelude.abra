@@ -968,8 +968,25 @@ type Map<K, V> {
 
   func iterator(self): MapIterator<K, V> = MapIterator(map: self)
 
-  @Stub func keys(self): Set<K>
-  @Stub func values(self): V[]
+  func keys(self): Set<K> {
+    val keys: Set<K> = #{}
+
+    for pair in self {
+      keys.insert(pair[0])
+    }
+
+    keys
+  }
+
+  func values(self): V[] {
+    val values: V[] = []
+
+    for pair in self {
+      values.push(pair[1])
+    }
+
+    values
+  }
 
   func entries(self): Set<(K, V)> {
     val entries: Set<(K, V)> = Set.new()

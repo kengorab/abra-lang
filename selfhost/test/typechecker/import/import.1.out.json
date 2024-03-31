@@ -1,0 +1,153 @@
+[
+  {
+    "id": 1,
+    "name": "%TEST_DIR%/typechecker/import/import.1.abra",
+    "code": [
+      {
+        "token": {
+          "position": [3, 1],
+          "kind": {
+            "name": "Val"
+          }
+        },
+        "type": {
+          "nullable": false,
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "bindingDeclaration",
+          "pattern": {
+            "kind": "variable",
+            "label": { "name": "b", "position": [3, 5] }
+          },
+          "variables": [
+            {
+              "label": { "name": "b", "position": [3, 5] },
+              "mutable": false,
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            }
+          ],
+          "expr": {
+            "token": {
+              "position": [3, 11],
+              "kind": {
+                "name": "Plus"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Int"
+            },
+            "node": {
+              "kind": "binary",
+              "op": "BinaryOp.Add",
+              "left": {
+                "token": {
+                  "position": [3, 9],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "a"
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "a"
+                }
+              },
+              "right": {
+                "token": {
+                  "position": [3, 13],
+                  "kind": {
+                    "name": "Int",
+                    "value": 1
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "name": "%TEST_DIR%/typechecker/import/_exports.abra",
+    "exports": [
+      {
+        "kind": "variable",
+        "name": "a"
+      }
+    ],
+    "code": [
+      {
+        "token": {
+          "position": [1, 8],
+          "kind": {
+            "name": "Val"
+          }
+        },
+        "type": {
+          "nullable": false,
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "bindingDeclaration",
+          "pattern": {
+            "kind": "variable",
+            "label": { "name": "a", "position": [1, 12] }
+          },
+          "variables": [
+            {
+              "label": { "name": "a", "position": [1, 12] },
+              "mutable": false,
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            }
+          ],
+          "expr": {
+            "token": {
+              "position": [1, 16],
+              "kind": {
+                "name": "Int",
+                "value": 123
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Int"
+            },
+            "node": {
+              "kind": "literal",
+              "value": 123
+            }
+          }
+        }
+      }
+    ]
+  }
+]

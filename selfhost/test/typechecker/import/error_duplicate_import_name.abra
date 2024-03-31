@@ -1,3 +1,2 @@
 import a from "./_exports"
-
-val b = a + 1
+import a from "./_exports"

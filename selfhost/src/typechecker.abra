@@ -1,7 +1,7 @@
 import "fs" as fs
 import resolveRelativePath from "./utils"
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
-import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode from "./parser"
+import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode, ImportKind from "./parser"
 
 enum TokenizeAndParseError {
   ReadFileError(path: String)
@@ -49,11 +49,27 @@ export type ModuleLoader {
   }
 }
 
+export enum Export {
+  Variable(variable: Variable)
+}
+
+export type Import {
+  label: Label
+  kind: TypedImportKind
+}
+
+enum TypedImportKind {
+  Variable(variable: Variable)
+}
+
 export type TypedModule {
   id: Int
   name: String
   code: TypedAstNode[]
   rootScope: Scope
+  complete: Bool = false
+  imports: Map<String, Map<String, Import>> = {}
+  exports: Map<String, Export> = {}
 }
 
 export enum VariableAlias {
@@ -67,6 +83,7 @@ export type Variable {
   mutable: Bool
   ty: Type
   alias: VariableAlias? = None
+  isExported: Bool = false
 }
 
 export enum Terminator {
@@ -160,7 +177,7 @@ enum Instantiatable {
 
 
 export type Project {
-  modules: TypedModule[] = []
+  modules: Map<String, TypedModule> = {}
   preludeArrayStruct: Struct = Struct(moduleId: 0, label: Label(name: "Array", position: Position(line: 0, col: 0)), scope: Scope(name: "Array"), typeParams: ["T"])
   preludeMapStruct: Struct = Struct(moduleId: 0, label: Label(name: "Map", position: Position(line: 0, col: 0)), scope: Scope(name: "Array"), typeParams: ["K", "V"])
   preludeSetStruct: Struct = Struct(moduleId: 0, label: Label(name: "Set", position: Position(line: 0, col: 0)), scope: Scope(name: "Set"), typeParams: ["T"])
@@ -887,6 +904,16 @@ type TypeError {
         lines.push(self._getCursorLine(self.position, contents))
         lines.push("The current module is imported by the imported module (or one of its imports), resulting in a cycle")
       }
+      TypeErrorKind.IllegalExportScope => {
+        lines.push("Invalid export modifier")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Exported values may only appear at the top level scope in a module")
+      }
+      TypeErrorKind.UnknownImport(moduleName, importName) => {
+        lines.push("Invalid import")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("There's no exported value named '$importName' in module '$moduleName'")
+      }
     }
 
     lines.join("\n")
@@ -964,6 +991,8 @@ enum TypeErrorKind {
   IllegalAssignment(kind: String, name: String, reason: IllegalAssignmentReason)
   UnknownModule(modulePathAbs: String)
   CircularDependency
+  IllegalExportScope
+  UnknownImport(moduleName: String, importName: String)
 }
 
 type ParamDefaultValueContext {
@@ -975,6 +1004,8 @@ export type Typechecker {
   moduleLoader: ModuleLoader
   project: Project
   currentModuleId: Int = -1
+  currentModuleExports: Map<String, Export> = {} // TODO: this is a little gross, could we instead track the currentModule?
+  currentModuleImports: Map<String, Map<String, Import>> = {} // TODO: see above todo
   currentScope: Scope = Scope(name: "\$root")
   currentTypeDecl: StructOrEnum? = None
   currentFunction: Function? = None
@@ -984,10 +1015,9 @@ export type Typechecker {
 
   func typecheckEntrypoint(self, modulePathAbs: String): Result<Int, TypecheckerError> {
     val preludeMod = TypedModule(id: 0, name: "prelude", code: [], rootScope: self.currentScope.makeChild("module_0", ScopeKind.Module))
-    self.project.modules.push(preludeMod)
+    self.project.modules["prelude"] = preludeMod
 
-    val mod = match self._typecheckModule(modulePathAbs) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-    self.project.modules.push(mod)
+    match self._typecheckModule(modulePathAbs) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     Result.Ok(0)
   }
@@ -1008,6 +1038,17 @@ export type Typechecker {
   }
 
   func _verifyNameUniqueInScope(self, label: Label, scope: Scope): TypeError? {
+    for importsByModule in self.currentModuleImports.values() {
+      for _p in importsByModule {
+        // TODO: destructuring
+        val name = _p[0]
+        val imp = _p[1]
+        if name == label.name {
+          return TypeError(position: label.position, kind: TypeErrorKind.DuplicateName(original: imp.label))
+        }
+      }
+    }
+
     for v in scope.variables {
       if v.label.name == label.name {
         return TypeError(position: label.position, kind: TypeErrorKind.DuplicateName(original: v.label))
@@ -1195,7 +1236,24 @@ export type Typechecker {
       scope = s.parent
     }
 
-    None
+    var foundVar: Variable? = None
+    for importedMods in self.currentModuleImports.values() {
+      for _p in importedMods {
+        // TODO: destructuring
+        val importedName = _p[0]
+        val importedValue = _p[1]
+        if importedName == ident {
+          // TODO: this is inefficient
+          match importedValue.kind {
+            TypedImportKind.Variable(v) => foundVar = v
+          }
+        }
+      }
+
+      if foundVar break
+    }
+
+    foundVar
   }
 
   func _typeSatisfiesRequired(self, ty: Type, required: Type): Bool {
@@ -1344,14 +1402,23 @@ export type Typechecker {
     }
   }
 
+  func _ensureValidExportScope(self, exportToken: Token): Result<Int, TypeError> {
+    if self.currentScope.kind != ScopeKind.Module {
+      Result.Err(TypeError(position: exportToken.position, kind: TypeErrorKind.IllegalExportScope))
+    } else {
+      Result.Ok(0) // <-- unnecessary int
+    }
+  }
+
   func _typecheckModule(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
-    val moduleId = self.project.modules.length
+    val moduleId = self.project.modules.size
     self.currentModuleId = moduleId
 
     val moduleScope = self.currentScope.makeChild("module_$moduleId", ScopeKind.Module)
     val prevScope = self.currentScope
     self.currentScope = moduleScope
     val mod = TypedModule(id: moduleId, name: modulePathAbs, code: [], rootScope: moduleScope)
+    self.project.modules[modulePathAbs] = mod
 
     val parsedModule = match self._tokenizeAndParse(modulePathAbs) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     for importNode in parsedModule.imports {
@@ -1365,25 +1432,31 @@ export type Typechecker {
       if !importNodePath.endsWith(".abra") importNodePath += ".abra"
 
       val importPathAbs = self.moduleLoader.resolvePath(modulePath: importNodePath, relativeTo: modulePathAbs)
-      if self.moduleLoader.hasSeenModule(importPathAbs) {
-        val err = TypeError(position: importNode.moduleName.position, kind: TypeErrorKind.CircularDependency)
-        return Result.Err(TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(err)))
-      }
-
-      val childTypechecker = Typechecker(moduleLoader: self.moduleLoader, project: self.project)
-      val typedImportModule = match childTypechecker._typecheckModule(importPathAbs) {
-        Result.Ok(m) => m
-        Result.Err(e) => {
-          val err = match e.kind {
-            TypecheckerErrorKind.ReadFileError => {
-              val err = TypeError(position: importNode.moduleName.position, kind: TypeErrorKind.UnknownModule(importPathAbs))
-              TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(err))
-            }
-            _ => e
-          }
-
-          return Result.Err(err)
+      val typedImportModule = if self.project.modules[importPathAbs] |m| {
+        if !m.complete {
+          val err = TypeError(position: importNode.moduleName.position, kind: TypeErrorKind.CircularDependency)
+          return Result.Err(TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(err)))
         }
+
+        m
+      } else {
+        val childTypechecker = Typechecker(moduleLoader: self.moduleLoader, project: self.project)
+        val typedImportModule = match childTypechecker._typecheckModule(importPathAbs) {
+          Result.Ok(m) => m
+          Result.Err(e) => {
+            val err = match e.kind {
+              TypecheckerErrorKind.ReadFileError => {
+                val err = TypeError(position: importNode.moduleName.position, kind: TypeErrorKind.UnknownModule(importPathAbs))
+                TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(err))
+              }
+              _ => e
+            }
+
+            return Result.Err(err)
+          }
+        }
+
+        typedImportModule
       }
 
       match self._typecheckImport(typedImportModule, importNode) {
@@ -1397,8 +1470,15 @@ export type Typechecker {
       Result.Err(e) => return Result.Err(TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(e)))
     }
 
+    mod.imports = self.currentModuleImports
+    self.currentModuleImports = {} // is this necessary?
+
+    mod.exports = self.currentModuleExports
+    self.currentModuleExports = {} // is this necessary?
+
     self.currentScope = prevScope
 
+    mod.complete = true
     Result.Ok(mod)
   }
 
@@ -1989,8 +2069,40 @@ export type Typechecker {
     Result.Ok(0)
   }
 
-  func _typecheckImport(self, importModule: TypedModule, importNode: ImportNode): Result<Int, TypeError> {
-    todo(importNode.token.position, "_typecheckImport")
+  func _typecheckImport(self, importedModule: TypedModule, node: ImportNode): Result<Int, TypeError> {
+    val imports = if self.currentModuleImports[importedModule.name] |imports| imports else {
+      // TODO: better API for this
+      val imports: Map<String, Import> = {}
+      self.currentModuleImports[importedModule.name] = imports
+      imports
+    }
+
+    match node.kind {
+      ImportKind.List(importNames) => {
+        for imp in importNames {
+          match importedModule.exports[imp.name] {
+            Export.Variable(v) => {
+              for importedMods in self.currentModuleImports.values() {
+                for _p in importedMods {
+                  // TODO: destructuring
+                  val importedName = _p[0]
+                  val importedValue = _p[1]
+                  if importedName == imp.name {
+                    return Result.Err(TypeError(position: imp.position, kind: TypeErrorKind.DuplicateName(original: importedValue.label)))
+                  }
+                }
+              }
+
+              imports[imp.name] = Import(label: imp, kind: TypedImportKind.Variable(v))
+            }
+            None => return Result.Err(TypeError(position: imp.position, kind: TypeErrorKind.UnknownImport(moduleName: node.moduleName.name, importName: imp.name)))
+          }
+        }
+      }
+      ImportKind.Alias(alias) => return todo(alias.position, "aliased imports")
+    }
+
+    Result.Ok(0)
   }
 
   func _typecheckBlock(self, nodes: AstNode[]): Result<TypedAstNode[], TypeError> {
@@ -2166,6 +2278,12 @@ export type Typechecker {
 
   func _typecheckBindingDeclaration(self, token: Token, node: BindingDeclarationNode): Result<TypedAstNode, TypeError> {
     val isMutable = token.kind == TokenKind.Var
+    val isExported = if node.exportToken |exportToken| {
+      match self._ensureValidExportScope(exportToken) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      true
+    } else {
+      false
+    }
 
     val annType = if node.typeAnnotation |typeAnn| {
       val ty = match self._resolveTypeIdentifier(typeAnn) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -2213,6 +2331,12 @@ export type Typechecker {
     val ty = _pair[1]
 
     val variables = match self._typecheckBindingPattern(isMutable, node.bindingPattern, ty) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    for v in variables {
+      if isExported {
+        v.isExported = true
+        self.currentModuleExports[v.label.name] = Export.Variable(v)
+      }
+    }
 
     val typedNode = TypedBindingDeclarationNode(bindingPattern: node.bindingPattern, variables: variables, expr: expr)
     Result.Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.BindingDeclaration(typedNode)))
