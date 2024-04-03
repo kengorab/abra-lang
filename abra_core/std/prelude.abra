@@ -617,7 +617,67 @@ type Array<T> {
   }
 
   @Stub func none(self, fn: (T) => Bool): Bool
-  @Stub func sortBy(self, fn: (T) => Int, reverse = false): T[]
+
+  // Implementation of quicksort using dual-pivot (Hoare) partitioning. The items are an array of tuples, the first elem
+  // of which represents the integer value which will be used as the sort-value; the second elem is the original value
+  // from which the sort-value was derived. Once sorting is complete, the original values will be extracted out of the
+  // sorted array.
+  func _quicksort<T>(items: (Int, T)[], lo: Int, hi: Int) {
+    if lo >= 0 && hi >= 0 && lo < hi {
+      val pivot = Array._qspartition(items, lo, hi)
+      Array._quicksort(items, lo, pivot)
+      Array._quicksort(items, pivot + 1, hi)
+    }
+  }
+  func _qspartition<T>(items: (Int, T)[], lo: Int, hi: Int): Int {
+    val pivot = items._buffer.offset(lo).load()[0]
+    var i = lo - 1
+    var j = hi + 1
+
+    while true {
+      i += 1
+      while items._buffer.offset(i).load()[0] < pivot { i += 1 }
+
+      j -= 1
+      while items._buffer.offset(j).load()[0] > pivot { j -= 1 }
+
+      if i >= j return j
+
+      val tmp = items._buffer.offset(i).load()
+      items._buffer.offset(i).store(items._buffer.offset(j).load())
+      items._buffer.offset(j).store(tmp)
+    }
+
+    // unreachable, but the typechecker doesn't know that
+    -1
+  }
+
+  func sortBy(self, fn: (T) => Int, reverse = false): T[] {
+    val factor = if reverse { -1 } else { 1 }
+
+    val arr: (Int, T)[] = Array.withCapacity(self.length)
+    var i = 0
+    while i < self.length {
+      val item = self._buffer.offset(i).load()
+      val tuple = (factor * fn(item), item)
+      arr.push(tuple)
+
+      i += 1
+    }
+
+    Array._quicksort(arr, 0, arr.length - 1)
+
+    val res: T[] = Array.withCapacity(self.length)
+    i = 0
+    while i < self.length {
+      res.push(arr._buffer.offset(i).load()[1])
+
+      i += 1
+    }
+
+    res
+  }
+
   @Stub func dedupe(self): T[]
   @Stub func dedupeBy<U>(self, fn: (T) => U): T[]
   @Stub func partition<U>(self, fn: (T) => U): Map<U, T[]>

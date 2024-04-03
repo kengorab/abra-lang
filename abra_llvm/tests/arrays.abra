@@ -364,6 +364,23 @@ func printItem(item: Int) = println(item)
   println(strArr.all(s => s == "HELLO"))
 })()
 
+// Array#sortBy
+(() => {
+  val strings = ["abc", "d", "efgh", "ij", "k", "lm", "nopqr", "stu", "v", "wxyz"]
+  val sorted = strings.sortBy(s => s.length)
+  /// Expect: [abc, d, efgh, ij, k, lm, nopqr, stu, v, wxyz]
+  println(strings) // original should be unmodified
+  /// Expect: [d, k, v, ij, lm, stu, abc, efgh, wxyz, nopqr]
+  println(sorted)
+
+  val arrays = [[1, 2], [], [3, 4, 5], [6], [7, 8, 9, 10]]
+  val sortedRev = arrays.sortBy(fn: a => a.length, reverse: true)
+  /// Expect: [[1, 2], [], [3, 4, 5], [6], [7, 8, 9, 10]]
+  println(arrays) // original should be unmodified
+  /// Expect: [[7, 8, 9, 10], [3, 4, 5], [1, 2], [6], []]
+  println(sortedRev)
+})()
+
 // Array#keyBy
 (() => {
   val empty: String[] = []

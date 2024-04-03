@@ -31,25 +31,9 @@ if Process.args()[1] |fileName| {
         println("Error: no prelude module defined!")
       }
 
-      val modules = project.modules.values().filter(mod => mod.name != "prelude")
-      // val manyModules = modules.length > 1
-
-      // if manyModules {
-      //   println("[")
-      //   json.indentInc()
-      // }
-
-      // for mod, idx in modules {
-      //   json.printModule(mod)
-      //   if manyModules && idx != modules.length - 1 {
-      //     println(",")
-      //   }
-      // }
-
-      // if manyModules {
-      //   json.indentDec()
-      //   println("]")
-      // }
+      val modules = project.modules.values()
+        .filter(mod => mod.name != "prelude")
+        .sortBy(m => m.id)
       json.printModules(modules)
     }
     Result.Err(e) => println(e.getMessage())
