@@ -544,6 +544,7 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/funcdecl/funcdecl.5.abra", "typechecker/funcdecl/funcdecl.5.out.json")
         .add_test_vs_txt("typechecker/funcdecl/funcdecl.6.abra", "typechecker/funcdecl/funcdecl.6.out.json")
         .add_test_vs_txt("typechecker/funcdecl/funcdecl.7.abra", "typechecker/funcdecl/funcdecl.7.out.json")
+        .add_test_vs_txt("typechecker/funcdecl/funcdecl_exported.abra", "typechecker/funcdecl/funcdecl_exported.out.json")
         .add_test_vs_txt("typechecker/funcdecl/error_duplicate_func.abra", "typechecker/funcdecl/error_duplicate_func.out")
         .add_test_vs_txt("typechecker/funcdecl/error_duplicate_param.abra", "typechecker/funcdecl/error_duplicate_param.out")
         .add_test_vs_txt("typechecker/funcdecl/error_duplicate_variable.abra", "typechecker/funcdecl/error_duplicate_variable.out")
@@ -578,6 +579,8 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/funcdecl/error_self_standalone.abra", "typechecker/funcdecl/error_self_standalone.out")
         .add_test_vs_txt("typechecker/funcdecl/error_generics_param_type_mismatch.abra", "typechecker/funcdecl/error_generics_param_type_mismatch.out")
         .add_test_vs_txt("typechecker/funcdecl/error_generics_return_type_mismatch.abra", "typechecker/funcdecl/error_generics_return_type_mismatch.out")
+        .add_test_vs_txt("typechecker/funcdecl/error_export_bad_scope.abra", "typechecker/funcdecl/error_export_bad_scope.out")
+
         // Type declaration
         .add_test_vs_txt("typechecker/typedecl/error_duplicate_field.abra", "typechecker/typedecl/error_duplicate_field.out")
         .add_test_vs_txt("typechecker/typedecl/error_method_bad_self_position.abra", "typechecker/typedecl/error_method_bad_self_position.out")
@@ -630,8 +633,12 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/import/error_unimplemented_nonrelative.abra", "typechecker/import/error_unimplemented_nonrelative.out")
         .add_test_vs_txt("typechecker/import/error_circular_dependency.1/mod.1.abra", "typechecker/import/error_circular_dependency.1/mod.1.out")
         .add_test_vs_txt("typechecker/import/error_circular_dependency.2/mod.1.abra", "typechecker/import/error_circular_dependency.2/mod.1.out")
-        .add_test_vs_txt("typechecker/import/error_duplicate_import_name.abra", "typechecker/import/error_duplicate_import_name.out")
-        .add_test_vs_txt("typechecker/import/error_duplicate_variable_name.abra", "typechecker/import/error_duplicate_variable_name.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_import_name.1.abra", "typechecker/import/error_duplicate_import_name.1.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_import_name.2.abra", "typechecker/import/error_duplicate_import_name.2.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_variable_name.1.abra", "typechecker/import/error_duplicate_variable_name.1.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_variable_name.2.abra", "typechecker/import/error_duplicate_variable_name.2.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_func_name.1.abra", "typechecker/import/error_duplicate_func_name.1.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_func_name.2.abra", "typechecker/import/error_duplicate_func_name.2.out")
         .add_test_vs_txt("typechecker/import/error_imported_value_type_mismatch.abra", "typechecker/import/error_imported_value_type_mismatch.out")
         .add_test_vs_txt("typechecker/import/error_no_exported_value.abra", "typechecker/import/error_no_exported_value.out")
 

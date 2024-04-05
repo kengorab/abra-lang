@@ -40,9 +40,11 @@ export type Jsonifier {
     self.println("\"name\": \"${mod.name}\",")
 
     if !mod.exports.isEmpty() {
-      self.print("\"exports\": ")
-      self.array(mod.exports.entries().asArray(), _e => {
-        println("{")
+      self.println("\"exports\": [")
+      self.indentInc()
+
+      for _e, idx in mod.exports {
+        self.println("{")
         self.indentInc()
 
         // TODO: Destructuring
@@ -50,14 +52,19 @@ export type Jsonifier {
         val exp = _e[1]
 
         match exp {
-          Export.Variable(v) => self.println("\"kind\": \"variable\",")
+          Export.Variable => self.println("\"kind\": \"variable\",")
+          Export.Function => self.println("\"kind\": \"function\",")
         }
         self.println("\"name\": \"$name\"")
 
         self.indentDec()
         self.print("}")
-      })
-      println(",")
+
+        val comma = if idx != mod.exports.size - 1 "," else ""
+        println(comma)
+      }
+      self.indentDec()
+      self.println("],")
     }
 
     self.print("\"code\": ")

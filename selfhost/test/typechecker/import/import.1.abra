@@ -1,3 +1,4 @@
-import a from "./_exports"
+import a, add from "./_exports"
 
 val b = a + 1
+val c = add(a, b)

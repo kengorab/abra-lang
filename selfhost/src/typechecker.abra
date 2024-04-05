@@ -51,6 +51,7 @@ export type ModuleLoader {
 
 export enum Export {
   Variable(variable: Variable)
+  Function(aliasVar: Variable)
 }
 
 export type Import {
@@ -60,6 +61,7 @@ export type Import {
 
 enum TypedImportKind {
   Variable(variable: Variable)
+  Function(aliasVar: Variable)
 }
 
 export type TypedModule {
@@ -1246,6 +1248,7 @@ export type Typechecker {
           // TODO: this is inefficient
           match importedValue.kind {
             TypedImportKind.Variable(v) => foundVar = v
+            TypedImportKind.Function(aliasVar) => foundVar = aliasVar
           }
         }
       }
@@ -2095,6 +2098,20 @@ export type Typechecker {
 
               imports[imp.name] = Import(label: imp, kind: TypedImportKind.Variable(v))
             }
+            Export.Function(v) => {
+              for importedMods in self.currentModuleImports.values() {
+                for _p in importedMods {
+                  // TODO: destructuring
+                  val importedName = _p[0]
+                  val importedValue = _p[1]
+                  if importedName == imp.name {
+                    return Result.Err(TypeError(position: imp.position, kind: TypeErrorKind.DuplicateName(original: importedValue.label)))
+                  }
+                }
+              }
+
+              imports[imp.name] = Import(label: imp, kind: TypedImportKind.Function(v))
+            }
             None => return Result.Err(TypeError(position: imp.position, kind: TypeErrorKind.UnknownImport(moduleName: node.moduleName.name, importName: imp.name)))
           }
         }
@@ -2134,10 +2151,21 @@ export type Typechecker {
 
     val functionsPass1: (Function, Variable, FunctionDeclarationNode)[] = []
     for node in funcDecls {
+      val isExported = if node.exportToken |exportToken| {
+        match self._ensureValidExportScope(exportToken) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        true
+      } else {
+        false
+      }
+
       val fn = match self._typecheckFunctionPass1(node) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
       val aliasVar = Variable(label: fn.label, mutable: false, ty: fn.getType(), alias: VariableAlias.Function(fn))
       self.currentScope.variables.push(aliasVar)
       functionsPass1.push((fn, aliasVar, node))
+      if isExported {
+        aliasVar.isExported = true
+        self.currentModuleExports[fn.label.name] = Export.Function(aliasVar)
+      }
     }
 
     // --- Pass 2 for types, enums, and functions

@@ -86,6 +86,131 @@
             }
           }
         }
+      },
+      {
+        "token": {
+          "position": [4, 1],
+          "kind": {
+            "name": "Val"
+          }
+        },
+        "type": {
+          "nullable": false,
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "bindingDeclaration",
+          "pattern": {
+            "kind": "variable",
+            "label": { "name": "c", "position": [4, 5] }
+          },
+          "variables": [
+            {
+              "label": { "name": "c", "position": [4, 5] },
+              "mutable": false,
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            }
+          ],
+          "expr": {
+            "token": {
+              "position": [4, 12],
+              "kind": {
+                "name": "LParen"
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Int"
+            },
+            "node": {
+              "kind": "invocation",
+              "invokee": {
+                "token": {
+                  "position": [4, 9],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "add"
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "function",
+                  "parameters": [
+                    {
+                      "required": true,
+                      "type": {
+                        "nullable": false,
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    },
+                    {
+                      "required": true,
+                      "type": {
+                        "nullable": false,
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    }
+                  ],
+                  "returnType": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "add"
+                }
+              },
+              "arguments": [
+                {
+                  "token": {
+                    "position": [4, 13],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "a"
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "identifier",
+                    "name": "a"
+                  }
+                },
+                {
+                  "token": {
+                    "position": [4, 16],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "b"
+                    }
+                  },
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "identifier",
+                    "name": "b"
+                  }
+                }
+              ]
+            }
+          }
+        }
       }
     ]
   },
@@ -93,6 +218,10 @@
     "id": 2,
     "name": "%TEST_DIR%/typechecker/import/_exports.abra",
     "exports": [
+      {
+        "kind": "function",
+        "name": "add"
+      },
       {
         "kind": "variable",
         "name": "a"
@@ -145,6 +274,134 @@
               "kind": "literal",
               "value": 123
             }
+          }
+        }
+      },
+      {
+        "token": {
+          "position": [3, 8],
+          "kind": {
+            "name": "Func"
+          }
+        },
+        "type": {
+          "nullable": false,
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "functionDeclaration",
+          "function": {
+            "label": { "name": "add", "position": [3, 13] },
+            "scope": {
+              "name": "$root::module_2::add",
+              "variables": [
+                {
+                  "label": { "name": "a", "position": [3, 17] },
+                  "mutable": false,
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                },
+                {
+                  "label": { "name": "b", "position": [3, 25] },
+                  "mutable": false,
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                }
+              ],
+              "functions": [],
+              "types": []
+            },
+            "kind": "FunctionKind.Standalone",
+            "typeParameters": [],
+            "parameters": [
+              {
+                "label": { "name": "a", "position": [3, 17] },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "defaultValue": null,
+                "isVariadic": false
+              },
+              {
+                "label": { "name": "b", "position": [3, 25] },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "defaultValue": null,
+                "isVariadic": false
+              }
+            ],
+            "returnType": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Int"
+            },
+            "body": [
+              {
+                "token": {
+                  "position": [3, 42],
+                  "kind": {
+                    "name": "Plus"
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "binary",
+                  "op": "BinaryOp.Add",
+                  "left": {
+                    "token": {
+                      "position": [3, 40],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "a"
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "a"
+                    }
+                  },
+                  "right": {
+                    "token": {
+                      "position": [3, 44],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "b"
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "b"
+                    }
+                  }
+                }
+              }
+            ]
           }
         }
       }

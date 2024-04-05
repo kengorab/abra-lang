@@ -1,1 +1,3 @@
 export val a = 123
+
+export func add(a: Int, b: Int): Int = a + b
