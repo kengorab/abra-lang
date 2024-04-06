@@ -1,0 +1,3 @@
+import Color from "./_exports"
+
+type Color {}

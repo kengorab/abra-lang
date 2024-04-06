@@ -7,4 +7,9 @@
 //val f = Foo(name: "bar")
 //foo(f)
 
-func foo(self: Int) {}
+val arr = [5, 7, 1, 4, 8, 2, 3, 6]
+val sorted = arr.sortBy(i => i)
+println(arr)
+println(sorted)
+//Array._quicksort(arr, 0, arr.length - 1)
+//println(arr)

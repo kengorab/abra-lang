@@ -1,0 +1,7 @@
+Error at %FILE_NAME%:3:5
+Duplicate name 'add'
+  |  val add = 123
+         ^
+This name is also declared at (1:8)
+  |  import add from "./_exports"
+            ^

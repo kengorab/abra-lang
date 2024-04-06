@@ -1,0 +1,7 @@
+Error at %FILE_NAME%:2:8
+Duplicate name 'Foo'
+  |  import Foo from "./_exports"
+            ^
+This name is also declared at (1:8)
+  |  import Foo from "./_exports"
+            ^

@@ -1,0 +1,61 @@
+{
+  "id": 1,
+  "name": "%FILE_NAME%",
+  "exports": [
+    {
+      "kind": "variable",
+      "name": "a"
+    }
+  ],
+  "code": [
+    {
+      "token": {
+        "position": [1, 8],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "nullable": false,
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "a", "position": [1, 12] }
+        },
+        "variables": [
+          {
+            "label": { "name": "a", "position": [1, 12] },
+            "mutable": false,
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [1, 16],
+            "kind": {
+              "name": "Int",
+              "value": 123
+            }
+          },
+          "type": {
+            "nullable": false,
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 123
+          }
+        }
+      }
+    }
+  ]
+}

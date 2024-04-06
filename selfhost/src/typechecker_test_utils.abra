@@ -1,9 +1,36 @@
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 import LiteralAstNode, IndexingMode from "./parser"
-import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct, Enum, StructOrEnum, AccessorPathSegment, TypedIdentifierKind, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind from "./typechecker"
+import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct, Enum, StructOrEnum, AccessorPathSegment, TypedIdentifierKind, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export from "./typechecker"
 
 export type Jsonifier {
   indentLevel: Int = 0
+
+  func printModules(self, modules: TypedModule[]) {
+    val manyModules = modules.length > 1
+
+    if manyModules {
+      println("[")
+      self.indentInc()
+    }
+
+    for mod, idx in modules {
+      self.indent()
+      self.printModule(mod)
+      if manyModules {
+        if idx != modules.length - 1 {
+          print(",")
+        }
+        println()
+      }
+    }
+
+    if manyModules {
+      self.indentDec()
+      print("]")
+    }
+
+    println()
+  }
 
   func printModule(self, mod: TypedModule) {
     println("{")
@@ -11,12 +38,42 @@ export type Jsonifier {
 
     self.println("\"id\": ${mod.id},")
     self.println("\"name\": \"${mod.name}\",")
+
+    if !mod.exports.isEmpty() {
+      self.println("\"exports\": [")
+      self.indentInc()
+
+      for _e, idx in mod.exports {
+        self.println("{")
+        self.indentInc()
+
+        // TODO: Destructuring
+        val name = _e[0]
+        val exp = _e[1]
+
+        match exp {
+          Export.Variable => self.println("\"kind\": \"variable\",")
+          Export.Function => self.println("\"kind\": \"function\",")
+          Export.Type => self.println("\"kind\": \"type\",")
+        }
+        self.println("\"name\": \"$name\"")
+
+        self.indentDec()
+        self.print("}")
+
+        val comma = if idx != mod.exports.size - 1 "," else ""
+        println(comma)
+      }
+      self.indentDec()
+      self.println("],")
+    }
+
     self.print("\"code\": ")
     self.printNodes(mod.code)
     println()
 
     self.indentDec()
-    self.println("}")
+    self.print("}")
   }
 
   func printNodes(self, nodes: TypedAstNode[]) {
@@ -82,13 +139,6 @@ export type Jsonifier {
         self.array(generics, t => self.printType(t))
         println()
       }
-      // TypeKind.EnumInstance(enum_, generics) => {
-      //   self.println("\"kind\": \"enumInstance\",")
-      //   self.println("\"enum\": { \"moduleId\": ${enum_.moduleId}, \"name\": \"${enum_.label.name}\" },")
-      //   self.print("\"typeParams\": ")
-      //   self.array(generics, t => self.printType(t))
-      //   println()
-      // }
       TypeKind.Tuple(types) => {
         self.println("\"kind\": \"tuple\",")
         self.print("\"types\": ")

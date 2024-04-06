@@ -1,0 +1,552 @@
+[
+  {
+    "id": 1,
+    "name": "%TEST_DIR%/typechecker/import/import_type_identifier.1.abra",
+    "code": [
+      {
+        "token": {
+          "position": [3, 1],
+          "kind": {
+            "name": "Val"
+          }
+        },
+        "type": {
+          "nullable": false,
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "bindingDeclaration",
+          "pattern": {
+            "kind": "variable",
+            "label": { "name": "_", "position": [3, 5] }
+          },
+          "variables": [
+            {
+              "label": { "name": "_", "position": [3, 5] },
+              "mutable": false,
+              "type": {
+                "nullable": true,
+                "kind": "instance",
+                "struct": { "moduleId": 2, "name": "Foo" },
+                "typeParams": []
+              }
+            }
+          ],
+          "expr": {
+            "token": {
+              "position": [3, 15],
+              "kind": {
+                "name": "None"
+              }
+            },
+            "type": {
+              "nullable": true,
+              "kind": "instance",
+              "struct": { "moduleId": 2, "name": "Foo" },
+              "typeParams": []
+            },
+            "node": {
+              "kind": "identifier",
+              "name": "None"
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "name": "%TEST_DIR%/typechecker/import/_exports.abra",
+    "exports": [
+      {
+        "kind": "function",
+        "name": "add"
+      },
+      {
+        "kind": "type",
+        "name": "Foo"
+      },
+      {
+        "kind": "type",
+        "name": "Color"
+      },
+      {
+        "kind": "variable",
+        "name": "a"
+      }
+    ],
+    "code": [
+      {
+        "token": {
+          "position": [1, 8],
+          "kind": {
+            "name": "Val"
+          }
+        },
+        "type": {
+          "nullable": false,
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "bindingDeclaration",
+          "pattern": {
+            "kind": "variable",
+            "label": { "name": "a", "position": [1, 12] }
+          },
+          "variables": [
+            {
+              "label": { "name": "a", "position": [1, 12] },
+              "mutable": false,
+              "type": {
+                "nullable": false,
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            }
+          ],
+          "expr": {
+            "token": {
+              "position": [1, 16],
+              "kind": {
+                "name": "Int",
+                "value": 123
+              }
+            },
+            "type": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Int"
+            },
+            "node": {
+              "kind": "literal",
+              "value": 123
+            }
+          }
+        }
+      },
+      {
+        "token": {
+          "position": [3, 8],
+          "kind": {
+            "name": "Func"
+          }
+        },
+        "type": {
+          "nullable": false,
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "functionDeclaration",
+          "function": {
+            "label": { "name": "add", "position": [3, 13] },
+            "scope": {
+              "name": "$root::module_2::add",
+              "variables": [
+                {
+                  "label": { "name": "a", "position": [3, 17] },
+                  "mutable": false,
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                },
+                {
+                  "label": { "name": "b", "position": [3, 25] },
+                  "mutable": false,
+                  "type": {
+                    "nullable": false,
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                }
+              ],
+              "functions": [],
+              "types": []
+            },
+            "kind": "FunctionKind.Standalone",
+            "typeParameters": [],
+            "parameters": [
+              {
+                "label": { "name": "a", "position": [3, 17] },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "defaultValue": null,
+                "isVariadic": false
+              },
+              {
+                "label": { "name": "b", "position": [3, 25] },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "defaultValue": null,
+                "isVariadic": false
+              }
+            ],
+            "returnType": {
+              "nullable": false,
+              "kind": "primitive",
+              "primitive": "Int"
+            },
+            "body": [
+              {
+                "token": {
+                  "position": [3, 42],
+                  "kind": {
+                    "name": "Plus"
+                  }
+                },
+                "type": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "binary",
+                  "op": "BinaryOp.Add",
+                  "left": {
+                    "token": {
+                      "position": [3, 40],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "a"
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "a"
+                    }
+                  },
+                  "right": {
+                    "token": {
+                      "position": [3, 44],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "b"
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "b"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "token": {
+          "position": [5, 8],
+          "kind": {
+            "name": "Type"
+          }
+        },
+        "type": {
+          "nullable": false,
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "typeDeclaration",
+          "struct": {
+            "moduleId": 2,
+            "name": { "name": "Foo", "position": [5, 13] },
+            "typeParams": [],
+            "fields": [
+              {
+                "name": { "name": "color", "position": [6, 3] },
+                "type": {
+                  "nullable": false,
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 2, "name": "Color" },
+                  "typeParams": []
+                },
+                "initializer": null
+              }
+            ],
+            "instanceMethods": [
+              {
+                "label": { "name": "toString", "position": [0, 0] },
+                "scope": {
+                  "name": "$root::module_2::Foo::toString",
+                  "variables": [],
+                  "functions": [],
+                  "types": []
+                },
+                "isGenerated": true,
+                "kind": "FunctionKind.InstanceMethod",
+                "typeParameters": [],
+                "parameters": [],
+                "returnType": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "body": []
+              },
+              {
+                "label": { "name": "hash", "position": [0, 0] },
+                "scope": {
+                  "name": "$root::module_2::Foo::hash",
+                  "variables": [],
+                  "functions": [],
+                  "types": []
+                },
+                "isGenerated": true,
+                "kind": "FunctionKind.InstanceMethod",
+                "typeParameters": [],
+                "parameters": [],
+                "returnType": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "body": []
+              },
+              {
+                "label": { "name": "eq", "position": [0, 0] },
+                "scope": {
+                  "name": "$root::module_2::Foo::eq",
+                  "variables": [],
+                  "functions": [],
+                  "types": []
+                },
+                "isGenerated": true,
+                "kind": "FunctionKind.InstanceMethod",
+                "typeParameters": [],
+                "parameters": [
+                  {
+                    "label": { "name": "other", "position": [0, 0] },
+                    "type": {
+                      "nullable": false,
+                      "kind": "instance",
+                      "struct": { "moduleId": 2, "name": "Foo" },
+                      "typeParams": []
+                    },
+                    "defaultValue": null,
+                    "isVariadic": false
+                  }
+                ],
+                "returnType": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                },
+                "body": []
+              },
+              {
+                "label": { "name": "foo", "position": [8, 8] },
+                "scope": {
+                  "name": "$root::module_2::Foo::foo",
+                  "variables": [
+                    {
+                      "label": { "name": "self", "position": [8, 12] },
+                      "mutable": false,
+                      "type": {
+                        "nullable": false,
+                        "kind": "instance",
+                        "struct": { "moduleId": 2, "name": "Foo" },
+                        "typeParams": []
+                      }
+                    }
+                  ],
+                  "functions": [],
+                  "types": []
+                },
+                "kind": "FunctionKind.InstanceMethod",
+                "typeParameters": [],
+                "parameters": [],
+                "returnType": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "body": [
+                  {
+                    "token": {
+                      "position": [8, 25],
+                      "kind": {
+                        "name": "Int",
+                        "value": 123
+                      }
+                    },
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 123
+                    }
+                  }
+                ]
+              }
+            ],
+            "staticMethods": []
+          }
+        }
+      },
+      {
+        "token": {
+          "position": [11, 8],
+          "kind": {
+            "name": "Enum"
+          }
+        },
+        "type": {
+          "nullable": false,
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "enumDeclaration",
+          "enum": {
+            "moduleId": 2,
+            "name": { "name": "Color", "position": [11, 13] },
+            "typeParams": [],
+            "variants": [
+              {
+                "label": { "name": "Red", "position": [12, 3] },
+                "kind": "constant"
+              },
+              {
+                "label": { "name": "Green", "position": [13, 3] },
+                "kind": "constant"
+              },
+              {
+                "label": { "name": "Blue", "position": [14, 3] },
+                "kind": "constant"
+              },
+              {
+                "label": { "name": "RGB", "position": [15, 3] },
+                "kind": "container",
+                "fields": [
+                  {
+                    "name": { "name": "r", "position": [15, 7] },
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "initializer": null
+                  },
+                  {
+                    "name": { "name": "g", "position": [15, 15] },
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "initializer": null
+                  },
+                  {
+                    "name": { "name": "b", "position": [15, 23] },
+                    "type": {
+                      "nullable": false,
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "initializer": null
+                  }
+                ]
+              }
+            ],
+            "instanceMethods": [
+              {
+                "label": { "name": "toString", "position": [0, 0] },
+                "scope": {
+                  "name": "$root::module_2::Color::toString",
+                  "variables": [],
+                  "functions": [],
+                  "types": []
+                },
+                "isGenerated": true,
+                "kind": "FunctionKind.InstanceMethod",
+                "typeParameters": [],
+                "parameters": [],
+                "returnType": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "body": []
+              },
+              {
+                "label": { "name": "hash", "position": [0, 0] },
+                "scope": {
+                  "name": "$root::module_2::Color::hash",
+                  "variables": [],
+                  "functions": [],
+                  "types": []
+                },
+                "isGenerated": true,
+                "kind": "FunctionKind.InstanceMethod",
+                "typeParameters": [],
+                "parameters": [],
+                "returnType": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "body": []
+              },
+              {
+                "label": { "name": "eq", "position": [0, 0] },
+                "scope": {
+                  "name": "$root::module_2::Color::eq",
+                  "variables": [],
+                  "functions": [],
+                  "types": []
+                },
+                "isGenerated": true,
+                "kind": "FunctionKind.InstanceMethod",
+                "typeParameters": [],
+                "parameters": [
+                  {
+                    "label": { "name": "other", "position": [0, 0] },
+                    "type": {
+                      "nullable": false,
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 2, "name": "Color" },
+                      "typeParams": []
+                    },
+                    "defaultValue": null,
+                    "isVariadic": false
+                  }
+                ],
+                "returnType": {
+                  "nullable": false,
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                },
+                "body": []
+              }
+            ],
+            "staticMethods": []
+          }
+        }
+      }
+    ]
+  }
+]
