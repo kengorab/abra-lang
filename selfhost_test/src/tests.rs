@@ -582,10 +582,11 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/funcdecl/error_export_bad_scope.abra", "typechecker/funcdecl/error_export_bad_scope.out")
 
         // Type declaration
-        .add_test_vs_txt("typechecker/typedecl/error_duplicate_field.abra", "typechecker/typedecl/error_duplicate_field.out")
-        .add_test_vs_txt("typechecker/typedecl/error_method_bad_self_position.abra", "typechecker/typedecl/error_method_bad_self_position.out")
+        .add_test_vs_txt("typechecker/typedecl/typedecl_exported.abra", "typechecker/typedecl/typedecl_exported.out.json")
         .add_test_vs_txt("typechecker/typedecl/typedecl.1.abra", "typechecker/typedecl/typedecl.1.out.json")
         .add_test_vs_txt("typechecker/typedecl/typedecl.2.abra", "typechecker/typedecl/typedecl.2.out.json")
+        .add_test_vs_txt("typechecker/typedecl/error_duplicate_field.abra", "typechecker/typedecl/error_duplicate_field.out")
+        .add_test_vs_txt("typechecker/typedecl/error_method_bad_self_position.abra", "typechecker/typedecl/error_method_bad_self_position.out")
         .add_test_vs_txt("typechecker/typedecl/error_field_initializer_type_mismatch.abra", "typechecker/typedecl/error_field_initializer_type_mismatch.out")
         .add_test_vs_txt("typechecker/typedecl/error_invalid_eq_signature.1.abra", "typechecker/typedecl/error_invalid_eq_signature.1.out")
         .add_test_vs_txt("typechecker/typedecl/error_invalid_eq_signature.2.abra", "typechecker/typedecl/error_invalid_eq_signature.2.out")
@@ -595,6 +596,7 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/typedecl/error_duplicate_type_type.abra", "typechecker/typedecl/error_duplicate_type_type.out")
         .add_test_vs_txt("typechecker/typedecl/error_duplicate_type_enum.abra", "typechecker/typedecl/error_duplicate_type_enum.out")
         // Enum declaration
+        .add_test_vs_txt("typechecker/enumdecl/enumdecl_exported.abra", "typechecker/enumdecl/enumdecl_exported.out.json")
         .add_test_vs_txt("typechecker/enumdecl/enumdecl.1.abra", "typechecker/enumdecl/enumdecl.1.out.json")
         .add_test_vs_txt("typechecker/enumdecl/error_duplicate_enum_enum.abra", "typechecker/enumdecl/error_duplicate_enum_enum.out")
         .add_test_vs_txt("typechecker/enumdecl/error_duplicate_enum_func.abra", "typechecker/enumdecl/error_duplicate_enum_func.out")
@@ -641,6 +643,23 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/import/error_duplicate_func_name.2.abra", "typechecker/import/error_duplicate_func_name.2.out")
         .add_test_vs_txt("typechecker/import/error_imported_value_type_mismatch.abra", "typechecker/import/error_imported_value_type_mismatch.out")
         .add_test_vs_txt("typechecker/import/error_no_exported_value.abra", "typechecker/import/error_no_exported_value.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_enum_name.1.abra", "typechecker/import/error_duplicate_enum_name.1.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_enum_name.2.abra", "typechecker/import/error_duplicate_enum_name.2.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_enum_name.3.abra", "typechecker/import/error_duplicate_enum_name.3.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_enum_name.4.abra", "typechecker/import/error_duplicate_enum_name.4.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_func_name.3.abra", "typechecker/import/error_duplicate_func_name.3.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_func_name.4.abra", "typechecker/import/error_duplicate_func_name.4.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_import_name.3.abra", "typechecker/import/error_duplicate_import_name.3.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_import_name.4.abra", "typechecker/import/error_duplicate_import_name.4.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_type_name.1.abra", "typechecker/import/error_duplicate_type_name.1.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_type_name.2.abra", "typechecker/import/error_duplicate_type_name.2.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_type_name.3.abra", "typechecker/import/error_duplicate_type_name.3.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_type_name.4.abra", "typechecker/import/error_duplicate_type_name.4.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_variable_name.3.abra", "typechecker/import/error_duplicate_variable_name.3.out")
+        .add_test_vs_txt("typechecker/import/error_duplicate_variable_name.4.abra", "typechecker/import/error_duplicate_variable_name.4.out")
+        .add_test_vs_txt("typechecker/import/error_imported_type_mismatch.1.abra", "typechecker/import/error_imported_type_mismatch.1.out")
+        .add_test_vs_txt("typechecker/import/import_type_identifier.1.abra", "typechecker/import/import_type_identifier.1.out.json")
+        .add_test_vs_txt("typechecker/import/import_type_identifier.2.abra", "typechecker/import/import_type_identifier.2.out.json")
 
         .run_tests();
 }

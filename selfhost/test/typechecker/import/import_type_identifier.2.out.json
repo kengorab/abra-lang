@@ -1,7 +1,7 @@
 [
   {
     "id": 1,
-    "name": "%TEST_DIR%/typechecker/import/import.1.abra",
+    "name": "%TEST_DIR%/typechecker/import/import_type_identifier.2.abra",
     "code": [
       {
         "token": {
@@ -19,195 +19,36 @@
           "kind": "bindingDeclaration",
           "pattern": {
             "kind": "variable",
-            "label": { "name": "b", "position": [3, 5] }
+            "label": { "name": "_", "position": [3, 5] }
           },
           "variables": [
             {
-              "label": { "name": "b", "position": [3, 5] },
+              "label": { "name": "_", "position": [3, 5] },
               "mutable": false,
               "type": {
-                "nullable": false,
-                "kind": "primitive",
-                "primitive": "Int"
+                "nullable": true,
+                "kind": "enumInstance",
+                "enum": { "moduleId": 2, "name": "Color" },
+                "typeParams": []
               }
             }
           ],
           "expr": {
             "token": {
-              "position": [3, 11],
+              "position": [3, 17],
               "kind": {
-                "name": "Plus"
+                "name": "None"
               }
             },
             "type": {
-              "nullable": false,
-              "kind": "primitive",
-              "primitive": "Int"
+              "nullable": true,
+              "kind": "enumInstance",
+              "enum": { "moduleId": 2, "name": "Color" },
+              "typeParams": []
             },
             "node": {
-              "kind": "binary",
-              "op": "BinaryOp.Add",
-              "left": {
-                "token": {
-                  "position": [3, 9],
-                  "kind": {
-                    "name": "Ident",
-                    "value": "a"
-                  }
-                },
-                "type": {
-                  "nullable": false,
-                  "kind": "primitive",
-                  "primitive": "Int"
-                },
-                "node": {
-                  "kind": "identifier",
-                  "name": "a"
-                }
-              },
-              "right": {
-                "token": {
-                  "position": [3, 13],
-                  "kind": {
-                    "name": "Int",
-                    "value": 1
-                  }
-                },
-                "type": {
-                  "nullable": false,
-                  "kind": "primitive",
-                  "primitive": "Int"
-                },
-                "node": {
-                  "kind": "literal",
-                  "value": 1
-                }
-              }
-            }
-          }
-        }
-      },
-      {
-        "token": {
-          "position": [4, 1],
-          "kind": {
-            "name": "Val"
-          }
-        },
-        "type": {
-          "nullable": false,
-          "kind": "primitive",
-          "primitive": "Unit"
-        },
-        "node": {
-          "kind": "bindingDeclaration",
-          "pattern": {
-            "kind": "variable",
-            "label": { "name": "c", "position": [4, 5] }
-          },
-          "variables": [
-            {
-              "label": { "name": "c", "position": [4, 5] },
-              "mutable": false,
-              "type": {
-                "nullable": false,
-                "kind": "primitive",
-                "primitive": "Int"
-              }
-            }
-          ],
-          "expr": {
-            "token": {
-              "position": [4, 12],
-              "kind": {
-                "name": "LParen"
-              }
-            },
-            "type": {
-              "nullable": false,
-              "kind": "primitive",
-              "primitive": "Int"
-            },
-            "node": {
-              "kind": "invocation",
-              "invokee": {
-                "token": {
-                  "position": [4, 9],
-                  "kind": {
-                    "name": "Ident",
-                    "value": "add"
-                  }
-                },
-                "type": {
-                  "nullable": false,
-                  "kind": "function",
-                  "parameters": [
-                    {
-                      "required": true,
-                      "type": {
-                        "nullable": false,
-                        "kind": "primitive",
-                        "primitive": "Int"
-                      }
-                    },
-                    {
-                      "required": true,
-                      "type": {
-                        "nullable": false,
-                        "kind": "primitive",
-                        "primitive": "Int"
-                      }
-                    }
-                  ],
-                  "returnType": {
-                    "nullable": false,
-                    "kind": "primitive",
-                    "primitive": "Int"
-                  }
-                },
-                "node": {
-                  "kind": "identifier",
-                  "name": "add"
-                }
-              },
-              "arguments": [
-                {
-                  "token": {
-                    "position": [4, 13],
-                    "kind": {
-                      "name": "Ident",
-                      "value": "a"
-                    }
-                  },
-                  "type": {
-                    "nullable": false,
-                    "kind": "primitive",
-                    "primitive": "Int"
-                  },
-                  "node": {
-                    "kind": "identifier",
-                    "name": "a"
-                  }
-                },
-                {
-                  "token": {
-                    "position": [4, 16],
-                    "kind": {
-                      "name": "Ident",
-                      "value": "b"
-                    }
-                  },
-                  "type": {
-                    "nullable": false,
-                    "kind": "primitive",
-                    "primitive": "Int"
-                  },
-                  "node": {
-                    "kind": "identifier",
-                    "name": "b"
-                  }
-                }
-              ]
+              "kind": "identifier",
+              "name": "None"
             }
           }
         }

@@ -54,6 +54,7 @@ export type Jsonifier {
         match exp {
           Export.Variable => self.println("\"kind\": \"variable\",")
           Export.Function => self.println("\"kind\": \"function\",")
+          Export.Type => self.println("\"kind\": \"type\",")
         }
         self.println("\"name\": \"$name\"")
 

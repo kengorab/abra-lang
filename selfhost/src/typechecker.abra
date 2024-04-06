@@ -52,6 +52,7 @@ export type ModuleLoader {
 export enum Export {
   Variable(variable: Variable)
   Function(aliasVar: Variable)
+  Type(structOrEnum: StructOrEnum, aliasVar: Variable)
 }
 
 export type Import {
@@ -62,6 +63,7 @@ export type Import {
 enum TypedImportKind {
   Variable(variable: Variable)
   Function(aliasVar: Variable)
+  Type(structOrEnum: StructOrEnum, aliasVar: Variable)
 }
 
 export type TypedModule {
@@ -1088,7 +1090,7 @@ export type Typechecker {
     Result.Ok(0) // <- unnecessary 0
   }
 
-  func _addStructToScope(self, struct: Struct, scope = self.currentScope): Result<Int, TypeError> {
+  func _addStructToScope(self, struct: Struct, isExported: Bool, scope = self.currentScope): Result<Int, TypeError> {
     val structTy = Type(kind: TypeKind.Type(type_: StructOrEnum.Struct(struct)))
     match self._addTypeToScope(structTy) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
@@ -1097,10 +1099,15 @@ export type Typechecker {
 
     scope.structs.push(struct)
 
+    if isExported {
+      variable.isExported = true
+      self.currentModuleExports[struct.label.name] = Export.Type(StructOrEnum.Struct(struct), variable)
+    }
+
     Result.Ok(0) // <- unnecessary 0
   }
 
-  func _addEnumToScope(self, enum_: Enum, scope = self.currentScope): Result<Int, TypeError> {
+  func _addEnumToScope(self, enum_: Enum, isExported: Bool, scope = self.currentScope): Result<Int, TypeError> {
     val enumTy = Type(kind: TypeKind.Type(type_: StructOrEnum.Enum(enum_)))
     match self._addTypeToScope(enumTy) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
@@ -1108,6 +1115,11 @@ export type Typechecker {
     match self._addVariableToScope(variable) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     scope.enums.push(enum_)
+
+    if isExported {
+      variable.isExported = true
+      self.currentModuleExports[enum_.label.name] = Export.Type(StructOrEnum.Enum(enum_), variable)
+    }
 
     Result.Ok(0) // <- unnecessary 0
   }
@@ -1193,6 +1205,36 @@ export type Typechecker {
             }
             scope = sc.parent
           }
+
+          for importsByModule in self.currentModuleImports.values() {
+            for _p in importsByModule {
+              // TODO: destructuring
+              val name = _p[0]
+              val imp = _p[1]
+              if name == label.name {
+                match imp.kind {
+                  TypedImportKind.Type(structOrEnum) => {
+                    match structOrEnum {
+                      StructOrEnum.Struct(struct) => {
+                        if label.name == struct.label.name {
+                          val instanceTypeArgs = match self._verifyNumTypeArgs(label.position, typeArguments, struct.typeParams.length) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+                          return Result.Ok(Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), instanceTypeArgs)))
+                        }
+                      }
+                      StructOrEnum.Enum(enum_) => {
+                        if label.name == enum_.label.name {
+                          val instanceTypeArgs = match self._verifyNumTypeArgs(label.position, typeArguments, enum_.typeParams.length) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+                          return Result.Ok(Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), instanceTypeArgs)))
+                        }
+                      }
+                    }
+                  }
+                  _ => continue
+                }
+              }
+            }
+          }
+
           return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
         }
       }
@@ -1249,6 +1291,7 @@ export type Typechecker {
           match importedValue.kind {
             TypedImportKind.Variable(v) => foundVar = v
             TypedImportKind.Function(aliasVar) => foundVar = aliasVar
+            TypedImportKind.Type(_, aliasVar) => foundVar = aliasVar
           }
         }
       }
@@ -1732,6 +1775,13 @@ export type Typechecker {
   }
 
   func _typecheckStructPass1(self, node: TypeDeclarationNode): Result<Struct, TypeError> {
+    val isExported = if node.exportToken |exportToken| {
+      match self._ensureValidExportScope(exportToken) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      true
+    } else {
+      false
+    }
+
     val typeScope = self.currentScope.makeChild(node.name.name, ScopeKind.Type)
     val prevScope = self.currentScope
     self.currentScope = typeScope
@@ -1752,7 +1802,7 @@ export type Typechecker {
     self.currentScope = prevScope
 
     val struct = Struct(moduleId: self.currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams)
-    match self._addStructToScope(struct) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    match self._addStructToScope(struct, isExported) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     Result.Ok(struct)
   }
@@ -1924,6 +1974,13 @@ export type Typechecker {
   }
 
   func _typecheckEnumPass1(self, node: EnumDeclarationNode): Result<Enum, TypeError> {
+    val isExported = if node.exportToken |exportToken| {
+      match self._ensureValidExportScope(exportToken) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      true
+    } else {
+      false
+    }
+
     val typeScope = self.currentScope.makeChild(node.name.name, ScopeKind.Type)
     val prevScope = self.currentScope
     self.currentScope = typeScope
@@ -1944,7 +2001,7 @@ export type Typechecker {
     self.currentScope = prevScope
 
     val enum_ = Enum(moduleId: self.currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams)
-    match self._addEnumToScope(enum_) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    match self._addEnumToScope(enum_, isExported) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     Result.Ok(enum_)
   }
@@ -2111,6 +2168,20 @@ export type Typechecker {
               }
 
               imports[imp.name] = Import(label: imp, kind: TypedImportKind.Function(v))
+            }
+            Export.Type(structOrEnum, v) => {
+              for importedMods in self.currentModuleImports.values() {
+                for _p in importedMods {
+                  // TODO: destructuring
+                  val importedName = _p[0]
+                  val importedValue = _p[1]
+                  if importedName == imp.name {
+                    return Result.Err(TypeError(position: imp.position, kind: TypeErrorKind.DuplicateName(original: importedValue.label)))
+                  }
+                }
+              }
+
+              imports[imp.name] = Import(label: imp, kind: TypedImportKind.Type(structOrEnum, v))
             }
             None => return Result.Err(TypeError(position: imp.position, kind: TypeErrorKind.UnknownImport(moduleName: node.moduleName.name, importName: imp.name)))
           }
