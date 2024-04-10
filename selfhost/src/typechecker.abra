@@ -66,13 +66,18 @@ enum TypedImportKind {
   Type(structOrEnum: StructOrEnum, aliasVar: Variable)
 }
 
+type ImportedModule {
+  aliases: Label[] = []
+  imports: Map<String, Import> = {}
+}
+
 export type TypedModule {
   id: Int
   name: String
   code: TypedAstNode[]
   rootScope: Scope
   complete: Bool = false
-  imports: Map<String, Map<String, Import>> = {}
+  imports: Map<String, ImportedModule> = {}
   exports: Map<String, Export> = {}
 }
 
@@ -918,6 +923,12 @@ type TypeError {
         lines.push(self._getCursorLine(self.position, contents))
         lines.push("There's no exported value named '$importName' in module '$moduleName'")
       }
+      TypeErrorKind.UnknownImportForAlias(importName, alias) => {
+        lines.push("Unknown exported name for aliased module")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("There's no exported value named '$importName' in module aliased as '${alias.name}' at:")
+        lines.push(self._getCursorLine(alias.position, contents))
+      }
     }
 
     lines.join("\n")
@@ -997,6 +1008,7 @@ enum TypeErrorKind {
   CircularDependency
   IllegalExportScope
   UnknownImport(moduleName: String, importName: String)
+  UnknownImportForAlias(importName: String, alias: Label)
 }
 
 type ParamDefaultValueContext {
@@ -1009,7 +1021,7 @@ export type Typechecker {
   project: Project
   currentModuleId: Int = -1
   currentModuleExports: Map<String, Export> = {} // TODO: this is a little gross, could we instead track the currentModule?
-  currentModuleImports: Map<String, Map<String, Import>> = {} // TODO: see above todo
+  currentModuleImports: Map<String, ImportedModule> = {} // TODO: see above todo
   currentScope: Scope = Scope(name: "\$root")
   currentTypeDecl: StructOrEnum? = None
   currentFunction: Function? = None
@@ -1042,8 +1054,13 @@ export type Typechecker {
   }
 
   func _verifyNameUniqueInScope(self, label: Label, scope: Scope): TypeError? {
-    for importsByModule in self.currentModuleImports.values() {
-      for _p in importsByModule {
+    for importedModule in self.currentModuleImports.values() {
+      for alias in importedModule.aliases {
+        if alias.name == label.name {
+          return TypeError(position: label.position, kind: TypeErrorKind.DuplicateName(original: alias))
+        }
+      }
+      for _p in importedModule.imports {
         // TODO: destructuring
         val name = _p[0]
         val imp = _p[1]
@@ -1206,8 +1223,8 @@ export type Typechecker {
             scope = sc.parent
           }
 
-          for importsByModule in self.currentModuleImports.values() {
-            for _p in importsByModule {
+          for importedModule in self.currentModuleImports.values() {
+            for _p in importedModule.imports {
               // TODO: destructuring
               val name = _p[0]
               val imp = _p[1]
@@ -1281,8 +1298,8 @@ export type Typechecker {
     }
 
     var foundVar: Variable? = None
-    for importedMods in self.currentModuleImports.values() {
-      for _p in importedMods {
+    for importedModule in self.currentModuleImports.values() {
+      for _p in importedModule.imports {
         // TODO: destructuring
         val importedName = _p[0]
         val importedValue = _p[1]
@@ -2129,65 +2146,43 @@ export type Typechecker {
     Result.Ok(0)
   }
 
-  func _typecheckImport(self, importedModule: TypedModule, node: ImportNode): Result<Int, TypeError> {
-    val imports = if self.currentModuleImports[importedModule.name] |imports| imports else {
+  func _typecheckImport(self, mod: TypedModule, node: ImportNode): Result<Int, TypeError> {
+    val importedModule = if self.currentModuleImports[mod.name] |importedModule| importedModule else {
       // TODO: better API for this
-      val imports: Map<String, Import> = {}
-      self.currentModuleImports[importedModule.name] = imports
-      imports
+      val importedModule = ImportedModule()
+      self.currentModuleImports[mod.name] = importedModule
+      importedModule
     }
 
     match node.kind {
       ImportKind.List(importNames) => {
         for imp in importNames {
-          match importedModule.exports[imp.name] {
-            Export.Variable(v) => {
-              for importedMods in self.currentModuleImports.values() {
-                for _p in importedMods {
-                  // TODO: destructuring
-                  val importedName = _p[0]
-                  val importedValue = _p[1]
-                  if importedName == imp.name {
-                    return Result.Err(TypeError(position: imp.position, kind: TypeErrorKind.DuplicateName(original: importedValue.label)))
-                  }
-                }
+          for importedModule in self.currentModuleImports.values() {
+            for _p in importedModule.imports {
+              // TODO: destructuring
+              val importedName = _p[0]
+              val importedValue = _p[1]
+              if importedName == imp.name {
+                return Result.Err(TypeError(position: imp.position, kind: TypeErrorKind.DuplicateName(original: importedValue.label)))
               }
-
-              imports[imp.name] = Import(label: imp, kind: TypedImportKind.Variable(v))
             }
-            Export.Function(v) => {
-              for importedMods in self.currentModuleImports.values() {
-                for _p in importedMods {
-                  // TODO: destructuring
-                  val importedName = _p[0]
-                  val importedValue = _p[1]
-                  if importedName == imp.name {
-                    return Result.Err(TypeError(position: imp.position, kind: TypeErrorKind.DuplicateName(original: importedValue.label)))
-                  }
-                }
-              }
+          }
 
-              imports[imp.name] = Import(label: imp, kind: TypedImportKind.Function(v))
-            }
-            Export.Type(structOrEnum, v) => {
-              for importedMods in self.currentModuleImports.values() {
-                for _p in importedMods {
-                  // TODO: destructuring
-                  val importedName = _p[0]
-                  val importedValue = _p[1]
-                  if importedName == imp.name {
-                    return Result.Err(TypeError(position: imp.position, kind: TypeErrorKind.DuplicateName(original: importedValue.label)))
-                  }
-                }
-              }
-
-              imports[imp.name] = Import(label: imp, kind: TypedImportKind.Type(structOrEnum, v))
-            }
+          val typedImportKind = match mod.exports[imp.name] {
+            Export.Variable(v) => TypedImportKind.Variable(v)
+            Export.Function(v) => TypedImportKind.Function(v)
+            Export.Type(structOrEnum, v) => TypedImportKind.Type(structOrEnum, v)
             None => return Result.Err(TypeError(position: imp.position, kind: TypeErrorKind.UnknownImport(moduleName: node.moduleName.name, importName: imp.name)))
           }
+
+          importedModule.imports[imp.name] = Import(label: imp, kind: typedImportKind)
         }
       }
-      ImportKind.Alias(alias) => return todo(alias.position, "aliased imports")
+      ImportKind.Alias(alias) => {
+        if self._verifyNameUniqueInScope(alias, self.currentScope) |e| return Result.Err(e)
+
+        importedModule.aliases.push(alias)
+      }
     }
 
     Result.Ok(0)
@@ -3062,15 +3057,68 @@ export type Typechecker {
     Result.Ok(foundSegment)
   }
 
+  func _resolveModuleAliasAccessor(self, root: AstNode, field: (Token, Label)): Result<TypedAstNode?, TypeError> {
+    match root.kind {
+      AstNodeKind.Identifier(identKind) => {
+        match identKind {
+          IdentifierKind.Named(name) => {
+            // TODO: this is inefficient and can be better
+            for _m in self.currentModuleImports {
+              // TODO: destructuring
+              val importModulePath = _m[0]
+              val importedModule = _m[1]
+              if importedModule.aliases.find(a => a.name == name) |alias| {
+                // TODO: destructuring
+                val dotTok = field[0]
+                val label = field[1]
+                if dotTok.kind == TokenKind.QuestionDot return Result.Err(TypeError(position: dotTok.position, kind: TypeErrorKind.UnnecessaryOptSafety))
+
+                val mod = if self.project.modules[importModulePath] |m| m else return unreachable(root.token.position, "unknown module")
+                val exportVar = match mod.exports[label.name] {
+                  None => return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownImportForAlias(label.name, alias)))
+                  Export.Variable(v) => v
+                  Export.Function(v) => v
+                  Export.Type(_, v) => v
+                }
+
+                val token = Token(position: label.position, kind: TokenKind.Ident(label.name))
+                val identifierKind = TypedIdentifierKind.Named(label.name, exportVar)
+                val identifierNode = TypedAstNode(token: token, ty: exportVar.ty, kind: TypedAstNodeKind.Identifier(identifierKind))
+
+                return Result.Ok(identifierNode)
+              }
+            }
+          }
+          _ => {}
+        }
+      }
+      _ => {}
+    }
+
+    Result.Ok(None)
+  }
+
   func _typecheckAccessor(self, token: Token, node: AccessorAstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
-    self.isStructOrEnumValueAllowed = true
-    val typedRoot = match self._typecheckExpression(node.root, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-    self.isStructOrEnumValueAllowed = false
+    var accessorPath = node.path
+
+    val _firstSeg = if accessorPath[0] |p| p else return unreachable(token.position, "path should have at least 1 segment")
+    val maybeModuleAccessor = match self._resolveModuleAliasAccessor(node.root, _firstSeg) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+    val typedRoot = if maybeModuleAccessor |n| {
+      if accessorPath.length == 1 return Result.Ok(n)
+
+      accessorPath = accessorPath[1:]
+      n
+    } else {
+      self.isStructOrEnumValueAllowed = true
+      val typedNode = match self._typecheckExpression(node.root, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      self.isStructOrEnumValueAllowed = false
+      typedNode
+    }
 
     val path: AccessorPathSegment[] = []
     var ty = typedRoot.ty
     var isNullable = ty.nullable
-    for _p, idx in node.path {
+    for _p, idx in accessorPath {
       // TODO: destructuring
       val token = _p[0]
       val label = _p[1]

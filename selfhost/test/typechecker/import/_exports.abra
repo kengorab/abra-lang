@@ -7,6 +7,7 @@ export type Foo {
 
   func foo(self): Int = 123
 }
+export val foo = Foo(color: Color.Green)
 
 export enum Color {
   Red

@@ -1,0 +1,7 @@
+Error at %FILE_NAME%:3:3
+Unknown exported name for aliased module
+  |  a.bogus()
+       ^
+There's no exported value named 'bogus' in module aliased as 'a' at:
+  |  import "./_exports" as a
+                            ^

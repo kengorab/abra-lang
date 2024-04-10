@@ -1,3 +1,3 @@
-import Color from "./_exports"
+import "./_exports" as e
 
-val _: Color? = None
+val _: e.Foo? = None

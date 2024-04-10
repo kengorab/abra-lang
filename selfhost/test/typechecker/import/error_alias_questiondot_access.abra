@@ -1,0 +1,3 @@
+import "./_exports" as a
+
+val _ = a?.add(1, 2)

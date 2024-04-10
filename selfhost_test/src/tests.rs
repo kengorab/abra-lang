@@ -631,6 +631,7 @@ fn typechecker_tests() {
 
         // Imports
         .add_test_vs_txt("typechecker/import/import.1.abra", "typechecker/import/import.1.out.json")
+        .add_test_vs_txt("typechecker/import/import.2.abra", "typechecker/import/import.2.out.json")
         .add_test_vs_txt("typechecker/import/error_no_file_exists.abra", "typechecker/import/error_no_file_exists.out")
         .add_test_vs_txt("typechecker/import/error_unimplemented_nonrelative.abra", "typechecker/import/error_unimplemented_nonrelative.out")
         .add_test_vs_txt("typechecker/import/error_circular_dependency.1/mod.1.abra", "typechecker/import/error_circular_dependency.1/mod.1.out")
@@ -660,6 +661,9 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/import/error_imported_type_mismatch.1.abra", "typechecker/import/error_imported_type_mismatch.1.out")
         .add_test_vs_txt("typechecker/import/import_type_identifier.1.abra", "typechecker/import/import_type_identifier.1.out.json")
         .add_test_vs_txt("typechecker/import/import_type_identifier.2.abra", "typechecker/import/import_type_identifier.2.out.json")
+        .add_test_vs_txt("typechecker/import/error_alias_duplicate_name.abra", "typechecker/import/error_alias_duplicate_name.out")
+        .add_test_vs_txt("typechecker/import/error_alias_questiondot_access.abra", "typechecker/import/error_alias_questiondot_access.out")
+        .add_test_vs_txt("typechecker/import/error_alias_unknown_import.abra", "typechecker/import/error_alias_unknown_import.out")
 
         .run_tests();
 }

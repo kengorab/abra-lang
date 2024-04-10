@@ -1,3 +1,4 @@
-import Foo from "./_exports"
+import Foo, Color from "./_exports"
 
 val _: Foo? = None
+val _: Color? = None

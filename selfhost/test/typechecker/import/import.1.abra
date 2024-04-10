@@ -1,4 +1,7 @@
-import a, add from "./_exports"
+import a, add, Foo, Color from "./_exports"
 
 val b = a + 1
 val c = add(a, b)
+
+val color = Color.RGB(r: a, g: b, b: c)
+val f = Foo(color: color)
