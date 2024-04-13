@@ -72,13 +72,17 @@ impl TestRunner {
     }
 
     pub fn run_tests(self) {
-        let selfhost_dir = get_project_root().unwrap().join("selfhost");
+        let project_root = get_project_root().unwrap();
+
+        let selfhost_dir = project_root.join("selfhost");
+
+        let abra_std_dir = project_root.join("abra_core/std");
+        let abra_std_dir = abra_std_dir.to_str().unwrap();
 
         let Self { runner_name, bin_path, tests } = self;
 
         let mut failures = vec![];
         for test in tests {
-
             let (test_path, expected_output) = match test {
                 TestType::VsRust(test_file_path) => {
                     let test_path = selfhost_dir.join("test").join(test_file_path);
@@ -115,6 +119,7 @@ impl TestRunner {
             };
 
             let output = Command::new(&bin_path)
+                .env("ABRA_HOME", &abra_std_dir)
                 .arg(&test_path)
                 .output()
                 .unwrap();

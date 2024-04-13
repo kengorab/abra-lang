@@ -1,5 +1,5 @@
 Error at %FILE_NAME%:1:15
-Not yet implemented:
+Could not import module
   |  import a from "foo"
                    ^
-Reason: nonrelative imports
+Could not find module named 'foo'

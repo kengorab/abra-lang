@@ -641,7 +641,7 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/import/import.1.abra", "typechecker/import/import.1.out.json")
         .add_test_vs_txt("typechecker/import/import.2.abra", "typechecker/import/import.2.out.json")
         .add_test_vs_txt("typechecker/import/error_no_file_exists.abra", "typechecker/import/error_no_file_exists.out")
-        .add_test_vs_txt("typechecker/import/error_unimplemented_nonrelative.abra", "typechecker/import/error_unimplemented_nonrelative.out")
+        .add_test_vs_txt("typechecker/import/error_nonrelative_not_found.abra", "typechecker/import/error_nonrelative_not_found.out")
         .add_test_vs_txt("typechecker/import/error_circular_dependency.1/mod.1.abra", "typechecker/import/error_circular_dependency.1/mod.1.out")
         .add_test_vs_txt("typechecker/import/error_circular_dependency.2/mod.1.abra", "typechecker/import/error_circular_dependency.2/mod.1.out")
         .add_test_vs_txt("typechecker/import/error_duplicate_import_name.1.abra", "typechecker/import/error_duplicate_import_name.1.out")
