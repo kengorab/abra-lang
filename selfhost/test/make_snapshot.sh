@@ -17,4 +17,4 @@ else
   echo "Illegal mode '$mode', expected 'ok' or 'error'"
 fi
 
-../target/debug/abra build -r "./src/$runner.test.abra" -- "$test_path" > "$out_path"
+ABRA_HOME=../abra_core/std ../target/debug/abra build -r "./src/$runner.test.abra" -- "$test_path" > "$out_path"

@@ -1,7 +1,7 @@
 import "fs" as fs
 import resolveRelativePath from "./utils"
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
-import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode, ImportKind from "./parser"
+import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode, ImportKind, DecoratorNode from "./parser"
 
 enum TokenizeAndParseError {
   ReadFileError(path: String)
@@ -10,7 +10,7 @@ enum TokenizeAndParseError {
 }
 
 export type ModuleLoader {
-  rootDirPath: String
+  stdRoot: String
   parsedModules: Map<String, ParsedModule> = {}
 
   func resolvePath(self, modulePath: String, relativeTo: String?): String {
@@ -358,6 +358,11 @@ export enum TypedIdentifierKind {
   Discard
 }
 
+type Decorator {
+  label: Label
+  arguments: LiteralAstNode[]
+}
+
 type TypedBindingDeclarationNode {
   bindingPattern: BindingPattern
   variables: Variable[]
@@ -386,6 +391,7 @@ export type Function {
   returnType: Type
   body: TypedAstNode[]
   isGenerated: Bool = false
+  decorators: Decorator[] = []
 
   func generated(
     scope: Scope,
@@ -453,6 +459,7 @@ export type Function {
       returnType: returnType,
       body: self.body,
       isGenerated: self.isGenerated,
+      decorators: self.decorators,
     )
   }
 }
@@ -903,10 +910,14 @@ type TypeError {
           IllegalAssignmentReason.StaticMethod => lines.push("'$name' is a static method, which cannot be overwritten")
         }
       }
-      TypeErrorKind.UnknownModule(modulePathAbs) => {
+      TypeErrorKind.UnknownModule(modulePath, isRelativeImport) => {
         lines.push("Could not import module")
         lines.push(self._getCursorLine(self.position, contents))
-        lines.push("No file exists at path '$modulePathAbs'")
+        if isRelativeImport {
+          lines.push("No file exists at path '$modulePath'")
+        } else {
+          lines.push("Could not find module named '$modulePath'")
+        }
       }
       TypeErrorKind.CircularDependency => {
         lines.push("Could not import module due to circular dependency")
@@ -1004,7 +1015,7 @@ enum TypeErrorKind {
   UnnecessaryOptSafety
   InvalidTraitMethodSignature(fn: Function)
   IllegalAssignment(kind: String, name: String, reason: IllegalAssignmentReason)
-  UnknownModule(modulePathAbs: String)
+  UnknownModule(modulePath: String, isRelativeImport: Bool)
   CircularDependency
   IllegalExportScope
   UnknownImport(moduleName: String, importName: String)
@@ -1518,15 +1529,15 @@ export type Typechecker {
     val parsedModule = match self._tokenizeAndParse(modulePathAbs) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     for importNode in parsedModule.imports {
       var importNodePath = importNode.moduleName.name
-
-      if !importNodePath.startsWith(".") {
-        val err = TypeError(position: importNode.moduleName.position, kind: TypeErrorKind.NotYetImplemented("nonrelative imports"))
-        return Result.Err(TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(err)))
-      }
-
+      val isRelativeImport = importNodePath.startsWith(".")
       if !importNodePath.endsWith(".abra") importNodePath += ".abra"
 
-      val importPathAbs = self.moduleLoader.resolvePath(modulePath: importNodePath, relativeTo: modulePathAbs)
+      val importPathAbs = if !isRelativeImport {
+        self.moduleLoader.stdRoot + "/" + importNodePath
+      } else {
+        self.moduleLoader.resolvePath(modulePath: importNodePath, relativeTo: modulePathAbs)
+      }
+
       val typedImportModule = if self.project.modules[importPathAbs] |m| {
         if !m.complete {
           val err = TypeError(position: importNode.moduleName.position, kind: TypeErrorKind.CircularDependency)
@@ -1541,7 +1552,13 @@ export type Typechecker {
           Result.Err(e) => {
             val err = match e.kind {
               TypecheckerErrorKind.ReadFileError => {
-                val err = TypeError(position: importNode.moduleName.position, kind: TypeErrorKind.UnknownModule(importPathAbs))
+                val kind = if isRelativeImport {
+                  TypeErrorKind.UnknownModule(importPathAbs, true)
+                } else {
+                  TypeErrorKind.UnknownModule(importNode.moduleName.name, false)
+                }
+
+                val err = TypeError(position: importNode.moduleName.position, kind: kind)
                 TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(err))
               }
               _ => e
@@ -1577,7 +1594,26 @@ export type Typechecker {
     Result.Ok(mod)
   }
 
+  func _typecheckDecoratorNode(self, dec: DecoratorNode): Result<Decorator, TypeError> {
+    val args: LiteralAstNode[] = []
+    for arg in dec.arguments {
+      val typedArg = match self._typecheckExpression(arg.value, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      match typedArg.kind {
+        TypedAstNodeKind.Literal(litNode) => args.push(litNode)
+        _ => return unreachable(typedArg.token.position, "should have been caught during parsing")
+      }
+    }
+
+    Result.Ok(Decorator(label: dec.name, arguments: args))
+  }
+
   func _typecheckFunctionPass1(self, node: FunctionDeclarationNode): Result<Function, TypeError> {
+    val decorators: Decorator[] = []
+    for d in node.decorators {
+      val dec = match self._typecheckDecoratorNode(d) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      decorators.push(dec)
+    }
+
     val fnScope = self.currentScope.makeChild(node.name.name, ScopeKind.Func)
     val prevScope = self.currentScope
     self.currentScope = fnScope
@@ -1618,7 +1654,7 @@ export type Typechecker {
       FunctionKind.Standalone
     }
 
-    val fn = Function(label: node.name, scope: fnScope, kind: fnKind, typeParams: typeParams, params: [], returnType: returnType, body: [])
+    val fn = Function(label: node.name, scope: fnScope, kind: fnKind, typeParams: typeParams, params: [], returnType: returnType, body: [], decorators: decorators)
     match self._addFunctionToScope(fn) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     Result.Ok(fn)
@@ -1771,7 +1807,8 @@ export type Typechecker {
 
     val hasReturnValue = fn.returnType.kind != TypeKind.PrimitiveUnit
     if hasReturnValue && fnDeclNode.body.isEmpty() {
-      return Result.Err(TypeError(position: fn.label.position, kind: TypeErrorKind.ReturnTypeMismatch(fn.label.name, fn.returnType, None)))
+      if !fn.decorators.find(dec => dec.label.name == "Stub" || dec.label.name == "Intrinsic" || dec.label.name == "CBinding")
+        return Result.Err(TypeError(position: fn.label.position, kind: TypeErrorKind.ReturnTypeMismatch(fn.label.name, fn.returnType, None)))
     }
 
     for param, idx in fn.params {

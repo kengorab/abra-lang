@@ -11,33 +11,41 @@ import getAbsolutePath from "./utils"
 import ModuleLoader, Project, Typechecker from "./typechecker"
 import Jsonifier from "./typechecker_test_utils"
 
-if Process.args()[1] |fileName| {
-  val absPathSegs = getAbsolutePath(fileName)
-  val projectRoot = "/" + absPathSegs[:-1].join("/")
-  val filePathAbs = "/" + absPathSegs.join("/")
-
-  val moduleLoader = ModuleLoader(rootDirPath: projectRoot)
-  val project = Project()
-  val typechecker = Typechecker(moduleLoader: moduleLoader, project: project)
-
-  match typechecker.typecheckEntrypoint(filePathAbs) {
-    Result.Ok => {
-      val json = Jsonifier()
-      if project.modules["prelude"] |prelude| {
-        if prelude.id != 0 && prelude.name != "prelude" {
-          println("Error: prelude module misconfigured")
-        }
-      } else {
-        println("Error: no prelude module defined!")
-      }
-
-      val modules = project.modules.values()
-        .filter(mod => mod.name != "prelude")
-        .sortBy(m => m.id)
-      json.printModules(modules)
-    }
-    Result.Err(e) => println(e.getMessage())
+func main() {
+  val abraStdRoot = if Process.getEnvVar("ABRA_HOME") |v| v else {
+    println("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
+    return
   }
-} else {
-  println("Missing required argument <file-name>")
+
+  if Process.args()[1] |fileName| {
+    val absPathSegs = getAbsolutePath(fileName)
+    val filePathAbs = "/" + absPathSegs.join("/")
+
+    val moduleLoader = ModuleLoader(stdRoot: abraStdRoot)
+    val project = Project()
+    val typechecker = Typechecker(moduleLoader: moduleLoader, project: project)
+
+    match typechecker.typecheckEntrypoint(filePathAbs) {
+      Result.Ok => {
+        val json = Jsonifier()
+        if project.modules["prelude"] |prelude| {
+          if prelude.id != 0 && prelude.name != "prelude" {
+            println("Error: prelude module misconfigured")
+          }
+        } else {
+          println("Error: no prelude module defined!")
+        }
+
+        val modules = project.modules.values()
+          .filter(mod => mod.name != "prelude")
+          .sortBy(m => m.id)
+        json.printModules(modules)
+      }
+      Result.Err(e) => println(e.getMessage())
+    }
+  } else {
+    println("Missing required argument <file-name>")
+  }
 }
+
+main()
