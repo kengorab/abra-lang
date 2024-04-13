@@ -869,6 +869,224 @@
         },
         "expr": null
       }
+    },
+    {
+      "token": {
+        "position": [32, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [32, 5] }
+        },
+        "typeAnnotation": {
+          "kind": "normal",
+          "path": [
+            { "name": "a", "position": [32, 8] }
+          ],
+          "label": { "name": "Foo", "position": [32, 10] },
+          "typeArguments": []
+        },
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [33, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [33, 5] }
+        },
+        "typeAnnotation": {
+          "kind": "array",
+          "inner": {
+            "kind": "normal",
+            "path": [
+              { "name": "a", "position": [33, 8] }
+            ],
+            "label": { "name": "Foo", "position": [33, 10] },
+            "typeArguments": []
+          }
+        },
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [34, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [34, 5] }
+        },
+        "typeAnnotation": {
+          "kind": "option",
+          "inner": {
+            "kind": "normal",
+            "path": [
+              { "name": "a", "position": [34, 8] }
+            ],
+            "label": { "name": "Foo", "position": [34, 10] },
+            "typeArguments": []
+          }
+        },
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [35, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [35, 5] }
+        },
+        "typeAnnotation": {
+          "kind": "array",
+          "inner": {
+            "kind": "option",
+            "inner": {
+              "kind": "normal",
+              "path": [
+                { "name": "a", "position": [35, 8] }
+              ],
+              "label": { "name": "Foo", "position": [35, 10] },
+              "typeArguments": []
+            }
+          }
+        },
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [36, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [36, 5] }
+        },
+        "typeAnnotation": {
+          "kind": "option",
+          "inner": {
+            "kind": "array",
+            "inner": {
+              "kind": "normal",
+              "path": [
+                { "name": "a", "position": [36, 8] }
+              ],
+              "label": { "name": "Foo", "position": [36, 10] },
+              "typeArguments": []
+            }
+          }
+        },
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [37, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [37, 5] }
+        },
+        "typeAnnotation": {
+          "kind": "normal",
+          "path": [
+            { "name": "a", "position": [37, 8] }
+          ],
+          "label": { "name": "Foo", "position": [37, 10] },
+          "typeArguments": [
+            {
+              "kind": "normal",
+              "path": [
+                { "name": "a", "position": [37, 14] }
+              ],
+              "label": { "name": "Bar", "position": [37, 16] },
+              "typeArguments": []
+            },
+            {
+              "kind": "normal",
+              "path": [
+                { "name": "a", "position": [37, 21] }
+              ],
+              "label": { "name": "Baz", "position": [37, 23] },
+              "typeArguments": []
+            }
+          ]
+        },
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [39, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [39, 5] }
+        },
+        "typeAnnotation": {
+          "kind": "normal",
+          "path": [
+            { "name": "a", "position": [39, 8] },
+            { "name": "b", "position": [39, 10] }
+          ],
+          "label": { "name": "Foo", "position": [39, 12] },
+          "typeArguments": []
+        },
+        "expr": null
+      }
     }
   ]
 }

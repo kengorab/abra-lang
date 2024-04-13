@@ -162,7 +162,7 @@ type MatchCase {
 }
 
 export enum TypeIdentifier {
-  Normal(name: Label, typeArguments: TypeIdentifier[]?)
+  Normal(name: Label, typeArguments: TypeIdentifier[], path: Label[])
   Array(inner: TypeIdentifier)
   Option(inner: TypeIdentifier)
   Tuple(types: TypeIdentifier[])
@@ -868,27 +868,56 @@ export type Parser {
     val token = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     var typeIdent =  match token.kind {
       TokenKind.Ident(name) => {
-        val label = Label(name: name, position: token.position)
+        var label = Label(name: name, position: token.position)
+        val path: Label[] = []
 
-        // TODO: This is kind of gross, I should be able to do `if self._peek()?.kind == TokenKind.LT { ... }` here
-        val typeArguments = if self._peek()?.kind |kind| {
-          if kind == TokenKind.LT {
-            self._advance() // consume '<' token
-            val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-            if nextToken.kind == TokenKind.GT {
-              return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], nextToken.kind)))
+        var typeArguments: TypeIdentifier[] = []
+        while self._peek() |nextToken| {
+          match nextToken.kind {
+            TokenKind.LT => {
+              self._advance() // consume '<' token
+
+              val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+              if nextToken.kind == TokenKind.GT {
+                return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], nextToken.kind)))
+              }
+              typeArguments = match self._commaSeparated(end: TokenKind.GT, consumeFinal: true, fn: () => self._parseTypeIdentifier()) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+              break
             }
-            val args = self._commaSeparated(end: TokenKind.GT, consumeFinal: true, fn: () => self._parseTypeIdentifier())
-            val a = match args { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-            a
-          } else {
-            None
+            TokenKind.Dot => {
+              self._advance() // consume '.' token
+              val nextToken = match self._expectNext() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+              match nextToken.kind {
+                TokenKind.Ident(name) => {
+                  path.push(label)
+                  label = Label(name: name, position: nextToken.position)
+                }
+                _ => return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], nextToken.kind)))
+              }
+            }
+            _ => break
           }
-        } else {
-          None
         }
 
-        TypeIdentifier.Normal(name: label, typeArguments: typeArguments)
+        // // TODO: This is kind of gross, I should be able to do `if self._peek()?.kind == TokenKind.LT { ... }` here
+        // val typeArguments = if self._peek()?.kind |kind| {
+        //   if kind == TokenKind.LT {
+        //     self._advance() // consume '<' token
+        //     val nextToken = match self._expectPeek() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        //     if nextToken.kind == TokenKind.GT {
+        //       return Result.Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], nextToken.kind)))
+        //     }
+        //     val args = self._commaSeparated(end: TokenKind.GT, consumeFinal: true, fn: () => self._parseTypeIdentifier())
+        //     val a = match args { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        //     a
+        //   } else {
+        //     None
+        //   }
+        // } else {
+        //   None
+        // }
+
+        TypeIdentifier.Normal(name: label, typeArguments: typeArguments, path: path)
       }
       TokenKind.LParen => {
         val a = self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: () => self._parseTypeIdentifier())

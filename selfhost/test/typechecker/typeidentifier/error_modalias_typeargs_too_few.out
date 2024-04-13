@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:3:10
+Incorrect number of type arguments
+  |  val _: e.Color<Int, Int>[] = []
+              ^
+Expected 3, but 2 were passed

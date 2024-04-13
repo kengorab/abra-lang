@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:3:10
+Unknown type 'A'
+  |  val _: e.A[] = []
+              ^
+No type with that name is visible in current scope
