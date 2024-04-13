@@ -173,19 +173,30 @@ func printTypeIdentifierAsJson(typeIdentifier: TypeIdentifier, indentLevelStart:
 
   print("$startIndent{\n$fieldsIndent\"kind\": ")
   match typeIdentifier {
-    TypeIdentifier.Normal(label, typeArguments) => {
-      print("\"normal\",\n$fieldsIndent\"label\": ")
+    TypeIdentifier.Normal(label, typeArguments, path) => {
+      println("\"normal\",")
+      if !path.isEmpty() {
+        println("$fieldsIndent\"path\": [")
+        for seg, idx in path {
+          print("$fieldsIndent  ")
+          printLabelAsJson(seg)
+          val comma = if idx != path.length - 1 "," else ""
+          println(comma)
+        }
+        println("$fieldsIndent],")
+      }
+      print("$fieldsIndent\"label\": ")
       printLabelAsJson(label)
-      if typeArguments |args| {
+      if typeArguments.isEmpty() {
+        println(",\n$fieldsIndent\"typeArguments\": []")
+      } else {
         println(",\n$fieldsIndent\"typeArguments\": [")
-        for arg, idx in args {
+        for arg, idx in typeArguments {
           printTypeIdentifierAsJson(arg, currentIndentLevel + 2, currentIndentLevel + 2)
-          val comma = if idx != args.length - 1 "," else ""
+          val comma = if idx != typeArguments.length - 1 "," else ""
           println(comma)
         }
         println("$fieldsIndent]")
-      } else {
-        println(",\n$fieldsIndent\"typeArguments\": []")
       }
     }
     TypeIdentifier.Array(inner) => {

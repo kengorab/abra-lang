@@ -28,3 +28,12 @@ val _: () => Int[]
 val _: (() => Int)[]
 val _: () => Int?
 val _: (() => Int)?
+
+val _: a.Foo
+val _: a.Foo[]
+val _: a.Foo?
+val _: a.Foo?[]
+val _: a.Foo[]?
+val _: a.Foo<a.Bar, a.Baz>
+
+val _: a.b.Foo

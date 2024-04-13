@@ -1147,113 +1147,145 @@ export type Typechecker {
     Result.Ok(0) // <- unnecessary 0
   }
 
-  func _verifyNumTypeArgs(self, position: Position, typeArguments: TypeIdentifier[]?, num: Int): Result<Type[], TypeError> {
-    if typeArguments |typeArguments| {
-      if typeArguments.length != num {
-        return Result.Err(TypeError(position: position, kind: TypeErrorKind.WrongTypeArgumentArity(expected: num, given: typeArguments.length)))
+  func _findModuleByAlias(self, name: String): Result<(TypedModule, Label)?, TypeError> {
+    for _m in self.currentModuleImports {
+      // TODO: destructuring
+      val importModulePath = _m[0]
+      val importedModule = _m[1]
+      if importedModule.aliases.find(a => a.name == name) |alias| {
+        val mod = if self.project.modules[importModulePath] |m| m else return unreachable(alias.position, "unknown module")
+        return Result.Ok((mod, alias))
       }
-
-      val types: Type[] = []
-      for i in range(0, num) {
-        val typeIdent = if typeArguments.get(i) |typeIdent| typeIdent else return unreachable(position, "verified above that typeArguments.length == num")
-        val ty = match self._resolveTypeIdentifier(typeIdent) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-        types.push(ty)
-      }
-
-      Result.Ok(types)
-    } else if num != 0 {
-      Result.Err(TypeError(position: position, kind: TypeErrorKind.WrongTypeArgumentArity(expected: num, given: 0)))
-    } else {
-      Result.Ok([])
     }
+
+    Result.Ok(None)
+  }
+
+  func _verifyNumTypeArgs(self, position: Position, typeArguments: TypeIdentifier[], num: Int): Result<Type[], TypeError> {
+    if typeArguments.length != num {
+      return Result.Err(TypeError(position: position, kind: TypeErrorKind.WrongTypeArgumentArity(expected: num, given: typeArguments.length)))
+    }
+
+    val types: Type[] = []
+    for i in range(0, num) {
+      val typeIdent = if typeArguments.get(i) |typeIdent| typeIdent else return unreachable(position, "verified above that typeArguments.length == num")
+      val ty = match self._resolveTypeIdentifier(typeIdent) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      types.push(ty)
+    }
+
+    Result.Ok(types)
+  }
+
+  func _resolveInstanceTypeIdentifier(self, structOrEnum: StructOrEnum, label: Label, typeArguments: TypeIdentifier[]): Result<Type?, TypeError> {
+    match structOrEnum {
+      StructOrEnum.Struct(struct) => {
+        if label.name == struct.label.name {
+          val instanceTypeArgs = match self._verifyNumTypeArgs(label.position, typeArguments, struct.typeParams.length) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          return Result.Ok(Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), instanceTypeArgs)))
+        }
+      }
+      StructOrEnum.Enum(enum_) => {
+        if label.name == enum_.label.name {
+          val instanceTypeArgs = match self._verifyNumTypeArgs(label.position, typeArguments, enum_.typeParams.length) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          return Result.Ok(Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), instanceTypeArgs)))
+        }
+      }
+    }
+
+    Result.Ok(None)
   }
 
   func _resolveTypeIdentifier(self, typeIdent: TypeIdentifier): Result<Type, TypeError> {
     val ty = match typeIdent {
-      TypeIdentifier.Normal(label, typeArguments) => match label.name {
-        "Int" => {
-          match self._verifyNumTypeArgs(label.position, typeArguments, 0) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-          Type(kind: TypeKind.PrimitiveInt)
-        }
-        "Float" => {
-          match self._verifyNumTypeArgs(label.position, typeArguments, 0) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-          Type(kind: TypeKind.PrimitiveFloat)
-        }
-        "Bool" => {
-          match self._verifyNumTypeArgs(label.position, typeArguments, 0) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-          Type(kind: TypeKind.PrimitiveBool)
-        }
-        "String" => {
-          match self._verifyNumTypeArgs(label.position, typeArguments, 0) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-          Type(kind: TypeKind.PrimitiveString)
-        }
-        "Map" => {
-          val typeArgs = match self._verifyNumTypeArgs(label.position, typeArguments, 2) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-          Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeMapStruct), typeArgs))
-        }
-        "Set" => {
-          val typeArgs = match self._verifyNumTypeArgs(label.position, typeArguments, 1) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-          Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeSetStruct), typeArgs))
-        }
-        _ => {
-          var scope: Scope? = self.currentScope
-          while scope |sc| {
-            for ty in sc.types {
-              match ty.kind {
-                TypeKind.Generic(name) => { if label.name == name return Result.Ok(ty) }
-                TypeKind.Type(structOrEnum) => {
-                  match structOrEnum {
-                    StructOrEnum.Struct(struct) => {
-                      if label.name == struct.label.name {
-                        val instanceTypeArgs = match self._verifyNumTypeArgs(label.position, typeArguments, struct.typeParams.length) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-                        return Result.Ok(Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), instanceTypeArgs)))
-                      }
-                    }
-                    StructOrEnum.Enum(enum_) => {
-                      if label.name == enum_.label.name {
-                        val instanceTypeArgs = match self._verifyNumTypeArgs(label.position, typeArguments, enum_.typeParams.length) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-                        return Result.Ok(Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), instanceTypeArgs)))
-                      }
-                    }
-                  }
-                }
-                _ => continue
-              }
+      TypeIdentifier.Normal(label, typeArguments, path) => {
+        if path[0] |firstSeg| {
+          val _mod = match self._findModuleByAlias(firstSeg.name) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+          val _m = if _mod |mod| mod else return Result.Err(TypeError(position: firstSeg.position, kind: TypeErrorKind.UnknownName(firstSeg.name, "module")))
+          // TODO: destructuring
+          val mod = _m[0]
+          val aliasLabel = _m[1]
+
+          if path[1] |seg| return todo(seg.position, "qualified type paths longer than 2")
+
+          val foundTy = match mod.exports[label.name] {
+            None => return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownImportForAlias(label.name, aliasLabel)))
+            Export.Type(structOrEnum) => {
+              val t = match self._resolveInstanceTypeIdentifier(structOrEnum, label, typeArguments) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+              t
             }
-            scope = sc.parent
+            _ => None
           }
 
-          for importedModule in self.currentModuleImports.values() {
-            for _p in importedModule.imports {
-              // TODO: destructuring
-              val name = _p[0]
-              val imp = _p[1]
-              if name == label.name {
-                match imp.kind {
-                  TypedImportKind.Type(structOrEnum) => {
-                    match structOrEnum {
-                      StructOrEnum.Struct(struct) => {
-                        if label.name == struct.label.name {
-                          val instanceTypeArgs = match self._verifyNumTypeArgs(label.position, typeArguments, struct.typeParams.length) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-                          return Result.Ok(Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), instanceTypeArgs)))
-                        }
-                      }
-                      StructOrEnum.Enum(enum_) => {
-                        if label.name == enum_.label.name {
-                          val instanceTypeArgs = match self._verifyNumTypeArgs(label.position, typeArguments, enum_.typeParams.length) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-                          return Result.Ok(Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), instanceTypeArgs)))
-                        }
-                      }
-                    }
+          // TODO: clean this up, it's gross
+          val res: Result<Type, TypeError> = if foundTy |ty|
+            Result.Ok(ty)
+          else
+            Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
+          return res
+        }
+
+        val t = match label.name {
+          "Int" => {
+            match self._verifyNumTypeArgs(label.position, typeArguments, 0) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            Type(kind: TypeKind.PrimitiveInt)
+          }
+          "Float" => {
+            match self._verifyNumTypeArgs(label.position, typeArguments, 0) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            Type(kind: TypeKind.PrimitiveFloat)
+          }
+          "Bool" => {
+            match self._verifyNumTypeArgs(label.position, typeArguments, 0) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            Type(kind: TypeKind.PrimitiveBool)
+          }
+          "String" => {
+            match self._verifyNumTypeArgs(label.position, typeArguments, 0) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            Type(kind: TypeKind.PrimitiveString)
+          }
+          "Map" => {
+            val typeArgs = match self._verifyNumTypeArgs(label.position, typeArguments, 2) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeMapStruct), typeArgs))
+          }
+          "Set" => {
+            val typeArgs = match self._verifyNumTypeArgs(label.position, typeArguments, 1) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeSetStruct), typeArgs))
+          }
+          _ => {
+            var scope: Scope? = self.currentScope
+            while scope |sc| {
+              for ty in sc.types {
+                match ty.kind {
+                  TypeKind.Generic(name) => { if label.name == name return Result.Ok(ty) }
+                  TypeKind.Type(structOrEnum) => {
+                    val foundTy = match self._resolveInstanceTypeIdentifier(structOrEnum, label, typeArguments) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+                    if foundTy |ty| return Result.Ok(ty)
                   }
                   _ => continue
                 }
               }
+              scope = sc.parent
             }
-          }
 
-          return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
+            for importedModule in self.currentModuleImports.values() {
+              for _p in importedModule.imports {
+                // TODO: destructuring
+                val name = _p[0]
+                val imp = _p[1]
+                if name == label.name {
+                  match imp.kind {
+                    TypedImportKind.Type(structOrEnum) => {
+                      val foundTy = match self._resolveInstanceTypeIdentifier(structOrEnum, label, typeArguments) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+                      if foundTy |ty| return Result.Ok(ty)
+                    }
+                    _ => continue
+                  }
+                }
+              }
+            }
+
+            return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
+          }
         }
+        t
       }
       TypeIdentifier.Array(inner) => {
         val innerTy = match self._resolveTypeIdentifier(inner) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -3058,44 +3090,43 @@ export type Typechecker {
   }
 
   func _resolveModuleAliasAccessor(self, root: AstNode, field: (Token, Label)): Result<TypedAstNode?, TypeError> {
-    match root.kind {
+    val _mod = match root.kind {
       AstNodeKind.Identifier(identKind) => {
-        match identKind {
+        val m = match identKind {
           IdentifierKind.Named(name) => {
-            // TODO: this is inefficient and can be better
-            for _m in self.currentModuleImports {
-              // TODO: destructuring
-              val importModulePath = _m[0]
-              val importedModule = _m[1]
-              if importedModule.aliases.find(a => a.name == name) |alias| {
-                // TODO: destructuring
-                val dotTok = field[0]
-                val label = field[1]
-                if dotTok.kind == TokenKind.QuestionDot return Result.Err(TypeError(position: dotTok.position, kind: TypeErrorKind.UnnecessaryOptSafety))
-
-                val mod = if self.project.modules[importModulePath] |m| m else return unreachable(root.token.position, "unknown module")
-                val exportVar = match mod.exports[label.name] {
-                  None => return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownImportForAlias(label.name, alias)))
-                  Export.Variable(v) => v
-                  Export.Function(v) => v
-                  Export.Type(_, v) => v
-                }
-
-                val token = Token(position: label.position, kind: TokenKind.Ident(label.name))
-                val identifierKind = TypedIdentifierKind.Named(label.name, exportVar)
-                val identifierNode = TypedAstNode(token: token, ty: exportVar.ty, kind: TypedAstNodeKind.Identifier(identifierKind))
-
-                return Result.Ok(identifierNode)
-              }
-            }
+            val m = match self._findModuleByAlias(name) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            m
           }
-          _ => {}
+          _ => None
         }
+        m
       }
-      _ => {}
+      _ => None
     }
 
-    Result.Ok(None)
+    val identifierNode = if _mod |_mod| {
+      // TODO: destructuring
+      val mod = _mod[0]
+      val aliasLabel = _mod[1]
+
+      // TODO: destructuring
+      val dotTok = field[0]
+      val label = field[1]
+      if dotTok.kind == TokenKind.QuestionDot return Result.Err(TypeError(position: dotTok.position, kind: TypeErrorKind.UnnecessaryOptSafety))
+
+      val exportVar = match mod.exports[label.name] {
+        None => return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownImportForAlias(label.name, aliasLabel)))
+        Export.Variable(v) => v
+        Export.Function(v) => v
+        Export.Type(_, v) => v
+      }
+
+      val token = Token(position: label.position, kind: TokenKind.Ident(label.name))
+      val identifierKind = TypedIdentifierKind.Named(label.name, exportVar)
+      TypedAstNode(token: token, ty: exportVar.ty, kind: TypedAstNodeKind.Identifier(identifierKind))
+    } else None
+
+    Result.Ok(identifierNode)
   }
 
   func _typecheckAccessor(self, token: Token, node: AccessorAstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {

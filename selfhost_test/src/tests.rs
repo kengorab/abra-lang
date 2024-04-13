@@ -477,6 +477,14 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/typeidentifier/error_typeargs_too_many.abra", "typechecker/typeidentifier/error_typeargs_too_many.out")
         .add_test_vs_txt("typechecker/typeidentifier/error_typeargs_unexpected.abra", "typechecker/typeidentifier/error_typeargs_unexpected.out")
         .add_test_vs_txt("typechecker/typeidentifier/error_unknown_type.abra", "typechecker/typeidentifier/error_unknown_type.out")
+        .add_test_vs_txt("typechecker/typeidentifier/error_modalias_name_not_type.abra", "typechecker/typeidentifier/error_modalias_name_not_type.out")
+        .add_test_vs_txt("typechecker/typeidentifier/error_modalias_path_too_long.abra", "typechecker/typeidentifier/error_modalias_path_too_long.out")
+        .add_test_vs_txt("typechecker/typeidentifier/error_modalias_typeargs_missing.abra", "typechecker/typeidentifier/error_modalias_typeargs_missing.out")
+        .add_test_vs_txt("typechecker/typeidentifier/error_modalias_typeargs_too_few.abra", "typechecker/typeidentifier/error_modalias_typeargs_too_few.out")
+        .add_test_vs_txt("typechecker/typeidentifier/error_modalias_typeargs_too_many.abra", "typechecker/typeidentifier/error_modalias_typeargs_too_many.out")
+        .add_test_vs_txt("typechecker/typeidentifier/error_modalias_typeargs_unexpected.abra", "typechecker/typeidentifier/error_modalias_typeargs_unexpected.out")
+        .add_test_vs_txt("typechecker/typeidentifier/error_modalias_unknown_module.abra", "typechecker/typeidentifier/error_modalias_unknown_module.out")
+        .add_test_vs_txt("typechecker/typeidentifier/error_modalias_unknown_type.abra", "typechecker/typeidentifier/error_modalias_unknown_type.out")
 
         // Assignment
         .add_test_vs_txt("typechecker/assignment/assignment_accessor.abra", "typechecker/assignment/assignment_accessor.out.json")
