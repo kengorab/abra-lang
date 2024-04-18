@@ -3325,8 +3325,6 @@ export type Typechecker {
     val paramsByName = fn.params.keyBy(p => p.label.name)
     val typedArgumentsByName: Map<String, TypedAstNode> = {}
     val resolvedGenerics: Map<String, Type> = {}
-    var hasBegunOptionalParams = false
-    var mostRecentLabeledOptionalParam: Label? = None
 
     if !invocationNode.typeArguments.isEmpty() {
       for generic, idx in fn.typeParams {
@@ -3369,19 +3367,23 @@ export type Typechecker {
       return Result.Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Placeholder))
     }
 
+    var hasBegunOptionalParams = false
+    var variadicParam: (TypedFunctionParam, Int)? = None
+    val variadicArgs: TypedAstNode[] = []
+    var mostRecentLabeledOptionalParam: Label? = None
     val argumentsQueue = invocationNode.arguments.map((arg, idx) => (arg, idx, 0))
     for _a in argumentsQueue {
       // TODO: destructuring
       val arg = _a[0]
-      val idx = _a[1]
+      val idx = if variadicParam |p| p[1] else _a[1]
       val numAttempts = _a[2]
 
       var param = if fn.params[idx] |param| param else {
         return Result.Err(TypeError(position: arg.position(), kind: TypeErrorKind.WrongInvocationArity(expected: fn.params.length, given: invocationNode.arguments.length)))
       }
-      if param.defaultValue { hasBegunOptionalParams = true }
-      if param.isVariadic { return todo(arg.position(), "variadic parameters") }
+      if (!!param.defaultValue) || param.isVariadic { hasBegunOptionalParams = true }
 
+      var paramTy = param.ty
       if arg.label |label| {
         if label.name != param.label.name {
           if !hasBegunOptionalParams {
@@ -3391,18 +3393,24 @@ export type Typechecker {
           param = if paramsByName[label.name] |p| p else {
             return Result.Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownParameterName(label.name)))
           }
+          paramTy = param.ty
         }
         if hasBegunOptionalParams && !mostRecentLabeledOptionalParam {
           mostRecentLabeledOptionalParam = label
+        }
+        if param.isVariadic {
+          paramTy = Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeArrayStruct), [paramTy]))
         }
       } else if instantiationOf {
         return Result.Err(TypeError(position: arg.position(), kind: TypeErrorKind.MissingRequiredArgumentLabel))
       } else if mostRecentLabeledOptionalParam |label| {
         return Result.Err(TypeError(position: arg.position(), kind: TypeErrorKind.MixedArgumentType(label)))
+      } else {
+        if param.isVariadic { variadicParam = (param, idx) }
       }
 
       val _p = if self._containsGenerics(param.ty) {
-        var paramType = param.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false)
+        var paramType = paramTy.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false)
 
         val typedArg = match self._typecheckExpression(arg.value, paramType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
         if numAttempts < 1 && typedArg.ty.hasUnfilledHoles() {
@@ -3410,7 +3418,7 @@ export type Typechecker {
           continue
         }
 
-        val extractedGenerics = self._extractGenerics(template: param.ty, source: typedArg.ty)
+        val extractedGenerics = self._extractGenerics(template: paramTy, source: typedArg.ty)
 
         for _p in extractedGenerics {
           if resolvedGenerics[_p[0]] |original| {
@@ -3422,11 +3430,11 @@ export type Typechecker {
           resolvedGenerics[_p[0]] = _p[1]
         }
 
-        paramType = param.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false)
+        paramType = paramTy.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false)
         (typedArg, paramType)
       } else {
-        val typedArg = match self._typecheckExpression(arg.value, param.ty) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-        (typedArg, param.ty)
+        val typedArg = match self._typecheckExpression(arg.value, paramTy) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        (typedArg, paramTy)
       }
       // TODO: destructuring
       val typedArg = _p[0]
@@ -3434,7 +3442,19 @@ export type Typechecker {
       if !self._typeSatisfiesRequired(ty: typedArg.ty, required: paramType) {
         return Result.Err(TypeError(position: typedArg.token.position, kind: TypeErrorKind.ParameterTypeMismatch(param.label.name, paramType, typedArg.ty)))
       }
-      typedArgumentsByName[param.label.name] = typedArg
+
+      if variadicParam {
+        variadicArgs.push(typedArg)
+      } else {
+        typedArgumentsByName[param.label.name] = typedArg
+      }
+    }
+
+    if variadicParam |_p| {
+      val param = _p[0]
+      var innerType = param.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false)
+      val paramType = Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeArrayStruct), [innerType]))
+      typedArgumentsByName[param.label.name] = TypedAstNode(token: token, ty: paramType, kind: TypedAstNodeKind.Array(variadicArgs))
     }
 
     val typedArguments: TypedAstNode?[] = []
@@ -3443,6 +3463,10 @@ export type Typechecker {
         typedArguments.push(argValue)
       } else if param.defaultValue {
         typedArguments.push(None)
+      } else if param.isVariadic {
+        var innerType = param.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false)
+        val paramType = Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeArrayStruct), [innerType]))
+        typedArguments.push(TypedAstNode(token: token, ty: paramType, kind: TypedAstNodeKind.Array([])))
       } else {
         val errorKind = if instantiationOf |i| {
           val missing = match i {
