@@ -1,5 +1,5 @@
 import "fs" as fs
-import resolveRelativePath from "./utils"
+import getAbsolutePath, resolveRelativePath from "./utils"
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
 import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode, ImportKind, DecoratorNode from "./parser"
 
@@ -147,7 +147,7 @@ export type Struct {
   moduleId: Int
   label: Label
   scope: Scope
-  typeParams: String[]
+  typeParams: String[] = []
   fields: Field[] = []
   instanceMethods: Function[] = []
   staticMethods: Function[] = []
@@ -187,6 +187,8 @@ enum Instantiatable {
 
 export type Project {
   modules: Map<String, TypedModule> = {}
+  preludeScope: Scope = Scope(name: "bogus")
+  preludeStringStruct: Struct = Struct(moduleId: 0, label: Label(name: "String", position: Position(line: 0, col: 0)), scope: Scope(name: "String"))
   preludeArrayStruct: Struct = Struct(moduleId: 0, label: Label(name: "Array", position: Position(line: 0, col: 0)), scope: Scope(name: "Array"), typeParams: ["T"])
   preludeMapStruct: Struct = Struct(moduleId: 0, label: Label(name: "Map", position: Position(line: 0, col: 0)), scope: Scope(name: "Array"), typeParams: ["K", "V"])
   preludeSetStruct: Struct = Struct(moduleId: 0, label: Label(name: "Set", position: Position(line: 0, col: 0)), scope: Scope(name: "Set"), typeParams: ["T"])
@@ -200,6 +202,7 @@ export type Type {
 
   func repr(self): String {
     val repr = match self.kind {
+      TypeKind.Any => "Any"
       TypeKind.PrimitiveUnit => "Unit"
       TypeKind.PrimitiveInt => "Int"
       TypeKind.PrimitiveFloat => "Float"
@@ -250,6 +253,7 @@ export type Type {
   }
 
   func hasUnfilledHoles(self): Bool = match self.kind {
+    TypeKind.Any => false
     TypeKind.PrimitiveUnit => false
     TypeKind.PrimitiveInt => false
     TypeKind.PrimitiveFloat => false
@@ -338,6 +342,7 @@ export enum TypeKind {
   PrimitiveBool
   PrimitiveString
   Never
+  Any
   Generic(name: String)
   Instance(structOrEnum: StructOrEnum, generics: Type[])
   Func(paramTypes: (Type, Bool)[], returnType: Type)
@@ -1041,7 +1046,9 @@ export type Typechecker {
   isEnumContainerValueAllowed: Bool = false
 
   func typecheckEntrypoint(self, modulePathAbs: String): Result<Int, TypecheckerError> {
-    val preludeMod = TypedModule(id: 0, name: "prelude", code: [], rootScope: self.currentScope.makeChild("module_0", ScopeKind.Module))
+    val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
+    val preludeModulePathAbs = "/" + preludeModulePathSegs.join("/")
+    val preludeMod = match self._typecheckModule(preludeModulePathAbs) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
     self.project.modules["prelude"] = preludeMod
 
     match self._typecheckModule(modulePathAbs) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -1236,6 +1243,14 @@ export type Typechecker {
         }
 
         val t = match label.name {
+          "Any" => {
+            match self._verifyNumTypeArgs(label.position, typeArguments, 0) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            Type(kind: TypeKind.Any)
+          }
+          "Unit" => {
+            match self._verifyNumTypeArgs(label.position, typeArguments, 0) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+            Type(kind: TypeKind.PrimitiveUnit)
+          }
           "Int" => {
             match self._verifyNumTypeArgs(label.position, typeArguments, 0) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
             Type(kind: TypeKind.PrimitiveInt)
@@ -1265,7 +1280,7 @@ export type Typechecker {
             while scope |sc| {
               for ty in sc.types {
                 match ty.kind {
-                  TypeKind.Generic(name) => { if label.name == name return Result.Ok(ty) }
+                  TypeKind.Generic(name) => { if label.name == name return Result.Ok(ty.clone()) }
                   TypeKind.Type(structOrEnum) => {
                     val foundTy = match self._resolveInstanceTypeIdentifier(structOrEnum, label, typeArguments) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
                     if foundTy |ty| return Result.Ok(ty)
@@ -1367,6 +1382,7 @@ export type Typechecker {
 
     if required.kind == TypeKind.Hole return true
     if required.kind == TypeKind.Never || ty.kind == TypeKind.Never return true
+    if required.kind == TypeKind.Any return true
 
     match required.kind {
       TypeKind.Func(reqParamTypes, reqRetType) => match ty.kind {
@@ -1400,6 +1416,7 @@ export type Typechecker {
 
           true
         }
+        TypeKind.PrimitiveString => reqStructOrEnum == StructOrEnum.Struct(self.project.preludeStringStruct)
         _ => false
       }
       TypeKind.Tuple(reqTypes) => match ty.kind {
@@ -1521,6 +1538,9 @@ export type Typechecker {
     self.currentModuleId = moduleId
 
     val moduleScope = self.currentScope.makeChild("module_$moduleId", ScopeKind.Module)
+    if moduleId == 0 {
+      self.project.preludeScope = moduleScope
+    }
     val prevScope = self.currentScope
     self.currentScope = moduleScope
     val mod = TypedModule(id: moduleId, name: modulePathAbs, code: [], rootScope: moduleScope)
@@ -1938,7 +1958,10 @@ export type Typechecker {
     val staticMethods = _p[2]
 
     val selfInstanceType = match structOrEnum {
-      StructOrEnum.Struct(struct) => Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), []))
+      StructOrEnum.Struct(struct) => {
+        val typeArgs = struct.typeParams.map(p => Type(kind: TypeKind.Generic(p)))
+        Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), typeArgs))
+      }
       StructOrEnum.Enum(enum_) => Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), []))
     }
 
@@ -2275,8 +2298,19 @@ export type Typechecker {
     val structsPass1: (Struct, TypeDeclarationNode)[] = []
     for node in typeDecls {
       val struct = match self._typecheckStructPass1(node) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+      if self.currentModuleId == 0 {
+        match struct.label.name {
+          "String" => self.project.preludeStringStruct = struct
+          "Array" => self.project.preludeArrayStruct = struct
+          "Set" => self.project.preludeSetStruct = struct
+          "Map" => self.project.preludeMapStruct = struct
+          _ => {}
+        }
+      }
       structsPass1.push((struct, node))
     }
+
+    // TODO: Verify all project's prelude structs are no longer bogus (aka have `Position(line: 0, col: 0)`)
 
     val enumsPass1: (Enum, EnumDeclarationNode)[] = []
     for node in enumDecls {
@@ -2625,9 +2659,33 @@ export type Typechecker {
     Result.Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.While(typedCondition, conditionBindingPattern, typedNodes)))
   }
 
+  func _typeIsIterable(self, ty: Type): Type? {
+    if ty.nullable return None
+
+    match ty.kind {
+      TypeKind.Instance(structOrEnum, _) => {
+        val instanceMethods = match structOrEnum {
+          StructOrEnum.Struct(struct) => struct.instanceMethods
+          StructOrEnum.Enum(enum_) => enum_.instanceMethods
+        }
+        for m in instanceMethods {
+          if m.label.name == "next" {
+            if !m.params.isEmpty() return None
+            val iterItemType = m.returnType.clone()
+            iterItemType.nullable = false
+            return iterItemType
+          }
+        }
+
+        None
+      }
+      _ => None
+    }
+  }
+
   func _typecheckFor(self, token: Token, itemPattern: BindingPattern, indexPattern: BindingPattern?, iterator: AstNode, block: AstNode[]): Result<TypedAstNode, TypeError> {
     val typedIterator = match self._typecheckExpression(iterator, None) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-    val itemType = if self._typeAsInstance1(typedIterator.ty, self.project.preludeArrayStruct) |innerTy| innerTy else {
+    val itemType = if self._typeIsIterable(typedIterator.ty) |innerTy| innerTy else {
       return Result.Err(TypeError(position: typedIterator.token.position, kind: TypeErrorKind.IllegalControlFlowType(ty: typedIterator.ty, purpose: "for")))
     }
     if itemType.kind == TypeKind.Hole {
@@ -3044,11 +3102,34 @@ export type Typechecker {
 
   func _resolveAccessorPathSegment(self, ty: Type, label: Label): Result<(AccessorPathSegment, Type)?, TypeError> {
     val foundSegment: (AccessorPathSegment, Type)? = match ty.kind {
+      TypeKind.Any => {
+        match label.name {
+          "toString" => {
+            val scope = self.project.preludeScope.makeChild("Any", ScopeKind.Type)
+            val method = Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString))
+            return Result.Ok((AccessorPathSegment.Method(label, method), method.getType()))
+          }
+          "hash" => {
+            val scope = self.project.preludeScope.makeChild("Any", ScopeKind.Type)
+            val method = Function.generated(scope, "hash", [], Type(kind: TypeKind.PrimitiveInt))
+            return Result.Ok((AccessorPathSegment.Method(label, method), method.getType()))
+          }
+          "eq" => {
+            val scope = self.project.preludeScope.makeChild("Any", ScopeKind.Type)
+            val method = Function.generated(scope, "eq", [("other", Type(kind: TypeKind.Any))], Type(kind: TypeKind.PrimitiveBool))
+            return Result.Ok((AccessorPathSegment.Method(label, method), method.getType()))
+          }
+          _ => None
+        }
+      }
       TypeKind.PrimitiveUnit => None
       TypeKind.PrimitiveInt => None // TODO
       TypeKind.PrimitiveFloat => None // TODO
       TypeKind.PrimitiveBool => None // TODO
-      TypeKind.PrimitiveString => None // TODO
+      TypeKind.PrimitiveString => {
+        // TODO: clean this up
+        return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeStringStruct), [])), label)
+      }
       TypeKind.Never => None
       TypeKind.Generic => None // TODO
       TypeKind.Instance(structOrEnum, generics) => {
