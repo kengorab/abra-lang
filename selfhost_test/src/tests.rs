@@ -452,6 +452,13 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/invocation/invocation_enum_variant.1.abra", "typechecker/invocation/invocation_enum_variant.1.out.json")
         .add_test_vs_txt("typechecker/invocation/invocation_enum_variant.2.abra", "typechecker/invocation/invocation_enum_variant.2.out.json")
         .add_test_vs_txt("typechecker/invocation/invocation_enum_variant.3.abra", "typechecker/invocation/invocation_enum_variant.3.out.json")
+        .add_test_vs_txt("typechecker/invocation/error_variadic_generic_type_mismatch.abra", "typechecker/invocation/error_variadic_generic_type_mismatch.out")
+        .add_test_vs_txt("typechecker/invocation/error_variadic_labeled_generic_type_mismatch.abra", "typechecker/invocation/error_variadic_labeled_generic_type_mismatch.out")
+        .add_test_vs_txt("typechecker/invocation/error_variadic_labeled_too_many_args.abra", "typechecker/invocation/error_variadic_labeled_too_many_args.out")
+        .add_test_vs_txt("typechecker/invocation/error_variadic_labeled_type_mismatch.abra", "typechecker/invocation/error_variadic_labeled_type_mismatch.out")
+        .add_test_vs_txt("typechecker/invocation/error_variadic_type_mismatch.abra", "typechecker/invocation/error_variadic_type_mismatch.out")
+        .add_test_vs_txt("typechecker/invocation/invocation_variadic.1.abra", "typechecker/invocation/invocation_variadic.1.out.json")
+        .add_test_vs_txt("typechecker/invocation/invocation_variadic.2.abra", "typechecker/invocation/invocation_variadic.2.out.json")
 
         // Accessor
         .add_test_vs_txt("typechecker/accessor/accessor.1.abra", "typechecker/accessor/accessor.1.out.json")
