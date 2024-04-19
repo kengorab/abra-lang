@@ -1,0 +1,6 @@
+// Test generic variadic arguments
+func foo<T>(a: T, *b: T[]) {
+  val _: T[] = b
+}
+
+foo(1, "a")
