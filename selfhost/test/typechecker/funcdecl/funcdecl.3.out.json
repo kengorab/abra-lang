@@ -1,5 +1,5 @@
 {
-  "id": 1,
+  "id": 3,
   "name": "%FILE_NAME%",
   "code": [
     {
@@ -19,7 +19,7 @@
         "function": {
           "label": { "name": "f", "position": [2, 6] },
           "scope": {
-            "name": "$root::module_1::f",
+            "name": "$root::module_3::f",
             "variables": [
               {
                 "label": { "name": "a", "position": [2, 8] },

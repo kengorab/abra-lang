@@ -1,5 +1,5 @@
 {
-  "id": 1,
+  "id": 3,
   "name": "%FILE_NAME%",
   "code": [
     {
@@ -17,7 +17,7 @@
       "node": {
         "kind": "typeDeclaration",
         "struct": {
-          "moduleId": 1,
+          "moduleId": 3,
           "name": { "name": "Foo", "position": [1, 6] },
           "typeParams": [],
           "fields": [
@@ -35,7 +35,7 @@
             {
               "label": { "name": "toString", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_1::Foo::toString",
+                "name": "$root::module_3::Foo::toString",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -54,7 +54,7 @@
             {
               "label": { "name": "hash", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_1::Foo::hash",
+                "name": "$root::module_3::Foo::hash",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -73,7 +73,7 @@
             {
               "label": { "name": "eq", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_1::Foo::eq",
+                "name": "$root::module_3::Foo::eq",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -87,7 +87,7 @@
                   "type": {
                     "nullable": false,
                     "kind": "instance",
-                    "struct": { "moduleId": 1, "name": "Foo" },
+                    "struct": { "moduleId": 3, "name": "Foo" },
                     "typeParams": []
                   },
                   "defaultValue": null,
@@ -104,7 +104,7 @@
             {
               "label": { "name": "foo", "position": [4, 8] },
               "scope": {
-                "name": "$root::module_1::Foo::foo",
+                "name": "$root::module_3::Foo::foo",
                 "variables": [
                   {
                     "label": { "name": "self", "position": [4, 12] },
@@ -112,7 +112,7 @@
                     "type": {
                       "nullable": false,
                       "kind": "instance",
-                      "struct": { "moduleId": 1, "name": "Foo" },
+                      "struct": { "moduleId": 3, "name": "Foo" },
                       "typeParams": []
                     }
                   },
@@ -182,7 +182,7 @@
                         "type": {
                           "nullable": false,
                           "kind": "instance",
-                          "struct": { "moduleId": 1, "name": "Foo" },
+                          "struct": { "moduleId": 3, "name": "Foo" },
                           "typeParams": []
                         },
                         "node": {
@@ -291,7 +291,7 @@
             "type": {
               "nullable": false,
               "kind": "instance",
-              "struct": { "moduleId": 1, "name": "Foo" },
+              "struct": { "moduleId": 3, "name": "Foo" },
               "typeParams": []
             }
           }
@@ -389,7 +389,7 @@
                   "type": {
                     "nullable": false,
                     "kind": "instance",
-                    "struct": { "moduleId": 1, "name": "Foo" },
+                    "struct": { "moduleId": 3, "name": "Foo" },
                     "typeParams": []
                   },
                   "node": {
@@ -568,7 +568,7 @@
                   "type": {
                     "nullable": false,
                     "kind": "instance",
-                    "struct": { "moduleId": 1, "name": "Foo" },
+                    "struct": { "moduleId": 3, "name": "Foo" },
                     "typeParams": []
                   },
                   "node": {

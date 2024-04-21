@@ -308,7 +308,18 @@ export type Type {
 
   func withSubstitutedGenerics(self, resolvedGenerics: Map<String, Type>, retainUnknown: Bool, genericsInScope: Set<String>): Type {
     val resultType = match self.kind {
-      TypeKind.Generic(name) => resolvedGenerics[name]?.clone() ?: (if retainUnknown || genericsInScope.contains(name) self else Type(kind: TypeKind.Hole))
+      TypeKind.Generic(name) => {
+        val t = if resolvedGenerics[name] |substitute| {
+          val ty = substitute.clone()
+          if self.nullable ty.nullable = true
+          ty
+        } else if retainUnknown || genericsInScope.contains(name) {
+          self
+        } else {
+          Type(kind: TypeKind.Hole)
+        }
+        t
+      }
       TypeKind.Instance(structOrEnum, typeArgs) => {
         val substTypeArgs = typeArgs.map(ty => ty.withSubstitutedGenerics(resolvedGenerics, retainUnknown, genericsInScope))
         Type(kind: TypeKind.Instance(structOrEnum, substTypeArgs), nullable: self.nullable)
@@ -327,7 +338,6 @@ export type Type {
       }
       _ => self
     }
-    // resultType.nullable = self.nullable
 
     resultType
   }
@@ -1049,11 +1059,9 @@ export type Typechecker {
   isEnumContainerValueAllowed: Bool = false
 
   func typecheckEntrypoint(self, modulePathAbs: String): Result<Int, TypecheckerError> {
-    // val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
-    // val preludeModulePathAbs = "/" + preludeModulePathSegs.join("/")
-    // val preludeMod = match self._typecheckModule(preludeModulePathAbs) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-    val preludeMod = TypedModule(id: 0, name: "prelude", code: [], rootScope: self.currentScope.makeChild("module_0", ScopeKind.Module))
-    self.project.modules["prelude"] = preludeMod
+    val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
+    val preludeModulePathAbs = "/" + preludeModulePathSegs.join("/")
+    match self._typecheckModule(preludeModulePathAbs) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
     match self._typecheckModule(modulePathAbs) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
@@ -3518,7 +3526,7 @@ export type Typechecker {
     }
 
     if typeHint |hint| {
-      if self._containsGenerics(fn.returnType) {
+      if hint.kind != TypeKind.PrimitiveUnit && self._containsGenerics(fn.returnType) {
         val extractedGenerics = self._extractGenerics(template: fn.returnType, source: hint)
 
         for _p in extractedGenerics {

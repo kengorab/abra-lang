@@ -1,5 +1,5 @@
 {
-  "id": 1,
+  "id": 3,
   "name": "%FILE_NAME%",
   "code": [
     {
@@ -19,7 +19,7 @@
         "function": {
           "label": { "name": "foo", "position": [1, 6] },
           "scope": {
-            "name": "$root::module_1::foo",
+            "name": "$root::module_3::foo",
             "variables": [
               {
                 "label": { "name": "fn", "position": [1, 16] },
@@ -218,7 +218,7 @@
         "function": {
           "label": { "name": "negativeOne", "position": [3, 6] },
           "scope": {
-            "name": "$root::module_1::negativeOne",
+            "name": "$root::module_3::negativeOne",
             "variables": [],
             "functions": [],
             "types": []
@@ -481,7 +481,7 @@
         "function": {
           "label": { "name": "bar", "position": [7, 6] },
           "scope": {
-            "name": "$root::module_1::bar",
+            "name": "$root::module_3::bar",
             "variables": [
               {
                 "label": { "name": "s", "position": [7, 10] },

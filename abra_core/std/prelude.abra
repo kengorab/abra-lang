@@ -988,7 +988,7 @@ type Map<K, V> {
     val reprs: String[] = Array.withCapacity(self.size)
     for i in range(0, self._entries.length) {
       if self._entries[i] |bucket| {
-        var cursor = bucket
+        var cursor: MapEntry<K, V>? = bucket
         while cursor |cur| {
           val item = "${cur.key}: ${cur.value}"
           reprs.push(item)
@@ -1006,7 +1006,7 @@ type Map<K, V> {
 
     for i in range(0, self._entries.length) {
       if self._entries[i] |bucket| {
-        var cursor = bucket
+        var cursor: MapEntry<K, V>? = bucket
 
         while cursor |cur| {
           if other.get(cur.key) |otherValue| {
@@ -1027,7 +1027,7 @@ type Map<K, V> {
   func forEach(self, fn: (K, V) => Unit) {
     for i in range(0, self._entries.length) {
       if self._entries[i] |bucket| {
-        var cursor = bucket
+        var cursor: MapEntry<K, V>? = bucket
         while cursor |cur| {
           fn(cur.key, cur.value)
           cursor = cur.next
@@ -1075,7 +1075,7 @@ type Map<K, V> {
     val newMap: Map<K, U> = Map.new()
     for i in range(0, self._entries.length) {
       if self._entries[i] |bucket| {
-        var cursor = bucket
+        var cursor: MapEntry<K, V>? = bucket
         while cursor |cur| {
           newMap.insert(cur.key, fn(cur.key, cur.value))
           cursor = cur.next
@@ -1146,7 +1146,7 @@ type Map<K, V> {
         if entry.key == key {
           return entry
         } else {
-          cursor = entry.next
+          cursor = entry?.next
         }
       }
     }
