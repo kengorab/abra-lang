@@ -1,5 +1,10 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-val a = 123
+func fill<T>(capacity: Int, with: T): T[] = []
 
+//val arr = fill(12, "foo")
+//val _: String[] = arr
+
+val arr: String?[] = fill(12, "foo")
+val _: String?[] = arr

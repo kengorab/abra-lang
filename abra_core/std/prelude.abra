@@ -852,7 +852,17 @@ type Set<T> {
   }
 
   func forEach(self, fn: (T) => Unit) {
-    self._map.forEach(key => fn(key))
+    // TODO: uncomment when lambdas are implemented in the selfhosted typechecker
+    //self._map.forEach(key => fn(key))
+    for i in range(0, self._map._entries.length) {
+      if self._map._entries[i] |bucket| {
+        var cursor: MapEntry<T, Bool>? = bucket
+        while cursor |cur| {
+          fn(cur.key)
+          cursor = cur.next
+        }
+      }
+    }
   }
 
   @Stub func remove(self, item: T): T?
@@ -960,7 +970,7 @@ type Map<K, V> {
       initialCapacity
     }
 
-    val entries: MapEntry<K, V>?[] = Array.fillBy(capacity, () => None)
+    val entries: MapEntry<K, V>?[] = Array.fill(capacity, None)
     Map(size: 0, _capacity: capacity, _entries: entries)
   }
 
@@ -1116,7 +1126,7 @@ type Map<K, V> {
   func _resize(self) {
     val newCapacity = self._capacity * 2
 
-    val newEntries: MapEntry<K, V>?[] = Array.fillBy(newCapacity, () => None)
+    val newEntries: MapEntry<K, V>?[] = Array.fill(newCapacity, None)
     for entry in self {
       val key = entry[0]
       val value = entry[1]

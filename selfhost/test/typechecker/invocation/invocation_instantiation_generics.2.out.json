@@ -116,7 +116,18 @@
                     "nullable": false,
                     "kind": "instance",
                     "struct": { "moduleId": 1, "name": "Foo" },
-                    "typeParams": []
+                    "typeParams": [
+                      {
+                        "nullable": false,
+                        "kind": "generic",
+                        "name": "T"
+                      },
+                      {
+                        "nullable": false,
+                        "kind": "generic",
+                        "name": "U"
+                      }
+                    ]
                   },
                   "defaultValue": null,
                   "isVariadic": false
