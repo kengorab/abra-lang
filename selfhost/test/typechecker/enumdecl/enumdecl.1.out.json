@@ -1,5 +1,5 @@
 {
-  "id": 1,
+  "id": 3,
   "name": "%FILE_NAME%",
   "code": [
     {
@@ -17,7 +17,7 @@
       "node": {
         "kind": "enumDeclaration",
         "enum": {
-          "moduleId": 1,
+          "moduleId": 3,
           "name": { "name": "Foo", "position": [1, 6] },
           "typeParams": [],
           "variants": [
@@ -86,7 +86,7 @@
             {
               "label": { "name": "toString", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_1::Foo::toString",
+                "name": "$root::module_3::Foo::toString",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -105,7 +105,7 @@
             {
               "label": { "name": "hash", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_1::Foo::hash",
+                "name": "$root::module_3::Foo::hash",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -124,7 +124,7 @@
             {
               "label": { "name": "eq", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_1::Foo::eq",
+                "name": "$root::module_3::Foo::eq",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -138,7 +138,7 @@
                   "type": {
                     "nullable": false,
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 1, "name": "Foo" },
+                    "enum": { "moduleId": 3, "name": "Foo" },
                     "typeParams": []
                   },
                   "defaultValue": null,
@@ -155,7 +155,7 @@
             {
               "label": { "name": "foo", "position": [6, 8] },
               "scope": {
-                "name": "$root::module_1::Foo::foo",
+                "name": "$root::module_3::Foo::foo",
                 "variables": [
                   {
                     "label": { "name": "self", "position": [6, 12] },
@@ -163,7 +163,7 @@
                     "type": {
                       "nullable": false,
                       "kind": "enumInstance",
-                      "enum": { "moduleId": 1, "name": "Foo" },
+                      "enum": { "moduleId": 3, "name": "Foo" },
                       "typeParams": []
                     }
                   }
@@ -205,7 +205,7 @@
             {
               "label": { "name": "fooStatic", "position": [7, 8] },
               "scope": {
-                "name": "$root::module_1::Foo::fooStatic",
+                "name": "$root::module_3::Foo::fooStatic",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -268,7 +268,7 @@
             "type": {
               "nullable": false,
               "kind": "enumInstance",
-              "enum": { "moduleId": 1, "name": "Foo" },
+              "enum": { "moduleId": 3, "name": "Foo" },
               "typeParams": []
             }
           }

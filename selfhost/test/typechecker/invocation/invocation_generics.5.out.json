@@ -1,5 +1,5 @@
 {
-  "id": 1,
+  "id": 3,
   "name": "%FILE_NAME%",
   "code": [
     {
@@ -19,7 +19,7 @@
         "function": {
           "label": { "name": "arrayMap", "position": [1, 6] },
           "scope": {
-            "name": "$root::module_1::arrayMap",
+            "name": "$root::module_3::arrayMap",
             "variables": [
               {
                 "label": { "name": "arr", "position": [1, 21] },
@@ -195,7 +195,7 @@
         "function": {
           "label": { "name": "strLen", "position": [3, 6] },
           "scope": {
-            "name": "$root::module_1::strLen",
+            "name": "$root::module_3::strLen",
             "variables": [
               {
                 "label": { "name": "s", "position": [3, 13] },

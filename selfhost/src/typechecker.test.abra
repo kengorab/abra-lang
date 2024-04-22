@@ -8,8 +8,22 @@
 
 import "fs" as fs
 import getAbsolutePath from "./utils"
-import ModuleLoader, Project, Typechecker from "./typechecker"
+import ModuleLoader, Project, Typechecker, TypedModule from "./typechecker"
 import Jsonifier from "./typechecker_test_utils"
+
+func verifyStdModule(modulesSortedById: TypedModule[], expectedId: Int, name: String): Bool {
+  if modulesSortedById[expectedId] |m| {
+    if !m.name.endsWith("std/$name.abra") {
+      println("Error: $name module misconfigured")
+      return false
+    }
+  } else {
+    println("Error: no $name module defined!")
+    return false
+  }
+
+  true
+}
 
 func main() {
   val abraStdRoot = if Process.getEnvVar("ABRA_HOME") |v| v else {
@@ -27,19 +41,15 @@ func main() {
 
     match typechecker.typecheckEntrypoint(filePathAbs) {
       Result.Ok => {
-        val json = Jsonifier()
-        if project.modules["prelude"] |prelude| {
-          if prelude.id != 0 && prelude.name != "prelude" {
-            println("Error: prelude module misconfigured")
-          }
-        } else {
-          println("Error: no prelude module defined!")
-        }
+        val allModules = project.modules.values().sortBy(m => m.id)
 
-        val modules = project.modules.values()
-          .filter(mod => mod.name != "prelude")
-          .sortBy(m => m.id)
-        json.printModules(modules)
+        if !verifyStdModule(allModules, 0, "prelude") return
+        if !verifyStdModule(allModules, 1, "_intrinsics") return
+        if !verifyStdModule(allModules, 2, "libc") return
+
+        val userModules = allModules[3:]
+        val json = Jsonifier()
+        json.printModules(userModules)
       }
       Result.Err(e) => println(e.getMessage())
     }

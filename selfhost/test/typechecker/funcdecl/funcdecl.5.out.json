@@ -1,5 +1,5 @@
 {
-  "id": 1,
+  "id": 3,
   "name": "%FILE_NAME%",
   "code": [
     {
@@ -19,7 +19,7 @@
         "function": {
           "label": { "name": "foo1", "position": [2, 6] },
           "scope": {
-            "name": "$root::module_1::foo1",
+            "name": "$root::module_3::foo1",
             "variables": [],
             "functions": [],
             "types": []
@@ -85,7 +85,7 @@
         "function": {
           "label": { "name": "foo2", "position": [3, 6] },
           "scope": {
-            "name": "$root::module_1::foo2",
+            "name": "$root::module_3::foo2",
             "variables": [],
             "functions": [],
             "types": []
@@ -222,7 +222,7 @@
         "function": {
           "label": { "name": "foo3", "position": [4, 6] },
           "scope": {
-            "name": "$root::module_1::foo3",
+            "name": "$root::module_3::foo3",
             "variables": [],
             "functions": [],
             "types": []
@@ -359,7 +359,7 @@
         "function": {
           "label": { "name": "foo4", "position": [5, 6] },
           "scope": {
-            "name": "$root::module_1::foo4",
+            "name": "$root::module_3::foo4",
             "variables": [],
             "functions": [],
             "types": []
@@ -496,7 +496,7 @@
         "function": {
           "label": { "name": "foo5", "position": [6, 6] },
           "scope": {
-            "name": "$root::module_1::foo5",
+            "name": "$root::module_3::foo5",
             "variables": [],
             "functions": [],
             "types": []

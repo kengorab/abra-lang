@@ -1,5 +1,5 @@
 {
-  "id": 1,
+  "id": 3,
   "name": "%FILE_NAME%",
   "code": [
     {
@@ -2201,7 +2201,7 @@
       "node": {
         "kind": "typeDeclaration",
         "struct": {
-          "moduleId": 1,
+          "moduleId": 3,
           "name": { "name": "Foo1", "position": [56, 6] },
           "typeParams": [],
           "fields": [
@@ -2219,7 +2219,7 @@
             {
               "label": { "name": "toString", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_1::Foo1::toString",
+                "name": "$root::module_3::Foo1::toString",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -2238,7 +2238,7 @@
             {
               "label": { "name": "hash", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_1::Foo1::hash",
+                "name": "$root::module_3::Foo1::hash",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -2257,7 +2257,7 @@
             {
               "label": { "name": "eq", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_1::Foo1::eq",
+                "name": "$root::module_3::Foo1::eq",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -2271,7 +2271,7 @@
                   "type": {
                     "nullable": false,
                     "kind": "instance",
-                    "struct": { "moduleId": 1, "name": "Foo1" },
+                    "struct": { "moduleId": 3, "name": "Foo1" },
                     "typeParams": []
                   },
                   "defaultValue": null,
@@ -2315,7 +2315,7 @@
             "type": {
               "nullable": false,
               "kind": "instance",
-              "struct": { "moduleId": 1, "name": "Foo1" },
+              "struct": { "moduleId": 3, "name": "Foo1" },
               "typeParams": []
             }
           }
@@ -2330,7 +2330,7 @@
           "type": {
             "nullable": false,
             "kind": "instance",
-            "struct": { "moduleId": 1, "name": "Foo1" },
+            "struct": { "moduleId": 3, "name": "Foo1" },
             "typeParams": []
           },
           "node": {
@@ -2366,12 +2366,12 @@
                 "type": {
                   "nullable": false,
                   "kind": "instance",
-                  "struct": { "moduleId": 1, "name": "Foo1" },
+                  "struct": { "moduleId": 3, "name": "Foo1" },
                   "typeParams": []
                 },
                 "node": {
                   "kind": "invocation",
-                  "invokee": { "moduleId": 1, "name": "Foo1" },
+                  "invokee": { "moduleId": 3, "name": "Foo1" },
                   "arguments": [
                     {
                       "token": {
@@ -2406,12 +2406,12 @@
                 "type": {
                   "nullable": false,
                   "kind": "instance",
-                  "struct": { "moduleId": 1, "name": "Foo1" },
+                  "struct": { "moduleId": 3, "name": "Foo1" },
                   "typeParams": []
                 },
                 "node": {
                   "kind": "invocation",
-                  "invokee": { "moduleId": 1, "name": "Foo1" },
+                  "invokee": { "moduleId": 3, "name": "Foo1" },
                   "arguments": [
                     {
                       "token": {
@@ -2464,7 +2464,7 @@
             "type": {
               "nullable": false,
               "kind": "instance",
-              "struct": { "moduleId": 1, "name": "Foo1" },
+              "struct": { "moduleId": 3, "name": "Foo1" },
               "typeParams": []
             }
           }
@@ -2480,7 +2480,7 @@
           "type": {
             "nullable": false,
             "kind": "instance",
-            "struct": { "moduleId": 1, "name": "Foo1" },
+            "struct": { "moduleId": 3, "name": "Foo1" },
             "typeParams": []
           },
           "node": {
@@ -2505,7 +2505,7 @@
       "node": {
         "kind": "enumDeclaration",
         "enum": {
-          "moduleId": 1,
+          "moduleId": 3,
           "name": { "name": "Foo2", "position": [60, 6] },
           "typeParams": [],
           "variants": [
@@ -2522,7 +2522,7 @@
             {
               "label": { "name": "toString", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_1::Foo2::toString",
+                "name": "$root::module_3::Foo2::toString",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -2541,7 +2541,7 @@
             {
               "label": { "name": "hash", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_1::Foo2::hash",
+                "name": "$root::module_3::Foo2::hash",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -2560,7 +2560,7 @@
             {
               "label": { "name": "eq", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_1::Foo2::eq",
+                "name": "$root::module_3::Foo2::eq",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -2574,7 +2574,7 @@
                   "type": {
                     "nullable": false,
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 1, "name": "Foo2" },
+                    "enum": { "moduleId": 3, "name": "Foo2" },
                     "typeParams": []
                   },
                   "defaultValue": null,
@@ -2618,7 +2618,7 @@
             "type": {
               "nullable": false,
               "kind": "enumInstance",
-              "enum": { "moduleId": 1, "name": "Foo2" },
+              "enum": { "moduleId": 3, "name": "Foo2" },
               "typeParams": []
             }
           }
@@ -2633,7 +2633,7 @@
           "type": {
             "nullable": false,
             "kind": "enumInstance",
-            "enum": { "moduleId": 1, "name": "Foo2" },
+            "enum": { "moduleId": 3, "name": "Foo2" },
             "typeParams": []
           },
           "node": {
@@ -2669,7 +2669,7 @@
                 "type": {
                   "nullable": false,
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 1, "name": "Foo2" },
+                  "enum": { "moduleId": 3, "name": "Foo2" },
                   "typeParams": []
                 },
                 "node": {
@@ -2685,7 +2685,7 @@
                     "type": {
                       "nullable": false,
                       "kind": "enum",
-                      "enum": { "moduleId": 1, "name": "Foo2" }
+                      "enum": { "moduleId": 3, "name": "Foo2" }
                     },
                     "node": {
                       "kind": "identifier",
@@ -2711,7 +2711,7 @@
                 "type": {
                   "nullable": false,
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 1, "name": "Foo2" },
+                  "enum": { "moduleId": 3, "name": "Foo2" },
                   "typeParams": []
                 },
                 "node": {
@@ -2727,7 +2727,7 @@
                     "type": {
                       "nullable": false,
                       "kind": "enum",
-                      "enum": { "moduleId": 1, "name": "Foo2" }
+                      "enum": { "moduleId": 3, "name": "Foo2" }
                     },
                     "node": {
                       "kind": "identifier",
@@ -2771,7 +2771,7 @@
             "type": {
               "nullable": false,
               "kind": "enumInstance",
-              "enum": { "moduleId": 1, "name": "Foo2" },
+              "enum": { "moduleId": 3, "name": "Foo2" },
               "typeParams": []
             }
           }
@@ -2787,7 +2787,7 @@
           "type": {
             "nullable": false,
             "kind": "enumInstance",
-            "enum": { "moduleId": 1, "name": "Foo2" },
+            "enum": { "moduleId": 3, "name": "Foo2" },
             "typeParams": []
           },
           "node": {

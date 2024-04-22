@@ -1,5 +1,5 @@
 {
-  "id": 1,
+  "id": 3,
   "name": "%FILE_NAME%",
   "code": [
     {
@@ -19,7 +19,7 @@
         "function": {
           "label": { "name": "foo1", "position": [1, 6] },
           "scope": {
-            "name": "$root::module_1::foo1",
+            "name": "$root::module_3::foo1",
             "variables": [
               {
                 "label": { "name": "t", "position": [1, 14] },
@@ -566,7 +566,7 @@
         "function": {
           "label": { "name": "foo2", "position": [9, 6] },
           "scope": {
-            "name": "$root::module_1::foo2",
+            "name": "$root::module_3::foo2",
             "variables": [
               {
                 "label": { "name": "t", "position": [9, 14] },

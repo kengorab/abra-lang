@@ -1784,7 +1784,7 @@ type Precedence {
       TokenKind.Eq => Precedence.assignment()
       TokenKind.Elvis => Precedence.coalesce()
       TokenKind.ElvisEq => Precedence.coalesce()
-      TokenKind.StarStar => Precedence.coalesce()
+      TokenKind.StarStar => Precedence.multiplication()
       _ => Precedence.none()
     }
   }
