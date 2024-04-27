@@ -1,10 +1,15 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-func fill<T>(capacity: Int, with: T): T[] = []
+//func fill<T>(capacity: Int, with: T): T[] = []
 
 //val arr = fill(12, "foo")
 //val _: String[] = arr
 
-val arr: String?[] = fill(12, "foo")
-val _: String?[] = arr
+//val arr: String?[] = fill(12, "foo")
+//val _: String?[] = arr
+//
+func forEach<T>(set: Set<T>, fn: (T) => Unit) {
+  set._map.forEach(key => fn(key))
+}
+

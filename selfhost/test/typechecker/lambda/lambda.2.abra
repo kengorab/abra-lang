@@ -1,0 +1,5 @@
+// Test passing lambda as argument
+val arr1 = [1, 2, 3]
+val _: Int[] = arr1
+val arr2 = arr1.map((x) => x + 0.1)
+val _: Float[] = arr2

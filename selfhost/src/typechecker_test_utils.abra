@@ -475,6 +475,12 @@ export type Jsonifier {
         self.printTypedIndexingNode(node)
         println()
       }
+      TypedAstNodeKind.Lambda(fn) => {
+        self.println("\"kind\": \"lambda\",")
+        self.print("\"function\": ")
+        self.printFunc(fn)
+        println()
+      }
       TypedAstNodeKind.Assignment(mode, op, expr) => {
         self.println("\"kind\": \"assignment\",")
 

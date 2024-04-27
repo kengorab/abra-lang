@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:1:27
+Could not determine type for parameter 'b'
+  |  val f: (Int) => Int = (a, b) => 123
+                               ^
+Consider adding a type annotation
