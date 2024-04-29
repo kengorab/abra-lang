@@ -867,10 +867,7 @@ type TypeError {
           TypeKind.Instance(structOrEnum) => {
             match structOrEnum {
               StructOrEnum.Enum => lines.push("This is a constant enum variant, and it accepts no arguments")
-              _ => {
-                // pseudo-assert
-                println("This should be unreachable")
-              }
+              _ => __assertUnreachable("This should be unreachable")
             }
           }
           _ => lines.push("Type '${ty.repr()}' is not callable")
@@ -907,14 +904,14 @@ type TypeError {
             lines.push("No value at index for tuple of type '${ty.repr()}'")
             match ty.kind {
               TypeKind.Tuple(types) => lines.push("(Valid index values are from 0-${types.length - 1}, inclusive)")
-              _ => println("The type here should always be a tuple")
+              _ => __assertUnreachable("The type here should always be a tuple")
             }
           }
           IllegalTupleIndexingReason.IndexNegative => {
             lines.push("Tuple index values must always be a non-negative integer")
             match ty.kind {
               TypeKind.Tuple(types) => lines.push("(Valid index values are from 0-${types.length - 1}, inclusive)")
-              _ => println("The type here should always be a tuple")
+              _ => __assertUnreachable("The type here should always be a tuple")
             }
           }
           IllegalTupleIndexingReason.NotIntLiteral => lines.push("Cannot use non-Int literal as index value. Tuple index values must always be Int literals")
@@ -1527,13 +1524,12 @@ export type Typechecker {
         match source.kind {
           TypeKind.Instance(_, sourceTypeArgs) => {
             if templateTypeArgs.length != sourceTypeArgs.length {
-              // There's currently no notion of asserts, but this will show up in output files and fail tests so it won't go unnoticed.
-              println("templateTypeArgs.length != sourceTypeArgs.length")
+              __assertUnreachable("templateTypeArgs.length != sourceTypeArgs.length")
               return
             }
             for tplTypeArg, idx in templateTypeArgs {
               val srcTypeArg = if sourceTypeArgs[idx] |t| t else {
-                println("templateTypeArgs.length != sourceTypeArgs.length")
+                __assertUnreachable("templateTypeArgs.length != sourceTypeArgs.length")
                 return
               }
               self.__extractGenerics(template: tplTypeArg, source: srcTypeArg, extracted: extracted)
@@ -1583,8 +1579,7 @@ export type Typechecker {
         match _p[0].kind {
           TypeKind.Generic(name) => genericsInScope.insert(name)
           _ => {
-            // pseudo-assert
-            println("typeParam.kind != TypeKind.Generic")
+            __assertUnreachable("typeParam.kind != TypeKind.Generic")
             return #{}
           }
         }
@@ -3576,6 +3571,7 @@ export type Typechecker {
       return Result.Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Placeholder))
     }
 
+    val genericsInScope = self._genericsInScope()
     var hasBegunOptionalParams = false
     var variadicParam: (TypedFunctionParam, Int)? = None
     val variadicArgs: TypedAstNode[] = []
@@ -3619,7 +3615,7 @@ export type Typechecker {
       }
 
       val _p = if self._containsGenerics(param.ty) {
-        var paramType = paramTy.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
+        var paramType = paramTy.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: genericsInScope)
 
         val typedArg = match self._typecheckExpression(arg.value, paramType) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
         if numAttempts < 1 && typedArg.ty.hasUnfilledHoles() {
@@ -3639,7 +3635,7 @@ export type Typechecker {
           resolvedGenerics[_p[0]] = _p[1]
         }
 
-        paramType = paramTy.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
+        paramType = paramTy.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: genericsInScope)
         (typedArg, paramType)
       } else {
         val typedArg = match self._typecheckExpression(arg.value, paramTy) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
@@ -3661,7 +3657,7 @@ export type Typechecker {
 
     if variadicParam |_p| {
       val param = _p[0]
-      var innerType = param.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
+      var innerType = param.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: genericsInScope)
       val paramType = Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeArrayStruct), [innerType]))
       typedArgumentsByName[param.label.name] = TypedAstNode(token: token, ty: paramType, kind: TypedAstNodeKind.Array(variadicArgs))
     }
@@ -3673,7 +3669,7 @@ export type Typechecker {
       } else if param.defaultValue {
         typedArguments.push(None)
       } else if param.isVariadic {
-        var innerType = param.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
+        var innerType = param.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: genericsInScope)
         val paramType = Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeArrayStruct), [innerType]))
         typedArguments.push(TypedAstNode(token: token, ty: paramType, kind: TypedAstNodeKind.Array([])))
       } else {
@@ -3700,7 +3696,6 @@ export type Typechecker {
       }
     }
 
-    val genericsInScope = self._genericsInScope()
     val returnType = if self._containsGenerics(fn.returnType) {
       fn.returnType.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: genericsInScope)
     } else {
@@ -4054,16 +4049,13 @@ export type Typechecker {
     if typeHint |hint| {
       match hint.kind {
         TypeKind.Func(paramTypes, retType) => {
-          paramHints = paramTypes.map(_p => {
+          for _p in paramTypes {
             val ty = _p[0]
             val isRequired = _p[1]
-            if !isRequired {
-              // pseudo-assert
-              println("unexpected non-required param in TypeKind.Func")
-            }
+            if !isRequired return unreachable(token.position, "unexpected non-required param in lambda param type hint")
 
-            ty
-          })
+            paramHints.push(ty)
+          }
           retHint = retType
         }
         _ => {}
@@ -4096,4 +4088,11 @@ func todo<V>(position: Position, reason = ""): Result<V, TypeError> {
 
 func unreachable<V>(position: Position, message: String): Result<V, TypeError> {
   Result.Err(TypeError(position: position, kind: TypeErrorKind.Unreachable(message)))
+}
+
+// There's currently no notion of asserts in the language but the message here will show up in output files
+// which will result in test failures, so in theory it won't go unnoticed. This should only be used in places
+// where the above `unreachable` function can't be used (ie. in a non-Result context).
+func __assertUnreachable(message: String) {
+  println("[ASSERT FAILED]:", message)
 }

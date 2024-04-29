@@ -852,17 +852,7 @@ type Set<T> {
   }
 
   func forEach(self, fn: (T) => Unit) {
-    // TODO: uncomment when lambdas are implemented in the selfhosted typechecker
-    //self._map.forEach(key => fn(key))
-    for i in range(0, self._map._entries.length) {
-      if self._map._entries[i] |bucket| {
-        var cursor: MapEntry<T, Bool>? = bucket
-        while cursor |cur| {
-          fn(cur.key)
-          cursor = cur.next
-        }
-      }
-    }
+    self._map.forEach(key => fn(key))
   }
 
   @Stub func remove(self, item: T): T?
