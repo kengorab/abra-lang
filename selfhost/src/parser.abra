@@ -188,7 +188,7 @@ export type FunctionParam {
   defaultValue: AstNode? = None
 }
 
-type LambdaNode {
+export type LambdaNode {
   params: FunctionParam[]
   body: AstNode[]
 }
@@ -1172,13 +1172,25 @@ export type Parser {
         return Result.Ok(AstNode(token: arrowToken, kind: AstNodeKind.Lambda(LambdaNode(params: [], body: body))))
       }
       TokenKind.Ident => {
-        val nextToken = match self._expectPeek(ahead: 1) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-        if nextToken.kind == TokenKind.Colon || nextToken.kind == TokenKind.Eq {
-          val params = match self._parseFunctionParameters(allowSelf: false) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-          val arrowToken = match self._expectNextTokenKind(TokenKind.Arrow) { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
-          val body = match self._parseBlockOrSingleExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
+        // A lambda expression can be of the form `(a, b) => c`, but it can also look like `(a, b = 4) => a + b`. At this point, it's impossible
+        // to know whether we're parsing a lambda or a tuple until we encounter the `=>` token, so we attempt to parse function parameters as if
+        // we're parsing a lambda expression. If this fails (say the code is `(a, 123)`) or we fail to find an `=>` token, then it must be the
+        // case that we were supposed to be have been parsing a tuple; we revert the cursor back to its initial position before trying to parse
+        // parameters, and continue onward to parse a tuple expression. This is admittedly a bit wasteful, since the tuple could be `(a, b)` which
+        // we would have already traversed, but such a minute optimization probably isn't worth it.
+        val cursor = self._cursor
+        match self._parseFunctionParameters(allowSelf: false) {
+          Result.Ok(params) => {
+            match self._expectNextTokenKind(TokenKind.Arrow) {
+              Result.Ok(arrowToken) => {
+                val body = match self._parseBlockOrSingleExpression() { Result.Ok(v) => v, Result.Err(e) => return Result.Err(e) }
 
-          return Result.Ok(AstNode(token: arrowToken, kind: AstNodeKind.Lambda(LambdaNode(params: params, body: body))))
+                return Result.Ok(AstNode(token: arrowToken, kind: AstNodeKind.Lambda(LambdaNode(params: params, body: body))))
+              }
+              Result.Err => { self._cursor = cursor }
+            }
+          }
+          Result.Err => { self._cursor = cursor }
         }
       }
       TokenKind.Star => { // a variadic parameter could be first

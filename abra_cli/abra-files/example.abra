@@ -1,10 +1,7 @@
 // TODO: This shouldn't stackoverflow
 //println([])
 
-func fill<T>(capacity: Int, with: T): T[] = []
-
-//val arr = fill(12, "foo")
-//val _: String[] = arr
-
-val arr: String?[] = fill(12, "foo")
-val _: String?[] = arr
+func map<T, U>(arr: T[], fn: (T) => U): U[] {
+  val mapped = arr.map(v => fn(v))
+  mapped
+}

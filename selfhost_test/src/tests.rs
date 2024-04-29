@@ -378,7 +378,6 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/indexing/tuple_error_out_of_bounds.abra", "typechecker/indexing/tuple_error_out_of_bounds.out")
         .add_test_vs_txt("typechecker/indexing/tuple_error_range.abra", "typechecker/indexing/tuple_error_range.out")
         .add_test_vs_txt("typechecker/indexing/tuple_error_type_mismatch.abra", "typechecker/indexing/tuple_error_type_mismatch.out")
-
         // If expressions & statements
         .add_test_vs_txt("typechecker/if/error_bad_cond_type.abra", "typechecker/if/error_bad_cond_type.out")
         .add_test_vs_txt("typechecker/if/error_block_mismatch.1.abra", "typechecker/if/error_block_mismatch.1.out")
@@ -458,7 +457,6 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/invocation/error_variadic_type_mismatch.abra", "typechecker/invocation/error_variadic_type_mismatch.out")
         .add_test_vs_txt("typechecker/invocation/invocation_variadic.1.abra", "typechecker/invocation/invocation_variadic.1.out.json")
         .add_test_vs_txt("typechecker/invocation/invocation_variadic.2.abra", "typechecker/invocation/invocation_variadic.2.out.json")
-
         // Accessor
         .add_test_vs_txt("typechecker/accessor/accessor.1.abra", "typechecker/accessor/accessor.1.out.json")
         .add_test_vs_txt("typechecker/accessor/accessor.2.abra", "typechecker/accessor/accessor.2.out.json")
@@ -474,7 +472,17 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/accessor/error_static_member_referenced_by_instance.abra", "typechecker/accessor/error_static_member_referenced_by_instance.out")
         .add_test_vs_txt("typechecker/accessor/accessor.4.abra", "typechecker/accessor/accessor.4.out.json")
         .add_test_vs_txt("typechecker/accessor/error_unknown_enum_variant.1.abra", "typechecker/accessor/error_unknown_enum_variant.1.out")
-
+        // Lambda
+        .add_test_vs_txt("typechecker/lambda/error_type_mismatch.1.abra", "typechecker/lambda/error_type_mismatch.1.out")
+        .add_test_vs_txt("typechecker/lambda/error_type_mismatch.2.abra", "typechecker/lambda/error_type_mismatch.2.out")
+        .add_test_vs_txt("typechecker/lambda/error_type_mismatch.3.abra", "typechecker/lambda/error_type_mismatch.3.out")
+        .add_test_vs_txt("typechecker/lambda/error_type_mismatch.4.abra", "typechecker/lambda/error_type_mismatch.4.out")
+        .add_test_vs_txt("typechecker/lambda/error_type_mismatch.5.abra", "typechecker/lambda/error_type_mismatch.5.out")
+        .add_test_vs_txt("typechecker/lambda/error_unknown_type_for_parameter.1.abra", "typechecker/lambda/error_unknown_type_for_parameter.1.out")
+        .add_test_vs_txt("typechecker/lambda/error_unknown_type_for_parameter.2.abra", "typechecker/lambda/error_unknown_type_for_parameter.2.out")
+        .add_test_vs_txt("typechecker/lambda/error_unknown_type_for_parameter.3.abra", "typechecker/lambda/error_unknown_type_for_parameter.3.out")
+        .add_test_vs_txt("typechecker/lambda/lambda.1.abra", "typechecker/lambda/lambda.1.out.json")
+        .add_test_vs_txt("typechecker/lambda/lambda.2.abra", "typechecker/lambda/lambda.2.out.json")
 
         // Type identifiers
         .add_test_vs_txt("typechecker/typeidentifier/error_typearg_unknown.abra", "typechecker/typeidentifier/error_typearg_unknown.out")

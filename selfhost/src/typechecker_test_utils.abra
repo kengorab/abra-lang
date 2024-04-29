@@ -1,6 +1,6 @@
-import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 import LiteralAstNode, IndexingMode from "./parser"
 import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct, Enum, StructOrEnum, AccessorPathSegment, TypedIdentifierKind, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export from "./typechecker"
+import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 
 export type Jsonifier {
   indentLevel: Int = 0
@@ -473,6 +473,12 @@ export type Jsonifier {
 
         self.print("\"node\": ")
         self.printTypedIndexingNode(node)
+        println()
+      }
+      TypedAstNodeKind.Lambda(fn) => {
+        self.println("\"kind\": \"lambda\",")
+        self.print("\"function\": ")
+        self.printFunc(fn)
         println()
       }
       TypedAstNodeKind.Assignment(mode, op, expr) => {

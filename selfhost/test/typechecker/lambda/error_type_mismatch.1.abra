@@ -1,0 +1,1 @@
+val f: (Int) => Int = (a: Float) => 123
