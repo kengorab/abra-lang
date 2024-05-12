@@ -1,4 +1,4 @@
-Error at /Users/kengorab/Desktop/abra-lang/selfhost/test/typechecker/if/error_unfilled_holes_bindingdecl.4.abra:1:48
+Error at %FILE_NAME%:1:48
 Type mismatch
   |  val a = if true { Option.Some([]) } else Option.None_
                                                     ^

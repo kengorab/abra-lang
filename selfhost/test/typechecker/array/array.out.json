@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "/Users/kengorab/Desktop/abra-lang/selfhost/test/typechecker/array/array.abra",
+  "name": "%FILE_NAME%",
   "code": [
     {
       "token": {

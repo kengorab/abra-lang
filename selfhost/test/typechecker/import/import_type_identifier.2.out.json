@@ -125,7 +125,7 @@
   },
   {
     "id": 4,
-    "name": "/Users/kengorab/Desktop/abra-lang/selfhost/test/typechecker/import/_exports.abra",
+    "name": "%TEST_DIR%/typechecker/import/_exports.abra",
     "exports": [
       {
         "kind": "function",
