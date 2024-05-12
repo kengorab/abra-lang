@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -25,28 +24,56 @@
             "label": { "name": "a", "position": [1, 5] },
             "mutable": false,
             "type": {
-              "nullable": true,
-              "kind": "primitive",
-              "primitive": "Int"
+              "kind": "enumInstance",
+              "enum": { "moduleId": 0, "name": "Option" },
+              "typeParams": [
+                {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
             }
           }
         ],
         "expr": {
           "token": {
-            "position": [1, 15],
+            "position": [1, 26],
             "kind": {
-              "name": "Int",
-              "value": 123
+              "name": "LParen"
             }
           },
           "type": {
-            "nullable": true,
-            "kind": "primitive",
-            "primitive": "Int"
+            "kind": "enumInstance",
+            "enum": { "moduleId": 0, "name": "Option" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
           },
           "node": {
-            "kind": "literal",
-            "value": 123
+            "kind": "invocation",
+            "invokee": "Option.Some",
+            "arguments": [
+              {
+                "token": {
+                  "position": [1, 27],
+                  "kind": {
+                    "name": "Int",
+                    "value": 123
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 123
+                }
+              }
+            ]
           }
         }
       }
@@ -59,7 +86,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Bool"
       },
@@ -75,9 +101,14 @@
             }
           },
           "type": {
-            "nullable": true,
-            "kind": "primitive",
-            "primitive": "Int"
+            "kind": "enumInstance",
+            "enum": { "moduleId": 0, "name": "Option" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
           },
           "node": {
             "kind": "identifier",
@@ -86,72 +117,45 @@
         },
         "right": {
           "token": {
-            "position": [2, 6],
+            "position": [2, 12],
             "kind": {
-              "name": "None"
+              "name": "Dot"
             }
           },
           "type": {
-            "nullable": true,
-            "kind": "primitive",
-            "primitive": "Int"
+            "kind": "enumInstance",
+            "enum": { "moduleId": 0, "name": "Option" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
           },
           "node": {
-            "kind": "identifier",
-            "name": "None"
-          }
-        }
-      }
-    },
-    {
-      "token": {
-        "position": [3, 3],
-        "kind": {
-          "name": "Neq"
-        }
-      },
-      "type": {
-        "nullable": false,
-        "kind": "primitive",
-        "primitive": "Bool"
-      },
-      "node": {
-        "kind": "binary",
-        "op": "BinaryOp.Neq",
-        "left": {
-          "token": {
-            "position": [3, 1],
-            "kind": {
-              "name": "Ident",
-              "value": "a"
+            "kind": "accessor",
+            "head": {
+              "token": {
+                "position": [2, 6],
+                "kind": {
+                  "name": "Ident",
+                  "value": "Option"
+                }
+              },
+              "type": {
+                "kind": "enum",
+                "enum": { "moduleId": 0, "name": "Option" }
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "Option"
+              }
+            },
+            "middle": [],
+            "tail": {
+              "kind": "enumVariant",
+              "name": "Option.None_"
             }
-          },
-          "type": {
-            "nullable": true,
-            "kind": "primitive",
-            "primitive": "Int"
-          },
-          "node": {
-            "kind": "identifier",
-            "name": "a"
-          }
-        },
-        "right": {
-          "token": {
-            "position": [3, 6],
-            "kind": {
-              "name": "Int",
-              "value": 456
-            }
-          },
-          "type": {
-            "nullable": true,
-            "kind": "primitive",
-            "primitive": "Int"
-          },
-          "node": {
-            "kind": "literal",
-            "value": 456
           }
         }
       }

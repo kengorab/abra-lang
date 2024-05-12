@@ -1,2 +1,2 @@
-val arr: Int[]? = [1, 2 ,3]
+val arr: Int[]? = Option.Some([1, 2 ,3])
 arr[0]

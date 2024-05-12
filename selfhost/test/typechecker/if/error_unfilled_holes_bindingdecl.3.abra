@@ -1,1 +1,1 @@
-val a = if true None else []
+val a = if true Option.None_ else Option.Some([])

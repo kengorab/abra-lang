@@ -1,6 +1,6 @@
-Error at %FILE_NAME%:1:19
+Error at %FILE_NAME%:1:25
 Type mismatch
-  |  func foo(a: Int = None) {}
-                       ^
+  |  func foo(a: Int = Option.None_) {}
+                             ^
 Expected: Int
-but instead found: Int?
+but instead found: <unknown>?

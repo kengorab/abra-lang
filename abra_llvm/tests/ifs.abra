@@ -33,24 +33,24 @@ val b = (if 1 < 0 123 else 456) + 1000
 /// Expect: 1456
 println(b)
 
-val c = if true { 123 } else { None }
-/// Expect: 123
+val c = if true { Option.Some(123) } else { Option.None_ }
+/// Expect: Option.Some(value: 123)
 println(c)
 
-val d = if false { 123 } else { None }
-/// Expect: None
+val d = if false { Option.Some(123) } else { Option.None_ }
+/// Expect: Option.None_
 println(d)
 
-/// Expect: 123
-println(if true { 123 })
-
-/// Expect: None
-println(if false { 123 })
+///// Expect: 123
+//println(if true { 123 })
+//
+///// Expect: None
+//println(if false { 123 })
 
 ///// Expect: None
 //println(if true { None } else { 1 + 2 }) // TODO: Make this work
-/// Expect: 3
-println(if true { 1 + 2 } else { None })
+/// Expect: Option.Some(value: 3)
+println(if true { Option.Some(1 + 2) } else { Option.None_ })
 
 // Condition bindings
 val arr = [1, 2, 3, 4]

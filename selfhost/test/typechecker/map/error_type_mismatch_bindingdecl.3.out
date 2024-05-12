@@ -1,6 +1,6 @@
-Error at %FILE_NAME%:1:36
+Error at %FILE_NAME%:1:42
 Type mismatch
-  |  val m: Map<Int, String> = { (123): None, (456): "hello" }
-                                        ^
+  |  val m: Map<Int, String> = { (123): Option.None_, (456): Option.Some("hello") }
+                                              ^
 Expected: String
-but instead found: String?
+but instead found: <unknown>?

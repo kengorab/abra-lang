@@ -1,4 +1,4 @@
-val x: Int? = None
+val x: Int? = Option.None_
 while x |x| {
   val y: Int = -x
 }

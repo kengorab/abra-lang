@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -24,7 +23,6 @@
             {
               "name": { "name": "bar", "position": [1, 12] },
               "type": {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 3, "name": "Bar" },
                 "typeParams": []
@@ -46,7 +44,6 @@
               "typeParameters": [],
               "parameters": [],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
@@ -65,7 +62,6 @@
               "typeParameters": [],
               "parameters": [],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -86,7 +82,6 @@
                 {
                   "label": { "name": "other", "position": [0, 0] },
                   "type": {
-                    "nullable": false,
                     "kind": "instance",
                     "struct": { "moduleId": 3, "name": "Foo" },
                     "typeParams": []
@@ -96,7 +91,6 @@
                 }
               ],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Bool"
               },
@@ -115,7 +109,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -129,7 +122,6 @@
             {
               "name": { "name": "str", "position": [2, 12] },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
@@ -150,7 +142,6 @@
               "typeParameters": [],
               "parameters": [],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
@@ -169,7 +160,6 @@
               "typeParameters": [],
               "parameters": [],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -190,7 +180,6 @@
                 {
                   "label": { "name": "other", "position": [0, 0] },
                   "type": {
-                    "nullable": false,
                     "kind": "instance",
                     "struct": { "moduleId": 3, "name": "Bar" },
                     "typeParams": []
@@ -200,7 +189,6 @@
                 }
               ],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Bool"
               },
@@ -219,7 +207,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -234,10 +221,15 @@
             "label": { "name": "f", "position": [3, 5] },
             "mutable": true,
             "type": {
-              "nullable": true,
-              "kind": "instance",
-              "struct": { "moduleId": 3, "name": "Foo" },
-              "typeParams": []
+              "kind": "enumInstance",
+              "enum": { "moduleId": 0, "name": "Option" },
+              "typeParams": [
+                {
+                  "kind": "instance",
+                  "struct": { "moduleId": 3, "name": "Foo" },
+                  "typeParams": []
+                }
+              ]
             }
           }
         ],
@@ -252,7 +244,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -267,9 +258,14 @@
             "label": { "name": "s", "position": [5, 5] },
             "mutable": false,
             "type": {
-              "nullable": true,
-              "kind": "primitive",
-              "primitive": "String"
+              "kind": "enumInstance",
+              "enum": { "moduleId": 0, "name": "Option" },
+              "typeParams": [
+                {
+                  "kind": "primitive",
+                  "primitive": "String"
+                }
+              ]
             }
           }
         ],
@@ -281,9 +277,14 @@
             }
           },
           "type": {
-            "nullable": true,
-            "kind": "primitive",
-            "primitive": "String"
+            "kind": "enumInstance",
+            "enum": { "moduleId": 0, "name": "Option" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            ]
           },
           "node": {
             "kind": "accessor",
@@ -296,10 +297,15 @@
                 }
               },
               "type": {
-                "nullable": true,
-                "kind": "instance",
-                "struct": { "moduleId": 3, "name": "Foo" },
-                "typeParams": []
+                "kind": "enumInstance",
+                "enum": { "moduleId": 0, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "instance",
+                    "struct": { "moduleId": 3, "name": "Foo" },
+                    "typeParams": []
+                  }
+                ]
               },
               "node": {
                 "kind": "identifier",
@@ -328,7 +334,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -343,9 +348,14 @@
             "label": { "name": "_", "position": [6, 5] },
             "mutable": false,
             "type": {
-              "nullable": true,
-              "kind": "primitive",
-              "primitive": "String"
+              "kind": "enumInstance",
+              "enum": { "moduleId": 0, "name": "Option" },
+              "typeParams": [
+                {
+                  "kind": "primitive",
+                  "primitive": "String"
+                }
+              ]
             }
           }
         ],
@@ -358,9 +368,14 @@
             }
           },
           "type": {
-            "nullable": true,
-            "kind": "primitive",
-            "primitive": "String"
+            "kind": "enumInstance",
+            "enum": { "moduleId": 0, "name": "Option" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            ]
           },
           "node": {
             "kind": "identifier",

@@ -1,3 +1,2 @@
-val a: Int? = 123
-a != None
-a != 456
+val a: Int? = Option.Some(123)
+a != Option.None_

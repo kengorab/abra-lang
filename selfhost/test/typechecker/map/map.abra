@@ -6,7 +6,7 @@ val m1: Map<String, Int> = {}
 val m2: Map<String, Int> = { a: 3 }
 
 val m3: Map<String?, Int> = {}
-val m4: Map<String?, Int> = { a: 3, (None): 345 }
+val m4: Map<String?, Int> = { (Option.Some("a")): 3, (Option.None_): 345 }
 
-val m5 = { a: [], (None): None, b: [1, 2] }
+val m5 = { (Option.Some("a")): Option.Some([]), (Option.None_): Option.None_, (Option.Some("b")): Option.Some([1, 2]) }
 val _: Map<String?, Int[]?> = m5

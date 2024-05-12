@@ -1,6 +1,6 @@
 Error at %FILE_NAME%:1:24
 Type mismatch
-  |  val t: (Int, String) = (1, "two", None)
+  |  val t: (Int, String) = (1, "two", Option.None_)
                             ^
 Expected: (Int, String)
 but instead found: (Int, String, <unknown>?)

@@ -1,6 +1,6 @@
-Error at %FILE_NAME%:1:15
-Type mismatch
-  |  val a: Int? = "abc"
-                   ^
-Expected: Int?
+Error at %FILE_NAME%:1:27
+Type mismatch for parameter 'value'
+  |  val a: Int? = Option.Some("abc")
+                               ^
+Expected: Int
 but instead found: String

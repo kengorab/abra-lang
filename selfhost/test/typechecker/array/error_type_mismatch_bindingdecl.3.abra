@@ -1,1 +1,1 @@
-val a: String[] = ["abcd", None]
+val a: String[] = ["abcd", Option.None_]

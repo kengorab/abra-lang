@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -25,12 +24,10 @@
             "label": { "name": "arr", "position": [1, 5] },
             "mutable": false,
             "type": {
-              "nullable": true,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Array" },
               "typeParams": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 }
@@ -40,26 +37,76 @@
         ],
         "expr": {
           "token": {
-            "position": [1, 22],
+            "position": [1, 21],
             "kind": {
-              "name": "None"
+              "name": "LBrack"
             }
           },
           "type": {
-            "nullable": true,
             "kind": "instance",
             "struct": { "moduleId": 0, "name": "Array" },
             "typeParams": [
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               }
             ]
           },
           "node": {
-            "kind": "identifier",
-            "name": "None"
+            "kind": "array",
+            "items": [
+              {
+                "token": {
+                  "position": [1, 22],
+                  "kind": {
+                    "name": "String",
+                    "value": "a"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": "a"
+                }
+              },
+              {
+                "token": {
+                  "position": [1, 27],
+                  "kind": {
+                    "name": "String",
+                    "value": "b"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": "b"
+                }
+              },
+              {
+                "token": {
+                  "position": [1, 32],
+                  "kind": {
+                    "name": "String",
+                    "value": "c"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": "c"
+                }
+              }
+            ]
           }
         }
       }
@@ -72,7 +119,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -87,12 +133,10 @@
             }
           },
           "type": {
-            "nullable": true,
             "kind": "instance",
             "struct": { "moduleId": 0, "name": "Array" },
             "typeParams": [
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               }
@@ -113,7 +157,6 @@
               "label": { "name": "x", "position": [2, 5] },
               "mutable": false,
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               }
@@ -124,7 +167,6 @@
           "label": { "name": "idx", "position": [2, 8] },
           "mutable": false,
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           }
@@ -138,7 +180,6 @@
               }
             },
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Unit"
             },
@@ -153,7 +194,6 @@
                   "label": { "name": "_", "position": [3, 7] },
                   "mutable": false,
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "String"
                   }
@@ -168,7 +208,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 },
@@ -187,7 +226,6 @@
               }
             },
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Unit"
             },
@@ -202,7 +240,6 @@
                   "label": { "name": "_", "position": [4, 7] },
                   "mutable": false,
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -217,7 +254,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },

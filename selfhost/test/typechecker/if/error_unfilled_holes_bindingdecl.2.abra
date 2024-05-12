@@ -1,1 +1,1 @@
-val a = if true None else None
+val a = if true { Option.None_ } else { Option.None_ }

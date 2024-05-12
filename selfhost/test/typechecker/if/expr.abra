@@ -18,38 +18,38 @@ val c = if true {
 val _: Int[] = c
 
 val d = if true {
-  None
+  Option.None_
 } else {
   val x = 1
-  [x]
+  Option.Some([x])
 }
 val _: Int[]? = d
 
 val e = if true {
   val x = 1
-  [x]
+  Option.Some([x])
 } else {
-  None
+  Option.None_
 }
 val _: Int[]? = e
 
-val f = if true { 123 } else { None }
+val f = if true { Option.Some(123) } else { Option.None_ }
 val _: Int? = f
 
-val g = if true { None } else { 123 }
+val g = if true { Option.None_ } else { Option.Some(123) }
 val _: Int? = g
 
 val h = if true {
-  if false 123 else 456
+  if false Option.Some(123) else Option.Some(456)
 } else {
-  None
+  Option.None_
 }
 val _: Int? = h
 
-val i = if (if None true else false) 123 else 456
+val i = if (if Option.None_ true else false) 123 else 456
 val _: Int = i
 
-val j_: Int? = 123
+val j_: Int? = Option.Some(123)
 val j = if j_ |j| { j } else 0
 val _: Int = j
 

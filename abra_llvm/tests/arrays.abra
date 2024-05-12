@@ -57,7 +57,7 @@
 // Indexing (also Array#get(index: Int))
 (() => {
   val arr = [1, 2, 3]
-  /// Expect: None 1 2 3 1 2 3 None
+  /// Expect: Option.None_ Option.Some(value: 1) Option.Some(value: 2) Option.Some(value: 3) Option.Some(value: 1) Option.Some(value: 2) Option.Some(value: 3) Option.None_
   println(arr[-4], arr[-3], arr[-2], arr[-1], arr[0], arr[1], arr[2], arr[3])
 })()
 
@@ -140,15 +140,15 @@
 (() => {
   val a = [1.23, 4.56, 7.89]
   val iter = a.iterator()
-  /// Expect: 1.23
+  /// Expect: Option.Some(value: 1.23)
   println(iter.next())
-  /// Expect: 4.56
+  /// Expect: Option.Some(value: 4.56)
   println(iter.next())
-  /// Expect: 7.89
+  /// Expect: Option.Some(value: 7.89)
   println(iter.next())
-  /// Expect: None
+  /// Expect: Option.None_
   println(iter.next())
-  /// Expect: None
+  /// Expect: Option.None_
   println(iter.next())
 })()
 
@@ -186,22 +186,22 @@ for ch in ["a", "b", "c"] println(ch)
 // Array#pop
 (() => {
   val arr = [1, 2, 3]
-  /// Expect: 3
+  /// Expect: Option.Some(value: 3)
   println(arr.pop())
   /// Expect: [1, 2]
   println(arr)
 
-  /// Expect: 2
+  /// Expect: Option.Some(value: 2)
   println(arr.pop())
   /// Expect: [1]
   println(arr)
 
-  /// Expect: 1
+  /// Expect: Option.Some(value: 1)
   println(arr.pop())
   /// Expect: []
   println(arr)
 
-  /// Expect: None
+  /// Expect: Option.None_
   println(arr.pop())
   /// Expect: []
   println(arr)
@@ -310,19 +310,19 @@ func printItem(item: Int) = println(item)
 // Array#find
 (() => {
   val intArr = [123, 456, 789]
-  /// Expect: 123
+  /// Expect: Option.Some(value: 123)
   println(intArr.find(i => i == 123))
-  /// Expect: None
+  /// Expect: Option.None_
   println(intArr.find(i => i == 10))
 
   val empty: Int[] = []
-  /// Expect: None
+  /// Expect: Option.None_
   println(empty.find(i => i == 123))
 
   val strArr = ["hello", "world"]
-  /// Expect: hello
+  /// Expect: Option.Some(value: "hello")
   println(strArr.find(s => s == "hello"))
-  /// Expect: None
+  /// Expect: Option.None_
   println(strArr.find(s => s == "HELLO"))
 })()
 

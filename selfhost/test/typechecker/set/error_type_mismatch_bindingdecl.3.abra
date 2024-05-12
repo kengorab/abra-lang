@@ -1,1 +1,1 @@
-val a: Set<String> = #{"abcd", None}
+val a: Set<String> = #{"abcd", Option.None_}

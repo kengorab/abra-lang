@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -24,7 +23,6 @@
             {
               "name": { "name": "a", "position": [2, 3] },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -33,7 +31,6 @@
             {
               "name": { "name": "b", "position": [3, 3] },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
@@ -46,7 +43,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 },
@@ -71,7 +67,6 @@
               "typeParameters": [],
               "parameters": [],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
@@ -90,7 +85,6 @@
               "typeParameters": [],
               "parameters": [],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -111,7 +105,6 @@
                 {
                   "label": { "name": "other", "position": [0, 0] },
                   "type": {
-                    "nullable": false,
                     "kind": "instance",
                     "struct": { "moduleId": 3, "name": "Foo" },
                     "typeParams": []
@@ -121,7 +114,6 @@
                 }
               ],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Bool"
               },
@@ -136,7 +128,6 @@
                     "label": { "name": "self", "position": [5, 12] },
                     "mutable": false,
                     "type": {
-                      "nullable": false,
                       "kind": "instance",
                       "struct": { "moduleId": 3, "name": "Foo" },
                       "typeParams": []
@@ -150,7 +141,6 @@
               "typeParameters": [],
               "parameters": [],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -164,7 +154,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -189,7 +178,6 @@
               "typeParameters": [],
               "parameters": [],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -203,7 +191,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -226,7 +213,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -241,7 +227,6 @@
             "label": { "name": "f", "position": [9, 5] },
             "mutable": true,
             "type": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 3, "name": "Foo" },
               "typeParams": []

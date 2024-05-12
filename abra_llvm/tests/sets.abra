@@ -80,15 +80,15 @@ type Person {
 (() => {
   val s = #{"a", "b", "a", "c"}
   val iter = s.iterator()
-  /// Expect: c
+  /// Expect: Option.Some(value: "c")
   println(iter.next())
-  /// Expect: b
+  /// Expect: Option.Some(value: "b")
   println(iter.next())
-  /// Expect: a
+  /// Expect: Option.Some(value: "a")
   println(iter.next())
-  /// Expect: None
+  /// Expect: Option.None_
   println(iter.next())
-  /// Expect: None
+  /// Expect: Option.None_
   println(iter.next())
 })()
 

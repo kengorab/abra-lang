@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -25,7 +24,6 @@
             "label": { "name": "x", "position": [1, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -40,7 +38,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },
@@ -59,7 +56,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -74,7 +70,6 @@
             "label": { "name": "_", "position": [2, 5] },
             "mutable": true,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "String"
             }
@@ -89,7 +84,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
@@ -108,7 +102,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -123,7 +116,6 @@
             "label": { "name": "_", "position": [3, 5] },
             "mutable": true,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Float"
             }
@@ -137,7 +129,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Float"
           },
@@ -153,7 +144,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Float"
               },
@@ -174,7 +164,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -189,7 +178,6 @@
             "label": { "name": "y", "position": [5, 5] },
             "mutable": true,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -206,7 +194,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -221,27 +208,58 @@
             "label": { "name": "i1", "position": [8, 5] },
             "mutable": false,
             "type": {
-              "nullable": true,
-              "kind": "primitive",
-              "primitive": "Int"
+              "kind": "enumInstance",
+              "enum": { "moduleId": 0, "name": "Option" },
+              "typeParams": [
+                {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
             }
           }
         ],
         "expr": {
           "token": {
-            "position": [8, 16],
+            "position": [8, 22],
             "kind": {
-              "name": "None"
+              "name": "Dot"
             }
           },
           "type": {
-            "nullable": true,
-            "kind": "primitive",
-            "primitive": "Int"
+            "kind": "enumInstance",
+            "enum": { "moduleId": 0, "name": "Option" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
           },
           "node": {
-            "kind": "identifier",
-            "name": "None"
+            "kind": "accessor",
+            "head": {
+              "token": {
+                "position": [8, 16],
+                "kind": {
+                  "name": "Ident",
+                  "value": "Option"
+                }
+              },
+              "type": {
+                "kind": "enum",
+                "enum": { "moduleId": 0, "name": "Option" }
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "Option"
+              }
+            },
+            "middle": [],
+            "tail": {
+              "kind": "enumVariant",
+              "name": "Option.None_"
+            }
           }
         }
       }
@@ -254,7 +272,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -269,28 +286,56 @@
             "label": { "name": "i2", "position": [9, 5] },
             "mutable": false,
             "type": {
-              "nullable": true,
-              "kind": "primitive",
-              "primitive": "Int"
+              "kind": "enumInstance",
+              "enum": { "moduleId": 0, "name": "Option" },
+              "typeParams": [
+                {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
             }
           }
         ],
         "expr": {
           "token": {
-            "position": [9, 16],
+            "position": [9, 27],
             "kind": {
-              "name": "Int",
-              "value": 16
+              "name": "LParen"
             }
           },
           "type": {
-            "nullable": true,
-            "kind": "primitive",
-            "primitive": "Int"
+            "kind": "enumInstance",
+            "enum": { "moduleId": 0, "name": "Option" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
           },
           "node": {
-            "kind": "literal",
-            "value": 16
+            "kind": "invocation",
+            "invokee": "Option.Some",
+            "arguments": [
+              {
+                "token": {
+                  "position": [9, 28],
+                  "kind": {
+                    "name": "Int",
+                    "value": 16
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 16
+                }
+              }
+            ]
           }
         }
       }

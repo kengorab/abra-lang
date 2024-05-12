@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -25,7 +24,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Bool"
           },
@@ -44,7 +42,6 @@
               }
             },
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Unit"
             },
@@ -59,7 +56,6 @@
                   "label": { "name": "x", "position": [2, 7] },
                   "mutable": false,
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -73,7 +69,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
@@ -89,7 +84,6 @@
                       }
                     },
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Bool"
                     },
@@ -108,7 +102,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "never"
                       },
                       "node": {
@@ -126,7 +119,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       },
@@ -148,7 +140,6 @@
               }
             },
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Unit"
             },
@@ -163,7 +154,6 @@
                   "label": { "name": "y", "position": [3, 7] },
                   "mutable": false,
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -177,7 +167,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
@@ -193,7 +182,6 @@
                       }
                     },
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     },

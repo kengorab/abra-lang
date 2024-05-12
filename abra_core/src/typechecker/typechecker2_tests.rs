@@ -110,23 +110,27 @@ fn assert_typecheck_ok_modules(entry_module: &str, other_modules: &[(&str, &str)
     assert!(res.is_ok());
 }
 
+fn option_type(project: &Project, inner_type_id: TypeId, variant_idx: Option<usize>) -> Type {
+    Type::GenericEnumInstance(project.prelude_option_enum_id, vec![inner_type_id], variant_idx)
+}
+
 #[test]
 fn test_type_assignability() {
     let cases = [
         ("val x: Any = 1", true),
         ("val x: Any = \"a\"", true),
         ("val x: Any = []", true),
-        ("val x: Any = None", true),
-        ("val x: Int? = 1", true),
-        ("val x: Int = None", false),
+        ("val x: Any = Option.None_", true),
+        ("val x: Int? = 1", false),
+        ("val x: Int = Option.None_", false),
         ("val x: Bool[] = []", true),
         ("val x: Bool[] = [true]", true),
-        ("val x: Bool[] = [None]", false),
-        ("val x: Bool?[] = [None]", true),
-        ("val x: Bool[]? = None", true),
-        ("val x: Bool[]? = [true]", true),
+        ("val x: Bool[] = [Option.None_]", false),
+        ("val x: Bool?[] = [Option.None_]", true),
+        ("val x: Bool[]? = Option.None_", true),
+        ("val x: Bool[]? = Option.Some([true])", true),
         ("val x: Map<Int, String> = { 1: \"asdf\" }", true),
-        ("val x: Map<Int, String> = { 1: None }", false),
+        ("val x: Map<Int, String> = { 1: Option.None_ }", false),
         (
             "func f(): Int = 1\n\
              val x: () => Int = f",
@@ -494,10 +498,16 @@ fn typecheck_prelude() {
     assert_eq!(PRELUDE_MODULE_ID, prelude_module.id);
     assert_eq!("prelude", prelude_module.name);
 
-    let struct_cases = ["Tuple", "Option", "Int", "Float", "Bool", "String", "Array", "Set", "Map"];
+    let struct_cases = ["Tuple", "Int", "Float", "Bool", "String", "Array", "Set", "Map"];
     let struct_names = &prelude_module.structs.iter().map(|s| &s.name).collect::<HashSet<_>>();
     for name in struct_cases {
         assert!(struct_names.contains(&name.to_string()));
+    }
+
+    let enum_cases = ["Option"];
+    let enum_names = &prelude_module.enums.iter().map(|s| &s.name).collect::<HashSet<_>>();
+    for name in enum_cases {
+        assert!(enum_names.contains(&name.to_string()));
     }
 }
 
@@ -880,7 +890,7 @@ fn typecheck_binary() {
         ("1 != \"2\"", PRELUDE_BOOL_TYPE_ID),
         ("[1, 2] != (2, 3)", PRELUDE_BOOL_TYPE_ID),
         // ?:
-        ("None ?: 123", PRELUDE_INT_TYPE_ID),
+        ("Option.None_ ?: 123", PRELUDE_INT_TYPE_ID),
         ("1.23 ?: 0.0", PRELUDE_FLOAT_TYPE_ID),
         // &&
         ("true && false", PRELUDE_BOOL_TYPE_ID),
@@ -929,8 +939,6 @@ fn typecheck_binary_assignment() {
         // /=
         ("var a = 1.0\na /= 2", PRELUDE_FLOAT_TYPE_ID),
         ("var a = 1.0\na /= 2.0", PRELUDE_FLOAT_TYPE_ID),
-        // ?:=
-        ("var a: Int? = None\na ?:= 123", PRELUDE_INT_TYPE_ID),
         // &&=
         ("var a = true\na &&= false", PRELUDE_BOOL_TYPE_ID),
         // ||=
@@ -966,14 +974,14 @@ fn typecheck_array() {
     let int_array_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
     let expected = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.array_type(int_array_type_id)).unwrap();
     assert_eq!(expected, type_id);
-    let project = test_typecheck("[None, 123]").unwrap();
+    let project = test_typecheck("[Option.None_, Option.Some(123)]").unwrap();
     let type_id = *project.modules[TEST_MODULE_IDX].code[0].type_id();
-    let int_opt_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap();
+    let int_opt_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &option_type(&project, PRELUDE_INT_TYPE_ID, Some(1))).unwrap();
     let expected = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.array_type(int_opt_type_id)).unwrap();
     assert_eq!(expected, type_id);
-    let project = test_typecheck("[123, None]").unwrap();
+    let project = test_typecheck("[Option.Some(123), Option.None_]").unwrap();
     let type_id = *project.modules[TEST_MODULE_IDX].code[0].type_id();
-    let int_opt_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap();
+    let int_opt_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &option_type(&project, PRELUDE_INT_TYPE_ID, Some(0))).unwrap();
     let expected = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.array_type(int_opt_type_id)).unwrap();
     assert_eq!(expected, type_id);
 
@@ -1106,14 +1114,14 @@ fn typecheck_set() {
     let int_set_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.set_type(PRELUDE_INT_TYPE_ID)).unwrap();
     let expected = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.set_type(int_set_type_id)).unwrap();
     assert_eq!(expected, type_id);
-    let project = test_typecheck("#{None, 123}").unwrap();
+    let project = test_typecheck("#{Option.None_, Option.Some(value: 123)}").unwrap();
     let type_id = *project.modules[TEST_MODULE_IDX].code[0].type_id();
-    let int_opt_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap();
+    let int_opt_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &option_type(&project, PRELUDE_INT_TYPE_ID, Some(1))).unwrap();
     let expected = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.set_type(int_opt_type_id)).unwrap();
     assert_eq!(expected, type_id);
-    let project = test_typecheck("#{123, None}").unwrap();
+    let project = test_typecheck("#{Option.Some(value: 123), Option.None_}").unwrap();
     let type_id = *project.modules[TEST_MODULE_IDX].code[0].type_id();
-    let int_opt_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap();
+    let int_opt_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &option_type(&project, PRELUDE_INT_TYPE_ID, Some(0))).unwrap();
     let expected = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.set_type(int_opt_type_id)).unwrap();
     assert_eq!(expected, type_id);
 
@@ -1189,13 +1197,15 @@ fn typecheck_map() {
     assert_eq!(expected, type_id);
 
     // Test generic inference in values
-    let project = test_typecheck("{ a: 123, b: None }").unwrap();
+    let project = test_typecheck("{ a: Option.Some(value: 123), b: Option.None_ }").unwrap();
     let type_id = *project.modules[TEST_MODULE_IDX].code[0].type_id();
-    let int_opt_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap();
+    let int_opt_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &option_type(&project, PRELUDE_INT_TYPE_ID, Some(0))).unwrap();
     let expected = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.map_type(PRELUDE_STRING_TYPE_ID, int_opt_type_id)).unwrap();
     assert_eq!(expected, type_id);
-    let project = test_typecheck("{ a: None, b: 123 }").unwrap();
+    let project = test_typecheck("{ a: Option.None_, b: Option.Some(value: 123) }").unwrap();
     let type_id = *project.modules[TEST_MODULE_IDX].code[0].type_id();
+    let int_opt_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &option_type(&project, PRELUDE_INT_TYPE_ID, Some(1))).unwrap();
+    let expected = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.map_type(PRELUDE_STRING_TYPE_ID, int_opt_type_id)).unwrap();
     assert_eq!(expected, type_id);
     let project = test_typecheck("{ a: [], b: [1, 2, 3] }").unwrap();
     let type_id = *project.modules[TEST_MODULE_IDX].code[0].type_id();
@@ -1209,13 +1219,15 @@ fn typecheck_map() {
     assert_eq!(expected, type_id);
 
     // Test option inference in keys
-    let project = test_typecheck("{ (None): 123, 456: 789 }").unwrap();
+    let project = test_typecheck("{ (Option.None_): 123, (Option.Some(value: 456)): 789 }").unwrap();
     let type_id = *project.modules[TEST_MODULE_IDX].code[0].type_id();
-    let int_opt_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap();
+    let int_opt_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &option_type(&project, PRELUDE_INT_TYPE_ID, Some(1))).unwrap();
     let expected = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.map_type(int_opt_type_id, PRELUDE_INT_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
-    let project = test_typecheck("{ 123: 123, (None): 456 }").unwrap();
+    let project = test_typecheck("{ (Option.Some(value: 123)): 123, (Option.None_): 456 }").unwrap();
     let type_id = *project.modules[TEST_MODULE_IDX].code[0].type_id();
+    let int_opt_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &option_type(&project, PRELUDE_INT_TYPE_ID, Some(0))).unwrap();
+    let expected = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.map_type(int_opt_type_id, PRELUDE_INT_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("val m: Map<Int, Int> = { 1: 2, 3: 4 }").unwrap();
@@ -1276,13 +1288,13 @@ fn typecheck_failure_map() {
 
 #[test]
 fn typecheck_none() {
-    let project = test_typecheck("val x: Int? = None").unwrap();
+    let project = test_typecheck("val x: Int? = Option.None_").unwrap();
     let module = &project.modules[TEST_MODULE_IDX];
     let expected = vec![
         Variable {
             id: VarId(ScopeId(TEST_MODULE_ID, 0), 0),
             name: "x".to_string(),
-            type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap(),
+            type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &option_type(&project, PRELUDE_INT_TYPE_ID, None)).unwrap(),
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Span::new(TEST_MODULE_ID, (1, 5), (1, 5))),
@@ -1294,31 +1306,13 @@ fn typecheck_none() {
     ];
     assert_eq!(expected, module.scopes[0].vars);
 
-    let project = test_typecheck("val x: Int? = 12").unwrap();
+    let project = test_typecheck("val x: Int? = Option.Some(value: 12)").unwrap();
     let module = &project.modules[TEST_MODULE_IDX];
     let expected = vec![
         Variable {
             id: VarId(ScopeId(TEST_MODULE_ID, 0), 0),
             name: "x".to_string(),
-            type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap(),
-            is_mutable: false,
-            is_initialized: true,
-            defined_span: Some(Span::new(TEST_MODULE_ID, (1, 5), (1, 5))),
-            is_captured: false,
-            alias: VariableAlias::None,
-            is_parameter: false,
-            is_exported: false,
-        },
-    ];
-    assert_eq!(expected, module.scopes[0].vars);
-    let project = test_typecheck("val x: Int?? = 12").unwrap(); // Verify multiple layers of Option shouldn't matter
-    let module = &project.modules[TEST_MODULE_IDX];
-    let opt_int_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap();
-    let expected = vec![
-        Variable {
-            id: VarId(ScopeId(TEST_MODULE_ID, 0), 0),
-            name: "x".to_string(),
-            type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(opt_int_type_id, false)).unwrap(),
+            type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &option_type(&project, PRELUDE_INT_TYPE_ID, None)).unwrap(),
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Span::new(TEST_MODULE_ID, (1, 5), (1, 5))),
@@ -1330,13 +1324,13 @@ fn typecheck_none() {
     ];
     assert_eq!(expected, module.scopes[0].vars);
 
-    let project = test_typecheck("val x: Int[]? = None").unwrap();
+    let project = test_typecheck("val x: Int[]? = Option.None_").unwrap();
     let module = &project.modules[TEST_MODULE_IDX];
     let expected = vec![
         Variable {
             id: VarId(ScopeId(TEST_MODULE_ID, 0), 0),
             name: "x".to_string(),
-            type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(), true)).unwrap(),
+            type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &option_type(&project, project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(), None)).unwrap(),
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Span::new(TEST_MODULE_ID, (1, 5), (1, 5))),
@@ -1348,7 +1342,7 @@ fn typecheck_none() {
     ];
     assert_eq!(expected, module.scopes[0].vars);
 
-    let project = test_typecheck("val x: (Int?)[] = [None]").unwrap();
+    let project = test_typecheck("val x: (Int?)[] = [Option.None_]").unwrap();
     let module = &project.modules[TEST_MODULE_IDX];
     let expected = vec![
         Variable {
@@ -1359,7 +1353,7 @@ fn typecheck_none() {
                 &project.array_type(
                     project.find_type_id(
                         &ScopeId(TEST_MODULE_ID, 0),
-                        &project.option_type(PRELUDE_INT_TYPE_ID, true),
+                        &option_type(&project, PRELUDE_INT_TYPE_ID, None),
                     ).unwrap()
                 ),
             ).unwrap(),
@@ -1377,27 +1371,36 @@ fn typecheck_none() {
 
 #[test]
 fn typecheck_failure_none() {
-    let (project, Either::Right(err)) = test_typecheck("val x = None").unwrap_err() else { unreachable!() };
+    let (project, Either::Right(err)) = test_typecheck("val x = Option.None_").unwrap_err() else { unreachable!() };
+    let option_generic_t_type_id = project.get_enum_by_id(&project.prelude_option_enum_id).generic_ids[0];
     let expected = TypeError::ForbiddenAssignment {
-        span: Span::new(TEST_MODULE_ID, (1, 9), (1, 12)),
-        type_id: project.prelude_none_type_id,
+        span: Span::new(TEST_MODULE_ID, (1, 9), (1, 20)),
+        type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &option_type(&project, option_generic_t_type_id, Some(1))).unwrap(),
         purpose: "assignment",
     };
     assert_eq!(expected, err);
 
-    let (project, Either::Right(err)) = test_typecheck("val x = [None]").unwrap_err() else { unreachable!() };
+    let (project, Either::Right(err)) = test_typecheck("val x = [Option.None_]").unwrap_err() else { unreachable!() };
+    let option_generic_t_type_id = project.get_enum_by_id(&project.prelude_option_enum_id).generic_ids[0];
     let expected = TypeError::ForbiddenAssignment {
-        span: Span::new(TEST_MODULE_ID, (1, 9), (1, 13)),
-        type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.array_type(project.prelude_none_type_id)).unwrap(),
+        span: Span::new(TEST_MODULE_ID, (1, 9), (1, 21)),
+        type_id: project.find_type_id(
+            &ScopeId(TEST_MODULE_ID, 0),
+            &project.array_type(
+                project.find_type_id(
+                    &ScopeId(TEST_MODULE_ID, 0),
+                    &option_type(&project, option_generic_t_type_id, Some(1))).unwrap()
+            )).unwrap(),
         purpose: "assignment",
     };
     assert_eq!(expected, err);
 
-    let (project, Either::Right(err)) = test_typecheck("val x: Int = None").unwrap_err() else { unreachable!() };
+    let (project, Either::Right(err)) = test_typecheck("val x: Int = Option.None_").unwrap_err() else { unreachable!() };
+    let option_generic_t_type_id = project.get_enum_by_id(&project.prelude_option_enum_id).generic_ids[0];
     let expected = TypeError::TypeMismatch {
-        span: Span::new(TEST_MODULE_ID, (1, 14), (1, 17)),
+        span: Span::new(TEST_MODULE_ID, (1, 14), (1, 25)),
         expected: vec![PRELUDE_INT_TYPE_ID],
-        received: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap(),
+        received: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &option_type(&project, option_generic_t_type_id, Some(1))).unwrap(),
     };
     assert_eq!(expected, err);
 }
@@ -1762,8 +1765,8 @@ fn typecheck_return() {
     "#);
     assert_typecheck_ok(r#"
       func foo(): Int? {
-        if true return None
-        else return 123
+        if true return Option.None_
+        else return Option.Some(value: 123)
       }
     "#);
     assert_typecheck_ok(r#"
@@ -2044,7 +2047,7 @@ fn typecheck_binding_declaration() {
         Variable {
             id: VarId(ScopeId(TEST_MODULE_ID, 0), 2),
             name: "c1".to_string(),
-            type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_BOOL_TYPE_ID, true)).unwrap(),
+            type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_BOOL_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Span::new(TEST_MODULE_ID, (2, 20), (2, 21))),
@@ -2056,7 +2059,7 @@ fn typecheck_binding_declaration() {
         Variable {
             id: VarId(ScopeId(TEST_MODULE_ID, 0), 3),
             name: "c2".to_string(),
-            type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_BOOL_TYPE_ID, true)).unwrap(),
+            type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_BOOL_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Span::new(TEST_MODULE_ID, (2, 24), (2, 25))),
@@ -3668,7 +3671,7 @@ fn typecheck_invocation_generics() {
 
     let project = test_typecheck("\
       func foo<T>(a: T, b: T): T[] = [a, b]\n\
-      foo<Int?>(1, None)\
+      foo<Int?>(Option.Some(value: 1), Option.None_)\
     ").unwrap();
     let module = &project.modules[TEST_MODULE_IDX];
     let type_id = module.code.last().unwrap().type_id();
@@ -3677,7 +3680,7 @@ fn typecheck_invocation_generics() {
         &project.array_type(
             project.find_type_id(
                 &ScopeId(TEST_MODULE_ID, 0),
-                &project.option_type(PRELUDE_INT_TYPE_ID, true),
+                &project.option_type(PRELUDE_INT_TYPE_ID),
             ).unwrap()
         ),
     ).unwrap();
@@ -3733,29 +3736,6 @@ fn typecheck_failure_invocation_generics() {
             &project.array_type(project.find_type_id_for_generic(&ScopeId(TEST_MODULE_ID, 1), "T").unwrap()),
         ).unwrap(),
         purpose: "assignment",
-    };
-    assert_eq!(expected, err);
-
-    let (project, Either::Right(err)) = test_typecheck("\
-      func foo<T>(a: T, b: T): T[] = [a, b]\n\
-      foo(1, None)\
-    ").unwrap_err() else { unreachable!() };
-    let expected = TypeError::TypeMismatch {
-        span: Span::new(TEST_MODULE_ID, (2, 8), (2, 11)),
-        expected: vec![PRELUDE_INT_TYPE_ID],
-        received: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap(),
-    };
-    assert_eq!(expected, err);
-
-    // Test passing type arguments explicitly
-
-    let (_, Either::Right(err)) = test_typecheck("\
-      func foo<T>(a: T, b: T): T[] = [a, b]\n\
-      foo<Bogus>(1, None)\
-    ").unwrap_err() else { unreachable!() };
-    let expected = TypeError::UnknownType {
-        span: Span::new(TEST_MODULE_ID, (2, 5), (2, 9)),
-        name: "Bogus".to_string(),
     };
     assert_eq!(expected, err);
 
@@ -4116,7 +4096,7 @@ fn typecheck_failure_invocation() {
     let expected = TypeError::UnknownMember {
         span: Span::new(TEST_MODULE_ID, (1, 10), (1, 16)),
         field_name: "toLower".to_string(),
-        type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_STRING_TYPE_ID, true)).unwrap(),
+        type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_STRING_TYPE_ID)).unwrap(),
     };
     assert_eq!(expected, err);
 }
@@ -4460,7 +4440,7 @@ fn typecheck_failure_accessor() {
     let expected = TypeError::UnknownMember {
         span: Span::new(TEST_MODULE_ID, (1, 10), (1, 15)),
         field_name: "length".to_string(),
-        type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_STRING_TYPE_ID, true)).unwrap(),
+        type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_STRING_TYPE_ID)).unwrap(),
     };
     assert_eq!(expected, err);
 }
@@ -4570,7 +4550,7 @@ fn typecheck_indexing() {
     // Arrays
     let project = test_typecheck("[1, 2, 3][0]").unwrap();
     let type_id = *project.modules[TEST_MODULE_IDX].code[0].type_id();
-    let expected = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap();
+    let expected = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("[1, 2, 3][0:1]").unwrap();
@@ -4615,11 +4595,11 @@ fn typecheck_indexing() {
     // Maps
     let project = test_typecheck("{ a: 1, b: 2 }[\"a\"]").unwrap();
     let type_id = *project.modules[TEST_MODULE_IDX].code[0].type_id();
-    let expected = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap();
+    let expected = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
     let project = test_typecheck("{ ((1, 2)): true, ((2, 3)): false }[(1, 2)]").unwrap();
     let type_id = *project.modules[TEST_MODULE_IDX].code[0].type_id();
-    let expected = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_BOOL_TYPE_ID, true)).unwrap();
+    let expected = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_BOOL_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
 }
 
@@ -4883,9 +4863,9 @@ fn typecheck_failure_assignment() {
         received: PRELUDE_BOOL_TYPE_ID,
     };
     assert_eq!(expected, err);
-    let result = test_typecheck("[1, 2, 3][0] = None");
+    let result = test_typecheck("[1, 2, 3][0] = Option.None_");
     assert!(result.is_err());
-    let result = test_typecheck("{ a: 1, b: 2 }[\"a\"] = None");
+    let result = test_typecheck("{ a: 1, b: 2 }[\"a\"] = Option.None_");
     assert!(result.is_err());
 
     // Invalid assignment targets
@@ -5044,20 +5024,8 @@ fn typecheck_failure_if_statement() {
 
 #[test]
 fn typecheck_if_expression() {
-    let project = test_typecheck("val x = if true { 1 }").unwrap();
-    let node = &project.modules[TEST_MODULE_IDX].code[0];
-    let TypedNode::BindingDeclaration { expr, .. } = node.clone() else { panic!() };
-    assert!(matches!(**expr.as_ref().unwrap(), TypedNode::If { is_statement: false, .. }));
-    let var_x = &project.modules[TEST_MODULE_IDX].scopes[0].vars[0];
-    assert_eq!("x", var_x.name);
-    let option_int_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap();
-    assert_eq!(option_int_type_id, var_x.type_id);
-
-    assert!(test_typecheck("val x = if true { } else { 1 }\nval _: Int? = x").is_ok());
-    assert!(test_typecheck("val x = if true { 1 } else { }\nval _: Int? = x").is_ok());
-
-    assert!(test_typecheck("val x = if true { [1, 2][0] } else { 1 }\nval _: Int? = x").is_ok());
-    assert!(test_typecheck("val x = if true { 1 } else { [1, 2][0] }\nval _: Int? = x").is_ok());
+    assert!(test_typecheck("val x = if true { [1, 2][0] } else { Option.Some(value: 1) }\nval _: Int? = x").is_ok());
+    assert!(test_typecheck("val x = if true { Option.Some(value: 1) } else { [1, 2][0] }\nval _: Int? = x").is_ok());
 }
 
 #[test]
@@ -5088,25 +5056,25 @@ fn typecheck_match_statement_and_expression() {
       val x: Int[] = match 123 { _ => [] }
     "#);
     assert_typecheck_ok(r#"
-      val x: Int? = match 123 { _ x => x + 1 }
+      val x: Int? = match 123 { _ x => Option.Some(value: x + 1) }
     "#);
     assert_typecheck_ok(r#"
-      val x: Int? = match 123 { _ => None }
+      val x: Int? = match 123 { _ => Option.None_ }
     "#);
 
     assert_typecheck_ok(r#"
       val x: Int? = match [1, 2][0] {
-        None => 123
-        _ => None
+        None => Option.Some(value: 123)
+        _ => Option.None_
       }
     "#);
 
     assert_typecheck_ok(r#"
       val x = match [1, 2][0] {
-        None => 1
-        1 => 2
-        2 => 3
-        _ => None
+        None => Option.Some(value: 1)
+        1 => Option.Some(value: 2)
+        2 => Option.Some(value: 3)
+        _ => Option.None_
       }
     "#);
     assert_typecheck_ok(r#"
@@ -5264,13 +5232,13 @@ fn typecheck_failure_match_expression() {
     assert_eq!(expected, err);
 
     let (project, Either::Right(err)) = test_typecheck("\
-      val x = match [1, 2][0] { None n => n, _ => 123 }\n\
+      val x = match [1, 2][0] { None n => n, _ => Option.Some(value: 123) }\n\
       val _: Int = x\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
         span: Span::new(TEST_MODULE_ID, (2, 14), (2, 14)),
         expected: vec![PRELUDE_INT_TYPE_ID],
-        received: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap(),
+        received: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
     };
     assert_eq!(expected, err);
 
@@ -5368,7 +5336,7 @@ fn typecheck_failure_match_expression() {
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::NonExhaustiveMatch {
         span: Span::new(TEST_MODULE_ID, (1, 9), (1, 13)),
-        type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap(),
+        type_id: project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("\
@@ -5537,21 +5505,17 @@ fn typecheck_failure_match_expression() {
 
 #[test]
 fn typecheck_failure_if_expression() {
-    let (project, Either::Right(err)) = test_typecheck("val _ = if true { }").unwrap_err() else { unreachable!() };
-    let expected = TypeError::ForbiddenAssignment {
-        span: Span::new(TEST_MODULE_ID, (1, 9), (1, 15)),
-        type_id: project.prelude_none_type_id,
-        purpose: "assignment",
+    let (_, Either::Right(err)) = test_typecheck("val _ = if true { }").unwrap_err() else { unreachable!() };
+    let expected = TypeError::EmptyIfElseBlock {
+        span: Span::new(TEST_MODULE_ID, (1, 9), (1, 10)),
+        kind: "if",
     };
     assert_eq!(expected, err);
 
-    let (project, Either::Right(err)) = test_typecheck("val _ = if true { [][0] }").unwrap_err() else { unreachable!() };
-    let array_t_type_id = project.get_struct_by_id(&project.prelude_array_struct_id).generic_ids[0];
-    let option_t_type_id = project.find_type_id(&ScopeId(TEST_MODULE_ID, 0), &project.option_type(array_t_type_id, true)).unwrap();
-    let expected = TypeError::ForbiddenAssignment {
-        span: Span::new(TEST_MODULE_ID, (1, 9), (1, 22)),
-        type_id: option_t_type_id,
-        purpose: "assignment",
+    let (_, Either::Right(err)) = test_typecheck("val _ = if true { [][0] }").unwrap_err() else { unreachable!() };
+    let expected = TypeError::EmptyIfElseBlock {
+        span: Span::new(TEST_MODULE_ID, (1, 9), (1, 10)),
+        kind: "else",
     };
     assert_eq!(expected, err);
 
@@ -5563,11 +5527,10 @@ fn typecheck_failure_if_expression() {
     };
     assert_eq!(expected, err);
 
-    let (project, Either::Right(err)) = test_typecheck("val _: Int = if true { 1 }").unwrap_err() else { unreachable!() };
-    let expected = TypeError::TypeMismatch {
-        span: Span::new(TEST_MODULE_ID, (1, 14), (1, 24)),
-        expected: vec![PRELUDE_INT_TYPE_ID],
-        received: project.find_type_id(&ScopeId(TEST_MODULE_ID, 1), &project.option_type(PRELUDE_INT_TYPE_ID, true)).unwrap(),
+    let (_, Either::Right(err)) = test_typecheck("val _: Int = if true { 1 }").unwrap_err() else { unreachable!() };
+    let expected = TypeError::EmptyIfElseBlock {
+        span: Span::new(TEST_MODULE_ID, (1, 14), (1, 15)),
+        kind: "else",
     };
     assert_eq!(expected, err);
 
@@ -5580,10 +5543,9 @@ fn typecheck_failure_if_expression() {
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("val _: Int? = if true { } else { true }").unwrap_err() else { unreachable!() };
-    let expected = TypeError::TypeMismatch {
-        span: Span::new(TEST_MODULE_ID, (1, 34), (1, 37)),
-        expected: vec![PRELUDE_INT_TYPE_ID],
-        received: PRELUDE_BOOL_TYPE_ID,
+    let expected = TypeError::EmptyIfElseBlock {
+        span: Span::new(TEST_MODULE_ID, (1, 15), (1, 16)),
+        kind: "if",
     };
     assert_eq!(expected, err);
 }

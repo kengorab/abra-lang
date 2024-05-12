@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -25,12 +24,10 @@
                 "label": { "name": "arr", "position": [1, 21] },
                 "mutable": false,
                 "type": {
-                  "nullable": false,
                   "kind": "instance",
                   "struct": { "moduleId": 0, "name": "Array" },
                   "typeParams": [
                     {
-                      "nullable": false,
                       "kind": "generic",
                       "name": "T"
                     }
@@ -41,20 +38,17 @@
                 "label": { "name": "fn", "position": [1, 31] },
                 "mutable": false,
                 "type": {
-                  "nullable": false,
                   "kind": "function",
                   "parameters": [
                     {
                       "required": true,
                       "type": {
-                        "nullable": false,
                         "kind": "generic",
                         "name": "T"
                       }
                     }
                   ],
                   "returnType": {
-                    "nullable": false,
                     "kind": "generic",
                     "name": "U"
                   }
@@ -64,12 +58,10 @@
             "functions": [],
             "types": [
               {
-                "nullable": false,
                 "kind": "generic",
                 "name": "T"
               },
               {
-                "nullable": false,
                 "kind": "generic",
                 "name": "U"
               }
@@ -80,7 +72,6 @@
             {
               "label": { "name": "T", "position": [1, 15] },
               "type": {
-                "nullable": false,
                 "kind": "generic",
                 "name": "T"
               }
@@ -88,7 +79,6 @@
             {
               "label": { "name": "U", "position": [1, 18] },
               "type": {
-                "nullable": false,
                 "kind": "generic",
                 "name": "U"
               }
@@ -98,12 +88,10 @@
             {
               "label": { "name": "arr", "position": [1, 21] },
               "type": {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 0, "name": "Array" },
                 "typeParams": [
                   {
-                    "nullable": false,
                     "kind": "generic",
                     "name": "T"
                   }
@@ -115,20 +103,17 @@
             {
               "label": { "name": "fn", "position": [1, 31] },
               "type": {
-                "nullable": false,
                 "kind": "function",
                 "parameters": [
                   {
                     "required": true,
                     "type": {
-                      "nullable": false,
                       "kind": "generic",
                       "name": "T"
                     }
                   }
                 ],
                 "returnType": {
-                  "nullable": false,
                   "kind": "generic",
                   "name": "U"
                 }
@@ -138,40 +123,72 @@
             }
           ],
           "returnType": {
-            "nullable": true,
-            "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "kind": "enumInstance",
+            "enum": { "moduleId": 0, "name": "Option" },
             "typeParams": [
               {
-                "nullable": false,
-                "kind": "generic",
-                "name": "U"
+                "kind": "instance",
+                "struct": { "moduleId": 0, "name": "Array" },
+                "typeParams": [
+                  {
+                    "kind": "generic",
+                    "name": "U"
+                  }
+                ]
               }
             ]
           },
           "body": [
             {
               "token": {
-                "position": [1, 53],
+                "position": [1, 64],
                 "kind": {
-                  "name": "LBrack"
+                  "name": "LParen"
                 }
               },
               "type": {
-                "nullable": true,
-                "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "kind": "enumInstance",
+                "enum": { "moduleId": 0, "name": "Option" },
                 "typeParams": [
                   {
-                    "nullable": false,
-                    "kind": "generic",
-                    "name": "U"
+                    "kind": "instance",
+                    "struct": { "moduleId": 0, "name": "Array" },
+                    "typeParams": [
+                      {
+                        "kind": "generic",
+                        "name": "U"
+                      }
+                    ]
                   }
                 ]
               },
               "node": {
-                "kind": "array",
-                "items": []
+                "kind": "invocation",
+                "invokee": "Option.Some",
+                "arguments": [
+                  {
+                    "token": {
+                      "position": [1, 65],
+                      "kind": {
+                        "name": "LBrack"
+                      }
+                    },
+                    "type": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 0, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "generic",
+                          "name": "U"
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "array",
+                      "items": []
+                    }
+                  }
+                ]
               }
             }
           ]
@@ -186,7 +203,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -201,7 +217,6 @@
                 "label": { "name": "s", "position": [3, 13] },
                 "mutable": false,
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 }
@@ -216,7 +231,6 @@
             {
               "label": { "name": "s", "position": [3, 13] },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
@@ -225,7 +239,6 @@
             }
           ],
           "returnType": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },
@@ -239,7 +252,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -260,7 +272,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -275,14 +286,18 @@
             "label": { "name": "ints", "position": [4, 5] },
             "mutable": false,
             "type": {
-              "nullable": true,
-              "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "kind": "enumInstance",
+              "enum": { "moduleId": 0, "name": "Option" },
               "typeParams": [
                 {
-                  "nullable": false,
-                  "kind": "primitive",
-                  "primitive": "Int"
+                  "kind": "instance",
+                  "struct": { "moduleId": 0, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
                 }
               ]
             }
@@ -296,14 +311,18 @@
             }
           },
           "type": {
-            "nullable": true,
-            "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "kind": "enumInstance",
+            "enum": { "moduleId": 0, "name": "Option" },
             "typeParams": [
               {
-                "nullable": false,
-                "kind": "primitive",
-                "primitive": "Int"
+                "kind": "instance",
+                "struct": { "moduleId": 0, "name": "Array" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
               }
             ]
           },
@@ -318,18 +337,15 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "function",
                 "parameters": [
                   {
                     "required": true,
                     "type": {
-                      "nullable": false,
                       "kind": "instance",
                       "struct": { "moduleId": 0, "name": "Array" },
                       "typeParams": [
                         {
-                          "nullable": false,
                           "kind": "generic",
                           "name": "T"
                         }
@@ -339,20 +355,17 @@
                   {
                     "required": true,
                     "type": {
-                      "nullable": false,
                       "kind": "function",
                       "parameters": [
                         {
                           "required": true,
                           "type": {
-                            "nullable": false,
                             "kind": "generic",
                             "name": "T"
                           }
                         }
                       ],
                       "returnType": {
-                        "nullable": false,
                         "kind": "generic",
                         "name": "U"
                       }
@@ -360,14 +373,18 @@
                   }
                 ],
                 "returnType": {
-                  "nullable": true,
-                  "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 0, "name": "Option" },
                   "typeParams": [
                     {
-                      "nullable": false,
-                      "kind": "generic",
-                      "name": "U"
+                      "kind": "instance",
+                      "struct": { "moduleId": 0, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "generic",
+                          "name": "U"
+                        }
+                      ]
                     }
                   ]
                 }
@@ -386,12 +403,10 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "instance",
                   "struct": { "moduleId": 0, "name": "Array" },
                   "typeParams": [
                     {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "String"
                     }
@@ -409,7 +424,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "String"
                       },
@@ -427,7 +441,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "String"
                       },
@@ -445,7 +458,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "String"
                       },
@@ -466,20 +478,17 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "function",
                   "parameters": [
                     {
                       "required": true,
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "String"
                       }
                     }
                   ],
                   "returnType": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -502,7 +511,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -517,14 +525,18 @@
             "label": { "name": "_", "position": [5, 5] },
             "mutable": false,
             "type": {
-              "nullable": true,
-              "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "kind": "enumInstance",
+              "enum": { "moduleId": 0, "name": "Option" },
               "typeParams": [
                 {
-                  "nullable": false,
-                  "kind": "primitive",
-                  "primitive": "Int"
+                  "kind": "instance",
+                  "struct": { "moduleId": 0, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
                 }
               ]
             }
@@ -539,14 +551,18 @@
             }
           },
           "type": {
-            "nullable": true,
-            "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "kind": "enumInstance",
+            "enum": { "moduleId": 0, "name": "Option" },
             "typeParams": [
               {
-                "nullable": false,
-                "kind": "primitive",
-                "primitive": "Int"
+                "kind": "instance",
+                "struct": { "moduleId": 0, "name": "Array" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
               }
             ]
           },

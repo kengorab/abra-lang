@@ -1,2 +1,2 @@
-val s: String? = None
+val s: String? = Option.None_
 #{1, s}

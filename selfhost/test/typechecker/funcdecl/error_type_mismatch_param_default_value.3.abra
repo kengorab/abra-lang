@@ -1,1 +1,1 @@
-func foo(a: Int = None) {}
+func foo(a: Int = Option.None_) {}

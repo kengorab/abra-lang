@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -25,13 +24,11 @@
             "label": { "name": "fn1", "position": [1, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "function",
               "parameters": [
                 {
                   "required": true,
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -39,14 +36,12 @@
                 {
                   "required": true,
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
                 }
               ],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               }
@@ -61,13 +56,11 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "function",
             "parameters": [
               {
                 "required": true,
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -75,14 +68,12 @@
               {
                 "required": true,
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
               }
             ],
             "returnType": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -98,7 +89,6 @@
                     "label": { "name": "a", "position": [1, 31] },
                     "mutable": false,
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
@@ -107,7 +97,6 @@
                     "label": { "name": "b", "position": [1, 34] },
                     "mutable": false,
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
@@ -122,7 +111,6 @@
                 {
                   "label": { "name": "a", "position": [1, 31] },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -132,7 +120,6 @@
                 {
                   "label": { "name": "b", "position": [1, 34] },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -141,7 +128,6 @@
                 }
               ],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -154,7 +140,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -170,7 +155,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       },
@@ -188,7 +172,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       },
@@ -213,7 +196,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -228,13 +210,11 @@
             "label": { "name": "fn2", "position": [2, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "function",
               "parameters": [
                 {
                   "required": true,
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -242,14 +222,12 @@
                 {
                   "required": true,
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
                 }
               ],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               }
@@ -264,13 +242,11 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "function",
             "parameters": [
               {
                 "required": true,
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -278,14 +254,12 @@
               {
                 "required": true,
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
               }
             ],
             "returnType": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -301,7 +275,6 @@
                     "label": { "name": "a", "position": [2, 12] },
                     "mutable": false,
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
@@ -310,7 +283,6 @@
                     "label": { "name": "b", "position": [2, 20] },
                     "mutable": false,
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
@@ -325,7 +297,6 @@
                 {
                   "label": { "name": "a", "position": [2, 12] },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -335,7 +306,6 @@
                 {
                   "label": { "name": "b", "position": [2, 20] },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -344,7 +314,6 @@
                 }
               ],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -357,7 +326,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -373,7 +341,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       },
@@ -391,7 +358,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       },
@@ -416,7 +382,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -431,22 +396,25 @@
             "label": { "name": "fn3", "position": [3, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "function",
               "parameters": [
                 {
                   "required": true,
                   "type": {
-                    "nullable": true,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
                 }
               ],
               "returnType": {
-                "nullable": true,
-                "kind": "primitive",
-                "primitive": "Int"
+                "kind": "enumInstance",
+                "enum": { "moduleId": 0, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
               }
             }
           }
@@ -459,22 +427,25 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "function",
             "parameters": [
               {
                 "required": true,
                 "type": {
-                  "nullable": true,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
               }
             ],
             "returnType": {
-              "nullable": true,
-              "kind": "primitive",
-              "primitive": "Int"
+              "kind": "enumInstance",
+              "enum": { "moduleId": 0, "name": "Option" },
+              "typeParams": [
+                {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
             }
           },
           "node": {
@@ -488,7 +459,6 @@
                     "label": { "name": "a", "position": [3, 12] },
                     "mutable": false,
                     "type": {
-                      "nullable": true,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
@@ -503,7 +473,6 @@
                 {
                   "label": { "name": "a", "position": [3, 12] },
                   "type": {
-                    "nullable": true,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -512,9 +481,14 @@
                 }
               ],
               "returnType": {
-                "nullable": true,
-                "kind": "primitive",
-                "primitive": "Int"
+                "kind": "enumInstance",
+                "enum": { "moduleId": 0, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
               },
               "body": [
                 {
@@ -525,9 +499,14 @@
                     }
                   },
                   "type": {
-                    "nullable": true,
-                    "kind": "primitive",
-                    "primitive": "Int"
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 0, "name": "Option" },
+                    "typeParams": [
+                      {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    ]
                   },
                   "node": {
                     "kind": "if",
@@ -541,7 +520,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Bool"
                       },
@@ -554,39 +532,88 @@
                     "ifBlock": [
                       {
                         "token": {
-                          "position": [3, 31],
+                          "position": [3, 37],
                           "kind": {
-                            "name": "None"
+                            "name": "Dot"
                           }
                         },
                         "type": {
-                          "nullable": true,
-                          "kind": "primitive",
-                          "primitive": "Int"
+                          "kind": "enumInstance",
+                          "enum": { "moduleId": 0, "name": "Option" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            }
+                          ]
                         },
                         "node": {
-                          "kind": "identifier",
-                          "name": "None"
+                          "kind": "accessor",
+                          "head": {
+                            "token": {
+                              "position": [3, 31],
+                              "kind": {
+                                "name": "Ident",
+                                "value": "Option"
+                              }
+                            },
+                            "type": {
+                              "kind": "enum",
+                              "enum": { "moduleId": 0, "name": "Option" }
+                            },
+                            "node": {
+                              "kind": "identifier",
+                              "name": "Option"
+                            }
+                          },
+                          "middle": [],
+                          "tail": {
+                            "kind": "enumVariant",
+                            "name": "Option.None_"
+                          }
                         }
                       }
                     ],
                     "elseBlock": [
                       {
                         "token": {
-                          "position": [3, 41],
+                          "position": [3, 60],
                           "kind": {
-                            "name": "Ident",
-                            "value": "a"
+                            "name": "LParen"
                           }
                         },
                         "type": {
-                          "nullable": true,
-                          "kind": "primitive",
-                          "primitive": "Int"
+                          "kind": "enumInstance",
+                          "enum": { "moduleId": 0, "name": "Option" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            }
+                          ]
                         },
                         "node": {
-                          "kind": "identifier",
-                          "name": "a"
+                          "kind": "invocation",
+                          "invokee": "Option.Some",
+                          "arguments": [
+                            {
+                              "token": {
+                                "position": [3, 61],
+                                "kind": {
+                                  "name": "Ident",
+                                  "value": "a"
+                                }
+                              },
+                              "type": {
+                                "kind": "primitive",
+                                "primitive": "Int"
+                              },
+                              "node": {
+                                "kind": "identifier",
+                                "name": "a"
+                              }
+                            }
+                          ]
                         }
                       }
                     ]
@@ -606,7 +633,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -621,20 +647,17 @@
             "label": { "name": "fn4", "position": [4, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "function",
               "parameters": [
                 {
                   "required": true,
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
                 }
               ],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               }
@@ -649,20 +672,17 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "function",
             "parameters": [
               {
                 "required": false,
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
               }
             ],
             "returnType": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -678,7 +698,6 @@
                     "label": { "name": "a", "position": [4, 26] },
                     "mutable": false,
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
@@ -693,7 +712,6 @@
                 {
                   "label": { "name": "a", "position": [4, 26] },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -706,7 +724,6 @@
                       }
                     },
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     },
@@ -719,7 +736,6 @@
                 }
               ],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -732,7 +748,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -748,7 +763,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       },
@@ -766,7 +780,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       },
@@ -791,7 +804,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -806,20 +818,17 @@
             "label": { "name": "fn5", "position": [5, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "function",
               "parameters": [
                 {
                   "required": true,
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
                 }
               ],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               }
@@ -834,13 +843,11 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "function",
             "parameters": [
               {
                 "required": true,
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -848,14 +855,12 @@
               {
                 "required": false,
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
               }
             ],
             "returnType": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -871,7 +876,6 @@
                     "label": { "name": "a", "position": [5, 26] },
                     "mutable": false,
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
@@ -880,7 +884,6 @@
                     "label": { "name": "b", "position": [5, 29] },
                     "mutable": false,
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
@@ -895,7 +898,6 @@
                 {
                   "label": { "name": "a", "position": [5, 26] },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -905,7 +907,6 @@
                 {
                   "label": { "name": "b", "position": [5, 29] },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -918,7 +919,6 @@
                       }
                     },
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     },
@@ -931,7 +931,6 @@
                 }
               ],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -944,7 +943,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -960,7 +958,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       },
@@ -978,7 +975,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       },
@@ -1003,7 +999,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -1018,16 +1013,13 @@
             "label": { "name": "fn6", "position": [7, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "function",
               "parameters": [],
               "returnType": {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 0, "name": "Array" },
                 "typeParams": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -1044,16 +1036,13 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "function",
             "parameters": [],
             "returnType": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Array" },
               "typeParams": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -1074,12 +1063,10 @@
               "typeParameters": [],
               "parameters": [],
               "returnType": {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 0, "name": "Array" },
                 "typeParams": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -1094,12 +1081,10 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "instance",
                     "struct": { "moduleId": 0, "name": "Array" },
                     "typeParams": [
                       {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       }
@@ -1124,7 +1109,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -1139,18 +1123,21 @@
             "label": { "name": "fn7", "position": [8, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "function",
               "parameters": [],
               "returnType": {
-                "nullable": true,
-                "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "kind": "enumInstance",
+                "enum": { "moduleId": 0, "name": "Option" },
                 "typeParams": [
                   {
-                    "nullable": false,
-                    "kind": "primitive",
-                    "primitive": "Int"
+                    "kind": "instance",
+                    "struct": { "moduleId": 0, "name": "Array" },
+                    "typeParams": [
+                      {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    ]
                   }
                 ]
               }
@@ -1165,18 +1152,21 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "function",
             "parameters": [],
             "returnType": {
-              "nullable": true,
-              "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "kind": "enumInstance",
+              "enum": { "moduleId": 0, "name": "Option" },
               "typeParams": [
                 {
-                  "nullable": false,
-                  "kind": "primitive",
-                  "primitive": "Int"
+                  "kind": "instance",
+                  "struct": { "moduleId": 0, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
                 }
               ]
             }
@@ -1195,40 +1185,72 @@
               "typeParameters": [],
               "parameters": [],
               "returnType": {
-                "nullable": true,
-                "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "kind": "enumInstance",
+                "enum": { "moduleId": 0, "name": "Option" },
                 "typeParams": [
                   {
-                    "nullable": false,
-                    "kind": "primitive",
-                    "primitive": "Int"
+                    "kind": "instance",
+                    "struct": { "moduleId": 0, "name": "Array" },
+                    "typeParams": [
+                      {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    ]
                   }
                 ]
               },
               "body": [
                 {
                   "token": {
-                    "position": [8, 31],
+                    "position": [8, 42],
                     "kind": {
-                      "name": "LBrack"
+                      "name": "LParen"
                     }
                   },
                   "type": {
-                    "nullable": true,
-                    "kind": "instance",
-                    "struct": { "moduleId": 0, "name": "Array" },
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 0, "name": "Option" },
                     "typeParams": [
                       {
-                        "nullable": false,
-                        "kind": "primitive",
-                        "primitive": "Int"
+                        "kind": "instance",
+                        "struct": { "moduleId": 0, "name": "Array" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
                       }
                     ]
                   },
                   "node": {
-                    "kind": "array",
-                    "items": []
+                    "kind": "invocation",
+                    "invokee": "Option.Some",
+                    "arguments": [
+                      {
+                        "token": {
+                          "position": [8, 43],
+                          "kind": {
+                            "name": "LBrack"
+                          }
+                        },
+                        "type": {
+                          "kind": "instance",
+                          "struct": { "moduleId": 0, "name": "Array" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            }
+                          ]
+                        },
+                        "node": {
+                          "kind": "array",
+                          "items": []
+                        }
+                      }
+                    ]
                   }
                 }
               ]
@@ -1245,7 +1267,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -1260,18 +1281,21 @@
             "label": { "name": "fn8", "position": [9, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "function",
               "parameters": [],
               "returnType": {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 0, "name": "Array" },
                 "typeParams": [
                   {
-                    "nullable": true,
-                    "kind": "primitive",
-                    "primitive": "Int"
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 0, "name": "Option" },
+                    "typeParams": [
+                      {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    ]
                   }
                 ]
               }
@@ -1286,18 +1310,21 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "function",
             "parameters": [],
             "returnType": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Array" },
               "typeParams": [
                 {
-                  "nullable": true,
-                  "kind": "primitive",
-                  "primitive": "Int"
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 0, "name": "Option" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
                 }
               ]
             }
@@ -1316,14 +1343,18 @@
               "typeParameters": [],
               "parameters": [],
               "returnType": {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 0, "name": "Array" },
                 "typeParams": [
                   {
-                    "nullable": true,
-                    "kind": "primitive",
-                    "primitive": "Int"
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 0, "name": "Option" },
+                    "typeParams": [
+                      {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    ]
                   }
                 ]
               },
@@ -1336,14 +1367,18 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "instance",
                     "struct": { "moduleId": 0, "name": "Array" },
                     "typeParams": [
                       {
-                        "nullable": true,
-                        "kind": "primitive",
-                        "primitive": "Int"
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 0, "name": "Option" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
                       }
                     ]
                   },

@@ -1,5 +1,5 @@
-Error at %FILE_NAME%:1:9
+Error at %FILE_NAME%:1:15
 Could not determine type for assignment
-  |  val x = None
-             ^
+  |  val x = Option.None_
+                   ^
 Type '<unknown>?' has unfilled holes. Please use an explicit type annotation to denote the type

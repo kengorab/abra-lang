@@ -115,15 +115,15 @@ println(12.abs())
 println((-12).abs())
 
 // Int#asBase
-/// Expect: None None None None
+/// Expect: Option.None_ Option.None_ Option.None_ Option.None_
 println(123.asBase(1), 123.asBase(0), 123.asBase(-1), 123.asBase(37))
-/// Expect: 1100 -1100
+/// Expect: Option.Some(value: "1100") Option.Some(value: "-1100")
 println(12.asBase(2), (-12).asBase(2))
-/// Expect: 4d2 -4d2
+/// Expect: Option.Some(value: "4d2") Option.Some(value: "-4d2")
 println(1234.asBase(16), (-1234).asBase(16))
-/// Expect: ya -ya
+/// Expect: Option.Some(value: "ya") Option.Some(value: "-ya")
 println(1234.asBase(36), (-1234).asBase(36))
-/// Expect: L8WN -L8WN
+/// Expect: Option.Some(value: "L8WN") Option.Some(value: "-L8WN")
 println(11235813.asBase(62), (-11235813).asBase(62))
 
 // Int#hex

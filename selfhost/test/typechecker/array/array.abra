@@ -4,15 +4,16 @@
 val a1: Int[] = []
 val a2: Int[] = [1, 2, 3]
 
-val a3: Int?[] = [1, None, 3]
-val a4: Int?[] = [None, 2, 3]
+val a3: Int?[] = [Option.Some(1), Option.None_, Option.Some(3)]
+val a4: Int?[] = [Option.None_, Option.Some(2), Option.Some(3)]
 
 [[1, 2], [], [3, 4]]
-[1, 2, None, 4]
-[[1, 2], [3, 4], None, [5, 6]]
+[Option.Some(1), Option.Some(2), Option.None_, Option.Some(4)]
+[Option.Some([1, 2]), Option.Some([3, 4]), Option.None_, Option.Some([5, 6])]
 
-val s5: String?[]? = [None]
+val s5: String?[]? = Option.Some([Option.None_])
 
 [[], [1, 2], [3, 4]]
 [#{}, #{1, 2}, #{3, 4}]
-[[], None, [1, 2]]
+[Option.Some(#{}), Option.None_, Option.Some(#{1, 2})]
+[Option.Some(#{}), Option.Some(#{1, 2})]

@@ -1,1 +1,1 @@
-val x: Int = None
+val x: Int = Option.None_

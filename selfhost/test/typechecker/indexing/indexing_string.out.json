@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -25,7 +24,6 @@
             "label": { "name": "str", "position": [1, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "String"
             }
@@ -40,7 +38,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
@@ -59,7 +56,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -74,7 +70,6 @@
             "label": { "name": "s1", "position": [2, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "String"
             }
@@ -88,7 +83,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
@@ -105,7 +99,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 },
@@ -123,7 +116,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
@@ -145,7 +137,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -160,7 +151,6 @@
             "label": { "name": "_", "position": [3, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "String"
             }
@@ -175,7 +165,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
@@ -194,7 +183,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -209,7 +197,6 @@
             "label": { "name": "a", "position": [5, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -224,7 +211,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },
@@ -243,7 +229,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -258,7 +243,6 @@
             "label": { "name": "b", "position": [6, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -273,7 +257,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },
@@ -292,7 +275,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -307,7 +289,6 @@
             "label": { "name": "s2", "position": [8, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "String"
             }
@@ -321,7 +302,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
@@ -338,7 +318,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 },
@@ -356,7 +335,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
@@ -374,7 +352,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
@@ -396,7 +373,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -411,7 +387,6 @@
             "label": { "name": "_", "position": [9, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "String"
             }
@@ -426,7 +401,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
@@ -445,7 +419,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -460,7 +433,6 @@
             "label": { "name": "s3", "position": [11, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "String"
             }
@@ -474,7 +446,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
@@ -491,7 +462,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 },
@@ -510,7 +480,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
@@ -532,7 +501,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -547,7 +515,6 @@
             "label": { "name": "_", "position": [12, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "String"
             }
@@ -562,7 +529,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
@@ -581,7 +547,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -596,7 +561,6 @@
             "label": { "name": "s4", "position": [14, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "String"
             }
@@ -610,7 +574,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
@@ -627,7 +590,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 },
@@ -644,7 +606,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
@@ -660,7 +621,6 @@
                       }
                     },
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     },
@@ -685,7 +645,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -700,7 +659,6 @@
             "label": { "name": "_", "position": [15, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "String"
             }
@@ -715,7 +673,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },

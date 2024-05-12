@@ -22,6 +22,11 @@ func println(*items: Any[]) {
   stdoutWrite("\n")
 }
 
+export enum Option<T> {
+  Some(value: T)
+  None_
+}
+
 type RangeIterator {
   start: Int
   end: Int
@@ -31,17 +36,17 @@ type RangeIterator {
   func next(self): Int? {
     val offset = self._i * self.stepBy
     if self.start + offset >= self.end {
-      None
+      Option.None_
     } else {
       self._i += 1
-      self.start + offset
+      Option.Some(self.start + offset)
     }
   }
 }
 
 func range(start: Int, end: Int, stepBy = 1): RangeIterator = RangeIterator(start: start, end: end, stepBy: stepBy)
 
-func flattenOption<T>(value: T??): T? = if value |v| v else None
+func flattenOption<T>(value: T??): T? = if value |v| v else Option.None_
 
 enum Result<V, E> {
   Ok(value: V)
@@ -54,7 +59,7 @@ type Int {
   func abs(self): Int = if self < 0 { -self } else { self }
 
   func asBase(self, base: Int): String? {
-    if !((2 <= base && base <= 36) || base == 62) return None
+    if !((2 <= base && base <= 36) || base == 62) return Option.None_
 
     // TODO: Extract to constants on String (when static members are a thing)
     val digits = "0123456789abcdefghijklmnopqrstuvwxyz"
@@ -84,7 +89,7 @@ type Int {
       str._buffer.offset(i).store(Byte.fromInt(45)) // '-'
     }
 
-    str
+    Option.Some(str)
   }
 
   func hex(self): String = "0x" + (self.asBase(16) ?: "")
@@ -225,8 +230,8 @@ type String {
 
   @Stub func padLeft(self, totalSize: Int, padding = " "): String
   @Stub func trim(self): String
-  @Stub func trimStart(self, pattern: String? = None): String
-  @Stub func trimEnd(self, pattern: String? = None): String
+  @Stub func trimStart(self, pattern: String = ""): String
+  @Stub func trimEnd(self, pattern: String = ""): String
 
   func split(self, by = ""): String[] {
     if by.isEmpty() {
@@ -372,9 +377,9 @@ type ArrayIterator<T> {
   func next(self): T? {
     if self.array[self._i] |item| {
       self._i += 1
-      item
+      Option.Some(item)
     } else {
-      None
+      Option.None_
     }
   }
 }
@@ -486,10 +491,10 @@ type Array<T> {
 
   func pop(self): T? {
     if self.length == 0 {
-      None
+      Option.None_
     } else {
       self.length -= 1
-      self._buffer.offset(self.length).load()
+      Option.Some(self._buffer.offset(self.length).load())
     }
   }
 
@@ -590,10 +595,10 @@ type Array<T> {
   func find(self, fn: (T) => Bool): T? {
     for i in range(0, self.length) {
       val item = self._buffer.offset(i).load()
-      if fn(item) return item
+      if fn(item) return Option.Some(item)
     }
 
-    None
+    Option.None_
   }
 
   @Stub func findIndex(self, fn: (T) => Bool): (T, Int)?
@@ -726,9 +731,9 @@ type Array<T> {
   func get(self, index: Int): T? {
     val idx = if index < 0 index + self.length else index
     if idx >= self.length || idx < 0 {
-      None
+      Option.None_
     } else {
-      self._buffer.offset(idx).load()
+      Option.Some(self._buffer.offset(idx).load())
     }
   }
 
@@ -754,7 +759,7 @@ type Array<T> {
   func set(self, index: Int, value: T): T? {
     val idx = if index < 0 index + self.length else index
     if idx >= self.length || idx < 0 {
-      None
+      Option.None_
     } else {
       val old = self.get(index)
       self._buffer.offset(idx).store(value)
@@ -783,31 +788,31 @@ type Process {
 
   func getEnvVar(name: String): String? {
     val str = libc.getenv(name._buffer)
-    if str.isNullPtr() return None
+    if str.isNullPtr() return Option.None_
 
     val len = libc.strlen(str)
-    String(length: len, _buffer: str)
+    Option.Some(String(length: len, _buffer: str))
   }
 }
 
 type SetIterator<T> {
   set: Set<T>
-  _mapIterator: MapIterator<T, Bool>? = None
+  _mapIterator: MapIterator<T, Bool>? = Option.None_
 
   func next(self): T? {
     if !self._mapIterator {
-      self._mapIterator = self.set._map.iterator()
+      self._mapIterator = Option.Some(self.set._map.iterator())
     }
 
     if self._mapIterator |iter| {
       if iter.next() |item| {
-        item[0]
+        Option.Some(item[0])
       } else {
-        None
+        Option.None_
       }
     } else {
       // unreachable
-      None
+      Option.None_
     }
   }
 }
@@ -921,16 +926,16 @@ type Set<T> {
 type MapEntry<K, V> {
   key: K
   value: V
-  next: MapEntry<K, V>? = None
+  next: MapEntry<K, V>? = Option.None_
 }
 
 type MapIterator<K, V> {
   map: Map<K, V>
   _i: Int = -1
-  _cursor: MapEntry<K, V>? = None
+  _cursor: MapEntry<K, V>? = Option.None_
 
   func next(self): (K, V)? {
-    if self._i >= self.map._entries.length { return None }
+    if self._i >= self.map._entries.length { return Option.None_ }
 
     if !self._cursor {
       self._i += 1
@@ -939,7 +944,7 @@ type MapIterator<K, V> {
 
     if self._cursor |cur| {
       self._cursor = cur.next
-      return (cur.key, cur.value)
+      return Option.Some((cur.key, cur.value))
     }
 
     self.next()
@@ -960,7 +965,7 @@ type Map<K, V> {
       initialCapacity
     }
 
-    val entries: MapEntry<K, V>?[] = Array.fill(capacity, None)
+    val entries: MapEntry<K, V>?[] = Array.fill(capacity, Option.None_)
     Map(size: 0, _capacity: capacity, _entries: entries)
   }
 
@@ -1091,32 +1096,32 @@ type Map<K, V> {
     val hash = self._getKeyHash(key, entries._capacity)
 
     if flattenOption(entries[hash]) |bucket| {
-      var cursor: MapEntry<K, V>? = bucket
+      var cursor: MapEntry<K, V>? = Option.Some(bucket)
       while cursor |cur| {
         if cur.key == key {
           val old = cur.value
           cur.value = value
-          return (old, false)
+          return (Option.Some(old), false)
         } else if cur.next |next| {
-          cursor = next
+          cursor = Option.Some(next)
         } else {
-          cur.next = MapEntry(key: key, value: value)
-          return (None, true)
+          cur.next = Option.Some(MapEntry(key: key, value: value))
+          return (Option.None_, true)
         }
       }
 
       // Should be unreachable since loop will always eventually result in a return
-      (None, false)
+      (Option.None_, false)
     } else {
-      entries[hash] = MapEntry(key: key, value: value)
-      (None, true)
+      entries[hash] = Option.Some(MapEntry(key: key, value: value))
+      (Option.None_, true)
     }
   }
 
   func _resize(self) {
     val newCapacity = self._capacity * 2
 
-    val newEntries: MapEntry<K, V>?[] = Array.fill(newCapacity, None)
+    val newEntries: MapEntry<K, V>?[] = Array.fill(newCapacity, Option.None_)
     for entry in self {
       val key = entry[0]
       val value = entry[1]
@@ -1131,24 +1136,24 @@ type Map<K, V> {
     val hash = self._getKeyHash(key, self._entries._capacity)
 
     if flattenOption(self._entries[hash]) |bucket| {
-      var cursor: MapEntry<K, V>? = bucket
+      var cursor: MapEntry<K, V>? = Option.Some(bucket)
       while cursor |entry| {
         if entry.key == key {
-          return entry
+          return Option.Some(entry)
         } else {
-          cursor = entry?.next
+          cursor = entry.next
         }
       }
     }
 
-    None
+    Option.None_
   }
 
   func get(self, key: K): V? {
     if self._getEntry(key) |entry| {
-      entry.value
+      Option.Some(entry.value)
     } else {
-      None
+      Option.None_
     }
   }
 
@@ -1164,9 +1169,9 @@ type Map<K, V> {
     if self._getEntry(key) |entry| {
       val oldVal = entry.value
       entry.value = updater(oldVal)
-      oldVal
+      Option.Some(oldVal)
     } else {
-      None
+      Option.None_
     }
   }
 

@@ -1,6 +1,6 @@
 type Foo<T, U> {
   t: T
-  u: U? = None
+  u: U? = Option.None_
 }
 
 func foo(): Foo<Int, String> = Foo(t: 123)

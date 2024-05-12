@@ -1,5 +1,5 @@
 type Foo { a: Int }
 
 val f = Foo(a: 123)
-val a: Int? = 123
+val a: Int? = Option.Some(123)
 f.a = a

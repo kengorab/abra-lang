@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -25,12 +24,10 @@
             "label": { "name": "arr", "position": [1, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Array" },
               "typeParams": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -46,12 +43,10 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "instance",
             "struct": { "moduleId": 0, "name": "Array" },
             "typeParams": [
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               }
@@ -69,7 +64,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
@@ -87,7 +81,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
@@ -105,7 +98,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
@@ -127,7 +119,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -142,7 +133,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },
@@ -165,12 +155,10 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 0, "name": "Array" },
                 "typeParams": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -190,7 +178,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -211,7 +198,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -226,26 +212,21 @@
             "label": { "name": "tuple", "position": [4, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "tuple",
               "types": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 },
                 {
-                  "nullable": false,
                   "kind": "instance",
                   "struct": { "moduleId": 0, "name": "Array" },
                   "typeParams": [
                     {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
@@ -263,26 +244,21 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "tuple",
             "types": [
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
               {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 0, "name": "Array" },
                 "typeParams": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -302,7 +278,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
@@ -320,7 +295,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 },
@@ -337,12 +311,10 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "instance",
                   "struct": { "moduleId": 0, "name": "Array" },
                   "typeParams": [
                     {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
@@ -360,7 +332,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       },
@@ -385,7 +356,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -400,7 +370,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },
@@ -424,26 +393,21 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "tuple",
                 "types": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "String"
                   },
                   {
-                    "nullable": false,
                     "kind": "instance",
                     "struct": { "moduleId": 0, "name": "Array" },
                     "typeParams": [
                       {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       }
@@ -468,7 +432,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -483,28 +446,23 @@
             "label": { "name": "map", "position": [7, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Map" },
               "typeParams": [
                 {
-                  "nullable": false,
                   "kind": "tuple",
                   "types": [
                     {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     },
                     {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
                   ]
                 },
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 }
@@ -520,28 +478,23 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "instance",
             "struct": { "moduleId": 0, "name": "Map" },
             "typeParams": [
               {
-                "nullable": false,
                 "kind": "tuple",
                 "types": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
                 ]
               },
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               }
@@ -559,16 +512,13 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "tuple",
                     "types": [
                       {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       },
                       {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       }
@@ -586,7 +536,6 @@
                           }
                         },
                         "type": {
-                          "nullable": false,
                           "kind": "primitive",
                           "primitive": "Int"
                         },
@@ -604,7 +553,6 @@
                           }
                         },
                         "type": {
-                          "nullable": false,
                           "kind": "primitive",
                           "primitive": "Int"
                         },
@@ -625,7 +573,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "String"
                   },
@@ -644,16 +591,13 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "tuple",
                     "types": [
                       {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       },
                       {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       }
@@ -671,7 +615,6 @@
                           }
                         },
                         "type": {
-                          "nullable": false,
                           "kind": "primitive",
                           "primitive": "Int"
                         },
@@ -689,7 +632,6 @@
                           }
                         },
                         "type": {
-                          "nullable": false,
                           "kind": "primitive",
                           "primitive": "Int"
                         },
@@ -710,7 +652,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "String"
                   },
@@ -733,7 +674,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -748,7 +688,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
@@ -771,28 +710,23 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 0, "name": "Map" },
                 "typeParams": [
                   {
-                    "nullable": false,
                     "kind": "tuple",
                     "types": [
                       {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       },
                       {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       }
                     ]
                   },
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "String"
                   }
@@ -811,16 +745,13 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "tuple",
                 "types": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -838,7 +769,6 @@
                       }
                     },
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     },
@@ -856,7 +786,6 @@
                       }
                     },
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     },

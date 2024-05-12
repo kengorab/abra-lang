@@ -1,0 +1,2 @@
+val a: Int? = Option.Some(123)
+a != 456
