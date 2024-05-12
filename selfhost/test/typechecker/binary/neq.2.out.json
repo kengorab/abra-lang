@@ -37,7 +37,7 @@
         ],
         "expr": {
           "token": {
-            "position": [1, 26],
+            "position": [1, 19],
             "kind": {
               "name": "LParen"
             }
@@ -58,7 +58,7 @@
             "arguments": [
               {
                 "token": {
-                  "position": [1, 27],
+                  "position": [1, 20],
                   "kind": {
                     "name": "Int",
                     "value": 123

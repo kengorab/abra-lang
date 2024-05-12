@@ -1405,6 +1405,22 @@ impl Parser {
         let lparen = token;
         let args = self.parse_invocation_args()?;
 
+        let left = match left {
+            AstNode::Identifier(token, type_args) => {
+                match &token {
+                    Token::Ident(pos, ident) if ident == "Some" => {
+                        AstNode::Accessor(token.clone(), AccessorNode {
+                            target: Box::new(AstNode::Identifier(Token::Ident(pos.clone(), "Option".to_string()), None)),
+                            field: Box::new(AstNode::Identifier(token, type_args)),
+                            is_opt_safe: false,
+                        })
+                    }
+                    _ => AstNode::Identifier(token, type_args)
+                }
+            }
+            _ => left
+        };
+
         Ok(AstNode::Invocation(lparen, InvocationNode { target: Box::new(left), args }))
     }
 

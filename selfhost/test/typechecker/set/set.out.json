@@ -452,7 +452,7 @@
             "items": [
               {
                 "token": {
-                  "position": [7, 34],
+                  "position": [7, 27],
                   "kind": {
                     "name": "LParen"
                   }
@@ -473,7 +473,7 @@
                   "arguments": [
                     {
                       "token": {
-                        "position": [7, 35],
+                        "position": [7, 28],
                         "kind": {
                           "name": "Int",
                           "value": 1
@@ -493,7 +493,7 @@
               },
               {
                 "token": {
-                  "position": [7, 45],
+                  "position": [7, 38],
                   "kind": {
                     "name": "Dot"
                   }
@@ -512,7 +512,7 @@
                   "kind": "accessor",
                   "head": {
                     "token": {
-                      "position": [7, 39],
+                      "position": [7, 32],
                       "kind": {
                         "name": "Ident",
                         "value": "Option"
@@ -536,7 +536,7 @@
               },
               {
                 "token": {
-                  "position": [7, 64],
+                  "position": [7, 50],
                   "kind": {
                     "name": "LParen"
                   }
@@ -557,7 +557,7 @@
                   "arguments": [
                     {
                       "token": {
-                        "position": [7, 65],
+                        "position": [7, 51],
                         "kind": {
                           "name": "Int",
                           "value": 3
@@ -690,7 +690,7 @@
               },
               {
                 "token": {
-                  "position": [8, 48],
+                  "position": [8, 41],
                   "kind": {
                     "name": "LParen"
                   }
@@ -711,7 +711,7 @@
                   "arguments": [
                     {
                       "token": {
-                        "position": [8, 49],
+                        "position": [8, 42],
                         "kind": {
                           "name": "Int",
                           "value": 2
@@ -731,7 +731,7 @@
               },
               {
                 "token": {
-                  "position": [8, 64],
+                  "position": [8, 50],
                   "kind": {
                     "name": "LParen"
                   }
@@ -752,7 +752,7 @@
                   "arguments": [
                     {
                       "token": {
-                        "position": [8, 65],
+                        "position": [8, 51],
                         "kind": {
                           "name": "Int",
                           "value": 3
@@ -968,7 +968,7 @@
         "items": [
           {
             "token": {
-              "position": [11, 14],
+              "position": [11, 7],
               "kind": {
                 "name": "LParen"
               }
@@ -989,7 +989,7 @@
               "arguments": [
                 {
                   "token": {
-                    "position": [11, 15],
+                    "position": [11, 8],
                     "kind": {
                       "name": "Int",
                       "value": 1
@@ -1009,7 +1009,7 @@
           },
           {
             "token": {
-              "position": [11, 30],
+              "position": [11, 16],
               "kind": {
                 "name": "LParen"
               }
@@ -1030,7 +1030,7 @@
               "arguments": [
                 {
                   "token": {
-                    "position": [11, 31],
+                    "position": [11, 17],
                     "kind": {
                       "name": "Int",
                       "value": 2
@@ -1050,7 +1050,7 @@
           },
           {
             "token": {
-              "position": [11, 41],
+              "position": [11, 27],
               "kind": {
                 "name": "Dot"
               }
@@ -1069,7 +1069,7 @@
               "kind": "accessor",
               "head": {
                 "token": {
-                  "position": [11, 35],
+                  "position": [11, 21],
                   "kind": {
                     "name": "Ident",
                     "value": "Option"
@@ -1093,7 +1093,7 @@
           },
           {
             "token": {
-              "position": [11, 60],
+              "position": [11, 39],
               "kind": {
                 "name": "LParen"
               }
@@ -1114,7 +1114,7 @@
               "arguments": [
                 {
                   "token": {
-                    "position": [11, 61],
+                    "position": [11, 40],
                     "kind": {
                       "name": "Int",
                       "value": 4
@@ -1169,7 +1169,7 @@
         "items": [
           {
             "token": {
-              "position": [12, 14],
+              "position": [12, 7],
               "kind": {
                 "name": "LParen"
               }
@@ -1196,7 +1196,7 @@
               "arguments": [
                 {
                   "token": {
-                    "position": [12, 15],
+                    "position": [12, 8],
                     "kind": {
                       "name": "LBraceHash"
                     }
@@ -1216,7 +1216,7 @@
                     "items": [
                       {
                         "token": {
-                          "position": [12, 17],
+                          "position": [12, 10],
                           "kind": {
                             "name": "Int",
                             "value": 1
@@ -1233,7 +1233,7 @@
                       },
                       {
                         "token": {
-                          "position": [12, 20],
+                          "position": [12, 13],
                           "kind": {
                             "name": "Int",
                             "value": 2
@@ -1256,7 +1256,7 @@
           },
           {
             "token": {
-              "position": [12, 36],
+              "position": [12, 22],
               "kind": {
                 "name": "LParen"
               }
@@ -1283,7 +1283,7 @@
               "arguments": [
                 {
                   "token": {
-                    "position": [12, 37],
+                    "position": [12, 23],
                     "kind": {
                       "name": "LBraceHash"
                     }
@@ -1303,7 +1303,7 @@
                     "items": [
                       {
                         "token": {
-                          "position": [12, 39],
+                          "position": [12, 25],
                           "kind": {
                             "name": "Int",
                             "value": 3
@@ -1320,7 +1320,7 @@
                       },
                       {
                         "token": {
-                          "position": [12, 42],
+                          "position": [12, 28],
                           "kind": {
                             "name": "Int",
                             "value": 4
@@ -1343,7 +1343,7 @@
           },
           {
             "token": {
-              "position": [12, 53],
+              "position": [12, 39],
               "kind": {
                 "name": "Dot"
               }
@@ -1368,7 +1368,7 @@
               "kind": "accessor",
               "head": {
                 "token": {
-                  "position": [12, 47],
+                  "position": [12, 33],
                   "kind": {
                     "name": "Ident",
                     "value": "Option"
@@ -1392,7 +1392,7 @@
           },
           {
             "token": {
-              "position": [12, 72],
+              "position": [12, 51],
               "kind": {
                 "name": "LParen"
               }
@@ -1419,7 +1419,7 @@
               "arguments": [
                 {
                   "token": {
-                    "position": [12, 73],
+                    "position": [12, 52],
                     "kind": {
                       "name": "LBraceHash"
                     }
@@ -1439,7 +1439,7 @@
                     "items": [
                       {
                         "token": {
-                          "position": [12, 75],
+                          "position": [12, 54],
                           "kind": {
                             "name": "Int",
                             "value": 5
@@ -1456,7 +1456,7 @@
                       },
                       {
                         "token": {
-                          "position": [12, 78],
+                          "position": [12, 57],
                           "kind": {
                             "name": "Int",
                             "value": 6
@@ -1527,7 +1527,7 @@
         ],
         "expr": {
           "token": {
-            "position": [14, 36],
+            "position": [14, 29],
             "kind": {
               "name": "LParen"
             }
@@ -1560,7 +1560,7 @@
             "arguments": [
               {
                 "token": {
-                  "position": [14, 37],
+                  "position": [14, 30],
                   "kind": {
                     "name": "LBraceHash"
                   }
@@ -1586,7 +1586,7 @@
                   "items": [
                     {
                       "token": {
-                        "position": [14, 45],
+                        "position": [14, 38],
                         "kind": {
                           "name": "Dot"
                         }
@@ -1605,7 +1605,7 @@
                         "kind": "accessor",
                         "head": {
                           "token": {
-                            "position": [14, 39],
+                            "position": [14, 32],
                             "kind": {
                               "name": "Ident",
                               "value": "Option"
@@ -1999,7 +1999,7 @@
         "items": [
           {
             "token": {
-              "position": [18, 14],
+              "position": [18, 7],
               "kind": {
                 "name": "LParen"
               }
@@ -2026,7 +2026,7 @@
               "arguments": [
                 {
                   "token": {
-                    "position": [18, 15],
+                    "position": [18, 8],
                     "kind": {
                       "name": "LBraceHash"
                     }
@@ -2051,7 +2051,7 @@
           },
           {
             "token": {
-              "position": [18, 27],
+              "position": [18, 20],
               "kind": {
                 "name": "Dot"
               }
@@ -2076,7 +2076,7 @@
               "kind": "accessor",
               "head": {
                 "token": {
-                  "position": [18, 21],
+                  "position": [18, 14],
                   "kind": {
                     "name": "Ident",
                     "value": "Option"
@@ -2100,7 +2100,7 @@
           },
           {
             "token": {
-              "position": [18, 46],
+              "position": [18, 32],
               "kind": {
                 "name": "LParen"
               }
@@ -2127,7 +2127,7 @@
               "arguments": [
                 {
                   "token": {
-                    "position": [18, 47],
+                    "position": [18, 33],
                     "kind": {
                       "name": "LBraceHash"
                     }
@@ -2147,7 +2147,7 @@
                     "items": [
                       {
                         "token": {
-                          "position": [18, 49],
+                          "position": [18, 35],
                           "kind": {
                             "name": "Int",
                             "value": 1
@@ -2164,7 +2164,7 @@
                       },
                       {
                         "token": {
-                          "position": [18, 52],
+                          "position": [18, 38],
                           "kind": {
                             "name": "Int",
                             "value": 2
@@ -2222,7 +2222,7 @@
         "items": [
           {
             "token": {
-              "position": [19, 14],
+              "position": [19, 7],
               "kind": {
                 "name": "LParen"
               }
@@ -2249,7 +2249,7 @@
               "arguments": [
                 {
                   "token": {
-                    "position": [19, 15],
+                    "position": [19, 8],
                     "kind": {
                       "name": "LBraceHash"
                     }
@@ -2274,7 +2274,7 @@
           },
           {
             "token": {
-              "position": [19, 32],
+              "position": [19, 18],
               "kind": {
                 "name": "LParen"
               }
@@ -2301,7 +2301,7 @@
               "arguments": [
                 {
                   "token": {
-                    "position": [19, 33],
+                    "position": [19, 19],
                     "kind": {
                       "name": "LBraceHash"
                     }
@@ -2321,7 +2321,7 @@
                     "items": [
                       {
                         "token": {
-                          "position": [19, 35],
+                          "position": [19, 21],
                           "kind": {
                             "name": "Int",
                             "value": 1
@@ -2338,7 +2338,7 @@
                       },
                       {
                         "token": {
-                          "position": [19, 38],
+                          "position": [19, 24],
                           "kind": {
                             "name": "Int",
                             "value": 2

@@ -1,2 +1,2 @@
-val str: String? = Option.Some("abcd")
+val str: String? = Some("abcd")
 str[0]

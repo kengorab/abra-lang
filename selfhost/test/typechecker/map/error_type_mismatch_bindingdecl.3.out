@@ -1,6 +1,6 @@
 Error at %FILE_NAME%:1:42
 Type mismatch
-  |  val m: Map<Int, String> = { (123): Option.None_, (456): Option.Some("hello") }
+  |  val m: Map<Int, String> = { (123): Option.None_, (456): Some("hello") }
                                               ^
 Expected: String
 but instead found: <unknown>?

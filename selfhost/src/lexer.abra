@@ -272,7 +272,7 @@ export type Lexer {
       tok
     }
 
-    Result.Ok(Option.Some(token))
+    Result.Ok(Some(token))
   }
 
   func _curPos(self): Position = Position(line: self._line, col: self._col)
@@ -324,7 +324,7 @@ export type Lexer {
 
       if open {
         self._advance()
-        return Option.Some(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedEof))
+        return Some(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedEof))
       }
     }
 

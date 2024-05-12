@@ -1,4 +1,4 @@
 func foo(a: Int[], b: Bool?) {}
 
-foo(a: [], b: Option.Some(true))
+foo(a: [], b: Some(true))
 foo(a: [1, 2], b: Option.None_)

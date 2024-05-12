@@ -1,2 +1,2 @@
-val map: Map<String, Int>? = Option.Some({ a: 2, b: 4 })
+val map: Map<String, Int>? = Some({ a: 2, b: 4 })
 map["c"]

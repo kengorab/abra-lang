@@ -43,7 +43,7 @@
         ],
         "expr": {
           "token": {
-            "position": [1, 28],
+            "position": [1, 21],
             "kind": {
               "name": "LParen"
             }
@@ -70,7 +70,7 @@
             "arguments": [
               {
                 "token": {
-                  "position": [1, 29],
+                  "position": [1, 22],
                   "kind": {
                     "name": "LBrack"
                   }
@@ -90,7 +90,7 @@
                   "items": [
                     {
                       "token": {
-                        "position": [1, 30],
+                        "position": [1, 23],
                         "kind": {
                           "name": "Int",
                           "value": 123

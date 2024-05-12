@@ -4,16 +4,16 @@
 val a1: Int[] = []
 val a2: Int[] = [1, 2, 3]
 
-val a3: Int?[] = [Option.Some(1), Option.None_, Option.Some(3)]
-val a4: Int?[] = [Option.None_, Option.Some(2), Option.Some(3)]
+val a3: Int?[] = [Some(1), Option.None_, Some(3)]
+val a4: Int?[] = [Option.None_, Some(2), Some(3)]
 
 [[1, 2], [], [3, 4]]
-[Option.Some(1), Option.Some(2), Option.None_, Option.Some(4)]
-[Option.Some([1, 2]), Option.Some([3, 4]), Option.None_, Option.Some([5, 6])]
+[Some(1), Some(2), Option.None_, Some(4)]
+[Some([1, 2]), Some([3, 4]), Option.None_, Some([5, 6])]
 
-val s5: String?[]? = Option.Some([Option.None_])
+val s5: String?[]? = Some([Option.None_])
 
 [[], [1, 2], [3, 4]]
 [#{}, #{1, 2}, #{3, 4}]
-[Option.Some(#{}), Option.None_, Option.Some(#{1, 2})]
-[Option.Some(#{}), Option.Some(#{1, 2})]
+[Some(#{}), Option.None_, Some(#{1, 2})]
+[Some(#{}), Some(#{1, 2})]

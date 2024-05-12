@@ -44,4 +44,10 @@
 //var a: Int? = Option.None_
 //a ?: 123
 //val _ = if true { 123 }
-val x = Option.None_
+
+val x = if true {
+  Option.None_
+} else {
+  Option.Some(123)
+}
+println(x)

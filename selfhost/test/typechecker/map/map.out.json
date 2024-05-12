@@ -865,7 +865,7 @@
               [
                 {
                   "token": {
-                    "position": [9, 43],
+                    "position": [9, 36],
                     "kind": {
                       "name": "LParen"
                     }
@@ -886,7 +886,7 @@
                     "arguments": [
                       {
                         "token": {
-                          "position": [9, 44],
+                          "position": [9, 37],
                           "kind": {
                             "name": "String",
                             "value": "a"
@@ -906,7 +906,7 @@
                 },
                 {
                   "token": {
-                    "position": [9, 51],
+                    "position": [9, 44],
                     "kind": {
                       "name": "Int",
                       "value": 3
@@ -925,7 +925,7 @@
               [
                 {
                   "token": {
-                    "position": [9, 61],
+                    "position": [9, 54],
                     "kind": {
                       "name": "Dot"
                     }
@@ -944,7 +944,7 @@
                     "kind": "accessor",
                     "head": {
                       "token": {
-                        "position": [9, 55],
+                        "position": [9, 48],
                         "kind": {
                           "name": "Ident",
                           "value": "Option"
@@ -968,7 +968,7 @@
                 },
                 {
                   "token": {
-                    "position": [9, 70],
+                    "position": [9, 63],
                     "kind": {
                       "name": "Int",
                       "value": 345
@@ -1089,7 +1089,7 @@
               [
                 {
                   "token": {
-                    "position": [11, 24],
+                    "position": [11, 17],
                     "kind": {
                       "name": "LParen"
                     }
@@ -1110,7 +1110,7 @@
                     "arguments": [
                       {
                         "token": {
-                          "position": [11, 25],
+                          "position": [11, 18],
                           "kind": {
                             "name": "String",
                             "value": "a"
@@ -1130,7 +1130,7 @@
                 },
                 {
                   "token": {
-                    "position": [11, 43],
+                    "position": [11, 29],
                     "kind": {
                       "name": "LParen"
                     }
@@ -1157,7 +1157,7 @@
                     "arguments": [
                       {
                         "token": {
-                          "position": [11, 44],
+                          "position": [11, 30],
                           "kind": {
                             "name": "LBrack"
                           }
@@ -1184,7 +1184,7 @@
               [
                 {
                   "token": {
-                    "position": [11, 56],
+                    "position": [11, 42],
                     "kind": {
                       "name": "Dot"
                     }
@@ -1203,7 +1203,7 @@
                     "kind": "accessor",
                     "head": {
                       "token": {
-                        "position": [11, 50],
+                        "position": [11, 36],
                         "kind": {
                           "name": "Ident",
                           "value": "Option"
@@ -1227,7 +1227,7 @@
                 },
                 {
                   "token": {
-                    "position": [11, 71],
+                    "position": [11, 57],
                     "kind": {
                       "name": "Dot"
                     }
@@ -1252,7 +1252,7 @@
                     "kind": "accessor",
                     "head": {
                       "token": {
-                        "position": [11, 65],
+                        "position": [11, 51],
                         "kind": {
                           "name": "Ident",
                           "value": "Option"
@@ -1278,7 +1278,7 @@
               [
                 {
                   "token": {
-                    "position": [11, 91],
+                    "position": [11, 70],
                     "kind": {
                       "name": "LParen"
                     }
@@ -1299,7 +1299,7 @@
                     "arguments": [
                       {
                         "token": {
-                          "position": [11, 92],
+                          "position": [11, 71],
                           "kind": {
                             "name": "String",
                             "value": "b"
@@ -1319,7 +1319,7 @@
                 },
                 {
                   "token": {
-                    "position": [11, 110],
+                    "position": [11, 82],
                     "kind": {
                       "name": "LParen"
                     }
@@ -1346,7 +1346,7 @@
                     "arguments": [
                       {
                         "token": {
-                          "position": [11, 111],
+                          "position": [11, 83],
                           "kind": {
                             "name": "LBrack"
                           }
@@ -1366,7 +1366,7 @@
                           "items": [
                             {
                               "token": {
-                                "position": [11, 112],
+                                "position": [11, 84],
                                 "kind": {
                                   "name": "Int",
                                   "value": 1
@@ -1383,7 +1383,7 @@
                             },
                             {
                               "token": {
-                                "position": [11, 115],
+                                "position": [11, 87],
                                 "kind": {
                                   "name": "Int",
                                   "value": 2

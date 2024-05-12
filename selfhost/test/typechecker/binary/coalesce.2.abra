@@ -1,3 +1,3 @@
-val a: Int[]? = Option.Some([123])
+val a: Int[]? = Some([123])
 val b = a ?: []
 val _: Int[] = b

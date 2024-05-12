@@ -141,7 +141,7 @@
           "body": [
             {
               "token": {
-                "position": [1, 64],
+                "position": [1, 57],
                 "kind": {
                   "name": "LParen"
                 }
@@ -168,7 +168,7 @@
                 "arguments": [
                   {
                     "token": {
-                      "position": [1, 65],
+                      "position": [1, 58],
                       "kind": {
                         "name": "LBrack"
                       }

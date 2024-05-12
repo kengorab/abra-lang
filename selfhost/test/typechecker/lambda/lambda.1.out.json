@@ -577,7 +577,7 @@
                     "elseBlock": [
                       {
                         "token": {
-                          "position": [3, 60],
+                          "position": [3, 53],
                           "kind": {
                             "name": "LParen"
                           }
@@ -598,7 +598,7 @@
                           "arguments": [
                             {
                               "token": {
-                                "position": [3, 61],
+                                "position": [3, 54],
                                 "kind": {
                                   "name": "Ident",
                                   "value": "a"
@@ -1203,7 +1203,7 @@
               "body": [
                 {
                   "token": {
-                    "position": [8, 42],
+                    "position": [8, 35],
                     "kind": {
                       "name": "LParen"
                     }
@@ -1230,7 +1230,7 @@
                     "arguments": [
                       {
                         "token": {
-                          "position": [8, 43],
+                          "position": [8, 36],
                           "kind": {
                             "name": "LBrack"
                           }
