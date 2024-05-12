@@ -1,4 +1,4 @@
-val x: Int? = Option.None_
+val x: Int? = None
 while x {
   if true continue
 

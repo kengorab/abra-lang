@@ -1,6 +1,6 @@
 // Test using return type as hint
 func foo1(): Int[] = []
-func foo2(): Int[]? = if true { Some([]) } else Option.None_
-func foo3(): Int[]? = if true Option.None_ else Some([])
-func foo4(): Int?[]? = if true Option.None_ else Some([])
-func foo5(): Int?[]? = if true Option.None_ else Some([Option.None_])
+func foo2(): Int[]? = if true { Some([]) } else None
+func foo3(): Int[]? = if true None else Some([])
+func foo4(): Int?[]? = if true None else Some([])
+func foo5(): Int?[]? = if true None else Some([None])

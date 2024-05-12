@@ -532,9 +532,9 @@
                     "ifBlock": [
                       {
                         "token": {
-                          "position": [3, 37],
+                          "position": [3, 31],
                           "kind": {
-                            "name": "Dot"
+                            "name": "None"
                           }
                         },
                         "type": {
@@ -569,7 +569,7 @@
                           "middle": [],
                           "tail": {
                             "kind": "enumVariant",
-                            "name": "Option.None_"
+                            "name": "Option.None"
                           }
                         }
                       }
@@ -577,7 +577,7 @@
                     "elseBlock": [
                       {
                         "token": {
-                          "position": [3, 53],
+                          "position": [3, 45],
                           "kind": {
                             "name": "LParen"
                           }
@@ -598,7 +598,7 @@
                           "arguments": [
                             {
                               "token": {
-                                "position": [3, 54],
+                                "position": [3, 46],
                                 "kind": {
                                   "name": "Ident",
                                   "value": "a"

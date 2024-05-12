@@ -657,8 +657,13 @@ impl Parser {
                 Token::Comma(_) => {
                     self.expect_next()?; // Consume ','
                 }
+                Token::None(_) |
                 Token::Ident(_, _) => {
                     let ident = self.expect_next()?;
+                    let ident = match ident {
+                        Token::None(pos) => Token::Ident(pos, "None".to_string()),
+                        tok => tok
+                    };
 
                     if is_enum {
                         let args = if let Token::LParen(_, _) = self.expect_peek()? {

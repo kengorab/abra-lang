@@ -52,6 +52,7 @@ fn parser_tests() {
         .add_test_vs_txt("parser/grouped_error_wrong_closing.abra", "parser/grouped_error_wrong_closing.out")
         // Identifiers
         .add_test_vs_txt("parser/identifiers.abra", "parser/identifiers.out.json")
+        .add_test_vs_txt("parser/invocation_transform_OptionSome.abra", "parser/invocation_transform_OptionSome.out.json")
         // Accessors
         .add_test_vs_txt("parser/accessor.abra", "parser/accessor.out.json")
         .add_test_vs_txt("parser/accessor_error_eof.abra", "parser/accessor_error_eof.out")
@@ -308,6 +309,7 @@ fn typechecker_tests() {
 
         // Identifier
         .add_test_vs_txt("typechecker/identifier/identifier.abra", "typechecker/identifier/identifier.out.json")
+        .add_test_vs_txt("typechecker/identifier/identifier_transform_OptionNone.abra", "typechecker/identifier/identifier_transform_OptionNone.out.json")
         .add_test_vs_txt("typechecker/identifier/error_discard.abra", "typechecker/identifier/error_discard.out")
         .add_test_vs_txt("typechecker/identifier/error_type_mismatch.abra", "typechecker/identifier/error_type_mismatch.out")
         .add_test_vs_txt("typechecker/identifier/error_type_mismatch_None.abra", "typechecker/identifier/error_type_mismatch_None.out")

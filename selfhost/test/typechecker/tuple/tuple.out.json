@@ -214,8 +214,29 @@
                   ]
                 },
                 "node": {
-                  "kind": "identifier",
-                  "name": "None"
+                  "kind": "accessor",
+                  "head": {
+                    "token": {
+                      "position": [2, 27],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "Option"
+                      }
+                    },
+                    "type": {
+                      "kind": "enum",
+                      "enum": { "moduleId": 0, "name": "Option" }
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "Option"
+                    }
+                  },
+                  "middle": [],
+                  "tail": {
+                    "kind": "enumVariant",
+                    "name": "Option.None"
+                  }
                 }
               },
               {

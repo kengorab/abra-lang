@@ -343,9 +343,9 @@
           },
           {
             "token": {
-              "position": [4, 25],
+              "position": [4, 19],
               "kind": {
-                "name": "Dot"
+                "name": "None"
               }
             },
             "type": {
@@ -380,7 +380,7 @@
               "middle": [],
               "tail": {
                 "kind": "enumVariant",
-                "name": "Option.None_"
+                "name": "Option.None"
               }
             }
           }

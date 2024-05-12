@@ -45,9 +45,9 @@
               },
               "initializer": {
                 "token": {
-                  "position": [3, 17],
+                  "position": [3, 11],
                   "kind": {
-                    "name": "Dot"
+                    "name": "None"
                   }
                 },
                 "type": {
@@ -82,7 +82,7 @@
                   "middle": [],
                   "tail": {
                     "kind": "enumVariant",
-                    "name": "Option.None_"
+                    "name": "Option.None"
                   }
                 }
               }

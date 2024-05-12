@@ -1,1 +1,1 @@
-val t: (Int, String) = (1, "two", Option.None_)
+val t: (Int, String) = (1, "two", None)

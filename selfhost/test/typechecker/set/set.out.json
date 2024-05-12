@@ -493,9 +493,9 @@
               },
               {
                 "token": {
-                  "position": [7, 38],
+                  "position": [7, 32],
                   "kind": {
-                    "name": "Dot"
+                    "name": "None"
                   }
                 },
                 "type": {
@@ -530,13 +530,13 @@
                   "middle": [],
                   "tail": {
                     "kind": "enumVariant",
-                    "name": "Option.None_"
+                    "name": "Option.None"
                   }
                 }
               },
               {
                 "token": {
-                  "position": [7, 50],
+                  "position": [7, 42],
                   "kind": {
                     "name": "LParen"
                   }
@@ -557,7 +557,7 @@
                   "arguments": [
                     {
                       "token": {
-                        "position": [7, 51],
+                        "position": [7, 43],
                         "kind": {
                           "name": "Int",
                           "value": 3
@@ -647,9 +647,9 @@
             "items": [
               {
                 "token": {
-                  "position": [8, 29],
+                  "position": [8, 23],
                   "kind": {
-                    "name": "Dot"
+                    "name": "None"
                   }
                 },
                 "type": {
@@ -684,13 +684,13 @@
                   "middle": [],
                   "tail": {
                     "kind": "enumVariant",
-                    "name": "Option.None_"
+                    "name": "Option.None"
                   }
                 }
               },
               {
                 "token": {
-                  "position": [8, 41],
+                  "position": [8, 33],
                   "kind": {
                     "name": "LParen"
                   }
@@ -711,7 +711,7 @@
                   "arguments": [
                     {
                       "token": {
-                        "position": [8, 42],
+                        "position": [8, 34],
                         "kind": {
                           "name": "Int",
                           "value": 2
@@ -731,7 +731,7 @@
               },
               {
                 "token": {
-                  "position": [8, 50],
+                  "position": [8, 42],
                   "kind": {
                     "name": "LParen"
                   }
@@ -752,7 +752,7 @@
                   "arguments": [
                     {
                       "token": {
-                        "position": [8, 51],
+                        "position": [8, 43],
                         "kind": {
                           "name": "Int",
                           "value": 3
@@ -1050,9 +1050,9 @@
           },
           {
             "token": {
-              "position": [11, 27],
+              "position": [11, 21],
               "kind": {
-                "name": "Dot"
+                "name": "None"
               }
             },
             "type": {
@@ -1087,13 +1087,13 @@
               "middle": [],
               "tail": {
                 "kind": "enumVariant",
-                "name": "Option.None_"
+                "name": "Option.None"
               }
             }
           },
           {
             "token": {
-              "position": [11, 39],
+              "position": [11, 31],
               "kind": {
                 "name": "LParen"
               }
@@ -1114,7 +1114,7 @@
               "arguments": [
                 {
                   "token": {
-                    "position": [11, 40],
+                    "position": [11, 32],
                     "kind": {
                       "name": "Int",
                       "value": 4
@@ -1343,9 +1343,9 @@
           },
           {
             "token": {
-              "position": [12, 39],
+              "position": [12, 33],
               "kind": {
-                "name": "Dot"
+                "name": "None"
               }
             },
             "type": {
@@ -1386,13 +1386,13 @@
               "middle": [],
               "tail": {
                 "kind": "enumVariant",
-                "name": "Option.None_"
+                "name": "Option.None"
               }
             }
           },
           {
             "token": {
-              "position": [12, 51],
+              "position": [12, 43],
               "kind": {
                 "name": "LParen"
               }
@@ -1419,7 +1419,7 @@
               "arguments": [
                 {
                   "token": {
-                    "position": [12, 52],
+                    "position": [12, 44],
                     "kind": {
                       "name": "LBraceHash"
                     }
@@ -1439,7 +1439,7 @@
                     "items": [
                       {
                         "token": {
-                          "position": [12, 54],
+                          "position": [12, 46],
                           "kind": {
                             "name": "Int",
                             "value": 5
@@ -1456,7 +1456,7 @@
                       },
                       {
                         "token": {
-                          "position": [12, 57],
+                          "position": [12, 49],
                           "kind": {
                             "name": "Int",
                             "value": 6
@@ -1586,9 +1586,9 @@
                   "items": [
                     {
                       "token": {
-                        "position": [14, 38],
+                        "position": [14, 32],
                         "kind": {
-                          "name": "Dot"
+                          "name": "None"
                         }
                       },
                       "type": {
@@ -1623,7 +1623,7 @@
                         "middle": [],
                         "tail": {
                           "kind": "enumVariant",
-                          "name": "Option.None_"
+                          "name": "Option.None"
                         }
                       }
                     }
@@ -2051,9 +2051,9 @@
           },
           {
             "token": {
-              "position": [18, 20],
+              "position": [18, 14],
               "kind": {
-                "name": "Dot"
+                "name": "None"
               }
             },
             "type": {
@@ -2094,13 +2094,13 @@
               "middle": [],
               "tail": {
                 "kind": "enumVariant",
-                "name": "Option.None_"
+                "name": "Option.None"
               }
             }
           },
           {
             "token": {
-              "position": [18, 32],
+              "position": [18, 24],
               "kind": {
                 "name": "LParen"
               }
@@ -2127,7 +2127,7 @@
               "arguments": [
                 {
                   "token": {
-                    "position": [18, 33],
+                    "position": [18, 25],
                     "kind": {
                       "name": "LBraceHash"
                     }
@@ -2147,7 +2147,7 @@
                     "items": [
                       {
                         "token": {
-                          "position": [18, 35],
+                          "position": [18, 27],
                           "kind": {
                             "name": "Int",
                             "value": 1
@@ -2164,7 +2164,7 @@
                       },
                       {
                         "token": {
-                          "position": [18, 38],
+                          "position": [18, 30],
                           "kind": {
                             "name": "Int",
                             "value": 2

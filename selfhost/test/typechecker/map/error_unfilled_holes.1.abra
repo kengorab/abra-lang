@@ -1,1 +1,1 @@
-val m = { (Option.None_): 123 }
+val m = { (None): 123 }

@@ -1,6 +1,6 @@
-Error at %FILE_NAME%:1:41
+Error at %FILE_NAME%:1:35
 Type mismatch
-  |  val a = if true { Some([]) } else Option.None_
-                                             ^
+  |  val a = if true { Some([]) } else None
+                                       ^
 Expected: <unknown>[]?
 but instead found: <unknown>?

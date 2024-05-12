@@ -1,1 +1,1 @@
-val m: Map<Int, String> = { (123): Option.None_, (456): Some("hello") }
+val m: Map<Int, String> = { (123): None, (456): Some("hello") }

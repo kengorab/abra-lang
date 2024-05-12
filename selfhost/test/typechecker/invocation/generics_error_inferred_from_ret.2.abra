@@ -1,3 +1,3 @@
-func foo<T>(t: T): Map<T, T>? = Option.None_
+func foo<T>(t: T): Map<T, T>? = None
 
 val m: Map<String, Int>? = foo("a")

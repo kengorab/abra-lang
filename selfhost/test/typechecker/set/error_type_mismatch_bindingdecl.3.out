@@ -1,6 +1,6 @@
-Error at %FILE_NAME%:1:38
+Error at %FILE_NAME%:1:32
 Type mismatch
-  |  val a: Set<String> = #{"abcd", Option.None_}
-                                          ^
+  |  val a: Set<String> = #{"abcd", None}
+                                    ^
 Expected: String
 but instead found: <unknown>?

@@ -1,4 +1,4 @@
-val arr: String[]? = Option.None_
+val arr: String[]? = None
 for _ in arr {
 
 }

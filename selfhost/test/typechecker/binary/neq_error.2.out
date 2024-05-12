@@ -1,6 +1,6 @@
-Error at %FILE_NAME%:1:14
+Error at %FILE_NAME%:1:8
 Type mismatch
-  |  123 != Option.None_
-                  ^
+  |  123 != None
+            ^
 Expected: Int
 but instead found: <unknown>?

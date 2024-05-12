@@ -8,7 +8,7 @@ use crate::common::util::integer_decode;
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{POSITION_BOGUS, Range, Token};
-use crate::parser::ast::{args_to_parameters, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, EnumDeclNode, ForLoopNode, FunctionDeclNode, IfNode, ImportKind, ImportNode, IndexingMode, IndexingNode, InvocationNode, MatchCase, MatchCaseArgument, MatchCaseType, MatchNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode};
+use crate::parser::ast::{AccessorNode, args_to_parameters, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, EnumDeclNode, ForLoopNode, FunctionDeclNode, IfNode, ImportKind, ImportNode, IndexingMode, IndexingNode, InvocationNode, MatchCase, MatchCaseArgument, MatchCaseType, MatchNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode};
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
@@ -1150,7 +1150,16 @@ impl TypedNode {
                     start
                 }
             }
-            TypedNode::Accessor { target, member_span, .. } => target.span().expand(member_span),
+            TypedNode::Accessor { target, member_span, .. } => {
+                let target_span = target.span();
+                if member_span.start.col == target_span.start.col {
+                    // If we're in this case, then we're likely generating a span for an Accessor
+                    // node that was spoofed (ie. `Option.Some`)
+                    member_span.clone()
+                } else {
+                    target_span.expand(member_span)
+                }
+            },
             TypedNode::Lambda { span, .. } => span.clone(),
             TypedNode::Assignment { span, .. } => span.clone(),
             TypedNode::Indexing { target, index, .. } => {
@@ -5220,7 +5229,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
             AstNode::Identifier(token, type_args) => {
                 if let Token::None(_) = &token {
-                    unreachable!("{:?} ({})", &token, &self.current_module().name)
+                    let replacement = AstNode::Accessor(Token::Dot(token.get_position()), AccessorNode {
+                        target: Box::new(AstNode::Identifier(Token::Ident(token.get_position(), "Option".to_string()), None)),
+                        field: Box::new(AstNode::Identifier(Token::Ident(token.get_position(), "None".to_string()), type_args)),
+                        is_opt_safe: false,
+                    });
+
+                    return self.typecheck_expression(replacement, type_hint);
                 }
 
                 let name = Token::get_ident_name(&token);

@@ -221,9 +221,9 @@
         ],
         "expr": {
           "token": {
-            "position": [8, 22],
+            "position": [8, 16],
             "kind": {
-              "name": "Dot"
+              "name": "None"
             }
           },
           "type": {
@@ -258,7 +258,7 @@
             "middle": [],
             "tail": {
               "kind": "enumVariant",
-              "name": "Option.None_"
+              "name": "Option.None"
             }
           }
         }

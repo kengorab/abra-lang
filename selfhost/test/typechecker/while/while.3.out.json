@@ -37,9 +37,9 @@
         ],
         "expr": {
           "token": {
-            "position": [1, 21],
+            "position": [1, 15],
             "kind": {
-              "name": "Dot"
+              "name": "None"
             }
           },
           "type": {
@@ -74,7 +74,7 @@
             "middle": [],
             "tail": {
               "kind": "enumVariant",
-              "name": "Option.None_"
+              "name": "Option.None"
             }
           }
         }

@@ -8,7 +8,7 @@ export func valueIfValidHexDigit(ch: Int): Int? {
   } else if 97 <= ch && ch <= 102 { // a-f
     Some((ch - 97) + 10)
   } else {
-    Option.None_
+    None
   }
 }
 

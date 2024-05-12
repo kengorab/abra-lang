@@ -1,1 +1,1 @@
-val a: Int = if true 1 else Option.None_
+val a: Int = if true 1 else None

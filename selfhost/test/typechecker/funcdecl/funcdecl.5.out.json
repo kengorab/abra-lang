@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "/Users/kengorab/Desktop/abra-lang/selfhost/test/typechecker/funcdecl/funcdecl.5.abra",
+  "name": "%FILE_NAME%",
   "code": [
     {
       "token": {
@@ -205,9 +205,9 @@
                 "elseBlock": [
                   {
                     "token": {
-                      "position": [3, 55],
+                      "position": [3, 49],
                       "kind": {
-                        "name": "Dot"
+                        "name": "None"
                       }
                     },
                     "type": {
@@ -248,7 +248,7 @@
                       "middle": [],
                       "tail": {
                         "kind": "enumVariant",
-                        "name": "Option.None_"
+                        "name": "Option.None"
                       }
                     }
                   }
@@ -347,9 +347,9 @@
                 "ifBlock": [
                   {
                     "token": {
-                      "position": [4, 37],
+                      "position": [4, 31],
                       "kind": {
-                        "name": "Dot"
+                        "name": "None"
                       }
                     },
                     "type": {
@@ -390,7 +390,7 @@
                       "middle": [],
                       "tail": {
                         "kind": "enumVariant",
-                        "name": "Option.None_"
+                        "name": "Option.None"
                       }
                     }
                   }
@@ -398,7 +398,7 @@
                 "elseBlock": [
                   {
                     "token": {
-                      "position": [4, 53],
+                      "position": [4, 45],
                       "kind": {
                         "name": "LParen"
                       }
@@ -425,7 +425,7 @@
                       "arguments": [
                         {
                           "token": {
-                            "position": [4, 54],
+                            "position": [4, 46],
                             "kind": {
                               "name": "LBrack"
                             }
@@ -555,9 +555,9 @@
                 "ifBlock": [
                   {
                     "token": {
-                      "position": [5, 38],
+                      "position": [5, 32],
                       "kind": {
-                        "name": "Dot"
+                        "name": "None"
                       }
                     },
                     "type": {
@@ -604,7 +604,7 @@
                       "middle": [],
                       "tail": {
                         "kind": "enumVariant",
-                        "name": "Option.None_"
+                        "name": "Option.None"
                       }
                     }
                   }
@@ -612,7 +612,7 @@
                 "elseBlock": [
                   {
                     "token": {
-                      "position": [5, 54],
+                      "position": [5, 46],
                       "kind": {
                         "name": "LParen"
                       }
@@ -645,7 +645,7 @@
                       "arguments": [
                         {
                           "token": {
-                            "position": [5, 55],
+                            "position": [5, 47],
                             "kind": {
                               "name": "LBrack"
                             }
@@ -781,9 +781,9 @@
                 "ifBlock": [
                   {
                     "token": {
-                      "position": [6, 38],
+                      "position": [6, 32],
                       "kind": {
-                        "name": "Dot"
+                        "name": "None"
                       }
                     },
                     "type": {
@@ -830,7 +830,7 @@
                       "middle": [],
                       "tail": {
                         "kind": "enumVariant",
-                        "name": "Option.None_"
+                        "name": "Option.None"
                       }
                     }
                   }
@@ -838,7 +838,7 @@
                 "elseBlock": [
                   {
                     "token": {
-                      "position": [6, 54],
+                      "position": [6, 46],
                       "kind": {
                         "name": "LParen"
                       }
@@ -871,7 +871,7 @@
                       "arguments": [
                         {
                           "token": {
-                            "position": [6, 55],
+                            "position": [6, 47],
                             "kind": {
                               "name": "LBrack"
                             }
@@ -897,9 +897,9 @@
                             "items": [
                               {
                                 "token": {
-                                  "position": [6, 62],
+                                  "position": [6, 48],
                                   "kind": {
-                                    "name": "Dot"
+                                    "name": "None"
                                   }
                                 },
                                 "type": {
@@ -916,7 +916,7 @@
                                   "kind": "accessor",
                                   "head": {
                                     "token": {
-                                      "position": [6, 56],
+                                      "position": [6, 48],
                                       "kind": {
                                         "name": "Ident",
                                         "value": "Option"
@@ -934,7 +934,7 @@
                                   "middle": [],
                                   "tail": {
                                     "kind": "enumVariant",
-                                    "name": "Option.None_"
+                                    "name": "Option.None"
                                   }
                                 }
                               }

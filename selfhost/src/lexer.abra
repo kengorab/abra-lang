@@ -241,7 +241,7 @@ export type Lexer {
   func nextToken(self): Result<Token?, LexerError> {
     val sawNewline = self._skipWhitespace()
 
-    if self._cursor >= self._input.length return Result.Ok(Option.None_)
+    if self._cursor >= self._input.length return Result.Ok(None)
     val ch = self._input[self._cursor]
     val peek = self._input[self._cursor + 1]
 
@@ -301,7 +301,7 @@ export type Lexer {
   }
 
   func _skipComment(self): LexerError? {
-    if self._cursor >= self._input.length return Option.None_
+    if self._cursor >= self._input.length return None
 
     val ch = self._input[self._cursor]
     val peek = self._input[self._cursor + 1]
@@ -328,7 +328,7 @@ export type Lexer {
       }
     }
 
-    Option.None_
+    None
   }
 
   func _multiCharToken(self, default: TokenKind, cases: (String, TokenKind)[]): TokenKind {
