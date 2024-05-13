@@ -95,7 +95,7 @@ export type Jsonifier {
     println("{")
     self.indentInc()
 
-    self.println("\"nullable\": ${ty.nullable},")
+    // self.println("\"nullable\": ${ty.nullable},")
     match ty.kind {
       TypeKind.Any => {
         self.println("\"kind\": \"primitive\",")

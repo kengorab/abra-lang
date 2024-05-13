@@ -1,5 +1,6 @@
-Error at %FILE_NAME%:1:9
-Could not determine type for assignment
-  |  val a = if true { [] } else None
-             ^
-Type '<unknown>[]?' has unfilled holes. Please use an explicit type annotation to denote the type
+Error at %FILE_NAME%:1:35
+Type mismatch
+  |  val a = if true { Some([]) } else None
+                                       ^
+Expected: <unknown>[]?
+but instead found: <unknown>?

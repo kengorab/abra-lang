@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -25,7 +24,6 @@
                 "label": { "name": "a", "position": [1, 10] },
                 "mutable": false,
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -34,7 +32,6 @@
                 "label": { "name": "b", "position": [1, 18] },
                 "mutable": false,
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 }
@@ -49,7 +46,6 @@
             {
               "label": { "name": "a", "position": [1, 10] },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -59,7 +55,6 @@
             {
               "label": { "name": "b", "position": [1, 18] },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
@@ -68,7 +63,6 @@
             }
           ],
           "returnType": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
@@ -81,7 +75,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
@@ -97,7 +90,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -115,7 +107,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "String"
                   },
@@ -138,7 +129,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -153,7 +143,6 @@
             "label": { "name": "s", "position": [3, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "String"
             }
@@ -167,7 +156,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
@@ -181,13 +169,11 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "function",
                 "parameters": [
                   {
                     "required": true,
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
@@ -195,14 +181,12 @@
                   {
                     "required": true,
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "String"
                     }
                   }
                 ],
                 "returnType": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 }
@@ -218,13 +202,11 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "function",
                     "parameters": [
                       {
                         "required": true,
                         "type": {
-                          "nullable": false,
                           "kind": "primitive",
                           "primitive": "Int"
                         }
@@ -232,14 +214,12 @@
                       {
                         "required": true,
                         "type": {
-                          "nullable": false,
                           "kind": "primitive",
                           "primitive": "String"
                         }
                       }
                     ],
                     "returnType": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "String"
                     }
@@ -261,7 +241,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
@@ -279,7 +258,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 },
@@ -301,7 +279,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -316,7 +293,6 @@
             "label": { "name": "_", "position": [4, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "String"
             }
@@ -331,7 +307,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },

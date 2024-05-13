@@ -1,2 +1,2 @@
-val pair: (Int, String)? = (1, "abcd")
+val pair: (Int, String)? = Some((1, "abcd"))
 pair[0]

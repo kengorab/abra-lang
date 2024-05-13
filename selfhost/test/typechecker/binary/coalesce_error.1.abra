@@ -1,2 +1,2 @@
-val a: Int? = 123
+val a: Int? = Some(123)
 a ?: "foo"

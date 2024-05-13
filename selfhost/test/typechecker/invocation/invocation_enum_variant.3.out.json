@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -30,7 +29,6 @@
                 {
                   "name": { "name": "a", "position": [2, 7] },
                   "type": {
-                    "nullable": false,
                     "kind": "generic",
                     "name": "T"
                   },
@@ -53,7 +51,6 @@
               "typeParameters": [],
               "parameters": [],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
@@ -72,7 +69,6 @@
               "typeParameters": [],
               "parameters": [],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -93,7 +89,6 @@
                 {
                   "label": { "name": "other", "position": [0, 0] },
                   "type": {
-                    "nullable": false,
                     "kind": "enumInstance",
                     "enum": { "moduleId": 3, "name": "Foo" },
                     "typeParams": []
@@ -103,7 +98,6 @@
                 }
               ],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Bool"
               },
@@ -122,7 +116,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -137,12 +130,10 @@
             "label": { "name": "f", "position": [5, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "enumInstance",
               "enum": { "moduleId": 3, "name": "Foo" },
               "typeParams": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -158,12 +149,10 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "enumInstance",
             "enum": { "moduleId": 3, "name": "Foo" },
             "typeParams": [
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               }
@@ -182,7 +171,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
@@ -204,7 +192,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -219,12 +206,10 @@
             "label": { "name": "_", "position": [6, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "enumInstance",
               "enum": { "moduleId": 3, "name": "Foo" },
               "typeParams": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -241,12 +226,10 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "enumInstance",
             "enum": { "moduleId": 3, "name": "Foo" },
             "typeParams": [
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               }

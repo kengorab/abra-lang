@@ -1,4 +1,4 @@
-val arr: String[]? = None
+val arr: String[] = ["a", "b", "c"]
 for x, idx in arr {
   val _: String = x
   val _: Int = idx

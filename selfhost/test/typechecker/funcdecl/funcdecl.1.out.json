@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -28,7 +27,6 @@
           "typeParameters": [],
           "parameters": [],
           "returnType": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },
@@ -42,7 +40,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },

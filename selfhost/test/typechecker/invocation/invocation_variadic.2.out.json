@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -25,7 +24,6 @@
                 "label": { "name": "a", "position": [2, 13] },
                 "mutable": false,
                 "type": {
-                  "nullable": false,
                   "kind": "generic",
                   "name": "T"
                 }
@@ -34,12 +32,10 @@
                 "label": { "name": "b", "position": [2, 20] },
                 "mutable": false,
                 "type": {
-                  "nullable": false,
                   "kind": "instance",
                   "struct": { "moduleId": 0, "name": "Array" },
                   "typeParams": [
                     {
-                      "nullable": false,
                       "kind": "generic",
                       "name": "T"
                     }
@@ -50,7 +46,6 @@
             "functions": [],
             "types": [
               {
-                "nullable": false,
                 "kind": "generic",
                 "name": "T"
               }
@@ -61,7 +56,6 @@
             {
               "label": { "name": "T", "position": [2, 10] },
               "type": {
-                "nullable": false,
                 "kind": "generic",
                 "name": "T"
               }
@@ -71,7 +65,6 @@
             {
               "label": { "name": "a", "position": [2, 13] },
               "type": {
-                "nullable": false,
                 "kind": "generic",
                 "name": "T"
               },
@@ -81,7 +74,6 @@
             {
               "label": { "name": "b", "position": [2, 20] },
               "type": {
-                "nullable": false,
                 "kind": "generic",
                 "name": "T"
               },
@@ -90,7 +82,6 @@
             }
           ],
           "returnType": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Unit"
           },
@@ -103,7 +94,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Unit"
               },
@@ -118,12 +108,10 @@
                     "label": { "name": "_", "position": [3, 7] },
                     "mutable": false,
                     "type": {
-                      "nullable": false,
                       "kind": "instance",
                       "struct": { "moduleId": 0, "name": "Array" },
                       "typeParams": [
                         {
-                          "nullable": false,
                           "kind": "generic",
                           "name": "T"
                         }
@@ -140,12 +128,10 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "instance",
                     "struct": { "moduleId": 0, "name": "Array" },
                     "typeParams": [
                       {
-                        "nullable": false,
                         "kind": "generic",
                         "name": "T"
                       }
@@ -170,7 +156,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -185,13 +170,11 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "function",
             "parameters": [
               {
                 "required": true,
                 "type": {
-                  "nullable": false,
                   "kind": "generic",
                   "name": "T"
                 }
@@ -199,14 +182,12 @@
               {
                 "required": true,
                 "type": {
-                  "nullable": false,
                   "kind": "generic",
                   "name": "T"
                 }
               }
             ],
             "returnType": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Unit"
             }
@@ -226,7 +207,6 @@
               }
             },
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             },
@@ -243,12 +223,10 @@
               }
             },
             "type": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Array" },
               "typeParams": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -266,7 +244,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -284,7 +261,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -307,7 +283,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -322,13 +297,11 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "function",
             "parameters": [
               {
                 "required": true,
                 "type": {
-                  "nullable": false,
                   "kind": "generic",
                   "name": "T"
                 }
@@ -336,14 +309,12 @@
               {
                 "required": true,
                 "type": {
-                  "nullable": false,
                   "kind": "generic",
                   "name": "T"
                 }
               }
             ],
             "returnType": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Unit"
             }
@@ -363,7 +334,6 @@
               }
             },
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             },
@@ -380,12 +350,10 @@
               }
             },
             "type": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Array" },
               "typeParams": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -407,7 +375,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -422,13 +389,11 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "function",
             "parameters": [
               {
                 "required": true,
                 "type": {
-                  "nullable": false,
                   "kind": "generic",
                   "name": "T"
                 }
@@ -436,14 +401,12 @@
               {
                 "required": true,
                 "type": {
-                  "nullable": false,
                   "kind": "generic",
                   "name": "T"
                 }
               }
             ],
             "returnType": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Unit"
             }
@@ -463,7 +426,6 @@
               }
             },
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             },
@@ -480,12 +442,10 @@
               }
             },
             "type": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Array" },
               "typeParams": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -507,7 +467,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -522,13 +481,11 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "function",
             "parameters": [
               {
                 "required": true,
                 "type": {
-                  "nullable": false,
                   "kind": "generic",
                   "name": "T"
                 }
@@ -536,14 +493,12 @@
               {
                 "required": true,
                 "type": {
-                  "nullable": false,
                   "kind": "generic",
                   "name": "T"
                 }
               }
             ],
             "returnType": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Unit"
             }
@@ -563,7 +518,6 @@
               }
             },
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             },
@@ -580,12 +534,10 @@
               }
             },
             "type": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Array" },
               "typeParams": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -603,7 +555,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -626,7 +577,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -641,13 +591,11 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "function",
             "parameters": [
               {
                 "required": true,
                 "type": {
-                  "nullable": false,
                   "kind": "generic",
                   "name": "T"
                 }
@@ -655,14 +603,12 @@
               {
                 "required": true,
                 "type": {
-                  "nullable": false,
                   "kind": "generic",
                   "name": "T"
                 }
               }
             ],
             "returnType": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Unit"
             }
@@ -682,7 +628,6 @@
               }
             },
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             },
@@ -699,12 +644,10 @@
               }
             },
             "type": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Array" },
               "typeParams": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -722,7 +665,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -740,7 +682,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },

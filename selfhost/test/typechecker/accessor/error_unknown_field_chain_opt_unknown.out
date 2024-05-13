@@ -2,4 +2,4 @@ Error at %FILE_NAME%:5:16
 Unknown field 'xyz'
   |  val _ = f?.bar.xyz
                     ^
-No field 'xyz' found on type Bar
+No field 'xyz' found on type Bar?

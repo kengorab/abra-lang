@@ -10,17 +10,14 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "instance",
         "struct": { "moduleId": 0, "name": "Map" },
         "typeParams": [
           {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
           {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           }
@@ -39,7 +36,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
@@ -57,7 +53,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -77,7 +72,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
@@ -95,7 +89,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -116,32 +109,26 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "instance",
         "struct": { "moduleId": 0, "name": "Map" },
         "typeParams": [
           {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
           {
-            "nullable": false,
             "kind": "instance",
             "struct": { "moduleId": 0, "name": "Map" },
             "typeParams": [
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
               {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 0, "name": "Array" },
                 "typeParams": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -164,7 +151,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
@@ -181,22 +167,18 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 0, "name": "Map" },
                 "typeParams": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "String"
                   },
                   {
-                    "nullable": false,
                     "kind": "instance",
                     "struct": { "moduleId": 0, "name": "Array" },
                     "typeParams": [
                       {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       }
@@ -217,7 +199,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "String"
                       },
@@ -234,12 +215,10 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "instance",
                         "struct": { "moduleId": 0, "name": "Array" },
                         "typeParams": [
                           {
-                            "nullable": false,
                             "kind": "primitive",
                             "primitive": "Int"
                           }
@@ -257,7 +236,6 @@
                               }
                             },
                             "type": {
-                              "nullable": false,
                               "kind": "primitive",
                               "primitive": "Int"
                             },
@@ -275,7 +253,6 @@
                               }
                             },
                             "type": {
-                              "nullable": false,
                               "kind": "primitive",
                               "primitive": "Int"
                             },
@@ -302,7 +279,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
@@ -319,22 +295,18 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 0, "name": "Map" },
                 "typeParams": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "String"
                   },
                   {
-                    "nullable": false,
                     "kind": "instance",
                     "struct": { "moduleId": 0, "name": "Array" },
                     "typeParams": [
                       {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       }
@@ -359,32 +331,26 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "instance",
         "struct": { "moduleId": 0, "name": "Map" },
         "typeParams": [
           {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
           {
-            "nullable": false,
             "kind": "instance",
             "struct": { "moduleId": 0, "name": "Map" },
             "typeParams": [
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
               {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 0, "name": "Array" },
                 "typeParams": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -407,7 +373,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
@@ -424,22 +389,18 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 0, "name": "Map" },
                 "typeParams": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "String"
                   },
                   {
-                    "nullable": false,
                     "kind": "instance",
                     "struct": { "moduleId": 0, "name": "Array" },
                     "typeParams": [
                       {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       }
@@ -463,7 +424,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
@@ -480,22 +440,18 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 0, "name": "Map" },
                 "typeParams": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "String"
                   },
                   {
-                    "nullable": false,
                     "kind": "instance",
                     "struct": { "moduleId": 0, "name": "Array" },
                     "typeParams": [
                       {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       }
@@ -516,7 +472,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "String"
                       },
@@ -533,12 +488,10 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "instance",
                         "struct": { "moduleId": 0, "name": "Array" },
                         "typeParams": [
                           {
-                            "nullable": false,
                             "kind": "primitive",
                             "primitive": "Int"
                           }
@@ -556,7 +509,6 @@
                               }
                             },
                             "type": {
-                              "nullable": false,
                               "kind": "primitive",
                               "primitive": "Int"
                             },
@@ -574,7 +526,6 @@
                               }
                             },
                             "type": {
-                              "nullable": false,
                               "kind": "primitive",
                               "primitive": "Int"
                             },
@@ -602,7 +553,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -617,17 +567,14 @@
             "label": { "name": "m1", "position": [5, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Map" },
               "typeParams": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 },
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -643,17 +590,14 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "instance",
             "struct": { "moduleId": 0, "name": "Map" },
             "typeParams": [
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               }
@@ -674,7 +618,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -689,17 +632,14 @@
             "label": { "name": "m2", "position": [6, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Map" },
               "typeParams": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 },
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -715,17 +655,14 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "instance",
             "struct": { "moduleId": 0, "name": "Map" },
             "typeParams": [
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               }
@@ -744,7 +681,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "String"
                   },
@@ -762,7 +698,6 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -785,7 +720,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -800,17 +734,20 @@
             "label": { "name": "m3", "position": [8, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Map" },
               "typeParams": [
                 {
-                  "nullable": true,
-                  "kind": "primitive",
-                  "primitive": "String"
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 0, "name": "Option" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    }
+                  ]
                 },
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -826,17 +763,20 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "instance",
             "struct": { "moduleId": 0, "name": "Map" },
             "typeParams": [
               {
-                "nullable": true,
-                "kind": "primitive",
-                "primitive": "String"
+                "kind": "enumInstance",
+                "enum": { "moduleId": 0, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  }
+                ]
               },
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               }
@@ -857,7 +797,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -872,17 +811,20 @@
             "label": { "name": "m4", "position": [9, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Map" },
               "typeParams": [
                 {
-                  "nullable": true,
-                  "kind": "primitive",
-                  "primitive": "String"
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 0, "name": "Option" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    }
+                  ]
                 },
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -898,17 +840,20 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "instance",
             "struct": { "moduleId": 0, "name": "Map" },
             "typeParams": [
               {
-                "nullable": true,
-                "kind": "primitive",
-                "primitive": "String"
+                "kind": "enumInstance",
+                "enum": { "moduleId": 0, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  }
+                ]
               },
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               }
@@ -920,32 +865,54 @@
               [
                 {
                   "token": {
-                    "position": [9, 31],
+                    "position": [9, 36],
                     "kind": {
-                      "name": "Ident",
-                      "value": "a"
+                      "name": "LParen"
                     }
                   },
                   "type": {
-                    "nullable": true,
-                    "kind": "primitive",
-                    "primitive": "String"
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 0, "name": "Option" },
+                    "typeParams": [
+                      {
+                        "kind": "primitive",
+                        "primitive": "String"
+                      }
+                    ]
                   },
                   "node": {
-                    "kind": "literal",
-                    "value": "a"
+                    "kind": "invocation",
+                    "invokee": "Option.Some",
+                    "arguments": [
+                      {
+                        "token": {
+                          "position": [9, 37],
+                          "kind": {
+                            "name": "String",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "String"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": "a"
+                        }
+                      }
+                    ]
                   }
                 },
                 {
                   "token": {
-                    "position": [9, 34],
+                    "position": [9, 44],
                     "kind": {
                       "name": "Int",
                       "value": 3
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -958,31 +925,56 @@
               [
                 {
                   "token": {
-                    "position": [9, 38],
+                    "position": [9, 48],
                     "kind": {
                       "name": "None"
                     }
                   },
                   "type": {
-                    "nullable": true,
-                    "kind": "primitive",
-                    "primitive": "String"
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 0, "name": "Option" },
+                    "typeParams": [
+                      {
+                        "kind": "primitive",
+                        "primitive": "String"
+                      }
+                    ]
                   },
                   "node": {
-                    "kind": "identifier",
-                    "name": "None"
+                    "kind": "accessor",
+                    "head": {
+                      "token": {
+                        "position": [9, 48],
+                        "kind": {
+                          "name": "Ident",
+                          "value": "Option"
+                        }
+                      },
+                      "type": {
+                        "kind": "enum",
+                        "enum": { "moduleId": 0, "name": "Option" }
+                      },
+                      "node": {
+                        "kind": "identifier",
+                        "name": "Option"
+                      }
+                    },
+                    "middle": [],
+                    "tail": {
+                      "kind": "enumVariant",
+                      "name": "Option.None"
+                    }
                   }
                 },
                 {
                   "token": {
-                    "position": [9, 45],
+                    "position": [9, 55],
                     "kind": {
                       "name": "Int",
                       "value": 345
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   },
@@ -1005,7 +997,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -1020,24 +1011,32 @@
             "label": { "name": "m5", "position": [11, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Map" },
               "typeParams": [
                 {
-                  "nullable": true,
-                  "kind": "primitive",
-                  "primitive": "String"
-                },
-                {
-                  "nullable": true,
-                  "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 0, "name": "Option" },
                   "typeParams": [
                     {
-                      "nullable": false,
                       "kind": "primitive",
-                      "primitive": "Int"
+                      "primitive": "String"
+                    }
+                  ]
+                },
+                {
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 0, "name": "Option" },
+                  "typeParams": [
+                    {
+                      "kind": "instance",
+                      "struct": { "moduleId": 0, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
                     }
                   ]
                 }
@@ -1053,24 +1052,32 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "instance",
             "struct": { "moduleId": 0, "name": "Map" },
             "typeParams": [
               {
-                "nullable": true,
-                "kind": "primitive",
-                "primitive": "String"
-              },
-              {
-                "nullable": true,
-                "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "kind": "enumInstance",
+                "enum": { "moduleId": 0, "name": "Option" },
                 "typeParams": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
-                    "primitive": "Int"
+                    "primitive": "String"
+                  }
+                ]
+              },
+              {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 0, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "instance",
+                    "struct": { "moduleId": 0, "name": "Array" },
+                    "typeParams": [
+                      {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    ]
                   }
                 ]
               }
@@ -1082,165 +1089,316 @@
               [
                 {
                   "token": {
-                    "position": [11, 12],
+                    "position": [11, 17],
                     "kind": {
-                      "name": "Ident",
-                      "value": "a"
+                      "name": "LParen"
                     }
                   },
                   "type": {
-                    "nullable": true,
-                    "kind": "primitive",
-                    "primitive": "String"
-                  },
-                  "node": {
-                    "kind": "literal",
-                    "value": "a"
-                  }
-                },
-                {
-                  "token": {
-                    "position": [11, 15],
-                    "kind": {
-                      "name": "LBrack"
-                    }
-                  },
-                  "type": {
-                    "nullable": true,
-                    "kind": "instance",
-                    "struct": { "moduleId": 0, "name": "Array" },
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 0, "name": "Option" },
                     "typeParams": [
                       {
-                        "nullable": false,
                         "kind": "primitive",
-                        "primitive": "Int"
+                        "primitive": "String"
                       }
                     ]
                   },
                   "node": {
-                    "kind": "array",
-                    "items": []
-                  }
-                }
-              ],
-              [
-                {
-                  "token": {
-                    "position": [11, 20],
-                    "kind": {
-                      "name": "None"
-                    }
-                  },
-                  "type": {
-                    "nullable": true,
-                    "kind": "primitive",
-                    "primitive": "String"
-                  },
-                  "node": {
-                    "kind": "identifier",
-                    "name": "None"
+                    "kind": "invocation",
+                    "invokee": "Option.Some",
+                    "arguments": [
+                      {
+                        "token": {
+                          "position": [11, 18],
+                          "kind": {
+                            "name": "String",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "String"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": "a"
+                        }
+                      }
+                    ]
                   }
                 },
                 {
                   "token": {
-                    "position": [11, 27],
+                    "position": [11, 29],
                     "kind": {
-                      "name": "None"
+                      "name": "LParen"
                     }
                   },
                   "type": {
-                    "nullable": true,
-                    "kind": "instance",
-                    "struct": { "moduleId": 0, "name": "Array" },
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 0, "name": "Option" },
                     "typeParams": [
                       {
-                        "nullable": false,
-                        "kind": "primitive",
-                        "primitive": "Int"
+                        "kind": "instance",
+                        "struct": { "moduleId": 0, "name": "Array" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
                       }
                     ]
                   },
                   "node": {
-                    "kind": "identifier",
-                    "name": "None"
+                    "kind": "invocation",
+                    "invokee": "Option.Some",
+                    "arguments": [
+                      {
+                        "token": {
+                          "position": [11, 30],
+                          "kind": {
+                            "name": "LBrack"
+                          }
+                        },
+                        "type": {
+                          "kind": "instance",
+                          "struct": { "moduleId": 0, "name": "Array" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            }
+                          ]
+                        },
+                        "node": {
+                          "kind": "array",
+                          "items": []
+                        }
+                      }
+                    ]
                   }
                 }
               ],
               [
-                {
-                  "token": {
-                    "position": [11, 33],
-                    "kind": {
-                      "name": "Ident",
-                      "value": "b"
-                    }
-                  },
-                  "type": {
-                    "nullable": true,
-                    "kind": "primitive",
-                    "primitive": "String"
-                  },
-                  "node": {
-                    "kind": "literal",
-                    "value": "b"
-                  }
-                },
                 {
                   "token": {
                     "position": [11, 36],
                     "kind": {
-                      "name": "LBrack"
+                      "name": "None"
                     }
                   },
                   "type": {
-                    "nullable": true,
-                    "kind": "instance",
-                    "struct": { "moduleId": 0, "name": "Array" },
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 0, "name": "Option" },
                     "typeParams": [
                       {
-                        "nullable": false,
                         "kind": "primitive",
-                        "primitive": "Int"
+                        "primitive": "String"
                       }
                     ]
                   },
                   "node": {
-                    "kind": "array",
-                    "items": [
-                      {
-                        "token": {
-                          "position": [11, 37],
-                          "kind": {
-                            "name": "Int",
-                            "value": 1
-                          }
-                        },
-                        "type": {
-                          "nullable": false,
-                          "kind": "primitive",
-                          "primitive": "Int"
-                        },
-                        "node": {
-                          "kind": "literal",
-                          "value": 1
+                    "kind": "accessor",
+                    "head": {
+                      "token": {
+                        "position": [11, 36],
+                        "kind": {
+                          "name": "Ident",
+                          "value": "Option"
                         }
                       },
+                      "type": {
+                        "kind": "enum",
+                        "enum": { "moduleId": 0, "name": "Option" }
+                      },
+                      "node": {
+                        "kind": "identifier",
+                        "name": "Option"
+                      }
+                    },
+                    "middle": [],
+                    "tail": {
+                      "kind": "enumVariant",
+                      "name": "Option.None"
+                    }
+                  }
+                },
+                {
+                  "token": {
+                    "position": [11, 43],
+                    "kind": {
+                      "name": "None"
+                    }
+                  },
+                  "type": {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 0, "name": "Option" },
+                    "typeParams": [
+                      {
+                        "kind": "instance",
+                        "struct": { "moduleId": 0, "name": "Array" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "node": {
+                    "kind": "accessor",
+                    "head": {
+                      "token": {
+                        "position": [11, 43],
+                        "kind": {
+                          "name": "Ident",
+                          "value": "Option"
+                        }
+                      },
+                      "type": {
+                        "kind": "enum",
+                        "enum": { "moduleId": 0, "name": "Option" }
+                      },
+                      "node": {
+                        "kind": "identifier",
+                        "name": "Option"
+                      }
+                    },
+                    "middle": [],
+                    "tail": {
+                      "kind": "enumVariant",
+                      "name": "Option.None"
+                    }
+                  }
+                }
+              ],
+              [
+                {
+                  "token": {
+                    "position": [11, 54],
+                    "kind": {
+                      "name": "LParen"
+                    }
+                  },
+                  "type": {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 0, "name": "Option" },
+                    "typeParams": [
+                      {
+                        "kind": "primitive",
+                        "primitive": "String"
+                      }
+                    ]
+                  },
+                  "node": {
+                    "kind": "invocation",
+                    "invokee": "Option.Some",
+                    "arguments": [
                       {
                         "token": {
-                          "position": [11, 40],
+                          "position": [11, 55],
                           "kind": {
-                            "name": "Int",
-                            "value": 2
+                            "name": "String",
+                            "value": "b"
                           }
                         },
                         "type": {
-                          "nullable": false,
                           "kind": "primitive",
-                          "primitive": "Int"
+                          "primitive": "String"
                         },
                         "node": {
                           "kind": "literal",
-                          "value": 2
+                          "value": "b"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "token": {
+                    "position": [11, 66],
+                    "kind": {
+                      "name": "LParen"
+                    }
+                  },
+                  "type": {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 0, "name": "Option" },
+                    "typeParams": [
+                      {
+                        "kind": "instance",
+                        "struct": { "moduleId": 0, "name": "Array" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "node": {
+                    "kind": "invocation",
+                    "invokee": "Option.Some",
+                    "arguments": [
+                      {
+                        "token": {
+                          "position": [11, 67],
+                          "kind": {
+                            "name": "LBrack"
+                          }
+                        },
+                        "type": {
+                          "kind": "instance",
+                          "struct": { "moduleId": 0, "name": "Array" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            }
+                          ]
+                        },
+                        "node": {
+                          "kind": "array",
+                          "items": [
+                            {
+                              "token": {
+                                "position": [11, 68],
+                                "kind": {
+                                  "name": "Int",
+                                  "value": 1
+                                }
+                              },
+                              "type": {
+                                "kind": "primitive",
+                                "primitive": "Int"
+                              },
+                              "node": {
+                                "kind": "literal",
+                                "value": 1
+                              }
+                            },
+                            {
+                              "token": {
+                                "position": [11, 71],
+                                "kind": {
+                                  "name": "Int",
+                                  "value": 2
+                                }
+                              },
+                              "type": {
+                                "kind": "primitive",
+                                "primitive": "Int"
+                              },
+                              "node": {
+                                "kind": "literal",
+                                "value": 2
+                              }
+                            }
+                          ]
                         }
                       }
                     ]
@@ -1260,7 +1418,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -1275,24 +1432,32 @@
             "label": { "name": "_", "position": [12, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Map" },
               "typeParams": [
                 {
-                  "nullable": true,
-                  "kind": "primitive",
-                  "primitive": "String"
-                },
-                {
-                  "nullable": true,
-                  "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 0, "name": "Option" },
                   "typeParams": [
                     {
-                      "nullable": false,
                       "kind": "primitive",
-                      "primitive": "Int"
+                      "primitive": "String"
+                    }
+                  ]
+                },
+                {
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 0, "name": "Option" },
+                  "typeParams": [
+                    {
+                      "kind": "instance",
+                      "struct": { "moduleId": 0, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
                     }
                   ]
                 }
@@ -1309,24 +1474,32 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "instance",
             "struct": { "moduleId": 0, "name": "Map" },
             "typeParams": [
               {
-                "nullable": true,
-                "kind": "primitive",
-                "primitive": "String"
-              },
-              {
-                "nullable": true,
-                "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "kind": "enumInstance",
+                "enum": { "moduleId": 0, "name": "Option" },
                 "typeParams": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
-                    "primitive": "Int"
+                    "primitive": "String"
+                  }
+                ]
+              },
+              {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 0, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "instance",
+                    "struct": { "moduleId": 0, "name": "Array" },
+                    "typeParams": [
+                      {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    ]
                   }
                 ]
               }

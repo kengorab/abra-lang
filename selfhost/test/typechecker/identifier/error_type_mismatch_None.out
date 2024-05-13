@@ -3,4 +3,4 @@ Type mismatch
   |  val x: Int = None
                   ^
 Expected: Int
-but instead found: Int?
+but instead found: <unknown>?

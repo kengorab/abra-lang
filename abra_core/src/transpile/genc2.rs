@@ -59,8 +59,6 @@ impl<W: std::io::Write> CCompiler2<W> {
                     "AbraSet".to_string()
                 } else if *struct_id == project.prelude_map_struct_id {
                     "AbraMap".to_string()
-                } else if *struct_id == project.prelude_option_struct_id {
-                    self.get_type_name_by_id(project, &generic_ids[0])
                 } else if generic_ids.is_empty() {
                     self.get_struct_or_enum_name(project, &TypeKind::Struct(*struct_id))
                 } else {
@@ -335,7 +333,6 @@ impl<W: std::io::Write> CCompiler2<W> {
 
         self.emit_comment("Supply extern type_id constants for builtin prelude types");
         self.emit_line(format!("const size_t TYPE_ID_TUPLE = {};", project.prelude_tuple_struct_id.1));
-        self.emit_line(format!("const size_t TYPE_ID_NONE = {};", project.prelude_option_struct_id.1));
         self.emit_line(format!("const size_t TYPE_ID_INT = {};", project.prelude_int_struct_id.1));
         self.emit_line(format!("const size_t TYPE_ID_FLOAT = {};", project.prelude_float_struct_id.1));
         self.emit_line(format!("const size_t TYPE_ID_BOOL = {};", project.prelude_bool_struct_id.1));

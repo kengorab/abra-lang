@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -25,26 +24,21 @@
             "label": { "name": "t", "position": [1, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "tuple",
               "types": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 },
                 {
-                  "nullable": false,
                   "kind": "instance",
                   "struct": { "moduleId": 0, "name": "Array" },
                   "typeParams": [
                     {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
@@ -62,26 +56,21 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "tuple",
             "types": [
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
               {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 0, "name": "Array" },
                 "typeParams": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -101,7 +90,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
@@ -119,7 +107,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "String"
                 },
@@ -136,12 +123,10 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "instance",
                   "struct": { "moduleId": 0, "name": "Array" },
                   "typeParams": [
                     {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
@@ -159,7 +144,6 @@
                         }
                       },
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       },
@@ -184,7 +168,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -199,7 +182,6 @@
             "label": { "name": "i", "position": [3, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -213,7 +195,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },
@@ -231,26 +212,21 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "tuple",
                   "types": [
                     {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     },
                     {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "String"
                     },
                     {
-                      "nullable": false,
                       "kind": "instance",
                       "struct": { "moduleId": 0, "name": "Array" },
                       "typeParams": [
                         {
-                          "nullable": false,
                           "kind": "primitive",
                           "primitive": "Int"
                         }
@@ -276,7 +252,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -291,7 +266,6 @@
             "label": { "name": "_", "position": [4, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -306,7 +280,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },
@@ -325,7 +298,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -340,7 +312,6 @@
             "label": { "name": "s", "position": [6, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "String"
             }
@@ -354,7 +325,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
@@ -372,26 +342,21 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "tuple",
                   "types": [
                     {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     },
                     {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "String"
                     },
                     {
-                      "nullable": false,
                       "kind": "instance",
                       "struct": { "moduleId": 0, "name": "Array" },
                       "typeParams": [
                         {
-                          "nullable": false,
                           "kind": "primitive",
                           "primitive": "Int"
                         }
@@ -417,7 +382,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -432,7 +396,6 @@
             "label": { "name": "_", "position": [7, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "String"
             }
@@ -447,7 +410,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "String"
           },
@@ -466,7 +428,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -481,12 +442,10 @@
             "label": { "name": "a", "position": [9, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Array" },
               "typeParams": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -502,12 +461,10 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "instance",
             "struct": { "moduleId": 0, "name": "Array" },
             "typeParams": [
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               }
@@ -527,26 +484,21 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "tuple",
                   "types": [
                     {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     },
                     {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "String"
                     },
                     {
-                      "nullable": false,
                       "kind": "instance",
                       "struct": { "moduleId": 0, "name": "Array" },
                       "typeParams": [
                         {
-                          "nullable": false,
                           "kind": "primitive",
                           "primitive": "Int"
                         }
@@ -572,7 +524,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -587,12 +538,10 @@
             "label": { "name": "_", "position": [10, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "instance",
               "struct": { "moduleId": 0, "name": "Array" },
               "typeParams": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -609,12 +558,10 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "instance",
             "struct": { "moduleId": 0, "name": "Array" },
             "typeParams": [
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               }

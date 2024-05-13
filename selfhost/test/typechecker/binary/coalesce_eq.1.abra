@@ -1,9 +1,9 @@
-var a: Int? = 123
+var a: Int? = Some(123)
 a ?:= 456
 
 type Foo { a: Float? }
-val f = Foo(a: 1.2)
+val f = Foo(a: Some(1.2))
 f.a ?:= 3.2
 
-val t: (Float?, Bool, String) = (1.1, true, "three")
+val t: (Float?, Bool, String) = (Some(1.1), true, "three")
 t[0] ?:= 2.2

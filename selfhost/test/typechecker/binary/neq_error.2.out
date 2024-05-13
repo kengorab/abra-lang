@@ -1,5 +1,6 @@
-Error at %FILE_NAME%:1:5
-Illegal operator
+Error at %FILE_NAME%:1:8
+Type mismatch
   |  123 != None
-         ^
-No operator '!=' exists between types Int and Int?
+            ^
+Expected: Int
+but instead found: <unknown>?

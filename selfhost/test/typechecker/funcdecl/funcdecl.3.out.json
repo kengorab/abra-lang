@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -25,12 +24,10 @@
                 "label": { "name": "a", "position": [2, 8] },
                 "mutable": false,
                 "type": {
-                  "nullable": false,
                   "kind": "instance",
                   "struct": { "moduleId": 0, "name": "Array" },
                   "typeParams": [
                     {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
@@ -41,18 +38,15 @@
                 "label": { "name": "fn", "position": [3, 7] },
                 "mutable": false,
                 "type": {
-                  "nullable": false,
                   "kind": "function",
                   "parameters": [
                     {
                       "required": true,
                       "type": {
-                        "nullable": false,
                         "kind": "instance",
                         "struct": { "moduleId": 0, "name": "Array" },
                         "typeParams": [
                           {
-                            "nullable": false,
                             "kind": "primitive",
                             "primitive": "Int"
                           }
@@ -61,7 +55,6 @@
                     }
                   ],
                   "returnType": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -77,12 +70,10 @@
             {
               "label": { "name": "a", "position": [2, 8] },
               "type": {
-                "nullable": false,
                 "kind": "instance",
                 "struct": { "moduleId": 0, "name": "Array" },
                 "typeParams": [
                   {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -93,7 +84,6 @@
             }
           ],
           "returnType": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },
@@ -106,7 +96,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Unit"
               },
@@ -121,18 +110,15 @@
                     "label": { "name": "fn", "position": [3, 7] },
                     "mutable": false,
                     "type": {
-                      "nullable": false,
                       "kind": "function",
                       "parameters": [
                         {
                           "required": true,
                           "type": {
-                            "nullable": false,
                             "kind": "instance",
                             "struct": { "moduleId": 0, "name": "Array" },
                             "typeParams": [
                               {
-                                "nullable": false,
                                 "kind": "primitive",
                                 "primitive": "Int"
                               }
@@ -141,7 +127,6 @@
                         }
                       ],
                       "returnType": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       }
@@ -157,18 +142,15 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "function",
                     "parameters": [
                       {
                         "required": true,
                         "type": {
-                          "nullable": false,
                           "kind": "instance",
                           "struct": { "moduleId": 0, "name": "Array" },
                           "typeParams": [
                             {
-                              "nullable": false,
                               "kind": "primitive",
                               "primitive": "Int"
                             }
@@ -177,7 +159,6 @@
                       }
                     ],
                     "returnType": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
@@ -198,7 +179,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },

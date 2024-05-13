@@ -3,4 +3,4 @@ Type mismatch
   |  val a: String[] = ["abcd", None]
                                 ^
 Expected: String
-but instead found: String?
+but instead found: <unknown>?

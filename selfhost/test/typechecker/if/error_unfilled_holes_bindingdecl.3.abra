@@ -1,1 +1,1 @@
-val a = if true None else []
+val a = if true None else Some([])

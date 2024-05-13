@@ -1,4 +1,4 @@
-func arrayMap<T, U>(arr: T[], fn: (T) => U): U[]? = []
+func arrayMap<T, U>(arr: T[], fn: (T) => U): U[]? = Some([])
 
 func strLen(s: String): Int = 0
 val ints = arrayMap(["a", "b", "c"], strLen)

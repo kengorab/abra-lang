@@ -1,6 +1,6 @@
 Error at %FILE_NAME%:1:36
 Type mismatch
-  |  val m: Map<Int, String> = { (123): None, (456): "hello" }
+  |  val m: Map<Int, String> = { (123): None, (456): Some("hello") }
                                         ^
 Expected: String
-but instead found: String?
+but instead found: <unknown>?

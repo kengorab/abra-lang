@@ -1,5 +1,4 @@
-// Test calling function which has multiple optional parameters
 func foo(a: Int[], b: Bool?) {}
 
-foo(a: [], b: true)
+foo(a: [], b: Some(true))
 foo(a: [1, 2], b: None)

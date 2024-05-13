@@ -1,5 +1,5 @@
 Error at %FILE_NAME%:1:9
 Could not determine type for assignment
-  |  val a = if true None else None
+  |  val a = if true { None } else { None }
              ^
 Type '<unknown>?' has unfilled holes. Please use an explicit type annotation to denote the type

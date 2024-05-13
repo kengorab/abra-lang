@@ -116,15 +116,15 @@
   val m = { a: 1, b: 2, c: 3 }
   val iter = m.iterator()
 
-  /// Expect: ("c", 3)
+  /// Expect: Option.Some(value: ("c", 3))
   println(iter.next())
-  /// Expect: ("b", 2)
+  /// Expect: Option.Some(value: ("b", 2))
   println(iter.next())
-  /// Expect: ("a", 1)
+  /// Expect: Option.Some(value: ("a", 1))
   println(iter.next())
-  /// Expect: None
+  /// Expect: Option.None
   println(iter.next())
-  /// Expect: None
+  /// Expect: Option.None
   println(iter.next())
 })()
 
@@ -180,11 +180,11 @@ for ch, idx in { a: 1, b: 2, c: 3 } { println(ch, idx) }
 (() => {
   val m = { (1): "a", (2): "b" }
 
-  /// Expect: a
+  /// Expect: Option.Some(value: "a")
   println(m.get(1))
-  /// Expect: b
+  /// Expect: Option.Some(value: "b")
   println(m.get(2))
-  /// Expect: None
+  /// Expect: Option.None
   println(m.get(3))
 })()
 
@@ -232,12 +232,12 @@ for ch, idx in { a: 1, b: 2, c: 3 } { println(ch, idx) }
   val old1 = m.update(1, () => "A")
   /// Expect: { 1: A, 2: b }
   println(m)
-  /// Expect: a
+  /// Expect: Option.Some(value: "a")
   println(old1)
 
   val old2 = m.update(4, () => "???")
   /// Expect: { 1: A, 2: b }
   println(m)
-  /// Expect: None
+  /// Expect: Option.None
   println(old2)
 })()

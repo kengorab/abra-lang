@@ -3,4 +3,4 @@ Illegal operator
   |  123 ?: 456
          ^
 The '?:' operator can only be used on an Option type
-(The lhs value's type here is Int, not Int?)
+(The lhs value's type here is Int, not Option<Int>)

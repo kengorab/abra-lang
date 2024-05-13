@@ -27,7 +27,7 @@
     None v => println("nothing here: ${v}")
     _ v => println("found a number: ${v}")
   }
-  /// Expect: nothing here: None
+  /// Expect: nothing here: Option.None
   match arr[14] {
     None v => println("nothing here: ${v}")
     _ v => println("found a number: ${v}")
@@ -35,16 +35,16 @@
 
   // With case binding and _no_ `None` case
 
-  /// Expect: value: 2
+  /// Expect: value: Option.Some(value: 2)
   match arr[1] {
     _ v => println("value: ${v}")
   }
-  /// Expect: value: None
+  /// Expect: value: Option.None
   match arr[14] {
     _ v => println("value: ${v}")
   }
 
-  // With constant cases
+  //// With constant cases
 
   /// Expect: 18
   match arr[1] {
@@ -208,4 +208,4 @@ func matchCaseHasReturn(input: Int?): Int {
 /// Expect: -1
 println(matchCaseHasReturn(None))
 /// Expect: 401
-println(matchCaseHasReturn(4))
+println(matchCaseHasReturn(Option.Some(value: 4)))

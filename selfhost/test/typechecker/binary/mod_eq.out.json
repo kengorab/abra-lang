@@ -10,7 +10,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -25,7 +24,6 @@
             "label": { "name": "a", "position": [1, 5] },
             "mutable": true,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Float"
             }
@@ -40,7 +38,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Float"
           },
@@ -59,7 +56,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -73,7 +69,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Float"
           },
@@ -89,7 +84,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Float"
               },
@@ -107,7 +101,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Float"
               },
@@ -125,7 +118,6 @@
             "label": { "name": "a", "position": [1, 5] },
             "mutable": true,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Float"
             }
@@ -141,7 +133,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -155,7 +146,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Float"
           },
@@ -171,7 +161,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Float"
               },
@@ -189,7 +178,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -207,7 +195,6 @@
             "label": { "name": "a", "position": [1, 5] },
             "mutable": true,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Float"
             }
@@ -223,7 +210,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -238,7 +224,6 @@
             "label": { "name": "b", "position": [5, 5] },
             "mutable": true,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -253,7 +238,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },
@@ -272,7 +256,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -286,7 +269,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Float"
           },
@@ -302,7 +284,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Float"
               },
@@ -320,7 +301,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Float"
               },
@@ -338,7 +318,6 @@
             "label": { "name": "a", "position": [1, 5] },
             "mutable": true,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Float"
             }
@@ -354,7 +333,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -368,7 +346,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Float"
           },
@@ -384,7 +361,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Float"
               },
@@ -402,7 +378,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -420,7 +395,6 @@
             "label": { "name": "a", "position": [1, 5] },
             "mutable": true,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Float"
             }

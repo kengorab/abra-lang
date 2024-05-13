@@ -21,26 +21,26 @@ val d = if true {
   None
 } else {
   val x = 1
-  [x]
+  Some([x])
 }
 val _: Int[]? = d
 
 val e = if true {
   val x = 1
-  [x]
+  Some([x])
 } else {
   None
 }
 val _: Int[]? = e
 
-val f = if true { 123 } else { None }
+val f = if true { Some(123) } else { None }
 val _: Int? = f
 
-val g = if true { None } else { 123 }
+val g = if true { None } else { Some(123) }
 val _: Int? = g
 
 val h = if true {
-  if false 123 else 456
+  if false Some(123) else Some(456)
 } else {
   None
 }
@@ -49,7 +49,7 @@ val _: Int? = h
 val i = if (if None true else false) 123 else 456
 val _: Int = i
 
-val j_: Int? = 123
+val j_: Int? = Some(123)
 val j = if j_ |j| { j } else 0
 val _: Int = j
 

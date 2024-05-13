@@ -657,8 +657,13 @@ impl Parser {
                 Token::Comma(_) => {
                     self.expect_next()?; // Consume ','
                 }
+                Token::None(_) |
                 Token::Ident(_, _) => {
                     let ident = self.expect_next()?;
+                    let ident = match ident {
+                        Token::None(pos) => Token::Ident(pos, "None".to_string()),
+                        tok => tok
+                    };
 
                     if is_enum {
                         let args = if let Token::LParen(_, _) = self.expect_peek()? {
@@ -1404,6 +1409,22 @@ impl Parser {
     fn parse_invocation(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseErrorKind> {
         let lparen = token;
         let args = self.parse_invocation_args()?;
+
+        let left = match left {
+            AstNode::Identifier(token, type_args) => {
+                match &token {
+                    Token::Ident(pos, ident) if ident == "Some" => {
+                        AstNode::Accessor(token.clone(), AccessorNode {
+                            target: Box::new(AstNode::Identifier(Token::Ident(pos.clone(), "Option".to_string()), None)),
+                            field: Box::new(AstNode::Identifier(token, type_args)),
+                            is_opt_safe: false,
+                        })
+                    }
+                    _ => AstNode::Identifier(token, type_args)
+                }
+            }
+            _ => left
+        };
 
         Ok(AstNode::Invocation(lparen, InvocationNode { target: Box::new(left), args }))
     }

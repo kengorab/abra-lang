@@ -4,15 +4,16 @@
 val a1: Int[] = []
 val a2: Int[] = [1, 2, 3]
 
-val a3: Int?[] = [1, None, 3]
-val a4: Int?[] = [None, 2, 3]
+val a3: Int?[] = [Some(1), None, Some(3)]
+val a4: Int?[] = [None, Some(2), Some(3)]
 
 [[1, 2], [], [3, 4]]
-[1, 2, None, 4]
-[[1, 2], [3, 4], None, [5, 6]]
+[Some(1), Some(2), None, Some(4)]
+[Some([1, 2]), Some([3, 4]), None, Some([5, 6])]
 
-val s5: String?[]? = [None]
+val s5: String?[]? = Some([None])
 
 [[], [1, 2], [3, 4]]
 [#{}, #{1, 2}, #{3, 4}]
-[[], None, [1, 2]]
+[Some(#{}), None, Some(#{1, 2})]
+[Some(#{}), Some(#{1, 2})]
