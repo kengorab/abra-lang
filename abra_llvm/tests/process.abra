@@ -6,7 +6,7 @@ val args = Process.args()
 println(args[1:])
 
 val bogusEnvVar = Process.getEnvVar("BOGUS")
-/// Expect: Option.None_
+/// Expect: Option.None
 println(bogusEnvVar)
 
 val fooEnvVar = Process.getEnvVar("FOO")

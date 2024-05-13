@@ -122,9 +122,9 @@
   println(iter.next())
   /// Expect: Option.Some(value: ("a", 1))
   println(iter.next())
-  /// Expect: Option.None_
+  /// Expect: Option.None
   println(iter.next())
-  /// Expect: Option.None_
+  /// Expect: Option.None
   println(iter.next())
 })()
 
@@ -184,7 +184,7 @@ for ch, idx in { a: 1, b: 2, c: 3 } { println(ch, idx) }
   println(m.get(1))
   /// Expect: Option.Some(value: "b")
   println(m.get(2))
-  /// Expect: Option.None_
+  /// Expect: Option.None
   println(m.get(3))
 })()
 
@@ -238,6 +238,6 @@ for ch, idx in { a: 1, b: 2, c: 3 } { println(ch, idx) }
   val old2 = m.update(4, () => "???")
   /// Expect: { 1: A, 2: b }
   println(m)
-  /// Expect: Option.None_
+  /// Expect: Option.None
   println(old2)
 })()

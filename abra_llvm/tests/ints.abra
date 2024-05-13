@@ -115,7 +115,7 @@ println(12.abs())
 println((-12).abs())
 
 // Int#asBase
-/// Expect: Option.None_ Option.None_ Option.None_ Option.None_
+/// Expect: Option.None Option.None Option.None Option.None
 println(123.asBase(1), 123.asBase(0), 123.asBase(-1), 123.asBase(37))
 /// Expect: Option.Some(value: "1100") Option.Some(value: "-1100")
 println(12.asBase(2), (-12).asBase(2))

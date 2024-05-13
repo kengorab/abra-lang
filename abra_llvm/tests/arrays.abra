@@ -57,7 +57,7 @@
 // Indexing (also Array#get(index: Int))
 (() => {
   val arr = [1, 2, 3]
-  /// Expect: Option.None_ Option.Some(value: 1) Option.Some(value: 2) Option.Some(value: 3) Option.Some(value: 1) Option.Some(value: 2) Option.Some(value: 3) Option.None_
+  /// Expect: Option.None Option.Some(value: 1) Option.Some(value: 2) Option.Some(value: 3) Option.Some(value: 1) Option.Some(value: 2) Option.Some(value: 3) Option.None
   println(arr[-4], arr[-3], arr[-2], arr[-1], arr[0], arr[1], arr[2], arr[3])
 })()
 
@@ -146,9 +146,9 @@
   println(iter.next())
   /// Expect: Option.Some(value: 7.89)
   println(iter.next())
-  /// Expect: Option.None_
+  /// Expect: Option.None
   println(iter.next())
-  /// Expect: Option.None_
+  /// Expect: Option.None
   println(iter.next())
 })()
 
@@ -201,7 +201,7 @@ for ch in ["a", "b", "c"] println(ch)
   /// Expect: []
   println(arr)
 
-  /// Expect: Option.None_
+  /// Expect: Option.None
   println(arr.pop())
   /// Expect: []
   println(arr)
@@ -312,17 +312,17 @@ func printItem(item: Int) = println(item)
   val intArr = [123, 456, 789]
   /// Expect: Option.Some(value: 123)
   println(intArr.find(i => i == 123))
-  /// Expect: Option.None_
+  /// Expect: Option.None
   println(intArr.find(i => i == 10))
 
   val empty: Int[] = []
-  /// Expect: Option.None_
+  /// Expect: Option.None
   println(empty.find(i => i == 123))
 
   val strArr = ["hello", "world"]
   /// Expect: Option.Some(value: "hello")
   println(strArr.find(s => s == "hello"))
-  /// Expect: Option.None_
+  /// Expect: Option.None
   println(strArr.find(s => s == "HELLO"))
 })()
 

@@ -86,9 +86,9 @@ type Person {
   println(iter.next())
   /// Expect: Option.Some(value: "a")
   println(iter.next())
-  /// Expect: Option.None_
+  /// Expect: Option.None
   println(iter.next())
-  /// Expect: Option.None_
+  /// Expect: Option.None
   println(iter.next())
 })()
 
