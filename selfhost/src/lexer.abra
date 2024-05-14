@@ -222,17 +222,11 @@ export type Lexer {
     val tokens: Token[] = []
 
     val lexer = Lexer(_input: contents)
-    var nextToken = match lexer.nextToken() {
-      Result.Ok(v) => v,
-      Result.Err(e) => return Err(error: e)
-    }
+    var nextToken = match lexer.nextToken() { Ok(v) => v, Err(e) => return Err(e) }
     while nextToken |tok| {
       tokens.push(tok)
 
-      nextToken = match lexer.nextToken() {
-        Result.Ok(v) => v,
-        Result.Err(e) => return Err(error: e)
-      }
+      nextToken = match lexer.nextToken() { Ok(v) => v, Err(e) => return Err(e) }
     }
 
     Ok(tokens)
@@ -248,16 +242,10 @@ export type Lexer {
     val position = self._curPos()
 
     val token = if ch.isDigit() {
-      val tok = match self._tokenizeInteger(startPos: position) {
-        Result.Ok(v) => v
-        Result.Err(e) => return Err(error: e)
-      }
+      val tok = match self._tokenizeInteger(startPos: position) { Ok(v) => v Err(e) => return Err(e) }
       tok
     } else if ch == "\"" {
-      val tok = match self._tokenizeString(startPos: position) {
-        Result.Ok(v) => v
-        Result.Err(e) => return Err(error: e)
-      }
+      val tok = match self._tokenizeString(startPos: position) { Ok(v) => v Err(e) => return Err(e) }
       tok
     } else if ch.isAlpha() || ch == "_" {
       self._tokenizeIdentifier(startPos: position)
@@ -266,8 +254,8 @@ export type Lexer {
       return self.nextToken()
     } else {
       val tok = match self._tokenizeSymbol(startPos: position, sawPreceedingNewline: sawNewline) {
-        Result.Ok(v) => v
-        Result.Err(e) => return Err(error: e)
+        Ok(v) => v
+        Err(e) => return Err(e)
       }
       tok
     }
@@ -472,10 +460,7 @@ export type Lexer {
           "\'" => "\'",
           "\"" => "\"",
           "$" => "$",
-          "u" => match self._parseUnicodeEscape(pos) {
-            Result.Ok(c) => c
-            Result.Err(e) => return Err(e)
-          }
+          "u" => match self._parseUnicodeEscape(pos) { Ok(v) => v, Err(e) => return Err(e) }
           _ => return Err(LexerError(position: pos, kind: LexerErrorKind.UnsupportedEscapeSequence("\\$ch", false)))
         }
 

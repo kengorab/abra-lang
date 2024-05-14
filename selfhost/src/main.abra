@@ -3,11 +3,11 @@ import Lexer from "./lexer"
 
 if Process.args()[1] |fileName| {
   match fs.readFile(fileName) {
-    Result.Ok(contents) => {
+    Ok(contents) => {
       val tokens = Lexer.tokenize(contents)
       println("tokens:", tokens)
     }
-    Result.Err(e) => {
+    Err(e) => {
       println("Could not read file:", e)
     }
   }

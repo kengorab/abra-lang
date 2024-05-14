@@ -40,7 +40,7 @@ func main() {
     val typechecker = Typechecker(moduleLoader: moduleLoader, project: project)
 
     match typechecker.typecheckEntrypoint(filePathAbs) {
-      Result.Ok => {
+      Ok => {
         val allModules = project.modules.values().sortBy(m => m.id)
 
         if !verifyStdModule(allModules, 0, "prelude") return
@@ -51,7 +51,7 @@ func main() {
         val json = Jsonifier()
         json.printModules(userModules)
       }
-      Result.Err(e) => println(e.getMessage())
+      Err(e) => println(e.getMessage())
     }
   } else {
     println("Missing required argument <file-name>")

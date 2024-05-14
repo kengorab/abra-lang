@@ -24,13 +24,13 @@ export func printTokensAsJson(tokens: Token[]) {
 
 if Process.args()[1] |fileName| {
   match fs.readFile(fileName) {
-    Result.Ok(contents) => {
+    Ok(contents) => {
       match Lexer.tokenize(contents) {
-        Result.Ok(tokens) => printTokensAsJson(tokens)
-        Result.Err(error) => print(error.getMessage(fileName, contents))
+        Ok(tokens) => printTokensAsJson(tokens)
+        Err(error) => print(error.getMessage(fileName, contents))
       }
     }
-    Result.Err(e) => {
+    Err(e) => {
       println("Could not read file:", e)
     }
   }

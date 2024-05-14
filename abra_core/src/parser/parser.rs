@@ -1074,6 +1074,15 @@ impl Parser {
                     idents.push(ident);
                 }
 
+                if idents.len() == 1 {
+                    match &idents[0] {
+                        Token::Ident(pos, name) if name == "Ok" || name == "Err" => {
+                            idents = vec![Token::Ident(pos.clone(), "Result".to_string()), idents[0].clone()]
+                        }
+                        _ => {}
+                    }
+                }
+
                 let args = if let Some(Token::LParen(_, _)) = self.peek() {
                     case_token = self.expect_next()?; // Consume '('
                     let mut args = Vec::new();
