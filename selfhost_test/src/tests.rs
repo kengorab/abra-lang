@@ -626,6 +626,7 @@ fn typechecker_tests() {
         // Enum declaration
         .add_test_vs_txt("typechecker/enumdecl/enumdecl_exported.abra", "typechecker/enumdecl/enumdecl_exported.out.json")
         .add_test_vs_txt("typechecker/enumdecl/enumdecl.1.abra", "typechecker/enumdecl/enumdecl.1.out.json")
+        .add_test_vs_txt("typechecker/enumdecl/enumdecl_Result_shorthand.abra", "typechecker/enumdecl/enumdecl_Result_shorthand.out.json")
         .add_test_vs_txt("typechecker/enumdecl/error_duplicate_enum_enum.abra", "typechecker/enumdecl/error_duplicate_enum_enum.out")
         .add_test_vs_txt("typechecker/enumdecl/error_duplicate_enum_func.abra", "typechecker/enumdecl/error_duplicate_enum_func.out")
         .add_test_vs_txt("typechecker/enumdecl/error_duplicate_enum_type.abra", "typechecker/enumdecl/error_duplicate_enum_type.out")

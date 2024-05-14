@@ -12,18 +12,18 @@ import printParsedModuleAsJson from "./test_utils"
 
 if Process.args()[1] |fileName| {
   match fs.readFile(fileName) {
-    Result.Ok(contents) => {
+    Ok(contents) => {
       match Lexer.tokenize(contents) {
-        Result.Ok(tokens) => {
+        Ok(tokens) => {
           match Parser.parse(tokens) {
-            Result.Ok(parsedModule) => printParsedModuleAsJson(parsedModule)
-            Result.Err(error) => print(error.getMessage(fileName, contents))
+            Ok(parsedModule) => printParsedModuleAsJson(parsedModule)
+            Err(error) => print(error.getMessage(fileName, contents))
           }
         }
-        Result.Err(error) => print(error.getMessage(fileName, contents))
+        Err(error) => print(error.getMessage(fileName, contents))
       }
     }
-    Result.Err(e) => {
+    Err(e) => {
       println("Could not read file:", e)
     }
   }

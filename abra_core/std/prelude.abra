@@ -29,6 +29,14 @@ export enum Option<V> {
 
 func Some<T>(value: T): Option<T> = Option.Some(value)
 
+export enum Result<V, E> {
+  Ok(value: V)
+  Err(error: E)
+}
+
+func Ok<V, E>(value: V): Result<V, E> = Result.Ok(value)
+func Err<V, E>(error: E): Result<V, E> = Result.Err(error)
+
 type RangeIterator {
   start: Int
   end: Int
@@ -49,11 +57,6 @@ type RangeIterator {
 func range(start: Int, end: Int, stepBy = 1): RangeIterator = RangeIterator(start: start, end: end, stepBy: stepBy)
 
 func flattenOption<T>(value: T??): T? = if value |v| v else None
-
-enum Result<V, E> {
-  Ok(value: V)
-  Err(error: E)
-}
 
 type Int {
   func asFloat(self): Float = intrinsics.intAsFloat(self)
