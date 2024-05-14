@@ -1,0 +1,671 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "implicitReturn", "position": [1, 6] },
+          "scope": {
+            "name": "$root::module_3::implicitReturn",
+            "variables": [],
+            "functions": [],
+            "types": []
+          },
+          "kind": "FunctionKind.Standalone",
+          "typeParameters": [],
+          "parameters": [],
+          "returnType": {
+            "kind": "enumInstance",
+            "enum": { "moduleId": 0, "name": "Result" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            ]
+          },
+          "body": [
+            {
+              "token": {
+                "position": [2, 3],
+                "kind": {
+                  "name": "If"
+                }
+              },
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 0, "name": "Result" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  }
+                ]
+              },
+              "node": {
+                "kind": "if",
+                "isStatement": false,
+                "condition": {
+                  "token": {
+                    "position": [2, 6],
+                    "kind": {
+                      "name": "Bool",
+                      "value": true
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Bool"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": true
+                  }
+                },
+                "conditionBindingPattern": null,
+                "ifBlock": [
+                  {
+                    "token": {
+                      "position": [2, 13],
+                      "kind": {
+                        "name": "LParen"
+                      }
+                    },
+                    "type": {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 0, "name": "Result" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        {
+                          "kind": "primitive",
+                          "primitive": "String"
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "invocation",
+                      "invokee": {
+                        "token": {
+                          "position": [2, 11],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "Ok"
+                          }
+                        },
+                        "type": {
+                          "kind": "function",
+                          "parameters": [
+                            {
+                              "required": true,
+                              "type": {
+                                "kind": "generic",
+                                "name": "V"
+                              }
+                            }
+                          ],
+                          "returnType": {
+                            "kind": "enumInstance",
+                            "enum": { "moduleId": 0, "name": "Result" },
+                            "typeParams": [
+                              {
+                                "kind": "generic",
+                                "name": "V"
+                              },
+                              {
+                                "kind": "generic",
+                                "name": "E"
+                              }
+                            ]
+                          }
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "Ok"
+                        }
+                      },
+                      "arguments": [
+                        {
+                          "token": {
+                            "position": [2, 14],
+                            "kind": {
+                              "name": "Int",
+                              "value": 123
+                            }
+                          },
+                          "type": {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          },
+                          "node": {
+                            "kind": "literal",
+                            "value": 123
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "elseBlock": [
+                  {
+                    "token": {
+                      "position": [2, 27],
+                      "kind": {
+                        "name": "LParen"
+                      }
+                    },
+                    "type": {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 0, "name": "Result" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        {
+                          "kind": "primitive",
+                          "primitive": "String"
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "invocation",
+                      "invokee": {
+                        "token": {
+                          "position": [2, 24],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "Err"
+                          }
+                        },
+                        "type": {
+                          "kind": "function",
+                          "parameters": [
+                            {
+                              "required": true,
+                              "type": {
+                                "kind": "generic",
+                                "name": "E"
+                              }
+                            }
+                          ],
+                          "returnType": {
+                            "kind": "enumInstance",
+                            "enum": { "moduleId": 0, "name": "Result" },
+                            "typeParams": [
+                              {
+                                "kind": "generic",
+                                "name": "V"
+                              },
+                              {
+                                "kind": "generic",
+                                "name": "E"
+                              }
+                            ]
+                          }
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "Err"
+                        }
+                      },
+                      "arguments": [
+                        {
+                          "token": {
+                            "position": [2, 28],
+                            "kind": {
+                              "name": "String",
+                              "value": "hello"
+                            }
+                          },
+                          "type": {
+                            "kind": "primitive",
+                            "primitive": "String"
+                          },
+                          "node": {
+                            "kind": "literal",
+                            "value": "hello"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [5, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "explicitReturn", "position": [5, 6] },
+          "scope": {
+            "name": "$root::module_3::explicitReturn",
+            "variables": [],
+            "functions": [],
+            "types": []
+          },
+          "kind": "FunctionKind.Standalone",
+          "typeParameters": [],
+          "parameters": [],
+          "returnType": {
+            "kind": "enumInstance",
+            "enum": { "moduleId": 0, "name": "Result" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            ]
+          },
+          "body": [
+            {
+              "token": {
+                "position": [6, 3],
+                "kind": {
+                  "name": "If"
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Unit"
+              },
+              "node": {
+                "kind": "if",
+                "isStatement": true,
+                "condition": {
+                  "token": {
+                    "position": [6, 6],
+                    "kind": {
+                      "name": "Bool",
+                      "value": false
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Bool"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": false
+                  }
+                },
+                "conditionBindingPattern": null,
+                "ifBlock": [
+                  {
+                    "token": {
+                      "position": [6, 12],
+                      "kind": {
+                        "name": "Return"
+                      }
+                    },
+                    "type": {
+                      "kind": "never"
+                    },
+                    "node": {
+                      "kind": "return",
+                      "expr": {
+                        "token": {
+                          "position": [6, 22],
+                          "kind": {
+                            "name": "LParen"
+                          }
+                        },
+                        "type": {
+                          "kind": "enumInstance",
+                          "enum": { "moduleId": 0, "name": "Result" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            },
+                            {
+                              "kind": "primitive",
+                              "primitive": "String"
+                            }
+                          ]
+                        },
+                        "node": {
+                          "kind": "invocation",
+                          "invokee": {
+                            "token": {
+                              "position": [6, 19],
+                              "kind": {
+                                "name": "Ident",
+                                "value": "Err"
+                              }
+                            },
+                            "type": {
+                              "kind": "function",
+                              "parameters": [
+                                {
+                                  "required": true,
+                                  "type": {
+                                    "kind": "generic",
+                                    "name": "E"
+                                  }
+                                }
+                              ],
+                              "returnType": {
+                                "kind": "enumInstance",
+                                "enum": { "moduleId": 0, "name": "Result" },
+                                "typeParams": [
+                                  {
+                                    "kind": "generic",
+                                    "name": "V"
+                                  },
+                                  {
+                                    "kind": "generic",
+                                    "name": "E"
+                                  }
+                                ]
+                              }
+                            },
+                            "node": {
+                              "kind": "identifier",
+                              "name": "Err"
+                            }
+                          },
+                          "arguments": [
+                            {
+                              "token": {
+                                "position": [6, 23],
+                                "kind": {
+                                  "name": "String",
+                                  "value": "asdf"
+                                }
+                              },
+                              "type": {
+                                "kind": "primitive",
+                                "primitive": "String"
+                              },
+                              "node": {
+                                "kind": "literal",
+                                "value": "asdf"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ],
+                "elseBlock": []
+              }
+            },
+            {
+              "token": {
+                "position": [8, 3],
+                "kind": {
+                  "name": "If"
+                }
+              },
+              "type": {
+                "kind": "never"
+              },
+              "node": {
+                "kind": "if",
+                "isStatement": false,
+                "condition": {
+                  "token": {
+                    "position": [8, 6],
+                    "kind": {
+                      "name": "Bool",
+                      "value": true
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Bool"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": true
+                  }
+                },
+                "conditionBindingPattern": null,
+                "ifBlock": [
+                  {
+                    "token": {
+                      "position": [9, 5],
+                      "kind": {
+                        "name": "Return"
+                      }
+                    },
+                    "type": {
+                      "kind": "never"
+                    },
+                    "node": {
+                      "kind": "return",
+                      "expr": {
+                        "token": {
+                          "position": [9, 14],
+                          "kind": {
+                            "name": "LParen"
+                          }
+                        },
+                        "type": {
+                          "kind": "enumInstance",
+                          "enum": { "moduleId": 0, "name": "Result" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            },
+                            {
+                              "kind": "primitive",
+                              "primitive": "String"
+                            }
+                          ]
+                        },
+                        "node": {
+                          "kind": "invocation",
+                          "invokee": {
+                            "token": {
+                              "position": [9, 12],
+                              "kind": {
+                                "name": "Ident",
+                                "value": "Ok"
+                              }
+                            },
+                            "type": {
+                              "kind": "function",
+                              "parameters": [
+                                {
+                                  "required": true,
+                                  "type": {
+                                    "kind": "generic",
+                                    "name": "V"
+                                  }
+                                }
+                              ],
+                              "returnType": {
+                                "kind": "enumInstance",
+                                "enum": { "moduleId": 0, "name": "Result" },
+                                "typeParams": [
+                                  {
+                                    "kind": "generic",
+                                    "name": "V"
+                                  },
+                                  {
+                                    "kind": "generic",
+                                    "name": "E"
+                                  }
+                                ]
+                              }
+                            },
+                            "node": {
+                              "kind": "identifier",
+                              "name": "Ok"
+                            }
+                          },
+                          "arguments": [
+                            {
+                              "token": {
+                                "position": [9, 15],
+                                "kind": {
+                                  "name": "Int",
+                                  "value": 123
+                                }
+                              },
+                              "type": {
+                                "kind": "primitive",
+                                "primitive": "Int"
+                              },
+                              "node": {
+                                "kind": "literal",
+                                "value": 123
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ],
+                "elseBlock": [
+                  {
+                    "token": {
+                      "position": [11, 5],
+                      "kind": {
+                        "name": "Return"
+                      }
+                    },
+                    "type": {
+                      "kind": "never"
+                    },
+                    "node": {
+                      "kind": "return",
+                      "expr": {
+                        "token": {
+                          "position": [11, 15],
+                          "kind": {
+                            "name": "LParen"
+                          }
+                        },
+                        "type": {
+                          "kind": "enumInstance",
+                          "enum": { "moduleId": 0, "name": "Result" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            },
+                            {
+                              "kind": "primitive",
+                              "primitive": "String"
+                            }
+                          ]
+                        },
+                        "node": {
+                          "kind": "invocation",
+                          "invokee": {
+                            "token": {
+                              "position": [11, 12],
+                              "kind": {
+                                "name": "Ident",
+                                "value": "Err"
+                              }
+                            },
+                            "type": {
+                              "kind": "function",
+                              "parameters": [
+                                {
+                                  "required": true,
+                                  "type": {
+                                    "kind": "generic",
+                                    "name": "E"
+                                  }
+                                }
+                              ],
+                              "returnType": {
+                                "kind": "enumInstance",
+                                "enum": { "moduleId": 0, "name": "Result" },
+                                "typeParams": [
+                                  {
+                                    "kind": "generic",
+                                    "name": "V"
+                                  },
+                                  {
+                                    "kind": "generic",
+                                    "name": "E"
+                                  }
+                                ]
+                              }
+                            },
+                            "node": {
+                              "kind": "identifier",
+                              "name": "Err"
+                            }
+                          },
+                          "arguments": [
+                            {
+                              "token": {
+                                "position": [11, 16],
+                                "kind": {
+                                  "name": "String",
+                                  "value": "hello"
+                                }
+                              },
+                              "type": {
+                                "kind": "primitive",
+                                "primitive": "String"
+                              },
+                              "node": {
+                                "kind": "literal",
+                                "value": "hello"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

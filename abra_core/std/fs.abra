@@ -12,30 +12,30 @@ export func readFile(path: String): Result<String, ReadFileError> {
   val fd = libc.open(path._buffer, libc.O_RDONLY)
   if fd == -1 {
     val errMsg = libc.strerror(libc.errno())
-    return Result.Err(error: ReadFileError.CouldNotOpen(message: errMsg))
+    return Err(error: ReadFileError.CouldNotOpen(message: errMsg))
   }
 
   val len = libc.lseek(fd, 0, libc.SEEK_END)
   if len == -1 {
     val errMsg = libc.strerror(libc.errno())
-    return Result.Err(error: ReadFileError.CouldNotSeek(message: errMsg))
+    return Err(error: ReadFileError.CouldNotSeek(message: errMsg))
   }
   if libc.lseek(fd, 0, libc.SEEK_SET) == -1 {
     val errMsg = libc.strerror(libc.errno())
-    return Result.Err(error: ReadFileError.CouldNotSeek(message: errMsg))
+    return Err(error: ReadFileError.CouldNotSeek(message: errMsg))
   }
 
   val str = String.withLength(len)
   if libc.read(fd, str._buffer, len) == -1 {
     val errMsg = libc.strerror(libc.errno())
-    return Result.Err(error: ReadFileError.CouldNotRead(message: errMsg))
+    return Err(error: ReadFileError.CouldNotRead(message: errMsg))
   }
   if libc.close(fd) == -1 {
     val errMsg = libc.strerror(libc.errno())
-    return Result.Err(error: ReadFileError.CouldNotClose(message: errMsg))
+    return Err(error: ReadFileError.CouldNotClose(message: errMsg))
   }
 
-  Result.Ok(value: str)
+  Ok(value: str)
 }
 
 export func getCurrentWorkingDirectory(): String {
