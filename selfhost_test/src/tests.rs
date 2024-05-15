@@ -401,11 +401,17 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/if/expr.abra", "typechecker/if/expr.out.json")
         .add_test_vs_txt("typechecker/if/stmt.abra", "typechecker/if/stmt.out.json")
         // Match expressions & statements
+        .add_test_vs_txt("typechecker/match/match_expr.abra", "typechecker/match/match_expr.out.json")
+        .add_test_vs_txt("typechecker/match/match_stmt.abra", "typechecker/match/match_stmt.out.json")
         .add_test_vs_txt("typechecker/match/error_expr_empty_block.abra", "typechecker/match/error_expr_empty_block.out")
         .add_test_vs_txt("typechecker/match/error_unfilled_holes.1.abra", "typechecker/match/error_unfilled_holes.1.out")
         .add_test_vs_txt("typechecker/match/error_unreachable_after_else.abra", "typechecker/match/error_unreachable_after_else.out")
-        .add_test_vs_txt("typechecker/match/match_expr.abra", "typechecker/match/match_expr.out.json")
-        .add_test_vs_txt("typechecker/match/match_stmt.abra", "typechecker/match/match_stmt.out.json")
+        .add_test_vs_txt("typechecker/match/error_alreadycovered_None.abra", "typechecker/match/error_alreadycovered_None.out")
+        .add_test_vs_txt("typechecker/match/error_duplicate_literal.abra", "typechecker/match/error_duplicate_literal.out")
+        .add_test_vs_txt("typechecker/match/error_invalid_else_type.abra", "typechecker/match/error_invalid_else_type.out")
+        .add_test_vs_txt("typechecker/match/error_nooverlap_None.abra", "typechecker/match/error_nooverlap_None.out")
+        .add_test_vs_txt("typechecker/match/error_nooverlap_literal.1.abra", "typechecker/match/error_nooverlap_literal.1.out")
+        .add_test_vs_txt("typechecker/match/error_nooverlap_literal.2.abra", "typechecker/match/error_nooverlap_literal.2.out")
 
         // Invocation
         .add_test_vs_txt("typechecker/invocation/invocation.1.abra", "typechecker/invocation/invocation.1.out.json")

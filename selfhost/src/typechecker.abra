@@ -506,12 +506,14 @@ export enum TypedAssignmentMode {
 }
 
 export enum TypedMatchCaseKind {
+  Literal(value: LiteralAstNode)
+  None_
   Else
 }
 
 export type TypedMatchCase {
   kind: TypedMatchCaseKind
-  binding: Label?
+  binding: Variable?
   body: TypedAstNode[]
 }
 
@@ -987,10 +989,25 @@ type TypeError {
         lines.push("There's no exported value named '$importName' in module aliased as '${alias.name}' at:")
         lines.push(self._getCursorLine(alias.position, contents))
       }
-      TypeErrorKind.UnreachableMatchCase => {
+      TypeErrorKind.DuplicateMatchCase => {
+        lines.push("Duplicate match case")
+        lines.push(self._getCursorLine(self.position, contents))
+      }
+      TypeErrorKind.UnreachableMatchCase(reason) => {
         lines.push("Unreachable match case")
         lines.push(self._getCursorLine(self.position, contents))
-        lines.push("This case has already been covered by a previous case")
+        match reason {
+          UnreachableMatchCaseReason.NoOverlap(caseTy, subjectTy) => {
+            if caseTy |caseTy| {
+              lines.push("No overlap between case type '${caseTy.repr()}' and match target type '${subjectTy.repr()}'")
+            } else {
+              lines.push("Match target type '${subjectTy.repr()}' can never be None")
+            }
+          }
+          UnreachableMatchCaseReason.AlreadyCovered => {
+            lines.push("This case has already been covered by a previous case")
+          }
+        }
       }
       TypeErrorKind.EmptyMatchBlock => {
         lines.push("Empty block for match case")
@@ -1038,6 +1055,11 @@ enum IllegalAssignmentReason {
   StaticMethod
 }
 
+enum UnreachableMatchCaseReason {
+  NoOverlap(caseTy: Type?, subjectTy: Type)
+  AlreadyCovered
+}
+
 enum TypeErrorKind {
   NotYetImplemented(reason: String)
   Unreachable(message: String)
@@ -1079,7 +1101,8 @@ enum TypeErrorKind {
   IllegalExportScope
   UnknownImport(moduleName: String, importName: String)
   UnknownImportForAlias(importName: String, alias: Label)
-  UnreachableMatchCase
+  DuplicateMatchCase
+  UnreachableMatchCase(reason: UnreachableMatchCaseReason)
   EmptyMatchBlock
 }
 
@@ -3159,37 +3182,87 @@ export type Typechecker {
     val isStatement = if typeHint |hint| hint.kind == TypeKind.PrimitiveUnit else false
     val typedExpr = match self._typecheckExpression(expr, None) { Ok(v) => v, Err(e) => return Err(e) }
 
+    var subjectTy = typedExpr.ty
     val typedCases: TypedMatchCase[] = []
     var resultTy: Type? = None
     var seenElseCase = false
+    var seenNoneCase = false
+    var seenLiteralCases: Set<LiteralAstNode> = #{}
     for case in cases {
-      if seenElseCase {
-        return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase))
-      }
+      if seenElseCase return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.AlreadyCovered)))
 
       val typedBody: TypedAstNode[] = []
       var prevScope = self.currentScope
 
+      var caseVar: Variable? = None
       val typedMatchCaseKind = match case.kind {
+        MatchCaseKind.Literal(value) => {
+          if seenLiteralCases.contains(value) return Err(TypeError(position: case.position, kind: TypeErrorKind.DuplicateMatchCase))
+          seenLiteralCases.insert(value)
+
+          val literalTy = match value {
+            LiteralAstNode.Int => Type(kind: TypeKind.PrimitiveInt)
+            LiteralAstNode.Float => Type(kind: TypeKind.PrimitiveFloat)
+            LiteralAstNode.Bool => Type(kind: TypeKind.PrimitiveBool)
+            LiteralAstNode.String => Type(kind: TypeKind.PrimitiveString)
+          }
+
+          self.currentScope = self.currentScope.makeChild("matchcase_$value", ScopeKind.MatchCase)
+          if case.binding |binding| {
+            caseVar = Some(Variable(label: binding, mutable: false, ty: literalTy))
+          }
+          
+          val subjectTy = if self._typeIsOption(subjectTy) |innerTy| innerTy else subjectTy
+          if !self._typeSatisfiesRequired(ty: literalTy, required: subjectTy) {
+            return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: Some(literalTy), subjectTy: subjectTy))))
+          }
+
+          TypedMatchCaseKind.Literal(value)
+        }
+        MatchCaseKind.None_ => {
+          if seenNoneCase return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.AlreadyCovered)))
+          seenNoneCase = true
+
+          self.currentScope = self.currentScope.makeChild("matchcase_None", ScopeKind.MatchCase)
+          if case.binding |binding| {
+            caseVar = Some(Variable(label: binding, mutable: false, ty: subjectTy))
+          }
+
+          if self._typeIsOption(subjectTy) |ty| {
+            subjectTy = ty
+          } else {
+            return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: None, subjectTy: subjectTy))))
+          }
+
+          TypedMatchCaseKind.None_
+        }
         MatchCaseKind.Else => {
           seenElseCase = true
-          self.currentScope = self.currentScope.makeChild("match_else", ScopeKind.MatchCase)
 
-          for node, idx in case.body {
-            if self.currentScope.terminator return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
-
-            if idx == case.body.length - 1 && !isStatement {
-              val typedNode = match self._typecheckExpressionOrTerminator(node, typeHint) { Ok(v) => v, Err(e) => return Err(e) }
-              typedBody.push(typedNode)
-            } else {
-              val typedNode = match self._typecheckStatement(node, None) { Ok(v) => v, Err(e) => return Err(e) }
-              typedBody.push(typedNode)
-            }
+          self.currentScope = self.currentScope.makeChild("matchcase_else", ScopeKind.MatchCase)
+          if case.binding |binding| {
+            caseVar = Some(Variable(label: binding, mutable: false, ty: subjectTy))
           }
 
           TypedMatchCaseKind.Else
         }
         _ => return todo(token.position, "other match case kinds")
+      }
+
+      if caseVar |v| {
+        match self._addVariableToScope(v) { Ok(v) => v, Err(e) => return Err(e) }
+      }
+
+      for node, idx in case.body {
+        if self.currentScope.terminator return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+
+        if idx == case.body.length - 1 && !isStatement {
+          val typedNode = match self._typecheckExpressionOrTerminator(node, typeHint) { Ok(v) => v, Err(e) => return Err(e) }
+          typedBody.push(typedNode)
+        } else {
+          val typedNode = match self._typecheckStatement(node, None) { Ok(v) => v, Err(e) => return Err(e) }
+          typedBody.push(typedNode)
+        }
       }
 
       if !isStatement {
@@ -3216,7 +3289,7 @@ export type Typechecker {
       val terminator = self.currentScope.terminator
       self.currentScope = prevScope
 
-      typedCases.push(TypedMatchCase(kind: typedMatchCaseKind, binding: None, body: typedBody))
+      typedCases.push(TypedMatchCase(kind: typedMatchCaseKind, binding: caseVar, body: typedBody))
     }
 
     val ty = if resultTy |ty| ty else {

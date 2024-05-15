@@ -36,6 +36,7 @@
         "cases": [
           {
             "kind": "else",
+            "binding": null,
             "body": [
               {
                 "token": {
@@ -93,6 +94,7 @@
         "cases": [
           {
             "kind": "else",
+            "binding": null,
             "body": []
           }
         ]

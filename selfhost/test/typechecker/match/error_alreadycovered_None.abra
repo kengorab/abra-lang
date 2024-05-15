@@ -1,0 +1,6 @@
+val arr = [1, 2, 3]
+
+match arr[0] {
+  None => {}
+  None => {}
+}

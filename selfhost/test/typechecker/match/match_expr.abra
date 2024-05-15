@@ -3,6 +3,27 @@ val wildcard = match 123 {
 }
 val _: String = wildcard
 
+val arr = [1, 2, 3]
+
+val res1 = match arr[0] {
+  None => 0
+  _ s => s + 1
+}
+val _: Int = res1
+
+val res2 = match arr[0] {
+  None => 0
+  1 a => a + 1
+  _ s => s + 1
+}
+val _: Int = res2
+
+val res3 = match arr[0] {
+  1 a => a + 1
+  _ => 0
+}
+val _: Int = res3
+
 // Alternate (v2) syntax for wildcard/catchall case kind
 val wildcard2 = match 123 {
   else => "abcd"

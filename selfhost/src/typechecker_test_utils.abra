@@ -577,8 +577,28 @@ export type Jsonifier {
 
           self.print("\"kind\": ")
           match case.kind {
+            TypedMatchCaseKind.Literal(value) => {
+              println("{")
+              self.indentInc()
+
+              self.println("\"kind\": \"literal\",")
+              match value {
+                LiteralAstNode.Int(value) => self.println("\"value\": $value")
+                LiteralAstNode.Float(value) => self.println("\"value\": $value")
+                LiteralAstNode.Bool(value) => self.println("\"value\": $value")
+                LiteralAstNode.String(value) => self.println("\"value\": \"$value\"")
+              }
+
+              self.indentDec()
+              self.print("}")
+            }
+            TypedMatchCaseKind.None_ => print("\"None\"")
             TypedMatchCaseKind.Else => print("\"else\"")
           }
+          println(",")
+
+          self.print("\"binding\": ")
+          self.opt(case.binding, v => self.printVariable(v))
           println(",")
 
           self.print("\"body\": ")
