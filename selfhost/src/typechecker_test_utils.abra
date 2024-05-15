@@ -1,5 +1,5 @@
 import LiteralAstNode, IndexingMode from "./parser"
-import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct, Enum, StructOrEnum, AccessorPathSegment, TypedIdentifierKind, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export from "./typechecker"
+import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct, Enum, StructOrEnum, AccessorPathSegment, TypedIdentifierKind, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export, TypedMatchCaseKind from "./typechecker"
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 
 export type Jsonifier {
@@ -558,6 +558,36 @@ export type Jsonifier {
 
         self.print("\"elseBlock\": ")
         self.array(elseBlock, n => self.printNode(n))
+        println()
+      }
+
+      TypedAstNodeKind.Match(isStatement, subject, cases) => {
+        self.println("\"kind\": \"match\",")
+
+        self.println("\"isStatement\": $isStatement,")
+
+        self.print("\"subject\": ")
+        self.printNode(subject)
+        println(",")
+
+        self.print("\"cases\": ")
+        self.array(cases, case => {
+          println("{")
+          self.indentInc()
+
+          self.print("\"kind\": ")
+          match case.kind {
+            TypedMatchCaseKind.Else => print("\"else\"")
+          }
+          println(",")
+
+          self.print("\"body\": ")
+          self.array(case.body, n => self.printNode(n))
+          println()
+
+          self.indentDec()
+          self.print("}")
+        })
         println()
       }
 

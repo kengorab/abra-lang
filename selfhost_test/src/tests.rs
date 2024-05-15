@@ -400,6 +400,13 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/if/error_unfilled_holes_bindingdecl.4.abra", "typechecker/if/error_unfilled_holes_bindingdecl.4.out")
         .add_test_vs_txt("typechecker/if/expr.abra", "typechecker/if/expr.out.json")
         .add_test_vs_txt("typechecker/if/stmt.abra", "typechecker/if/stmt.out.json")
+        // Match expressions & statements
+        .add_test_vs_txt("typechecker/match/error_expr_empty_block.abra", "typechecker/match/error_expr_empty_block.out")
+        .add_test_vs_txt("typechecker/match/error_unfilled_holes.1.abra", "typechecker/match/error_unfilled_holes.1.out")
+        .add_test_vs_txt("typechecker/match/error_unreachable_after_else.abra", "typechecker/match/error_unreachable_after_else.out")
+        .add_test_vs_txt("typechecker/match/match_expr.abra", "typechecker/match/match_expr.out.json")
+        .add_test_vs_txt("typechecker/match/match_stmt.abra", "typechecker/match/match_stmt.out.json")
+
         // Invocation
         .add_test_vs_txt("typechecker/invocation/invocation.1.abra", "typechecker/invocation/invocation.1.out.json")
         .add_test_vs_txt("typechecker/invocation/invocation.2.abra", "typechecker/invocation/invocation.2.out.json")
@@ -647,8 +654,11 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/return/error_location.abra", "typechecker/return/error_location.out")
         .add_test_vs_txt("typechecker/return/error_type_mismatch.abra", "typechecker/return/error_type_mismatch.out")
         .add_test_vs_txt("typechecker/return/error_type_mismatch_unit.abra", "typechecker/return/error_type_mismatch_unit.out")
-        .add_test_vs_txt("typechecker/return/error_unreachable_stmt_if.abra", "typechecker/return/error_unreachable_stmt_if.out")
         .add_test_vs_txt("typechecker/return/error_unreachable_stmt_plain.abra", "typechecker/return/error_unreachable_stmt_plain.out")
+        .add_test_vs_txt("typechecker/return/error_unreachable_stmt_if_inside.abra", "typechecker/return/error_unreachable_stmt_if_inside.out")
+        .add_test_vs_txt("typechecker/return/error_unreachable_stmt_if_outside.abra", "typechecker/return/error_unreachable_stmt_if_outside.out")
+        .add_test_vs_txt("typechecker/return/error_unreachable_stmt_match_inside.abra", "typechecker/return/error_unreachable_stmt_match_inside.out")
+        .add_test_vs_txt("typechecker/return/error_unreachable_stmt_match_outside.abra", "typechecker/return/error_unreachable_stmt_match_outside.out")
         .add_test_vs_txt("typechecker/return/error_unreachable_stmt_while_inside.1.abra", "typechecker/return/error_unreachable_stmt_while_inside.1.out")
         .add_test_vs_txt("typechecker/return/error_unreachable_stmt_while_inside.2.abra", "typechecker/return/error_unreachable_stmt_while_inside.2.out")
         .add_test_vs_txt("typechecker/return/error_unreachable_stmt_while_outside.1.abra", "typechecker/return/error_unreachable_stmt_while_outside.1.out")

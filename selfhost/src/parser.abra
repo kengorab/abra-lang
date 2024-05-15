@@ -155,8 +155,9 @@ export enum MatchCaseKind {
   Else
 }
 
-type MatchCase {
+export type MatchCase {
   kind: MatchCaseKind
+  position: Position
   binding: Label?
   body: AstNode[]
 }
@@ -1333,6 +1334,7 @@ export type Parser {
 
     val cases: MatchCase[] = []
     while self._peek() |next| {
+      val casePos = next.position
       val caseKind = match next.kind {
         TokenKind.RBrace => break
         TokenKind.None_ => {
@@ -1410,7 +1412,7 @@ export type Parser {
         self._advance() // consume ',' token
       }
 
-      cases.push(MatchCase(kind: caseKind, binding: binding, body: body))
+      cases.push(MatchCase(kind: caseKind, position: casePos, binding: binding, body: body))
     }
     self._advance() // consume '}' token
 

@@ -1,0 +1,10 @@
+val wildcard = match 123 {
+  _ => "abcd"
+}
+val _: String = wildcard
+
+// Alternate (v2) syntax for wildcard/catchall case kind
+val wildcard2 = match 123 {
+  else => "abcd"
+}
+val _: String = wildcard2

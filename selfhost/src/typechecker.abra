@@ -1,7 +1,7 @@
 import "fs" as fs
 import getAbsolutePath, resolveRelativePath from "./utils"
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
-import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode, ImportKind, DecoratorNode, LambdaNode from "./parser"
+import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode, ImportKind, DecoratorNode, LambdaNode, MatchCase, MatchCaseKind from "./parser"
 
 enum TokenizeAndParseError {
   ReadFileError(path: String)
@@ -118,6 +118,7 @@ export enum ScopeKind {
   Module
   Func
   If
+  MatchCase
   While
   For
   Type
@@ -504,6 +505,16 @@ export enum TypedAssignmentMode {
   Accessor(head: TypedAstNode, middle: AccessorPathSegment[], tail: AccessorPathSegment)
 }
 
+export enum TypedMatchCaseKind {
+  Else
+}
+
+export type TypedMatchCase {
+  kind: TypedMatchCaseKind
+  binding: Label?
+  body: TypedAstNode[]
+}
+
 export enum TypedAstNodeKind {
   Literal(value: LiteralAstNode)
   Unary(op: UnaryOp, expr: TypedAstNode)
@@ -520,6 +531,7 @@ export enum TypedAstNodeKind {
   Lambda(fn: Function)
   Assignment(mode: TypedAssignmentMode, op: AssignOp, expr: TypedAstNode)
   If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], typedElseBlock: TypedAstNode[])
+  Match(isStatement: Bool, expr: TypedAstNode, cases: TypedMatchCase[])
   While(typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, block: TypedAstNode[])
   For(typedIterator: TypedAstNode, itemBinding: (BindingPattern, Variable[]), indexBinding: Variable?, block: TypedAstNode[])
   BindingDeclaration(node: TypedBindingDeclarationNode)
@@ -975,6 +987,16 @@ type TypeError {
         lines.push("There's no exported value named '$importName' in module aliased as '${alias.name}' at:")
         lines.push(self._getCursorLine(alias.position, contents))
       }
+      TypeErrorKind.UnreachableMatchCase => {
+        lines.push("Unreachable match case")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("This case has already been covered by a previous case")
+      }
+      TypeErrorKind.EmptyMatchBlock => {
+        lines.push("Empty block for match case")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Each case in a match expression must result in a value")
+      }
     }
 
     lines.join("\n")
@@ -1057,6 +1079,8 @@ enum TypeErrorKind {
   IllegalExportScope
   UnknownImport(moduleName: String, importName: String)
   UnknownImportForAlias(importName: String, alias: Label)
+  UnreachableMatchCase
+  EmptyMatchBlock
 }
 
 type ParamDefaultValueContext {
@@ -2985,6 +3009,10 @@ export type Typechecker {
           scope = sc.parent
           continue
         }
+        ScopeKind.MatchCase => {
+          scope = sc.parent
+          continue
+        }
         ScopeKind.While => true
         ScopeKind.For => true
       }
@@ -3127,6 +3155,81 @@ export type Typechecker {
     Ok(TypedAstNode(token: token, ty: ty, kind: kind))
   }
 
+  func _typecheckMatch(self, token: Token, expr: AstNode, cases: MatchCase[], typeHint: Type?): Result<TypedAstNode, TypeError> {
+    val isStatement = if typeHint |hint| hint.kind == TypeKind.PrimitiveUnit else false
+    val typedExpr = match self._typecheckExpression(expr, None) { Ok(v) => v, Err(e) => return Err(e) }
+
+    val typedCases: TypedMatchCase[] = []
+    var resultTy: Type? = None
+    var seenElseCase = false
+    for case in cases {
+      if seenElseCase {
+        return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase))
+      }
+
+      val typedBody: TypedAstNode[] = []
+      var prevScope = self.currentScope
+
+      val typedMatchCaseKind = match case.kind {
+        MatchCaseKind.Else => {
+          seenElseCase = true
+          self.currentScope = self.currentScope.makeChild("match_else", ScopeKind.MatchCase)
+
+          for node, idx in case.body {
+            if self.currentScope.terminator return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+
+            if idx == case.body.length - 1 && !isStatement {
+              val typedNode = match self._typecheckExpressionOrTerminator(node, typeHint) { Ok(v) => v, Err(e) => return Err(e) }
+              typedBody.push(typedNode)
+            } else {
+              val typedNode = match self._typecheckStatement(node, None) { Ok(v) => v, Err(e) => return Err(e) }
+              typedBody.push(typedNode)
+            }
+          }
+
+          TypedMatchCaseKind.Else
+        }
+        _ => return todo(token.position, "other match case kinds")
+      }
+
+      if !isStatement {
+        val lastBodyNode = if typedBody[-1] |node| node else {
+          return Err(TypeError(position: case.position, kind: TypeErrorKind.EmptyMatchBlock))
+        }
+        val bodyTy = lastBodyNode.ty
+
+        if resultTy |resultTy| {
+          if resultTy.hasUnfilledHoles() {
+            resultTy.tryFillHoles(bodyTy)
+          } else if bodyTy.hasUnfilledHoles() {
+            bodyTy.tryFillHoles(resultTy)
+          }
+
+          if !self._typeSatisfiesRequired(ty: bodyTy, required: resultTy) {
+            return Err(TypeError(position: lastBodyNode.token.position, kind: TypeErrorKind.TypeMismatch([resultTy], bodyTy)))
+          }
+        } else {
+          resultTy = typedBody[-1]?.ty
+        }
+      }
+
+      val terminator = self.currentScope.terminator
+      self.currentScope = prevScope
+
+      typedCases.push(TypedMatchCase(kind: typedMatchCaseKind, binding: None, body: typedBody))
+    }
+
+    val ty = if resultTy |ty| ty else {
+      if !isStatement {
+        return unreachable(token.position, "match expression without result type")
+      }
+      Type(kind: TypeKind.PrimitiveUnit)
+    }
+
+    val kind = TypedAstNodeKind.Match(isStatement, typedExpr, typedCases)
+    Ok(TypedAstNode(token: token, ty: ty, kind: kind))
+  }
+
   func _typecheckExpression(self, node: AstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
     val token = node.token
     val typedExprRes: Result<TypedAstNode, TypeError> = match node.kind {
@@ -3156,7 +3259,7 @@ export type Typechecker {
       AstNodeKind.Indexing(expr, index) => self._typecheckIndexing(token, expr, index, typeHint)
       AstNodeKind.Lambda(value) => self._typecheckLambda(token, value, typeHint)
       AstNodeKind.If(condition, conditionBinding, ifBlock, elseBlock) => self._typecheckIf(token, condition, conditionBinding, ifBlock, elseBlock, typeHint)
-      AstNodeKind.Match => todo(node.token.position, "match expression")
+      AstNodeKind.Match(subject, cases) => self._typecheckMatch(token, subject, cases, typeHint)
       _ => unreachable(node.token.position, "all other node types should have already been handled")
     }
 
