@@ -1,0 +1,8 @@
+val arr = [1, 2, 3]
+
+// Because the None case isn't present, the type of `s` in the else-case is
+// `Int?`, which fails to typecheck with the `+` operator.
+match arr[0] {
+  1 a => a + 1
+  _ s => s + 1
+}

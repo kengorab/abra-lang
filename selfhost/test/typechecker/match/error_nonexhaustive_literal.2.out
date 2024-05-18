@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:1:9
+Non-exhaustive match expression
+  |  val x = match "abc" {
+             ^
+Match target type 'String' is not covered by all cases
+(You can use a wildcard to capture remaining cases)
