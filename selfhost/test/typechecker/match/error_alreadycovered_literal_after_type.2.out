@@ -1,5 +1,5 @@
-Error at %FILE_NAME%:3:3
+Error at %FILE_NAME%:5:3
 Unreachable match case
-  |    _ => "efgh"
+  |    1 => {}
        ^
 This case has already been covered by a previous case

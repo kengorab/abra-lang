@@ -577,6 +577,31 @@ export type Jsonifier {
 
           self.print("\"kind\": ")
           match case.kind {
+            TypedMatchCaseKind.Type(ty) => {
+              println("{")
+              self.indentInc()
+
+              self.println("\"kind\": \"type\",")
+              self.print("\"type\": ")
+              self.printType(ty)
+              println()
+
+              self.indentDec()
+              self.print("}")
+            }
+            TypedMatchCaseKind.EnumVariant(enum_, variantIdx) => {
+              println("{")
+              self.indentInc()
+
+              self.println("\"kind\": \"enumVariant\",")
+              self.println("\"variantIdx\": $variantIdx,")
+              self.print("\"enum\": ")
+              self.printEnum(enum_: enum_, abridged: true)
+              println()
+
+              self.indentDec()
+              self.print("}")
+            }
             TypedMatchCaseKind.Literal(value) => {
               println("{")
               self.indentInc()

@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:5:3
+Unreachable match case
+  |    Color.Red => 0
+       ^
+No overlap between case type 'Color' and match target type 'Int'

@@ -1,0 +1,4 @@
+val x = match "abc" {
+  "a" => 0
+  "b" => 1
+}

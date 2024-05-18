@@ -505,7 +505,16 @@ type Array<T> {
 
   @Stub func popFront(self): T?
   @Stub func splitAt(self, index: Int): (T[], T[])
-  @Stub func concat(self, other: T[]): T[]
+
+  func concat(self, other: T[]): T[] {
+    val newArray: T[] = Array.withCapacity(self.length + other.length)
+    newArray._buffer.copyFrom(self._buffer, self.length)
+    newArray._buffer
+      .offset(self.length)
+      .copyFrom(other._buffer, other.length)
+    newArray.length = self.length + other.length
+    newArray
+  }
 
   func map<U>(self, fn: (T, Int) => U): U[] {
     val newArray: U[] = Array.withCapacity(self.length)
@@ -606,7 +615,14 @@ type Array<T> {
     None
   }
 
-  @Stub func findIndex(self, fn: (T) => Bool): (T, Int)?
+  func findIndex(self, fn: (T) => Bool): (T, Int)? {
+    for i in range(0, self.length) {
+      val item = self._buffer.offset(i).load()
+      if fn(item) return Some((item, i))
+    }
+
+    None
+  }
 
   func any(self, fn: (T) => Bool): Bool {
     for i in range(0, self.length) {

@@ -151,7 +151,7 @@ export enum AssignmentMode {
 export enum MatchCaseKind {
   None_
   Literal(value: LiteralAstNode)
-  Type(path: Label[])
+  Type(path: Label[], last: Label)
   Else
 }
 
@@ -1363,13 +1363,17 @@ export type Parser {
             MatchCaseKind.Else
           } else {
             val label = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
-            val path = [label]
+            var last = label
+            val path: Label[] = []
             while self._peek() |nextToken| {
               if nextToken.kind != TokenKind.Dot break
               self._advance() // consume '.' token
               val label = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
-              path.push(label)
+              path.push(last)
+              last = label
             }
+
+            val typeIdent = TypeIdentifier.Normal(last, [], path)
 
             // TODO: Destructuring types in match cases
             val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
@@ -1378,7 +1382,7 @@ export type Parser {
               _ => {}
             }
 
-            MatchCaseKind.Type(path)
+            MatchCaseKind.Type(path, last)
           }
         }
         TokenKind.Else => {
