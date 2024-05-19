@@ -3,6 +3,11 @@ import getAbsolutePath, resolveRelativePath from "./utils"
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
 import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode, ImportKind, DecoratorNode, LambdaNode, MatchCase, MatchCaseKind from "./parser"
 
+enum Either<L, R> {
+  Left(left: L)
+  Right(right: R)
+}
+
 enum TokenizeAndParseError {
   ReadFileError(path: String)
   LexerError(inner: LexerError)
@@ -512,7 +517,7 @@ export enum TypedAssignmentMode {
 export enum TypedMatchCaseKind {
   Literal(value: LiteralAstNode)
   Type(ty: Type)
-  EnumVariant(enum_: Enum, variantIdx: Int)
+  EnumVariant(enum_: Enum, variant: TypedEnumVariant, variantIdx: Int, destructuredVariables: Variable[])
   None_
   Else
 }
@@ -1030,6 +1035,28 @@ type TypeError {
         lines.push("Match target type '${subjectTy.repr()}' is not covered by all cases")
         lines.push("(You can use a wildcard to capture remaining cases)")
       }
+      TypeErrorKind.InvalidMatchCaseDestructuring(reason) => {
+        match reason {
+          InvalidMatchCaseDestructuringReason.NonEnum => {
+            lines.push("Destructuring is not supported for types in match cases (aside from enum variants)")
+            lines.push(self._getCursorLine(self.position, contents))
+          }
+          InvalidMatchCaseDestructuringReason.NonEnumContainer => {
+            lines.push("This variant is a constant enum variant, which cannot be destructured")
+            lines.push(self._getCursorLine(self.position, contents))
+          }
+          InvalidMatchCaseDestructuringReason.InvalidArity(expected, given) => {
+            val verbStr = if given == 1 "was" else "were"
+
+            lines.push("Incorrect number of destructuring arguments")
+            lines.push(self._getCursorLine(self.position, contents))
+            lines.push("Expected $expected, but $given $verbStr passed")
+            if given < expected {
+              lines.push("(You can use '_' to denote positions that you wish to discard)")
+            }
+          }
+        }
+      }
     }
 
     lines.join("\n")
@@ -1074,6 +1101,12 @@ enum IllegalAssignmentReason {
 enum UnreachableMatchCaseReason {
   NoOverlap(caseTy: Type?)
   AlreadyCovered(exhaustive: Bool)
+}
+
+enum InvalidMatchCaseDestructuringReason {
+  NonEnum
+  NonEnumContainer
+  InvalidArity(expected: Int, given: Int)
 }
 
 enum TypeErrorKind {
@@ -1121,6 +1154,7 @@ enum TypeErrorKind {
   UnreachableMatchCase(reason: UnreachableMatchCaseReason, subjectTy: Type)
   EmptyMatchBlock
   NonExhaustiveMatch(subjectTy: Type)
+  InvalidMatchCaseDestructuring(reason: InvalidMatchCaseDestructuringReason)
 }
 
 type ParamDefaultValueContext {
@@ -1483,6 +1517,66 @@ export type Typechecker {
     }
 
     Ok(ty)
+  }
+
+  // TODO: At some point, make this work with module alias types (eg. `foo.Bar` and `foo.Baz.Qux` for a module `foo` containing type `Bar` and enum `Baz`)
+  //       This can perhaps be called in place of the current body for `TypeIdentifier.Normal` in `_resolveTypeIdentifier` above, and fail if the result
+  //       if Right (because enum variants are not (yet?) valid individually-addressable types).
+  func _resolveTypeOrEnumVariant(self, path: Label[], last: Label): Result<Either<Type, (Enum, TypedEnumVariant, Int)>, TypeError> {
+    match path[0] {
+      None => {
+        val ty = match self._findTypeByNameInScope(last) { Ok(v) => v, Err(e) => return Err(e) }
+        val t = match ty.kind {
+          TypeKind.Type(structOrEnum) => Type(kind: TypeKind.Instance(structOrEnum, []))
+          _ => ty
+        }
+        return Ok(Either.Left(t))
+      }
+      _ first => {
+        val mod = match self._findModuleByAlias(first.name) { Ok(v) => v, Err(e) => return Err(e) }
+        match mod {
+          None => {
+            val ty = match self._findTypeByNameInScope(first) { Ok(v) => v, Err(e) => return Err(e) }
+            val label = if path[1] |seg| {
+              return Err(TypeError(position: seg.position, kind: TypeErrorKind.UnknownName(seg.name, "type")))
+            } else {
+              last
+            }
+            val _p = match ty.kind {
+              TypeKind.Type(structOrEnum) => {
+                val _p = match structOrEnum {
+                  StructOrEnum.Enum(enum_) => {
+                    val t = if enum_.variants.findIndex(v => v.label.name == label.name) |_p| {
+                      // TODO: destructuring
+                      Some((enum_, _p))
+                    } else {
+                      return Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
+                    }
+                    t
+                  }
+                  _ => None
+                }
+                _p
+              }
+              _ => None
+            }
+
+            if _p |_p| {
+              // TODO: destructuring
+              val enum_ = _p[0]
+              val variant = _p[1][0]
+              val variantIdx = _p[1][1]
+              Ok(Either.Right((enum_, variant, variantIdx)))
+            } else {
+              Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
+            }
+          }
+          _ => {
+            return todo(first.position, "module aliases")
+          }
+        }
+      }
+    }
   }
 
   func _resolveIdentifier(self, ident: String): Variable? {
@@ -3201,62 +3295,6 @@ export type Typechecker {
     Ok(TypedAstNode(token: token, ty: ty, kind: kind))
   }
 
-  func _resolveTypeMatchCaseKind(self, path: Label[], last: Label): Result<TypedMatchCaseKind, TypeError> {
-    match path[0] {
-      None => {
-        val ty = match self._findTypeByNameInScope(last) { Ok(v) => v, Err(e) => return Err(e) }
-        val t = match ty.kind {
-          TypeKind.Type(structOrEnum) => Type(kind: TypeKind.Instance(structOrEnum, []))
-          _ => ty
-        }
-        return Ok(TypedMatchCaseKind.Type(t))
-      }
-      _ first => {
-        val mod = match self._findModuleByAlias(first.name) { Ok(v) => v, Err(e) => return Err(e) }
-        match mod {
-          None => {
-            val ty = match self._findTypeByNameInScope(first) { Ok(v) => v, Err(e) => return Err(e) }
-            val label = if path[1] |seg| {
-              return Err(TypeError(position: seg.position, kind: TypeErrorKind.UnknownName(seg.name, "type")))
-            } else {
-              last
-            }
-            val _p = match ty.kind {
-              TypeKind.Type(structOrEnum) => {
-                val _p = match structOrEnum {
-                  StructOrEnum.Enum(enum_) => {
-                    val t = if enum_.variants.findIndex(v => v.label.name == label.name) |_p| {
-                      // TODO: destructuring
-                      Some((enum_, _p[1]))
-                    } else {
-                      return Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
-                    }
-                    t
-                  }
-                  _ => None
-                }
-                _p
-              }
-              _ => None
-            }
-
-            if _p |_p| {
-              // TODO: destructuring
-              val enum_ = _p[0]
-              val variantIdx = _p[1]
-              Ok(TypedMatchCaseKind.EnumVariant(enum_, variantIdx))
-            } else {
-              Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
-            }
-          }
-          _ => {
-            return todo(first.position, "module aliases")
-          }
-        }
-      }
-    }
-  }
-
   func _typecheckMatch(self, token: Token, expr: AstNode, cases: MatchCase[], typeHint: Type?): Result<TypedAstNode, TypeError> {
     val isStatement = if typeHint |hint| hint.kind == TypeKind.PrimitiveUnit else false
     val typedExpr = match self._typecheckExpression(expr, None) { Ok(v) => v, Err(e) => return Err(e) }
@@ -3308,12 +3346,16 @@ export type Typechecker {
 
       var caseVar: Variable? = None
       val typedMatchCaseKind = match case.kind {
-        MatchCaseKind.Type(path, last) => {
-          val typedCaseKind = match self._resolveTypeMatchCaseKind(path, last) { Ok(v) => v, Err(e) => return Err(e) }
-          match typedCaseKind {
-            TypedMatchCaseKind.Type(caseTy) => {
+        MatchCaseKind.Type(path, last, args) => {
+          val typeOrEnumVariant = match self._resolveTypeOrEnumVariant(path, last) { Ok(v) => v, Err(e) => return Err(e) }
+          val typedCaseKind = match typeOrEnumVariant {
+            Either.Left(caseTy) => {
               if seenTypes.contains(caseTy) return Err(TypeError(position: case.position, kind: TypeErrorKind.DuplicateMatchCase))
               seenTypes.insert(caseTy)
+
+              if args[0] |firstArg| {
+                return Err(TypeError(position: firstArg.position, kind: TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.NonEnum)))
+              }
 
               val subjectTy = if self._typeIsOption(subjectTy) |innerTy| innerTy else subjectTy
               if !self._typeSatisfiesRequired(ty: caseTy, required: subjectTy) {
@@ -3325,8 +3367,14 @@ export type Typechecker {
                 // TODO: generics in ty
                 caseVar = Some(Variable(label: binding, mutable: false, ty: caseTy))
               }
+
+              TypedMatchCaseKind.Type(caseTy)
             }
-            TypedMatchCaseKind.EnumVariant(enum_, variantIdx) => {
+            Either.Right(_p) => {
+              // TODO: destructuring
+              val enum_ = _p[0]
+              val variant = _p[1]
+              val variantIdx = _p[2]
               if seenEnumVariants[enum_] |seenVariants| {
                 if seenVariants.contains(variantIdx) return Err(TypeError(position: case.position, kind: TypeErrorKind.DuplicateMatchCase))
                 seenVariants.insert(variantIdx)
@@ -3342,11 +3390,36 @@ export type Typechecker {
               }
 
               self.currentScope = self.currentScope.makeChild("matchcase_${enum_.label.name}_$variantIdx", ScopeKind.MatchCase)
+
+              val variables: Variable[] = []
+              if args[0] |firstArg| {
+                match variant.kind {
+                  EnumVariantKind.Constant => return Err(TypeError(position: firstArg.position, kind: TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.NonEnumContainer)))
+                  EnumVariantKind.Container(fields) => {
+                    if args[fields.length] |invalidArg| {
+                      val kind = TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.InvalidArity(expected: fields.length, given: args.length))
+                      return Err(TypeError(position: invalidArg.position, kind: kind))
+                    }
+
+                    for field, idx in fields {
+                      val arg = if args[idx] |arg| arg else {
+                        val kind = TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.InvalidArity(expected: fields.length, given: args.length))
+                        return Err(TypeError(position: case.position, kind: kind))
+                      }
+                      val variable = Variable(label: arg, mutable: false, ty: field.ty)
+                      match self._addVariableToScope(variable) { Ok(v) => v, Err(e) => return Err(e) }
+                      variables.push(variable)
+                    }
+                  }
+                }
+              }
+
               if case.binding |binding| {
                 caseVar = Some(Variable(label: binding, mutable: false, ty: caseTy))
               }
+
+              TypedMatchCaseKind.EnumVariant(enum_, variant, variantIdx, variables)
             }
-            _ => return unreachable(case.position, "unexpected typed case kind")
           }
 
           typedCaseKind

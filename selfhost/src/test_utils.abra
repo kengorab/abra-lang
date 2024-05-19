@@ -630,7 +630,7 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
               println("$fieldsIndent      \"type\": \"${pair[0]}\",")
               println("$fieldsIndent      \"value\": ${pair[1]}")
             }
-            MatchCaseKind.Type(path, last) => {
+            MatchCaseKind.Type(path, last, args) => {
               println("$fieldsIndent      \"kind\": \"type\",")
               println("$fieldsIndent      \"path\": [")
               val fullPath = path.concat([last])
@@ -638,6 +638,14 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
                 print("$fieldsIndent        ")
                 printLabelAsJson(label)
                 val comma = if idx != fullPath.length - 1 "," else ""
+                println("$comma")
+              }
+              println("$fieldsIndent      ],")
+              println("$fieldsIndent      \"arguments\": [")
+              for label, idx in args {
+                print("$fieldsIndent        ")
+                printLabelAsJson(label)
+                val comma = if idx != args.length - 1 "," else ""
                 println("$comma")
               }
               println("$fieldsIndent      ]")

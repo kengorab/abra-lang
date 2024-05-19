@@ -16,6 +16,8 @@ val x = match foo() {
   Int i => i + 1
   Color.Blue => 0x0000FF
   colors.Color.Blue => 0x0000FF
+  Int(x) i => i + 1
+  Color.Blue(a, b, c) => 0x0000FF
   _ => 0
   else f => f - 1
 }

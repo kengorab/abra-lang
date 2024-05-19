@@ -151,7 +151,7 @@ export enum AssignmentMode {
 export enum MatchCaseKind {
   None_
   Literal(value: LiteralAstNode)
-  Type(path: Label[], last: Label)
+  Type(path: Label[], last: Label, args: Label[])
   Else
 }
 
@@ -1375,14 +1375,27 @@ export type Parser {
 
             val typeIdent = TypeIdentifier.Normal(last, [], path)
 
-            // TODO: Destructuring types in match cases
             val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
-            match nextToken.kind {
-              TokenKind.LParen => return todo(nextToken.position)
-              _ => {}
+            val args = match nextToken.kind {
+              TokenKind.LParen => {
+                self._advance() // consume '(' token
+
+                val next = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+                if next.kind == TokenKind.RParen {
+                  return Err(ParseError(position: next.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], next.kind)))
+                }
+
+                val argsRes = self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: () => {
+                  val label = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
+                  Ok(label)
+                })
+                val args = match argsRes { Ok(v) => v, Err(e) => return Err(e) }
+                args
+              }
+              _ => []
             }
 
-            MatchCaseKind.Type(path, last)
+            MatchCaseKind.Type(path, last, args)
           }
         }
         TokenKind.Else => {

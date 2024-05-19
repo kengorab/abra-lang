@@ -42,6 +42,13 @@ val res5 = match col {
 }
 val _: Color = res5
 
+enum Color2 { RGB(r: Int, g: Int, b: Int) }
+val col2 = Color2.RGB(r: 0, g: 0, b: 0)
+val res6 = match col2 {
+  Color2.RGB(r, g, b) => r + g + b
+}
+val _: Int = res6
+
 // Alternate (v2) syntax for wildcard/catchall case kind
 val wildcard2 = match 123 {
   else => "abcd"

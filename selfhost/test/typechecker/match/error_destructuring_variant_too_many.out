@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:5:22
+Incorrect number of destructuring arguments
+  |    Color.RGB(r, g, b, a) => r + g + b + a
+                          ^
+Expected 3, but 4 were passed

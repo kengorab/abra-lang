@@ -122,6 +122,7 @@ fn parser_tests() {
         .add_test_vs_txt("parser/match_error_case_no_case.abra", "parser/match_error_case_no_case.out")
         .add_test_vs_txt("parser/match_error_no_expr.abra", "parser/match_error_no_expr.out")
         .add_test_vs_txt("parser/match_error_no_lbrace.abra", "parser/match_error_no_lbrace.out")
+        .add_test_vs_txt("parser/match_error_destructuring_case_empty_args.abra", "parser/match_error_destructuring_case_empty_args.out")
         // Decorators
         .add_test_vs_txt("parser/decorator_error_bad_ident.abra", "parser/decorator_error_bad_ident.out")
         .add_test_vs_txt("parser/decorator_error_before_expr.abra", "parser/decorator_error_before_expr.out")
@@ -424,6 +425,12 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/match/error_nonexhaustive_literal.2.abra", "typechecker/match/error_nonexhaustive_literal.2.out")
         .add_test_vs_txt("typechecker/match/error_nooverlap_Enum.abra", "typechecker/match/error_nooverlap_Enum.out")
         .add_test_vs_txt("typechecker/match/error_nooverlap_Type.abra", "typechecker/match/error_nooverlap_Type.out")
+        .add_test_vs_txt("typechecker/match/error_destructuring_constant_variant.abra", "typechecker/match/error_destructuring_constant_variant.out")
+        .add_test_vs_txt("typechecker/match/error_destructuring_type.abra", "typechecker/match/error_destructuring_type.out")
+        .add_test_vs_txt("typechecker/match/error_destructuring_variant_duplicate_variable.1.abra", "typechecker/match/error_destructuring_variant_duplicate_variable.1.out")
+        .add_test_vs_txt("typechecker/match/error_destructuring_variant_duplicate_variable.2.abra", "typechecker/match/error_destructuring_variant_duplicate_variable.2.out")
+        .add_test_vs_txt("typechecker/match/error_destructuring_variant_too_few.abra", "typechecker/match/error_destructuring_variant_too_few.out")
+        .add_test_vs_txt("typechecker/match/error_destructuring_variant_too_many.abra", "typechecker/match/error_destructuring_variant_too_many.out")
 
         // Invocation
         .add_test_vs_txt("typechecker/invocation/invocation.1.abra", "typechecker/invocation/invocation.1.out.json")
