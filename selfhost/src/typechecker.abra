@@ -1519,6 +1519,9 @@ export type Typechecker {
     Ok(ty)
   }
 
+  // TODO: At some point, make this work with module alias types (eg. `foo.Bar` and `foo.Baz.Qux` for a module `foo` containing type `Bar` and enum `Baz`)
+  //       This can perhaps be called in place of the current body for `TypeIdentifier.Normal` in `_resolveTypeIdentifier` above, and fail if the result
+  //       if Right (because enum variants are not (yet?) valid individually-addressable types).
   func _resolveTypeOrEnumVariant(self, path: Label[], last: Label): Result<Either<Type, (Enum, TypedEnumVariant, Int)>, TypeError> {
     match path[0] {
       None => {
@@ -3344,7 +3347,6 @@ export type Typechecker {
       var caseVar: Variable? = None
       val typedMatchCaseKind = match case.kind {
         MatchCaseKind.Type(path, last, args) => {
-          // val typedCaseKind = match self._resolveTypeMatchCaseKind(path, last) { Ok(v) => v, Err(e) => return Err(e) }
           val typeOrEnumVariant = match self._resolveTypeOrEnumVariant(path, last) { Ok(v) => v, Err(e) => return Err(e) }
           val typedCaseKind = match typeOrEnumVariant {
             Either.Left(caseTy) => {
