@@ -589,7 +589,7 @@ export type Jsonifier {
               self.indentDec()
               self.print("}")
             }
-            TypedMatchCaseKind.EnumVariant(enum_, variantIdx) => {
+            TypedMatchCaseKind.EnumVariant(enum_, _, variantIdx, destructuredVariables) => {
               println("{")
               self.indentInc()
 
@@ -597,6 +597,9 @@ export type Jsonifier {
               self.println("\"variantIdx\": $variantIdx,")
               self.print("\"enum\": ")
               self.printEnum(enum_: enum_, abridged: true)
+              println(",")
+              self.print("\"destructuredVariables\": ")
+              self.array(destructuredVariables, v => self.printVariable(v))
               println()
 
               self.indentDec()
