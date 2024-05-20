@@ -1,0 +1,440 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "addOne", "position": [1, 6] },
+          "scope": {
+            "name": "$root::module_3::addOne",
+            "variables": [
+              {
+                "label": { "name": "res", "position": [1, 13] },
+                "mutable": false,
+                "type": {
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 0, "name": "Result" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    }
+                  ]
+                }
+              },
+              {
+                "label": { "name": "v", "position": [2, 7] },
+                "mutable": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              }
+            ],
+            "functions": [],
+            "types": []
+          },
+          "kind": "FunctionKind.Standalone",
+          "typeParameters": [],
+          "parameters": [
+            {
+              "label": { "name": "res", "position": [1, 13] },
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 0, "name": "Result" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  }
+                ]
+              },
+              "defaultValue": null,
+              "isVariadic": false
+            }
+          ],
+          "returnType": {
+            "kind": "enumInstance",
+            "enum": { "moduleId": 0, "name": "Result" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            ]
+          },
+          "body": [
+            {
+              "token": {
+                "position": [2, 3],
+                "kind": {
+                  "name": "Val"
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Unit"
+              },
+              "node": {
+                "kind": "bindingDeclaration",
+                "pattern": {
+                  "kind": "variable",
+                  "label": { "name": "v", "position": [2, 7] }
+                },
+                "variables": [
+                  {
+                    "label": { "name": "v", "position": [2, 7] },
+                    "mutable": false,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  }
+                ],
+                "expr": {
+                  "token": {
+                    "position": [2, 11],
+                    "kind": {
+                      "name": "Match"
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "match",
+                    "isStatement": false,
+                    "subject": {
+                      "token": {
+                        "position": [2, 17],
+                        "kind": {
+                          "name": "Ident",
+                          "value": "res"
+                        }
+                      },
+                      "type": {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 0, "name": "Result" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          },
+                          {
+                            "kind": "primitive",
+                            "primitive": "String"
+                          }
+                        ]
+                      },
+                      "node": {
+                        "kind": "identifier",
+                        "name": "res"
+                      }
+                    },
+                    "cases": [
+                      {
+                        "kind": {
+                          "kind": "enumVariant",
+                          "variantIdx": 0,
+                          "enum": { "moduleId": 0, "name": "Result" },
+                          "destructuredVariables": [
+                            {
+                              "label": { "name": "v", "position": [2, 26] },
+                              "mutable": false,
+                              "type": {
+                                "kind": "primitive",
+                                "primitive": "Int"
+                              }
+                            }
+                          ]
+                        },
+                        "binding": null,
+                        "body": [
+                          {
+                            "token": {
+                              "position": [2, 32],
+                              "kind": {
+                                "name": "Ident",
+                                "value": "v"
+                              }
+                            },
+                            "type": {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            },
+                            "node": {
+                              "kind": "identifier",
+                              "name": "v"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "kind": {
+                          "kind": "enumVariant",
+                          "variantIdx": 1,
+                          "enum": { "moduleId": 0, "name": "Result" },
+                          "destructuredVariables": [
+                            {
+                              "label": { "name": "e", "position": [2, 38] },
+                              "mutable": false,
+                              "type": {
+                                "kind": "primitive",
+                                "primitive": "String"
+                              }
+                            }
+                          ]
+                        },
+                        "binding": null,
+                        "body": [
+                          {
+                            "token": {
+                              "position": [2, 44],
+                              "kind": {
+                                "name": "Return"
+                              }
+                            },
+                            "type": {
+                              "kind": "never"
+                            },
+                            "node": {
+                              "kind": "return",
+                              "expr": {
+                                "token": {
+                                  "position": [2, 54],
+                                  "kind": {
+                                    "name": "LParen"
+                                  }
+                                },
+                                "type": {
+                                  "kind": "enumInstance",
+                                  "enum": { "moduleId": 0, "name": "Result" },
+                                  "typeParams": [
+                                    {
+                                      "kind": "primitive",
+                                      "primitive": "Int"
+                                    },
+                                    {
+                                      "kind": "primitive",
+                                      "primitive": "String"
+                                    }
+                                  ]
+                                },
+                                "node": {
+                                  "kind": "invocation",
+                                  "invokee": {
+                                    "token": {
+                                      "position": [2, 51],
+                                      "kind": {
+                                        "name": "Ident",
+                                        "value": "Err"
+                                      }
+                                    },
+                                    "type": {
+                                      "kind": "function",
+                                      "parameters": [
+                                        {
+                                          "required": true,
+                                          "type": {
+                                            "kind": "generic",
+                                            "name": "E"
+                                          }
+                                        }
+                                      ],
+                                      "returnType": {
+                                        "kind": "enumInstance",
+                                        "enum": { "moduleId": 0, "name": "Result" },
+                                        "typeParams": [
+                                          {
+                                            "kind": "generic",
+                                            "name": "V"
+                                          },
+                                          {
+                                            "kind": "generic",
+                                            "name": "E"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "node": {
+                                      "kind": "identifier",
+                                      "name": "Err"
+                                    }
+                                  },
+                                  "arguments": [
+                                    {
+                                      "token": {
+                                        "position": [2, 55],
+                                        "kind": {
+                                          "name": "Ident",
+                                          "value": "e"
+                                        }
+                                      },
+                                      "type": {
+                                        "kind": "primitive",
+                                        "primitive": "String"
+                                      },
+                                      "node": {
+                                        "kind": "identifier",
+                                        "name": "e"
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "token": {
+                "position": [3, 5],
+                "kind": {
+                  "name": "LParen"
+                }
+              },
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 0, "name": "Result" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  }
+                ]
+              },
+              "node": {
+                "kind": "invocation",
+                "invokee": {
+                  "token": {
+                    "position": [3, 3],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "Ok"
+                    }
+                  },
+                  "type": {
+                    "kind": "function",
+                    "parameters": [
+                      {
+                        "required": true,
+                        "type": {
+                          "kind": "generic",
+                          "name": "V"
+                        }
+                      }
+                    ],
+                    "returnType": {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 0, "name": "Result" },
+                      "typeParams": [
+                        {
+                          "kind": "generic",
+                          "name": "V"
+                        },
+                        {
+                          "kind": "generic",
+                          "name": "E"
+                        }
+                      ]
+                    }
+                  },
+                  "node": {
+                    "kind": "identifier",
+                    "name": "Ok"
+                  }
+                },
+                "arguments": [
+                  {
+                    "token": {
+                      "position": [3, 8],
+                      "kind": {
+                        "name": "Plus"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "binary",
+                      "op": "BinaryOp.Add",
+                      "left": {
+                        "token": {
+                          "position": [3, 6],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "v"
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "v"
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [3, 10],
+                          "kind": {
+                            "name": "Int",
+                            "value": 1
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

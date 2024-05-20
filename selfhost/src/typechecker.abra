@@ -3384,7 +3384,14 @@ export type Typechecker {
 
               val subjectTy = if self._typeIsOption(subjectTy) |innerTy| innerTy else subjectTy
               // TODO: generics
-              val caseTy = Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), []))
+              val template = Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+              val extractedGenerics = self._extractGenerics(template: template, source: subjectTy)
+              val resolvedGenerics: Map<String, Type> = {}
+              for _p in extractedGenerics {
+                resolvedGenerics[_p[0]] = _p[1]
+              }
+
+              val caseTy = template.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
               if !self._typeSatisfiesRequired(ty: caseTy, required: subjectTy) {
                 return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: Some(caseTy)), typedExpr.ty)))
               }
@@ -3406,7 +3413,12 @@ export type Typechecker {
                         val kind = TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.InvalidArity(expected: fields.length, given: args.length))
                         return Err(TypeError(position: case.position, kind: kind))
                       }
-                      val variable = Variable(label: arg, mutable: false, ty: field.ty)
+                      val variableTy = if self._containsGenerics(field.ty) {
+                        field.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
+                      } else {
+                        field.ty
+                      }
+                      val variable = Variable(label: arg, mutable: false, ty: variableTy)
                       match self._addVariableToScope(variable) { Ok(v) => v, Err(e) => return Err(e) }
                       variables.push(variable)
                     }
@@ -3777,7 +3789,7 @@ export type Typechecker {
       TypeKind.PrimitiveUnit => None
       TypeKind.PrimitiveInt => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeIntStruct), [])), label, None)
       TypeKind.PrimitiveFloat => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeFloatStruct), [])), label, None)
-      TypeKind.PrimitiveBool => None
+      TypeKind.PrimitiveBool => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeBoolStruct), [])), label, None)
       TypeKind.PrimitiveString => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeStringStruct), [])), label, None)
       TypeKind.Never => None
       TypeKind.Generic => self._resolveAccessorPathSegmentAny(label)

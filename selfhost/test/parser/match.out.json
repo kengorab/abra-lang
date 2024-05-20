@@ -625,6 +625,101 @@
           }
         }
       }
+    },
+    {
+      "token": {
+        "position": [26, 1],
+        "kind": {
+          "name": "Match"
+        }
+      },
+      "kind": {
+        "name": "match",
+        "expr": {
+          "token": {
+            "position": [26, 10],
+            "kind": {
+              "name": "LParen"
+            }
+          },
+          "kind": {
+            "name": "invocation",
+            "invokee": {
+              "token": {
+                "position": [26, 7],
+                "kind": {
+                  "name": "Ident",
+                  "value": "foo"
+                }
+              },
+              "kind": {
+                "name": "identifier",
+                "ident": "foo"
+              }
+            },
+            "typeArguments": [],
+            "arguments": []
+          }
+        },
+        "cases": [
+          {
+            "caseKind": {
+              "kind": "type",
+              "path": [
+                { "name": "Result", "position": [27, 3] },
+                { "name": "Ok", "position": [27, 3] }
+              ],
+              "arguments": [
+                { "name": "v", "position": [27, 6] }
+              ]
+            },
+            "caseBinding": null,
+            "body": [
+              {
+                "token": {
+                  "position": [27, 12],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "v"
+                  }
+                },
+                "kind": {
+                  "name": "identifier",
+                  "ident": "v"
+                }
+              }
+            ]
+          },
+          {
+            "caseKind": {
+              "kind": "type",
+              "path": [
+                { "name": "Result", "position": [28, 3] },
+                { "name": "Err", "position": [28, 3] }
+              ],
+              "arguments": [
+                { "name": "e", "position": [28, 7] }
+              ]
+            },
+            "caseBinding": null,
+            "body": [
+              {
+                "token": {
+                  "position": [28, 13],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "e"
+                  }
+                },
+                "kind": {
+                  "name": "identifier",
+                  "ident": "e"
+                }
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }
