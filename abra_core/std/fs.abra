@@ -1,4 +1,4 @@
-import Byte from "./_intrinsics"
+import Pointer, Byte from "./_intrinsics"
 import "libc" as libc
 
 export enum ReadFileError {

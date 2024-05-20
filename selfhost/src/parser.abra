@@ -1373,8 +1373,6 @@ export type Parser {
               last = label
             }
 
-            val typeIdent = TypeIdentifier.Normal(last, [], path)
-
             val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
             val args = match nextToken.kind {
               TokenKind.LParen => {
@@ -1395,7 +1393,11 @@ export type Parser {
               _ => []
             }
 
-            MatchCaseKind.Type(path, last, args)
+            if path.isEmpty() && (last.name == "Ok" || last.name == "Err") {
+              MatchCaseKind.Type([Label(position: last.position, name: "Result")], last, args)
+            } else {
+              MatchCaseKind.Type(path, last, args)
+            }
           }
         }
         TokenKind.Else => {
