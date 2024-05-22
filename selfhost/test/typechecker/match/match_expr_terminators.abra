@@ -1,0 +1,43 @@
+// return
+func foo(a: Int): Int {
+  val x = match a {
+    123 => return 0
+    Int a => a + 1
+  }
+  val _: Int = x
+
+  x * 7
+}
+
+// break
+while true {
+  val x = match 123 {
+    123 => break
+    Int a => a + 1
+  }
+  val _: Int = x
+}
+
+// continue
+while true {
+  val x = match 123 {
+    123 => continue
+    Int a => a + 1
+  }
+  val _: Int = x
+}
+
+// all three
+func bar(): Int {
+  while true {
+    val x = match 123 {
+        1 => return 0
+        2 => break
+        3 => continue
+        Int a => a + 1
+    }
+    val _: Int = x
+  }
+
+  0
+}
