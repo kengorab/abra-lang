@@ -2190,7 +2190,7 @@ export type Typechecker {
     Ok(paramsNeedingRevisit)
   }
 
-  func _typecheckFunctionPass3(self, fn: Function, allowSelf: Bool, params: FunctionParam[], body: AstNode[], paramsNeedingRevisit: Int[], paramHints: Type[] = []): Result<Int, TypeError> {
+  func _typecheckFunctionPass3(self, fn: Function, allowSelf: Bool, params: FunctionParam[], body: AstNode[], paramsNeedingRevisit: Int[], paramHints: Type[] = []): Result<Type, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = fn.scope
     val prevFn = self.currentFunction
@@ -2219,6 +2219,17 @@ export type Typechecker {
       fn.params[idx] = typedParam
     }
 
+    // Capture the return type of the function and return it. This will be used during typechecking of lambdas to aid in generic resolution.
+    // For example, consider this case:
+    //   func foo<T>(fn: () => T[]): T[] {
+    //     val r = fn()
+    //     return r
+    //   }
+    //   func bar(): Int[] = [123]
+    //   val v = foo(() => bar())
+    // When typechecking the lambda, we lose track of the fact that T in this case is meant to be determined by the return type of the lambda. This
+    // is one way of bubbling that information up.
+    var returnType = fn.returnType
     for node, idx in body {
       if self.currentScope.terminator return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
 
@@ -2248,6 +2259,8 @@ export type Typechecker {
           expr
         }
 
+        returnType = expr.ty
+
         expr
       } else {
         val stmt = match self._typecheckStatement(node, None) { Ok(v) => v, Err(e) => return Err(e) }
@@ -2259,7 +2272,7 @@ export type Typechecker {
     self.currentFunction = prevFn
     self.currentScope = prevScope
 
-    Ok(0)
+    Ok(returnType)
   }
 
   func _typecheckStructPass1(self, node: TypeDeclarationNode): Result<Struct, TypeError> {
@@ -3270,7 +3283,8 @@ export type Typechecker {
 
           if ifType.hasUnfilledHoles() {
             ifType.tryFillHoles(elseType)
-          } else if elseType.hasUnfilledHoles() {
+          }
+          if elseType.hasUnfilledHoles() {
             elseType.tryFillHoles(ifType)
           }
 
@@ -4055,7 +4069,15 @@ export type Typechecker {
 
             self._typecheckInvocationOfFunction(token, invokee, enumVariantAsFn, node, typeHint, Some(Instantiatable.EnumContainerVariant(enum_, variant, fields)))
           }
-          AccessorPathSegment.Method(_, fn) => self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint)
+          AccessorPathSegment.Method(_, fn) => {
+            if self._typeIsOption(invokee.ty) {
+              val typedNode = match self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint) { Ok(v) => v, Err(e) => return Err(e) }
+              typedNode.ty = Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeOptionEnum), [typedNode.ty]))
+              Ok(typedNode)
+            } else {
+              self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint)
+            }
+          }
           AccessorPathSegment.Field(label) => self._typecheckInvocationOfExpression(token, invokee, label.position, node)
         }
       }
@@ -4188,11 +4210,7 @@ export type Typechecker {
         }
       } else if instantiationOf |instantiatable| {
         match instantiatable {
-          Instantiatable.EnumContainerVariant(_, _, fields) => {
-            if fields.length != 1 {
-              return Err(TypeError(position: arg.position(), kind: TypeErrorKind.MissingRequiredArgumentLabel))
-            }
-          }
+          Instantiatable.EnumContainerVariant(_, _, _) => {}
           _ => return Err(TypeError(position: arg.position(), kind: TypeErrorKind.MissingRequiredArgumentLabel))
         }
       } else if mostRecentLabeledOptionalParam |label| {
@@ -4634,7 +4652,10 @@ export type Typechecker {
     )
 
     val paramsNeedingRevisit = match self._typecheckFunctionPass2(fn: fn, allowSelf: false, params: node.params, paramHints: paramHints) { Ok(v) => v, Err(e) => return Err(e) }
-    match self._typecheckFunctionPass3(fn: fn, allowSelf: false, params: node.params, body: node.body, paramsNeedingRevisit: paramsNeedingRevisit) { Ok(v) => v, Err(e) => return Err(e) }
+    val seenReturnType = match self._typecheckFunctionPass3(fn: fn, allowSelf: false, params: node.params, body: node.body, paramsNeedingRevisit: paramsNeedingRevisit) { Ok(v) => v, Err(e) => return Err(e) }
+    if fn.returnType.hasUnfilledHoles() {
+      fn.returnType.tryFillHoles(seenReturnType)
+    }
 
     val lambdaTy = fn.getType()
 

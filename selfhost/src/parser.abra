@@ -779,7 +779,7 @@ export type Parser {
         }
         TokenKind.None_ => {
           self._advance() // consume 'None' token
-          Label(position: identTok.position, name: "None")
+          Label(name: "None", position: identTok.position)
         }
         _ => break
       }
