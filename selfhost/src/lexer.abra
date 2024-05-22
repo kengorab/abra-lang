@@ -461,7 +461,7 @@ export type Lexer {
           "\"" => "\"",
           "$" => "$",
           "u" => match self._parseUnicodeEscape(pos) { Ok(v) => v, Err(e) => return Err(e) }
-          _ => return Err(LexerError(position: pos, kind: LexerErrorKind.UnsupportedEscapeSequence("\\$ch", false)))
+          _ => return Err(LexerError(position: pos, kind: LexerErrorKind.UnsupportedEscapeSequence(seq: "\\$ch", isUnicode: false)))
         }
 
         if !seenEscape {
@@ -502,12 +502,12 @@ export type Lexer {
     for i in range(0, 4) {
       if self._cursor + i >= self._input.length {
         val escSeq = "\\u${self._input[self._cursor:self._cursor + i]}"
-        return Err(LexerError(position: startPos, kind: LexerErrorKind.UnsupportedEscapeSequence(escSeq, true)))
+        return Err(LexerError(position: startPos, kind: LexerErrorKind.UnsupportedEscapeSequence(seq: escSeq, isUnicode: true)))
       }
       val ch = self._input._buffer.offset(self._cursor + i).load().asInt()
       val v = if valueIfValidHexDigit(ch) |v| v else {
         val escSeq = "\\u${self._input[self._cursor:self._cursor + i]}"
-        return Err(LexerError(position: startPos, kind: LexerErrorKind.UnsupportedEscapeSequence(escSeq, true)))
+        return Err(LexerError(position: startPos, kind: LexerErrorKind.UnsupportedEscapeSequence(seq: escSeq, isUnicode: true)))
       }
       value = (value << 4) + v
     }
@@ -520,23 +520,23 @@ export type Lexer {
       "�"
     } else if value.isBetween(0, 0x007F, true) {
       val s = String.withLength(1)
-      s._buffer.offset(0).store(Byte.fromInt(value))
+      s._buffer.offset(0).store(value.asByte())
       s
     } else if value.isBetween(0x0080, 0x07FF, true) {
       val s = String.withLength(2)
       val b1 = 0b11000000 || (value && 0b11111000000)
       val b2 = 0b10000000 || (value && 0b00000111111)
-      s._buffer.offset(0).store(Byte.fromInt(b1))
-      s._buffer.offset(1).store(Byte.fromInt(b2))
+      s._buffer.offset(0).store(b1.asByte())
+      s._buffer.offset(1).store(b2.asByte())
       s
     } else if value.isBetween(0x0800, 0xFFFF, true) {
       val s = String.withLength(3)
       val b1 = 0b11100000 || ((value && 0b1111000000000000) >> 12)
       val b2 = 0b10000000 || ((value && 0b0000111111000000) >> 6)
       val b3 = 0b10000000 || (value && 0b0000000000111111)
-      s._buffer.offset(0).store(Byte.fromInt(b1))
-      s._buffer.offset(1).store(Byte.fromInt(b2))
-      s._buffer.offset(2).store(Byte.fromInt(b3))
+      s._buffer.offset(0).store(b1.asByte())
+      s._buffer.offset(1).store(b2.asByte())
+      s._buffer.offset(2).store(b3.asByte())
       s
     } else if value.isBetween(0x10000, 0x10FFFF, true) {
       val s = String.withLength(4)
@@ -544,10 +544,10 @@ export type Lexer {
       val b2 = 0b10000000 || (value && 0b000111111000000000000)
       val b3 = 0b10000000 || (value && 0b000000000111111000000)
       val b4 = 0b10000000 || (value && 0b000000000000000111111)
-      s._buffer.offset(0).store(Byte.fromInt(b1))
-      s._buffer.offset(1).store(Byte.fromInt(b2))
-      s._buffer.offset(2).store(Byte.fromInt(b3))
-      s._buffer.offset(3).store(Byte.fromInt(b4))
+      s._buffer.offset(0).store(b1.asByte())
+      s._buffer.offset(1).store(b2.asByte())
+      s._buffer.offset(2).store(b3.asByte())
+      s._buffer.offset(3).store(b4.asByte())
       s
     } else {
       "�"

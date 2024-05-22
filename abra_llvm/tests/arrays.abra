@@ -207,6 +207,16 @@ for ch in ["a", "b", "c"] println(ch)
   println(arr)
 })()
 
+// Array#concat
+(() => {
+  val arr1 = [1, 2, 3, 4]
+  val arr2 = [5, 6, 7]
+  /// Expect: [1, 2, 3, 4, 5, 6, 7]
+  println(arr1.concat(arr2))
+  /// Expect: [1, 2, 3, 4] [5, 6, 7]
+  println(arr1, arr2) // verify originals unmodified
+})()
+
 // Array#map
 func addOne(i: Int): Int = i + 1
 func exclaim(i: Int, _: Int, x = "!"): String = "$i$x"
@@ -324,6 +334,25 @@ func printItem(item: Int) = println(item)
   println(strArr.find(s => s == "hello"))
   /// Expect: Option.None
   println(strArr.find(s => s == "HELLO"))
+})()
+
+// Array#findIndex
+(() => {
+  val intArr = [123, 456, 789]
+  /// Expect: Option.Some(value: (123, 0))
+  println(intArr.findIndex(i => i == 123))
+  /// Expect: Option.None
+  println(intArr.findIndex(i => i == 10))
+
+  val empty: Int[] = []
+  /// Expect: Option.None
+  println(empty.findIndex(i => i == 123))
+
+  val strArr = ["hello", "world"]
+  /// Expect: Option.Some(value: ("hello", 0))
+  println(strArr.findIndex(s => s == "hello"))
+  /// Expect: Option.None
+  println(strArr.findIndex(s => s == "HELLO"))
 })()
 
 // Array#any

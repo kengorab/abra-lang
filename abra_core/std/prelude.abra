@@ -59,6 +59,8 @@ func range(start: Int, end: Int, stepBy = 1): RangeIterator = RangeIterator(star
 func flattenOption<T>(value: T??): T? = if value |v| v else None
 
 type Int {
+  func asByte(self): Byte = Byte.fromInt(self)
+
   func asFloat(self): Float = intrinsics.intAsFloat(self)
 
   func abs(self): Int = if self < 0 { -self } else { self }
