@@ -3527,15 +3527,19 @@ export type Typechecker {
         }
         val bodyTy = lastBodyNode.ty
 
-        if resultTy |resultTy| {
-          if resultTy.hasUnfilledHoles() {
-            resultTy.tryFillHoles(bodyTy)
+        if resultTy |resTy| {
+          if resTy.hasUnfilledHoles() {
+            resTy.tryFillHoles(bodyTy)
           } else if bodyTy.hasUnfilledHoles() {
-            bodyTy.tryFillHoles(resultTy)
+            bodyTy.tryFillHoles(resTy)
           }
 
-          if !self._typeSatisfiesRequired(ty: bodyTy, required: resultTy) {
-            return Err(TypeError(position: lastBodyNode.token.position, kind: TypeErrorKind.TypeMismatch([resultTy], bodyTy)))
+          if !self._typeSatisfiesRequired(ty: bodyTy, required: resTy) {
+            return Err(TypeError(position: lastBodyNode.token.position, kind: TypeErrorKind.TypeMismatch([resTy], bodyTy)))
+          }
+
+          if resTy.kind == TypeKind.Never {
+            resultTy = Some(bodyTy)
           }
         } else {
           resultTy = typedBody[-1]?.ty
