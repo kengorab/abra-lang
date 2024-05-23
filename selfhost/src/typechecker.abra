@@ -2190,7 +2190,7 @@ export type Typechecker {
     Ok(paramsNeedingRevisit)
   }
 
-  func _typecheckFunctionPass3(self, fn: Function, allowSelf: Bool, params: FunctionParam[], body: AstNode[], paramsNeedingRevisit: Int[], paramHints: Type[] = []): Result<Type, TypeError> {
+  func _typecheckFunctionPass3(self, fn: Function, allowSelf: Bool, params: FunctionParam[], body: AstNode[], paramsNeedingRevisit: Int[], paramHints: Type[] = []): Result<Int, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = fn.scope
     val prevFn = self.currentFunction
@@ -2219,17 +2219,6 @@ export type Typechecker {
       fn.params[idx] = typedParam
     }
 
-    // Capture the return type of the function and return it. This will be used during typechecking of lambdas to aid in generic resolution.
-    // For example, consider this case:
-    //   func foo<T>(fn: () => T[]): T[] {
-    //     val r = fn()
-    //     return r
-    //   }
-    //   func bar(): Int[] = [123]
-    //   val v = foo(() => bar())
-    // When typechecking the lambda, we lose track of the fact that T in this case is meant to be determined by the return type of the lambda. This
-    // is one way of bubbling that information up.
-    var returnType = fn.returnType
     for node, idx in body {
       if self.currentScope.terminator return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
 
@@ -2246,20 +2235,26 @@ export type Typechecker {
           _ => {}
         }
 
-        val expr = if fn.returnType.kind == TypeKind.Hole {
-          val expr = match self._typecheckExpressionOrTerminator(node, None) { Ok(v) => v, Err(e) => return Err(e) }
-          fn.returnType = expr.ty
-          expr
-        } else {
-          val expr = match self._typecheckExpressionOrTerminator(node, Some(fn.returnType)) { Ok(v) => v, Err(e) => return Err(e) }
-          if !self._typeSatisfiesRequired(ty: expr.ty, required: fn.returnType) {
-            val fnName = if fn.isLambda None else Some(fn.label.name)
-            return Err(TypeError(position: expr.token.position, kind: TypeErrorKind.ReturnTypeMismatch(fnName, fn.returnType, Some(expr.ty))))
-          }
-          expr
+        // Typecheck final expression, passing the function's returnType as the hint if it doesn't have any unfilled holes (when typechecking
+        // a lambda function, its returnType will always start off as a Hole). Once we have a typechecked expression, attempt to fill any holes
+        // that may exist in the function's returnType as well as the expression; this bidirectional hole-filling is necessary to support this
+        // case, for example:
+        //   val fn = () => {
+        //     if true return Err("hello")
+        //     Ok(123)
+        //   }
+        val hint = if fn.returnType.hasUnfilledHoles() None else Some(fn.returnType)
+        val expr = match self._typecheckExpressionOrTerminator(node, hint) { Ok(v) => v, Err(e) => return Err(e) }
+        if fn.returnType.hasUnfilledHoles() {
+          fn.returnType.tryFillHoles(expr.ty)
         }
-
-        returnType = expr.ty
+        if expr.ty.hasUnfilledHoles() {
+          expr.ty.tryFillHoles(fn.returnType)
+        }
+        if !self._typeSatisfiesRequired(ty: expr.ty, required: fn.returnType) {
+          val fnName = if fn.isLambda None else Some(fn.label.name)
+          return Err(TypeError(position: expr.token.position, kind: TypeErrorKind.ReturnTypeMismatch(fnName, fn.returnType, Some(expr.ty))))
+        }
 
         expr
       } else {
@@ -2272,7 +2267,7 @@ export type Typechecker {
     self.currentFunction = prevFn
     self.currentScope = prevScope
 
-    Ok(returnType)
+    Ok(0)
   }
 
   func _typecheckStructPass1(self, node: TypeDeclarationNode): Result<Struct, TypeError> {
@@ -3198,6 +3193,10 @@ export type Typechecker {
       }
 
       None
+    }
+
+    if fn.isLambda && fn.returnType.kind == TypeKind.Hole {
+      fn.returnType = typedExpr?.ty ?: Type(kind: TypeKind.PrimitiveUnit)
     }
 
     self.currentScope.terminator = Some(Terminator.Returning)
@@ -4656,10 +4655,7 @@ export type Typechecker {
     )
 
     val paramsNeedingRevisit = match self._typecheckFunctionPass2(fn: fn, allowSelf: false, params: node.params, paramHints: paramHints) { Ok(v) => v, Err(e) => return Err(e) }
-    val seenReturnType = match self._typecheckFunctionPass3(fn: fn, allowSelf: false, params: node.params, body: node.body, paramsNeedingRevisit: paramsNeedingRevisit) { Ok(v) => v, Err(e) => return Err(e) }
-    if fn.returnType.hasUnfilledHoles() {
-      fn.returnType.tryFillHoles(seenReturnType)
-    }
+    match self._typecheckFunctionPass3(fn: fn, allowSelf: false, params: node.params, body: node.body, paramsNeedingRevisit: paramsNeedingRevisit) { Ok(v) => v, Err(e) => return Err(e) }
 
     val lambdaTy = fn.getType()
 
