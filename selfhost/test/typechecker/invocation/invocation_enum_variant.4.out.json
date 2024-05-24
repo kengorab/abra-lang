@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "/Users/kengorab/Desktop/abra-lang/selfhost/test/typechecker/invocation/invocation_enum_variant.4.abra",
+  "name": "%FILE_NAME%",
   "code": [
     {
       "token": {
