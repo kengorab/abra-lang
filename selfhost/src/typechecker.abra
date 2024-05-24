@@ -4240,6 +4240,10 @@ export type Typechecker {
                 resolvedGenerics[_p[0]] = _p[1]
                 continue
               }
+              TypeKind.Hole => {
+                resolvedGenerics[_p[0]] = _p[1]
+                continue
+              }
               _ => {}
             }
             if !self._typesAreEquivalent(ty: original, other: _p[1]) {
@@ -4645,7 +4649,13 @@ export type Typechecker {
 
     val lambdaName = self.currentScope.nextLambdaName()
     val fnScope = self.currentScope.makeChild(lambdaName, ScopeKind.Func)
-    val returnType = retHint ?: Type(kind: TypeKind.Hole)
+    var returnType = retHint ?: Type(kind: TypeKind.Hole)
+    if self._containsGenerics(returnType) {
+      // If the return type of a lambda contains generics that have not yet been resolved by the time we get here, then
+      // they must be "out" generics rather than "in" generics - this means that they should be treated as Holes which will
+      // be filled once the return type is discovered, during _typecheckFunctionPass3.
+      returnType = returnType.withSubstitutedGenerics(resolvedGenerics: {}, retainUnknown: false, genericsInScope: #{})
+    }
     val fn = Function(
       label: Label(name: lambdaName, position: token.position),
       scope: fnScope,

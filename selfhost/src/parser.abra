@@ -1394,7 +1394,7 @@ export type Parser {
             }
 
             if path.isEmpty() && (last.name == "Ok" || last.name == "Err") {
-              MatchCaseKind.Type([Label(position: last.position, name: "Result")], last, args)
+              MatchCaseKind.Type([Label(name: "Result", position: last.position)], last, args)
             } else {
               MatchCaseKind.Type(path, last, args)
             }
@@ -1654,7 +1654,7 @@ export type Parser {
         token: token,
         kind: AstNodeKind.Accessor(AccessorAstNode(
           root: AstNode(token: Token(position: token.position, kind: TokenKind.Ident("Option")), kind: AstNodeKind.Identifier(IdentifierKind.Named("Option"))),
-          path: [(Token(position: token.position, kind: TokenKind.Dot), Label(position: token.position, name: "Some"))]
+          path: [(Token(position: token.position, kind: TokenKind.Dot), Label(name: "Some", position: token.position))]
         ))
       )
     } else {
@@ -1766,7 +1766,7 @@ export type Parser {
       AssignOp.CoalesceEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Coalesce, right: rhs)))
     }
 
-    Ok(AstNode(token: token, kind: AstNodeKind.Assignment(mode: mode, op: assignOp, expr: expr)))
+    Ok(AstNode(token: token, kind: AstNodeKind.Assignment(expr: expr, op: assignOp, mode: mode)))
   }
 }
 
