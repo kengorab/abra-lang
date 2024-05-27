@@ -1,4 +1,4 @@
-import Token, TokenKind, Position from "./lexer"
+import Token, TokenKind, Position, StringInterpolationChunk from "./lexer"
 
 export type ParsedModule {
   imports: ImportNode[]
@@ -244,6 +244,7 @@ export type DecoratorNode {
 
 export enum AstNodeKind {
   Literal(value: LiteralAstNode)
+  StringInterpolation(chunks: AstNode[])
   Unary(value: UnaryAstNode)
   Binary(value: BinaryAstNode)
   Grouped(inner: AstNode)
@@ -417,8 +418,12 @@ export type Parser {
       TokenKind.Int => match token.kind { TokenKind.Int => true, _ => false }
       TokenKind.Float => match token.kind { TokenKind.Float => true, _ => false }
       TokenKind.Bool => match token.kind { TokenKind.Bool => true, _ => false }
-      TokenKind.String => match token.kind { TokenKind.String => true, _ => false }
-      TokenKind.StringInterpolation => match token.kind { TokenKind.StringInterpolation => true, _ => false }
+      TokenKind.String => match token.kind {
+        TokenKind.String => true
+        TokenKind.StringInterpolation => true
+        _ => false
+      }
+      TokenKind.StringInterpolation => return unreachable() // no reason to ever explicitly expect a StringInterpolation token
       TokenKind.Ident => match token.kind { TokenKind.Ident => true, _ => false }
       TokenKind.LParen => match token.kind { TokenKind.LParen => true, _ => false }
       TokenKind.LBrack=> match token.kind { TokenKind.LBrack => true, _ => false }
@@ -1093,6 +1098,7 @@ export type Parser {
       TokenKind.Float => self._parseLiteral()
       TokenKind.Bool => self._parseLiteral()
       TokenKind.String => self._parseLiteral()
+      TokenKind.StringInterpolation => self._parseStringInterpolation()
       TokenKind.LParen => self._parseGroupedOrTupleOrLambda()
       TokenKind.Minus => self._parseUnary()
       TokenKind.Bang => self._parseUnary()
@@ -1128,11 +1134,52 @@ export type Parser {
       TokenKind.Float(value) => LiteralAstNode.Float(value)
       TokenKind.Bool(value) => LiteralAstNode.Bool(value)
       TokenKind.String(value) => LiteralAstNode.String(value)
-      TokenKind.StringInterpolation => return Err(ParseError(position: token.position, kind: ParseErrorKind.NotYetImplemented))
+      TokenKind.StringInterpolation => {
+        return Err(ParseError(position: token.position, kind: ParseErrorKind.NotYetImplemented))
+      }
       _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
     }
 
     Ok(AstNode(token: token, kind: AstNodeKind.Literal(literal)))
+  }
+
+  func _parseStringInterpolation(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val chunks = match token.kind {
+      TokenKind.StringInterpolation(chunks) => chunks
+      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+    }
+
+    val nodes: AstNode[] = []
+    for chunk in chunks {
+      match chunk {
+        StringInterpolationChunk.String(pos, str) => {
+          if str.isEmpty() continue
+          nodes.push(AstNode(token: Token(position: pos, kind: TokenKind.String(str)), kind: AstNodeKind.Literal(LiteralAstNode.String(str))))
+        }
+        StringInterpolationChunk.Interpolation(tokens) => {
+          val subParser = Parser(_tokens: tokens)
+          val node = match subParser._parseExpression() {
+            Ok(v) => v
+            Err(e) => {
+              // If the subparser encounters an unexpected end of input (eg. when parsing the interpolation "${-}"), it'll ordinarily return an UnexpectedEof
+              // error. Return a different error in this case, to more accurately communicate the error.
+              val err = match e.kind {
+                ParseErrorKind.UnexpectedEof => ParseError(position: e.position, kind: ParseErrorKind.UnexpectedToken(Token(position: e.position, kind: TokenKind.RBrace)))
+                _ => e
+              }
+              return Err(err)
+            }
+          }
+          if subParser._peek() |token| {
+            return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+          }
+          nodes.push(node)
+        }
+      }
+    }
+
+    Ok(AstNode(token: token, kind: AstNodeKind.StringInterpolation(nodes)))
   }
 
   func _parseUnary(self): Result<AstNode, ParseError> {

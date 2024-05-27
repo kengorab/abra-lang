@@ -1,4 +1,4 @@
-import Token, TokenKind from "./lexer"
+import Token, TokenKind, StringInterpolationChunk from "./lexer"
 import Label, ImportKind, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode, BindingPattern, MatchCaseKind, DecoratorNode, EnumVariant from "./parser"
 
 export func printTokenAsJson(token: Token, indentLevelStart: Int, currentIndentLevel: Int) {
@@ -35,9 +35,29 @@ func printTokenKindAsJson(kind: TokenKind, indentLevelStart: Int, currentIndentL
       println("$fieldsIndent\"name\": \"String\",")
       println("$fieldsIndent\"value\": \"$value\"")
     }
-    TokenKind.StringInterpolation => {
+    TokenKind.StringInterpolation(chunks) => {
       println("$fieldsIndent\"name\": \"StringInterpolation\",")
-      println("$fieldsIndent\"value\": \"not yet implemented\"")
+      println("$fieldsIndent\"chunks\": [")
+      for chunk, idx in chunks {
+        match chunk {
+          StringInterpolationChunk.String(pos, value) => {
+            printTokenAsJson(Token(position: pos, kind: TokenKind.String(value)), indentLevelStart + currentIndentLevel + 2, currentIndentLevel + 2)
+          }
+          StringInterpolationChunk.Interpolation(tokens) => {
+            println("$fieldsIndent  [")
+            for token, idx in tokens {
+              printTokenAsJson(token, indentLevelStart + currentIndentLevel + 3, currentIndentLevel + 3)
+
+              val comma = if idx != tokens.length - 1 "," else ""
+              println(comma)
+            }
+            print("$fieldsIndent  ]")
+          }
+        }
+        val comma = if idx != chunks.length - 1 "," else ""
+        println(comma)
+      }
+      println("$fieldsIndent]")
     }
     TokenKind.Ident(name) => {
       println("$fieldsIndent\"name\": \"Ident\",")
@@ -317,6 +337,20 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
       println("$fieldsIndent\"name\": \"literal\",")
       println("$fieldsIndent\"type\": \"${pair[0]}\",")
       println("$fieldsIndent\"value\": ${pair[1]}")
+    }
+    AstNodeKind.StringInterpolation(exprs) => {
+      println("$fieldsIndent\"name\": \"stringInterpolation\",")
+      if exprs.isEmpty() {
+        println("$fieldsIndent\"exprs\": []")
+      } else {
+        println("$fieldsIndent\"exprs\": [")
+        for item, idx in exprs {
+          printAstNodeAsJson(item, currentIndentLevel + 2, currentIndentLevel + 2)
+          val comma = if idx != exprs.length - 1 "," else ""
+          println("$comma")
+        }
+        println("$fieldsIndent]")
+      }
     }
     AstNodeKind.Unary(unaryNode) => {
       println("$fieldsIndent\"name\": \"unary\",")

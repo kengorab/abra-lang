@@ -338,6 +338,13 @@ export type Jsonifier {
           LiteralAstNode.String(value) => self.println("\"value\": \"$value\"")
         }
       }
+      TypedAstNodeKind.StringInterpolation(exprs) => {
+        self.println("\"kind\": \"stringInterpolation\",")
+
+        self.print("\"exprs\": ")
+        self.array(exprs, n => self.printNode(n))
+        println()
+      }
       TypedAstNodeKind.Unary(op, expr) => {
         self.println("\"kind\": \"unary\",")
         self.println("\"op\": \"$op\",")
