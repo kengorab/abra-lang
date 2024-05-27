@@ -21,6 +21,10 @@ fn lexer_tests() {
         .add_test_vs_rust("lexer/strings_error_invalid_unicode_seq_length.abra")
         .add_test_vs_rust("lexer/strings_error_invalid_unicode_seq_eof.abra")
         .add_test_vs_rust("lexer/strings_error_invalid_unicode_seq_char.abra")
+        .add_test_vs_txt("lexer/strings_interpolation.1.abra", "lexer/strings_interpolation.1.out.json")
+        .add_test_vs_txt("lexer/strings_interpolation.2.abra", "lexer/strings_interpolation.2.out.json")
+        .add_test_vs_txt("lexer/strings_interpolation_error_unclosed_brace.abra", "lexer/strings_interpolation_error_unclosed_brace.out")
+
         .add_test_vs_rust("lexer/keywords.abra")
         // Symbols
         .add_test_vs_rust("lexer/symbols.abra")
@@ -40,6 +44,10 @@ fn parser_tests() {
     TestRunner::parser_test_runner()
         // Literals
         .add_test_vs_txt("parser/literals.abra", "parser/literals.out.json")
+        .add_test_vs_txt("parser/strings_interpolation.abra", "parser/strings_interpolation.out.json")
+        .add_test_vs_txt("parser/strings_interpolation_error_invalid_expression.1.abra", "parser/strings_interpolation_error_invalid_expression.1.out")
+        .add_test_vs_txt("parser/strings_interpolation_error_invalid_expression.2.abra", "parser/strings_interpolation_error_invalid_expression.2.out")
+
         // Binary
         .add_test_vs_txt("parser/binary.abra", "parser/binary.out.json")
         .add_test_vs_txt("parser/binary_error_eof.abra", "parser/binary_error_eof.out")
@@ -204,6 +212,7 @@ fn typechecker_tests() {
         .add_test_vs_txt("typechecker/_parser_error.abra", "typechecker/_parser_error.out")
         // Literals
         .add_test_vs_txt("typechecker/literals/literals.abra", "typechecker/literals/literals.out.json")
+        .add_test_vs_txt("typechecker/literals/string_interpolation.abra", "typechecker/literals/string_interpolation.out.json")
         // Unary
         .add_test_vs_txt("typechecker/unary/unary.abra", "typechecker/unary/unary.out.json")
         .add_test_vs_txt("typechecker/unary/error_minus.1.abra", "typechecker/unary/error_minus.1.out")

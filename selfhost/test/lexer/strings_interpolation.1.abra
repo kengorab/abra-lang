@@ -1,0 +1,8 @@
+"abc $hello abc"
+"$hello!"
+"$hello"
+"$a + $b = $ $c"
+"$a + $b = \$$c"
+"$a$b"
+"hello ${a + b}!"
+"${a + b}"

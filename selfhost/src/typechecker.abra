@@ -530,6 +530,7 @@ export type TypedMatchCase {
 
 export enum TypedAstNodeKind {
   Literal(value: LiteralAstNode)
+  StringInterpolation(exprs: TypedAstNode[])
   Unary(op: UnaryOp, expr: TypedAstNode)
   Binary(left: TypedAstNode, op: BinaryOp, right: TypedAstNode)
   Grouped(inner: TypedAstNode)
@@ -3579,6 +3580,7 @@ export type Typechecker {
 
         Ok(TypedAstNode(token: token, ty: Type(kind: kind), kind: TypedAstNodeKind.Literal(literal)))
       }
+      AstNodeKind.StringInterpolation(exprs) => self._typecheckStringInterpolation(token, exprs)
       AstNodeKind.Unary(node) => self._typecheckUnary(token, node)
       AstNodeKind.Binary(node) => self._typecheckBinary(token, node)
       AstNodeKind.Grouped(inner) => {
@@ -3620,6 +3622,16 @@ export type Typechecker {
       AstNodeKind.Return(expr) => self._typecheckReturn(node.token, expr)
       _ => self._typecheckExpression(node, typeHint)
     }
+  }
+
+  func _typecheckStringInterpolation(self, token: Token, exprs: AstNode[]): Result<TypedAstNode, TypeError> {
+    val typedExprs: TypedAstNode[] = []
+    for expr in exprs {
+      val typedExpr = match self._typecheckExpression(expr, None) { Ok(v) => v, Err(e) => return Err(e) }
+      typedExprs.push(typedExpr)
+    }
+
+    Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveString), kind: TypedAstNodeKind.StringInterpolation(exprs: typedExprs)))
   }
 
   func _typecheckUnary(self, token: Token, node: UnaryAstNode): Result<TypedAstNode, TypeError> {
