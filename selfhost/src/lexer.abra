@@ -485,24 +485,18 @@ export type Lexer {
         self._advance() // consume '$'
         if self._input[self._cursor] == "{" {
           val initialChunk = StringInterpolationChunk.String(position: startPos, value: str)
+          match self.nextToken() { Ok(v) => v, Err(e) => return Err(e) }
+
           val interpolatedTokens: Token[] = []
-          /*val lbraceToken = */match self.nextToken() { Ok(v) => v, Err(e) => return Err(e) }
-          // if lbraceToken |tok| {
-          //   chunks.push(Token(position: tok.position, kind: TokenKind.LParen(true)))
-          // } else {
-          //   // unreachable
-          // }
           var curlyCount = 1
           while curlyCount != 0 {
             val nextToken = match self.nextToken() { Ok(v) => v, Err(e) => return Err(e) }
             if nextToken |tok| {
-              // var tok = nextToken
               if tok.kind == TokenKind.LBrace {
                 curlyCount += 1
               } else if tok.kind == TokenKind.RBrace {
                 curlyCount -= 1
                 if curlyCount == 0 {
-                  // tok = Token(position: tok.position, kind: TokenKind.RParen)
                   break // don't push '}' into interpolatedTokens
                 }
               }
@@ -622,13 +616,6 @@ export type Lexer {
     Ok(str)
   }
 
-  // func _tokenizeStringInterpolation(self, startPos: Position, firstChunk: String): Result<Token, LexerError> {
-  //   val chunks = [Token(position: startPos, kind: TokenKind.String(firstChunk))]
-  //   self._advance() // consume '$'
-
-  //   Ok(Token(position: startPos, kind: TokenKind.StringInterpolation(chunks)))
-  // }
-
   func _tokenizeIdentifier(self, startPos: Position): Token {
     val identStart = self._cursor
     var ch = self._input[self._cursor]
@@ -694,17 +681,18 @@ export type Lexer {
       "{" => TokenKind.LBrace
       "}" => TokenKind.RBrace
       "&" => {
-        self._advance() // consume '&'
+        self._advance() // consume first '&'
         if self._cursor >= self._input.length {
           return Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedEof))
         } else if self._input[self._cursor] != "&" {
           val ch = self._input[self._cursor]
           return Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedChar(ch)))
         }
-        self._advance() // consume second '&'
 
-        if self._input[self._cursor] == "=" {
-          self._advance() // consume '='
+        // If the next character is '=' then advance over second '&'. Either way, the final character will
+        // be consumed by the call to `self._advance()` at the end of this method
+        if self._input[self._cursor + 1] == "=" {
+          self._advance()
           TokenKind.AndEq
         } else {
           TokenKind.And
