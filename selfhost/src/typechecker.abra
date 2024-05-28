@@ -3771,7 +3771,7 @@ export type Typechecker {
           token: token,
           kind: AstNodeKind.Accessor(AccessorAstNode(
             root: AstNode(token: Token(position: token.position, kind: TokenKind.Ident("Option")), kind: AstNodeKind.Identifier(IdentifierKind.Named("Option"))),
-            path: [(Token(position: token.position, kind: TokenKind.Dot), Label(position: token.position, name: "None"))]
+            path: [(Token(position: token.position, kind: TokenKind.Dot), Label(name: "None", position: token.position))]
           ))
         )
 
@@ -4092,7 +4092,7 @@ export type Typechecker {
               self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint)
             }
           }
-          AccessorPathSegment.Field(label) => self._typecheckInvocationOfExpression(token, invokee, label.position, node)
+          AccessorPathSegment.Field(label, _) => self._typecheckInvocationOfExpression(token, invokee, label.position, node)
         }
       }
       _ => self._typecheckInvocationOfExpression(token, invokee, invokee.token.position, node)
