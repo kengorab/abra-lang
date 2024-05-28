@@ -518,7 +518,7 @@ export type Parser {
       TokenKind.For => self._parseForLoop()
       TokenKind.Break => self._parseBreak()
       TokenKind.Continue => self._parseContinue()
-      TokenKind.Return => self._parseReturn()
+      TokenKind.Return(hasNewline) => self._parseReturn(hasNewline)
       _ => self._parseExpressionStatement()
     }
   }
@@ -1538,13 +1538,8 @@ export type Parser {
     Ok(AstNode(token: token, kind: AstNodeKind.Continue))
   }
 
-  func _parseReturn(self): Result<AstNode, ParseError> {
+  func _parseReturn(self, hasNewline: Bool): Result<AstNode, ParseError> {
     val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
-    val hasNewline = match token.kind {
-      TokenKind.Return(hasNewline) => hasNewline
-      _ => false // unreachable
-    }
-
     val expr = if hasNewline {
       None
     } else {
@@ -1714,7 +1709,6 @@ export type Parser {
 
   func _parseIndexing(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
     val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
-    // TODO: ensure this type annotation is unnecessary
     val index = if nextToken.kind == TokenKind.Colon {
       self._advance() // consume ':' token
       val rangeEnd = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
@@ -1815,10 +1809,6 @@ export type Parser {
 
     Ok(AstNode(token: token, kind: AstNodeKind.Assignment(expr: expr, op: assignOp, mode: mode)))
   }
-}
-
-func todo<V>(position: Position): Result<V, ParseError> {
-  Err(ParseError(position: position, kind: ParseErrorKind.NotYetImplemented))
 }
 
 func unreachable<V>(): Result<V, ParseError> {

@@ -2903,9 +2903,7 @@ export type Typechecker {
         return Err(TypeError(position: expr.token.position, kind: TypeErrorKind.IllegalValueType(ty: ty, purpose: "assignment")))
       }
 
-      // TODO: type could not be auto-coerced to `TypedAstNode?` on its own
-      val typedExpr_: TypedAstNode? = Some(typedExpr)
-      (typedExpr_, ty)
+      (Some(typedExpr), ty)
     } else if !isMutable {
       val label = match node.bindingPattern {
         BindingPattern.Variable(label) => label
@@ -3395,7 +3393,6 @@ export type Typechecker {
               }
 
               val subjectTy = if self._typeIsOption(subjectTy) |innerTy| innerTy else subjectTy
-              // TODO: generics
               val template = Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
               val extractedGenerics = self._extractGenerics(template: template, source: subjectTy)
               val resolvedGenerics: Map<String, Type> = {}
