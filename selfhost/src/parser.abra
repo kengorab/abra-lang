@@ -1058,7 +1058,7 @@ export type Parser {
         return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
       }
       _ => {
-        val node = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+        val node = match self._parsePrecedence(prec: 0) { Ok(v) => v, Err(e) => return Err(e) }
         [node]
       }
     }

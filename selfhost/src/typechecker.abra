@@ -896,7 +896,7 @@ type TypeError {
         lines.push("Cannot invoke target as function")
         lines.push(self._getCursorLine(self.position, contents))
         match ty.kind {
-          TypeKind.Instance(structOrEnum) => {
+          TypeKind.Instance(structOrEnum, _) => {
             match structOrEnum {
               StructOrEnum.Enum => lines.push("This is a constant enum variant, and it accepts no arguments")
               _ => __assertUnreachable("This should be unreachable")
@@ -1419,7 +1419,7 @@ export type Typechecker {
             val imp = _p[1]
             if name == label.name {
               match imp.kind {
-                TypedImportKind.Type(structOrEnum) => {
+                TypedImportKind.Type(structOrEnum, _) => {
                   val ty = Type(kind: TypeKind.Type(structOrEnum))
                   match structOrEnum {
                     StructOrEnum.Struct(struct) => { if label.name == struct.label.name return Ok(ty) }
@@ -1451,7 +1451,7 @@ export type Typechecker {
 
           val foundTy = match mod.exports[label.name] {
             None => return Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownImportForAlias(label.name, aliasLabel)))
-            Export.Type(structOrEnum) => {
+            Export.Type(structOrEnum, _) => {
               val t = match self._resolveInstanceTypeIdentifier(structOrEnum, label, typeArguments) { Ok(v) => v, Err(e) => return Err(e) }
               t
             }
@@ -2221,7 +2221,7 @@ export type Typechecker {
     }
 
     for node, idx in body {
-      if self.currentScope.terminator return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+      if self.currentScope.terminator == Some(Terminator.Returning) return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
 
       val typedNode = if idx == body.length - 1 && hasReturnValue {
         val fnName = if fn.isLambda None else Some(fn.label.name)
@@ -2515,7 +2515,7 @@ export type Typechecker {
     var allVariantsConstant = true
     val seenVariants: Map<String, Label> = {}
     for variant, idx in node.variants {
-      val variantLabel = match variant { EnumVariant.Constant(label) => label, EnumVariant.Container(label) => label }
+      val variantLabel = match variant { EnumVariant.Constant(label) => label, EnumVariant.Container(label, _) => label }
       if seenVariants[variantLabel.name] |original| {
         return Err(TypeError(position: variantLabel.position, kind: TypeErrorKind.DuplicateName(original)))
       }
@@ -3236,7 +3236,7 @@ export type Typechecker {
     }
 
     for node, idx in ifBlock {
-      if self.currentScope.terminator return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+      if self.currentScope.terminator == Some(Terminator.Returning) return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
 
       if idx == ifBlock.length - 1 && !isStatement {
         val typedNode = match self._typecheckExpressionOrTerminator(node, typeHint) { Ok(v) => v, Err(e) => return Err(e) }
@@ -3257,9 +3257,7 @@ export type Typechecker {
     if elseBlock |elseBlock| {
       hasElseBlock = true
       for node, idx in elseBlock {
-        if self.currentScope.terminator {
-          return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
-        }
+        if self.currentScope.terminator == Some(Terminator.Returning) return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
 
         if idx == elseBlock.length - 1 && !isStatement {
           val hint = if ifType |t| (if t.hasUnfilledHoles() None else ifType) else None
@@ -3502,7 +3500,6 @@ export type Typechecker {
 
           TypedMatchCaseKind.Else
         }
-        _ => return todo(token.position, "other match case kinds")
       }
 
       if caseVar |v| {
@@ -3636,22 +3633,24 @@ export type Typechecker {
 
   func _typecheckUnary(self, token: Token, node: UnaryAstNode): Result<TypedAstNode, TypeError> {
     val expr = match self._typecheckExpression(node: node.expr, typeHint: None) { Ok(v) => v, Err(e) => return Err(e) }
-    match node.op {
+    val ty = match node.op {
       UnaryOp.Minus => {
         if !self._typeSatisfiesRequired(ty: expr.ty, required: Type(kind: TypeKind.PrimitiveInt)) &&
           !self._typeSatisfiesRequired(ty: expr.ty, required: Type(kind: TypeKind.PrimitiveFloat)) {
           val expected = [Type(kind: TypeKind.PrimitiveInt), Type(kind: TypeKind.PrimitiveFloat)]
           return Err(TypeError(position: expr.token.position, kind: TypeErrorKind.TypeMismatch(expected, expr.ty)))
         }
+        expr.ty
       }
       UnaryOp.Negate => {
         if !self._typeIsOption(expr.ty) && !self._typeSatisfiesRequired(ty: expr.ty, required: Type(kind: TypeKind.PrimitiveBool)) {
           return Err(TypeError(position: expr.token.position, kind: TypeErrorKind.TypeMismatch([Type(kind: TypeKind.PrimitiveBool)], expr.ty)))
         }
+        Type(kind: TypeKind.PrimitiveBool)
       }
     }
 
-    Ok(TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Unary(op: node.op, expr: expr)))
+    Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Unary(op: node.op, expr: expr)))
   }
 
   func _typecheckBinary(self, token: Token, node: BinaryAstNode): Result<TypedAstNode, TypeError> {
@@ -3772,7 +3771,7 @@ export type Typechecker {
           token: token,
           kind: AstNodeKind.Accessor(AccessorAstNode(
             root: AstNode(token: Token(position: token.position, kind: TokenKind.Ident("Option")), kind: AstNodeKind.Identifier(IdentifierKind.Named("Option"))),
-            path: [(Token(position: token.position, kind: TokenKind.Dot), Label(position: token.position, name: "None"))]
+            path: [(Token(position: token.position, kind: TokenKind.Dot), Label(name: "None", position: token.position))]
           ))
         )
 
@@ -4093,7 +4092,7 @@ export type Typechecker {
               self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint)
             }
           }
-          AccessorPathSegment.Field(label) => self._typecheckInvocationOfExpression(token, invokee, label.position, node)
+          AccessorPathSegment.Field(label, _) => self._typecheckInvocationOfExpression(token, invokee, label.position, node)
         }
       }
       _ => self._typecheckInvocationOfExpression(token, invokee, invokee.token.position, node)
