@@ -1,0 +1,135 @@
+import File from "fs"
+
+export type ModuleBuilder {
+  _statements: QbeStatement[] = []
+
+  func writeToFile(self, file: File) {
+    for stmt in self._statements {
+      stmt.encode(file)
+    }
+  }
+
+  func buildFunction(self, name: String, returnType: QbeType?, exported = false): Block {
+    val block = Block(body: [], labels: { (0): ["start"] })
+
+    val fn = QbeFunction(exported: exported, name: name, returnType: returnType, block: block)
+    self._statements.push(QbeStatement.Func(fn))
+    block
+  }
+}
+
+enum QbeStatement {
+  Func(function: QbeFunction)
+
+  func encode(self, file: File) {
+    match self {
+      QbeStatement.Func(f) => f.encode(file)
+    }
+  }
+}
+
+type Block {
+  body: Instruction[] = []
+  labels: Map<Int, String[]> = {}
+
+  func encode(self, file: File) {
+    for instr, idx in self.body {
+      if self.labels[idx] |labels| {
+        for label in labels {
+          file.writeln("@$label")
+        }
+      }
+      file.write("  ")
+      instr.encode(file)
+    }
+  }
+
+  func append(self, instr: Instruction) {
+    self.body.push(instr)
+  }
+}
+
+export enum QbeType {
+  U8      // 'b'
+  U16     // 'h'
+  U32     // 'w'
+  U64     // 'l'
+  Pointer // 'l'
+  F32     // 's'
+  F64     // 'd'
+  Aggregate(spec: AggregateType)
+
+  func encode(self, file: File) {
+    val s = match self {
+      QbeType.U8 => "b"
+      QbeType.U16 => "h"
+      QbeType.U32 => "w"
+      QbeType.U64 => "l"
+      QbeType.Pointer => "l"
+      QbeType.F32 => "s"
+      QbeType.F64 => "d"
+      QbeType.Aggregate(spec) => ":${spec.name}"
+    }
+    file.write(s)
+  }
+}
+
+type TypeField {
+  name: String
+  ty: QbeType
+}
+
+type AggregateType {
+  name: String
+  fields: TypeField[]
+}
+
+type QbeFunction {
+  exported: Bool = false
+  name: String
+  returnType: QbeType? = None
+  block: Block
+
+  func encode(self, file: File) {
+    if self.exported file.write("export ")
+    file.write("function ")
+    self.returnType?.encode(file)
+    file.write(" \$${self.name}")
+    file.write("()") // todo: parameters
+    file.writeln(" {")
+
+    self.block.encode(file)
+
+    file.writeln("}")
+  }
+}
+
+export enum Value {
+  Ident(name: String)
+  Global(name: String)
+  Int(value: Int)
+  Float(value: Float)
+
+  func encode(self, file: File) {
+    match self {
+      Value.Ident(name) => file.write("%$name")
+      Value.Global(name) => file.write("\$$name")
+      Value.Int(value) => file.write(value.toString())
+      Value.Float(value) => file.write("d_$value")
+    }
+  }
+}
+
+export enum Instruction {
+  Return(value: Value?)
+
+  func encode(self, file: File) {
+    match self {
+      Instruction.Return(value) => {
+        file.write("ret ")
+        value?.encode(file)
+        file.writeln()
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+import File from "fs"
+import Project, TypedModule from "./typechecker"
+import ModuleBuilder, QbeType, Instruction, Value from "./qbe"
+
+export type Compiler {
+  _project: Project
+  _builder: ModuleBuilder
+
+  func compile(project: Project): ModuleBuilder {
+    val builder = ModuleBuilder()
+    val compiler = Compiler(_project: project, _builder: builder)
+
+    compiler._compileMain()
+
+    builder
+  }
+
+  func _compileMain(self) {
+    val block = self._builder.buildFunction(name: "main", returnType: Some(QbeType.U32), exported: true)
+    block.append(Instruction.Return(Some(Value.Int(0))))
+  }
+}
