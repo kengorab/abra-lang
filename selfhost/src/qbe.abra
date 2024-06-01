@@ -4,17 +4,18 @@ export type ModuleBuilder {
   _statements: QbeStatement[] = []
 
   func writeToFile(self, file: File) {
-    for stmt in self._statements {
+    for stmt, idx in self._statements {
       stmt.encode(file)
+      if idx != self._statements.length - 1 { file.writeln()}
     }
   }
 
-  func buildFunction(self, name: String, returnType: QbeType?, exported = false): Block {
+  func buildFunction(self, name: String, returnType: QbeType?, exported = false): QbeFunction {
     val block = Block(body: [], labels: { (0): ["start"] })
 
-    val fn = QbeFunction(exported: exported, name: name, returnType: returnType, block: block)
+    val fn = QbeFunction(exported: exported, name: name, returnType: returnType, block: block, meta: [])
     self._statements.push(QbeStatement.Func(fn))
-    block
+    fn
   }
 }
 
@@ -28,7 +29,7 @@ enum QbeStatement {
   }
 }
 
-type Block {
+export type Block {
   body: Instruction[] = []
   labels: Map<Int, String[]> = {}
 
@@ -84,13 +85,17 @@ type AggregateType {
   fields: TypeField[]
 }
 
-type QbeFunction {
+export type QbeFunction {
   exported: Bool = false
   name: String
   returnType: QbeType? = None
   block: Block
+  meta: String[] = []
 
   func encode(self, file: File) {
+    for meta in self.meta {
+      file.writeln("# $meta")
+    }
     if self.exported file.write("export ")
     file.write("function ")
     self.returnType?.encode(file)
@@ -105,26 +110,71 @@ type QbeFunction {
 }
 
 export enum Value {
-  Ident(name: String)
-  Global(name: String)
+  Ident(name: String, ty: QbeType)
+  Global(name: String, ty: QbeType)
   Int(value: Int)
   Float(value: Float)
 
   func encode(self, file: File) {
     match self {
-      Value.Ident(name) => file.write("%$name")
-      Value.Global(name) => file.write("\$$name")
+      Value.Ident(name, _) => file.write("%$name")
+      Value.Global(name, _) => file.write("\$$name")
       Value.Int(value) => file.write(value.toString())
       Value.Float(value) => file.write("d_$value")
     }
   }
+
+  func ty(self): QbeType = match self {
+      Value.Ident(_, ty) => ty
+      Value.Global(_, ty) => ty
+      Value.Int => QbeType.U64
+      Value.Float => QbeType.F64
+  }
+}
+
+export type Dest {
+  name: String
+  ty: QbeType
+
+  func encode(self, file: File) {
+    file.write(self.name)
+    file.write(" =")
+    self.ty.encode(file)
+  }
 }
 
 export enum Instruction {
+  Add(dst: Dest, l: Value, r: Value)
+
+  Call(dst: Dest?, fn: String, args: Value[])
   Return(value: Value?)
 
   func encode(self, file: File) {
     match self {
+      Instruction.Add(dst, l, r) => {
+        dst.encode(file)
+        file.write(" add ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.Call(dst, fnName, args) => {
+        if dst |dst| {
+          dst.encode(file)
+          file.write(" ")
+        }
+        file.write("call ")
+        file.write(fnName)
+        file.write("(")
+        for arg, idx in args {
+          arg.ty().encode(file)
+          file.write(" ")
+          arg.encode(file)
+          if idx != args.length - 1 file.write(", ")
+        }
+        file.writeln(")")
+      }
       Instruction.Return(value) => {
         file.write("ret ")
         value?.encode(file)

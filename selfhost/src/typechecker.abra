@@ -1176,7 +1176,7 @@ export type Typechecker {
   isStructOrEnumValueAllowed: Bool = false
   isEnumContainerValueAllowed: Bool = false
 
-  func typecheckEntrypoint(self, modulePathAbs: String): Result<Int, TypecheckerError> {
+  func typecheckEntrypoint(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
     val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
     val preludeModulePathAbs = "/" + preludeModulePathSegs.join("/")
     match self._typecheckModule(preludeModulePathAbs) { Ok(v) => v, Err(e) => return Err(e) }
@@ -1209,9 +1209,9 @@ export type Typechecker {
       }
     }
 
-    match self._typecheckModule(modulePathAbs) { Ok(v) => v, Err(e) => return Err(e) }
+    val mod = match self._typecheckModule(modulePathAbs) { Ok(v) => v, Err(e) => return Err(e) }
 
-    Ok(0)
+    Ok(mod)
   }
 
   func _tokenizeAndParse(self, modulePathAbs: String): Result<ParsedModule, TypecheckerError> {

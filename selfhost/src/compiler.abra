@@ -1,22 +1,186 @@
-import File from "fs"
-import Project, TypedModule from "./typechecker"
-import ModuleBuilder, QbeType, Instruction, Value from "./qbe"
+import "fs" as fs
+import Position from "./lexer"
+import LiteralAstNode from "./parser"
+import Project, TypedModule, TypedAstNode, TypedAstNodeKind from "./typechecker"
+import ModuleBuilder, QbeType, Dest, Instruction, QbeFunction, Value from "./qbe"
+
+type CompilationError {
+  modulePath: String
+  error: CompileError
+
+  func getMessage(self): String {
+    val contents = match fs.readFile(self.modulePath) {
+      Ok(v) => v
+      Err => return "Could not read file '${self.modulePath}'"
+    }
+    self.error.getMessage(self.modulePath, contents)
+  }
+}
+
+type CompileError {
+  position: Position
+  kind: CompileErrorKind
+
+  func getMessage(self, filePath: String, contents: String): String {
+    val lines = ["Error at $filePath:${self.position.line}:${self.position.col}"]
+
+    match self.kind {
+      CompileErrorKind.NotYetImplemented(reason) => {
+        lines.push("Not yet implemented:")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Reason: $reason")
+      }
+      CompileErrorKind.Unreachable(message) => {
+        lines.push("Unreachable code reached")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Internal error: $message")
+      }
+    }
+
+    lines.join("\n")
+  }
+
+  // TODO: This is duplicated from Lexer, pull this out
+  func _getCursorLine(self, position: Position, contents: String, cursorLength = 1): String {
+    if contents.lines()[position.line - 1] |line| {
+      val len = position.col - 1 + cursorLength
+      val cursor = Array.fill(len, " ")
+      for i in range(len - cursorLength, len) {
+        cursor[i] = "^"
+      }
+      "  |  $line\n     ${cursor.join()}"
+    } else {
+      "unreachable"
+    }
+  }
+}
+
+enum CompileErrorKind {
+  NotYetImplemented(reason: String)
+  Unreachable(message: String)
+}
+
+type Context {
+  name: String
+  numLocals: Int = 0
+
+  func nextLocal(self): String {
+    val name = "_${self.numLocals}"
+    self.numLocals += 1
+    name
+  }
+}
+
+func moduleWrapperFnName(module: TypedModule): String = "__module_${module.id}__"
 
 export type Compiler {
   _project: Project
   _builder: ModuleBuilder
+  _currentModule: TypedModule
+  _ctx: Context
+  _currentFn: QbeFunction
 
-  func compile(project: Project): ModuleBuilder {
+  func compile(project: Project, entry: TypedModule): Result<ModuleBuilder, CompilationError> {
     val builder = ModuleBuilder()
-    val compiler = Compiler(_project: project, _builder: builder)
+    val rootCtx = Context(name: "\$root")
 
-    compiler._compileMain()
+    val fn = builder.buildFunction(name: "main", returnType: Some(QbeType.U32), exported: true)
+    fn.meta.push("main entrypoint function")
+    val mainFnBlock = fn.block
 
-    builder
+    val compiler = Compiler(_project: project, _builder: builder, _currentModule: entry, _ctx: rootCtx, _currentFn: fn)
+
+    match compiler._compileModule(entry) { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: entry.name, error: e)) }
+    val modFnName = moduleWrapperFnName(entry)
+    mainFnBlock.append(Instruction.Call(dst: None, fn: "\$$modFnName", args: []))
+
+    mainFnBlock.append(Instruction.Return(Some(Value.Int(0))))
+
+    Ok(builder)
   }
 
-  func _compileMain(self) {
-    val block = self._builder.buildFunction(name: "main", returnType: Some(QbeType.U32), exported: true)
-    block.append(Instruction.Return(Some(Value.Int(0))))
+  func _compileModule(self, module: TypedModule): Result<Int, CompileError> {
+    val modFnName = moduleWrapperFnName(module)
+    self._currentModule = module
+    self._ctx = Context(name: modFnName)
+
+    val fn = self._builder.buildFunction(name: modFnName, returnType: None)
+    fn.meta.push(module.name)
+    self._currentFn = fn
+
+    for node, idx in module.code {
+      val value = match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
+      // TODO: This is just a crude mechanism to verify things are working - if the last statement in the module
+      //       is an expression, pass that to `putchar` to validate output. This is temporary and will go away
+      //       when the `println` function is supported (which is top priority).
+      if idx == module.code.length - 1 {
+        if value |v| {
+          self._currentFn.block.append(Instruction.Call(dst: None, fn: "\$putchar", args: [v]))
+        }
+      }
+    }
+
+    fn.block.append(Instruction.Return(None))
+
+    Ok(0)
+  }
+
+  func _compileStatement(self, node: TypedAstNode): Result<Value?, CompileError> {
+    match node.kind {
+      TypedAstNodeKind.If => todo(node.token.position, "compiling if stmt/expr")
+      TypedAstNodeKind.Match => todo(node.token.position, "compiling match stmt/expr")
+      TypedAstNodeKind.While => todo(node.token.position, "compiling while-loop")
+      TypedAstNodeKind.For => todo(node.token.position, "compiling for-loop")
+      TypedAstNodeKind.BindingDeclaration => todo(node.token.position, "compiling binding declaration")
+      TypedAstNodeKind.FunctionDeclaration => todo(node.token.position, "compiling function declaration")
+      TypedAstNodeKind.TypeDeclaration => todo(node.token.position, "compiling type declaration")
+      TypedAstNodeKind.EnumDeclaration => todo(node.token.position, "compiling enum declaration")
+      TypedAstNodeKind.Break => todo(node.token.position, "compiling break statement")
+      TypedAstNodeKind.Continue => todo(node.token.position, "compiling continue statement")
+      TypedAstNodeKind.Return => todo(node.token.position, "compiling return statement")
+      TypedAstNodeKind.Placeholder => unreachable(node.token.position, "placeholder ast node emitted from typechecker")
+      _ => {
+        val v = match self._compileExpression(node) { Ok(v) => v, Err(e) => return Err(e) }
+        Ok(Some(v))
+      }
+    }
+  }
+
+  func _compileExpression(self, node: TypedAstNode): Result<Value, CompileError> {
+    match node.kind {
+      TypedAstNodeKind.Literal(lit) => {
+        match lit {
+          LiteralAstNode.Int(v) => {
+            val nextLocal = self._ctx.nextLocal()
+            val value = Value.Int(v)
+            val resultTy = value.ty()
+            self._currentFn.block.append(Instruction.Add(Dest(name: "%$nextLocal", ty: resultTy), Value.Int(0), value))
+
+            Ok(Value.Ident(nextLocal, resultTy))
+          }
+          _ => todo(node.token.position, "other literal types")
+        }
+      }
+      TypedAstNodeKind.StringInterpolation => todo(node.token.position, "compiling string interpolation expression")
+      TypedAstNodeKind.Unary => todo(node.token.position, "compiling unary expression")
+      TypedAstNodeKind.Binary => todo(node.token.position, "compiling binary expression")
+      TypedAstNodeKind.Grouped => todo(node.token.position, "compiling grouped expression")
+      TypedAstNodeKind.Identifier => todo(node.token.position, "compiling identifier expression")
+      TypedAstNodeKind.Accessor => todo(node.token.position, "compiling accessor expression")
+      TypedAstNodeKind.Invocation => todo(node.token.position, "compiling invocation expression")
+      TypedAstNodeKind.Array => todo(node.token.position, "compiling array expression")
+      TypedAstNodeKind.Set => todo(node.token.position, "compiling set expression")
+      TypedAstNodeKind.Map => todo(node.token.position, "compiling map expression")
+      TypedAstNodeKind.Tuple => todo(node.token.position, "compiling tuple expression")
+      TypedAstNodeKind.Indexing => todo(node.token.position, "compiling indexing expression")
+      TypedAstNodeKind.Lambda => todo(node.token.position, "compiling lambda expression")
+      TypedAstNodeKind.Assignment => todo(node.token.position, "compiling assignment stmt")
+      TypedAstNodeKind.If => todo(node.token.position, "compiling if stmt/expr")
+      TypedAstNodeKind.Match => todo(node.token.position, "compiling match stmt/expr")
+      _ => unreachable(node.token.position, "node must be a statement")
+    }
   }
 }
+
+func todo<V>(position: Position, message: String): Result<V, CompileError> = Err(CompileError(position: position, kind: CompileErrorKind.NotYetImplemented(message)))
+func unreachable<V>(position: Position, message: String): Result<V, CompileError> = Err(CompileError(position: position, kind: CompileErrorKind.Unreachable(message)))

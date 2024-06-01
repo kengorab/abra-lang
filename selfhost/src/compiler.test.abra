@@ -30,15 +30,21 @@ func main() {
     val project = Project()
     val typechecker = Typechecker(moduleLoader: moduleLoader, project: project)
 
-    match typechecker.typecheckEntrypoint(filePathAbs) {
+    val entryMod = match typechecker.typecheckEntrypoint(filePathAbs) {
       Err(e) => {
         println(e.getMessage())
         return
       }
-      _ => {}
+      Ok(mod) => mod
     }
 
-    val builder = Compiler.compile(project)
+    val builder = match Compiler.compile(project, entryMod) {
+      Ok(v) => v
+      Err(e) => {
+        println(e.getMessage())
+        return
+      }
+    }
 
     // TODO: right now the code assumes that the output file and directory will exist prior to writing
     // to it. Instead, we should create the directory and file if we need to.

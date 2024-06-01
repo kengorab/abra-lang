@@ -3,7 +3,9 @@ set -e # exit on non-zero exit status
 
 mkdir -p ._abra
 touch ./._abra/_main.ssa
+: > ./._abra/_main.ssa # truncate file
 ABRA_HOME=`realpath ../abra_core/std` ../target/debug/abra build -r ./src/compiler.test.abra -- "$1"
+# ABRA_HOME=`realpath ../abra_core/std` ./src/.abra/main "$1"
 ~/Downloads/qbe-1.2/qbe -o ./._abra/_main.s ./._abra/_main.ssa
 clang ./._abra/_main.s -o ./._abra/_main
 ./._abra/_main
