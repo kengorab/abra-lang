@@ -1,8 +1,8 @@
 import "fs" as fs
 import Position from "./lexer"
 import LiteralAstNode from "./parser"
-import Project, TypedModule, TypedAstNode, TypedAstNodeKind from "./typechecker"
-import ModuleBuilder, QbeType, Dest, Instruction, QbeFunction, Value from "./qbe"
+import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Struct, StructOrEnum from "./typechecker"
+import ModuleBuilder, QbeType, AggregateType, Dest, Instruction, QbeFunction, Value from "./qbe"
 
 type CompilationError {
   modulePath: String
@@ -71,7 +71,13 @@ type Context {
   }
 }
 
-func moduleWrapperFnName(module: TypedModule): String = "__module_${module.id}__"
+// Each module's root code is wrapped in a specially-named function; this function name
+// starts with two dots, which is not possible in ordinary Abra source code and will
+// thus introduce no conflicts (qbe doesn't care about function name rules).
+func moduleWrapperFnName(module: TypedModule): String = "..module_${module.id}"
+
+func structTypeName(struct: Struct): String = ".${struct.moduleId}.${struct.label.name}"
+func structInitializerFnName(struct: Struct): String = "${structTypeName(struct)}.init"
 
 export type Compiler {
   _project: Project
@@ -127,18 +133,18 @@ export type Compiler {
 
   func _compileStatement(self, node: TypedAstNode): Result<Value?, CompileError> {
     match node.kind {
-      TypedAstNodeKind.If => todo(node.token.position, "compiling if stmt/expr")
-      TypedAstNodeKind.Match => todo(node.token.position, "compiling match stmt/expr")
-      TypedAstNodeKind.While => todo(node.token.position, "compiling while-loop")
-      TypedAstNodeKind.For => todo(node.token.position, "compiling for-loop")
-      TypedAstNodeKind.BindingDeclaration => todo(node.token.position, "compiling binding declaration")
-      TypedAstNodeKind.FunctionDeclaration => todo(node.token.position, "compiling function declaration")
-      TypedAstNodeKind.TypeDeclaration => todo(node.token.position, "compiling type declaration")
-      TypedAstNodeKind.EnumDeclaration => todo(node.token.position, "compiling enum declaration")
-      TypedAstNodeKind.Break => todo(node.token.position, "compiling break statement")
-      TypedAstNodeKind.Continue => todo(node.token.position, "compiling continue statement")
-      TypedAstNodeKind.Return => todo(node.token.position, "compiling return statement")
-      TypedAstNodeKind.Placeholder => unreachable(node.token.position, "placeholder ast node emitted from typechecker")
+      TypedAstNodeKind.If => todo("compiling if stmt/expr", node.token.position)
+      TypedAstNodeKind.Match => todo("compiling match stmt/expr", node.token.position)
+      TypedAstNodeKind.While => todo("compiling while-loop", node.token.position)
+      TypedAstNodeKind.For => todo("compiling for-loop", node.token.position)
+      TypedAstNodeKind.BindingDeclaration => todo("compiling binding declaration", node.token.position)
+      TypedAstNodeKind.FunctionDeclaration => todo("compiling function declaration", node.token.position)
+      TypedAstNodeKind.TypeDeclaration => todo("compiling type declaration", node.token.position)
+      TypedAstNodeKind.EnumDeclaration => todo("compiling enum declaration", node.token.position)
+      TypedAstNodeKind.Break => todo("compiling break statement", node.token.position)
+      TypedAstNodeKind.Continue => todo("compiling continue statement", node.token.position)
+      TypedAstNodeKind.Return => todo("compiling return statement", node.token.position)
+      TypedAstNodeKind.Placeholder => unreachable("placeholder ast node emitted from typechecker", node.token.position)
       _ => {
         val v = match self._compileExpression(node) { Ok(v) => v, Err(e) => return Err(e) }
         Ok(Some(v))
@@ -158,29 +164,143 @@ export type Compiler {
 
             Ok(Value.Ident(nextLocal, resultTy))
           }
-          _ => todo(node.token.position, "other literal types")
+          LiteralAstNode.String(s) => {
+            val dataPtr = self._builder.buildGlobalString(s)
+            val instancePtr = match self._constructString(dataPtr, Value.Int(s.length)) { Ok(v) => v, Err(e) => return Err(e) }
+            Ok(instancePtr)
+          }
+          _ => todo("other literal types", node.token.position)
         }
       }
-      TypedAstNodeKind.StringInterpolation => todo(node.token.position, "compiling string interpolation expression")
-      TypedAstNodeKind.Unary => todo(node.token.position, "compiling unary expression")
-      TypedAstNodeKind.Binary => todo(node.token.position, "compiling binary expression")
-      TypedAstNodeKind.Grouped => todo(node.token.position, "compiling grouped expression")
-      TypedAstNodeKind.Identifier => todo(node.token.position, "compiling identifier expression")
-      TypedAstNodeKind.Accessor => todo(node.token.position, "compiling accessor expression")
-      TypedAstNodeKind.Invocation => todo(node.token.position, "compiling invocation expression")
-      TypedAstNodeKind.Array => todo(node.token.position, "compiling array expression")
-      TypedAstNodeKind.Set => todo(node.token.position, "compiling set expression")
-      TypedAstNodeKind.Map => todo(node.token.position, "compiling map expression")
-      TypedAstNodeKind.Tuple => todo(node.token.position, "compiling tuple expression")
-      TypedAstNodeKind.Indexing => todo(node.token.position, "compiling indexing expression")
-      TypedAstNodeKind.Lambda => todo(node.token.position, "compiling lambda expression")
-      TypedAstNodeKind.Assignment => todo(node.token.position, "compiling assignment stmt")
-      TypedAstNodeKind.If => todo(node.token.position, "compiling if stmt/expr")
-      TypedAstNodeKind.Match => todo(node.token.position, "compiling match stmt/expr")
-      _ => unreachable(node.token.position, "node must be a statement")
+      TypedAstNodeKind.StringInterpolation => todo("compiling string interpolation expression", node.token.position)
+      TypedAstNodeKind.Unary => todo("compiling unary expression", node.token.position)
+      TypedAstNodeKind.Binary => todo("compiling binary expression", node.token.position)
+      TypedAstNodeKind.Grouped => todo("compiling grouped expression", node.token.position)
+      TypedAstNodeKind.Identifier => todo("compiling identifier expression", node.token.position)
+      TypedAstNodeKind.Accessor => todo("compiling accessor expression", node.token.position)
+      TypedAstNodeKind.Invocation => todo("compiling invocation expression", node.token.position)
+      TypedAstNodeKind.Array => todo("compiling array expression", node.token.position)
+      TypedAstNodeKind.Set => todo("compiling set expression", node.token.position)
+      TypedAstNodeKind.Map => todo("compiling map expression", node.token.position)
+      TypedAstNodeKind.Tuple => todo("compiling tuple expression", node.token.position)
+      TypedAstNodeKind.Indexing => todo("compiling indexing expression", node.token.position)
+      TypedAstNodeKind.Lambda => todo("compiling lambda expression", node.token.position)
+      TypedAstNodeKind.Assignment => todo("compiling assignment stmt", node.token.position)
+      TypedAstNodeKind.If => todo("compiling if stmt/expr", node.token.position)
+      TypedAstNodeKind.Match => todo("compiling match stmt/expr", node.token.position)
+      _ => unreachable("node must be a statement", node.token.position)
     }
+  }
+
+  func _constructString(self, ptrVal: Value, lenVal: Value): Result<Value, CompileError> {
+    val fn = match self._getOrCompileStructInitializer(self._project.preludeStringStruct) { Ok(v) => v, Err(e) => return Err(e) }
+    val structTy = if fn.returnType |ty| ty else return unreachable("initializer functions must have return types specified")
+
+    val nextLocal = self._ctx.nextLocal()
+    self._currentFn.block.append(Instruction.Call(
+      dst: Some(Dest(name: "%$nextLocal", ty: structTy)),
+      fn: "\$${fn.name}",
+      args: [lenVal, ptrVal]
+    ))
+
+    Ok(Value.Ident(nextLocal, QbeType.Pointer))
+  }
+
+  func _getOrAddQbeTypeForType(self, ty: Type): Result<QbeType?, CompileError> {
+    match ty.kind {
+      TypeKind.PrimitiveUnit => Ok(None)
+      TypeKind.PrimitiveInt => Ok(Some(QbeType.U64))
+      TypeKind.PrimitiveFloat => Ok(Some(QbeType.F64))
+      TypeKind.PrimitiveBool => todo("TypeKind.PrimitiveBool")
+      TypeKind.PrimitiveString => todo("TypeKind.PrimitiveString")
+      TypeKind.Never => Ok(None)
+      TypeKind.Any => todo("TypeKind.Any")
+      TypeKind.Generic(name) => unreachable("attempting to resolve qbe type for generic $name")
+      TypeKind.Instance(structOrEnum, generics) => {
+        match structOrEnum {
+          StructOrEnum.Struct(struct) => {
+            // moduleId == 1 -> "_intrinsics" module
+            if struct.moduleId == 1 {
+              if struct.label.name == "Byte" return Ok(Some(QbeType.U8))
+
+              if struct.label.name == "Pointer" {
+                val typeArg = if generics[0] |t| t else return unreachable("Pointer<T> must have 1 type argument")
+                val typeArgQbeType = match self._getOrAddQbeTypeForType(typeArg) { Ok(v) => v, Err(e) => return Err(e) }
+                val ty = if typeArgQbeType |innerTy| {
+                  Some(QbeType.Pointer)
+                } else {
+                  return unreachable("Pointer<T> type arg cannot be resolved")
+                }
+
+                return Ok(ty)
+              }
+            }
+          }
+          _ => {}
+        }
+
+        todo("TypeKind.Instance")
+      }
+      TypeKind.Func(paramTypes, returnType) => todo("TypeKind.Func")
+      TypeKind.Type(type_) => todo("TypeKind.Type")
+      TypeKind.Tuple(types) => todo("TypeKind.Tuple")
+      TypeKind.Hole => unreachable("unexpected hole in emitted typed ast")
+    }
+  }
+
+  func _getOrAddStructAggregateType(self, struct: Struct): Result<AggregateType, CompileError> {
+    val typeName = structTypeName(struct)
+    if self._builder.getAggregateType(typeName) |ty| return Ok(ty)
+
+    val fields: (String, QbeType)[] = []
+    for field in struct.fields {
+      val _fieldTy = match self._getOrAddQbeTypeForType(field.ty) { Ok(v) => v, Err(e) => return Err(e) }
+      val fieldTy = if _fieldTy |fieldTy| fieldTy else return unreachable("unacceptable type for field", field.name.position)
+
+      fields.push((field.name.name, fieldTy))
+    }
+
+    val ty = self._builder.buildAggregateType(name: typeName, fields: fields)
+    // ty.meta.push(struct.name)
+    Ok(ty)
+  }
+
+  func _getOrCompileStructInitializer(self, struct: Struct): Result<QbeFunction, CompileError> {
+    val fnName = structInitializerFnName(struct)
+    if self._builder.getFunction(fnName) |fn| return Ok(fn)
+
+    val structTy = match self._getOrAddStructAggregateType(struct) { Ok(v) => v, Err(e) => return Err(e) }
+    val fn = self._builder.buildFunction(name: fnName, returnType: Some(QbeType.Aggregate(structTy)))
+    for field in struct.fields {
+      val _fieldTy = match self._getOrAddQbeTypeForType(field.ty) { Ok(v) => v, Err(e) => return Err(e) }
+      val fieldTy = if _fieldTy |fieldTy| fieldTy else return unreachable("unacceptable type for field", field.name.position)
+      fn.parameters.push((field.name.name, fieldTy))
+    }
+    // fn.meta.push(module.name)
+
+    val sizeVal = Value.Int(structTy.size())
+    fn.block.append(Instruction.Call(dst: Some(Dest(name: "%mem", ty: QbeType.Aggregate(structTy))), fn: "\$malloc", args: [sizeVal]))
+
+    val memLocal = Value.Ident("mem", QbeType.Aggregate(structTy))
+
+    var offset = 0
+    for field in struct.fields {
+      val _fieldTy = match self._getOrAddQbeTypeForType(field.ty) { Ok(v) => v, Err(e) => return Err(e) }
+      val fieldTy = if _fieldTy |fieldTy| fieldTy else return unreachable("unacceptable type for field", field.name.position)
+      val param = Value.Ident(field.name.name, fieldTy)
+
+      val localName = "mem_offset_${field.name.name}"
+      fn.block.append(Instruction.Add(dst: Dest(name: "%$localName", ty: QbeType.Pointer), r: Value.Int(offset), l: memLocal))
+      val memCursorLocal = Value.Ident(localName, QbeType.Pointer)
+      fn.block.append(Instruction.StoreL(value: param, mem: memCursorLocal))
+      offset += fieldTy.size()
+    }
+
+    fn.block.append(Instruction.Return(Some(memLocal)))
+
+    Ok(fn)
   }
 }
 
-func todo<V>(position: Position, message: String): Result<V, CompileError> = Err(CompileError(position: position, kind: CompileErrorKind.NotYetImplemented(message)))
-func unreachable<V>(position: Position, message: String): Result<V, CompileError> = Err(CompileError(position: position, kind: CompileErrorKind.Unreachable(message)))
+func todo<V>(message: String, position = Position(line: 0, col: 0)): Result<V, CompileError> = Err(CompileError(position: position, kind: CompileErrorKind.NotYetImplemented(message)))
+func unreachable<V>(message: String, position = Position(line: 0, col: 0)): Result<V, CompileError> = Err(CompileError(position: position, kind: CompileErrorKind.Unreachable(message)))

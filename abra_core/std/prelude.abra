@@ -1008,7 +1008,12 @@ type Map<K, V> {
       if self._entries[i] |bucket| {
         var cursor: MapEntry<K, V>? = bucket
         while cursor |cur| {
-          val item = "${cur.key}: ${cur.value}"
+          // TODO: there was a bug here somehow - previously it was `"${cur.key}: ${cur.value}"`, which meant
+          //       that each item in the string interpolation was being cast to an instance of Any, which would
+          //       then have `toString` called on it after the fact. I don't know what the issue was but there
+          //       was some problem with llvm generation (likely generic resolution) which led to a bug. Explicitly
+          //       calling `toString()` here seems to fix it.
+          val item = "${cur.key}: ${cur.value.toString()}"
           reprs.push(item)
           cursor = cur.next
         }
