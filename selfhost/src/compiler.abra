@@ -2,7 +2,7 @@ import "fs" as fs
 import Position from "./lexer"
 import LiteralAstNode from "./parser"
 import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind from "./typechecker"
-import ModuleBuilder, QbeType, AggregateType, Dest, Instruction, QbeFunction, Value from "./qbe"
+import ModuleBuilder, QbeType, Dest, Instruction, QbeFunction, Value from "./qbe"
 
 type CompilationError {
   modulePath: String
@@ -35,6 +35,11 @@ type CompileError {
         lines.push(self._getCursorLine(self.position, contents))
         lines.push("Internal error: $message")
       }
+      CompileErrorKind.QbeError(message) => {
+        // todo: somehow thread the `node` which generated the error through to the error message
+        lines.push("Encountered error while generating qbe code:")
+        lines.push(message)
+      }
     }
 
     lines.join("\n")
@@ -58,7 +63,10 @@ type CompileError {
 enum CompileErrorKind {
   NotYetImplemented(reason: String)
   Unreachable(message: String)
+  QbeError(message: String)
 }
+
+func qbeError<V>(message: String): Result<V, CompileError> = Err(CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(message)))
 
 type Context {
   name: String
@@ -123,16 +131,15 @@ export type Compiler {
 
     val compiler = Compiler(_project: project, _builder: builder, _currentModule: entry, _ctx: rootCtx, _currentFn: fn)
 
-    match compiler._compileModule(entry) { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: entry.name, error: e)) }
+    val moduleFn = match compiler._compileModule(entry) { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: entry.name, error: e)) }
     val modFnName = moduleWrapperFnName(entry)
-    mainFnBlock.append(Instruction.Call(dst: None, fn: "\$$modFnName", args: []))
-
-    mainFnBlock.append(Instruction.Return(Some(Value.Int(0))))
+    mainFnBlock.buildVoidCall(moduleFn, [])
+    mainFnBlock.buildReturn(Some(Value.Int(0)))
 
     Ok(builder)
   }
 
-  func _compileModule(self, module: TypedModule): Result<Int, CompileError> {
+  func _compileModule(self, module: TypedModule): Result<QbeFunction, CompileError> {
     val modFnName = moduleWrapperFnName(module)
     self._currentModule = module
     self._ctx = Context(name: modFnName)
@@ -140,6 +147,8 @@ export type Compiler {
     val fn = self._builder.buildFunction(name: modFnName, returnType: None)
     fn.meta.push(module.name)
     self._currentFn = fn
+
+    val printf = QbeFunction(name: "printf", variadicIdx: Some(1))
 
     for node, idx in module.code {
       val value = match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
@@ -150,17 +159,18 @@ export type Compiler {
         if value |v| {
           val dataPtr = self._builder.buildGlobalString("%s\\n")
           val tostringMethod = match self._getOrCompileToStringMethod(node.ty) { Ok(v) => v, Err(e) => return Err(e) }
-          self._currentFn.block.append(Instruction.Call(dst: Some(Dest(name: "%_tostring_repr", ty: QbeType.Pointer)), fn: "\$${tostringMethod.name}", args: [v]))
-          self._currentFn.block.append(Instruction.Add(dst: Dest(name: "%_repr_chars_ptr", ty: QbeType.Pointer), l: Value.Int(8), r: Value.Ident("_tostring_repr", QbeType.Pointer)))
-          self._currentFn.block.append(Instruction.LoadL(dst: Dest(name: "%_repr_chars", ty: QbeType.Pointer), mem: Value.Ident("_repr_chars_ptr", QbeType.Pointer)))
-          self._currentFn.block.append(Instruction.CallVarargs(dst: None, fn: "\$printf", varargsIdx: 1, args: [dataPtr, Value.Ident("_repr_chars", QbeType.Pointer)]))
+
+          val tostringRepr = match self._currentFn.block.buildCall(tostringMethod, [v], "_to_string_repr") { Ok(v) => v, Err(e) => return qbeError(e) }
+          val reprCharsPtr = match self._currentFn.block.buildAdd(Value.Int(8), tostringRepr, "_repr_chars_ptr") { Ok(v) => v, Err(e) => return qbeError(e) }
+          val reprChars = self._currentFn.block.buildLoadL(reprCharsPtr, "_repr_chars")
+          self._currentFn.block.buildVoidCall(printf, [dataPtr, Value.Ident("_repr_chars", QbeType.Pointer)])
         }
       }
     }
 
-    fn.block.append(Instruction.Return(None))
+    fn.block.buildReturn()
 
-    Ok(0)
+    Ok(fn)
   }
 
   func _compileStatement(self, node: TypedAstNode): Result<Value?, CompileError> {
@@ -189,12 +199,11 @@ export type Compiler {
       TypedAstNodeKind.Literal(lit) => {
         match lit {
           LiteralAstNode.Int(v) => {
+            // todo: generate nextLocal within instruction builder methods and make parameter optional
             val nextLocal = self._ctx.nextLocal()
-            val value = Value.Int(v)
-            val resultTy = value.ty()
-            self._currentFn.block.append(Instruction.Add(Dest(name: "%$nextLocal", ty: resultTy), Value.Int(0), value))
+            val res = match self._currentFn.block.buildAdd(Value.Int(0), Value.Int(v), nextLocal) { Ok(v) => v, Err(e) => return qbeError(e) }
 
-            Ok(Value.Ident(nextLocal, resultTy))
+            Ok(res)
           }
           LiteralAstNode.String(s) => {
             val dataPtr = self._builder.buildGlobalString(s)
@@ -228,13 +237,9 @@ export type Compiler {
             }
 
             val nextLocal = self._ctx.nextLocal()
-            self._currentFn.block.append(Instruction.Call(
-              dst: Some(Dest(name: "%$nextLocal", ty: QbeType.Pointer)),
-              fn: "\$${fnVal.name}",
-              args: args,
-            ))
+            val res = match self._currentFn.block.buildCall(fnVal, args, nextLocal) { Ok(v) => v, Err(e) => return qbeError(e) }
 
-            Ok(Value.Ident(nextLocal, QbeType.Pointer))
+            Ok(res)
           }
           _ => todo("non-method invokees", node.token.position)
         }
@@ -253,22 +258,15 @@ export type Compiler {
   }
 
   func _constructString(self, ptrVal: Value, lenVal: Value): Result<Value, CompileError> {
-    val fn = match self._getOrCompileStructInitializer(self._project.preludeStringStruct) { Ok(v) => v, Err(e) => return Err(e) }
-    val structTy = if fn.returnType |ty| ty else return unreachable("initializer functions must have return types specified")
+    val fnVal = match self._getOrCompileStructInitializer(self._project.preludeStringStruct) { Ok(v) => v, Err(e) => return Err(e) }
+    val structTy = if fnVal.returnType |ty| ty else return unreachable("initializer functions must have return types specified")
 
     val nextLocal = self._ctx.nextLocal()
-    self._currentFn.block.append(Instruction.Call(
-      dst: Some(Dest(name: "%$nextLocal", ty: structTy)),
-      fn: "\$${fn.name}",
-      args: [lenVal, ptrVal]
-    ))
-
-    val _stringTypeQbe = match self._getOrAddQbeTypeForType(Type(kind: TypeKind.PrimitiveString)) { Ok(v) => v, Err(e) => return Err(e) }
-    val stringTypeQbe = if _stringTypeQbe |ty| ty else return unreachable("string qbe type should exist")
-    Ok(Value.Ident(nextLocal, stringTypeQbe))
+    val res = match self._currentFn.block.buildCall(fnVal, [lenVal, ptrVal], nextLocal) { Ok(v) => v, Err(e) => return qbeError(e) }
+    Ok(res)
   }
 
-  func _getOrAddQbeTypeForType(self, ty: Type): Result<QbeType?, CompileError> {
+  func _getQbeTypeForType(self, ty: Type): Result<QbeType?, CompileError> {
     match ty.kind {
       TypeKind.PrimitiveUnit => Ok(None)
       TypeKind.PrimitiveInt => Ok(Some(QbeType.U64))
@@ -287,7 +285,7 @@ export type Compiler {
 
               if struct.label.name == "Pointer" {
                 val typeArg = if generics[0] |t| t else return unreachable("Pointer<T> must have 1 type argument")
-                val typeArgQbeType = match self._getOrAddQbeTypeForType(typeArg) { Ok(v) => v, Err(e) => return Err(e) }
+                val typeArgQbeType = match self._getQbeTypeForType(typeArg) { Ok(v) => v, Err(e) => return Err(e) }
                 val ty = if typeArgQbeType |innerTy| {
                   Some(QbeType.Pointer)
                 } else {
@@ -310,6 +308,11 @@ export type Compiler {
     }
   }
 
+  func _getQbeTypeForTypeExpect(self, ty: Type, reason: String, position: Position? = None): Result<QbeType, CompileError> {
+    val _ty = match self._getQbeTypeForType(ty) { Ok(v) => v, Err(e) => return Err(e) }
+    if _ty |ty| Ok(ty) else if position |pos| unreachable(reason, pos) else unreachable(reason)
+  }
+
   func _getOrCompileStructInitializer(self, struct: Struct): Result<QbeFunction, CompileError> {
     val fnName = structInitializerFnName(struct)
     if self._builder.getFunction(fnName) |fn| return Ok(fn)
@@ -318,33 +321,30 @@ export type Compiler {
     fn.meta.push("type ${struct.label.name} {")
     var size = 0
     for field in struct.fields {
-      val _fieldTy = match self._getOrAddQbeTypeForType(field.ty) { Ok(v) => v, Err(e) => return Err(e) }
-      val fieldTy = if _fieldTy |fieldTy| fieldTy else return unreachable("unacceptable type for field", field.name.position)
+      val fieldTy = match self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position)) { Ok(v) => v, Err(e) => return Err(e) }
       size += fieldTy.size()
       fn.parameters.push((field.name.name, fieldTy))
       fn.meta.push("  ${field.name.name}: ${field.ty.repr()}")
     }
     fn.meta.push("}")
 
-    val sizeVal = Value.Int(size)
-    fn.block.append(Instruction.Call(dst: Some(Dest(name: "%mem", ty: QbeType.Pointer)), fn: "\$malloc", args: [sizeVal]))
-
-    val memLocal = Value.Ident("mem", QbeType.Pointer)
+    // todo: cache this function in the type so it's not created every time
+    val malloc = QbeFunction(name: "malloc", returnType: Some(QbeType.Pointer))
+    val memLocal = match fn.block.buildCall(malloc, [Value.Int(size)], "mem") { Ok(v) => v, Err(e) => return qbeError(e) }
 
     var offset = 0
     for field in struct.fields {
-      val _fieldTy = match self._getOrAddQbeTypeForType(field.ty) { Ok(v) => v, Err(e) => return Err(e) }
-      val fieldTy = if _fieldTy |fieldTy| fieldTy else return unreachable("unacceptable type for field", field.name.position)
+      val fieldTy = match self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position)) { Ok(v) => v, Err(e) => return Err(e) }
       val param = Value.Ident(field.name.name, fieldTy)
 
       val localName = "mem_offset_${field.name.name}"
-      fn.block.append(Instruction.Add(dst: Dest(name: "%$localName", ty: QbeType.Pointer), r: Value.Int(offset), l: memLocal))
-      val memCursorLocal = Value.Ident(localName, QbeType.Pointer)
-      fn.block.append(Instruction.StoreL(value: param, mem: memCursorLocal))
+      val memCursorLocal = match fn.block.buildAdd(Value.Int(offset), memLocal, localName) { Ok(v) => v, Err(e) => return qbeError(e) }
+      fn.block.buildStoreL(param, memCursorLocal)
+
       offset += fieldTy.size()
     }
 
-    fn.block.append(Instruction.Return(Some(memLocal)))
+    fn.block.buildReturn(Some(memLocal))
 
     Ok(fn)
   }
@@ -373,17 +373,15 @@ export type Compiler {
     }
     if self._builder.getFunction(methodName) |fn| return Ok(fn)
 
-    val returnTypeQbe = match self._getOrAddQbeTypeForType(fn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
+    val returnTypeQbe = match self._getQbeTypeForType(fn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
     val fnVal = self._builder.buildFunction(name: methodName, returnType: returnTypeQbe)
 
-    val _selfTyQbe = match self._getOrAddQbeTypeForType(selfType) { Ok(v) => v, Err(e) => return Err(e) }
-    val selfTyQbe = if _selfTyQbe |selfTyQbe| selfTyQbe else return unreachable("unacceptable type for self")
+    val selfTyQbe = match self._getQbeTypeForTypeExpect(selfType, "unacceptable type for self") { Ok(v) => v, Err(e) => return Err(e) }
     fnVal.parameters.push(("self", selfTyQbe))
     val argsMeta = ["self"]
 
     for param in fn.params {
-      val _paramTy = match self._getOrAddQbeTypeForType(param.ty) { Ok(v) => v, Err(e) => return Err(e) }
-      val paramTy = if _paramTy |paramTy| paramTy else return unreachable("unacceptable type for param", param.label.position)
+      val paramTy = match self._getQbeTypeForTypeExpect(param.ty, "unacceptable type for param", Some(param.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
       fnVal.parameters.push((param.label.name, paramTy))
 
       argsMeta.push("${param.label.name}: ${param.ty.repr()}")
@@ -426,8 +424,7 @@ export type Compiler {
   }
 
   func _getOrCompileStringToStringMethod(self): Result<QbeFunction, CompileError> {
-    val _stringTypeQbe = match self._getOrAddQbeTypeForType(Type(kind: TypeKind.PrimitiveString)) { Ok(v) => v, Err(e) => return Err(e) }
-    val stringTypeQbe = if _stringTypeQbe |ty| ty else return unreachable("string qbe type should exist")
+    val stringTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveString), "string qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
 
     val typeName = structTypeName(self._project.preludeStringStruct)
     val methodName = "$typeName..toString"
@@ -437,7 +434,8 @@ export type Compiler {
     fnVal.meta.push("String#toString(self): String")
     fnVal.parameters.push(("self", stringTypeQbe))
 
-    fnVal.block.append(Instruction.Return(Some(Value.Ident("self", stringTypeQbe))))
+    // todo: some notion of fnVal.param(0) ?
+    fnVal.block.buildReturn(Some(Value.Ident("self", stringTypeQbe)))
 
     Ok(fnVal)
   }

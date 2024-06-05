@@ -1,19 +1,12 @@
 import File from "fs"
 
 export type ModuleBuilder {
-  _types: AggregateType[] = []
-  _typesByName: Map<String, AggregateType> = {}
   _data: QbeData[] = []
   _globalStrs: Map<String, Value> = {}
   _functions: QbeFunction[] = []
   _functionsByName: Map<String, QbeFunction> = {}
 
   func writeToFile(self, file: File) {
-    for ty, idx in self._types {
-      ty.encode(file)
-      file.writeln()
-    }
-
     for data, idx in self._data {
       data.encode(file)
       file.writeln()
@@ -26,17 +19,6 @@ export type ModuleBuilder {
     }
   }
 
-  func getAggregateType(self, name: String): AggregateType? = self._typesByName[name]
-
-  func buildAggregateType(self, name: String, fields: (String, QbeType)[]): AggregateType {
-    if self._typesByName[name] |ty| return ty
-
-    val t = AggregateType(name: name, fields: fields.map(_p => TypeField(name: _p[0], ty: _p[1])))
-    self._types.push(t)
-    self._typesByName[name] = t
-    t
-  }
-
   func getFunction(self, name: String): QbeFunction? = self._functionsByName[name]
 
   func buildFunction(self, name: String, returnType: QbeType?, exported = false): QbeFunction {
@@ -44,7 +26,7 @@ export type ModuleBuilder {
 
     val block = Block(body: [], labels: { (0): ["start"] })
 
-    val fn = QbeFunction(exported: exported, name: name, returnType: returnType, parameters: [], block: block, meta: [])
+    val fn = QbeFunction(exported: exported, name: name, returnType: returnType, parameters: [], block: block, variadicIdx: None, meta: [])
     self._functions.push(fn)
     self._functionsByName[name] = fn
     fn
@@ -118,6 +100,61 @@ export type Block {
   func append(self, instr: Instruction) {
     self.body.push(instr)
   }
+
+  // instruction builders
+  func buildAdd(self, left: Value, right: Value, dst: String): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'add' instruction: ${lty.repr()}, ${rty.repr()}") else lty
+
+    val local = Value.Ident(dst, resTy)
+    val dstName = "%$dst"
+    self.append(Instruction.Add(dst: Dest(name: dstName, ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
+  func buildLoadL(self, mem: Value, dst: String): Value {
+    val dstName = "%$dst"
+    self.append(Instruction.LoadL(dst: Dest(name: dstName, ty: QbeType.U64), mem: mem))
+
+    Value.Ident(dst, QbeType.U64)
+  }
+
+  func buildStoreL(self, value: Value, mem: Value) {
+    self.append(Instruction.StoreL(value: value, mem: mem))
+  }
+
+  func buildCall(self, fnValue: QbeFunction, arguments: Value[], dst: String): Result<Value, String> {
+    val dstName = "%$dst"
+    val fnReturnType = if fnValue.returnType |ty| ty else {
+      return Err("function value '${fnValue.name}' has no return type; cannot store result into destination '$dstName'")
+    }
+
+    val fnName = "\$${fnValue.name}"
+    val local = Value.Ident(dst, fnReturnType)
+    if fnValue.variadicIdx |idx| {
+      self.append(Instruction.CallVarargs(dst: Some(Dest(name: dstName, ty: fnReturnType)), fn: fnName, varargsIdx: idx, args: arguments))
+    } else {
+      self.append(Instruction.Call(dst: Some(Dest(name: dstName, ty: fnReturnType)), fn: fnName, args: arguments))
+    }
+
+    Ok(local)
+  }
+
+  func buildVoidCall(self, fnValue: QbeFunction, arguments: Value[]) {
+    val fnName = "\$${fnValue.name}"
+    if fnValue.variadicIdx |idx| {
+      self.append(Instruction.CallVarargs(dst: None, fn: fnName, varargsIdx: idx, args: arguments))
+    } else {
+      self.append(Instruction.Call(dst: None, fn: fnName, args: arguments))
+    }
+  }
+
+  func buildReturn(self, value: Value? = None) {
+    self.append(Instruction.Return(value))
+  }
 }
 
 export enum QbeType {
@@ -128,7 +165,6 @@ export enum QbeType {
   Pointer // 'l'
   F32     // 's'
   F64     // 'd'
-  // Aggregate(spec: AggregateType)
 
   func size(self): Int {
     match self {
@@ -139,12 +175,11 @@ export enum QbeType {
       QbeType.Pointer => 8
       QbeType.F32 => 4
       QbeType.F64 => 8
-      // QbeType.Aggregate(agg) => agg.size()
     }
   }
 
-  func encode(self, file: File) {
-    val s = match self {
+  func repr(self): String {
+    match self {
       QbeType.U8 => "b"
       QbeType.U16 => "h"
       QbeType.U32 => "w"
@@ -152,38 +187,11 @@ export enum QbeType {
       QbeType.Pointer => "l"
       QbeType.F32 => "s"
       QbeType.F64 => "d"
-      // QbeType.Aggregate(spec) => ":${spec.name}"
     }
-    file.write(s)
-  }
-}
-
-type TypeField {
-  name: String
-  ty: QbeType
-}
-
-export type AggregateType {
-  name: String
-  fields: TypeField[]
-
-  func size(self): Int {
-    var res = 0
-    for field in self.fields {
-      res += field.ty.size()
-    }
-    res
   }
 
   func encode(self, file: File) {
-    file.write("type :${self.name} = { ")
-    for field, idx in self.fields {
-      field.ty.encode(file)
-      if idx != self.fields.length - 1 {
-        file.write(", ")
-      }
-    }
-    file.writeln(" }")
+    file.write(self.repr())
   }
 }
 
@@ -192,7 +200,8 @@ export type QbeFunction {
   name: String
   returnType: QbeType? = None
   parameters: (String, QbeType)[] = []
-  block: Block
+  block: Block = Block()
+  variadicIdx: Int? = None
   meta: String[] = []
 
   func encode(self, file: File) {
