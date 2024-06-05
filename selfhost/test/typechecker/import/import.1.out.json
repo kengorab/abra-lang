@@ -123,13 +123,7 @@
             "node": {
               "kind": "invocation",
               "invokee": {
-                "token": {
-                  "position": [4, 9],
-                  "kind": {
-                    "name": "Ident",
-                    "value": "add"
-                  }
-                },
+                "function": "add",
                 "type": {
                   "kind": "function",
                   "parameters": [
@@ -152,10 +146,6 @@
                     "kind": "primitive",
                     "primitive": "Int"
                   }
-                },
-                "node": {
-                  "kind": "identifier",
-                  "name": "add"
                 }
               },
               "arguments": [

@@ -162,13 +162,7 @@
           "node": {
             "kind": "invocation",
             "invokee": {
-              "token": {
-                "position": [5, 14],
-                "kind": {
-                  "name": "Ident",
-                  "value": "foo"
-                }
-              },
+              "function": "foo",
               "type": {
                 "kind": "function",
                 "parameters": [
@@ -198,10 +192,6 @@
                   "kind": "primitive",
                   "primitive": "Int"
                 }
-              },
-              "node": {
-                "kind": "identifier",
-                "name": "foo"
               }
             },
             "arguments": [
@@ -286,13 +276,7 @@
           "node": {
             "kind": "invocation",
             "invokee": {
-              "token": {
-                "position": [8, 14],
-                "kind": {
-                  "name": "Ident",
-                  "value": "foo"
-                }
-              },
+              "function": "foo",
               "type": {
                 "kind": "function",
                 "parameters": [
@@ -322,10 +306,6 @@
                   "kind": "primitive",
                   "primitive": "Int"
                 }
-              },
-              "node": {
-                "kind": "identifier",
-                "name": "foo"
               }
             },
             "arguments": [
@@ -426,13 +406,7 @@
           "node": {
             "kind": "invocation",
             "invokee": {
-              "token": {
-                "position": [11, 14],
-                "kind": {
-                  "name": "Ident",
-                  "value": "foo"
-                }
-              },
+              "function": "foo",
               "type": {
                 "kind": "function",
                 "parameters": [
@@ -462,10 +436,6 @@
                   "kind": "primitive",
                   "primitive": "Int"
                 }
-              },
-              "node": {
-                "kind": "identifier",
-                "name": "foo"
               }
             },
             "arguments": [

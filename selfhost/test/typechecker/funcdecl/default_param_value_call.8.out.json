@@ -72,13 +72,7 @@
                 "node": {
                   "kind": "invocation",
                   "invokee": {
-                    "token": {
-                      "position": [2, 22],
-                      "kind": {
-                        "name": "Ident",
-                        "value": "foo"
-                      }
-                    },
+                    "function": "foo",
                     "type": {
                       "kind": "function",
                       "parameters": [
@@ -101,10 +95,6 @@
                         "kind": "primitive",
                         "primitive": "Int"
                       }
-                    },
-                    "node": {
-                      "kind": "identifier",
-                      "name": "foo"
                     }
                   },
                   "arguments": [
@@ -244,13 +234,7 @@
                 "node": {
                   "kind": "invocation",
                   "invokee": {
-                    "token": {
-                      "position": [5, 22],
-                      "kind": {
-                        "name": "Ident",
-                        "value": "bar"
-                      }
-                    },
+                    "function": "bar",
                     "type": {
                       "kind": "function",
                       "parameters": [
@@ -266,10 +250,6 @@
                         "kind": "primitive",
                         "primitive": "Int"
                       }
-                    },
-                    "node": {
-                      "kind": "identifier",
-                      "name": "bar"
                     }
                   },
                   "arguments": [
@@ -375,13 +355,7 @@
                 "node": {
                   "kind": "invocation",
                   "invokee": {
-                    "token": {
-                      "position": [6, 14],
-                      "kind": {
-                        "name": "Ident",
-                        "value": "baz"
-                      }
-                    },
+                    "function": "baz",
                     "type": {
                       "kind": "function",
                       "parameters": [
@@ -404,10 +378,6 @@
                         "kind": "primitive",
                         "primitive": "Int"
                       }
-                    },
-                    "node": {
-                      "kind": "identifier",
-                      "name": "baz"
                     }
                   },
                   "arguments": [

@@ -192,7 +192,11 @@
                   "middle": [],
                   "tail": {
                     "kind": "field",
-                    "name": "int"
+                    "name": "int",
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
                   }
                 }
               },

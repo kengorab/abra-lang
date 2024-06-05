@@ -473,7 +473,11 @@
                 "middle": [],
                 "tail": {
                   "kind": "field",
-                  "name": "a"
+                  "name": "a",
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
                 }
               }
             },
@@ -520,7 +524,11 @@
           "middle": [],
           "tail": {
             "kind": "field",
-            "name": "a"
+            "name": "a",
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
           }
         }
       }

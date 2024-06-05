@@ -473,7 +473,11 @@
                 "middle": [],
                 "tail": {
                   "kind": "field",
-                  "name": "a"
+                  "name": "a",
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Float"
+                  }
                 }
               }
             },
@@ -520,7 +524,11 @@
           "middle": [],
           "tail": {
             "kind": "field",
-            "name": "a"
+            "name": "a",
+            "type": {
+              "kind": "primitive",
+              "primitive": "Float"
+            }
           }
         }
       }
@@ -586,7 +594,11 @@
                 "middle": [],
                 "tail": {
                   "kind": "field",
-                  "name": "a"
+                  "name": "a",
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Float"
+                  }
                 }
               }
             },
@@ -633,7 +645,11 @@
           "middle": [],
           "tail": {
             "kind": "field",
-            "name": "a"
+            "name": "a",
+            "type": {
+              "kind": "primitive",
+              "primitive": "Float"
+            }
           }
         }
       }

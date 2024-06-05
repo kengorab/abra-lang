@@ -315,12 +315,21 @@
             "middle": [
               {
                 "kind": "field",
-                "name": "bar"
+                "name": "bar",
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 3, "name": "Bar" },
+                  "typeParams": []
+                }
               }
             ],
             "tail": {
               "kind": "field",
-              "name": "str"
+              "name": "str",
+              "type": {
+                "kind": "primitive",
+                "primitive": "String"
+              }
             }
           }
         }

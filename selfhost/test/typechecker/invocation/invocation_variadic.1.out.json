@@ -149,13 +149,7 @@
       "node": {
         "kind": "invocation",
         "invokee": {
-          "token": {
-            "position": [7, 1],
-            "kind": {
-              "name": "Ident",
-              "value": "foo"
-            }
-          },
+          "function": "foo",
           "type": {
             "kind": "function",
             "parameters": [
@@ -178,10 +172,6 @@
               "kind": "primitive",
               "primitive": "Unit"
             }
-          },
-          "node": {
-            "kind": "identifier",
-            "name": "foo"
           }
         },
         "arguments": [
@@ -276,13 +266,7 @@
       "node": {
         "kind": "invocation",
         "invokee": {
-          "token": {
-            "position": [8, 1],
-            "kind": {
-              "name": "Ident",
-              "value": "foo"
-            }
-          },
+          "function": "foo",
           "type": {
             "kind": "function",
             "parameters": [
@@ -305,10 +289,6 @@
               "kind": "primitive",
               "primitive": "Unit"
             }
-          },
-          "node": {
-            "kind": "identifier",
-            "name": "foo"
           }
         },
         "arguments": [
@@ -368,13 +348,7 @@
       "node": {
         "kind": "invocation",
         "invokee": {
-          "token": {
-            "position": [11, 1],
-            "kind": {
-              "name": "Ident",
-              "value": "foo"
-            }
-          },
+          "function": "foo",
           "type": {
             "kind": "function",
             "parameters": [
@@ -397,10 +371,6 @@
               "kind": "primitive",
               "primitive": "Unit"
             }
-          },
-          "node": {
-            "kind": "identifier",
-            "name": "foo"
           }
         },
         "arguments": [
@@ -460,13 +430,7 @@
       "node": {
         "kind": "invocation",
         "invokee": {
-          "token": {
-            "position": [12, 1],
-            "kind": {
-              "name": "Ident",
-              "value": "foo"
-            }
-          },
+          "function": "foo",
           "type": {
             "kind": "function",
             "parameters": [
@@ -489,10 +453,6 @@
               "kind": "primitive",
               "primitive": "Unit"
             }
-          },
-          "node": {
-            "kind": "identifier",
-            "name": "foo"
           }
         },
         "arguments": [
@@ -570,13 +530,7 @@
       "node": {
         "kind": "invocation",
         "invokee": {
-          "token": {
-            "position": [13, 1],
-            "kind": {
-              "name": "Ident",
-              "value": "foo"
-            }
-          },
+          "function": "foo",
           "type": {
             "kind": "function",
             "parameters": [
@@ -599,10 +553,6 @@
               "kind": "primitive",
               "primitive": "Unit"
             }
-          },
-          "node": {
-            "kind": "identifier",
-            "name": "foo"
           }
         },
         "arguments": [

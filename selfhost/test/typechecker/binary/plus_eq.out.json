@@ -698,7 +698,11 @@
                 "middle": [],
                 "tail": {
                   "kind": "field",
-                  "name": "a"
+                  "name": "a",
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
                 }
               }
             },
@@ -745,7 +749,11 @@
           "middle": [],
           "tail": {
             "kind": "field",
-            "name": "a"
+            "name": "a",
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
           }
         }
       }
@@ -811,7 +819,11 @@
                 "middle": [],
                 "tail": {
                   "kind": "field",
-                  "name": "s"
+                  "name": "s",
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  }
                 }
               }
             },
@@ -858,7 +870,11 @@
           "middle": [],
           "tail": {
             "kind": "field",
-            "name": "s"
+            "name": "s",
+            "type": {
+              "kind": "primitive",
+              "primitive": "String"
+            }
           }
         }
       }
@@ -924,7 +940,11 @@
                 "middle": [],
                 "tail": {
                   "kind": "field",
-                  "name": "s"
+                  "name": "s",
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  }
                 }
               }
             },
@@ -971,7 +991,11 @@
           "middle": [],
           "tail": {
             "kind": "field",
-            "name": "s"
+            "name": "s",
+            "type": {
+              "kind": "primitive",
+              "primitive": "String"
+            }
           }
         }
       }

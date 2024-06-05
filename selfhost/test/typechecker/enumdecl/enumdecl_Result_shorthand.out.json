@@ -108,13 +108,7 @@
                     "node": {
                       "kind": "invocation",
                       "invokee": {
-                        "token": {
-                          "position": [2, 11],
-                          "kind": {
-                            "name": "Ident",
-                            "value": "Ok"
-                          }
-                        },
+                        "function": "Ok",
                         "type": {
                           "kind": "function",
                           "parameters": [
@@ -140,10 +134,6 @@
                               }
                             ]
                           }
-                        },
-                        "node": {
-                          "kind": "identifier",
-                          "name": "Ok"
                         }
                       },
                       "arguments": [
@@ -193,13 +183,7 @@
                     "node": {
                       "kind": "invocation",
                       "invokee": {
-                        "token": {
-                          "position": [2, 24],
-                          "kind": {
-                            "name": "Ident",
-                            "value": "Err"
-                          }
-                        },
+                        "function": "Err",
                         "type": {
                           "kind": "function",
                           "parameters": [
@@ -225,10 +209,6 @@
                               }
                             ]
                           }
-                        },
-                        "node": {
-                          "kind": "identifier",
-                          "name": "Err"
                         }
                       },
                       "arguments": [
@@ -367,13 +347,7 @@
                         "node": {
                           "kind": "invocation",
                           "invokee": {
-                            "token": {
-                              "position": [6, 19],
-                              "kind": {
-                                "name": "Ident",
-                                "value": "Err"
-                              }
-                            },
+                            "function": "Err",
                             "type": {
                               "kind": "function",
                               "parameters": [
@@ -399,10 +373,6 @@
                                   }
                                 ]
                               }
-                            },
-                            "node": {
-                              "kind": "identifier",
-                              "name": "Err"
                             }
                           },
                           "arguments": [
@@ -500,13 +470,7 @@
                         "node": {
                           "kind": "invocation",
                           "invokee": {
-                            "token": {
-                              "position": [9, 12],
-                              "kind": {
-                                "name": "Ident",
-                                "value": "Ok"
-                              }
-                            },
+                            "function": "Ok",
                             "type": {
                               "kind": "function",
                               "parameters": [
@@ -532,10 +496,6 @@
                                   }
                                 ]
                               }
-                            },
-                            "node": {
-                              "kind": "identifier",
-                              "name": "Ok"
                             }
                           },
                           "arguments": [
@@ -599,13 +559,7 @@
                         "node": {
                           "kind": "invocation",
                           "invokee": {
-                            "token": {
-                              "position": [11, 12],
-                              "kind": {
-                                "name": "Ident",
-                                "value": "Err"
-                              }
-                            },
+                            "function": "Err",
                             "type": {
                               "kind": "function",
                               "parameters": [
@@ -631,10 +585,6 @@
                                   }
                                 ]
                               }
-                            },
-                            "node": {
-                              "kind": "identifier",
-                              "name": "Err"
                             }
                           },
                           "arguments": [

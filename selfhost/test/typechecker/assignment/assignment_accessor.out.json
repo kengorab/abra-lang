@@ -308,7 +308,11 @@
           "middle": [],
           "tail": {
             "kind": "field",
-            "name": "a"
+            "name": "a",
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
           }
         }
       }
@@ -372,7 +376,17 @@
           "middle": [],
           "tail": {
             "kind": "field",
-            "name": "b"
+            "name": "b",
+            "type": {
+              "kind": "instance",
+              "struct": { "moduleId": 0, "name": "Array" },
+              "typeParams": [
+                {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            }
           }
         }
       }

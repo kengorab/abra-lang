@@ -282,12 +282,7 @@
           "node": {
             "kind": "invocation",
             "invokee": {
-              "token": {
-                "position": [8, 12],
-                "kind": {
-                  "name": "Dot"
-                }
-              },
+              "method": "foo",
               "type": {
                 "kind": "function",
                 "parameters": [
@@ -311,35 +306,28 @@
                   "name": "U"
                 }
               },
-              "node": {
-                "kind": "accessor",
-                "head": {
-                  "token": {
-                    "position": [8, 11],
-                    "kind": {
-                      "name": "Ident",
-                      "value": "f"
-                    }
-                  },
-                  "type": {
-                    "kind": "instance",
-                    "struct": { "moduleId": 3, "name": "Foo" },
-                    "typeParams": [
-                      {
-                        "kind": "primitive",
-                        "primitive": "Int"
-                      }
-                    ]
-                  },
-                  "node": {
-                    "kind": "identifier",
-                    "name": "f"
+              "isOptSafe": false,
+              "self": {
+                "token": {
+                  "position": [8, 11],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "f"
                   }
                 },
-                "middle": [],
-                "tail": {
-                  "kind": "method",
-                  "name": "foo"
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 3, "name": "Foo" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "f"
                 }
               }
             },

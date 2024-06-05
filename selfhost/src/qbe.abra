@@ -18,6 +18,7 @@ export type ModuleBuilder {
       data.encode(file)
       file.writeln()
     }
+    if !self._data.isEmpty() { file.writeln() }
 
     for fn, idx in self._functions {
       fn.encode(file)
@@ -77,7 +78,7 @@ type QbeData {
     }
     file.write(" { ")
     self.kind.encode(file)
-    file.writeln(" }")
+    file.write(" }")
   }
 }
 
@@ -127,7 +128,7 @@ export enum QbeType {
   Pointer // 'l'
   F32     // 's'
   F64     // 'd'
-  Aggregate(spec: AggregateType)
+  // Aggregate(spec: AggregateType)
 
   func size(self): Int {
     match self {
@@ -138,7 +139,7 @@ export enum QbeType {
       QbeType.Pointer => 8
       QbeType.F32 => 4
       QbeType.F64 => 8
-      QbeType.Aggregate(agg) => agg.size()
+      // QbeType.Aggregate(agg) => agg.size()
     }
   }
 
@@ -151,7 +152,7 @@ export enum QbeType {
       QbeType.Pointer => "l"
       QbeType.F32 => "s"
       QbeType.F64 => "d"
-      QbeType.Aggregate(spec) => ":${spec.name}"
+      // QbeType.Aggregate(spec) => ":${spec.name}"
     }
     file.write(s)
   }
@@ -256,9 +257,11 @@ export type Dest {
 export enum Instruction {
   Add(dst: Dest, l: Value, r: Value)
 
+  LoadL(dst: Dest, mem: Value)
   StoreL(value: Value, mem: Value)
 
   Call(dst: Dest?, fn: String, args: Value[])
+  CallVarargs(dst: Dest?, fn: String, varargsIdx: Int, args: Value[])
   Return(value: Value?)
 
   func encode(self, file: File) {
@@ -269,6 +272,12 @@ export enum Instruction {
         l.encode(file)
         file.write(", ")
         r.encode(file)
+        file.writeln()
+      }
+      Instruction.LoadL(dst, m) => {
+        dst.encode(file)
+        file.write(" loadl ")
+        m.encode(file)
         file.writeln()
       }
       Instruction.StoreL(v, m) => {
@@ -287,6 +296,25 @@ export enum Instruction {
         file.write(fnName)
         file.write("(")
         for arg, idx in args {
+          arg.ty().encode(file)
+          file.write(" ")
+          arg.encode(file)
+          if idx != args.length - 1 file.write(", ")
+        }
+        file.writeln(")")
+      }
+      Instruction.CallVarargs(dst, fnName, varargsIdx, args) => {
+        if dst |dst| {
+          dst.encode(file)
+          file.write(" ")
+        }
+        file.write("call ")
+        file.write(fnName)
+        file.write("(")
+        for arg, idx in args {
+          if idx == varargsIdx {
+            file.write("..., ")
+          }
           arg.ty().encode(file)
           file.write(" ")
           arg.encode(file)

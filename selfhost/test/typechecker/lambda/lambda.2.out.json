@@ -222,12 +222,7 @@
           "node": {
             "kind": "invocation",
             "invokee": {
-              "token": {
-                "position": [4, 16],
-                "kind": {
-                  "name": "Dot"
-                }
-              },
+              "method": "map",
               "type": {
                 "kind": "function",
                 "parameters": [
@@ -269,35 +264,28 @@
                   ]
                 }
               },
-              "node": {
-                "kind": "accessor",
-                "head": {
-                  "token": {
-                    "position": [4, 12],
-                    "kind": {
-                      "name": "Ident",
-                      "value": "arr1"
-                    }
-                  },
-                  "type": {
-                    "kind": "instance",
-                    "struct": { "moduleId": 0, "name": "Array" },
-                    "typeParams": [
-                      {
-                        "kind": "primitive",
-                        "primitive": "Int"
-                      }
-                    ]
-                  },
-                  "node": {
-                    "kind": "identifier",
-                    "name": "arr1"
+              "isOptSafe": false,
+              "self": {
+                "token": {
+                  "position": [4, 12],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "arr1"
                   }
                 },
-                "middle": [],
-                "tail": {
-                  "kind": "method",
-                  "name": "map"
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 0, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "arr1"
                 }
               }
             },
@@ -607,12 +595,7 @@
               "node": {
                 "kind": "invocation",
                 "invokee": {
-                  "token": {
-                    "position": [9, 11],
-                    "kind": {
-                      "name": "Dot"
-                    }
-                  },
+                  "method": "forEach",
                   "type": {
                     "kind": "function",
                     "parameters": [
@@ -648,40 +631,72 @@
                       "primitive": "Unit"
                     }
                   },
-                  "node": {
-                    "kind": "accessor",
-                    "head": {
-                      "token": {
-                        "position": [9, 3],
-                        "kind": {
-                          "name": "Ident",
-                          "value": "set"
-                        }
-                      },
-                      "type": {
-                        "kind": "instance",
-                        "struct": { "moduleId": 0, "name": "Set" },
-                        "typeParams": [
-                          {
-                            "kind": "generic",
-                            "name": "T"
-                          }
-                        ]
-                      },
-                      "node": {
-                        "kind": "identifier",
-                        "name": "set"
+                  "isOptSafe": false,
+                  "self": {
+                    "token": {
+                      "position": [9, 19],
+                      "kind": {
+                        "name": "LParen"
                       }
                     },
-                    "middle": [
-                      {
+                    "type": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 0, "name": "Map" },
+                      "typeParams": [
+                        {
+                          "kind": "generic",
+                          "name": "T"
+                        },
+                        {
+                          "kind": "primitive",
+                          "primitive": "Bool"
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "accessor",
+                      "head": {
+                        "token": {
+                          "position": [9, 3],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "set"
+                          }
+                        },
+                        "type": {
+                          "kind": "instance",
+                          "struct": { "moduleId": 0, "name": "Set" },
+                          "typeParams": [
+                            {
+                              "kind": "generic",
+                              "name": "T"
+                            }
+                          ]
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "set"
+                        }
+                      },
+                      "middle": [],
+                      "tail": {
                         "kind": "field",
-                        "name": "_map"
+                        "name": "_map",
+                        "type": {
+                          "kind": "instance",
+                          "struct": { "moduleId": 0, "name": "Map" },
+                          "typeParams": [
+                            {
+                              "kind": "generic",
+                              "name": "T"
+                            },
+                            {
+                              "kind": "primitive",
+                              "primitive": "Bool"
+                            }
+                          ]
+                        }
                       }
-                    ],
-                    "tail": {
-                      "kind": "method",
-                      "name": "forEach"
                     }
                   }
                 },
@@ -1018,12 +1033,7 @@
                   "node": {
                     "kind": "invocation",
                     "invokee": {
-                      "token": {
-                        "position": [12, 19],
-                        "kind": {
-                          "name": "Dot"
-                        }
-                      },
+                      "method": "map",
                       "type": {
                         "kind": "function",
                         "parameters": [
@@ -1065,35 +1075,28 @@
                           ]
                         }
                       },
-                      "node": {
-                        "kind": "accessor",
-                        "head": {
-                          "token": {
-                            "position": [12, 16],
-                            "kind": {
-                              "name": "Ident",
-                              "value": "arr"
-                            }
-                          },
-                          "type": {
-                            "kind": "instance",
-                            "struct": { "moduleId": 0, "name": "Array" },
-                            "typeParams": [
-                              {
-                                "kind": "generic",
-                                "name": "T"
-                              }
-                            ]
-                          },
-                          "node": {
-                            "kind": "identifier",
-                            "name": "arr"
+                      "isOptSafe": false,
+                      "self": {
+                        "token": {
+                          "position": [12, 16],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "arr"
                           }
                         },
-                        "middle": [],
-                        "tail": {
-                          "kind": "method",
-                          "name": "map"
+                        "type": {
+                          "kind": "instance",
+                          "struct": { "moduleId": 0, "name": "Array" },
+                          "typeParams": [
+                            {
+                              "kind": "generic",
+                              "name": "T"
+                            }
+                          ]
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "arr"
                         }
                       }
                     },

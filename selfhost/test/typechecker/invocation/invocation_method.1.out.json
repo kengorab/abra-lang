@@ -180,7 +180,11 @@
                       "middle": [],
                       "tail": {
                         "kind": "field",
-                        "name": "int"
+                        "name": "int",
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
                       }
                     }
                   },
@@ -321,12 +325,7 @@
           "node": {
             "kind": "invocation",
             "invokee": {
-              "token": {
-                "position": [8, 11],
-                "kind": {
-                  "name": "Dot"
-                }
-              },
+              "method": "foo",
               "type": {
                 "kind": "function",
                 "parameters": [
@@ -350,30 +349,23 @@
                   "primitive": "String"
                 }
               },
-              "node": {
-                "kind": "accessor",
-                "head": {
-                  "token": {
-                    "position": [8, 10],
-                    "kind": {
-                      "name": "Ident",
-                      "value": "f"
-                    }
-                  },
-                  "type": {
-                    "kind": "instance",
-                    "struct": { "moduleId": 3, "name": "Foo" },
-                    "typeParams": []
-                  },
-                  "node": {
-                    "kind": "identifier",
-                    "name": "f"
+              "isOptSafe": false,
+              "self": {
+                "token": {
+                  "position": [8, 10],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "f"
                   }
                 },
-                "middle": [],
-                "tail": {
-                  "kind": "method",
-                  "name": "foo"
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 3, "name": "Foo" },
+                  "typeParams": []
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "f"
                 }
               }
             },
@@ -488,12 +480,7 @@
           "node": {
             "kind": "invocation",
             "invokee": {
-              "token": {
-                "position": [11, 11],
-                "kind": {
-                  "name": "Dot"
-                }
-              },
+              "method": "foo",
               "type": {
                 "kind": "function",
                 "parameters": [
@@ -517,30 +504,23 @@
                   "primitive": "String"
                 }
               },
-              "node": {
-                "kind": "accessor",
-                "head": {
-                  "token": {
-                    "position": [11, 10],
-                    "kind": {
-                      "name": "Ident",
-                      "value": "f"
-                    }
-                  },
-                  "type": {
-                    "kind": "instance",
-                    "struct": { "moduleId": 3, "name": "Foo" },
-                    "typeParams": []
-                  },
-                  "node": {
-                    "kind": "identifier",
-                    "name": "f"
+              "isOptSafe": false,
+              "self": {
+                "token": {
+                  "position": [11, 10],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "f"
                   }
                 },
-                "middle": [],
-                "tail": {
-                  "kind": "method",
-                  "name": "foo"
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 3, "name": "Foo" },
+                  "typeParams": []
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "f"
                 }
               }
             },

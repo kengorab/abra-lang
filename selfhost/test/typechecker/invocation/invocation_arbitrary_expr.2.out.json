@@ -280,13 +280,7 @@
               "node": {
                 "kind": "invocation",
                 "invokee": {
-                  "token": {
-                    "position": [4, 9],
-                    "kind": {
-                      "name": "Ident",
-                      "value": "bar"
-                    }
-                  },
+                  "function": "bar",
                   "type": {
                     "kind": "function",
                     "parameters": [
@@ -321,10 +315,6 @@
                         "primitive": "String"
                       }
                     }
-                  },
-                  "node": {
-                    "kind": "identifier",
-                    "name": "bar"
                   }
                 },
                 "arguments": [

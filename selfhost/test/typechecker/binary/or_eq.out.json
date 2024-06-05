@@ -498,7 +498,11 @@
                 "middle": [],
                 "tail": {
                   "kind": "field",
-                  "name": "a"
+                  "name": "a",
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Bool"
+                  }
                 }
               }
             },
@@ -545,7 +549,11 @@
           "middle": [],
           "tail": {
             "kind": "field",
-            "name": "a"
+            "name": "a",
+            "type": {
+              "kind": "primitive",
+              "primitive": "Bool"
+            }
           }
         }
       }
@@ -611,7 +619,11 @@
                 "middle": [],
                 "tail": {
                   "kind": "field",
-                  "name": "b"
+                  "name": "b",
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
                 }
               }
             },
@@ -658,7 +670,11 @@
           "middle": [],
           "tail": {
             "kind": "field",
-            "name": "b"
+            "name": "b",
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
           }
         }
       }
