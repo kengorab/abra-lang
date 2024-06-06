@@ -24,7 +24,8 @@ export type ModuleBuilder {
   func buildFunction(self, name: String, returnType: QbeType?, exported = false): QbeFunction {
     if self._functionsByName[name] |fn| return fn
 
-    val block = Block(body: [], labels: { (0): ["start"] }, comments: {}, numLocals: 0)
+    val start = Label(name: "start", offset: Some(0))
+    val block = Block(name: name, body: [], labelsByLine: { (0): [start] }, _usedLabels: #{start}, comments: {}, numLocals: 0)
 
     val fn = QbeFunction(exported: exported, name: name, returnType: returnType, _parameters: [], block: block, variadicIdx: None, _comments: [])
     self._functions.push(fn)
@@ -81,17 +82,24 @@ enum QbeDataKind {
   }
 }
 
+type Label {
+  name: String
+  offset: Int? = None
+}
+
 export type Block {
+  name: String
   body: Instruction[] = []
-  labels: Map<Int, String[]> = {}
+  labelsByLine: Map<Int, Label[]> = {}
+  _usedLabels: Set<Label> = #{}
   comments: Map<Int, String[]> = {}
   numLocals: Int = 0
 
   func encode(self, file: File) {
     for instr, idx in self.body {
-      if self.labels[idx] |labels| {
+      if self.labelsByLine[idx] |labels| {
         for label in labels {
-          file.writeln("@$label")
+          file.writeln("@${label.name}")
         }
       }
 
@@ -110,7 +118,21 @@ export type Block {
     self.body.push(instr)
   }
 
-  func nextLocal(self): String {
+  func verify(self): Result<Int, String> {
+    val errors: String[] = []
+    for label in self._usedLabels {
+      if !label.offset {
+        errors.push("Unregistered label @${label.name}")
+      }
+    }
+
+    if errors.isEmpty() return Ok(0)
+
+    val fmt = errors.map(e => "  - $e").join("\n")
+    Err("Block ${self.name} failed verification:\n $fmt")
+  }
+
+  func _nextLocal(self): String {
     val name = "_${self.numLocals}"
     self.numLocals += 1
     name
@@ -126,9 +148,21 @@ export type Block {
   // todo: ew
   func addCommentBefore(self, comment: String, numBack = 1) = self._addComment(comment, if self.body.length - numBack < 0 { 0 } else { self.body.length - numBack })
 
+  func addLabel(self, name: String): Label = Label(name: name)
+
+  func registerLabel(self, label: Label): Result<Label, String> {
+    if label.offset |offset| return Err("Label ${label.name} already registered with offset $offset")
+
+    val offset = self.body.length
+    label.offset = Some(offset)
+    if self.labelsByLine[offset] |labels| labels.push(label) else self.labelsByLine[offset] = [label]
+
+    Ok(label)
+  }
+
   // instruction builders
 
-  func buildAdd(self, left: Value, right: Value, dst = self.nextLocal()): Result<Value, String> {
+  func buildAdd(self, left: Value, right: Value, dst = self._nextLocal()): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
 
@@ -141,7 +175,7 @@ export type Block {
     Ok(local)
   }
 
-  func buildLoadL(self, mem: Value, dst = self.nextLocal()): Value {
+  func buildLoadL(self, mem: Value, dst = self._nextLocal()): Value {
     val dstName = "%$dst"
     self.append(Instruction.LoadL(dst: Dest(name: dstName, ty: QbeType.U64), mem: mem))
 
@@ -152,7 +186,7 @@ export type Block {
     self.append(Instruction.StoreL(value: value, mem: mem))
   }
 
-  func buildCall(self, fnValue: QbeFunction, arguments: Value[], dst = self.nextLocal()): Result<Value, String> {
+  func buildCall(self, fnValue: QbeFunction, arguments: Value[], dst = self._nextLocal()): Result<Value, String> {
     val dstName = "%$dst"
     val fnReturnType = if fnValue.returnType |ty| ty else {
       return Err("function value '${fnValue.name}' has no return type; cannot store result into destination '$dstName'")
@@ -176,6 +210,12 @@ export type Block {
     } else {
       self.append(Instruction.Call(dst: None, fn: fnName, args: arguments))
     }
+  }
+
+  func buildJnz(self, cond: Value, ifNonZero: Label, ifZero: Label) {
+    self._usedLabels.insert(ifNonZero)
+    self._usedLabels.insert(ifZero)
+    self.append(Instruction.Jnz(cond, ifNonZero, ifZero))
   }
 
   func buildReturn(self, value: Value? = None) {
@@ -224,11 +264,15 @@ export enum QbeType {
 export type QbeFunction {
   exported: Bool = false
   name: String
+  block: Block,
   returnType: QbeType? = None
   _parameters: (String, QbeType)[] = []
-  block: Block = Block()
   variadicIdx: Int? = None
   _comments: String[] = []
+
+  func spec(name: String, returnType: QbeType? = None, parameters: (String, QbeType)[] = [], variadicIdx: Int? = None): QbeFunction {
+    QbeFunction(name: name, block: Block(name: name), returnType: returnType, _parameters: parameters, variadicIdx: variadicIdx)
+  }
 
   func encode(self, file: File) {
     for comment in self._comments {
@@ -262,14 +306,16 @@ export type QbeFunction {
     for line in comment self._comments.push(line)
   }
 
-  func addParameter(self, name: String, ty: QbeType) {
+  func addParameter(self, name: String, ty: QbeType): Value {
     self._parameters.push((name, ty))
+    Value.Ident(name, ty)
   }
 }
 
 export enum Value {
   Ident(name: String, ty: QbeType)
   Global(name: String, ty: QbeType)
+  Int32(value: Int)
   Int(value: Int)
   Float(value: Float)
 
@@ -277,6 +323,7 @@ export enum Value {
     match self {
       Value.Ident(name, _) => file.write("%$name")
       Value.Global(name, _) => file.write("\$$name")
+      Value.Int32(value) => file.write(value.toString())
       Value.Int(value) => file.write(value.toString())
       Value.Float(value) => file.write("d_$value")
     }
@@ -285,6 +332,7 @@ export enum Value {
   func ty(self): QbeType = match self {
       Value.Ident(_, ty) => ty
       Value.Global(_, ty) => ty
+      Value.Int32 => QbeType.U32
       Value.Int => QbeType.U64
       Value.Float => QbeType.F64
   }
@@ -308,7 +356,7 @@ export type Dest {
   }
 }
 
-export enum Instruction {
+enum Instruction {
   Add(dst: Dest, l: Value, r: Value)
 
   LoadL(dst: Dest, mem: Value)
@@ -316,6 +364,8 @@ export enum Instruction {
 
   Call(dst: Dest?, fn: String, args: Value[])
   CallVarargs(dst: Dest?, fn: String, varargsIdx: Int, args: Value[])
+
+  Jnz(cond: Value, ifNonZero: Label, ifZero: Label)
   Return(value: Value?)
 
   func encode(self, file: File) {
@@ -375,6 +425,11 @@ export enum Instruction {
           if idx != args.length - 1 file.write(", ")
         }
         file.writeln(")")
+      }
+      Instruction.Jnz(cond, ifNonZero, ifZero) => {
+        file.write("jnz ")
+        cond.encode(file)
+        file.writeln(", @${ifNonZero.name}, @${ifZero.name}")
       }
       Instruction.Return(value) => {
         file.write("ret ")

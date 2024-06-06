@@ -2,7 +2,7 @@ import "fs" as fs
 import Position from "./lexer"
 import LiteralAstNode from "./parser"
 import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind from "./typechecker"
-import ModuleBuilder, QbeType, Dest, Instruction, QbeFunction, Value from "./qbe"
+import ModuleBuilder, QbeType, Dest, QbeFunction, Value from "./qbe"
 
 type CompilationError {
   modulePath: String
@@ -147,9 +147,9 @@ export type Compiler {
   _currentModule: TypedModule
   _currentFn: QbeFunction
   // cached fns
-  _printf: QbeFunction = QbeFunction(name: "printf", variadicIdx: Some(1))
-  _snprintf: QbeFunction = QbeFunction(name: "snprintf", returnType: Some(QbeType.U64), variadicIdx: Some(3))
-  _malloc: QbeFunction = QbeFunction(name: "malloc", returnType: Some(QbeType.Pointer))
+  _printf: QbeFunction = QbeFunction.spec(name: "printf", returnType: None, parameters: [], variadicIdx: Some(1))
+  _snprintf: QbeFunction = QbeFunction.spec(name: "snprintf", returnType: Some(QbeType.U64), parameters: [], variadicIdx: Some(3))
+  _malloc: QbeFunction = QbeFunction.spec(name: "malloc", returnType: Some(QbeType.Pointer))
 
   func compile(project: Project, entry: TypedModule): Result<ModuleBuilder, CompilationError> {
     val builder = ModuleBuilder()
@@ -164,6 +164,8 @@ export type Compiler {
     val modFnName = moduleWrapperFnName(entry)
     mainFnBlock.buildVoidCall(moduleFn, [])
     mainFnBlock.buildReturn(Some(Value.Int(0)))
+
+    match mainFnBlock.verify() { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: entry.name, error: CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(e)))) }
 
     Ok(builder)
   }
@@ -198,6 +200,8 @@ export type Compiler {
 
     fn.block.buildReturn()
 
+    match fn.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
+
     Ok(fn)
   }
 
@@ -228,12 +232,15 @@ export type Compiler {
         match lit {
           LiteralAstNode.Int(v) => {
             val res = match self._currentFn.block.buildAdd(Value.Int(0), Value.Int(v)) { Ok(v) => v, Err(e) => return qbeError(e) }
-
             Ok(res)
           }
           LiteralAstNode.Float(f) => {
             val res = match self._currentFn.block.buildAdd(Value.Float(0.0), Value.Float(f)) { Ok(v) => v, Err(e) => return qbeError(e) }
-
+            Ok(res)
+          }
+          LiteralAstNode.Bool(b) => {
+            val res = match self._currentFn.block.buildAdd(Value.Int32(0), Value.Int32(if b 1 else 0)) { Ok(v) => v, Err(e) => return qbeError(e) }
+            self._currentFn.block.addCommentBefore(b.toString())
             Ok(res)
           }
           LiteralAstNode.String(s) => {
@@ -241,7 +248,6 @@ export type Compiler {
             val instancePtr = match self._constructString(dataPtr, Value.Int(s.length)) { Ok(v) => v, Err(e) => return Err(e) }
             Ok(instancePtr)
           }
-          _ => todo("other literal types", node.token.position)
         }
       }
       TypedAstNodeKind.StringInterpolation => todo("compiling string interpolation expression", node.token.position)
@@ -301,7 +307,7 @@ export type Compiler {
       TypeKind.PrimitiveUnit => Ok(None)
       TypeKind.PrimitiveInt => Ok(Some(QbeType.U64))
       TypeKind.PrimitiveFloat => Ok(Some(QbeType.F64))
-      TypeKind.PrimitiveBool => todo("TypeKind.PrimitiveBool")
+      TypeKind.PrimitiveBool => Ok(Some(QbeType.U32))
       TypeKind.PrimitiveString => Ok(Some(QbeType.Pointer))
       TypeKind.Never => Ok(None)
       TypeKind.Any => todo("TypeKind.Any")
@@ -372,6 +378,8 @@ export type Compiler {
 
     fn.block.buildReturn(Some(memLocal))
 
+    match fn.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
+
     Ok(fn)
   }
 
@@ -416,6 +424,7 @@ export type Compiler {
         if struct == self._project.preludeIntStruct return self._getOrCompileIntToStringMethod()
         if struct == self._project.preludeFloatStruct return self._getOrCompileFloatToStringMethod()
         if struct == self._project.preludeStringStruct return self._getOrCompileStringToStringMethod()
+        if struct == self._project.preludeBoolStruct return self._getOrCompileBoolToStringMethod()
 
         val _fn = struct.instanceMethods.find(m => m.label.name == "toString")
         val fn = if _fn |f| f else return unreachable("every struct has a toString method defined")
@@ -445,10 +454,8 @@ export type Compiler {
     self._currentFn = fnVal
 
     fnVal.addComment("Int#toString(self): String")
-    fnVal.addParameter("self", intTypeQbe)
+    val selfParam = fnVal.addParameter("self", intTypeQbe)
 
-    // todo: some notion of fnVal.param(0) ?
-    val selfParam = Value.Ident("self", intTypeQbe)
     val intFmtPtr = self._builder.buildGlobalString("%d")
     val sizeRaw = match fnVal.block.buildCall(self._snprintf, [Value.Int(0), Value.Int(0), intFmtPtr, selfParam]) { Ok(v) => v, Err(e) => return qbeError(e) }
     val sizeVal = match fnVal.block.buildAdd(Value.Int(1), sizeRaw) { Ok(v) => v, Err(e) => return qbeError(e) }
@@ -458,6 +465,8 @@ export type Compiler {
 
     val str = match self._constructString(mem, sizeVal) { Ok(v) => v, Err(e) => return Err(e) }
     fnVal.block.buildReturn(Some(str))
+
+    match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
 
     self._currentFn = prevFn
 
@@ -477,10 +486,8 @@ export type Compiler {
     self._currentFn = fnVal
 
     fnVal.addComment("Float#toString(self): String")
-    fnVal.addParameter("self", floatTypeQbe)
+    val selfParam = fnVal.addParameter("self", floatTypeQbe)
 
-    // todo: some notion of fnVal.param(0) ?
-    val selfParam = Value.Ident("self", floatTypeQbe)
     val floatFmtPtr = self._builder.buildGlobalString("%g")
     val sizeRaw = match fnVal.block.buildCall(self._snprintf, [Value.Int(0), Value.Int(0), floatFmtPtr, selfParam]) { Ok(v) => v, Err(e) => return qbeError(e) }
     val sizeVal = match fnVal.block.buildAdd(Value.Int(1), sizeRaw) { Ok(v) => v, Err(e) => return qbeError(e) }
@@ -490,6 +497,44 @@ export type Compiler {
 
     val str = match self._constructString(mem, sizeVal) { Ok(v) => v, Err(e) => return Err(e) }
     fnVal.block.buildReturn(Some(str))
+
+    match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
+
+    self._currentFn = prevFn
+
+    Ok(fnVal)
+  }
+
+  func _getOrCompileBoolToStringMethod(self): Result<QbeFunction, CompileError> {
+    val stringTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveString), "string qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+    val boolTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveBool), "bool qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+
+    val typeName = structTypeName(self._project.preludeIntStruct)
+    val methodName = "$typeName..toString"
+    if self._builder.getFunction(methodName) |fn| return Ok(fn)
+
+    val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(stringTypeQbe))
+    val prevFn = self._currentFn
+    self._currentFn = fnVal
+
+    fnVal.addComment("Bool#toString(self): String")
+    val selfParam = fnVal.addParameter("self", boolTypeQbe)
+
+    val labelIfTrue = fnVal.block.addLabel("if_true")
+    val labelIfFalse = fnVal.block.addLabel("if_false")
+    fnVal.block.buildJnz(selfParam, labelIfTrue, labelIfFalse)
+
+    fnVal.block.registerLabel(labelIfTrue)
+    val trueStrData = self._builder.buildGlobalString("true")
+    val trueStr = match self._constructString(trueStrData, Value.Int(4)) { Ok(v) => v, Err(e) => return Err(e) }
+    fnVal.block.buildReturn(Some(trueStr))
+
+    fnVal.block.registerLabel(labelIfFalse)
+    val falseStrData = self._builder.buildGlobalString("false")
+    val falseStr = match self._constructString(falseStrData, Value.Int(5)) { Ok(v) => v, Err(e) => return Err(e) }
+    fnVal.block.buildReturn(Some(falseStr))
+
+    match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
 
     self._currentFn = prevFn
 
@@ -508,10 +553,10 @@ export type Compiler {
     self._currentFn = fnVal
 
     fnVal.addComment("String#toString(self): String")
-    fnVal.addParameter("self", stringTypeQbe)
+    val selfParam = fnVal.addParameter("self", stringTypeQbe)
+    fnVal.block.buildReturn(Some(selfParam))
 
-    // todo: some notion of fnVal.param(0) ?
-    fnVal.block.buildReturn(Some(Value.Ident("self", stringTypeQbe)))
+    match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
 
     self._currentFn = prevFn
 
