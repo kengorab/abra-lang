@@ -24,9 +24,9 @@ export type ModuleBuilder {
   func buildFunction(self, name: String, returnType: QbeType?, exported = false): QbeFunction {
     if self._functionsByName[name] |fn| return fn
 
-    val block = Block(body: [], labels: { (0): ["start"] })
+    val block = Block(body: [], labels: { (0): ["start"] }, comments: {}, numLocals: 0)
 
-    val fn = QbeFunction(exported: exported, name: name, returnType: returnType, parameters: [], block: block, variadicIdx: None, meta: [])
+    val fn = QbeFunction(exported: exported, name: name, returnType: returnType, _parameters: [], block: block, variadicIdx: None, _comments: [])
     self._functions.push(fn)
     self._functionsByName[name] = fn
     fn
@@ -84,6 +84,8 @@ enum QbeDataKind {
 export type Block {
   body: Instruction[] = []
   labels: Map<Int, String[]> = {}
+  comments: Map<Int, String[]> = {}
+  numLocals: Int = 0
 
   func encode(self, file: File) {
     for instr, idx in self.body {
@@ -92,6 +94,13 @@ export type Block {
           file.writeln("@$label")
         }
       }
+
+      if self.comments[idx] |comments| {
+        for comment in comments {
+          file.writeln("  # $comment")
+        }
+      }
+
       file.write("  ")
       instr.encode(file)
     }
@@ -101,12 +110,29 @@ export type Block {
     self.body.push(instr)
   }
 
+  func nextLocal(self): String {
+    val name = "_${self.numLocals}"
+    self.numLocals += 1
+    name
+  }
+
+  func _addComment(self, comment: String, line = self.body.length) {
+    if self.comments[line] |comments| comments.push(comment)
+    else self.comments[line] = [comment]
+  }
+
+  func addComment(self, comment: String) = self._addComment(comment)
+
+  // todo: ew
+  func addCommentBefore(self, comment: String, numBack = 1) = self._addComment(comment, if self.body.length - numBack < 0 { 0 } else { self.body.length - numBack })
+
   // instruction builders
-  func buildAdd(self, left: Value, right: Value, dst: String): Result<Value, String> {
+
+  func buildAdd(self, left: Value, right: Value, dst = self.nextLocal()): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
 
-    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'add' instruction: ${lty.repr()}, ${rty.repr()}") else lty
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'add' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
 
     val local = Value.Ident(dst, resTy)
     val dstName = "%$dst"
@@ -115,7 +141,7 @@ export type Block {
     Ok(local)
   }
 
-  func buildLoadL(self, mem: Value, dst: String): Value {
+  func buildLoadL(self, mem: Value, dst = self.nextLocal()): Value {
     val dstName = "%$dst"
     self.append(Instruction.LoadL(dst: Dest(name: dstName, ty: QbeType.U64), mem: mem))
 
@@ -126,7 +152,7 @@ export type Block {
     self.append(Instruction.StoreL(value: value, mem: mem))
   }
 
-  func buildCall(self, fnValue: QbeFunction, arguments: Value[], dst: String): Result<Value, String> {
+  func buildCall(self, fnValue: QbeFunction, arguments: Value[], dst = self.nextLocal()): Result<Value, String> {
     val dstName = "%$dst"
     val fnReturnType = if fnValue.returnType |ty| ty else {
       return Err("function value '${fnValue.name}' has no return type; cannot store result into destination '$dstName'")
@@ -199,24 +225,24 @@ export type QbeFunction {
   exported: Bool = false
   name: String
   returnType: QbeType? = None
-  parameters: (String, QbeType)[] = []
+  _parameters: (String, QbeType)[] = []
   block: Block = Block()
   variadicIdx: Int? = None
-  meta: String[] = []
+  _comments: String[] = []
 
   func encode(self, file: File) {
-    for meta in self.meta {
-      file.writeln("# $meta")
+    for comment in self._comments {
+      file.writeln("# $comment")
     }
     if self.exported file.write("export ")
     file.write("function ")
     self.returnType?.encode(file)
     file.write(" \$${self.name}")
     file.write("(")
-    for param, idx in self.parameters {
+    for param, idx in self._parameters {
       param[1].encode(file)
       file.write(" %${param[0]}")
-      if idx != self.parameters.length - 1 {
+      if idx != self._parameters.length - 1 {
         file.write(", ")
       }
     }
@@ -226,6 +252,18 @@ export type QbeFunction {
     self.block.encode(file)
 
     file.writeln("}")
+  }
+
+  func addComment(self, comment: String) {
+    self._comments.push(comment)
+  }
+
+  func addCommentMultiline(self, comment: String[]) {
+    for line in comment self._comments.push(line)
+  }
+
+  func addParameter(self, name: String, ty: QbeType) {
+    self._parameters.push((name, ty))
   }
 }
 
@@ -249,6 +287,13 @@ export enum Value {
       Value.Global(_, ty) => ty
       Value.Int => QbeType.U64
       Value.Float => QbeType.F64
+  }
+
+  func ifIdent(self, fn: (String, QbeType) => Unit) {
+    match self {
+      Value.Ident(name, ty) => fn("%$name", ty)
+      _ => {}
+    }
   }
 }
 
