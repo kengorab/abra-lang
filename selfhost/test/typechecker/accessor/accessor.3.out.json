@@ -163,7 +163,11 @@
                       "middle": [],
                       "tail": {
                         "kind": "field",
-                        "name": "str"
+                        "name": "str",
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "String"
+                        }
                       }
                     }
                   },
@@ -222,7 +226,11 @@
                         "middle": [],
                         "tail": {
                           "kind": "field",
-                          "name": "str"
+                          "name": "str",
+                          "type": {
+                            "kind": "primitive",
+                            "primitive": "String"
+                          }
                         }
                       }
                     },
@@ -328,7 +336,11 @@
                       "middle": [],
                       "tail": {
                         "kind": "field",
-                        "name": "str"
+                        "name": "str",
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "String"
+                        }
                       }
                     }
                   },
@@ -388,7 +400,11 @@
                         "middle": [],
                         "tail": {
                           "kind": "field",
-                          "name": "str"
+                          "name": "str",
+                          "type": {
+                            "kind": "primitive",
+                            "primitive": "String"
+                          }
                         }
                       }
                     },

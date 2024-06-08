@@ -407,7 +407,7 @@ type TypedFunctionParam {
   isVariadic: Bool = false
 }
 
-enum FunctionKind {
+export enum FunctionKind {
   Standalone
   InstanceMethod
   StaticMethod
@@ -497,6 +497,8 @@ export type Function {
 }
 
 export enum TypedInvokee {
+  Method(fn: Function, selfVal: TypedAstNode, isOptSafe: Bool)
+  Function(fn: Function)
   Struct(struct: Struct)
   Expr(expr: TypedAstNode)
   EnumVariant(enum_: Enum, variant: TypedEnumVariant)
@@ -560,9 +562,17 @@ export enum TypedAstNodeKind {
 }
 
 export enum AccessorPathSegment {
-  EnumVariant(label: Label, enum_: Enum, variant: TypedEnumVariant)
+  EnumVariant(label: Label, ty: Type, enum_: Enum, variant: TypedEnumVariant)
   Method(label: Label, fn: Function)
-  Field(label: Label, f: Field)
+  Field(label: Label, ty: Type, f: Field)
+
+  func getType(self): Type {
+    match self {
+      AccessorPathSegment.EnumVariant(_, ty, _, _) => ty
+      AccessorPathSegment.Method(_, fn) => fn.getType()
+      AccessorPathSegment.Field(_, ty, _) => ty
+    }
+  }
 }
 
 type TypecheckerError {
@@ -1176,7 +1186,7 @@ export type Typechecker {
   isStructOrEnumValueAllowed: Bool = false
   isEnumContainerValueAllowed: Bool = false
 
-  func typecheckEntrypoint(self, modulePathAbs: String): Result<Int, TypecheckerError> {
+  func typecheckEntrypoint(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
     val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
     val preludeModulePathAbs = "/" + preludeModulePathSegs.join("/")
     match self._typecheckModule(preludeModulePathAbs) { Ok(v) => v, Err(e) => return Err(e) }
@@ -1209,9 +1219,9 @@ export type Typechecker {
       }
     }
 
-    match self._typecheckModule(modulePathAbs) { Ok(v) => v, Err(e) => return Err(e) }
+    val mod = match self._typecheckModule(modulePathAbs) { Ok(v) => v, Err(e) => return Err(e) }
 
-    Ok(0)
+    Ok(mod)
   }
 
   func _tokenizeAndParse(self, modulePathAbs: String): Result<ParsedModule, TypecheckerError> {
@@ -2980,7 +2990,7 @@ export type Typechecker {
         val _p = match typedLhs.kind {
           TypedAstNodeKind.Accessor(head, mid, tail) => {
             val t = match tail {
-              AccessorPathSegment.EnumVariant(label, _, variant) => {
+              AccessorPathSegment.EnumVariant(label, _, _, variant) => {
                 return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAssignment("enum variant", variant.label.name, IllegalAssignmentReason.EnumVariant)))
               }
               AccessorPathSegment.Method(label, fn) => {
@@ -2995,7 +3005,7 @@ export type Typechecker {
 
                 return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAssignment(kind, fn.label.name, reason)))
               }
-              AccessorPathSegment.Field(label, field) => {
+              AccessorPathSegment.Field(label, _, field) => {
                 val mode = TypedAssignmentMode.Accessor(head, mid, tail)
                 (mode, label, field)
               }
@@ -3789,7 +3799,7 @@ export type Typechecker {
     Ok(TypedAstNode(token: token, ty: _p[0], kind: TypedAstNodeKind.Identifier(_p[1])))
   }
 
-  func _resolveAccessorPathSegmentAny(self, label: Label): (AccessorPathSegment, Type)? {
+  func _resolveAccessorPathSegmentAny(self, label: Label): AccessorPathSegment? {
     val scope = self.project.preludeScope.makeChild("Any", ScopeKind.Type)
     val method: Function? = if label.name == "toString" {
       Some(Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString)))
@@ -3802,13 +3812,13 @@ export type Typechecker {
     }
 
     if method |method| {
-      Some((AccessorPathSegment.Method(label, method), method.getType()))
+      Some(AccessorPathSegment.Method(label, method))
     } else {
       None
     }
   }
 
-  func _resolveAccessorPathSegment(self, ty: Type, label: Label, typeHint: Type?): Result<(AccessorPathSegment, Type)?, TypeError> {
+  func _resolveAccessorPathSegment(self, ty: Type, label: Label, typeHint: Type?): Result<AccessorPathSegment?, TypeError> {
     val foundSegment = match ty.kind {
       TypeKind.Any => self._resolveAccessorPathSegmentAny(label)
       TypeKind.PrimitiveUnit => None
@@ -3828,7 +3838,7 @@ export type Typechecker {
                   resolvedGenerics[name] = if generics[idx] |g| g else return unreachable(label.position, "typeParams.length != generics.length")
                 }
                 val ty = field.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
-                return Ok(Some((AccessorPathSegment.Field(label, field), ty)))
+                return Ok(Some(AccessorPathSegment.Field(label, ty, field)))
               }
             }
 
@@ -3847,7 +3857,7 @@ export type Typechecker {
               resolvedGenerics[name] = if generics[idx] |g| g else return unreachable(label.position, "typeParams.length != generics.length")
             }
             val method = if resolvedGenerics.isEmpty() fn else fn.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: true, genericsInScope: #{})
-            return Ok(Some((AccessorPathSegment.Method(label, method), method.getType())))
+            return Ok(Some(AccessorPathSegment.Method(label, method)))
           }
         }
 
@@ -3892,7 +3902,7 @@ export type Typechecker {
                   _ => {}
                 }
 
-                return Ok(Some((AccessorPathSegment.EnumVariant(label, enum_, variant), ty)))
+                return Ok(Some(AccessorPathSegment.EnumVariant(label, ty, enum_, variant)))
               }
             }
 
@@ -3901,7 +3911,7 @@ export type Typechecker {
         }
 
         for method in staticMethods {
-          if method.label.name == label.name return Ok(Some((AccessorPathSegment.Method(label, method), method.getType())))
+          if method.label.name == label.name return Ok(Some(AccessorPathSegment.Method(label, method)))
         }
 
         None
@@ -3993,10 +4003,10 @@ export type Typechecker {
       }
 
       val seg = match self._resolveAccessorPathSegment(subjTy, label, typeHint) { Ok(v) => v, Err(e) => return Err(e) }
-      if seg |_s| {
+      if seg |seg| {
         // TODO: destructuring
-        val seg = _s[0]
-        val nextTy = _s[1]
+        // val seg = _s[0]
+        val nextTy = seg.getType()
 
         path.push(seg)
         ty = if isOptSafe {
@@ -4059,7 +4069,7 @@ export type Typechecker {
             VariableAlias.Function(fn) => self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint)
             VariableAlias.Struct(struct) => {
               val initializerFn = Function.initializer(self.currentScope, struct)
-              self._typecheckInvocationOfFunction(token, invokee, initializerFn, node, typeHint, Some(Instantiatable.Struct(struct)))
+              self._typecheckInvocationOfFunction(token, invokee, initializerFn, node, typeHint, None, Some(Instantiatable.Struct(struct)))
             }
             VariableAlias.Enum(enum_) => return Err(TypeError(position: invokee.token.position, kind: TypeErrorKind.IllegalCallableType(Type(kind: TypeKind.Type(StructOrEnum.Enum(enum_))))))
             None => self._typecheckInvocationOfExpression(token, invokee, invokee.token.position, node)
@@ -4068,9 +4078,9 @@ export type Typechecker {
         TypedIdentifierKind.None_ => return Err(TypeError(position: invokee.token.position, kind: TypeErrorKind.IllegalCallableType(Type(kind: TypeKind.Hole, /*nullable: true*/))))
         TypedIdentifierKind.Discard => return unreachable(invokee.token.position, "resolving '_' should fail before reaching here")
       }
-      TypedAstNodeKind.Accessor(_, _, tail) => {
+      TypedAstNodeKind.Accessor(head, mid, tail) => {
         match tail {
-          AccessorPathSegment.EnumVariant(label, enum_, variant) => {
+          AccessorPathSegment.EnumVariant(label, _, enum_, variant) => {
             val fields = match variant.kind {
               EnumVariantKind.Constant => return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalCallableType(invokee.ty)))
               EnumVariantKind.Container(fields) => fields
@@ -4078,18 +4088,24 @@ export type Typechecker {
 
             val enumVariantAsFn = Function.forEnumVariant(self.currentScope, enum_, variant.label, fields)
 
-            self._typecheckInvocationOfFunction(token, invokee, enumVariantAsFn, node, typeHint, Some(Instantiatable.EnumContainerVariant(enum_, variant, fields)))
+            self._typecheckInvocationOfFunction(token, invokee, enumVariantAsFn, node, typeHint, None, Some(Instantiatable.EnumContainerVariant(enum_, variant, fields)))
           }
-          AccessorPathSegment.Method(_, fn) => {
+          AccessorPathSegment.Method(l, fn) => {
+            val selfVal = if mid[-1] |newTail| {
+              TypedAstNode(token: token, ty: newTail.getType(), kind: TypedAstNodeKind.Accessor(head, mid[:-1], newTail))
+            } else {
+              head
+            }
+
             if self._typeIsOption(invokee.ty) {
-              val typedNode = match self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint) { Ok(v) => v, Err(e) => return Err(e) }
+              val typedNode = match self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint, Some((selfVal, true))) { Ok(v) => v, Err(e) => return Err(e) }
               typedNode.ty = Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeOptionEnum), [typedNode.ty]))
               Ok(typedNode)
             } else {
-              self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint)
+              self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint, Some((selfVal, false)))
             }
           }
-          AccessorPathSegment.Field(label, _) => self._typecheckInvocationOfExpression(token, invokee, label.position, node)
+          AccessorPathSegment.Field(label, _, _) => self._typecheckInvocationOfExpression(token, invokee, label.position, node)
         }
       }
       _ => self._typecheckInvocationOfExpression(token, invokee, invokee.token.position, node)
@@ -4135,7 +4151,16 @@ export type Typechecker {
     Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(typedInvokee, typedArguments)))
   }
 
-  func _typecheckInvocationOfFunction(self, token: Token, invokee: TypedAstNode, fn: Function, invocationNode: InvocationAstNode, typeHint: Type?, instantiationOf: Instantiatable? = None): Result<TypedAstNode, TypeError> {
+  func _typecheckInvocationOfFunction(
+    self,
+    token: Token,
+    invokee: TypedAstNode,
+    fn: Function,
+    invocationNode: InvocationAstNode,
+    typeHint: Type?,
+    selfVal: (TypedAstNode, Bool)? = None,
+    instantiationOf: Instantiatable? = None
+  ): Result<TypedAstNode, TypeError> {
     // Function invocation is position-based for required parameters, with optional parameter labels to express call-site intent (ie. for Bool params), and it's
     // an error if a positional parameter's label is incorrect. Once we reach any optional parameters in the argument list, parameters can either be positional
     // OR labeled, but once a labeled optional parameter is seen, all subsequent arguments in the argument list must also be labeled.
@@ -4335,8 +4360,13 @@ export type Typechecker {
         Instantiatable.EnumContainerVariant(enum_, variant, _) => TypedInvokee.EnumVariant(enum_, variant)
       }
       v
+    } else if selfVal |_p| {
+      // TODO: destructuring
+      val selfVal = _p[0]
+      val isOptSafe = _p[1]
+      TypedInvokee.Method(fn, selfVal, isOptSafe)
     } else {
-      TypedInvokee.Expr(invokee)
+      TypedInvokee.Function(fn)
     }
 
     Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(typedInvokee, typedArguments)))

@@ -161,13 +161,7 @@
           "node": {
             "kind": "invocation",
             "invokee": {
-              "token": {
-                "position": [3, 10],
-                "kind": {
-                  "name": "Ident",
-                  "value": "foo1"
-                }
-              },
+              "function": "foo1",
               "type": {
                 "kind": "function",
                 "parameters": [
@@ -195,10 +189,6 @@
                     }
                   ]
                 }
-              },
-              "node": {
-                "kind": "identifier",
-                "name": "foo1"
               }
             },
             "arguments": [
@@ -358,13 +348,7 @@
           "node": {
             "kind": "invocation",
             "invokee": {
-              "token": {
-                "position": [6, 10],
-                "kind": {
-                  "name": "Ident",
-                  "value": "foo1"
-                }
-              },
+              "function": "foo1",
               "type": {
                 "kind": "function",
                 "parameters": [
@@ -392,10 +376,6 @@
                     }
                   ]
                 }
-              },
-              "node": {
-                "kind": "identifier",
-                "name": "foo1"
               }
             },
             "arguments": [
@@ -666,13 +646,7 @@
           "node": {
             "kind": "invocation",
             "invokee": {
-              "token": {
-                "position": [11, 10],
-                "kind": {
-                  "name": "Ident",
-                  "value": "foo2"
-                }
-              },
+              "function": "foo2",
               "type": {
                 "kind": "function",
                 "parameters": [
@@ -694,10 +668,6 @@
                     }
                   ]
                 }
-              },
-              "node": {
-                "kind": "identifier",
-                "name": "foo2"
               }
             },
             "arguments": [
@@ -834,13 +804,7 @@
           "node": {
             "kind": "invocation",
             "invokee": {
-              "token": {
-                "position": [14, 10],
-                "kind": {
-                  "name": "Ident",
-                  "value": "foo2"
-                }
-              },
+              "function": "foo2",
               "type": {
                 "kind": "function",
                 "parameters": [
@@ -862,10 +826,6 @@
                     }
                   ]
                 }
-              },
-              "node": {
-                "kind": "identifier",
-                "name": "foo2"
               }
             },
             "arguments": [

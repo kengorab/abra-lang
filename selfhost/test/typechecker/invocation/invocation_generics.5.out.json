@@ -329,13 +329,7 @@
           "node": {
             "kind": "invocation",
             "invokee": {
-              "token": {
-                "position": [4, 12],
-                "kind": {
-                  "name": "Ident",
-                  "value": "arrayMap"
-                }
-              },
+              "function": "arrayMap",
               "type": {
                 "kind": "function",
                 "parameters": [
@@ -388,10 +382,6 @@
                     }
                   ]
                 }
-              },
-              "node": {
-                "kind": "identifier",
-                "name": "arrayMap"
               }
             },
             "arguments": [

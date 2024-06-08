@@ -1,0 +1,568 @@
+import "fs" as fs
+import Position from "./lexer"
+import LiteralAstNode from "./parser"
+import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind from "./typechecker"
+import ModuleBuilder, QbeType, Dest, QbeFunction, Value from "./qbe"
+
+type CompilationError {
+  modulePath: String
+  error: CompileError
+
+  func getMessage(self): String {
+    val contents = match fs.readFile(self.modulePath) {
+      Ok(v) => v
+      Err => return "Could not read file '${self.modulePath}'"
+    }
+    self.error.getMessage(self.modulePath, contents)
+  }
+}
+
+type CompileError {
+  position: Position
+  kind: CompileErrorKind
+
+  func getMessage(self, filePath: String, contents: String): String {
+    val lines = ["Error at $filePath:${self.position.line}:${self.position.col}"]
+
+    match self.kind {
+      CompileErrorKind.NotYetImplemented(reason) => {
+        lines.push("Not yet implemented:")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Reason: $reason")
+      }
+      CompileErrorKind.Unreachable(message) => {
+        lines.push("Unreachable code reached")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Internal error: $message")
+      }
+      CompileErrorKind.QbeError(message) => {
+        // todo: somehow thread the `node` which generated the error through to the error message
+        lines.push("Encountered error while generating qbe code:")
+        lines.push(message)
+      }
+    }
+
+    lines.join("\n")
+  }
+
+  // TODO: This is duplicated from Lexer, pull this out
+  func _getCursorLine(self, position: Position, contents: String, cursorLength = 1): String {
+    if contents.lines()[position.line - 1] |line| {
+      val len = position.col - 1 + cursorLength
+      val cursor = Array.fill(len, " ")
+      for i in range(len - cursorLength, len) {
+        cursor[i] = "^"
+      }
+      "  |  $line\n     ${cursor.join()}"
+    } else {
+      "unreachable"
+    }
+  }
+}
+
+enum CompileErrorKind {
+  NotYetImplemented(reason: String)
+  Unreachable(message: String)
+  QbeError(message: String)
+}
+
+func qbeError<V>(message: String): Result<V, CompileError> = Err(CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(message)))
+
+// Each module's root code is wrapped in a specially-named function; this function name
+// starts with two dots, which is not possible in ordinary Abra source code and will
+// thus introduce no conflicts (qbe doesn't care about function name rules).
+func moduleWrapperFnName(module: TypedModule): String = "..module_${module.id}"
+
+func structTypeName(struct: Struct): String = ".${struct.moduleId}.${struct.label.name}"
+func structInitializerFnName(struct: Struct): String = "${structTypeName(struct)}.init"
+
+func methodFnName(struct: Struct, fn: Function): String {
+  val typeName = structTypeName(struct)
+  val sep = match fn.kind {
+    FunctionKind.InstanceMethod => ".."
+    _ => "."
+  }
+  "${typeName}${sep}${fn.label.name}"
+}
+
+func fnSignature(structOrEnum: StructOrEnum?, fn: Function): String {
+  val parts: String[] = []
+  match structOrEnum {
+    StructOrEnum.Struct(struct) => {
+      parts.push(struct.label.name)
+      parts.push(if fn.kind == FunctionKind.InstanceMethod "#" else ".")
+    }
+    StructOrEnum.Enum => return "todo: enum methods"
+    None => {}
+  }
+  parts.push(fn.label.name)
+  parts.push("(")
+
+  val args: String[] = []
+  if fn.kind == FunctionKind.InstanceMethod args.push("self")
+  for param in fn.params {
+    args.push("${param.label.name}: ${param.ty.repr()}")
+  }
+  parts.push(args.join(", "))
+  parts.push(")")
+
+  if fn.returnType.kind != TypeKind.PrimitiveUnit {
+    parts.push(": ${fn.returnType.repr()}")
+  }
+
+  parts.join()
+}
+
+func structSignature(struct: Struct): String[] {
+  val parts = ["type ${struct.label.name} {"]
+  for field in struct.fields {
+    parts.push("  ${field.name.name}: ${field.ty.repr()}")
+  }
+  parts.push("}")
+
+  parts
+}
+
+func getInstanceTypeForType(project: Project, ty: Type): Result<(StructOrEnum, Type[]), CompileError> {
+  match ty.kind {
+    TypeKind.Any => unreachable("getInstanceTypeForType: Any")
+    TypeKind.PrimitiveUnit => unreachable("getInstanceTypeForType: Unit")
+    TypeKind.PrimitiveInt => Ok((StructOrEnum.Struct(project.preludeIntStruct), []))
+    TypeKind.PrimitiveFloat => Ok((StructOrEnum.Struct(project.preludeFloatStruct), []))
+    TypeKind.PrimitiveBool => Ok((StructOrEnum.Struct(project.preludeBoolStruct), []))
+    TypeKind.PrimitiveString => Ok((StructOrEnum.Struct(project.preludeStringStruct), []))
+    TypeKind.Never => unreachable("getInstanceTypeForType: Never")
+    TypeKind.Generic(name) => unreachable("getInstanceTypeForType: Generic($name)")
+    TypeKind.Instance(structOrEnum, typeParams) => Ok((structOrEnum, typeParams))
+    TypeKind.Tuple(types) => todo("getInstanceTypeForType: Tuple${types.length}")
+    TypeKind.Func(_paramTypes, _returnType) => todo("getInstanceTypeForType: Func")
+    TypeKind.Type(_structOrEnum) => todo("getInstanceTypeForType: Type")
+    TypeKind.Hole => unreachable("getInstanceTypeForType: Hole")
+  }
+}
+
+export type Compiler {
+  _project: Project
+  _builder: ModuleBuilder
+  _currentModule: TypedModule
+  _currentFn: QbeFunction
+  // cached fns
+  _printf: QbeFunction = QbeFunction.spec(name: "printf", returnType: None, parameters: [], variadicIdx: Some(1))
+  _snprintf: QbeFunction = QbeFunction.spec(name: "snprintf", returnType: Some(QbeType.U64), parameters: [], variadicIdx: Some(3))
+  _malloc: QbeFunction = QbeFunction.spec(name: "malloc", returnType: Some(QbeType.Pointer))
+
+  func compile(project: Project, entry: TypedModule): Result<ModuleBuilder, CompilationError> {
+    val builder = ModuleBuilder()
+
+    val fn = builder.buildFunction(name: "main", returnType: Some(QbeType.U32), exported: true)
+    fn.addComment("main entrypoint function")
+    val mainFnBlock = fn.block
+
+    val compiler = Compiler(_project: project, _builder: builder, _currentModule: entry, _currentFn: fn)
+
+    val moduleFn = match compiler._compileModule(entry) { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: entry.name, error: e)) }
+    val modFnName = moduleWrapperFnName(entry)
+    mainFnBlock.buildVoidCall(moduleFn, [])
+    mainFnBlock.buildReturn(Some(Value.Int(0)))
+
+    match mainFnBlock.verify() { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: entry.name, error: CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(e)))) }
+
+    Ok(builder)
+  }
+
+  func _compileModule(self, module: TypedModule): Result<QbeFunction, CompileError> {
+    val modFnName = moduleWrapperFnName(module)
+    self._currentModule = module
+
+    val fn = self._builder.buildFunction(name: modFnName, returnType: None)
+    fn.addComment(module.name)
+
+    self._currentFn = fn
+
+    for node, idx in module.code {
+      val value = match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
+      // TODO: This is just a crude mechanism to verify things are working - if the last statement in the module
+      //       is an expression, call the `toString` method on that expression, and print the result using `printf`.
+      //       This is temporary and will go away when the `println` function is supported (which is top priority).
+      if idx == module.code.length - 1 {
+        if value |v| {
+          self._currentFn.block.addComment("call `toString` on final expression, and `printf` the String's chars")
+          val dataPtr = self._builder.buildGlobalString("%s\\n")
+          val tostringMethod = match self._getOrCompileToStringMethod(node.ty) { Ok(v) => v, Err(e) => return Err(e) }
+
+          val tostringRepr = match self._currentFn.block.buildCall(tostringMethod, [v], "_to_string_repr") { Ok(v) => v, Err(e) => return qbeError(e) }
+          val reprCharsPtr = match self._currentFn.block.buildAdd(Value.Int(8), tostringRepr, "_repr_chars_ptr") { Ok(v) => v, Err(e) => return qbeError(e) }
+          val reprChars = self._currentFn.block.buildLoadL(reprCharsPtr, "_repr_chars")
+          self._currentFn.block.buildVoidCall(self._printf, [dataPtr, Value.Ident("_repr_chars", QbeType.Pointer)])
+        }
+      }
+    }
+
+    fn.block.buildReturn()
+
+    match fn.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
+
+    Ok(fn)
+  }
+
+  func _compileStatement(self, node: TypedAstNode): Result<Value?, CompileError> {
+    match node.kind {
+      TypedAstNodeKind.If => todo("compiling if stmt/expr", node.token.position)
+      TypedAstNodeKind.Match => todo("compiling match stmt/expr", node.token.position)
+      TypedAstNodeKind.While => todo("compiling while-loop", node.token.position)
+      TypedAstNodeKind.For => todo("compiling for-loop", node.token.position)
+      TypedAstNodeKind.BindingDeclaration => todo("compiling binding declaration", node.token.position)
+      TypedAstNodeKind.FunctionDeclaration => todo("compiling function declaration", node.token.position)
+      TypedAstNodeKind.TypeDeclaration => todo("compiling type declaration", node.token.position)
+      TypedAstNodeKind.EnumDeclaration => todo("compiling enum declaration", node.token.position)
+      TypedAstNodeKind.Break => todo("compiling break statement", node.token.position)
+      TypedAstNodeKind.Continue => todo("compiling continue statement", node.token.position)
+      TypedAstNodeKind.Return => todo("compiling return statement", node.token.position)
+      TypedAstNodeKind.Placeholder => unreachable("placeholder ast node emitted from typechecker", node.token.position)
+      _ => {
+        val v = match self._compileExpression(node) { Ok(v) => v, Err(e) => return Err(e) }
+        Ok(Some(v))
+      }
+    }
+  }
+
+  func _compileExpression(self, node: TypedAstNode): Result<Value, CompileError> {
+    match node.kind {
+      TypedAstNodeKind.Literal(lit) => {
+        match lit {
+          LiteralAstNode.Int(v) => {
+            val res = match self._currentFn.block.buildAdd(Value.Int(0), Value.Int(v)) { Ok(v) => v, Err(e) => return qbeError(e) }
+            Ok(res)
+          }
+          LiteralAstNode.Float(f) => {
+            val res = match self._currentFn.block.buildAdd(Value.Float(0.0), Value.Float(f)) { Ok(v) => v, Err(e) => return qbeError(e) }
+            Ok(res)
+          }
+          LiteralAstNode.Bool(b) => {
+            val res = match self._currentFn.block.buildAdd(Value.Int32(0), Value.Int32(if b 1 else 0)) { Ok(v) => v, Err(e) => return qbeError(e) }
+            self._currentFn.block.addCommentBefore(b.toString())
+            Ok(res)
+          }
+          LiteralAstNode.String(s) => {
+            val dataPtr = self._builder.buildGlobalString(s)
+            val instancePtr = match self._constructString(dataPtr, Value.Int(s.length)) { Ok(v) => v, Err(e) => return Err(e) }
+            Ok(instancePtr)
+          }
+        }
+      }
+      TypedAstNodeKind.StringInterpolation => todo("compiling string interpolation expression", node.token.position)
+      TypedAstNodeKind.Unary => todo("compiling unary expression", node.token.position)
+      TypedAstNodeKind.Binary => todo("compiling binary expression", node.token.position)
+      TypedAstNodeKind.Grouped => todo("compiling grouped expression", node.token.position)
+      TypedAstNodeKind.Identifier => todo("compiling identifier expression", node.token.position)
+      TypedAstNodeKind.Accessor => todo("compiling accessor expression", node.token.position)
+      TypedAstNodeKind.Invocation(invokee, arguments) => {
+        match invokee {
+          TypedInvokee.Method(fn, selfVal, isOptSafe) => {
+            if isOptSafe return todo("opt-safe method invocation", node.token.position)
+
+            val fnVal = match self._getOrCompileMethod(selfVal.ty, fn) { Ok(v) => v, Err(e) => return Err(e) }
+
+            val args: Value[] = []
+            args.push(match self._compileExpression(selfVal) { Ok(v) => v, Err(e) => return Err(e) })
+            for arg in arguments {
+              if arg |arg| {
+                args.push(match self._compileExpression(arg) { Ok(v) => v, Err(e) => return Err(e) })
+              } else {
+                return todo("optional parameters")
+              }
+            }
+
+            val res = match self._currentFn.block.buildCall(fnVal, args) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+            Ok(res)
+          }
+          _ => todo("non-method invokees", node.token.position)
+        }
+      }
+      TypedAstNodeKind.Array => todo("compiling array expression", node.token.position)
+      TypedAstNodeKind.Set => todo("compiling set expression", node.token.position)
+      TypedAstNodeKind.Map => todo("compiling map expression", node.token.position)
+      TypedAstNodeKind.Tuple => todo("compiling tuple expression", node.token.position)
+      TypedAstNodeKind.Indexing => todo("compiling indexing expression", node.token.position)
+      TypedAstNodeKind.Lambda => todo("compiling lambda expression", node.token.position)
+      TypedAstNodeKind.Assignment => todo("compiling assignment stmt", node.token.position)
+      TypedAstNodeKind.If => todo("compiling if stmt/expr", node.token.position)
+      TypedAstNodeKind.Match => todo("compiling match stmt/expr", node.token.position)
+      _ => unreachable("node must be a statement", node.token.position)
+    }
+  }
+
+  func _constructString(self, ptrVal: Value, lenVal: Value): Result<Value, CompileError> {
+    val fnVal = match self._getOrCompileStructInitializer(self._project.preludeStringStruct) { Ok(v) => v, Err(e) => return Err(e) }
+    val structTy = if fnVal.returnType |ty| ty else return unreachable("initializer functions must have return types specified")
+
+    val res = match self._currentFn.block.buildCall(fnVal, [lenVal, ptrVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
+    res.ifIdent(name => self._currentFn.block.addCommentBefore("$name: String"))
+    Ok(res)
+  }
+
+  func _getQbeTypeForType(self, ty: Type): Result<QbeType?, CompileError> {
+    match ty.kind {
+      TypeKind.PrimitiveUnit => Ok(None)
+      TypeKind.PrimitiveInt => Ok(Some(QbeType.U64))
+      TypeKind.PrimitiveFloat => Ok(Some(QbeType.F64))
+      TypeKind.PrimitiveBool => Ok(Some(QbeType.U32))
+      TypeKind.PrimitiveString => Ok(Some(QbeType.Pointer))
+      TypeKind.Never => Ok(None)
+      TypeKind.Any => todo("TypeKind.Any")
+      TypeKind.Generic(name) => unreachable("attempting to resolve qbe type for generic $name")
+      TypeKind.Instance(structOrEnum, generics) => {
+        match structOrEnum {
+          StructOrEnum.Struct(struct) => {
+            // moduleId == 1 -> "_intrinsics" module
+            if struct.moduleId == 1 {
+              if struct.label.name == "Byte" return Ok(Some(QbeType.U8))
+
+              if struct.label.name == "Pointer" {
+                val typeArg = if generics[0] |t| t else return unreachable("Pointer<T> must have 1 type argument")
+                val typeArgQbeType = match self._getQbeTypeForType(typeArg) { Ok(v) => v, Err(e) => return Err(e) }
+                val ty = if typeArgQbeType |innerTy| {
+                  Some(QbeType.Pointer)
+                } else {
+                  return unreachable("Pointer<T> type arg cannot be resolved")
+                }
+
+                return Ok(ty)
+              }
+            }
+          }
+          _ => {}
+        }
+
+        todo("TypeKind.Instance")
+      }
+      TypeKind.Func(paramTypes, returnType) => todo("TypeKind.Func")
+      TypeKind.Type(type_) => todo("TypeKind.Type")
+      TypeKind.Tuple(types) => todo("TypeKind.Tuple")
+      TypeKind.Hole => unreachable("unexpected hole in emitted typed ast")
+    }
+  }
+
+  func _getQbeTypeForTypeExpect(self, ty: Type, reason: String, position: Position? = None): Result<QbeType, CompileError> {
+    val _ty = match self._getQbeTypeForType(ty) { Ok(v) => v, Err(e) => return Err(e) }
+    if _ty |ty| Ok(ty) else if position |pos| unreachable(reason, pos) else unreachable(reason)
+  }
+
+  func _getOrCompileStructInitializer(self, struct: Struct): Result<QbeFunction, CompileError> {
+    val fnName = structInitializerFnName(struct)
+    if self._builder.getFunction(fnName) |fn| return Ok(fn)
+
+    val fn = self._builder.buildFunction(name: fnName, returnType: Some(QbeType.Pointer))
+    fn.addCommentMultiline(structSignature(struct))
+    var size = 0
+    for field in struct.fields {
+      val fieldTy = match self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position)) { Ok(v) => v, Err(e) => return Err(e) }
+      size += fieldTy.size()
+      fn.addParameter(field.name.name, fieldTy)
+    }
+
+    val memLocal = match fn.block.buildCall(self._malloc, [Value.Int(size)], "mem") { Ok(v) => v, Err(e) => return qbeError(e) }
+
+    var offset = 0
+    for field in struct.fields {
+      val fieldTy = match self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position)) { Ok(v) => v, Err(e) => return Err(e) }
+      val param = Value.Ident(field.name.name, fieldTy)
+
+      val localName = "mem_offset_${field.name.name}"
+      val memCursorLocal = match fn.block.buildAdd(Value.Int(offset), memLocal, localName) { Ok(v) => v, Err(e) => return qbeError(e) }
+      fn.block.buildStoreL(param, memCursorLocal)
+
+      offset += fieldTy.size()
+    }
+
+    fn.block.buildReturn(Some(memLocal))
+
+    match fn.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
+
+    Ok(fn)
+  }
+
+  func _getOrCompileMethod(self, selfType: Type, fn: Function): Result<QbeFunction, CompileError> {
+    if fn.label.name == "toString" return self._getOrCompileToStringMethod(selfType)
+
+    val _t = match getInstanceTypeForType(self._project, selfType) { Ok(v) => v, Err(e) => return Err(e) }
+    // TODO: destructuring
+    val selfTy = _t[0]
+    val _typeArgs = _t[1]
+
+    val methodName = match selfTy {
+      StructOrEnum.Struct(struct) => methodFnName(struct, fn)
+      StructOrEnum.Enum => return todo("enum methods")
+    }
+    if self._builder.getFunction(methodName) |fn| return Ok(fn)
+
+    val returnTypeQbe = match self._getQbeTypeForType(fn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
+    val fnVal = self._builder.buildFunction(name: methodName, returnType: returnTypeQbe)
+
+    val selfTyQbe = match self._getQbeTypeForTypeExpect(selfType, "unacceptable type for self") { Ok(v) => v, Err(e) => return Err(e) }
+    fnVal.addParameter("self", selfTyQbe)
+
+    for param in fn.params {
+      val paramTy = match self._getQbeTypeForTypeExpect(param.ty, "unacceptable type for param", Some(param.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
+      fnVal.addParameter(param.label.name, paramTy)
+    }
+
+    fnVal.addComment(fnSignature(Some(selfTy), fn))
+
+    todo("rest of _getOrCompileMethod")
+  }
+
+  func _getOrCompileToStringMethod(self, ty: Type): Result<QbeFunction, CompileError> {
+    val _t = match getInstanceTypeForType(self._project, ty) { Ok(v) => v, Err(e) => return Err(e) }
+    // TODO: destructuring
+    val selfTy = _t[0]
+    val _typeArgs = _t[1]
+
+    val _p = match selfTy {
+      StructOrEnum.Struct(struct) => {
+        if struct == self._project.preludeIntStruct return self._getOrCompileIntToStringMethod()
+        if struct == self._project.preludeFloatStruct return self._getOrCompileFloatToStringMethod()
+        if struct == self._project.preludeStringStruct return self._getOrCompileStringToStringMethod()
+        if struct == self._project.preludeBoolStruct return self._getOrCompileBoolToStringMethod()
+
+        val _fn = struct.instanceMethods.find(m => m.label.name == "toString")
+        val fn = if _fn |f| f else return unreachable("every struct has a toString method defined")
+
+        (methodFnName(struct, fn), fn)
+      }
+      StructOrEnum.Enum => return todo("enum methods")
+    }
+    // TODO: destructuring
+    val methodName = _p[0]
+    val fn = _p[1]
+    if self._builder.getFunction(methodName) |fn| return Ok(fn)
+
+    todo("_getOrCompileToStringMethod implementation")
+  }
+
+  func _getOrCompileIntToStringMethod(self): Result<QbeFunction, CompileError> {
+    val stringTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveString), "string qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+    val intTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveInt), "int qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+
+    val typeName = structTypeName(self._project.preludeIntStruct)
+    val methodName = "$typeName..toString"
+    if self._builder.getFunction(methodName) |fn| return Ok(fn)
+
+    val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(stringTypeQbe))
+    val prevFn = self._currentFn
+    self._currentFn = fnVal
+
+    fnVal.addComment("Int#toString(self): String")
+    val selfParam = fnVal.addParameter("self", intTypeQbe)
+
+    val intFmtPtr = self._builder.buildGlobalString("%d")
+    val sizeRaw = match fnVal.block.buildCall(self._snprintf, [Value.Int(0), Value.Int(0), intFmtPtr, selfParam]) { Ok(v) => v, Err(e) => return qbeError(e) }
+    val sizeVal = match fnVal.block.buildAdd(Value.Int(1), sizeRaw) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+    val mem = match fnVal.block.buildCall(self._malloc, [sizeVal], "mem") { Ok(v) => v, Err(e) => return qbeError(e) }
+    match fnVal.block.buildCall(self._snprintf, [mem, sizeVal, intFmtPtr, selfParam]) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+    val str = match self._constructString(mem, sizeVal) { Ok(v) => v, Err(e) => return Err(e) }
+    fnVal.block.buildReturn(Some(str))
+
+    match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
+
+    self._currentFn = prevFn
+
+    Ok(fnVal)
+  }
+
+  func _getOrCompileFloatToStringMethod(self): Result<QbeFunction, CompileError> {
+    val stringTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveString), "string qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+    val floatTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveFloat), "float qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+
+    val typeName = structTypeName(self._project.preludeFloatStruct)
+    val methodName = "$typeName..toString"
+    if self._builder.getFunction(methodName) |fn| return Ok(fn)
+
+    val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(stringTypeQbe))
+    val prevFn = self._currentFn
+    self._currentFn = fnVal
+
+    fnVal.addComment("Float#toString(self): String")
+    val selfParam = fnVal.addParameter("self", floatTypeQbe)
+
+    val floatFmtPtr = self._builder.buildGlobalString("%g")
+    val sizeRaw = match fnVal.block.buildCall(self._snprintf, [Value.Int(0), Value.Int(0), floatFmtPtr, selfParam]) { Ok(v) => v, Err(e) => return qbeError(e) }
+    val sizeVal = match fnVal.block.buildAdd(Value.Int(1), sizeRaw) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+    val mem = match fnVal.block.buildCall(self._malloc, [sizeVal], "mem") { Ok(v) => v, Err(e) => return qbeError(e) }
+    match fnVal.block.buildCall(self._snprintf, [mem, sizeVal, floatFmtPtr, selfParam]) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+    val str = match self._constructString(mem, sizeVal) { Ok(v) => v, Err(e) => return Err(e) }
+    fnVal.block.buildReturn(Some(str))
+
+    match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
+
+    self._currentFn = prevFn
+
+    Ok(fnVal)
+  }
+
+  func _getOrCompileBoolToStringMethod(self): Result<QbeFunction, CompileError> {
+    val stringTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveString), "string qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+    val boolTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveBool), "bool qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+
+    val typeName = structTypeName(self._project.preludeIntStruct)
+    val methodName = "$typeName..toString"
+    if self._builder.getFunction(methodName) |fn| return Ok(fn)
+
+    val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(stringTypeQbe))
+    val prevFn = self._currentFn
+    self._currentFn = fnVal
+
+    fnVal.addComment("Bool#toString(self): String")
+    val selfParam = fnVal.addParameter("self", boolTypeQbe)
+
+    val labelIfTrue = fnVal.block.addLabel("if_true")
+    val labelIfFalse = fnVal.block.addLabel("if_false")
+    fnVal.block.buildJnz(selfParam, labelIfTrue, labelIfFalse)
+
+    fnVal.block.registerLabel(labelIfTrue)
+    val trueStrData = self._builder.buildGlobalString("true")
+    val trueStr = match self._constructString(trueStrData, Value.Int(4)) { Ok(v) => v, Err(e) => return Err(e) }
+    fnVal.block.buildReturn(Some(trueStr))
+
+    fnVal.block.registerLabel(labelIfFalse)
+    val falseStrData = self._builder.buildGlobalString("false")
+    val falseStr = match self._constructString(falseStrData, Value.Int(5)) { Ok(v) => v, Err(e) => return Err(e) }
+    fnVal.block.buildReturn(Some(falseStr))
+
+    match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
+
+    self._currentFn = prevFn
+
+    Ok(fnVal)
+  }
+
+  func _getOrCompileStringToStringMethod(self): Result<QbeFunction, CompileError> {
+    val stringTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveString), "string qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+
+    val typeName = structTypeName(self._project.preludeStringStruct)
+    val methodName = "$typeName..toString"
+    if self._builder.getFunction(methodName) |fn| return Ok(fn)
+
+    val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(stringTypeQbe))
+    val prevFn = self._currentFn
+    self._currentFn = fnVal
+
+    fnVal.addComment("String#toString(self): String")
+    val selfParam = fnVal.addParameter("self", stringTypeQbe)
+    fnVal.block.buildReturn(Some(selfParam))
+
+    match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
+
+    self._currentFn = prevFn
+
+    Ok(fnVal)
+  }
+}
+
+func todo<V>(message: String, position = Position(line: 0, col: 0)): Result<V, CompileError> = Err(CompileError(position: position, kind: CompileErrorKind.NotYetImplemented(message)))
+func unreachable<V>(message: String, position = Position(line: 0, col: 0)): Result<V, CompileError> = Err(CompileError(position: position, kind: CompileErrorKind.Unreachable(message)))

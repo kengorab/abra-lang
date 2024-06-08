@@ -161,12 +161,7 @@
                     "node": {
                       "kind": "invocation",
                       "invokee": {
-                        "token": {
-                          "position": [4, 37],
-                          "kind": {
-                            "name": "Dot"
-                          }
-                        },
+                        "method": "bar",
                         "type": {
                           "kind": "function",
                           "parameters": [
@@ -183,29 +178,22 @@
                             "primitive": "String"
                           }
                         },
-                        "node": {
-                          "kind": "accessor",
-                          "head": {
-                            "token": {
-                              "position": [4, 33],
-                              "kind": {
-                                "name": "Self"
-                              }
-                            },
-                            "type": {
-                              "kind": "instance",
-                              "struct": { "moduleId": 3, "name": "Foo" },
-                              "typeParams": []
-                            },
-                            "node": {
-                              "kind": "identifier",
-                              "name": "self"
+                        "isOptSafe": false,
+                        "self": {
+                          "token": {
+                            "position": [4, 33],
+                            "kind": {
+                              "name": "Self"
                             }
                           },
-                          "middle": [],
-                          "tail": {
-                            "kind": "method",
-                            "name": "bar"
+                          "type": {
+                            "kind": "instance",
+                            "struct": { "moduleId": 3, "name": "Foo" },
+                            "typeParams": []
+                          },
+                          "node": {
+                            "kind": "identifier",
+                            "name": "self"
                           }
                         }
                       },
@@ -339,12 +327,7 @@
                     "node": {
                       "kind": "invocation",
                       "invokee": {
-                        "token": {
-                          "position": [5, 26],
-                          "kind": {
-                            "name": "Dot"
-                          }
-                        },
+                        "method": "foo",
                         "type": {
                           "kind": "function",
                           "parameters": [
@@ -368,29 +351,22 @@
                             "primitive": "String"
                           }
                         },
-                        "node": {
-                          "kind": "accessor",
-                          "head": {
-                            "token": {
-                              "position": [5, 22],
-                              "kind": {
-                                "name": "Self"
-                              }
-                            },
-                            "type": {
-                              "kind": "instance",
-                              "struct": { "moduleId": 3, "name": "Foo" },
-                              "typeParams": []
-                            },
-                            "node": {
-                              "kind": "identifier",
-                              "name": "self"
+                        "isOptSafe": false,
+                        "self": {
+                          "token": {
+                            "position": [5, 22],
+                            "kind": {
+                              "name": "Self"
                             }
                           },
-                          "middle": [],
-                          "tail": {
-                            "kind": "method",
-                            "name": "foo"
+                          "type": {
+                            "kind": "instance",
+                            "struct": { "moduleId": 3, "name": "Foo" },
+                            "typeParams": []
+                          },
+                          "node": {
+                            "kind": "identifier",
+                            "name": "self"
                           }
                         }
                       },
@@ -506,12 +482,7 @@
                         "node": {
                           "kind": "invocation",
                           "invokee": {
-                            "token": {
-                              "position": [8, 26],
-                              "kind": {
-                                "name": "Dot"
-                              }
-                            },
+                            "method": "foo",
                             "type": {
                               "kind": "function",
                               "parameters": [
@@ -535,29 +506,22 @@
                                 "primitive": "String"
                               }
                             },
-                            "node": {
-                              "kind": "accessor",
-                              "head": {
-                                "token": {
-                                  "position": [8, 22],
-                                  "kind": {
-                                    "name": "Self"
-                                  }
-                                },
-                                "type": {
-                                  "kind": "instance",
-                                  "struct": { "moduleId": 3, "name": "Foo" },
-                                  "typeParams": []
-                                },
-                                "node": {
-                                  "kind": "identifier",
-                                  "name": "self"
+                            "isOptSafe": false,
+                            "self": {
+                              "token": {
+                                "position": [8, 22],
+                                "kind": {
+                                  "name": "Self"
                                 }
                               },
-                              "middle": [],
-                              "tail": {
-                                "kind": "method",
-                                "name": "foo"
+                              "type": {
+                                "kind": "instance",
+                                "struct": { "moduleId": 3, "name": "Foo" },
+                                "typeParams": []
+                              },
+                              "node": {
+                                "kind": "identifier",
+                                "name": "self"
                               }
                             }
                           },
@@ -597,12 +561,7 @@
                         "node": {
                           "kind": "invocation",
                           "invokee": {
-                            "token": {
-                              "position": [8, 44],
-                              "kind": {
-                                "name": "Dot"
-                              }
-                            },
+                            "method": "bar",
                             "type": {
                               "kind": "function",
                               "parameters": [
@@ -619,29 +578,22 @@
                                 "primitive": "String"
                               }
                             },
-                            "node": {
-                              "kind": "accessor",
-                              "head": {
-                                "token": {
-                                  "position": [8, 40],
-                                  "kind": {
-                                    "name": "Self"
-                                  }
-                                },
-                                "type": {
-                                  "kind": "instance",
-                                  "struct": { "moduleId": 3, "name": "Foo" },
-                                  "typeParams": []
-                                },
-                                "node": {
-                                  "kind": "identifier",
-                                  "name": "self"
+                            "isOptSafe": false,
+                            "self": {
+                              "token": {
+                                "position": [8, 40],
+                                "kind": {
+                                  "name": "Self"
                                 }
                               },
-                              "middle": [],
-                              "tail": {
-                                "kind": "method",
-                                "name": "bar"
+                              "type": {
+                                "kind": "instance",
+                                "struct": { "moduleId": 3, "name": "Foo" },
+                                "typeParams": []
+                              },
+                              "node": {
+                                "kind": "identifier",
+                                "name": "self"
                               }
                             }
                           },
@@ -756,12 +708,7 @@
           "node": {
             "kind": "invocation",
             "invokee": {
-              "token": {
-                "position": [12, 10],
-                "kind": {
-                  "name": "Dot"
-                }
-              },
+              "method": "baz",
               "type": {
                 "kind": "function",
                 "parameters": [
@@ -778,30 +725,23 @@
                   "primitive": "String"
                 }
               },
-              "node": {
-                "kind": "accessor",
-                "head": {
-                  "token": {
-                    "position": [12, 9],
-                    "kind": {
-                      "name": "Ident",
-                      "value": "f"
-                    }
-                  },
-                  "type": {
-                    "kind": "instance",
-                    "struct": { "moduleId": 3, "name": "Foo" },
-                    "typeParams": []
-                  },
-                  "node": {
-                    "kind": "identifier",
-                    "name": "f"
+              "isOptSafe": false,
+              "self": {
+                "token": {
+                  "position": [12, 9],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "f"
                   }
                 },
-                "middle": [],
-                "tail": {
-                  "kind": "method",
-                  "name": "baz"
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 3, "name": "Foo" },
+                  "typeParams": []
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "f"
                 }
               }
             },

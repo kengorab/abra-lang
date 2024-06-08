@@ -145,7 +145,12 @@
               "middle": [],
               "tail": {
                 "kind": "field",
-                "name": "color"
+                "name": "color",
+                "type": {
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 4, "name": "Color" },
+                  "typeParams": []
+                }
               }
             }
           }
@@ -192,13 +197,7 @@
             "node": {
               "kind": "invocation",
               "invokee": {
-                "token": {
-                  "position": [5, 12],
-                  "kind": {
-                    "name": "Ident",
-                    "value": "add"
-                  }
-                },
+                "function": "add",
                 "type": {
                   "kind": "function",
                   "parameters": [
@@ -221,10 +220,6 @@
                     "kind": "primitive",
                     "primitive": "Int"
                   }
-                },
-                "node": {
-                  "kind": "identifier",
-                  "name": "add"
                 }
               },
               "arguments": [
@@ -308,13 +303,7 @@
             "node": {
               "kind": "invocation",
               "invokee": {
-                "token": {
-                  "position": [6, 12],
-                  "kind": {
-                    "name": "Ident",
-                    "value": "add"
-                  }
-                },
+                "function": "add",
                 "type": {
                   "kind": "function",
                   "parameters": [
@@ -337,10 +326,6 @@
                     "kind": "primitive",
                     "primitive": "Int"
                   }
-                },
-                "node": {
-                  "kind": "identifier",
-                  "name": "add"
                 }
               },
               "arguments": [

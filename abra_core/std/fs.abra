@@ -38,6 +38,53 @@ export func readFile(path: String): Result<String, ReadFileError> {
   Ok(value: str)
 }
 
+export enum AccessMode {
+  ReadOnly
+  WriteOnly
+  ReadWrite
+}
+
+export type File {
+  _fd: Int
+  accessMode: AccessMode
+
+  func close(self): Result<Int, ReadFileError> {
+    if libc.close(self._fd) == -1 {
+      val errMsg = libc.strerror(libc.errno())
+      // TODO: change ReadFileError to FileError (?)
+      return Err(error: ReadFileError.CouldNotClose(message: errMsg))
+    }
+
+    Ok(self._fd)
+  }
+
+  func write(self, str: String) {
+    // TODO: handle error here (and also in prelude:stdoutWrite)
+    libc.write(self._fd, str._buffer, str.length)
+  }
+
+  func writeln(self, str: String = "") {
+    // TODO: i can do better than this
+    self.write(str)
+    self.write("\n")
+  }
+}
+
+export func openFile(path: String, accessMode: AccessMode): Result<File, ReadFileError> {
+  val oflag = match accessMode {
+    AccessMode.ReadOnly => libc.O_RDONLY
+    AccessMode.WriteOnly => libc.O_WRONLY
+    AccessMode.ReadWrite => libc.O_RDWR
+  }
+  val fd = libc.open(path._buffer, oflag)
+  if fd == -1 {
+    val errMsg = libc.strerror(libc.errno())
+    return Err(error: ReadFileError.CouldNotOpen(message: errMsg))
+  }
+
+  Ok(File(_fd: fd, accessMode: accessMode))
+}
+
 export func getCurrentWorkingDirectory(): String {
   val buf = Pointer.malloc<Byte>(libc.PATH_MAX)
 

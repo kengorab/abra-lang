@@ -248,13 +248,7 @@
                                 "node": {
                                   "kind": "invocation",
                                   "invokee": {
-                                    "token": {
-                                      "position": [2, 51],
-                                      "kind": {
-                                        "name": "Ident",
-                                        "value": "Err"
-                                      }
-                                    },
+                                    "function": "Err",
                                     "type": {
                                       "kind": "function",
                                       "parameters": [
@@ -280,10 +274,6 @@
                                           }
                                         ]
                                       }
-                                    },
-                                    "node": {
-                                      "kind": "identifier",
-                                      "name": "Err"
                                     }
                                   },
                                   "arguments": [
@@ -340,13 +330,7 @@
               "node": {
                 "kind": "invocation",
                 "invokee": {
-                  "token": {
-                    "position": [3, 3],
-                    "kind": {
-                      "name": "Ident",
-                      "value": "Ok"
-                    }
-                  },
+                  "function": "Ok",
                   "type": {
                     "kind": "function",
                     "parameters": [
@@ -372,10 +356,6 @@
                         }
                       ]
                     }
-                  },
-                  "node": {
-                    "kind": "identifier",
-                    "name": "Ok"
                   }
                 },
                 "arguments": [

@@ -229,7 +229,23 @@
                 "middle": [],
                 "tail": {
                   "kind": "field",
-                  "name": "fn"
+                  "name": "fn",
+                  "type": {
+                    "kind": "function",
+                    "parameters": [
+                      {
+                        "required": true,
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      }
+                    ],
+                    "returnType": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  }
                 }
               }
             },

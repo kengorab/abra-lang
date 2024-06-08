@@ -392,7 +392,7 @@ export type Jsonifier {
           self.indentInc()
 
           match seg {
-            AccessorPathSegment.EnumVariant(_, enum_, variant) => {
+            AccessorPathSegment.EnumVariant(_, _, enum_, variant) => {
               self.println("\"kind\": \"enumVariant\",")
               self.println("\"name\": \"${enum_.label.name}.${variant.label.name}\"")
             }
@@ -400,9 +400,12 @@ export type Jsonifier {
               self.println("\"kind\": \"method\",")
               self.println("\"name\": \"${f.label.name}\"")
             }
-            AccessorPathSegment.Field(_, f) => {
+            AccessorPathSegment.Field(_, ty, f) => {
               self.println("\"kind\": \"field\",")
-              self.println("\"name\": \"${f.name.name}\"")
+              self.println("\"name\": \"${f.name.name}\",")
+              self.print("\"type\": ")
+              self.printType(ty)
+              println()
             }
           }
 
@@ -414,7 +417,7 @@ export type Jsonifier {
         self.println("\"tail\": {")
         self.indentInc()
         match tail {
-          AccessorPathSegment.EnumVariant(_, enum_, variant) => {
+          AccessorPathSegment.EnumVariant(_, _, enum_, variant) => {
             self.println("\"kind\": \"enumVariant\",")
             self.println("\"name\": \"${enum_.label.name}.${variant.label.name}\"")
           }
@@ -422,9 +425,12 @@ export type Jsonifier {
             self.println("\"kind\": \"method\",")
             self.println("\"name\": \"${f.label.name}\"")
           }
-          AccessorPathSegment.Field(_, f) => {
+          AccessorPathSegment.Field(_, ty, f) => {
             self.println("\"kind\": \"field\",")
-            self.println("\"name\": \"${f.name.name}\"")
+            self.println("\"name\": \"${f.name.name}\",")
+            self.print("\"type\": ")
+            self.printType(ty)
+            println()
           }
         }
         self.indentDec()
@@ -435,6 +441,37 @@ export type Jsonifier {
 
         self.print("\"invokee\": ")
         match invokee {
+          TypedInvokee.Method(fn, selfVal, isOptSafe) => {
+            println("{")
+            self.indentInc()
+
+            self.println("\"method\": \"${fn.label.name}\",")
+
+            self.print("\"type\": ")
+            self.printType(fn.getType())
+            println(",")
+
+            self.println("\"isOptSafe\": $isOptSafe,")
+            self.print("\"self\": ")
+            self.printNode(selfVal)
+            println()
+
+            self.indentDec()
+            self.print("}")
+          }
+          TypedInvokee.Function(fn) => {
+            println("{")
+            self.indentInc()
+
+            self.println("\"function\": \"${fn.label.name}\",")
+
+            self.print("\"type\": ")
+            self.printType(fn.getType())
+            println()
+
+            self.indentDec()
+            self.print("}")
+          }
           TypedInvokee.Struct(struct) => self.printStruct(struct: struct, abridged: true)
           TypedInvokee.Expr(expr) => self.printNode(expr)
           TypedInvokee.EnumVariant(enum_, variant) => print("\"${enum_.label.name}.${variant.label.name}\"")
