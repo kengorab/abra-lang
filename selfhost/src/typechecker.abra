@@ -3009,10 +3009,9 @@ export type Typechecker {
                 return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAssignment("enum variant", variant.label.name, IllegalAssignmentReason.EnumVariant)))
               }
               AccessorPathSegment.Method(label, fn) => {
-                val _p = if fn.kind == FunctionKind.StaticMethod {
-                  ("static method", IllegalAssignmentReason.StaticMethod)
-                } else {
-                  ("method", IllegalAssignmentReason.Method)
+                val _p = match fn.kind {
+                  FunctionKind.StaticMethod => ("static method", IllegalAssignmentReason.StaticMethod)
+                  _ => ("method", IllegalAssignmentReason.Method)
                 }
                 // TODO: destructuring
                 val kind = _p[0]
