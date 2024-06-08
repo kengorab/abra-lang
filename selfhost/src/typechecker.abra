@@ -389,7 +389,7 @@ export enum TypedIdentifierKind {
   Discard
 }
 
-type Decorator {
+export type Decorator {
   label: Label
   arguments: LiteralAstNode[]
 }
@@ -409,8 +409,8 @@ type TypedFunctionParam {
 
 export enum FunctionKind {
   Standalone
-  InstanceMethod
-  StaticMethod
+  InstanceMethod(structOrEnum: StructOrEnum?)
+  StaticMethod(structOrEnum: StructOrEnum)
 }
 
 export type Function {
@@ -430,7 +430,7 @@ export type Function {
     name: String,
     params: (String, Type)[],
     returnType: Type,
-    kind = FunctionKind.InstanceMethod,
+    kind: FunctionKind, // = FunctionKind.InstanceMethod,
     typeParams: (Type, Label)[] = [],
   ): Function {
     val bogusPosition = Position(line: 0, col: 0)
@@ -1866,17 +1866,30 @@ export type Typechecker {
         }
       }
 
-      if fn.kind == FunctionKind.InstanceMethod {
-        if self.currentTypeDecl |typeDecl| {
+      match fn.kind {
+        FunctionKind.InstanceMethod(typeDecl) => {
           val genericNames = match typeDecl {
             StructOrEnum.Struct(struct) => struct.typeParams,
             StructOrEnum.Enum(enum_) => enum_.typeParams,
+            None => []
           }
           for name in genericNames {
             genericsInScope.insert(name)
           }
         }
+        _ => {}
       }
+      // if fn.kind == FunctionKind.InstanceMethod {
+      //   if self.currentTypeDecl |typeDecl| {
+      //     val genericNames = match typeDecl {
+      //       StructOrEnum.Struct(struct) => struct.typeParams,
+      //       StructOrEnum.Enum(enum_) => enum_.typeParams,
+      //     }
+      //     for name in genericNames {
+      //       genericsInScope.insert(name)
+      //     }
+      //   }
+      // }
     }
 
     genericsInScope
@@ -2035,14 +2048,14 @@ export type Typechecker {
 
     val hasSelf = if node.params[0] |param| param.label.name == "self" else false
     val fnKind = if hasSelf {
-      if !self.currentTypeDecl {
+      if self.currentTypeDecl |selfType| {
+        FunctionKind.InstanceMethod(Some(selfType))
+      } else {
         val param = if node.params[0] |p| p else return unreachable(node.name.position, "expected a first parameter to be present")
         return Err(TypeError(position: param.label.position, kind: TypeErrorKind.InvalidParamPosition(purpose: "self")))
       }
-
-      FunctionKind.InstanceMethod
-    } else if self.currentTypeDecl {
-      FunctionKind.StaticMethod
+    } else if self.currentTypeDecl |parentType| {
+      FunctionKind.StaticMethod(parentType)
     } else {
       FunctionKind.Standalone
     }
@@ -2191,7 +2204,8 @@ export type Typechecker {
       if paramName != "self" { fn.params.push(typedParam) }
       // Adjust the index value if we're in an instance method, since `self` isn't included in the fn.params array
       if needsRevisit {
-        val paramIdx = if fn.kind == FunctionKind.InstanceMethod idx - 1 else idx
+        // val paramIdx = if fn.kind == FunctionKind.InstanceMethod idx - 1 else idx
+        val paramIdx = match fn.kind { FunctionKind.InstanceMethod => idx - 1, _ => idx }
         paramsNeedingRevisit.push(paramIdx)
       }
     }
@@ -2217,7 +2231,8 @@ export type Typechecker {
       if !paramsNeedingRevisit.contains(idx) continue
 
       // Since `self` is not included in the fn.params array, but it is in the untyped AST, when referring to the untyped AST, we need to adjust
-      val origNodeParamIdx = if fn.kind == FunctionKind.InstanceMethod idx + 1 else idx
+      // val origNodeParamIdx = if fn.kind == FunctionKind.InstanceMethod idx + 1 else idx
+      val origNodeParamIdx = match fn.kind { FunctionKind.InstanceMethod => idx + 1, _ => idx }
       val paramNode = if params[origNodeParamIdx] |p| p else return unreachable(param.label.position, "there should be as many parameter nodes as typed parameters")
       val defaultValueNode = if paramNode.defaultValue |n| n else return unreachable(param.label.position, "the only way a parameter needs revisiting is if it has a default value")
 
@@ -2413,9 +2428,9 @@ export type Typechecker {
 
     // Ensure toString/hash/eq methods exist (include generated stubs if not), and sure the proper order
     val reorderedInstanceMethods = [
-      toStringFn ?: Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString)),
-      hashFn ?: Function.generated(scope, "hash", [], Type(kind: TypeKind.PrimitiveInt)),
-      eqFn ?: Function.generated(scope, "eq", [("other", selfInstanceType)], Type(kind: TypeKind.PrimitiveBool)),
+      toStringFn ?: Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(Some(structOrEnum))),
+      hashFn ?: Function.generated(scope, "hash", [], Type(kind: TypeKind.PrimitiveInt), FunctionKind.InstanceMethod(Some(structOrEnum))),
+      eqFn ?: Function.generated(scope, "eq", [("other", selfInstanceType)], Type(kind: TypeKind.PrimitiveBool), FunctionKind.InstanceMethod(Some(structOrEnum))),
     ]
     for m in instanceMethods {
       if m.label.name == "toString" || m.label.name == "hash" || m.label.name == "eq" continue
@@ -3802,11 +3817,11 @@ export type Typechecker {
   func _resolveAccessorPathSegmentAny(self, label: Label): AccessorPathSegment? {
     val scope = self.project.preludeScope.makeChild("Any", ScopeKind.Type)
     val method: Function? = if label.name == "toString" {
-      Some(Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString)))
+      Some(Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(None)))
     } else if label.name == "hash" {
-      Some(Function.generated(scope, "hash", [], Type(kind: TypeKind.PrimitiveInt)))
+      Some(Function.generated(scope, "hash", [], Type(kind: TypeKind.PrimitiveInt), FunctionKind.InstanceMethod(None)))
     } else if label.name == "eq" {
-      Some(Function.generated(scope, "eq", [("other", Type(kind: TypeKind.Any))], Type(kind: TypeKind.PrimitiveBool)))
+      Some(Function.generated(scope, "eq", [("other", Type(kind: TypeKind.Any))], Type(kind: TypeKind.PrimitiveBool), FunctionKind.InstanceMethod(None)))
     } else {
       None
     }
@@ -4091,18 +4106,23 @@ export type Typechecker {
             self._typecheckInvocationOfFunction(token, invokee, enumVariantAsFn, node, typeHint, None, Some(Instantiatable.EnumContainerVariant(enum_, variant, fields)))
           }
           AccessorPathSegment.Method(l, fn) => {
-            val selfVal = if mid[-1] |newTail| {
-              TypedAstNode(token: token, ty: newTail.getType(), kind: TypedAstNodeKind.Accessor(head, mid[:-1], newTail))
-            } else {
-              head
-            }
+            match fn.kind {
+              FunctionKind.InstanceMethod => {
+                val selfVal = if mid[-1] |newTail| {
+                  TypedAstNode(token: token, ty: newTail.getType(), kind: TypedAstNodeKind.Accessor(head, mid[:-1], newTail))
+                } else {
+                  head
+                }
 
-            if self._typeIsOption(invokee.ty) {
-              val typedNode = match self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint, Some((selfVal, true))) { Ok(v) => v, Err(e) => return Err(e) }
-              typedNode.ty = Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeOptionEnum), [typedNode.ty]))
-              Ok(typedNode)
-            } else {
-              self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint, Some((selfVal, false)))
+                if self._typeIsOption(invokee.ty) {
+                  val typedNode = match self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint, Some((selfVal, true))) { Ok(v) => v, Err(e) => return Err(e) }
+                  typedNode.ty = Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeOptionEnum), [typedNode.ty]))
+                  Ok(typedNode)
+                } else {
+                  self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint, Some((selfVal, false)))
+                }
+              }
+              _ => self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint)
             }
           }
           AccessorPathSegment.Field(label, _, _) => self._typecheckInvocationOfExpression(token, invokee, label.position, node)

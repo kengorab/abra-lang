@@ -175,6 +175,19 @@ export type Block {
     Ok(local)
   }
 
+  func buildMul(self, left: Value, right: Value, dst = self._nextLocal()): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'mul' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val local = Value.Ident(dst, resTy)
+    val dstName = "%$dst"
+    self.append(Instruction.Mul(dst: Dest(name: dstName, ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
   func buildLoadL(self, mem: Value, dst = self._nextLocal()): Value {
     val dstName = "%$dst"
     self.append(Instruction.LoadL(dst: Dest(name: dstName, ty: QbeType.U64), mem: mem))
@@ -358,6 +371,7 @@ export type Dest {
 
 enum Instruction {
   Add(dst: Dest, l: Value, r: Value)
+  Mul(dst: Dest, l: Value, r: Value)
 
   LoadL(dst: Dest, mem: Value)
   StoreL(value: Value, mem: Value)
@@ -373,6 +387,14 @@ enum Instruction {
       Instruction.Add(dst, l, r) => {
         dst.encode(file)
         file.write(" add ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.Mul(dst, l, r) => {
+        dst.encode(file)
+        file.write(" mul ")
         l.encode(file)
         file.write(", ")
         r.encode(file)

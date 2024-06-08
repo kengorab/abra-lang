@@ -1,4 +1,11 @@
-"hello world!"
-65
-3.14
-false
+//"hello world!"
+//65
+//3.14
+//
+//// println("a")
+//
+// [1, 2, 3]
+//true
+
+// Array.withCapacity<Int>(10)
+true
