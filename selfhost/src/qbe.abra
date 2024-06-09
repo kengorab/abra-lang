@@ -92,7 +92,7 @@ export type Block {
   body: Instruction[] = []
   labelsByLine: Map<Int, Label[]> = {}
   _usedLabels: Set<Label> = #{}
-  comments: Map<Int, String[]> = {}
+  comments: Map<Int, Set<String>> = {}
   numLocals: Int = 0
 
   func encode(self, file: File) {
@@ -139,8 +139,8 @@ export type Block {
   }
 
   func _addComment(self, comment: String, line = self.body.length) {
-    if self.comments[line] |comments| comments.push(comment)
-    else self.comments[line] = [comment]
+    if self.comments[line] |comments| comments.insert(comment)
+    else self.comments[line] = #{comment}
   }
 
   func addComment(self, comment: String) = self._addComment(comment)
@@ -350,10 +350,13 @@ export enum Value {
       Value.Float => QbeType.F64
   }
 
-  func ifIdent(self, fn: (String, QbeType) => Unit) {
+  func repr(self): String {
     match self {
-      Value.Ident(name, ty) => fn("%$name", ty)
-      _ => {}
+      Value.Ident(name, _) => "%$name"
+      Value.Global(name, _) => "\$$name"
+      Value.Int32(v) => v.toString()
+      Value.Int(v) => v.toString()
+      Value.Float(v) => v.toString()
     }
   }
 }

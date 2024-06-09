@@ -9,3 +9,4 @@
 
 // Array.withCapacity<Int>(10)
 true
+"hello".length.toString().length.toString().length
