@@ -67,7 +67,6 @@ jobs:
         ls -la ./qbe
         ls -la ./qbe/qbe-1.2
         echo "PATH=$(pwd)/qbe/qbe-1.2:$PATH" >> $GITHUB_ENV
-        which qbe
     - name: Build rust
       run: cargo build
     - name: Install ext dependencies (for C compilation)
