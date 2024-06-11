@@ -56,11 +56,12 @@ jobs:
     - name: Install QBE
       run: |
         mkdir -p qbe
+        cd qbe
         wget https://c9x.me/compile/release/qbe-1.2.tar.xz
         tar -xf qbe-1.2.tar.xz
         cd qbe-1.2
         make
-      if: steps.cache-qbe.outputs.cache-hit != 'true'
+      # if: steps.cache-qbe.outputs.cache-hit != 'true'
     - name: Setup QBE
       run: |
         ls -la ./qbe
