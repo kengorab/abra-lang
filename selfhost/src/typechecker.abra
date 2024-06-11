@@ -430,7 +430,7 @@ export type Function {
     name: String,
     params: (String, Type)[],
     returnType: Type,
-    kind: FunctionKind, // = FunctionKind.InstanceMethod,
+    kind: FunctionKind,
     typeParams: (Type, Label)[] = [],
   ): Function {
     val bogusPosition = Position(line: 0, col: 0)
@@ -1879,17 +1879,6 @@ export type Typechecker {
         }
         _ => {}
       }
-      // if fn.kind == FunctionKind.InstanceMethod {
-      //   if self.currentTypeDecl |typeDecl| {
-      //     val genericNames = match typeDecl {
-      //       StructOrEnum.Struct(struct) => struct.typeParams,
-      //       StructOrEnum.Enum(enum_) => enum_.typeParams,
-      //     }
-      //     for name in genericNames {
-      //       genericsInScope.insert(name)
-      //     }
-      //   }
-      // }
     }
 
     genericsInScope
@@ -2204,7 +2193,6 @@ export type Typechecker {
       if paramName != "self" { fn.params.push(typedParam) }
       // Adjust the index value if we're in an instance method, since `self` isn't included in the fn.params array
       if needsRevisit {
-        // val paramIdx = if fn.kind == FunctionKind.InstanceMethod idx - 1 else idx
         val paramIdx = match fn.kind { FunctionKind.InstanceMethod => idx - 1, _ => idx }
         paramsNeedingRevisit.push(paramIdx)
       }
@@ -2231,7 +2219,6 @@ export type Typechecker {
       if !paramsNeedingRevisit.contains(idx) continue
 
       // Since `self` is not included in the fn.params array, but it is in the untyped AST, when referring to the untyped AST, we need to adjust
-      // val origNodeParamIdx = if fn.kind == FunctionKind.InstanceMethod idx + 1 else idx
       val origNodeParamIdx = match fn.kind { FunctionKind.InstanceMethod => idx + 1, _ => idx }
       val paramNode = if params[origNodeParamIdx] |p| p else return unreachable(param.label.position, "there should be as many parameter nodes as typed parameters")
       val defaultValueNode = if paramNode.defaultValue |n| n else return unreachable(param.label.position, "the only way a parameter needs revisiting is if it has a default value")

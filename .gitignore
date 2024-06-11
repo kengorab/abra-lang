@@ -12,5 +12,3 @@ abra_wasm/js-tests/node_modules
 **/._abra
 libgc
 a.out
-
-selfhost/ext/qbe
