@@ -58,12 +58,10 @@ jobs:
         mkdir -p qbe
         wget https://c9x.me/compile/release/qbe-1.2.tar.xz
         tar -xf qbe-1.2.tar.xz
-      if: steps.cache-qbe.outputs.cache-hit != 'true'
-    - name: Setup QBE
-      run: |
         cd qbe-1.2
         make
         echo "PATH=$(pwd):$PATH" >> $GITHUB_ENV
+      if: steps.cache-qbe.outputs.cache-hit != 'true'
     - name: Build rust
       run: cargo build
     - name: Install ext dependencies (for C compilation)
