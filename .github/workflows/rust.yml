@@ -47,6 +47,8 @@ jobs:
         sudo apt-get install -y libtinfo6
         echo "PATH=$(pwd)/llvm/bin:$PATH" >> $GITHUB_ENV
         echo "LLVM_CONFIG=$(pwd)/llvm/bin/llvm-config" >> $GITHUB_ENV
+    - name: Setup QBE
+      run: cd selfhost && ./build_qbe.sh
     - name: Build rust
       run: cargo build
     - name: Install ext dependencies (for C compilation)
