@@ -12,6 +12,6 @@ else
   $(echo "$COMPILER_BIN $1")
 fi
 
-ext/qbe -o ./._abra/_main.s ./._abra/_main.ssa
+qbe -o ./._abra/_main.s ./._abra/_main.ssa
 clang ./._abra/_main.s -o ./._abra/_main
 ./._abra/_main

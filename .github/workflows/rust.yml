@@ -29,6 +29,12 @@ jobs:
       with:
         path: ./llvm
         key: llvm-11.1.0
+    - name: Cache QBE
+      id: cache-qbe
+      uses: actions/cache@v3
+      with:
+        path: ./qbe
+        key: qbe-1.2
     - uses: jetli/wasm-pack-action@v0.3.0
       with:
         version: 'v0.9.0'
@@ -47,8 +53,17 @@ jobs:
         sudo apt-get install -y libtinfo6
         echo "PATH=$(pwd)/llvm/bin:$PATH" >> $GITHUB_ENV
         echo "LLVM_CONFIG=$(pwd)/llvm/bin/llvm-config" >> $GITHUB_ENV
+    - name: Install QBE
+      run: |
+        mkdir -p qbe
+        wget https://c9x.me/compile/release/qbe-1.2.tar.xz
+        tar -xf qbe-1.2.tar.xz
+      if: steps.cache-qbe.outputs.cache-hit != 'true'
     - name: Setup QBE
-      run: cd selfhost && ./build_qbe.sh
+      run: |
+        cd qbe-1.2
+        make
+        echo "PATH=$(pwd):$PATH" >> $GITHUB_ENV
     - name: Build rust
       run: cargo build
     - name: Install ext dependencies (for C compilation)
