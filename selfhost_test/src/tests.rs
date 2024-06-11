@@ -746,3 +746,15 @@ fn typechecker_tests() {
 
         .run_tests();
 }
+
+#[test]
+fn compiler_tests() {
+    TestRunner::compiler_test_runner()
+        .add_test("compiler/ints.abra")
+        .add_test("compiler/floats.abra")
+        .add_test("compiler/bools.abra")
+        .add_test("compiler/strings.abra")
+        .add_test("compiler/arrays.abra")
+
+        .run_tests();
+}

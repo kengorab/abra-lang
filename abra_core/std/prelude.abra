@@ -3,7 +3,8 @@ import Pointer, Byte from "./_intrinsics"
 import "libc" as libc
 
 func stdoutWrite(str: String) {
-  libc.write(libc.STDOUT_FILENO, str._buffer, str.length)
+  // libc.STDOUT_FILENO = 1
+  libc.write(1, str._buffer, str.length)
 }
 
 func print(*items: Any[]) {
@@ -397,8 +398,8 @@ type Array<T> {
   _capacity: Int = 0
 
   func withCapacity<T>(initialCapacity: Int): T[] {
-    val capacity = if initialCapacity == 0 16 else initialCapacity
-    Array(length: 0, _buffer: Pointer.malloc(capacity), _capacity: capacity)
+    // val capacity = if initialCapacity == 0 16 else initialCapacity
+    Array(length: 0, _buffer: Pointer.malloc(16), _capacity: 16)
   }
 
   func fill<T>(length: Int, value: T): T[] {

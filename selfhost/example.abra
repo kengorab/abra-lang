@@ -3,10 +3,20 @@
 //3.14
 //
 //// println("a")
-//
-// [1, 2, 3]
-//true
 
-// Array.withCapacity<Int>(10)
-true
-"hello".length.toString().length.toString().length
+//[1, 2, 3].length
+// true
+
+// stdoutWrite("hello")
+// println(1 +23)
+
+// Array.withCapacity<Int>(10).isEmpty()
+// true
+// "hello".length.toString().length.toString().length
+
+//3 * 12
+// "ab".foo()
+
+
+println(24)
+println(17 == (15 + 2))

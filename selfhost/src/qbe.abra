@@ -188,6 +188,19 @@ export type Block {
     Ok(local)
   }
 
+  func buildCompareEq(self, left: Value, right: Value, dst = self._nextLocal()): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'ceqw' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val local = Value.Ident(dst, resTy)
+    val dstName = "%$dst"
+    self.append(Instruction.CompareEq(dst: Dest(name: dstName, ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
   func buildLoadL(self, mem: Value, dst = self._nextLocal()): Value {
     val dstName = "%$dst"
     self.append(Instruction.LoadL(dst: Dest(name: dstName, ty: QbeType.U64), mem: mem))
@@ -216,6 +229,15 @@ export type Block {
     Ok(local)
   }
 
+  func buildCallRaw(self, fnName: String, returnType: QbeType, arguments: Value[], dst = self._nextLocal()): Result<Value, String> {
+    val dstName = "%$dst"
+
+    val local = Value.Ident(dst, returnType)
+    self.append(Instruction.Call(dst: Some(Dest(name: dstName, ty: returnType)), fn: "\$$fnName", args: arguments))
+
+    Ok(local)
+  }
+
   func buildVoidCall(self, fnValue: QbeFunction, arguments: Value[]) {
     val fnName = "\$${fnValue.name}"
     if fnValue.variadicIdx |idx| {
@@ -223,6 +245,15 @@ export type Block {
     } else {
       self.append(Instruction.Call(dst: None, fn: fnName, args: arguments))
     }
+  }
+
+  func buildVoidCallRaw(self, fnName: String, arguments: Value[]) {
+    self.append(Instruction.Call(dst: None, fn: "\$$fnName", args: arguments))
+  }
+
+  func buildJmp(self, label: Label) {
+    self._usedLabels.insert(label)
+    self.append(Instruction.Jmp(label))
   }
 
   func buildJnz(self, cond: Value, ifNonZero: Label, ifZero: Label) {
@@ -376,12 +407,15 @@ enum Instruction {
   Add(dst: Dest, l: Value, r: Value)
   Mul(dst: Dest, l: Value, r: Value)
 
+  CompareEq(dst: Dest, l: Value, r: Value)
+
   LoadL(dst: Dest, mem: Value)
   StoreL(value: Value, mem: Value)
 
   Call(dst: Dest?, fn: String, args: Value[])
   CallVarargs(dst: Dest?, fn: String, varargsIdx: Int, args: Value[])
 
+  Jmp(label: Label)
   Jnz(cond: Value, ifNonZero: Label, ifZero: Label)
   Return(value: Value?)
 
@@ -398,6 +432,14 @@ enum Instruction {
       Instruction.Mul(dst, l, r) => {
         dst.encode(file)
         file.write(" mul ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.CompareEq(dst, l, r) => {
+        dst.encode(file)
+        file.write(" ceqw ")
         l.encode(file)
         file.write(", ")
         r.encode(file)
@@ -450,6 +492,9 @@ enum Instruction {
           if idx != args.length - 1 file.write(", ")
         }
         file.writeln(")")
+      }
+      Instruction.Jmp(label) => {
+        file.writeln("jmp @${label.name}")
       }
       Instruction.Jnz(cond, ifNonZero, ifZero) => {
         file.write("jnz ")
