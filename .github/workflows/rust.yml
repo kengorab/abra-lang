@@ -63,7 +63,10 @@ jobs:
       if: steps.cache-qbe.outputs.cache-hit != 'true'
     - name: Setup QBE
       run: |
+        ls -la ./qbe/qbe-1.2
         echo "PATH=$(pwd)/qbe/qbe-1.2:$PATH" >> $GITHUB_ENV
+        echo $GITHUB_ENV
+        which qbe
     - name: Build rust
       run: cargo build
     - name: Install ext dependencies (for C compilation)
