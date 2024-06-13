@@ -1,4 +1,4 @@
-use std::io;
+use std::{fs, io};
 use std::env::temp_dir;
 use std::io::BufWriter;
 use std::io::Write;
@@ -11,6 +11,7 @@ use abra_core::parser::ast::ModuleId;
 use similar::{TextDiff, ChangeTag};
 use abra_core::common::display_error::DisplayError;
 use abra_core::common::util::{get_project_root, random_string};
+use itertools::{EitherOrBoth, Itertools};
 
 enum TestType {
     VsRust(&'static str),
@@ -36,28 +37,12 @@ impl TestRunner {
         Self::test_runner("typechecker", "typechecker.test.abra", "typechecker_test")
     }
 
+    pub fn compiler_test_runner() -> CompilerTestRunner {
+        CompilerTestRunner {tests: vec![]}
+    }
+
     pub fn test_runner(runner_name: &'static str, src_file: &str, output_bin_file: &str) -> Self {
-        let selfhost_dir = get_project_root().unwrap().join("selfhost");
-        let build_dir = if let Some(test_temp_dir) = std::env::var("TEST_TMP_DIR").ok() {
-            let dir = Path::new(&test_temp_dir).join(random_string(12));
-            std::fs::create_dir(&dir).unwrap();
-            dir
-        } else {
-            temp_dir()
-        };
-
-        let output = Command::cargo_bin("abra").unwrap()
-            .arg("build")
-            .arg(&selfhost_dir.join("src").join(src_file))
-            .arg("-o")
-            .arg(output_bin_file)
-            .arg("-b")
-            .arg(&build_dir)
-            .output()
-            .unwrap();
-        assert!(output.stderr.is_empty(), "Compilation error: {}", String::from_utf8(output.stderr).unwrap());
-
-        let bin_path = build_dir.join(".abra").join(output_bin_file).to_str().unwrap().to_string();
+        let bin_path = build_test_runner(src_file, output_bin_file);
         Self { runner_name, bin_path, tests: vec![] }
     }
 
@@ -152,6 +137,115 @@ impl TestRunner {
             println!("All tests passed for {runner_name}!")
         }
     }
+}
+
+pub struct CompilerTestRunner {
+    tests: Vec<&'static str>,
+}
+
+impl CompilerTestRunner {
+    pub fn add_test(mut self, test_path: &'static str) -> Self {
+        self.tests.push(test_path);
+        self
+    }
+
+    pub fn run_tests(self) {
+        let mut failures = vec![];
+        let selfhost_dir = get_project_root().unwrap().join("selfhost");
+
+        let compiler_test_bin = build_test_runner("compiler.test.abra", "compiler_test");
+        let abra_wrapper_script = selfhost_dir.join("abra");
+
+        for test_file_path in self.tests {
+            let test_path = selfhost_dir.join("test").join(test_file_path);
+            let test_path = test_path.to_str().unwrap().to_string();
+            let test_file = fs::read_to_string(&test_path).unwrap_or_else(|_| {
+                println!("No such file {}", &test_path);
+                panic!();
+            });
+
+            let output = Command::new(&abra_wrapper_script)
+                .env("COMPILER_BIN", &compiler_test_bin)
+                .arg(&test_path)
+                .output()
+                .unwrap();
+            if !output.stderr.is_empty() {
+                eprintln!("Compilation error: {}", String::from_utf8(output.stderr).unwrap());
+                failures.push(test_path);
+                continue;
+            }
+            let output = String::from_utf8(output.stdout).unwrap();
+
+            let prefix = "/// Expect: ";
+            let expectations = test_file.lines()
+                .map(|line| line.trim())
+                .enumerate()
+                .filter(|(_, line)| line.starts_with(prefix))
+                .map(|(line_num, line)| (line_num + 1, line.replace(prefix, "")))
+                .collect_vec();
+
+            let output_lines = output.lines();
+            for pair in expectations.iter().zip_longest(output_lines) {
+                match pair {
+                    EitherOrBoth::Both((line_num, expected), actual) => {
+                        if expected != actual {
+                            eprintln!("Expectation mismatch at {}:{} (expected '{}' but got '{}')", &test_path, line_num, expected, actual);
+                            failures.push(test_path);
+                            break;
+                        }
+                    }
+                    EitherOrBoth::Left((line_num, expected)) => {
+                        eprintln!("Expected: {} (line {}), but reached end of output", expected, line_num);
+                        failures.push(test_path);
+                        break;
+                    }
+                    EitherOrBoth::Right(actual) => {
+                        eprintln!("Received line: {}, but there were no more expectations", actual);
+                        failures.push(test_path);
+                        break;
+                    }
+                }
+            }
+        }
+
+        if !failures.is_empty() {
+            eprintln!("Failures running compiler tests:");
+            for test_path in failures {
+                eprintln!("  Test path '{}' failed", &test_path)
+            }
+            panic!("Failures running compiler tests!");
+        } else {
+            println!("All tests passed for compiler!")
+        }
+    }
+}
+
+fn build_test_runner(runner_src_file: &str, output_bin_file: &str) -> String {
+    let selfhost_dir = get_project_root().unwrap().join("selfhost");
+    let build_dir = if let Some(test_temp_dir) = std::env::var("TEST_TMP_DIR").ok() {
+        let dir = Path::new(&test_temp_dir).join(random_string(12));
+        fs::create_dir(&dir).unwrap();
+        dir
+    } else {
+        temp_dir()
+    };
+
+    println!("Building {}...", &runner_src_file);
+    let output = Command::cargo_bin("abra").unwrap()
+        .arg("build")
+        .arg(&selfhost_dir.join("src").join(runner_src_file))
+        .arg("-o")
+        .arg(output_bin_file)
+        .arg("-b")
+        .arg(&build_dir)
+        .output()
+        .unwrap();
+    assert!(output.stderr.is_empty(), "Compilation error: {}", String::from_utf8(output.stderr).unwrap());
+
+    let runner_bin = build_dir.join(".abra").join(output_bin_file).to_str().unwrap().to_string();
+    println!("...built {}", &runner_bin);
+
+    runner_bin
 }
 
 fn tokens_to_json(tokens: &Vec<Token>) -> io::Result<String> {

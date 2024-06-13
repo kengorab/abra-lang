@@ -82,7 +82,7 @@ enum QbeDataKind {
   }
 }
 
-type Label {
+export type Label {
   name: String
   offset: Int? = None
 }
@@ -92,7 +92,7 @@ export type Block {
   body: Instruction[] = []
   labelsByLine: Map<Int, Label[]> = {}
   _usedLabels: Set<Label> = #{}
-  comments: Map<Int, String[]> = {}
+  comments: Map<Int, Set<String>> = {}
   numLocals: Int = 0
 
   func encode(self, file: File) {
@@ -139,8 +139,8 @@ export type Block {
   }
 
   func _addComment(self, comment: String, line = self.body.length) {
-    if self.comments[line] |comments| comments.push(comment)
-    else self.comments[line] = [comment]
+    if self.comments[line] |comments| comments.insert(comment)
+    else self.comments[line] = #{comment}
   }
 
   func addComment(self, comment: String) = self._addComment(comment)
@@ -162,43 +162,81 @@ export type Block {
 
   // instruction builders
 
-  func buildAdd(self, left: Value, right: Value, dst = self._nextLocal()): Result<Value, String> {
+  func buildAdd(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
-
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'add' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
 
-    val local = Value.Ident(dst, resTy)
-    val dstName = "%$dst"
-    self.append(Instruction.Add(dst: Dest(name: dstName, ty: resTy), l: left, r: right))
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.Add(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
 
     Ok(local)
   }
 
-  func buildLoadL(self, mem: Value, dst = self._nextLocal()): Value {
-    val dstName = "%$dst"
-    self.append(Instruction.LoadL(dst: Dest(name: dstName, ty: QbeType.U64), mem: mem))
+  func buildMul(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'mul' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
 
-    Value.Ident(dst, QbeType.U64)
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.Mul(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
+  func buildCompareEq(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'ceqw' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val dest =  dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.CompareEq(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
+  func buildLoadL(self, mem: Value, dst: String? = None): Value {
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, QbeType.U64)
+
+    self.append(Instruction.LoadL(dst: Dest(name: local.repr(), ty: QbeType.U64), mem: mem))
+
+    local
   }
 
   func buildStoreL(self, value: Value, mem: Value) {
     self.append(Instruction.StoreL(value: value, mem: mem))
   }
 
-  func buildCall(self, fnValue: QbeFunction, arguments: Value[], dst = self._nextLocal()): Result<Value, String> {
-    val dstName = "%$dst"
+  func buildCall(self, fnValue: QbeFunction, arguments: Value[], dst: String? = None): Result<Value, String> {
+    val dest = dst ?: self._nextLocal()
     val fnReturnType = if fnValue.returnType |ty| ty else {
-      return Err("function value '${fnValue.name}' has no return type; cannot store result into destination '$dstName'")
+      return Err("function value '${fnValue.name}' has no return type; cannot store result into destination '%$dest'")
     }
 
+    val local = Value.Ident(dest, fnReturnType)
+
     val fnName = "\$${fnValue.name}"
-    val local = Value.Ident(dst, fnReturnType)
     if fnValue.variadicIdx |idx| {
-      self.append(Instruction.CallVarargs(dst: Some(Dest(name: dstName, ty: fnReturnType)), fn: fnName, varargsIdx: idx, args: arguments))
+      self.append(Instruction.CallVarargs(dst: Some(Dest(name: local.repr(), ty: fnReturnType)), fn: fnName, varargsIdx: idx, args: arguments))
     } else {
-      self.append(Instruction.Call(dst: Some(Dest(name: dstName, ty: fnReturnType)), fn: fnName, args: arguments))
+      self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: fnReturnType)), fn: fnName, args: arguments))
     }
+
+    Ok(local)
+  }
+
+  func buildCallRaw(self, fnName: String, returnType: QbeType, arguments: Value[], dst: String? = None): Result<Value, String> {
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, returnType)
+
+    self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: returnType)), fn: "\$$fnName", args: arguments))
 
     Ok(local)
   }
@@ -210,6 +248,29 @@ export type Block {
     } else {
       self.append(Instruction.Call(dst: None, fn: fnName, args: arguments))
     }
+  }
+
+  func buildVoidCallRaw(self, fnName: String, arguments: Value[]) {
+    self.append(Instruction.Call(dst: None, fn: "\$$fnName", args: arguments))
+  }
+
+  func buildPhi(self, cases: (Label, Value)[], dst: String? = None): Result<Value, String> {
+    var ty = if cases[0] |_c| _c[1].ty() else return Err("phi requires at least 1 label")
+    for case in cases {
+      if ty != case[1].ty() return Err("phi case mismatch (@${case[0]} doesn't match previous)")
+    }
+
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, ty)
+
+    self.append(Instruction.Phi(dst: Dest(name: local.repr(), ty: ty), cases: cases))
+
+    Ok(local)
+  }
+
+  func buildJmp(self, label: Label) {
+    self._usedLabels.insert(label)
+    self.append(Instruction.Jmp(label))
   }
 
   func buildJnz(self, cond: Value, ifNonZero: Label, ifZero: Label) {
@@ -337,10 +398,13 @@ export enum Value {
       Value.Float => QbeType.F64
   }
 
-  func ifIdent(self, fn: (String, QbeType) => Unit) {
+  func repr(self): String {
     match self {
-      Value.Ident(name, ty) => fn("%$name", ty)
-      _ => {}
+      Value.Ident(name, _) => "%$name"
+      Value.Global(name, _) => "\$$name"
+      Value.Int32(v) => v.toString()
+      Value.Int(v) => v.toString()
+      Value.Float(v) => v.toString()
     }
   }
 }
@@ -358,6 +422,9 @@ export type Dest {
 
 enum Instruction {
   Add(dst: Dest, l: Value, r: Value)
+  Mul(dst: Dest, l: Value, r: Value)
+
+  CompareEq(dst: Dest, l: Value, r: Value)
 
   LoadL(dst: Dest, mem: Value)
   StoreL(value: Value, mem: Value)
@@ -365,6 +432,9 @@ enum Instruction {
   Call(dst: Dest?, fn: String, args: Value[])
   CallVarargs(dst: Dest?, fn: String, varargsIdx: Int, args: Value[])
 
+  Phi(dst: Dest, cases: (Label, Value)[])
+
+  Jmp(label: Label)
   Jnz(cond: Value, ifNonZero: Label, ifZero: Label)
   Return(value: Value?)
 
@@ -373,6 +443,22 @@ enum Instruction {
       Instruction.Add(dst, l, r) => {
         dst.encode(file)
         file.write(" add ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.Mul(dst, l, r) => {
+        dst.encode(file)
+        file.write(" mul ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.CompareEq(dst, l, r) => {
+        dst.encode(file)
+        file.write(" ceqw ")
         l.encode(file)
         file.write(", ")
         r.encode(file)
@@ -425,6 +511,22 @@ enum Instruction {
           if idx != args.length - 1 file.write(", ")
         }
         file.writeln(")")
+      }
+      Instruction.Phi(dst, cases) => {
+        dst.encode(file)
+        file.write(" phi ")
+        for case, idx in cases {
+          file.write("@${case[0].name} ")
+          case[1].encode(file)
+
+          if idx != cases.length - 1 {
+            file.write(", ")
+          }
+        }
+        file.writeln()
+      }
+      Instruction.Jmp(label) => {
+        file.writeln("jmp @${label.name}")
       }
       Instruction.Jnz(cond, ifNonZero, ifZero) => {
         file.write("jnz ")

@@ -1200,6 +1200,7 @@ version = "0.1.0"
 dependencies = [
  "abra_core",
  "assert_cmd",
+ "itertools 0.9.0",
  "similar",
 ]
 

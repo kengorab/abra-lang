@@ -1,5 +1,5 @@
 import LiteralAstNode, IndexingMode from "./parser"
-import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, Scope, Struct, Enum, StructOrEnum, AccessorPathSegment, TypedIdentifierKind, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export, TypedMatchCaseKind from "./typechecker"
+import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, FunctionKind, Scope, Struct, Enum, StructOrEnum, AccessorPathSegment, TypedIdentifierKind, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export, TypedMatchCaseKind from "./typechecker"
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 
 export type Jsonifier {
@@ -827,7 +827,13 @@ export type Jsonifier {
       self.println("\"isGenerated\": ${function.isGenerated},")
     }
 
-    self.println("\"kind\": \"${function.kind}\",")
+    self.print("\"kind\": ")
+    match function.kind {
+      FunctionKind.Standalone => print("\"FunctionKind.Standalone\"")
+      FunctionKind.InstanceMethod => print("\"FunctionKind.InstanceMethod\"")
+      FunctionKind.StaticMethod => print("\"FunctionKind.StaticMethod\"")
+    }
+    println(",")
 
     self.print("\"typeParameters\": ")
     self.array(function.typeParams, typeParam => {

@@ -1,0 +1,145 @@
+/// Expect: 1.23
+println(1.23)
+
+/// Expect: 0.123
+println(0.123)
+
+/// Expect: 1
+println(1.0)
+
+// // Unary operations
+// /// Expect: -1.1 1.1 -0
+// println(-1.1, --1.1, -0.0)
+
+// // Binary operations
+// /// Expect: 32.1
+// println(17.1 + 15)
+// /// Expect: 32.2
+// println(17.1 + 15.1)
+
+// /// Expect: 2.1
+// println(17.1 - 15)
+// /// Expect: 2.1
+// println(17.2 - 15.1)
+
+// /// Expect: 2565
+// println(17.1 * 150)
+// /// Expect: 2566.71
+// println(17.1 * 150.1)
+
+// /// Expect: 1.14
+// println(17.1 / 15)
+// /// Expect: 1.13245
+// println(17.1 / 15.1)
+
+// /// Expect: 1.25
+// println(5.25 % 2)
+// /// Expect: 0.25
+// println(5.25 % 2.5)
+
+// /// Expect: 34.2968
+// println(2 ** 5.1)
+// /// Expect: 43.9864
+// println(2.1 ** 5.1)
+// /// Expect: 40.841
+// println(2.1 ** 5)
+// /// Expect: -34.2968
+// println(-2 ** 5.1)
+// /// Expect: -43.9864
+// println(-2.1 ** 5.1)
+// /// Expect: -40.841
+// println(-2.1 ** 5)
+// /// Expect: 0.0291573
+// println(2 ** -5.1)
+// /// Expect: 0.0227343
+// println(2.1 ** -5.1)
+// /// Expect: 0.0244852
+// println(2.1 ** -5)
+
+// /// Expect: true
+// println(17.0 == (15 + 2))
+// /// Expect: false
+// println(17.1 == 15)
+// /// Expect: true
+// println(17.0 == (15 + 2.0))
+// /// Expect: false
+// println(17.1 == 15.1)
+
+// /// Expect: false
+// println(17.0 != (15 + 2))
+// /// Expect: true
+// println(17.1 != 15)
+// /// Expect: false
+// println(17.0 != (15 + 2.0))
+// /// Expect: true
+// println(17.1 != 15.1)
+
+// /// Expect: true
+// println(17.1 < 18)
+// /// Expect: false
+// println(17.1 < 15)
+// /// Expect: true
+// println(17.1 < 18.0)
+// /// Expect: false
+// println(17.1 < 15.1)
+
+// /// Expect: false
+// println(17.1 > 18)
+// /// Expect: true
+// println(17.1 > 15)
+// /// Expect: false
+// println(17.1 > 18.0)
+// /// Expect: true
+// println(17.1 > 15.1)
+
+// /// Expect: true
+// println(17.1 <= 18)
+// /// Expect: false
+// println(17.1 <= 15)
+// /// Expect: true
+// println(17.1 <= 18.0)
+// /// Expect: false
+// println(17.1 <= 15.1)
+
+// /// Expect: false
+// println(17.1 >= 18)
+// /// Expect: true
+// println(17.1 >= 15)
+// /// Expect: false
+// println(17.1 >= 18.0)
+// /// Expect: true
+// println(17.1 >= 15.1)
+
+// // Float#asInt
+// /// Expect: 1
+// println((1.23).asInt())
+
+// // Float#abs
+// /// Expect: 1.23
+// println((1.23).abs())
+// /// Expect: 1.23
+// println((-1.23).abs())
+
+// // Float#floor
+// /// Expect: 1 -2
+// println((1.23).floor(), (-1.23).floor())
+
+// // Float#ceil
+// /// Expect: 1 -2
+// println((1.23).floor(), (-1.23).floor())
+
+// // Float#round
+// /// Expect: 6 7
+// println((6.24).round(), (6.54).round())
+// /// Expect: -6 -7
+// println((-6.24).round(), (-6.54).round())
+
+// // Float#withPrecision
+// /// Expect: 6
+// println((6.12345).withPrecision(0))
+// /// Expect: 7
+// println((6.98765).withPrecision(0))
+// /// Expect: 6.98765
+// println((6.98765).withPrecision(-1))
+// /// Expect: 1.23
+// println((1.23456).withPrecision(2))
