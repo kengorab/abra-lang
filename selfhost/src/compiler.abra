@@ -1,8 +1,8 @@
 import "fs" as fs
 import Position from "./lexer"
-import LiteralAstNode, BinaryOp, AssignOp from "./parser"
+import LiteralAstNode, BinaryOp, AssignOp, BindingPattern from "./parser"
 import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedIdentifierKind, TypedAssignmentMode from "./typechecker"
-import ModuleBuilder, QbeType, Dest, QbeFunction, Value from "./qbe"
+import ModuleBuilder, QbeType, Dest, QbeFunction, Value, Label from "./qbe"
 
 type CompilationError {
   modulePath: String
@@ -183,19 +183,17 @@ export type Compiler {
 
     for node, idx in module.code {
       val value = match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
-      // TODO: This is just a crude mechanism to verify things are working - if the last statement in the module
-      //       is an expression, call the `toString` method on that expression, and print the result using `printf`.
-      //       This is temporary and will go away when the `println` function is supported (which is top priority).
+      // If the last statement in the module is an expression, call the `toString` method on that expression, and print the result using `printf`.
       if idx == module.code.length - 1 && node.ty.kind != TypeKind.PrimitiveUnit {
         if value |v| {
           self._currentFn.block.addComment("call `toString` on final expression, and `printf` the String's chars")
           val dataPtr = self._builder.buildGlobalString("%s\\n")
           val tostringMethod = match self._getOrCompileToStringMethod(node.ty) { Ok(v) => v, Err(e) => return Err(e) }
 
-          val tostringRepr = match self._currentFn.block.buildCall(tostringMethod, [v], "_to_string_repr") { Ok(v) => v, Err(e) => return qbeError(e) }
-          val reprCharsPtr = match self._currentFn.block.buildAdd(Value.Int(8), tostringRepr, "_repr_chars_ptr") { Ok(v) => v, Err(e) => return qbeError(e) }
-          val reprChars = self._currentFn.block.buildLoadL(reprCharsPtr, "_repr_chars")
-          self._currentFn.block.buildVoidCall(self._printf, [dataPtr, Value.Ident("_repr_chars", QbeType.Pointer)])
+          val tostringRepr = match self._currentFn.block.buildCall(tostringMethod, [v], Some("_to_string_repr")) { Ok(v) => v, Err(e) => return qbeError(e) }
+          val reprCharsPtr = match self._currentFn.block.buildAdd(Value.Int(8), tostringRepr, Some("_repr_chars_ptr")) { Ok(v) => v, Err(e) => return qbeError(e) }
+          val reprChars = self._currentFn.block.buildLoadL(reprCharsPtr, Some("_repr_chars"))
+          self._currentFn.block.buildVoidCall(self._printf, [dataPtr, reprChars])
         }
       }
     }
@@ -210,7 +208,10 @@ export type Compiler {
   func _compileStatement(self, node: TypedAstNode): Result<Value?, CompileError> {
     match node.kind {
       TypedAstNodeKind.If(isStatement, cond, conditionBinding, ifBlock, elseBlock) => {
-        if !isStatement return todo("if-expression", node.token.position)
+        if !isStatement {
+          val res = match self._compileExpression(node) { Ok(v) => v, Err(e) => return Err(e) }
+          return Ok(Some(res))
+        }
         if conditionBinding return todo("condition bindings in if-stmt", node.token.position)
 
         val condVal = match self._compileExpression(cond) { Ok(v) => v, Err(e) => return Err(e) }
@@ -242,7 +243,17 @@ export type Compiler {
       TypedAstNodeKind.Match => todo("compiling match stmt/expr", node.token.position)
       TypedAstNodeKind.While => todo("compiling while-loop", node.token.position)
       TypedAstNodeKind.For => todo("compiling for-loop", node.token.position)
-      TypedAstNodeKind.BindingDeclaration => todo("compiling binding declaration", node.token.position)
+      TypedAstNodeKind.BindingDeclaration(bindingDeclNode) => {
+        val bindingName = match bindingDeclNode.bindingPattern {
+          BindingPattern.Variable(label) => label.name
+        }
+
+        if bindingDeclNode.expr |expr| {
+          val res = match self._compileExpression(expr, Some(bindingName)) { Ok(v) => v, Err(e) => return Err(e) }
+        }
+
+        Ok(None)
+      }
       TypedAstNodeKind.FunctionDeclaration => todo("compiling function declaration", node.token.position)
       TypedAstNodeKind.TypeDeclaration => todo("compiling type declaration", node.token.position)
       TypedAstNodeKind.EnumDeclaration => todo("compiling enum declaration", node.token.position)
@@ -275,12 +286,12 @@ export type Compiler {
     }
   }
 
-  func _compileExpression(self, node: TypedAstNode): Result<Value, CompileError> {
+  func _compileExpression(self, node: TypedAstNode, resultLocalName: String? = None): Result<Value, CompileError> {
     match node.kind {
       TypedAstNodeKind.Literal(lit) => {
         match lit {
           LiteralAstNode.Int(v) => {
-            val res = match self._currentFn.block.buildAdd(Value.Int(0), Value.Int(v)) { Ok(v) => v, Err(e) => return qbeError(e) }
+            val res = match self._currentFn.block.buildAdd(Value.Int(0), Value.Int(v), resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
             Ok(res)
           }
           LiteralAstNode.Float(f) => {
@@ -424,6 +435,9 @@ export type Compiler {
           TypedInvokee.Method(fn, selfVal, isOptSafe) => {
             if isOptSafe return todo("opt-safe method invocation", node.token.position)
 
+            val intrinsicDec = fn.decorators.find(dec => dec.label.name == "Intrinsic")
+            if intrinsicDec |dec| return self._invokeIntrinsicFn(dec, fn, [Some(selfVal)].concat(arguments))
+
             val fnVal = match self._getOrCompileMethod(selfVal.ty, fn) { Ok(v) => v, Err(e) => return Err(e) }
 
             val args: Value[] = []
@@ -489,7 +503,51 @@ export type Compiler {
       TypedAstNodeKind.Tuple => todo("compiling tuple expression", node.token.position)
       TypedAstNodeKind.Indexing => todo("compiling indexing expression", node.token.position)
       TypedAstNodeKind.Lambda => todo("compiling lambda expression", node.token.position)
-      TypedAstNodeKind.If => todo("compiling if stmt/expr", node.token.position)
+      TypedAstNodeKind.If(isStatement, cond, conditionBinding, ifBlock, elseBlock) => {
+        if isStatement return unreachable("if-statements are handled elsewhere", node.token.position)
+        if conditionBinding return todo("condition bindings in if-stmt", node.token.position)
+
+        val condVal = match self._compileExpression(cond) { Ok(v) => v, Err(e) => return Err(e) }
+
+        val labelThen = self._currentFn.block.addLabel("then")
+        val labelElse = self._currentFn.block.addLabel("else")
+        val labelCont = self._currentFn.block.addLabel("cont")
+
+        if elseBlock.isEmpty() return unreachable("if-expressions must not have empty else-blocks", node.token.position)
+        self._currentFn.block.buildJnz(condVal, labelThen, labelElse)
+
+        val phiCases: (Label, Value)[] = []
+
+        self._currentFn.block.registerLabel(labelThen)
+        for node, idx in ifBlock {
+          if idx == ifBlock.length - 1 {
+            val res = match self._compileExpression(node) { Ok(v) => v, Err(e) => return Err(e) }
+            phiCases.push((labelThen, res))
+          } else {
+            match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
+          }
+        }
+        self._currentFn.block.buildJmp(labelCont)
+
+        if !elseBlock.isEmpty() {
+          self._currentFn.block.registerLabel(labelElse)
+          for node, idx in elseBlock {
+            if idx == elseBlock.length - 1 {
+              val res = match self._compileExpression(node) { Ok(v) => v, Err(e) => return Err(e) }
+              phiCases.push((labelElse, res))
+            } else {
+              match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
+            }
+          }
+          self._currentFn.block.buildJmp(labelCont)
+        }
+
+        self._currentFn.block.registerLabel(labelCont)
+
+        val res = match self._currentFn.block.buildPhi(phiCases, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+        Ok(res)
+      }
       TypedAstNodeKind.Match => todo("compiling match stmt/expr", node.token.position)
       _ => unreachable("node must be a statement", node.token.position)
     }
@@ -615,7 +673,7 @@ export type Compiler {
       fn.addParameter(field.name.name, fieldTy)
     }
 
-    val memLocal = match fn.block.buildCall(self._malloc, [Value.Int(size)], "mem") { Ok(v) => v, Err(e) => return qbeError(e) }
+    val memLocal = match fn.block.buildCall(self._malloc, [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
 
     var offset = 0
     for field in struct.fields {
@@ -623,7 +681,7 @@ export type Compiler {
       val param = Value.Ident(field.name.name, fieldTy)
 
       val localName = "mem_offset_${field.name.name}"
-      val memCursorLocal = match fn.block.buildAdd(Value.Int(offset), memLocal, localName) { Ok(v) => v, Err(e) => return qbeError(e) }
+      val memCursorLocal = match fn.block.buildAdd(Value.Int(offset), memLocal, Some(localName)) { Ok(v) => v, Err(e) => return qbeError(e) }
       fn.block.buildStoreL(param, memCursorLocal)
 
       offset += fieldTy.size()
@@ -724,7 +782,7 @@ export type Compiler {
         //       simply this implementation), or else have a special "generic-resolution" strategy to mimic the reference
         //       implementation (this comes at great cost in complexity, imo).
         val sizeVal = match self._currentFn.block.buildMul(Value.Int(8), countVal) { Ok(v) => v, Err(e) => return qbeError(e) }
-        val mem = match self._currentFn.block.buildCall(self._malloc, [sizeVal], "mem") { Ok(v) => v, Err(e) => return qbeError(e) }
+        val mem = match self._currentFn.block.buildCall(self._malloc, [sizeVal], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
 
         self._currentFn.block.addComment("...pointer_malloc end")
 
@@ -747,9 +805,44 @@ export type Compiler {
         //       simply this implementation), or else have a special "generic-resolution" strategy to mimic the reference
         //       implementation (this comes at great cost in complexity, imo).
         val sizeVal = match self._currentFn.block.buildMul(Value.Int(8), countVal) { Ok(v) => v, Err(e) => return qbeError(e) }
-        val mem = match self._currentFn.block.buildCall(self._malloc, [ptrVal, sizeVal], "mem") { Ok(v) => v, Err(e) => return qbeError(e) }
+        val mem = match self._currentFn.block.buildCall(self._malloc, [ptrVal, sizeVal], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
 
         self._currentFn.block.addComment("...pointer_realloc end")
+
+        Ok(mem)
+      }
+      "pointer_store" => {
+        self._currentFn.block.addComment("begin pointer_store...")
+
+        val _ptr = if arguments[0] |arg| arg else return unreachable("'pointer_store' has 2 required arguments")
+        val ptr = if _ptr |arg| arg else return unreachable("'pointer_store' has 2 required arguments")
+        val ptrVal = match self._compileExpression(ptr) { Ok(v) => v, Err(e) => return Err(e) }
+
+        val _value = if arguments[1] |arg| arg else return unreachable("'pointer_store' has 2 required arguments")
+        val value = if _value |arg| arg else return unreachable("'pointer_store' has 2 required arguments")
+        val valueVal = match self._compileExpression(value) { Ok(v) => v, Err(e) => return Err(e) }
+        // TODO: this assumes a size of 8 bytes for each type that could be stored into a pointer (see other comments above).
+        self._currentFn.block.buildStoreL(valueVal, ptrVal)
+
+        self._currentFn.block.addComment("...pointer_store end")
+
+        Ok(Value.Ident("bogus", QbeType.F32))
+      }
+      "pointer_offset" => {
+        self._currentFn.block.addComment("begin pointer_offset...")
+
+        val _ptr = if arguments[0] |arg| arg else return unreachable("'pointer_offset' has 2 required arguments")
+        val ptr = if _ptr |arg| arg else return unreachable("'pointer_offset' has 2 required arguments")
+        val ptrVal = match self._compileExpression(ptr) { Ok(v) => v, Err(e) => return Err(e) }
+
+        val _offset = if arguments[1] |arg| arg else return unreachable("'pointer_offset' has 2 required arguments")
+        val offset = if _offset |arg| arg else return unreachable("'pointer_offset' has 2 required arguments")
+        val offsetVal = match self._compileExpression(offset) { Ok(v) => v, Err(e) => return Err(e) }
+        // TODO: this assumes a size of 8 bytes for each type that could be stored into a pointer (see other comments above).
+        val sizeVal = match self._currentFn.block.buildMul(Value.Int(8), offsetVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+        val mem = match self._currentFn.block.buildAdd(offsetVal, ptrVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+        self._currentFn.block.addComment("...pointer_offset end")
 
         Ok(mem)
       }
@@ -788,7 +881,7 @@ export type Compiler {
 
   func _getOrCompileMethod(self, selfType: Type, fn: Function): Result<QbeFunction, CompileError> {
     val isInstanceMethod = match fn.kind { FunctionKind.InstanceMethod => true, _ => false }
-    if isInstanceMethod && fn.label.name == "toString" return self._getOrCompileToStringMethod(selfType)
+    if isInstanceMethod && fn.label.name == "toString" && fn.isGenerated return self._getOrCompileToStringMethod(selfType)
 
     val _t = match getInstanceTypeForType(self._project, selfType) { Ok(v) => v, Err(e) => return Err(e) }
     // TODO: destructuring
@@ -856,7 +949,11 @@ export type Compiler {
     val fn = _p[1]
     if self._builder.getFunction(methodName) |fn| return Ok(fn)
 
-    todo("_getOrCompileToStringMethod implementation")
+    if fn.isGenerated {
+      return todo("_getOrCompileToStringMethod implementation")
+    }
+
+    self._getOrCompileMethod(ty, fn)
   }
 
   func _getOrCompileIntToStringMethod(self): Result<QbeFunction, CompileError> {
@@ -878,7 +975,7 @@ export type Compiler {
     val sizeVal = match fnVal.block.buildCall(self._snprintf, [Value.Int(0), Value.Int(0), intFmtPtr, selfParam]) { Ok(v) => v, Err(e) => return qbeError(e) }
     val mallocSizeVal = match fnVal.block.buildAdd(Value.Int(1), sizeVal) { Ok(v) => v, Err(e) => return qbeError(e) }
 
-    val mem = match fnVal.block.buildCall(self._malloc, [mallocSizeVal], "mem") { Ok(v) => v, Err(e) => return qbeError(e) }
+    val mem = match fnVal.block.buildCall(self._malloc, [mallocSizeVal], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
     match fnVal.block.buildCall(self._snprintf, [mem, mallocSizeVal, intFmtPtr, selfParam]) { Ok(v) => v, Err(e) => return qbeError(e) }
 
     val str = match self._constructString(mem, sizeVal) { Ok(v) => v, Err(e) => return Err(e) }
@@ -910,7 +1007,7 @@ export type Compiler {
     val sizeVal = match fnVal.block.buildCall(self._snprintf, [Value.Int(0), Value.Int(0), floatFmtPtr, selfParam]) { Ok(v) => v, Err(e) => return qbeError(e) }
     val mallocSizeVal = match fnVal.block.buildAdd(Value.Int(1), sizeVal) { Ok(v) => v, Err(e) => return qbeError(e) }
 
-    val mem = match fnVal.block.buildCall(self._malloc, [mallocSizeVal], "mem") { Ok(v) => v, Err(e) => return qbeError(e) }
+    val mem = match fnVal.block.buildCall(self._malloc, [mallocSizeVal], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
     match fnVal.block.buildCall(self._snprintf, [mem, mallocSizeVal, floatFmtPtr, selfParam]) { Ok(v) => v, Err(e) => return qbeError(e) }
 
     val str = match self._constructString(mem, sizeVal) { Ok(v) => v, Err(e) => return Err(e) }

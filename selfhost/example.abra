@@ -17,6 +17,5 @@
 //3 * 12
 // "ab".foo()
 
-
-println(24)
-println(17 == (15 + 2))
+// val a = if true 1 else 2
+println([1, 2, 3].length)
