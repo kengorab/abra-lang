@@ -163,49 +163,51 @@ export type Block {
   // instruction builders
 
   func buildAdd(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
-    val dest = dst ?: self._nextLocal()
     val lty = left.ty()
     val rty = right.ty()
-
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'add' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
 
+    val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, resTy)
-    self.append(Instruction.Add(dst: Dest(name: "%$dest", ty: resTy), l: left, r: right))
+
+    self.append(Instruction.Add(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
 
     Ok(local)
   }
 
   func buildMul(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
-    val dest = dst ?: self._nextLocal()
     val lty = left.ty()
     val rty = right.ty()
-
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'mul' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
 
+    val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, resTy)
-    self.append(Instruction.Mul(dst: Dest(name: "%$dest", ty: resTy), l: left, r: right))
+
+    self.append(Instruction.Mul(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
 
     Ok(local)
   }
 
   func buildCompareEq(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
-    val dest =  dst ?: self._nextLocal()
     val lty = left.ty()
     val rty = right.ty()
-
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'ceqw' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
 
+    val dest =  dst ?: self._nextLocal()
     val local = Value.Ident(dest, resTy)
-    self.append(Instruction.CompareEq(dst: Dest(name: "%$dest", ty: resTy), l: left, r: right))
+
+    self.append(Instruction.CompareEq(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
 
     Ok(local)
   }
 
   func buildLoadL(self, mem: Value, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
-    self.append(Instruction.LoadL(dst: Dest(name: "%$dest", ty: QbeType.U64), mem: mem))
+    val local = Value.Ident(dest, QbeType.U64)
 
-    Value.Ident(dest, QbeType.U64)
+    self.append(Instruction.LoadL(dst: Dest(name: local.repr(), ty: QbeType.U64), mem: mem))
+
+    local
   }
 
   func buildStoreL(self, value: Value, mem: Value) {
@@ -214,17 +216,17 @@ export type Block {
 
   func buildCall(self, fnValue: QbeFunction, arguments: Value[], dst: String? = None): Result<Value, String> {
     val dest = dst ?: self._nextLocal()
-    val dstName = "%$dest"
     val fnReturnType = if fnValue.returnType |ty| ty else {
-      return Err("function value '${fnValue.name}' has no return type; cannot store result into destination '$dstName'")
+      return Err("function value '${fnValue.name}' has no return type; cannot store result into destination '%$dest'")
     }
 
-    val fnName = "\$${fnValue.name}"
     val local = Value.Ident(dest, fnReturnType)
+
+    val fnName = "\$${fnValue.name}"
     if fnValue.variadicIdx |idx| {
-      self.append(Instruction.CallVarargs(dst: Some(Dest(name: dstName, ty: fnReturnType)), fn: fnName, varargsIdx: idx, args: arguments))
+      self.append(Instruction.CallVarargs(dst: Some(Dest(name: local.repr(), ty: fnReturnType)), fn: fnName, varargsIdx: idx, args: arguments))
     } else {
-      self.append(Instruction.Call(dst: Some(Dest(name: dstName, ty: fnReturnType)), fn: fnName, args: arguments))
+      self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: fnReturnType)), fn: fnName, args: arguments))
     }
 
     Ok(local)
@@ -232,9 +234,9 @@ export type Block {
 
   func buildCallRaw(self, fnName: String, returnType: QbeType, arguments: Value[], dst: String? = None): Result<Value, String> {
     val dest = dst ?: self._nextLocal()
-
     val local = Value.Ident(dest, returnType)
-    self.append(Instruction.Call(dst: Some(Dest(name: "%$dest", ty: returnType)), fn: "\$$fnName", args: arguments))
+
+    self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: returnType)), fn: "\$$fnName", args: arguments))
 
     Ok(local)
   }
@@ -253,14 +255,15 @@ export type Block {
   }
 
   func buildPhi(self, cases: (Label, Value)[], dst: String? = None): Result<Value, String> {
-    val dest = dst ?: self._nextLocal()
-
     var ty = if cases[0] |_c| _c[1].ty() else return Err("phi requires at least 1 label")
-    val local = Value.Ident(dest, ty)
     for case in cases {
       if ty != case[1].ty() return Err("phi case mismatch (@${case[0]} doesn't match previous)")
     }
-    self.append(Instruction.Phi(dst: Dest(name: "%$dest", ty: ty), cases: cases))
+
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, ty)
+
+    self.append(Instruction.Phi(dst: Dest(name: local.repr(), ty: ty), cases: cases))
 
     Ok(local)
   }
