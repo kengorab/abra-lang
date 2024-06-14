@@ -188,6 +188,8 @@ export type Enum {
   instanceMethods: Function[] = []
   staticMethods: Function[] = []
 
+  func toString(self): String = "Enum(moduleId: ${self.moduleId}, label: ${self.label})"
+
   // Override eq method since default implementation recurses infinitely (scope -> variables -> TypeKind.Enum)
   func eq(self, other: Enum): Bool = self.moduleId == other.moduleId && self.label == other.label
 
@@ -546,7 +548,7 @@ export enum TypedAstNodeKind {
   Indexing(node: TypedIndexingNode)
   Lambda(fn: Function)
   Assignment(mode: TypedAssignmentMode, op: AssignOp, expr: TypedAstNode)
-  If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], typedElseBlock: TypedAstNode[])
+  If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], ifBlockTerminator: Terminator?, typedElseBlock: TypedAstNode[], elseBlockTerminator: Terminator?)
   Match(isStatement: Bool, expr: TypedAstNode, cases: TypedMatchCase[])
   While(typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, block: TypedAstNode[])
   For(typedIterator: TypedAstNode, itemBinding: (BindingPattern, Variable[]), indexBinding: Variable?, block: TypedAstNode[])
@@ -3312,7 +3314,7 @@ export type Typechecker {
       Type(kind: TypeKind.PrimitiveUnit)
     }
 
-    val kind = TypedAstNodeKind.If(isStatement, typedCondition, conditionBindingPattern, typedIfBlock, typedElseBlock)
+    val kind = TypedAstNodeKind.If(isStatement, typedCondition, conditionBindingPattern, typedIfBlock, ifBlockTerminator, typedElseBlock, elseBlockTerminator)
     Ok(TypedAstNode(token: token, ty: ty, kind: kind))
   }
 
@@ -3783,7 +3785,8 @@ export type Typechecker {
           ))
         )
 
-        return self._typecheckExpression(replacement, typeHint)
+        val e = match self._typecheckExpression(replacement, typeHint) { Ok(v) => v, Err(e) => return Err(e) }
+        return Ok(e)
       }
       IdentifierKind.Self => {
         val variable = if self._resolveIdentifier("self") |variable| variable else {

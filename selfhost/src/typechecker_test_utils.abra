@@ -569,7 +569,7 @@ export type Jsonifier {
           }
         }
       }
-      TypedAstNodeKind.If(isStatement, condition, conditionBindingPattern, ifBlock, elseBlock) => {
+      TypedAstNodeKind.If(isStatement, condition, conditionBindingPattern, ifBlock, _, elseBlock, _) => {
         self.println("\"kind\": \"if\",")
 
         self.println("\"isStatement\": $isStatement,")

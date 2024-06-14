@@ -18,4 +18,50 @@
 // "ab".foo()
 
 // val a = if true 1 else 2
-println([1, 2, 3].length)
+println([1, 2, 3])
+
+// val r = range(0, 4)
+// r.next()
+
+// type RangeIterator2 {
+//   start: Int
+//   end: Int
+//   stepBy: Int
+//   _i: Int = 0
+
+//   func next(self): Int? {
+//     val offset = self._i * self.stepBy
+//     if self.start + offset >= self.end {
+//       None
+//     } else {
+//       self._i += 1
+//       Some(self.start + offset)
+//     }
+//   }
+// }
+
+// val r = RangeIterator2(start: 0, end: 3, stepBy: 1, _i: 0)
+// for n in r {
+//   println("item:", n)
+// }
+// if r.next() |n| {
+//   println("item exists", n)
+// } else {
+//   println("nope")
+// }
+// if r.next() |n| {
+//   println("item exists", n)
+// } else {
+//   println("nope")
+// }
+// if r.next() |n| {
+//   println("item exists", n)
+// } else {
+//   println("nope")
+// }
+
+// if r.next() |n| {
+//   println("item exists", n)
+// } else {
+//   println("nope")
+// }

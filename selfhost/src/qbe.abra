@@ -25,7 +25,7 @@ export type ModuleBuilder {
     if self._functionsByName[name] |fn| return fn
 
     val start = Label(name: "start", offset: Some(0))
-    val block = Block(name: name, body: [], labelsByLine: { (0): [start] }, _usedLabels: #{start}, comments: {}, numLocals: 0)
+    val block = Block(name: name, body: [], labelsByLine: { (0): [start] }, _usedLabels: #{start}, _labelNames: { "start": 1 }, comments: {}, numLocals: 0)
 
     val fn = QbeFunction(exported: exported, name: name, returnType: returnType, _parameters: [], block: block, variadicIdx: None, _comments: [])
     self._functions.push(fn)
@@ -92,6 +92,7 @@ export type Block {
   body: Instruction[] = []
   labelsByLine: Map<Int, Label[]> = {}
   _usedLabels: Set<Label> = #{}
+  _labelNames: Map<String, Int> = {}
   comments: Map<Int, Set<String>> = {}
   numLocals: Int = 0
 
@@ -148,7 +149,16 @@ export type Block {
   // todo: ew
   func addCommentBefore(self, comment: String, numBack = 1) = self._addComment(comment, if self.body.length - numBack < 0 { 0 } else { self.body.length - numBack })
 
-  func addLabel(self, name: String): Label = Label(name: name)
+  func addLabel(self, name: String): Label {
+    if self._labelNames[name] |count| {
+      val l = Label(name: "${name}_$count")
+      self._labelNames[name] = count + 1
+      l
+    } else {
+      self._labelNames[name] = 1
+      Label(name: name)
+    }
+  }
 
   func registerLabel(self, label: Label): Result<Label, String> {
     if label.offset |offset| return Err("Label ${label.name} already registered with offset $offset")
@@ -201,6 +211,29 @@ export type Block {
     Ok(local)
   }
 
+  func buildCompareGte(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'csgel' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val dest =  dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.CompareGte(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
+  func buildLoadW(self, mem: Value, dst: String? = None): Value {
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, QbeType.U32)
+
+    // TODO: condense these methods into one which automatically switches on the type of `value`
+    self.append(Instruction.LoadW(dst: Dest(name: local.repr(), ty: QbeType.U32), mem: mem))
+
+    local
+  }
+
   func buildLoadL(self, mem: Value, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, QbeType.U64)
@@ -208,6 +241,11 @@ export type Block {
     self.append(Instruction.LoadL(dst: Dest(name: local.repr(), ty: QbeType.U64), mem: mem))
 
     local
+  }
+
+  func buildStoreW(self, value: Value, mem: Value) {
+    // TODO: condense these methods into one which automatically switches on the type of `value`
+    self.append(Instruction.StoreW(value: value, mem: mem))
   }
 
   func buildStoreL(self, value: Value, mem: Value) {
@@ -258,6 +296,8 @@ export type Block {
     var ty = if cases[0] |_c| _c[1].ty() else return Err("phi requires at least 1 label")
     for case in cases {
       if ty != case[1].ty() return Err("phi case mismatch (@${case[0]} doesn't match previous)")
+
+      self._usedLabels.insert(case[0])
     }
 
     val dest = dst ?: self._nextLocal()
@@ -425,8 +465,11 @@ enum Instruction {
   Mul(dst: Dest, l: Value, r: Value)
 
   CompareEq(dst: Dest, l: Value, r: Value)
+  CompareGte(dst: Dest, l: Value, r: Value)
 
+  LoadW(dst: Dest, mem: Value)
   LoadL(dst: Dest, mem: Value)
+  StoreW(value: Value, mem: Value)
   StoreL(value: Value, mem: Value)
 
   Call(dst: Dest?, fn: String, args: Value[])
@@ -464,9 +507,30 @@ enum Instruction {
         r.encode(file)
         file.writeln()
       }
+      Instruction.CompareGte(dst, l, r) => {
+        dst.encode(file)
+        file.write(" csgel ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.LoadW(dst, m) => {
+        dst.encode(file)
+        file.write(" loadw ")
+        m.encode(file)
+        file.writeln()
+      }
       Instruction.LoadL(dst, m) => {
         dst.encode(file)
         file.write(" loadl ")
+        m.encode(file)
+        file.writeln()
+      }
+      Instruction.StoreW(v, m) => {
+        file.write("storew ")
+        v.encode(file)
+        file.write(", ")
         m.encode(file)
         file.writeln()
       }
