@@ -98,6 +98,7 @@ export type Variable {
   ty: Type
   alias: VariableAlias? = None
   isExported: Bool = false
+  isParameter: Bool = false
 }
 
 export enum Terminator {
@@ -356,6 +357,77 @@ export type Type {
 
     resultType
   }
+
+  func containsGenerics(self): Bool {
+    match self.kind {
+      TypeKind.Generic(name) => true
+      TypeKind.Instance(_, typeArgs) => typeArgs.any(t => t.containsGenerics())
+      TypeKind.Tuple(typeArgs) => typeArgs.any(t => t.containsGenerics())
+      TypeKind.Func(paramTypes, returnType) => {
+        if returnType.containsGenerics() return true
+
+        paramTypes.any(p => p[0].containsGenerics())
+      }
+      _ => false
+    }
+  }
+
+  func _extractGenerics(self, template: Type, extracted: (String, Type)[]) {
+    match template.kind {
+      TypeKind.Generic(name) => {
+        extracted.push((name, self))
+      }
+      TypeKind.Instance(_, templateTypeArgs) => {
+        match self.kind {
+          TypeKind.Instance(_, sourceTypeArgs) => {
+            if templateTypeArgs.length != sourceTypeArgs.length {
+              __assertUnreachable("templateTypeArgs.length != sourceTypeArgs.length")
+              return
+            }
+            for tplTypeArg, idx in templateTypeArgs {
+              val srcTypeArg = if sourceTypeArgs[idx] |t| t else {
+                __assertUnreachable("templateTypeArgs.length != sourceTypeArgs.length")
+                return
+              }
+              srcTypeArg._extractGenerics(template: tplTypeArg, extracted: extracted)
+            }
+          }
+          _ => {}
+        }
+      }
+      TypeKind.Tuple(templateTypes) => {
+        match self.kind {
+          TypeKind.Tuple(sourceTypes) => {
+            for tplType, idx in templateTypes {
+              val srcType = if sourceTypes[idx] |t| t else break
+              srcType._extractGenerics(template: tplType, extracted: extracted)
+            }
+          }
+          _ => {}
+        }
+      }
+      TypeKind.Func(templateParamTypes, templateReturnType) => {
+        match self.kind {
+          TypeKind.Func(sourceParamTypes, sourceReturnType) => {
+            sourceReturnType._extractGenerics(template: templateReturnType, extracted: extracted)
+
+            for tplParamType, idx in templateParamTypes {
+              val srcParamType = if sourceParamTypes[idx] |t| t else break
+              srcParamType[0]._extractGenerics(template: tplParamType[0], extracted: extracted)
+            }
+          }
+          _ => {}
+        }
+      }
+      _ => {}
+    }
+  }
+
+  func extractGenerics(self, template: Type): (String, Type)[] {
+    val extracted: (String, Type)[] = []
+    self._extractGenerics(template, extracted)
+    extracted
+  }
 }
 
 export enum StructOrEnum {
@@ -540,7 +612,7 @@ export enum TypedAstNodeKind {
   Grouped(inner: TypedAstNode)
   Identifier(kind: TypedIdentifierKind)
   Accessor(head: TypedAstNode, middle: AccessorPathSegment[], tail: AccessorPathSegment)
-  Invocation(invokee: TypedInvokee, arguments: TypedAstNode?[])
+  Invocation(invokee: TypedInvokee, arguments: TypedAstNode?[], resolvedGenerics: Map<String, Type>)
   Array(items: TypedAstNode[])
   Set(items: TypedAstNode[])
   Map(items: (TypedAstNode, TypedAstNode)[])
@@ -1784,77 +1856,6 @@ export type Typechecker {
     }
   }
 
-  func _containsGenerics(self, ty: Type): Bool {
-    match ty.kind {
-      TypeKind.Generic(name) => true
-      TypeKind.Instance(_, typeArgs) => typeArgs.any(t => self._containsGenerics(t))
-      TypeKind.Tuple(typeArgs) => typeArgs.any(t => self._containsGenerics(t))
-      TypeKind.Func(paramTypes, returnType) => {
-        if self._containsGenerics(returnType) return true
-
-        paramTypes.any(p => self._containsGenerics(p[0]))
-      }
-      _ => false
-    }
-  }
-
-  func __extractGenerics(self, template: Type, source: Type, extracted: (String, Type)[]) {
-    match template.kind {
-      TypeKind.Generic(name) => {
-        extracted.push((name, source))
-      }
-      TypeKind.Instance(_, templateTypeArgs) => {
-        match source.kind {
-          TypeKind.Instance(_, sourceTypeArgs) => {
-            if templateTypeArgs.length != sourceTypeArgs.length {
-              __assertUnreachable("templateTypeArgs.length != sourceTypeArgs.length")
-              return
-            }
-            for tplTypeArg, idx in templateTypeArgs {
-              val srcTypeArg = if sourceTypeArgs[idx] |t| t else {
-                __assertUnreachable("templateTypeArgs.length != sourceTypeArgs.length")
-                return
-              }
-              self.__extractGenerics(template: tplTypeArg, source: srcTypeArg, extracted: extracted)
-            }
-          }
-          _ => {}
-        }
-      }
-      TypeKind.Tuple(templateTypes) => {
-        match source.kind {
-          TypeKind.Tuple(sourceTypes) => {
-            for tplType, idx in templateTypes {
-              val srcType = if sourceTypes[idx] |t| t else break
-              self.__extractGenerics(template: tplType, source: srcType, extracted: extracted)
-            }
-          }
-          _ => {}
-        }
-      }
-      TypeKind.Func(templateParamTypes, templateReturnType) => {
-        match source.kind {
-          TypeKind.Func(sourceParamTypes, sourceReturnType) => {
-            self.__extractGenerics(template: templateReturnType, source: sourceReturnType, extracted: extracted)
-
-            for tplParamType, idx in templateParamTypes {
-              val srcParamType = if sourceParamTypes[idx] |t| t else break
-              self.__extractGenerics(template: tplParamType[0], source: srcParamType[0], extracted: extracted)
-            }
-          }
-          _ => {}
-        }
-      }
-      _ => {}
-    }
-  }
-
-  func _extractGenerics(self, template: Type, source: Type): (String, Type)[] {
-    val extracted: (String, Type)[] = []
-    self.__extractGenerics(template, source, extracted)
-    extracted
-  }
-
   func _genericsInScope(self): Set<String> {
     val genericsInScope: Set<String> = #{}
     if self.currentFunction |fn| {
@@ -2073,7 +2074,7 @@ export type Typechecker {
           }
         }
 
-        val variable = Variable(label: param.label, mutable: false, ty: ty)
+        val variable = Variable(label: param.label, mutable: false, ty: ty, isParameter: true)
         match self._addVariableToScope(variable) { Ok(v) => v, Err(e) => return Err(e) }
 
         val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: None, isVariadic: false)
@@ -2143,7 +2144,7 @@ export type Typechecker {
       }
     }
 
-    val variable = Variable(label: param.label, mutable: false, ty: ty)
+    val variable = Variable(label: param.label, mutable: false, ty: ty, isParameter: true)
     match self._addVariableToScope(variable) { Ok(v) => v, Err(e) => return Err(e) }
 
     if param.isVariadic {
@@ -3407,7 +3408,7 @@ export type Typechecker {
 
               val subjectTy = if self._typeIsOption(subjectTy) |innerTy| innerTy else subjectTy
               val template = Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
-              val extractedGenerics = self._extractGenerics(template: template, source: subjectTy)
+              val extractedGenerics = subjectTy.extractGenerics(template: template)
               val resolvedGenerics: Map<String, Type> = {}
               for _p in extractedGenerics {
                 resolvedGenerics[_p[0]] = _p[1]
@@ -3435,7 +3436,7 @@ export type Typechecker {
                         val kind = TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.InvalidArity(expected: fields.length, given: args.length))
                         return Err(TypeError(position: case.position, kind: kind))
                       }
-                      val variableTy = if self._containsGenerics(field.ty) {
+                      val variableTy = if field.ty.containsGenerics() {
                         field.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
                       } else {
                         field.ty
@@ -3880,7 +3881,7 @@ export type Typechecker {
                 val typeArgs = enum_.typeParams.map(p => Type(kind: TypeKind.Generic(p)))
                 val ty = if typeHint |hint| {
                   val template = Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), typeArgs))
-                  val extractedGenerics = self._extractGenerics(template: template, source: hint)
+                  val extractedGenerics = hint.extractGenerics(template: template)
                   val resolvedGenerics: Map<String, Type> = {}
                   for _p in extractedGenerics {
                     resolvedGenerics[_p[0]] = _p[1]
@@ -4157,7 +4158,7 @@ export type Typechecker {
     }
 
     val typedInvokee = TypedInvokee.Expr(invokeeExpr)
-    Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(typedInvokee, typedArguments)))
+    Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(typedInvokee, typedArguments, {})))
   }
 
   func _typecheckInvocationOfFunction(
@@ -4191,8 +4192,8 @@ export type Typechecker {
     }
 
     if typeHint |hint| {
-      if hint.kind != TypeKind.PrimitiveUnit && self._containsGenerics(fn.returnType) {
-        val extractedGenerics = self._extractGenerics(template: fn.returnType, source: hint)
+      if hint.kind != TypeKind.PrimitiveUnit && fn.returnType.containsGenerics() {
+        val extractedGenerics = hint.extractGenerics(template: fn.returnType)
 
         for _p in extractedGenerics {
           if resolvedGenerics[_p[0]] |original| {
@@ -4210,7 +4211,7 @@ export type Typechecker {
     if self.paramDefaultValueContext |ctx| {
       ctx.exprContainsFunctionCall = true
 
-      val returnType = if self._containsGenerics(fn.returnType) {
+      val returnType = if fn.returnType.containsGenerics() {
         fn.returnType.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
       } else {
         fn.returnType
@@ -4264,7 +4265,7 @@ export type Typechecker {
         if param.isVariadic { variadicParam = Some((param, idx)) }
       }
 
-      val _p = if self._containsGenerics(param.ty) {
+      val _p = if param.ty.containsGenerics() {
         var paramType = paramTy.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: genericsInScope)
 
         val typedArg = match self._typecheckExpression(arg.value, Some(paramType)) { Ok(v) => v, Err(e) => return Err(e) }
@@ -4273,7 +4274,7 @@ export type Typechecker {
           continue
         }
 
-        val extractedGenerics = self._extractGenerics(template: paramTy, source: typedArg.ty)
+        val extractedGenerics = typedArg.ty.extractGenerics(template: paramTy)
 
         for _p in extractedGenerics {
           if resolvedGenerics[_p[0]] |original| {
@@ -4357,7 +4358,7 @@ export type Typechecker {
       }
     }
 
-    val returnType = if self._containsGenerics(fn.returnType) {
+    val returnType = if fn.returnType.containsGenerics() {
       fn.returnType.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: genericsInScope)
     } else {
       fn.returnType
@@ -4378,7 +4379,7 @@ export type Typechecker {
       TypedInvokee.Function(fn)
     }
 
-    Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(typedInvokee, typedArguments)))
+    Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(typedInvokee, typedArguments, resolvedGenerics)))
   }
 
   func _typecheckArray(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
@@ -4697,7 +4698,7 @@ export type Typechecker {
     val lambdaName = self.currentScope.nextLambdaName()
     val fnScope = self.currentScope.makeChild(lambdaName, ScopeKind.Func)
     var returnType = retHint ?: Type(kind: TypeKind.Hole)
-    if self._containsGenerics(returnType) {
+    if returnType.containsGenerics() {
       // If the return type of a lambda contains generics that have not yet been resolved by the time we get here, then
       // they must be "out" generics rather than "in" generics - this means that they should be treated as Holes which will
       // be filled once the return type is discovered, during _typecheckFunctionPass3.

@@ -18,7 +18,18 @@
 // "ab".foo()
 
 // val a = if true 1 else 2
-println([1, 2, 3])
+// val a = [true, false]
+// println(a)
+val b = [[1, 2], [3, 4]]
+println(b.toString())
+// val s = "a"
+// val b = s._buffer
+// b.store(44.asByte())
+// println(s)
+
+// val arr = [1, 2, 3]
+// arr.push(4)
+// println(arr.length)
 
 // val r = range(0, 4)
 // r.next()

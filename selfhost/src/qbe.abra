@@ -185,6 +185,19 @@ export type Block {
     Ok(local)
   }
 
+  func buildSub(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'sub' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.Sub(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
   func buildMul(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
@@ -198,6 +211,15 @@ export type Block {
     Ok(local)
   }
 
+  func buildAlloc8(self, size: Int, dst: String? = None): Value {
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, QbeType.Pointer)
+
+    self.append(Instruction.Alloc8(dst: Dest(name: local.repr(), ty: QbeType.Pointer), size: size))
+
+    local
+  }
+
   func buildCompareEq(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
@@ -207,6 +229,19 @@ export type Block {
     val local = Value.Ident(dest, resTy)
 
     self.append(Instruction.CompareEq(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
+  func buildCompareNeq(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'cnew' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val dest =  dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.CompareNeq(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
 
     Ok(local)
   }
@@ -241,6 +276,11 @@ export type Block {
     self.append(Instruction.LoadL(dst: Dest(name: local.repr(), ty: QbeType.U64), mem: mem))
 
     local
+  }
+
+  func buildStoreB(self, value: Value, mem: Value) {
+    // TODO: condense these methods into one which automatically switches on the type of `value`
+    self.append(Instruction.StoreB(value: value, mem: mem))
   }
 
   func buildStoreW(self, value: Value, mem: Value) {
@@ -462,13 +502,18 @@ export type Dest {
 
 enum Instruction {
   Add(dst: Dest, l: Value, r: Value)
+  Sub(dst: Dest, l: Value, r: Value)
   Mul(dst: Dest, l: Value, r: Value)
 
+  Alloc8(dst: Dest, size: Int)
+
   CompareEq(dst: Dest, l: Value, r: Value)
+  CompareNeq(dst: Dest, l: Value, r: Value)
   CompareGte(dst: Dest, l: Value, r: Value)
 
   LoadW(dst: Dest, mem: Value)
   LoadL(dst: Dest, mem: Value)
+  StoreB(value: Value, mem: Value)
   StoreW(value: Value, mem: Value)
   StoreL(value: Value, mem: Value)
 
@@ -491,6 +536,14 @@ enum Instruction {
         r.encode(file)
         file.writeln()
       }
+      Instruction.Sub(dst, l, r) => {
+        dst.encode(file)
+        file.write(" sub ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
       Instruction.Mul(dst, l, r) => {
         dst.encode(file)
         file.write(" mul ")
@@ -499,9 +552,22 @@ enum Instruction {
         r.encode(file)
         file.writeln()
       }
+      Instruction.Alloc8(dst, size) => {
+        dst.encode(file)
+        file.write(" alloc8 ")
+        file.writeln(size.toString())
+      }
       Instruction.CompareEq(dst, l, r) => {
         dst.encode(file)
         file.write(" ceqw ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.CompareNeq(dst, l, r) => {
+        dst.encode(file)
+        file.write(" cnew ")
         l.encode(file)
         file.write(", ")
         r.encode(file)
@@ -524,6 +590,13 @@ enum Instruction {
       Instruction.LoadL(dst, m) => {
         dst.encode(file)
         file.write(" loadl ")
+        m.encode(file)
+        file.writeln()
+      }
+      Instruction.StoreB(v, m) => {
+        file.write("storeb ")
+        v.encode(file)
+        file.write(", ")
         m.encode(file)
         file.writeln()
       }
