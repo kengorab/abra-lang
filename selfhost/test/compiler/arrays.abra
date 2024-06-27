@@ -19,9 +19,9 @@ println([1].length, [[1, 2], [3, 4]].length)
   /// Expect: [1, 2, 3, 4]
   println(intArr)
 
-//   val floatArr = [0.12, 3.45, 6.0]
-//   /// Expect: [0.12, 3.45, 6]
-//   println(floatArr)
+  val floatArr = [0.12, 3.45, 6.0]
+  /// Expect: [0.12, 3.45, 6]
+  println(floatArr)
 
   val stringArr = ["ab", "cd", "ef"]
   /// Expect: [ab, cd, ef]
