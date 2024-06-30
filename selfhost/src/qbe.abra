@@ -25,7 +25,7 @@ export type ModuleBuilder {
     if self._functionsByName[name] |fn| return fn
 
     val start = Label(name: "start", offset: Some(0))
-    val block = Block(name: name, body: [], labelsByLine: { (0): [start] }, _usedLabels: #{start}, comments: {}, numLocals: 0)
+    val block = Block(name: name, body: [], labelsByLine: { (0): [start] }, _usedLabels: #{start}, _labelNames: { "start": 1 }, comments: {}, numLocals: 0)
 
     val fn = QbeFunction(exported: exported, name: name, returnType: returnType, _parameters: [], block: block, variadicIdx: None, _comments: [])
     self._functions.push(fn)
@@ -92,6 +92,7 @@ export type Block {
   body: Instruction[] = []
   labelsByLine: Map<Int, Label[]> = {}
   _usedLabels: Set<Label> = #{}
+  _labelNames: Map<String, Int> = {}
   comments: Map<Int, Set<String>> = {}
   numLocals: Int = 0
 
@@ -148,7 +149,16 @@ export type Block {
   // todo: ew
   func addCommentBefore(self, comment: String, numBack = 1) = self._addComment(comment, if self.body.length - numBack < 0 { 0 } else { self.body.length - numBack })
 
-  func addLabel(self, name: String): Label = Label(name: name)
+  func addLabel(self, name: String): Label {
+    if self._labelNames[name] |count| {
+      val l = Label(name: "${name}_$count")
+      self._labelNames[name] = count + 1
+      l
+    } else {
+      self._labelNames[name] = 1
+      Label(name: name)
+    }
+  }
 
   func registerLabel(self, label: Label): Result<Label, String> {
     if label.offset |offset| return Err("Label ${label.name} already registered with offset $offset")
@@ -175,6 +185,19 @@ export type Block {
     Ok(local)
   }
 
+  func buildSub(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'sub' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.Sub(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
   func buildMul(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
@@ -186,6 +209,37 @@ export type Block {
     self.append(Instruction.Mul(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
 
     Ok(local)
+  }
+
+  func buildAndW(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'andw' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.AndW(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
+  func buildAlloc4(self, size: Int, dst: String? = None): Value {
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, QbeType.Pointer)
+
+    self.append(Instruction.Alloc4(dst: Dest(name: local.repr(), ty: QbeType.Pointer), size: size))
+
+    local
+  }
+
+  func buildAlloc8(self, size: Int, dst: String? = None): Value {
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, QbeType.Pointer)
+
+    self.append(Instruction.Alloc8(dst: Dest(name: local.repr(), ty: QbeType.Pointer), size: size))
+
+    local
   }
 
   func buildCompareEq(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
@@ -201,6 +255,64 @@ export type Block {
     Ok(local)
   }
 
+  func buildCompareNeq(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'cnew' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val dest =  dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.CompareNeq(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
+  func buildCompareGte(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'csgel' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val dest =  dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.CompareGte(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
+  func buildLoad(self, ty: QbeType, mem: Value, dst: String? = None): Value {
+    match ty {
+      QbeType.U8 => self.buildLoadB(mem, dst)
+      QbeType.U16 => self.buildLoadW(mem, dst)
+      QbeType.U32 => self.buildLoadW(mem, dst)
+      QbeType.U64 => self.buildLoadL(mem, dst)
+      QbeType.Pointer => self.buildLoadL(mem, dst)
+      QbeType.F32 => self.buildLoadS(mem, dst)
+      QbeType.F64 => self.buildLoadD(mem, dst)
+    }
+  }
+
+  func buildLoadB(self, mem: Value, dst: String? = None): Value {
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, QbeType.U8)
+
+    // TODO: condense these methods into one which automatically switches on the type of `value`
+    self.append(Instruction.LoadB(dst: Dest(name: local.repr(), ty: QbeType.U8), mem: mem))
+
+    local
+  }
+
+  func buildLoadW(self, mem: Value, dst: String? = None): Value {
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, QbeType.U32)
+
+    // TODO: condense these methods into one which automatically switches on the type of `value`
+    self.append(Instruction.LoadW(dst: Dest(name: local.repr(), ty: QbeType.U32), mem: mem))
+
+    local
+  }
+
   func buildLoadL(self, mem: Value, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, QbeType.U64)
@@ -210,8 +322,56 @@ export type Block {
     local
   }
 
+  func buildLoadS(self, mem: Value, dst: String? = None): Value {
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, QbeType.F32)
+
+    self.append(Instruction.LoadS(dst: Dest(name: local.repr(), ty: QbeType.F32), mem: mem))
+
+    local
+  }
+
+  func buildLoadD(self, mem: Value, dst: String? = None): Value {
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, QbeType.F64)
+
+    self.append(Instruction.LoadD(dst: Dest(name: local.repr(), ty: QbeType.F64), mem: mem))
+
+    local
+  }
+
+  func buildStore(self, ty: QbeType, value: Value, mem: Value) {
+    match ty {
+      QbeType.U8 => self.buildStoreB(value, mem)
+      QbeType.U16 => self.buildStoreW(value, mem)
+      QbeType.U32 => self.buildStoreW(value, mem)
+      QbeType.U64 => self.buildStoreL(value, mem)
+      QbeType.Pointer => self.buildStoreL(value, mem)
+      QbeType.F32 => self.buildStoreS(value, mem)
+      QbeType.F64 => self.buildStoreD(value, mem)
+    }
+  }
+
+  func buildStoreB(self, value: Value, mem: Value) {
+    // TODO: condense these methods into one which automatically switches on the type of `value`
+    self.append(Instruction.StoreB(value: value, mem: mem))
+  }
+
+  func buildStoreW(self, value: Value, mem: Value) {
+    // TODO: condense these methods into one which automatically switches on the type of `value`
+    self.append(Instruction.StoreW(value: value, mem: mem))
+  }
+
   func buildStoreL(self, value: Value, mem: Value) {
     self.append(Instruction.StoreL(value: value, mem: mem))
+  }
+
+  func buildStoreS(self, value: Value, mem: Value) {
+    self.append(Instruction.StoreS(value: value, mem: mem))
+  }
+
+  func buildStoreD(self, value: Value, mem: Value) {
+    self.append(Instruction.StoreD(value: value, mem: mem))
   }
 
   func buildCall(self, fnValue: QbeFunction, arguments: Value[], dst: String? = None): Result<Value, String> {
@@ -257,7 +417,9 @@ export type Block {
   func buildPhi(self, cases: (Label, Value)[], dst: String? = None): Result<Value, String> {
     var ty = if cases[0] |_c| _c[1].ty() else return Err("phi requires at least 1 label")
     for case in cases {
-      if ty != case[1].ty() return Err("phi case mismatch (@${case[0]} doesn't match previous)")
+      if ty != case[1].ty() return Err("phi case type mismatch: @${case[0].name} (type: ${case[1].ty()}) doesn't match previous (type: $ty)")
+
+      self._usedLabels.insert(case[0])
     }
 
     val dest = dst ?: self._nextLocal()
@@ -314,6 +476,18 @@ export enum QbeType {
       QbeType.Pointer => "l"
       QbeType.F32 => "s"
       QbeType.F64 => "d"
+    }
+  }
+
+  func zeroValue(self): Value {
+    match self {
+      QbeType.U8 => Value.Int32(0)
+      QbeType.U16 => Value.Int32(0)
+      QbeType.U32 => Value.Int32(0)
+      QbeType.U64 => Value.Int(0)
+      QbeType.Pointer => Value.Int(0)
+      QbeType.F32 => Value.Float(0.0)
+      QbeType.F64 => Value.Float(0.0)
     }
   }
 
@@ -422,12 +596,28 @@ export type Dest {
 
 enum Instruction {
   Add(dst: Dest, l: Value, r: Value)
+  Sub(dst: Dest, l: Value, r: Value)
   Mul(dst: Dest, l: Value, r: Value)
 
-  CompareEq(dst: Dest, l: Value, r: Value)
+  AndW(dst: Dest, l: Value, r: Value)
 
+  Alloc4(dst: Dest, size: Int)
+  Alloc8(dst: Dest, size: Int)
+
+  CompareEq(dst: Dest, l: Value, r: Value)
+  CompareNeq(dst: Dest, l: Value, r: Value)
+  CompareGte(dst: Dest, l: Value, r: Value)
+
+  LoadB(dst: Dest, mem: Value)
+  LoadW(dst: Dest, mem: Value)
   LoadL(dst: Dest, mem: Value)
+  LoadS(dst: Dest, mem: Value)
+  LoadD(dst: Dest, mem: Value)
+  StoreB(value: Value, mem: Value)
+  StoreW(value: Value, mem: Value)
   StoreL(value: Value, mem: Value)
+  StoreS(value: Value, mem: Value)
+  StoreD(value: Value, mem: Value)
 
   Call(dst: Dest?, fn: String, args: Value[])
   CallVarargs(dst: Dest?, fn: String, varargsIdx: Int, args: Value[])
@@ -448,6 +638,14 @@ enum Instruction {
         r.encode(file)
         file.writeln()
       }
+      Instruction.Sub(dst, l, r) => {
+        dst.encode(file)
+        file.write(" sub ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
       Instruction.Mul(dst, l, r) => {
         dst.encode(file)
         file.write(" mul ")
@@ -455,6 +653,24 @@ enum Instruction {
         file.write(", ")
         r.encode(file)
         file.writeln()
+      }
+      Instruction.AndW(dst, l, r) => {
+        dst.encode(file)
+        file.write(" and ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.Alloc4(dst, size) => {
+        dst.encode(file)
+        file.write(" alloc4 ")
+        file.writeln(size.toString())
+      }
+      Instruction.Alloc8(dst, size) => {
+        dst.encode(file)
+        file.write(" alloc8 ")
+        file.writeln(size.toString())
       }
       Instruction.CompareEq(dst, l, r) => {
         dst.encode(file)
@@ -464,14 +680,82 @@ enum Instruction {
         r.encode(file)
         file.writeln()
       }
+      Instruction.CompareNeq(dst, l, r) => {
+        dst.encode(file)
+        file.write(" cnew ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.CompareGte(dst, l, r) => {
+        dst.encode(file)
+        file.write(" csgel ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.LoadB(dst, m) => {
+        dst.encode(file)
+        file.write(" loadb ")
+        m.encode(file)
+        file.writeln()
+      }
+      Instruction.LoadW(dst, m) => {
+        dst.encode(file)
+        file.write(" loadw ")
+        m.encode(file)
+        file.writeln()
+      }
       Instruction.LoadL(dst, m) => {
         dst.encode(file)
         file.write(" loadl ")
         m.encode(file)
         file.writeln()
       }
+      Instruction.LoadS(dst, m) => {
+        dst.encode(file)
+        file.write(" loads ")
+        m.encode(file)
+        file.writeln()
+      }
+      Instruction.LoadD(dst, m) => {
+        dst.encode(file)
+        file.write(" loadd ")
+        m.encode(file)
+        file.writeln()
+      }
+      Instruction.StoreB(v, m) => {
+        file.write("storeb ")
+        v.encode(file)
+        file.write(", ")
+        m.encode(file)
+        file.writeln()
+      }
+      Instruction.StoreW(v, m) => {
+        file.write("storew ")
+        v.encode(file)
+        file.write(", ")
+        m.encode(file)
+        file.writeln()
+      }
       Instruction.StoreL(v, m) => {
         file.write("storel ")
+        v.encode(file)
+        file.write(", ")
+        m.encode(file)
+        file.writeln()
+      }
+      Instruction.StoreS(v, m) => {
+        file.write("stores ")
+        v.encode(file)
+        file.write(", ")
+        m.encode(file)
+        file.writeln()
+      }
+      Instruction.StoreD(v, m) => {
+        file.write("stored ")
         v.encode(file)
         file.write(", ")
         m.encode(file)

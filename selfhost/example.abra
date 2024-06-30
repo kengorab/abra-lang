@@ -18,4 +18,77 @@
 // "ab".foo()
 
 // val a = if true 1 else 2
-println([1, 2, 3].length)
+// val a = [true, false]
+// println(a)
+// val b = [[1, 2], [3, 4]]
+// println(b.toString())
+// val s = "a"
+// val b = s._buffer
+// b.store(44.asByte())
+// println(s)
+
+// val floatArr = [0.12, 3.45, 6.0]
+// println(floatArr)
+
+
+
+// val boolArr = [true, false, true]
+// println(boolArr)
+
+// val arr = [1, 2, 3]
+// arr.push(4)
+// println(arr.length)
+
+for i in range(0, 5) {
+  println(i)
+}
+println("done")
+// // Default-valued parameters
+// func foo(a: Int, b = bar(a), c = bar(a, b), arr = [a, b, c]): Int = a + b + c + arr.length
+// func bar(x: Int, y = 10): Int = x + y
+// /// Expect: 31
+// println(foo(2))
+
+
+// type RangeIterator2 {
+//   start: Int
+//   end: Int
+//   stepBy: Int
+//   _i: Int = 0
+
+//   func next(self): Int? {
+//     val offset = self._i * self.stepBy
+//     if self.start + offset >= self.end {
+//       None
+//     } else {
+//       self._i += 1
+//       Some(self.start + offset)
+//     }
+//   }
+// }
+
+// val r = RangeIterator2(start: 0, end: 3, stepBy: 1, _i: 0)
+// for n in r {
+//   println("item:", n)
+// }
+// if r.next() |n| {
+//   println("item exists", n)
+// } else {
+//   println("nope")
+// }
+// if r.next() |n| {
+//   println("item exists", n)
+// } else {
+//   println("nope")
+// }
+// if r.next() |n| {
+//   println("item exists", n)
+// } else {
+//   println("nope")
+// }
+
+// if r.next() |n| {
+//   println("item exists", n)
+// } else {
+//   println("nope")
+// }

@@ -1,0 +1,5 @@
+// Default-valued parameters
+func foo(a: Int, b = bar(a), c = bar(a, b), arr = [a, b, c]): Int = a + b + c + arr.length
+func bar(x: Int, y = 10): Int = x + y
+/// Expect: 31
+println(foo(2))
