@@ -27,8 +27,10 @@
 // b.store(44.asByte())
 // println(s)
 
-val floatArr = [0.12, 3.45, 6.0]
-println(floatArr)
+// val floatArr = [0.12, 3.45, 6.0]
+// println(floatArr)
+
+
 
 // val boolArr = [true, false, true]
 // println(boolArr)
@@ -37,8 +39,16 @@ println(floatArr)
 // arr.push(4)
 // println(arr.length)
 
-// val r = range(0, 4)
-// r.next()
+for i in range(0, 5) {
+  println(i)
+}
+println("done")
+// // Default-valued parameters
+// func foo(a: Int, b = bar(a), c = bar(a, b), arr = [a, b, c]): Int = a + b + c + arr.length
+// func bar(x: Int, y = 10): Int = x + y
+// /// Expect: 31
+// println(foo(2))
+
 
 // type RangeIterator2 {
 //   start: Int

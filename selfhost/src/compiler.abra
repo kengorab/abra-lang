@@ -362,7 +362,7 @@ export type Compiler {
 
         Ok(None)
       }
-      TypedAstNodeKind.FunctionDeclaration => todo("compiling function declaration", node.token.position)
+      TypedAstNodeKind.FunctionDeclaration => Ok(None) // todo("compiling function declaration", node.token.position)
       TypedAstNodeKind.TypeDeclaration => Ok(None)
       TypedAstNodeKind.EnumDeclaration => todo("compiling enum declaration", node.token.position)
       TypedAstNodeKind.Break => todo("compiling break statement", node.token.position)
@@ -549,6 +549,7 @@ export type Compiler {
       TypedAstNodeKind.Accessor(head, middle, tail) => self._followAccessorPath(head: head, middle: middle, tail: tail, loadFinal: true, localName: resultLocalName)
       TypedAstNodeKind.Invocation(invokee, arguments, resolvedGenerics) => {
         val args: Value[] = []
+        var fnHasOptionalParameters = false
 
         val fnVal = match invokee {
           TypedInvokee.Function(fn) => {
@@ -561,6 +562,8 @@ export type Compiler {
             if cBindingDec |dec| return self._invokeCBindingFn(dec, fn, arguments)
 
             match self._resolvedGenerics.addLayer(fn.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: fn.label.name, message: e))) }
+
+            fnHasOptionalParameters = fn.params.any(p => !!p.defaultValue)
 
             val fnVal = match fn.kind {
               FunctionKind.StaticMethod(parentTy) => {
@@ -600,6 +603,8 @@ export type Compiler {
             }
             match self._resolvedGenerics.addLayer(methodName, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: fn.label.name, message: e))) }
 
+            fnHasOptionalParameters = fn.params.any(p => !!p.defaultValue)
+
             if isOptSafe return todo("opt-safe method invocation", node.token.position)
 
             val intrinsicDec = fn.decorators.find(dec => dec.label.name == "Intrinsic")
@@ -617,6 +622,7 @@ export type Compiler {
           }
           TypedInvokee.Struct(struct) => {
             match self._resolvedGenerics.addLayer(struct.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: struct.label.name, message: e))) }
+            fnHasOptionalParameters = struct.fields.any(f => !!f.initializer)
             val fnVal = match self._getOrCompileStructInitializer(struct) { Ok(v) => v, Err(e) => return Err(e) }
             fnVal
           }
@@ -628,13 +634,23 @@ export type Compiler {
           TypedInvokee.Expr => return todo("invocation of arbitrary function expression", node.token.position)
         }
 
+        var defaultValueParamIdx = 0
+        var defaultValueFlags = 0
         for arg in arguments {
           if arg |node| {
             val arg = match self._compileExpression(node) { Ok(v) => v, Err(e) => return Err(e) }
             args.push(arg)
           } else {
-            return todo("optional parameters")
+            defaultValueFlags ||= (1 << defaultValueParamIdx)
+            defaultValueParamIdx += 1
+
+            val argQbeType = match self._getQbeTypeForTypeExpect(node.ty, "unacceptable type", Some(node.token.position)) { Ok(v) => v, Err(e) => return Err(e) }
+            args.push(argQbeType.zeroValue())
           }
+        }
+
+        if fnHasOptionalParameters {
+          args.push(Value.Int32(defaultValueFlags))
         }
 
         val res = if fnVal.returnType {
@@ -731,7 +747,6 @@ export type Compiler {
         if !ifBlockTerminator {
           self._currentFn.block.buildJmp(labelCont)
         }
-        // self._currentFn.block.buildJmp(labelCont)
 
         if !elseBlock.isEmpty() {
           self._currentFn.block.registerLabel(labelElse)
@@ -743,7 +758,6 @@ export type Compiler {
               match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
             }
           }
-          // self._currentFn.block.buildJmp(labelCont)
           if !elseBlockTerminator {
             self._currentFn.block.buildJmp(labelCont)
           }
@@ -880,19 +894,55 @@ export type Compiler {
     val fnName = match self._structInitializerFnName(struct) { Ok(v) => v, Err(e) => return Err(e) }
     if self._builder.getFunction(fnName) |fn| return Ok(fn)
 
-    val fn = self._builder.buildFunction(name: fnName, returnType: Some(QbeType.Pointer))
+    val fnVal = self._builder.buildFunction(name: fnName, returnType: Some(QbeType.Pointer))
     val prevFn = self._currentFn
-    self._currentFn = fn
-    fn.addCommentMultiline(match self._structSignature(struct) { Ok(v) => v, Err(e) => return Err(e) })
+    self._currentFn = fnVal
+    fnVal.addCommentMultiline(match self._structSignature(struct) { Ok(v) => v, Err(e) => return Err(e) })
 
+    var defaultValueParamIdx = 0
+    var defaultValuesMaskParam: Value? = None
+    var addMaskParam = false
     var size = 0
     for field in struct.fields {
       val fieldTy = match self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position)) { Ok(v) => v, Err(e) => return Err(e) }
       size += fieldTy.size()
-      fn.addParameter(field.name.name, fieldTy)
+
+      if field.initializer |initializerNode| {
+        val paramLocal = fnVal.addParameter("${field.name.name}_", fieldTy)
+        addMaskParam = true
+        val maskParam = Value.Ident("__default_params_mask__", QbeType.U32)
+
+        val defaultValueFlag = 1 << defaultValueParamIdx
+        defaultValueParamIdx += 1
+
+        val labelUseDefaultValue = self._currentFn.block.addLabel("${field.name.name}_use_default")
+        val labelUsePassedValue = self._currentFn.block.addLabel("${field.name.name}_use_passed")
+        val labelCont = self._currentFn.block.addLabel("${field.name.name}_cont")
+
+        val paramMaskVal = match self._currentFn.block.buildAndW(maskParam, Value.Int32(defaultValueFlag)) { Ok(v) => v, Err(e) => return qbeError(e) }
+        val paramNeedsDefault = match self._currentFn.block.buildCompareEq(paramMaskVal, Value.Int32(defaultValueFlag)) { Ok(v) => v, Err(e) => return qbeError(e) }
+        self._currentFn.block.buildJnz(paramNeedsDefault, labelUseDefaultValue, labelUsePassedValue)
+
+        self._currentFn.block.registerLabel(labelUseDefaultValue)
+        val res = match self._compileExpression(initializerNode) { Ok(v) => v, Err(e) => return Err(e) }
+        self._currentFn.block.buildJmp(labelCont)
+
+        self._currentFn.block.registerLabel(labelUsePassedValue)
+        self._currentFn.block.buildJmp(labelCont)
+
+        self._currentFn.block.registerLabel(labelCont)
+
+        val phiCases = [(labelUseDefaultValue, res), (labelUsePassedValue, paramLocal)]
+        match self._currentFn.block.buildPhi(phiCases, Some(field.name.name)) { Ok(v) => v, Err(e) => return qbeError(e) }
+      } else {
+        fnVal.addParameter(field.name.name, fieldTy)
+      }
+    }
+    if addMaskParam {
+      fnVal.addParameter("__default_params_mask__", QbeType.U32)
     }
 
-    val memLocal = match fn.block.buildCall(self._malloc, [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
+    val memLocal = match fnVal.block.buildCall(self._malloc, [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
 
     var offset = 0
     for field in struct.fields {
@@ -900,19 +950,19 @@ export type Compiler {
       val param = Value.Ident(field.name.name, fieldTy)
 
       val localName = "mem_offset_${field.name.name}"
-      val memCursorLocal = match fn.block.buildAdd(Value.Int(offset), memLocal, Some(localName)) { Ok(v) => v, Err(e) => return qbeError(e) }
-      fn.block.buildStoreL(param, memCursorLocal)
+      val memCursorLocal = match fnVal.block.buildAdd(Value.Int(offset), memLocal, Some(localName)) { Ok(v) => v, Err(e) => return qbeError(e) }
+      fnVal.block.buildStoreL(param, memCursorLocal)
 
       offset += fieldTy.size()
     }
 
-    fn.block.buildReturn(Some(memLocal))
+    fnVal.block.buildReturn(Some(memLocal))
 
-    match fn.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
+    match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
 
     self._currentFn = prevFn
 
-    Ok(fn)
+    Ok(fnVal)
   }
 
   func _getOrCompileEnumVariantFn(self, enum_: Enum, variant: TypedEnumVariant): Result<QbeFunction, CompileError> {
@@ -1085,6 +1135,15 @@ export type Compiler {
     }
 
     match intrinsicFnName {
+      "pointer_null" => {
+        self._currentFn.block.addComment("begin pointer_null...")
+
+        match self._currentFn.block.buildAdd(Value.Int(0), Value.Int(0), Some("__pointer_null__")) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+        self._currentFn.block.addComment("...pointer_null end")
+
+        Ok(Value.Ident("__pointer_null__", QbeType.Pointer))
+      }
       "pointer_malloc" => {
         self._currentFn.block.addComment("begin pointer_malloc...")
 
@@ -1226,25 +1285,8 @@ export type Compiler {
 
     val returnTypeQbe = match self._getQbeTypeForType(fn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
     val fnVal = self._builder.buildFunction(name: fnName, returnType: returnTypeQbe)
-    val prevFn = self._currentFn
-    self._currentFn = fnVal
-
-    for param in fn.params {
-      val paramTy = match self._getQbeTypeForTypeExpect(param.ty, "unacceptable type for param", Some(param.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
-      fnVal.addParameter(param.label.name, paramTy)
-    }
+    match self._compileFunc(fnVal, fn) { Ok(v) => v, Err(e) => return Err(e) }
     fnVal.addComment(match self._fnSignature(None, fn) { Ok(v) => v, Err(e) => return Err(e) })
-
-    var retVal: Value? = None
-    for node, idx in fn.body {
-      val res = match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
-      if idx == fn.body.length - 1 && fn.returnType.kind != TypeKind.PrimitiveUnit {
-        retVal = res
-      }
-    }
-    fnVal.block.buildReturn(retVal)
-
-    self._currentFn = prevFn
 
     Ok(fnVal)
   }
@@ -1266,19 +1308,61 @@ export type Compiler {
 
     val returnTypeQbe = match self._getQbeTypeForType(fn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
     val fnVal = self._builder.buildFunction(name: methodName, returnType: returnTypeQbe)
-    val prevFn = self._currentFn
-    self._currentFn = fnVal
 
     if isInstanceMethod {
       val selfTyQbe = match self._getQbeTypeForTypeExpect(selfType, "unacceptable type for self") { Ok(v) => v, Err(e) => return Err(e) }
       fnVal.addParameter("self", selfTyQbe)
     }
+    match self._compileFunc(fnVal, fn) { Ok(v) => v, Err(e) => return Err(e) }
+    fnVal.addComment(match self._fnSignature(Some(selfTy), fn) { Ok(v) => v, Err(e) => return Err(e) })
 
+    Ok(fnVal)
+  }
+
+  func _compileFunc(self, fnVal: QbeFunction, fn: Function): Result<Int, CompileError> {
+    val prevFn = self._currentFn
+    self._currentFn = fnVal
+
+    var defaultValueParamIdx = 0
+    var defaultValuesMaskParam: Value? = None
+    var addMaskParam = false
     for param in fn.params {
       val paramTy = match self._getQbeTypeForTypeExpect(param.ty, "unacceptable type for param", Some(param.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
-      fnVal.addParameter(param.label.name, paramTy)
+
+      if param.defaultValue |defaultValueNode| {
+        val paramLocal = fnVal.addParameter("${param.label.name}_", paramTy)
+        addMaskParam = true
+        val maskParam = Value.Ident("__default_params_mask__", QbeType.U32)
+
+        val defaultValueFlag = 1 << defaultValueParamIdx
+        defaultValueParamIdx += 1
+
+        val labelUseDefaultValue = self._currentFn.block.addLabel("${param.label.name}_use_default")
+        val labelUsePassedValue = self._currentFn.block.addLabel("${param.label.name}_use_passed")
+        val labelCont = self._currentFn.block.addLabel("${param.label.name}_cont")
+
+        val paramMaskVal = match self._currentFn.block.buildAndW(maskParam, Value.Int32(defaultValueFlag)) { Ok(v) => v, Err(e) => return qbeError(e) }
+        val paramNeedsDefault = match self._currentFn.block.buildCompareEq(paramMaskVal, Value.Int32(defaultValueFlag)) { Ok(v) => v, Err(e) => return qbeError(e) }
+        self._currentFn.block.buildJnz(paramNeedsDefault, labelUseDefaultValue, labelUsePassedValue)
+
+        self._currentFn.block.registerLabel(labelUseDefaultValue)
+        val res = match self._compileExpression(defaultValueNode) { Ok(v) => v, Err(e) => return Err(e) }
+        self._currentFn.block.buildJmp(labelCont)
+
+        self._currentFn.block.registerLabel(labelUsePassedValue)
+        self._currentFn.block.buildJmp(labelCont)
+
+        self._currentFn.block.registerLabel(labelCont)
+
+        val phiCases = [(labelUseDefaultValue, res), (labelUsePassedValue, paramLocal)]
+        match self._currentFn.block.buildPhi(phiCases, Some(param.label.name)) { Ok(v) => v, Err(e) => return qbeError(e) }
+      } else {
+        fnVal.addParameter(param.label.name, paramTy)
+      }
     }
-    fnVal.addComment(match self._fnSignature(Some(selfTy), fn) { Ok(v) => v, Err(e) => return Err(e) })
+    if addMaskParam {
+      fnVal.addParameter("__default_params_mask__", QbeType.U32)
+    }
 
     var retVal: Value? = None
     for node, idx in fn.body {
@@ -1291,7 +1375,7 @@ export type Compiler {
 
     self._currentFn = prevFn
 
-    Ok(fnVal)
+    Ok(0)
   }
 
   func _getOrCompileToStringMethod(self, ty: Type): Result<QbeFunction, CompileError> {
@@ -1603,7 +1687,8 @@ export type Compiler {
     if fn.kind == FunctionKind.InstanceMethod args.push("self")
     for param in fn.params {
       val paramTyRepr = match self._getReprForType(param.ty) { Ok(v) => v, Err(e) => return Err(e) }
-      args.push("${param.label.name}: $paramTyRepr")
+      val defaultExpr = if param.defaultValue " = ..." else ""
+      args.push("${param.label.name}: $paramTyRepr$defaultExpr")
     }
     parts.push(args.join(", "))
     parts.push(")")

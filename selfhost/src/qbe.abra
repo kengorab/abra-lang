@@ -211,6 +211,19 @@ export type Block {
     Ok(local)
   }
 
+  func buildAndW(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'andw' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.AndW(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
   func buildAlloc4(self, size: Int, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, QbeType.Pointer)
@@ -404,7 +417,7 @@ export type Block {
   func buildPhi(self, cases: (Label, Value)[], dst: String? = None): Result<Value, String> {
     var ty = if cases[0] |_c| _c[1].ty() else return Err("phi requires at least 1 label")
     for case in cases {
-      if ty != case[1].ty() return Err("phi case mismatch (@${case[0]} doesn't match previous)")
+      if ty != case[1].ty() return Err("phi case type mismatch: @${case[0].name} (type: ${case[1].ty()}) doesn't match previous (type: $ty)")
 
       self._usedLabels.insert(case[0])
     }
@@ -463,6 +476,18 @@ export enum QbeType {
       QbeType.Pointer => "l"
       QbeType.F32 => "s"
       QbeType.F64 => "d"
+    }
+  }
+
+  func zeroValue(self): Value {
+    match self {
+      QbeType.U8 => Value.Int32(0)
+      QbeType.U16 => Value.Int32(0)
+      QbeType.U32 => Value.Int32(0)
+      QbeType.U64 => Value.Int(0)
+      QbeType.Pointer => Value.Int(0)
+      QbeType.F32 => Value.Float(0.0)
+      QbeType.F64 => Value.Float(0.0)
     }
   }
 
@@ -574,6 +599,8 @@ enum Instruction {
   Sub(dst: Dest, l: Value, r: Value)
   Mul(dst: Dest, l: Value, r: Value)
 
+  AndW(dst: Dest, l: Value, r: Value)
+
   Alloc4(dst: Dest, size: Int)
   Alloc8(dst: Dest, size: Int)
 
@@ -622,6 +649,14 @@ enum Instruction {
       Instruction.Mul(dst, l, r) => {
         dst.encode(file)
         file.write(" mul ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.AndW(dst, l, r) => {
+        dst.encode(file)
+        file.write(" and ")
         l.encode(file)
         file.write(", ")
         r.encode(file)

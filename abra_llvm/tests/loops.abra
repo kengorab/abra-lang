@@ -90,6 +90,6 @@ println("done")
 /// Expect: 0
 /// Expect: 2
 /// Expect: 4
-for i in rangeBy(0, 5, 2) {
+for i in range(0, 5, 2) {
   println(i)
 }

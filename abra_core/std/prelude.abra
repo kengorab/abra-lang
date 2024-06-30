@@ -55,8 +55,7 @@ type RangeIterator {
   }
 }
 
-func range(start: Int, end: Int): RangeIterator = RangeIterator(start: start, end: end, stepBy: 1, _i: 0)
-func rangeBy(start: Int, end: Int, stepBy: Int): RangeIterator = RangeIterator(start: start, end: end, stepBy: stepBy, _i: 0)
+func range(start: Int, end: Int, stepBy = 1): RangeIterator = RangeIterator(start: start, end: end, stepBy: stepBy)
 
 func flattenOption<T>(value: T??): T? = if value |v| v else None
 
