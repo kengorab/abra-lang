@@ -1,0 +1,95 @@
+// // While-loops
+
+// var i = 0
+// while i < 3 {
+//   println(i)
+//   i += 1
+// }
+// /// Expect: 0
+// /// Expect: 1
+// /// Expect: 2
+// /// Expect: done
+// println("done")
+
+// // Condition bindings
+// val arr = [1, 2, 3]
+// var n = 0
+// while arr[n] |item| {
+//   println(100 + item)
+//   n += 1
+// }
+// /// Expect: 101
+// /// Expect: 102
+// /// Expect: 103
+// /// Expect: done
+// println("done")
+
+// // Control flow within loops
+// /// Expect: first loop
+// /// Expect: done
+// while true {
+//   println("first loop")
+//   break
+// }
+// println("done")
+
+
+// /// Expect: 0
+// /// Expect: 1
+// /// Expect: 3
+// var x = 0
+// while x < 4 {
+//   if x == 2 {
+//     x += 1
+//     continue
+//   }
+//   println(x)
+//   x += 1
+// }
+
+// For-loops
+
+// // No index var
+// /// Expect: a
+// /// Expect: b
+// /// Expect: c
+// for ch in ["a", "b", "c"] {
+//   println(ch)
+// }
+
+// /// Expect: a 0
+// /// Expect: b 1
+// /// Expect: c 2
+// for ch, idx in ["a", "b", "c"] {
+//   println(ch, idx)
+// }
+
+// /// Expect: a 0
+// /// Expect: b 1
+// /// Expect: done
+// for ch, idx in ["a", "b", "c"] {
+//   println(ch, idx)
+//   if ch == "b" {
+//     break
+//   }
+// }
+// println("done")
+
+// /// Expect: a 0
+// /// Expect: c 2
+// /// Expect: done
+// for ch, idx in ["a", "b", "c"] {
+//   if ch == "b" {
+//     continue
+//   }
+//   println(ch, idx)
+// }
+// println("done")
+
+// Iterating over `Iterator` type
+/// Expect: 0
+/// Expect: 2
+/// Expect: 4
+for i in range(0, 5, 2) {
+  println(i)
+}

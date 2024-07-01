@@ -756,6 +756,8 @@ fn compiler_tests() {
         .add_test("compiler/strings.abra")
         .add_test("compiler/arrays.abra")
         .add_test("compiler/functions.abra")
+        .add_test("compiler/optionals.abra")
+        .add_test("compiler/loops.abra")
 
         .run_tests();
 }

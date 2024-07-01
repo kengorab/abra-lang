@@ -1,6 +1,6 @@
 import "fs" as fs
 import Position from "./lexer"
-import LiteralAstNode, BinaryOp, AssignOp, BindingPattern from "./parser"
+import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern from "./parser"
 import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedIdentifierKind, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind from "./typechecker"
 import ModuleBuilder, QbeType, Dest, QbeFunction, Value, Label from "./qbe"
 
@@ -220,9 +220,7 @@ export type Compiler {
         val condExprIsOpt = self._typeIsOption(cond.ty)
 
         if condExprIsOpt {
-          val variantIdx = self._currentFn.block.buildLoadW(condVal)
-          val optionSomeVariantIdx = if self._project.preludeOptionEnum.variants.findIndex(v => v.label.name == "Some") |_p| _p[1] else return unreachable("Option.Some must exist")
-          val variantIsOptionSome = match self._currentFn.block.buildCompareEq(variantIdx, Value.Int32(optionSomeVariantIdx)) { Ok(v) => v, Err(e) => return qbeError(e) }
+          val variantIsOptionSome = match self._emitOptValueIsSomeVariant(condVal) { Ok(v) => v, Err(e) => return Err(e) }
           self._currentFn.block.buildJnz(variantIsOptionSome, labelThen, if elseBlock.isEmpty() labelCont else labelElse)
         } else {
           self._currentFn.block.buildJnz(condVal, labelThen, if elseBlock.isEmpty() labelCont else labelElse)
@@ -238,9 +236,13 @@ export type Compiler {
             BindingPattern.Variable(label) => label.name
           }
 
-          if condExprIsOpt {
-            val valueSlot = match self._currentFn.block.buildAdd(Value.Int(QbeType.U32.size()), condVal) { Ok(v) => v, Err(e) => return qbeError(e) }
-            self._currentFn.block.buildLoadL(valueSlot, Some(bindingName))
+          if condExprIsOpt |innerTy| {
+            val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
+            val optInnerValue = match self._emitOptValueGetValue(innerQbeType, condVal) { Ok(v) => v, Err(e) => return Err(e) }
+
+            val slotName = "$bindingName.slot"
+            val slot = self._buildStackAllocForQbeType(innerQbeType, Some(slotName))
+            self._currentFn.block.buildStore(innerQbeType, optInnerValue, slot)
           } else {
             return todo("boolean cond bindings")
           }
@@ -298,6 +300,8 @@ export type Compiler {
         // TODO: destructuring
         val iterVal = _p[0]
         val nextFn = _p[1]
+        val nextItemTy = if self._typeIsOption(nextFn.returnType) |innerTy| innerTy else return unreachable("a 'next' method must return an Option type")
+        val nextItemQbeTy = match self._getQbeTypeForTypeExpect(nextItemTy, "unacceptable type for 'next' method return type") { Ok(v) => v, Err(e) => return Err(e) }
 
         val nextFnVal = match self._getOrCompileMethod(typedIterator.ty, nextFn) { Ok(v) => v, Err(e) => return Err(e) }
 
@@ -311,17 +315,14 @@ export type Compiler {
         }
         val nextRet = match self._currentFn.block.buildCall(nextFnVal, [iterVal], Some("next_ret")) { Ok(v) => v, Err(e) => return qbeError(e) }
 
-        val variantIdx = self._currentFn.block.buildLoadW(nextRet)
-        val optionSomeVariantIdx = if self._project.preludeOptionEnum.variants.findIndex(v => v.label.name == "Some") |_p| _p[1] else return unreachable("Option.Some must exist")
-        val variantIsOptionSome = match self._currentFn.block.buildCompareEq(variantIdx, Value.Int32(optionSomeVariantIdx)) { Ok(v) => v, Err(e) => return qbeError(e) }
+        val variantIsOptionSome = match self._emitOptValueIsSomeVariant(nextRet) { Ok(v) => v, Err(e) => return Err(e) }
         self._currentFn.block.buildJnz(variantIsOptionSome, loopBodyLabel, loopEndLabel)
 
         self._currentFn.block.registerLabel(loopBodyLabel)
         val itemSlotName = "$itemName.slot"
-        val itemSlot = self._currentFn.block.buildAlloc8(1, Some(itemSlotName))
-        val valueSlot = match self._currentFn.block.buildAdd(Value.Int(QbeType.U32.size()), nextRet) { Ok(v) => v, Err(e) => return qbeError(e) }
-        val value = self._currentFn.block.buildLoadL(valueSlot)
-        self._currentFn.block.buildStoreL(value, itemSlot)
+        val optInnerValue = match self._emitOptValueGetValue(nextItemQbeTy, nextRet) { Ok(v) => v, Err(e) => return Err(e) }
+        val itemSlot = self._buildStackAllocForQbeType(nextItemQbeTy, Some(itemSlotName))
+        self._currentFn.block.buildStore(nextItemQbeTy, optInnerValue, itemSlot)
 
         for node in block {
           match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
@@ -345,15 +346,16 @@ export type Compiler {
 
         val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
         val slotName = "${variable.label.name}.slot"
-        val slot = match varTy {
-          QbeType.U8 => self._currentFn.block.buildAlloc8(1, Some(slotName))      // 'b'
-          QbeType.U16 => self._currentFn.block.buildAlloc4(1, Some(slotName))     // 'h'
-          QbeType.U32 => self._currentFn.block.buildAlloc4(1, Some(slotName))     // 'w'
-          QbeType.U64 => self._currentFn.block.buildAlloc8(1, Some(slotName))     // 'l'
-          QbeType.Pointer => self._currentFn.block.buildAlloc8(1, Some(slotName)) // 'l'
-          QbeType.F32 => self._currentFn.block.buildAlloc4(1, Some(slotName))     // 's'
-          QbeType.F64 => self._currentFn.block.buildAlloc8(1, Some(slotName))     // 'd'
-        }
+        val slot = self._buildStackAllocForQbeType(varTy, Some(slotName))
+        // val slot = match varTy {
+        //   QbeType.U8 => self._currentFn.block.buildAlloc8(1, Some(slotName))      // 'b'
+        //   QbeType.U16 => self._currentFn.block.buildAlloc4(1, Some(slotName))     // 'h'
+        //   QbeType.U32 => self._currentFn.block.buildAlloc4(1, Some(slotName))     // 'w'
+        //   QbeType.U64 => self._currentFn.block.buildAlloc8(1, Some(slotName))     // 'l'
+        //   QbeType.Pointer => self._currentFn.block.buildAlloc8(1, Some(slotName)) // 'l'
+        //   QbeType.F32 => self._currentFn.block.buildAlloc4(1, Some(slotName))     // 's'
+        //   QbeType.F64 => self._currentFn.block.buildAlloc8(1, Some(slotName))     // 'd'
+        // }
 
         if bindingDeclNode.expr |expr| {
           val res = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
@@ -362,9 +364,9 @@ export type Compiler {
 
         Ok(None)
       }
-      TypedAstNodeKind.FunctionDeclaration => Ok(None) // todo("compiling function declaration", node.token.position)
+      TypedAstNodeKind.FunctionDeclaration => Ok(None)
       TypedAstNodeKind.TypeDeclaration => Ok(None)
-      TypedAstNodeKind.EnumDeclaration => todo("compiling enum declaration", node.token.position)
+      TypedAstNodeKind.EnumDeclaration => Ok(None)
       TypedAstNodeKind.Break => todo("compiling break statement", node.token.position)
       TypedAstNodeKind.Continue => todo("compiling continue statement", node.token.position)
       TypedAstNodeKind.Return(expr) => {
@@ -444,7 +446,28 @@ export type Compiler {
         }
       }
       TypedAstNodeKind.StringInterpolation => todo("compiling string interpolation expression", node.token.position)
-      TypedAstNodeKind.Unary => todo("compiling unary expression", node.token.position)
+      TypedAstNodeKind.Unary(op, expr) => {
+        match op {
+          UnaryOp.Minus => {
+            val exprVal = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
+            val res = match self._currentFn.block.buildNeg(exprVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+            Ok(res)
+          }
+          UnaryOp.Negate => {
+            val exprVal = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
+            val exprIsOpt = self._typeIsOption(expr.ty)
+            if exprIsOpt {
+              val variantIsNotOptionSome = match self._emitOptValueIsSomeVariant(exprVal: exprVal, negate: true) { Ok(v) => v, Err(e) => return Err(e) }
+              Ok(variantIsNotOptionSome)
+            } else {
+              val plusOneVal = match self._currentFn.block.buildAdd(Value.Int32(1), exprVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+              val res = match self._currentFn.block.buildRem(plusOneVal, Value.Int32(2)) { Ok(v) => v, Err(e) => return qbeError(e) }
+              Ok(res)
+            }
+          }
+        }
+      }
       TypedAstNodeKind.Binary(left, op, right) => {
         match op {
           BinaryOp.Add => {
@@ -709,9 +732,7 @@ export type Compiler {
         val condVal = match self._compileExpression(cond) { Ok(v) => v, Err(e) => return Err(e) }
         val condExprIsOpt = self._typeIsOption(cond.ty)
         if condExprIsOpt {
-          val variantIdx = self._currentFn.block.buildLoadW(condVal)
-          val optionSomeVariantIdx = if self._project.preludeOptionEnum.variants.findIndex(v => v.label.name == "Some") |_p| _p[1] else return unreachable("Option.Some must exist")
-          val variantIsOptionSome = match self._currentFn.block.buildCompareEq(variantIdx, Value.Int32(optionSomeVariantIdx)) { Ok(v) => v, Err(e) => return qbeError(e) }
+          val variantIsOptionSome = match self._emitOptValueIsSomeVariant(condVal) { Ok(v) => v, Err(e) => return Err(e) }
           self._currentFn.block.buildJnz(variantIsOptionSome, labelThen, labelElse)
         } else {
           self._currentFn.block.buildJnz(condVal, labelThen, labelElse)
@@ -729,9 +750,13 @@ export type Compiler {
             BindingPattern.Variable(label) => label.name
           }
 
-          if condExprIsOpt {
-            val valueSlot = match self._currentFn.block.buildAdd(Value.Int(QbeType.U32.size()), condVal) { Ok(v) => v, Err(e) => return qbeError(e) }
-            self._currentFn.block.buildLoadL(valueSlot, Some(bindingName))
+          if condExprIsOpt |innerTy| {
+            val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
+            val optInnerValue = match self._emitOptValueGetValue(innerQbeType, condVal) { Ok(v) => v, Err(e) => return Err(e) }
+
+            val slotName = "$bindingName.slot"
+            val slot = self._buildStackAllocForQbeType(innerQbeType, Some(slotName))
+            self._currentFn.block.buildStore(innerQbeType, optInnerValue, slot)
           } else {
             return todo("boolean cond bindings")
           }
@@ -782,7 +807,7 @@ export type Compiler {
     val fnVal = match self._getOrCompileStructInitializer(self._project.preludeStringStruct) { Ok(v) => v, Err(e) => return Err(e) }
     val structTy = if fnVal.returnType |ty| ty else return unreachable("initializer functions must have return types specified")
 
-    val res = match self._currentFn.block.buildCall(fnVal, [lenVal, ptrVal], localName) { Ok(v) => v, Err(e) => return qbeError(e) }
+    val res = match self._currentFn.block.buildCall(fnVal, [lenVal, ptrVal, Value.Int32(0)], localName) { Ok(v) => v, Err(e) => return qbeError(e) }
     self._currentFn.block.addCommentBefore("${res.repr()}: String")
     Ok(res)
   }
@@ -951,7 +976,7 @@ export type Compiler {
 
       val localName = "mem_offset_${field.name.name}"
       val memCursorLocal = match fnVal.block.buildAdd(Value.Int(offset), memLocal, Some(localName)) { Ok(v) => v, Err(e) => return qbeError(e) }
-      fnVal.block.buildStoreL(param, memCursorLocal)
+      fnVal.block.buildStore(fieldTy, param, memCursorLocal)
 
       offset += fieldTy.size()
     }
@@ -1002,7 +1027,7 @@ export type Compiler {
 
           val localName = "mem_offset_${field.name.name}"
           val memCursorLocal = match fn.block.buildAdd(Value.Int(offset), memLocal, Some(localName)) { Ok(v) => v, Err(e) => return qbeError(e) }
-          fn.block.buildStoreL(param, memCursorLocal)
+          fn.block.buildStore(fieldTy, param, memCursorLocal)
 
           offset += fieldTy.size()
         }
@@ -1530,6 +1555,37 @@ export type Compiler {
     self._currentFn = prevFn
 
     Ok(fnVal)
+  }
+
+  func _buildStackAllocForQbeType(self, ty: QbeType, name: String? = None): Value {
+    match ty {
+      QbeType.U8 => self._currentFn.block.buildAlloc8(1, name)      // 'b'
+      QbeType.U16 => self._currentFn.block.buildAlloc4(1, name)     // 'h'
+      QbeType.U32 => self._currentFn.block.buildAlloc4(1, name)     // 'w'
+      QbeType.U64 => self._currentFn.block.buildAlloc8(1, name)     // 'l'
+      QbeType.Pointer => self._currentFn.block.buildAlloc8(1, name) // 'l'
+      QbeType.F32 => self._currentFn.block.buildAlloc4(1, name)     // 's'
+      QbeType.F64 => self._currentFn.block.buildAlloc8(1, name)     // 'd'
+    }
+  }
+
+  func _emitOptValueIsSomeVariant(self, exprVal: Value, negate = false): Result<Value, CompileError> {
+    val variantIdx = self._currentFn.block.buildLoadW(exprVal)
+    val optionSomeVariantIdx = if self._project.preludeOptionEnum.variants.findIndex(v => v.label.name == "Some") |_p| _p[1] else return unreachable("Option.Some must exist")
+    if negate {
+      val res = match self._currentFn.block.buildCompareNeq(variantIdx, Value.Int32(optionSomeVariantIdx)) { Ok(v) => v, Err(e) => return qbeError(e) }
+      Ok(res)
+    } else {
+      val res = match self._currentFn.block.buildCompareEq(variantIdx, Value.Int32(optionSomeVariantIdx)) { Ok(v) => v, Err(e) => return qbeError(e) }
+      Ok(res)
+    }
+  }
+
+  func _emitOptValueGetValue(self, ty: QbeType, exprVal: Value): Result<Value, CompileError> {
+    val valueSlot = match self._currentFn.block.buildAdd(Value.Int(QbeType.U32.size()), exprVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+    val optSomeValue = self._currentFn.block.buildLoad(ty, valueSlot)
+
+    Ok(optSomeValue)
   }
 
   func _getInstanceTypeForType(self, ty: Type): Result<(StructOrEnum, Type[]), CompileError> {

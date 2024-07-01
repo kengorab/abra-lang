@@ -1,9 +1,9 @@
 /// Expect: 24
 println(24)
 
-// // Unary operations
-// /// Expect: -1 1
-// println(-1, --1)
+// Unary operations
+/// Expect: -1 1
+println(-1, --1)
 
 // Binary operations
 /// Expect: 32

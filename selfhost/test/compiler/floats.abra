@@ -7,9 +7,9 @@ println(0.123)
 /// Expect: 1
 println(1.0)
 
-// // Unary operations
-// /// Expect: -1.1 1.1 -0
-// println(-1.1, --1.1, -0.0)
+// Unary operations
+/// Expect: -1.1 1.1 -0
+println(-1.1, --1.1, -0.0)
 
 // // Binary operations
 // /// Expect: 32.1
