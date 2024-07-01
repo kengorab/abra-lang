@@ -1,6 +1,6 @@
 import "fs" as fs
 import Position from "./lexer"
-import LiteralAstNode, BinaryOp, AssignOp, BindingPattern from "./parser"
+import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern from "./parser"
 import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedIdentifierKind, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind from "./typechecker"
 import ModuleBuilder, QbeType, Dest, QbeFunction, Value, Label from "./qbe"
 
@@ -362,9 +362,9 @@ export type Compiler {
 
         Ok(None)
       }
-      TypedAstNodeKind.FunctionDeclaration => Ok(None) // todo("compiling function declaration", node.token.position)
+      TypedAstNodeKind.FunctionDeclaration => Ok(None)
       TypedAstNodeKind.TypeDeclaration => Ok(None)
-      TypedAstNodeKind.EnumDeclaration => todo("compiling enum declaration", node.token.position)
+      TypedAstNodeKind.EnumDeclaration => Ok(None)
       TypedAstNodeKind.Break => todo("compiling break statement", node.token.position)
       TypedAstNodeKind.Continue => todo("compiling continue statement", node.token.position)
       TypedAstNodeKind.Return(expr) => {
@@ -444,7 +444,27 @@ export type Compiler {
         }
       }
       TypedAstNodeKind.StringInterpolation => todo("compiling string interpolation expression", node.token.position)
-      TypedAstNodeKind.Unary => todo("compiling unary expression", node.token.position)
+      TypedAstNodeKind.Unary(op, expr) => {
+        match op {
+          UnaryOp.Minus => {
+            val exprVal = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
+            val res = match self._currentFn.block.buildNeg(exprVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+            Ok(res)
+          }
+          UnaryOp.Negate => {
+            val exprVal = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
+            val exprIsOpt = self._typeIsOption(expr.ty)
+            if exprIsOpt {
+              todo("opt negate", node.token.position)
+            } else {
+              val plusOneVal = match self._currentFn.block.buildAdd(Value.Int32(1), exprVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+              val res = match self._currentFn.block.buildRem(plusOneVal, Value.Int32(2)) { Ok(v) => v, Err(e) => return qbeError(e) }
+              Ok(res)
+            }
+          }
+        }
+      }
       TypedAstNodeKind.Binary(left, op, right) => {
         match op {
           BinaryOp.Add => {
@@ -782,7 +802,7 @@ export type Compiler {
     val fnVal = match self._getOrCompileStructInitializer(self._project.preludeStringStruct) { Ok(v) => v, Err(e) => return Err(e) }
     val structTy = if fnVal.returnType |ty| ty else return unreachable("initializer functions must have return types specified")
 
-    val res = match self._currentFn.block.buildCall(fnVal, [lenVal, ptrVal], localName) { Ok(v) => v, Err(e) => return qbeError(e) }
+    val res = match self._currentFn.block.buildCall(fnVal, [lenVal, ptrVal, Value.Int32(0)], localName) { Ok(v) => v, Err(e) => return qbeError(e) }
     self._currentFn.block.addCommentBefore("${res.repr()}: String")
     Ok(res)
   }

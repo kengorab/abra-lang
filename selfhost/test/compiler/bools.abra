@@ -4,9 +4,9 @@ println(true)
 /// Expect: false
 println(false)
 
-// // Unary operation
-// /// Expect: true false false true
-// println(!false, !!false, !true, !!true)
+// Unary operation
+/// Expect: true false false true
+println(!false, !!false, !true, !!true)
 
 // // Binary operations
 // func returnsFalse(): Bool {

@@ -211,6 +211,28 @@ export type Block {
     Ok(local)
   }
 
+  func buildNeg(self, expr: Value, dst: String? = None): Result<Value, String> {
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, expr.ty())
+
+    self.append(Instruction.Neg(dst: Dest(name: local.repr(), ty: expr.ty()), v: expr))
+
+    Ok(local)
+  }
+
+  func buildRem(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'rem' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.Rem(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
   func buildAndW(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
@@ -598,6 +620,9 @@ enum Instruction {
   Add(dst: Dest, l: Value, r: Value)
   Sub(dst: Dest, l: Value, r: Value)
   Mul(dst: Dest, l: Value, r: Value)
+  Rem(dst: Dest, l: Value, r: Value)
+
+  Neg(dst: Dest, v: Value)
 
   AndW(dst: Dest, l: Value, r: Value)
 
@@ -649,6 +674,20 @@ enum Instruction {
       Instruction.Mul(dst, l, r) => {
         dst.encode(file)
         file.write(" mul ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.Neg(dst, v) => {
+        dst.encode(file)
+        file.write(" neg ")
+        v.encode(file)
+        file.writeln()
+      }
+      Instruction.Rem(dst, l, r) => {
+        dst.encode(file)
+        file.write(" rem ")
         l.encode(file)
         file.write(", ")
         r.encode(file)
