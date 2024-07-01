@@ -39,7 +39,12 @@
 // arr.push(4)
 // println(arr.length)
 
-println(-123)
+val v : Bool? = Some(true)
+if v |v_| println(v_) else println("nope")
+val x = if v |v_| !v_ else false
+println("x:", x)
+
+println("done")
 
 // // Default-valued parameters
 // func foo(a: Int, b = bar(a), c = bar(a, b), arr = [a, b, c]): Int = a + b + c + arr.length
