@@ -198,6 +198,19 @@ export type Block {
     Ok(local)
   }
 
+  func buildDiv(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'div' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.Div(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
   func buildMul(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
@@ -246,6 +259,32 @@ export type Block {
     Ok(local)
   }
 
+  func buildShl(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'shl' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.Shl(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
+  func buildShr(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'shr' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.Shr(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
   func buildAlloc4(self, size: Int, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, QbeType.Pointer)
@@ -264,10 +303,19 @@ export type Block {
     local
   }
 
+  func buildLToF(self, v: Value, signed = true, dst: String? = None): Value {
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, QbeType.F64)
+
+    self.append(Instruction.LToF(dst: Dest(name: local.repr(), ty: QbeType.F64), v: v, signed: signed))
+
+    local
+  }
+
   func buildCompareEq(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
-    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'ceqw' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'ceqw' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else QbeType.U32
 
     val dest =  dst ?: self._nextLocal()
     val local = Value.Ident(dest, resTy)
@@ -280,7 +328,7 @@ export type Block {
   func buildCompareNeq(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
-    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'cnew' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'cnew' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else QbeType.U32
 
     val dest =  dst ?: self._nextLocal()
     val local = Value.Ident(dest, resTy)
@@ -290,10 +338,49 @@ export type Block {
     Ok(local)
   }
 
+  func buildCompareLt(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'lt' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else QbeType.U32
+
+    val dest =  dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.CompareLt(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
+  func buildCompareLte(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'lte' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else QbeType.U32
+
+    val dest =  dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.CompareLte(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
+  func buildCompareGt(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'gt' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else QbeType.U32
+
+    val dest =  dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.CompareGt(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
   func buildCompareGte(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
-    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'csgel' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'gte' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else QbeType.U32
 
     val dest =  dst ?: self._nextLocal()
     val local = Value.Ident(dest, resTy)
@@ -619,18 +706,25 @@ export type Dest {
 enum Instruction {
   Add(dst: Dest, l: Value, r: Value)
   Sub(dst: Dest, l: Value, r: Value)
+  Div(dst: Dest, l: Value, r: Value)
   Mul(dst: Dest, l: Value, r: Value)
+  Neg(dst: Dest, v: Value)
   Rem(dst: Dest, l: Value, r: Value)
 
-  Neg(dst: Dest, v: Value)
-
   AndW(dst: Dest, l: Value, r: Value)
+  Shl(dst: Dest, l: Value, r: Value)
+  Shr(dst: Dest, l: Value, r: Value)
 
   Alloc4(dst: Dest, size: Int)
   Alloc8(dst: Dest, size: Int)
 
+  LToF(dst: Dest, v: Value, signed: Bool)
+
   CompareEq(dst: Dest, l: Value, r: Value)
   CompareNeq(dst: Dest, l: Value, r: Value)
+  CompareLt(dst: Dest, l: Value, r: Value)
+  CompareLte(dst: Dest, l: Value, r: Value)
+  CompareGt(dst: Dest, l: Value, r: Value)
   CompareGte(dst: Dest, l: Value, r: Value)
 
   LoadB(dst: Dest, mem: Value)
@@ -671,6 +765,14 @@ enum Instruction {
         r.encode(file)
         file.writeln()
       }
+      Instruction.Div(dst, l, r) => {
+        dst.encode(file)
+        file.write(" div ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
       Instruction.Mul(dst, l, r) => {
         dst.encode(file)
         file.write(" mul ")
@@ -701,6 +803,22 @@ enum Instruction {
         r.encode(file)
         file.writeln()
       }
+      Instruction.Shl(dst, l, r) => {
+        dst.encode(file)
+        file.write(" shl ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.Shr(dst, l, r) => {
+        dst.encode(file)
+        file.write(" shr ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
       Instruction.Alloc4(dst, size) => {
         dst.encode(file)
         file.write(" alloc4 ")
@@ -711,9 +829,24 @@ enum Instruction {
         file.write(" alloc8 ")
         file.writeln(size.toString())
       }
+      Instruction.LToF(dst, v, signed) => {
+        dst.encode(file)
+        file.write(if signed " sltof " else " ultof ")
+        v.encode(file)
+        file.writeln()
+      }
       Instruction.CompareEq(dst, l, r) => {
         dst.encode(file)
-        file.write(" ceqw ")
+        val instr = match l.ty() {
+          QbeType.U8 => "ceqw"
+          QbeType.U16 => "ceqw"
+          QbeType.U32 => "ceqw"
+          QbeType.U64 => "ceql"
+          QbeType.Pointer => "ceql"
+          QbeType.F32 => "ceqs"
+          QbeType.F64 => "ceqd"
+        }
+        file.write(" $instr ")
         l.encode(file)
         file.write(", ")
         r.encode(file)
@@ -721,7 +854,67 @@ enum Instruction {
       }
       Instruction.CompareNeq(dst, l, r) => {
         dst.encode(file)
-        file.write(" cnew ")
+        val instr = match l.ty() {
+          QbeType.U8 => "cnew"
+          QbeType.U16 => "cnew"
+          QbeType.U32 => "cnew"
+          QbeType.U64 => "cnel"
+          QbeType.Pointer => "cnel"
+          QbeType.F32 => "cnes"
+          QbeType.F64 => "cned"
+        }
+        file.write(" $instr ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.CompareLt(dst, l, r) => {
+        dst.encode(file)
+        val instr = match l.ty() {
+          QbeType.U8 => "csltw"
+          QbeType.U16 => "csltw"
+          QbeType.U32 => "csltw"
+          QbeType.U64 => "csltl"
+          QbeType.Pointer => "csltl"
+          QbeType.F32 => "clts"
+          QbeType.F64 => "cltd"
+        }
+        file.write(" $instr ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.CompareLte(dst, l, r) => {
+        dst.encode(file)
+        val instr = match l.ty() {
+          QbeType.U8 => "cslew"
+          QbeType.U16 => "cslew"
+          QbeType.U32 => "cslew"
+          QbeType.U64 => "cslel"
+          QbeType.Pointer => "cslel"
+          QbeType.F32 => "cles"
+          QbeType.F64 => "cled"
+        }
+        file.write(" $instr ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.CompareGt(dst, l, r) => {
+        dst.encode(file)
+        val instr = match l.ty() {
+          QbeType.U8 => "csgtw"
+          QbeType.U16 => "csgtw"
+          QbeType.U32 => "csgtw"
+          QbeType.U64 => "csgtl"
+          QbeType.Pointer => "csgtl"
+          QbeType.F32 => "cgts"
+          QbeType.F64 => "cgtd"
+        }
+        file.write(" $instr ")
         l.encode(file)
         file.write(", ")
         r.encode(file)
@@ -729,7 +922,16 @@ enum Instruction {
       }
       Instruction.CompareGte(dst, l, r) => {
         dst.encode(file)
-        file.write(" csgel ")
+        val instr = match l.ty() {
+          QbeType.U8 => "csgew"
+          QbeType.U16 => "csgew"
+          QbeType.U32 => "csgew"
+          QbeType.U64 => "csgel"
+          QbeType.Pointer => "csgel"
+          QbeType.F32 => "cges"
+          QbeType.F64 => "cged"
+        }
+        file.write(" $instr ")
         l.encode(file)
         file.write(", ")
         r.encode(file)
