@@ -590,36 +590,8 @@ export type Compiler {
             }
           }
           BinaryOp.Coalesce => todo("compiling binary expression: Coalesce", node.token.position)
-          BinaryOp.Eq => {
-            var leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
-            var rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
-
-            if left.ty != right.ty {
-              if self._typeIsFloat(left.ty) && self._typeIsInt(right.ty) {
-                rightVal = self._currentFn.block.buildLToF(rightVal)
-              } else if self._typeIsFloat(right.ty) && self._typeIsInt(left.ty) {
-                leftVal = self._currentFn.block.buildLToF(leftVal)
-              } else return unreachable("unknown operator '==' between types '${left.ty.repr()}' and '${right.ty.repr()}")
-            }
-
-            val res = match self._currentFn.block.buildCompareEq(leftVal, rightVal, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
-            Ok(res)
-          }
-          BinaryOp.Neq => {
-            var leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
-            var rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
-
-            if left.ty != right.ty {
-              if self._typeIsFloat(left.ty) && self._typeIsInt(right.ty) {
-                rightVal = self._currentFn.block.buildLToF(rightVal)
-              } else if self._typeIsFloat(right.ty) && self._typeIsInt(left.ty) {
-                leftVal = self._currentFn.block.buildLToF(leftVal)
-              } else return unreachable("unknown operator '!=' between types '${left.ty.repr()}' and '${right.ty.repr()}")
-            }
-
-            val res = match self._currentFn.block.buildCompareNeq(leftVal, rightVal, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
-            Ok(res)
-          }
+          BinaryOp.Eq => self._compileBinaryEq(left, right)
+          BinaryOp.Neq => self._compileBinaryEq(left: left, right: right, negate: true)
           BinaryOp.LT => {
             val vals = match self._compileBinaryOperands(left, right, "<") { Ok(v) => v, Err(e) => return Err(e) }
             val res = match self._currentFn.block.buildCompareLt(vals[0], vals[1], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
@@ -926,6 +898,34 @@ export type Compiler {
     }
 
     Ok((leftVal, rightVal))
+  }
+
+  func _compileBinaryEq(self, left: TypedAstNode, right: TypedAstNode, localName: String? = None, negate = false): Result<Value, CompileError> {
+    var leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
+    var rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
+
+    if left.ty != right.ty return unreachable("equality operators require matching types", right.token.position)
+
+    if self._typeIsInt(left.ty) || self._typeIsFloat(left.ty) || self._typeIsBool(left.ty) {
+      val res = if negate {
+        val res = match self._currentFn.block.buildCompareNeq(leftVal, rightVal, localName) { Ok(v) => v, Err(e) => return qbeError(e) }
+        res
+      } else {
+        val res = match self._currentFn.block.buildCompareEq(leftVal, rightVal, localName) { Ok(v) => v, Err(e) => return qbeError(e) }
+        res
+      }
+      return Ok(res)
+    }
+
+    val eqFnVal = match self._getOrCompileEqMethod(left.ty) { Ok(v) => v, Err(e) => return Err(e) }
+    val res = match self._currentFn.block.buildCall(eqFnVal, [leftVal, rightVal], localName) { Ok(v) => v, Err(e) => return qbeError(e) }
+    if negate {
+      val plusOneVal = match self._currentFn.block.buildAdd(Value.Int32(1), res) { Ok(v) => v, Err(e) => return qbeError(e) }
+      val res = match self._currentFn.block.buildRem(plusOneVal, Value.Int32(2)) { Ok(v) => v, Err(e) => return qbeError(e) }
+      Ok(res)
+    } else {
+      Ok(res)
+    }
   }
 
   func _constructString(self, ptrVal: Value, lenVal: Value, localName: String? = None): Result<Value, CompileError> {
@@ -1425,6 +1425,17 @@ export type Compiler {
 
         Ok(argVal)
       }
+      "byte_as_int" => {
+        self._currentFn.block.addComment("begin byte_as_int...")
+
+        val _arg = if arguments[0] |arg| arg else return unreachable("'byte_as_int' has 1 required argument")
+        val arg = if _arg |arg| arg else return unreachable("'byte_as_int' has 1 required argument")
+        val argVal = match self._compileExpression(arg) { Ok(v) => v, Err(e) => return Err(e) }
+
+        self._currentFn.block.addComment("...byte_as_int end")
+
+        Ok(argVal)
+      }
       _ => unreachable("unsupported intrinsic '$intrinsicFnName'", fn.label.position)
     }
   }
@@ -1444,6 +1455,7 @@ export type Compiler {
   func _getOrCompileMethod(self, selfType: Type, fn: Function): Result<QbeFunction, CompileError> {
     val isInstanceMethod = match fn.kind { FunctionKind.InstanceMethod => true, _ => false }
     if isInstanceMethod && fn.label.name == "toString" && fn.isGenerated return self._getOrCompileToStringMethod(selfType)
+    if isInstanceMethod && fn.label.name == "eq" && fn.isGenerated return self._getOrCompileEqMethod(selfType)
 
     val _t = match self._getInstanceTypeForType(selfType) { Ok(v) => v, Err(e) => return Err(e) }
     // TODO: destructuring
@@ -1554,7 +1566,7 @@ export type Compiler {
     if self._builder.getFunction(methodName) |fn| return Ok(fn)
 
     if fn.isGenerated {
-      return todo("_getOrCompileToStringMethod implementation")
+      return todo("_getOrCompileToStringMethod: generated functions")
     }
 
     self._getOrCompileMethod(ty, fn)
@@ -1680,6 +1692,37 @@ export type Compiler {
     self._currentFn = prevFn
 
     Ok(fnVal)
+  }
+
+  func _getOrCompileEqMethod(self, ty: Type): Result<QbeFunction, CompileError> {
+    val _t = match self._getInstanceTypeForType(ty) { Ok(v) => v, Err(e) => return Err(e) }
+    // TODO: destructuring
+    val selfTy = _t[0]
+    val _typeArgs = _t[1]
+
+    val _p = match selfTy {
+      StructOrEnum.Struct(struct) => {
+        if struct == self._project.preludeIntStruct return todo("Int#eq method")
+        if struct == self._project.preludeFloatStruct return todo("Float#eq method")
+        if struct == self._project.preludeBoolStruct return todo("Bool#eq method")
+
+        val _fn = struct.instanceMethods.find(m => m.label.name == "eq")
+        val fn = if _fn |f| f else return unreachable("every struct has a eq method defined")
+
+        (match self._methodFnName(struct, fn) { Ok(v) => v, Err(e) => return Err(e) }, fn)
+      }
+      StructOrEnum.Enum => return todo("enum methods")
+    }
+    // TODO: destructuring
+    val methodName = _p[0]
+    val fn = _p[1]
+    if self._builder.getFunction(methodName) |fn| return Ok(fn)
+
+    if fn.isGenerated {
+      return todo("_getOrCompileEqMethod: generated functions")
+    }
+
+    self._getOrCompileMethod(ty, fn)
   }
 
   func _buildStackAllocForQbeType(self, ty: QbeType, name: String? = None): Value {
