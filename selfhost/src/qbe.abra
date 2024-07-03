@@ -246,15 +246,41 @@ export type Block {
     Ok(local)
   }
 
-  func buildAndW(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  func buildAnd(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
-    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'andw' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'and' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
 
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, resTy)
 
-    self.append(Instruction.AndW(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+    self.append(Instruction.And(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
+  func buildOr(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'or' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.Or(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
+
+    Ok(local)
+  }
+
+  func buildXor(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+    val lty = left.ty()
+    val rty = right.ty()
+    val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'xor' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
+
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, resTy)
+
+    self.append(Instruction.Xor(dst: Dest(name: local.repr(), ty: resTy), l: left, r: right))
 
     Ok(local)
   }
@@ -711,7 +737,9 @@ enum Instruction {
   Neg(dst: Dest, v: Value)
   Rem(dst: Dest, l: Value, r: Value)
 
-  AndW(dst: Dest, l: Value, r: Value)
+  And(dst: Dest, l: Value, r: Value)
+  Or(dst: Dest, l: Value, r: Value)
+  Xor(dst: Dest, l: Value, r: Value)
   Shl(dst: Dest, l: Value, r: Value)
   Shr(dst: Dest, l: Value, r: Value)
 
@@ -795,9 +823,25 @@ enum Instruction {
         r.encode(file)
         file.writeln()
       }
-      Instruction.AndW(dst, l, r) => {
+      Instruction.And(dst, l, r) => {
         dst.encode(file)
         file.write(" and ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.Or(dst, l, r) => {
+        dst.encode(file)
+        file.write(" or ")
+        l.encode(file)
+        file.write(", ")
+        r.encode(file)
+        file.writeln()
+      }
+      Instruction.Xor(dst, l, r) => {
+        dst.encode(file)
+        file.write(" xor ")
         l.encode(file)
         file.write(", ")
         r.encode(file)

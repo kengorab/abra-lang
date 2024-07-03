@@ -47,12 +47,12 @@ println(0x00ff << 8 == 0xff00)
 /// Expect: true
 println(0xff00 >> 8 == 0x00ff)
 
-// /// Expect: 1
-// println(0xff && 1)
-// /// Expect: 255
-// println(0xfe || 1)
-// /// Expect: 255
-// println(0b01010101 ^ 0b10101010)
+/// Expect: 1
+println(0xff && 1)
+/// Expect: 255
+println(0xfe || 1)
+/// Expect: 255
+println(0b01010101 ^ 0b10101010)
 
 /// Expect: true
 println(17 == (15 + 2))

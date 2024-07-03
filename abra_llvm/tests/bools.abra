@@ -26,6 +26,9 @@ println(true || returnsFalse())
 /// Expect: false
 println(false || returnsFalse())
 
+/// Expect: true true false false
+println(true ^ false, false ^ true, false ^ false, true ^ true)
+
 /// Expect: true
 println(true == true)
 /// Expect: false
