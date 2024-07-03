@@ -471,56 +471,21 @@ export type Compiler {
       TypedAstNodeKind.Binary(left, op, right) => {
         match op {
           BinaryOp.Add => {
-            var leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
-            var rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
-
             if self._typeIsString(left.ty) || self._typeIsString(right.ty) return todo("string concatenation", node.token.position)
 
-            if left.ty != right.ty {
-              val leftIsFloat = self._typeIsFloat(left.ty)
-              val rightIsFloat = self._typeIsFloat(right.ty)
-              if leftIsFloat && !rightIsFloat {
-                rightVal = self._currentFn.block.buildLToF(rightVal)
-              } else if rightIsFloat && !leftIsFloat {
-                leftVal = self._currentFn.block.buildLToF(leftVal)
-              } else return unreachable("unknown operator '+' between types '${left.ty.repr()}' and '${right.ty.repr()}")
-            }
-
-            val res = match self._currentFn.block.buildAdd(leftVal, rightVal, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+            val vals = match self._compileBinaryOperands(left, right, "+") { Ok(v) => v, Err(e) => return Err(e) }
+            // TODO: destructuring
+            val res = match self._currentFn.block.buildAdd(vals[0], vals[1], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
             Ok(res)
           }
           BinaryOp.Sub => {
-            var leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
-            var rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
-
-            if left.ty != right.ty {
-              val leftIsFloat = self._typeIsFloat(left.ty)
-              val rightIsFloat = self._typeIsFloat(right.ty)
-              if leftIsFloat && !rightIsFloat {
-                rightVal = self._currentFn.block.buildLToF(rightVal)
-              } else if rightIsFloat && !leftIsFloat {
-                leftVal = self._currentFn.block.buildLToF(leftVal)
-              } else return unreachable("unknown operator '-' between types '${left.ty.repr()}' and '${right.ty.repr()}")
-            }
-
-            val res = match self._currentFn.block.buildSub(leftVal, rightVal, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+            val vals = match self._compileBinaryOperands(left, right, "-") { Ok(v) => v, Err(e) => return Err(e) }
+            val res = match self._currentFn.block.buildSub(vals[0], vals[1], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
             Ok(res)
           }
           BinaryOp.Mul => {
-            var leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
-            var rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
-
-            if left.ty != right.ty {
-              val leftIsFloat = self._typeIsFloat(left.ty)
-              val rightIsFloat = self._typeIsFloat(right.ty)
-              if leftIsFloat && !rightIsFloat {
-                rightVal = self._currentFn.block.buildLToF(rightVal)
-              } else if rightIsFloat && !leftIsFloat {
-                leftVal = self._currentFn.block.buildLToF(leftVal)
-              } else return unreachable("unknown operator '*' between types '${left.ty.repr()}' and '${right.ty.repr()}")
-            }
-
-            val res = match self._currentFn.block.buildMul(leftVal, rightVal, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+            val vals = match self._compileBinaryOperands(left, right, "*") { Ok(v) => v, Err(e) => return Err(e) }
+            val res = match self._currentFn.block.buildMul(vals[0], vals[1], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
             Ok(res)
           }
           BinaryOp.Div => {
@@ -656,37 +621,13 @@ export type Compiler {
             Ok(res)
           }
           BinaryOp.LT => {
-            var leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
-            var rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
-
-            if left.ty != right.ty {
-              val leftIsFloat = self._typeIsFloat(left.ty)
-              val rightIsFloat = self._typeIsFloat(right.ty)
-              if leftIsFloat && !rightIsFloat {
-                rightVal = self._currentFn.block.buildLToF(rightVal)
-              } else if rightIsFloat && !leftIsFloat {
-                leftVal = self._currentFn.block.buildLToF(leftVal)
-              } else return unreachable("unknown operator '<' between types '${left.ty.repr()}' and '${right.ty.repr()}")
-            }
-
-            val res = match self._currentFn.block.buildCompareLt(leftVal, rightVal, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+            val vals = match self._compileBinaryOperands(left, right, "<") { Ok(v) => v, Err(e) => return Err(e) }
+            val res = match self._currentFn.block.buildCompareLt(vals[0], vals[1], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
             Ok(res)
           }
           BinaryOp.LTE => {
-            var leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
-            var rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
-
-            if left.ty != right.ty {
-              val leftIsFloat = self._typeIsFloat(left.ty)
-              val rightIsFloat = self._typeIsFloat(right.ty)
-              if leftIsFloat && !rightIsFloat {
-                rightVal = self._currentFn.block.buildLToF(rightVal)
-              } else if rightIsFloat && !leftIsFloat {
-                leftVal = self._currentFn.block.buildLToF(leftVal)
-              } else return unreachable("unknown operator '<=' between types '${left.ty.repr()}' and '${right.ty.repr()}")
-            }
-
-            val res = match self._currentFn.block.buildCompareLte(leftVal, rightVal, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+            val vals = match self._compileBinaryOperands(left, right, "<=") { Ok(v) => v, Err(e) => return Err(e) }
+            val res = match self._currentFn.block.buildCompareLte(vals[0], vals[1], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
             Ok(res)
           }
           BinaryOp.Shl => {
@@ -697,37 +638,13 @@ export type Compiler {
             Ok(res)
           }
           BinaryOp.GT => {
-            var leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
-            var rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
-
-            if left.ty != right.ty {
-              val leftIsFloat = self._typeIsFloat(left.ty)
-              val rightIsFloat = self._typeIsFloat(right.ty)
-              if leftIsFloat && !rightIsFloat {
-                rightVal = self._currentFn.block.buildLToF(rightVal)
-              } else if rightIsFloat && !leftIsFloat {
-                leftVal = self._currentFn.block.buildLToF(leftVal)
-              } else return unreachable("unknown operator '>' between types '${left.ty.repr()}' and '${right.ty.repr()}")
-            }
-
-            val res = match self._currentFn.block.buildCompareGt(leftVal, rightVal, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+            val vals = match self._compileBinaryOperands(left, right, ">") { Ok(v) => v, Err(e) => return Err(e) }
+            val res = match self._currentFn.block.buildCompareGt(vals[0], vals[1], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
             Ok(res)
           }
           BinaryOp.GTE => {
-            var leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
-            var rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
-
-            if left.ty != right.ty {
-              val leftIsFloat = self._typeIsFloat(left.ty)
-              val rightIsFloat = self._typeIsFloat(right.ty)
-              if leftIsFloat && !rightIsFloat {
-                rightVal = self._currentFn.block.buildLToF(rightVal)
-              } else if rightIsFloat && !leftIsFloat {
-                leftVal = self._currentFn.block.buildLToF(leftVal)
-              } else return unreachable("unknown operator '>=' between types '${left.ty.repr()}' and '${right.ty.repr()}")
-            }
-
-            val res = match self._currentFn.block.buildCompareGte(leftVal, rightVal, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+            val vals = match self._compileBinaryOperands(left, right, ">=") { Ok(v) => v, Err(e) => return Err(e) }
+            val res = match self._currentFn.block.buildCompareGte(vals[0], vals[1], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
             Ok(res)
           }
           BinaryOp.Shr => {
@@ -990,6 +907,25 @@ export type Compiler {
     self._currentNode = prevNode
 
     res
+  }
+
+  func _compileBinaryOperands(self, left: TypedAstNode, right: TypedAstNode, op: String): Result<(Value, Value), CompileError> {
+    var leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
+    var rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
+
+    if left.ty != right.ty {
+      val leftIsFloat = self._typeIsFloat(left.ty)
+      val rightIsFloat = self._typeIsFloat(right.ty)
+      if leftIsFloat && !rightIsFloat {
+        rightVal = self._currentFn.block.buildLToF(rightVal)
+      } else if rightIsFloat && !leftIsFloat {
+        leftVal = self._currentFn.block.buildLToF(leftVal)
+      } else {
+        return unreachable("unknown operator '$op' between types '${left.ty.repr()}' and '${right.ty.repr()}")
+      }
+    }
+
+    Ok((leftVal, rightVal))
   }
 
   func _constructString(self, ptrVal: Value, lenVal: Value, localName: String? = None): Result<Value, CompileError> {
