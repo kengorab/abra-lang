@@ -39,12 +39,24 @@
 // arr.push(4)
 // println(arr.length)
 
-val v : Bool? = Some(true)
-if v |v_| println(v_) else println("nope")
-val x = if v |v_| !v_ else false
-println("x:", x)
+// val v : Bool? = Some(true)
+// if v |v_| println(v_) else println("nope")
+// val x = if v |v_| !v_ else false
+// println("x:", x)
 
-println("done")
+// println("done")
+
+println([1, 2], [3.4, 5.6])
+
+  val arr1 = [["a", "b"], ["c", "d"]]
+  val arr2 = [["d", "b"], ["c", "d"]]
+// println(arr1.toString())
+// println(arr2.toString())
+
+  /// Expect: true
+  // println(arr == [1, 2])
+  /// Expect: true
+  println(arr1 == arr2)
 
 // // Default-valued parameters
 // func foo(a: Int, b = bar(a), c = bar(a, b), arr = [a, b, c]): Int = a + b + c + arr.length

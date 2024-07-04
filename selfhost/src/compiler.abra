@@ -681,28 +681,7 @@ export type Compiler {
             fnVal
           }
           TypedInvokee.Method(fn, selfVal, isOptSafe) => {
-            val _t = match self._getInstanceTypeForType(selfVal.ty) { Ok(v) => v, Err(e) => return Err(e) }
-            val _p = match _t[0] {
-              StructOrEnum.Struct(struct) => {
-                val template = Type(kind: TypeKind.Instance(_t[0], struct.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
-                val inst = Type(kind: TypeKind.Instance(_t[0], _t[1]))
-
-                (template, inst)
-              }
-              StructOrEnum.Enum => return todo("enum methods")
-            }
-            // TODO: destructuring
-            val template = _p[0]
-            val selfInstanceType = _p[1]
-            for _p in selfInstanceType.extractGenerics(template) {
-              resolvedGenerics[_p[0]] = _p[1]
-            }
-            // TODO: destructuring
-            val methodName = match _t[0] {
-              StructOrEnum.Struct(struct) => "${struct.label.name}.${fn.label.name}"
-              StructOrEnum.Enum => return todo("enum methods")
-            }
-            match self._resolvedGenerics.addLayer(methodName, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: fn.label.name, message: e))) }
+            val selfInstanceType = match self._addResolvedGenericsLayerForInstanceMethod(selfVal.ty, fn.label.name, node.token.position, resolvedGenerics) { Ok(v) => v, Err(e) => return Err(e) }
 
             fnHasOptionalParameters = fn.params.any(p => !!p.defaultValue)
 
@@ -917,7 +896,10 @@ export type Compiler {
       return Ok(res)
     }
 
-    val eqFnVal = match self._getOrCompileEqMethod(left.ty) { Ok(v) => v, Err(e) => return Err(e) }
+    val instType = match self._addResolvedGenericsLayerForInstanceMethod(left.ty, "eq", left.token.position) { Ok(v) => v, Err(e) => return Err(e) }
+    val eqFnVal = match self._getOrCompileEqMethod(instType) { Ok(v) => v, Err(e) => return Err(e) }
+    self._resolvedGenerics.popLayer()
+
     val res = match self._currentFn.block.buildCall(eqFnVal, [leftVal, rightVal], localName) { Ok(v) => v, Err(e) => return qbeError(e) }
     if negate {
       val plusOneVal = match self._currentFn.block.buildAdd(Value.Int32(1), res) { Ok(v) => v, Err(e) => return qbeError(e) }
@@ -1190,32 +1172,10 @@ export type Compiler {
     for item, idx in varargItems {
       val itemVal = match self._compileExpression(item) { Ok(v) => v, Err(e) => return Err(e) }
 
-      val resolvedGenerics: Map<String, Type> = {}
-      val _t = match self._getInstanceTypeForType(item.ty) { Ok(v) => v, Err(e) => return Err(e) }
-      val _p = match _t[0] {
-        StructOrEnum.Struct(struct) => {
-          val template = Type(kind: TypeKind.Instance(_t[0], struct.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
-          val inst = Type(kind: TypeKind.Instance(_t[0], _t[1]))
-
-          (template, inst)
-        }
-        StructOrEnum.Enum => return todo("enum methods")
-      }
-      // TODO: destructuring
-      val template = _p[0]
-      val itemInstanceType = _p[1]
-      for _p in itemInstanceType.extractGenerics(template) {
-        resolvedGenerics[_p[0]] = _p[1]
-      }
-      // TODO: destructuring
-      val typeName = match _t[0] {
-        StructOrEnum.Struct(struct) => struct.label.name
-        StructOrEnum.Enum => return todo("enum methods")
-      }
-      val methodName = "$typeName..toString"
-      match self._resolvedGenerics.addLayer(methodName, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: item.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: methodName, message: e))) }
-
+      val itemInstanceType = match self._addResolvedGenericsLayerForInstanceMethod(item.ty, "toString", item.token.position) { Ok(v) => v, Err(e) => return Err(e) }
       val itemToStringFnVal = match self._getOrCompileToStringMethod(itemInstanceType) { Ok(v) => v, Err(e) => return Err(e) }
+      self._resolvedGenerics.popLayer()
+
       val toStringVal = match self._currentFn.block.buildCall(itemToStringFnVal, [itemVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
 
       self._currentFn.block.buildVoidCall(stdoutWriteFnVal, [toStringVal])
@@ -1227,7 +1187,6 @@ export type Compiler {
       }
     }
     self._currentFn.block.addComment("...println end")
-    self._resolvedGenerics.popLayer()
 
     Ok(Value.Ident("bogus", QbeType.F32))
   }
@@ -1702,9 +1661,73 @@ export type Compiler {
 
     val _p = match selfTy {
       StructOrEnum.Struct(struct) => {
-        if struct == self._project.preludeIntStruct return todo("Int#eq method")
-        if struct == self._project.preludeFloatStruct return todo("Float#eq method")
-        if struct == self._project.preludeBoolStruct return todo("Bool#eq method")
+        val boolTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveBool), "bool qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+
+        // TODO: surely there's a cleaner way to represent these built-in eq methods
+        if struct == self._project.preludeIntStruct {
+          val intTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveInt), "int qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+
+          val methodName = "Int..eq"
+          if self._builder.getFunction(methodName) |fn| return Ok(fn)
+
+          val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(boolTypeQbe))
+          val prevFn = self._currentFn
+          self._currentFn = fnVal
+
+          fnVal.addComment("Int#eq(self, other: Int): Bool")
+          val selfParam = fnVal.addParameter("self", intTypeQbe)
+          val otherParam = fnVal.addParameter("other", intTypeQbe)
+          val res = match self._currentFn.block.buildCompareEq(selfParam, otherParam) { Ok(v) => v, Err(e) => return qbeError(e) }
+          fnVal.block.buildReturn(Some(res))
+
+          match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
+
+          self._currentFn = prevFn
+
+          return Ok(fnVal)
+        }
+        if struct == self._project.preludeFloatStruct {
+          val floatTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveFloat), "float qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+
+          val methodName = "Float..eq"
+          if self._builder.getFunction(methodName) |fn| return Ok(fn)
+
+          val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(boolTypeQbe))
+          val prevFn = self._currentFn
+          self._currentFn = fnVal
+
+          fnVal.addComment("Float#eq(self, other: Float): Bool")
+          val selfParam = fnVal.addParameter("self", floatTypeQbe)
+          val otherParam = fnVal.addParameter("other", floatTypeQbe)
+          val res = match self._currentFn.block.buildCompareEq(selfParam, otherParam) { Ok(v) => v, Err(e) => return qbeError(e) }
+          fnVal.block.buildReturn(Some(res))
+
+          match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
+
+          self._currentFn = prevFn
+
+          return Ok(fnVal)
+        }
+        if struct == self._project.preludeBoolStruct {
+          val methodName = "Bool..eq"
+          if self._builder.getFunction(methodName) |fn| return Ok(fn)
+
+          val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(boolTypeQbe))
+          val prevFn = self._currentFn
+          self._currentFn = fnVal
+
+          fnVal.addComment("Bool#eq(self, other: Bool): Bool")
+          val selfParam = fnVal.addParameter("self", boolTypeQbe)
+          val otherParam = fnVal.addParameter("other", boolTypeQbe)
+          val res = match self._currentFn.block.buildCompareEq(selfParam, otherParam) { Ok(v) => v, Err(e) => return qbeError(e) }
+          fnVal.block.buildReturn(Some(res))
+
+          match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
+
+          self._currentFn = prevFn
+
+          return Ok(fnVal)
+        }
 
         val _fn = struct.instanceMethods.find(m => m.label.name == "eq")
         val fn = if _fn |f| f else return unreachable("every struct has a eq method defined")
@@ -1754,6 +1777,33 @@ export type Compiler {
     val optSomeValue = self._currentFn.block.buildLoad(ty, valueSlot)
 
     Ok(optSomeValue)
+  }
+
+  func _addResolvedGenericsLayerForInstanceMethod(self, ty: Type, methodName: String, position: Position, resolvedGenerics: Map<String, Type> = {}): Result<Type, CompileError> {
+    val _t = match self._getInstanceTypeForType(ty) { Ok(v) => v, Err(e) => return Err(e) }
+    val _p = match _t[0] {
+      StructOrEnum.Struct(struct) => {
+        val template = Type(kind: TypeKind.Instance(_t[0], struct.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+        val inst = Type(kind: TypeKind.Instance(_t[0], _t[1]))
+
+        (template, inst)
+      }
+      StructOrEnum.Enum => return todo("enum methods")
+    }
+    // TODO: destructuring
+    val template = _p[0]
+    val selfInstanceType = _p[1]
+    for _p in selfInstanceType.extractGenerics(template) {
+      resolvedGenerics[_p[0]] = _p[1]
+    }
+    // TODO: destructuring
+    val layerName = match _t[0] {
+      StructOrEnum.Struct(struct) => "${struct.label.name}.$methodName"
+      StructOrEnum.Enum => return todo("enum methods")
+    }
+    match self._resolvedGenerics.addLayer(layerName, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: position, kind: CompileErrorKind.ResolvedGenericsError(context: layerName, message: e))) }
+
+    Ok(selfInstanceType)
   }
 
   func _getInstanceTypeForType(self, ty: Type): Result<(StructOrEnum, Type[]), CompileError> {
