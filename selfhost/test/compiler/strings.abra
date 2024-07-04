@@ -28,13 +28,18 @@ println("hello")
 //   println("hello" + [1, 2, 3], [1, 2, 3] + "hello")
 // })()
 
-// // == operator (also String#eq)
+// == operator (also String#eq)
 // (() => {
-//   val s1 = "string"
-//   /// Expect: true
-//   println(s1 == s1)
-//   /// Expect: true
-//   println(s1 == "string")
+  val s1 = "string"
+  /// Expect: true
+  println(s1 == s1)
+  /// Expect: true
+  println(s1 == "string")
+
+  /// Expect: false
+  println(s1 != s1)
+  /// Expect: true
+  println(s1 != "string!")
 
 //   /// Expect: false
 //   println(s1 == 123)
