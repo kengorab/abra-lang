@@ -46,17 +46,17 @@
 
 // println("done")
 
-println([1, 2], [3.4, 5.6])
+// println([1, 2], [3.4, 5.6])
 
-  val arr1 = [["a", "b"], ["c", "d"]]
-  val arr2 = [["d", "b"], ["c", "d"]]
-// println(arr1.toString())
-// println(arr2.toString())
+//   val arr1 = [["a", "b"], ["c", "d"]]
+//   val arr2 = [["d", "b"], ["c", "d"]]
+// // println(arr1.toString())
+// // println(arr2.toString())
 
-  /// Expect: true
-  // println(arr == [1, 2])
-  /// Expect: true
-  println(arr1 == arr2)
+//   /// Expect: true
+//   // println(arr == [1, 2])
+//   /// Expect: true
+//   println(arr1 == arr2)
 
 // // Default-valued parameters
 // func foo(a: Int, b = bar(a), c = bar(a, b), arr = [a, b, c]): Int = a + b + c + arr.length
@@ -107,3 +107,14 @@ println([1, 2], [3.4, 5.6])
 // } else {
 //   println("nope")
 // }
+
+// val s1 = "abc"
+// val s2 = "xyz"
+// val s3 = s1 + s2
+// println(s3)
+
+  val intArr = [1, 2, 3, 4]
+  /// Expect: [1, 2, 3, 4]
+  println(intArr)
+
+  println("hello" + "world" + "!")

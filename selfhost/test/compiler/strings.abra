@@ -14,18 +14,18 @@
 /// Expect: hello
 println("hello")
 
-// // + operator (also String#concat<T>(other: T, *others: Any[]), with no `others`)
+// + operator
 // (() => {
-//   /// Expect: helloworld
-//   println("hello" + "world")
-//   /// Expect: hello12 12hello
-//   println("hello" + 12, 12 + "hello")
-//   /// Expect: hello1.23 1.23hello
-//   println("hello" + 1.23, 1.23 + "hello")
-//   /// Expect: hellotrue truehello
-//   println("hello" + true, true + "hello")
-//   /// Expect: hello[1, 2, 3] [1, 2, 3]hello
-//   println("hello" + [1, 2, 3], [1, 2, 3] + "hello")
+  /// Expect: helloworld
+  println("hello" + "world")
+  /// Expect: hello12 12hello
+  println("hello" + 12, 12 + "hello")
+  /// Expect: hello1.23 1.23hello
+  println("hello" + 1.23, 1.23 + "hello")
+  /// Expect: hellotrue truehello
+  println("hello" + true, true + "hello")
+  /// Expect: hello[1, 2, 3] [1, 2, 3]hello
+  println("hello" + [1, 2, 3], [1, 2, 3] + "hello")
 // })()
 
 // == operator (also String#eq)
