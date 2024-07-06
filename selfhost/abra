@@ -20,6 +20,6 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
   CFLAGS="$CFLAGS -Wl,-w"
 fi
 # TODO: don't assume the location of libgc
-clang ../abra_llvm/ext/libgc/lib/libgc.a ./._abra/_main.s -o ./._abra/_main -lm $CFLAGS
+clang ./._abra/_main.s ../abra_llvm/ext/libgc/lib/libgc.a -o ./._abra/_main -lm $CFLAGS
 
 ./._abra/_main
