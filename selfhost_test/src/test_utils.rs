@@ -165,6 +165,7 @@ impl CompilerTestRunner {
             });
 
             let output = Command::new(&abra_wrapper_script)
+                .current_dir(&selfhost_dir)
                 .env("COMPILER_BIN", &compiler_test_bin)
                 .arg(&test_path)
                 .output()
