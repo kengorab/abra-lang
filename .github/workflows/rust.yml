@@ -72,7 +72,7 @@ jobs:
     - name: Install ext dependencies (for C compilation)
       run: ./configure-libgc.sh
     - name: Run rust tests
-      run: ls -la selfhost/test/typechecker && TEST_TMP_DIR=${{ runner.temp }} cargo test --verbose
+      run: ls -la abra_llvm/ext/libgc/lib && TEST_TMP_DIR=${{ runner.temp }} cargo test --verbose
     - name: Build rust (release mode)
       run: cargo build --release
     - name: Run abra tests
