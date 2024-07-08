@@ -1,21 +1,21 @@
-// func f1(): Bool?[] = [None, Some(true), Some(false)]
-// /// Expect: [Option.None, Option.Some(value: true), Option.Some(value: false)]
-// println(f1())
+func f1(): Bool?[] = [None, Some(true), Some(false)]
+/// Expect: [Option.None, Option.Some(value: true), Option.Some(value: false)]
+println(f1())
 
-// func f2(): String?[] = if true { [Some("one"), None, Some("two")] } else []
-// /// Expect: [Option.Some(value: "one"), Option.None, Option.Some(value: "two")]
-// println(f2())
+func f2(): String?[] = if true { [Some("one"), None, Some("two")] } else []
+/// Expect: [Option.Some(value: "one"), Option.None, Option.Some(value: "two")]
+println(f2())
 
-// val arr1: Int?[] = [Some(1), None, Some(2), Some(3)]
-// /// Expect: [Option.Some(value: 1), Option.None, Option.Some(value: 2), Option.Some(value: 3)]
-// println(arr1)
+val arr1: Int?[] = [Some(1), None, Some(2), Some(3)]
+/// Expect: [Option.Some(value: 1), Option.None, Option.Some(value: 2), Option.Some(value: 3)]
+println(arr1)
 
-// val arr2: Int[]? = Some([1, 2, 3])
-// /// Expect: Option.Some(value: [1, 2, 3])
-// println(arr2)
-// val arr3: Int[]? = None
-// /// Expect: Option.None
-// println(arr3)
+val arr2: Int[]? = Some([1, 2, 3])
+/// Expect: Option.Some(value: [1, 2, 3])
+println(arr2)
+val arr3: Int[]? = None
+/// Expect: Option.None
+println(arr3)
 
 // type Foo {
 //   f: Int
