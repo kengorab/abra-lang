@@ -1,4 +1,6 @@
 val intArr = [1, 2, 3, 4]
-println(intArr)
+println(intArr[2])
 
-println("hello" + "world" + "!")
+type Person { name: String, age: Int }
+val me = Person(name: "Ken", age: 32)
+println(me)

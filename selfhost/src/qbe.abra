@@ -579,6 +579,10 @@ export type Block {
   func buildReturn(self, value: Value? = None) {
     self.append(Instruction.Return(value))
   }
+
+  func buildHalt(self) {
+    self.append(Instruction.Hlt)
+  }
 }
 
 export enum QbeType {
@@ -774,6 +778,7 @@ enum Instruction {
   Jmp(label: Label)
   Jnz(cond: Value, ifNonZero: Label, ifZero: Label)
   Return(value: Value?)
+  Hlt
 
   func encode(self, file: File) {
     match self {
@@ -1105,6 +1110,10 @@ enum Instruction {
       Instruction.Return(value) => {
         file.write("ret ")
         value?.encode(file)
+        file.writeln()
+      }
+      Instruction.Hlt => {
+        file.write("hlt")
         file.writeln()
       }
     }

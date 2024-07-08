@@ -1,7 +1,7 @@
 import "fs" as fs
 import Position from "./lexer"
-import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern from "./parser"
-import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedIdentifierKind, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind from "./typechecker"
+import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern, IndexingMode from "./parser"
+import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedIdentifierKind, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode from "./typechecker"
 import ModuleBuilder, QbeType, Dest, QbeFunction, Value, Label from "./qbe"
 
 type CompilationError {
@@ -111,8 +111,8 @@ type ResolvedGenerics {
       val ty = _p[1]
 
       match ty.kind {
-        TypeKind.Generic(name) => {
-          if self.resolveGeneric(name) |resolved| {
+        TypeKind.Generic(genericName) => {
+          if self.resolveGeneric(genericName) |resolved| {
             newLayer[name] = resolved
           } else {
             return Err("layer: could not resolve generic '$name'")
@@ -816,7 +816,34 @@ export type Compiler {
       TypedAstNodeKind.Set => todo("compiling set expression", node.token.position)
       TypedAstNodeKind.Map => todo("compiling map expression", node.token.position)
       TypedAstNodeKind.Tuple => todo("compiling tuple expression", node.token.position)
-      TypedAstNodeKind.Indexing => todo("compiling indexing expression", node.token.position)
+      TypedAstNodeKind.Indexing(indexingNode) => {
+        match indexingNode {
+          TypedIndexingNode.ArrayLike(expr, indexingMode) => {
+            val exprVal = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
+
+            match indexingMode {
+              IndexingMode.Single(idxExpr) => {
+                val idxExprVal = match self._compileExpression(idxExpr) { Ok(v) => v, Err(e) => return Err(e) }
+
+                val instType = match self._addResolvedGenericsLayerForInstanceMethod(expr.ty, "get", expr.token.position) { Ok(v) => v, Err(e) => return Err(e) }
+                val _t = match self._getInstanceTypeForType(expr.ty) { Ok(v) => v, Err(e) => return Err(e) }
+                // TODO: destructuring
+                val getFn = match _t[0] {
+                  StructOrEnum.Struct(struct) => if struct.instanceMethods.find(m => m.label.name == "get") |fn| fn else return unreachable("#get must exist for array-like indexing")
+                  StructOrEnum.Enum => return todo("enum methods")
+                }
+                val getFnVal = match self._getOrCompileMethod(instType, getFn) { Ok(v) => v, Err(e) => return Err(e) }
+
+                val res = match self._currentFn.block.buildCall(getFnVal, [exprVal, idxExprVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
+                Ok(res)
+              }
+              IndexingMode.Range(start, end) => return todo("compiling range-indexing expression", node.token.position)
+            }
+          }
+          TypedIndexingNode.Map(expr, idx) => todo("compiling map-indexing expression", node.token.position)
+          TypedIndexingNode.Tuple(tupleExpr, idx) => todo("compiling map-indexing expression", node.token.position)
+        }
+      }
       TypedAstNodeKind.Lambda => todo("compiling lambda expression", node.token.position)
       TypedAstNodeKind.If(isStatement, cond, conditionBinding, ifBlock, ifBlockTerminator, elseBlock, elseBlockTerminator) => {
         if isStatement return unreachable("if-statements are handled elsewhere", node.token.position)
@@ -1021,8 +1048,10 @@ export type Compiler {
     for seg, idx in segs {
       match seg {
         AccessorPathSegment.EnumVariant(label, ty, enum_, variant) => {
+          match self._addResolvedGenericsLayerForEnumVariant(ty, variant.label.name, label.position) { Ok(v) => v, Err(e) => return Err(e) }
           val enumVariantFn = match self._getOrCompileEnumVariantFn(enum_, variant) { Ok(v) => v, Err(e) => return Err(e) }
           curVal = match self._currentFn.block.buildCall(enumVariantFn, []) { Ok(v) => v, Err(e) => return qbeError(e) }
+          self._resolvedGenerics.popLayer()
 
           instTy = StructOrEnum.Enum(enum_)
         }
@@ -1138,7 +1167,7 @@ export type Compiler {
   }
 
   func _getOrCompileEnumVariantFn(self, enum_: Enum, variant: TypedEnumVariant): Result<QbeFunction, CompileError> {
-    val variantFnName = self._enumVariantFnName(enum_, variant)
+    val variantFnName = match self._enumVariantFnName(enum_, variant) { Ok(v) => v, Err(e) => return Err(e) }
     if self._builder.getFunction(variantFnName) |fn| return Ok(fn)
 
     // TODO: constant variants shouldn't be a function - it should just be a `data` segment with the proper idx set
@@ -1462,8 +1491,8 @@ export type Compiler {
     val _typeArgs = _t[1]
 
     val methodName = match selfTy {
-      StructOrEnum.Struct(struct) => match self._methodFnName(struct, fn) { Ok(v) => v, Err(e) => return Err(e) }
-      StructOrEnum.Enum => return todo("enum methods")
+      StructOrEnum.Struct(struct) => match self._structMethodFnName(struct, fn) { Ok(v) => v, Err(e) => return Err(e) }
+      StructOrEnum.Enum(enum_) => match self._enumMethodFnName(enum_, fn) { Ok(v) => v, Err(e) => return Err(e) }
     }
     if self._builder.getFunction(methodName) |fn| return Ok(fn)
 
@@ -1543,7 +1572,7 @@ export type Compiler {
     val _t = match self._getInstanceTypeForType(ty) { Ok(v) => v, Err(e) => return Err(e) }
     // TODO: destructuring
     val selfTy = _t[0]
-    val _typeArgs = _t[1]
+    val typeArgs = _t[1]
 
     val _p = match selfTy {
       StructOrEnum.Struct(struct) => {
@@ -1555,20 +1584,206 @@ export type Compiler {
         val _fn = struct.instanceMethods.find(m => m.label.name == "toString")
         val fn = if _fn |f| f else return unreachable("every struct has a toString method defined")
 
-        (match self._methodFnName(struct, fn) { Ok(v) => v, Err(e) => return Err(e) }, fn)
+        (match self._structMethodFnName(struct, fn) { Ok(v) => v, Err(e) => return Err(e) }, fn)
       }
-      StructOrEnum.Enum => return todo("enum methods")
+      StructOrEnum.Enum(enum_) => {
+        val _fn = enum_.instanceMethods.find(m => m.label.name == "toString")
+        val fn = if _fn |f| f else return unreachable("every enum has a toString method defined")
+
+        (match self._enumMethodFnName(enum_, fn) { Ok(v) => v, Err(e) => return Err(e) }, fn)
+      }
     }
     // TODO: destructuring
     val methodName = _p[0]
     val fn = _p[1]
     if self._builder.getFunction(methodName) |fn| return Ok(fn)
 
-    if fn.isGenerated {
-      return todo("_getOrCompileToStringMethod: generated functions")
-    }
+    if fn.isGenerated return self._compileGeneratedToStringMethod(ty, fn)
 
     self._getOrCompileMethod(ty, fn)
+  }
+
+  func _compileGeneratedToStringMethod(self, selfType: Type, fn: Function): Result<QbeFunction, CompileError> {
+    val stringTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveString), "string qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+
+    val _t = match self._getInstanceTypeForType(selfType) { Ok(v) => v, Err(e) => return Err(e) }
+    // TODO: destructuring
+    val selfTy = _t[0]
+    val typeArgs = _t[1]
+    val selfInstanceTy = Type(kind: TypeKind.Instance(selfTy, typeArgs))
+
+    val methodName = match selfTy {
+      StructOrEnum.Struct(struct) => match self._structMethodFnName(struct, fn) { Ok(v) => v, Err(e) => return Err(e) }
+      StructOrEnum.Enum(enum_) => match self._enumMethodFnName(enum_, fn) { Ok(v) => v, Err(e) => return Err(e) }
+    }
+
+    val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(stringTypeQbe))
+    val prevFn = self._currentFn
+    self._currentFn = fnVal
+
+    val selfTyQbe = match self._getQbeTypeForTypeExpect(selfInstanceTy, "unacceptable type for self") { Ok(v) => v, Err(e) => return Err(e) }
+    val selfParamVal = fnVal.addParameter("self", selfTyQbe)
+
+    match selfTy {
+      StructOrEnum.Struct(struct) => {
+        val data: (String, Position, Type)[] = []
+        for field in struct.fields {
+          data.push((field.name.name, field.name.position, field.ty))
+        }
+
+        val res = match self._emitToStringLogicForStructuredData(struct.label.name, selfParamVal, data) { Ok(v) => v, Err(e) => return Err(e) }
+        self._currentFn.block.buildReturn(Some(res))
+      }
+      StructOrEnum.Enum(enum_) => {
+        val variantIdxVal = self._emitGetEnumVariantIdx(selfParamVal)
+
+        var labelElse = self._currentFn.block.addLabel("__initial")
+        val labelEnd = self._currentFn.block.addLabel("unreachable")
+
+        for variant, idx in enum_.variants {
+          if idx != 0 {
+            self._currentFn.block.registerLabel(labelElse)
+          }
+
+          val cond = match self._currentFn.block.buildCompareEq(Value.Int32(idx), variantIdxVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+          val labelThen = self._currentFn.block.addLabel("variant_$idx")
+          if idx != enum_.variants.length - 1 {
+            labelElse = self._currentFn.block.addLabel("next")
+            self._currentFn.block.buildJnz(cond, labelThen, labelElse)
+          } else {
+            self._currentFn.block.buildJnz(cond, labelThen, labelEnd)
+          }
+
+          self._currentFn.block.registerLabel(labelThen)
+          val variantName = "${enum_.label.name}.${variant.label.name}"
+          match variant.kind {
+            EnumVariantKind.Constant => {
+              val variantNameStr = self._builder.buildGlobalString(variantName)
+              val retVal = match self._constructString(variantNameStr, Value.Int(variantName.length)) { Ok(v) => v, Err(e) => return Err(e) }
+              self._currentFn.block.buildReturn(Some(retVal))
+            }
+            EnumVariantKind.Container(fields) => {
+              val data: (String, Position, Type)[] = []
+              for field in fields {
+                data.push((field.name.name, field.name.position, field.ty))
+              }
+              val ptr = match self._emitGetEnumVariantValueStart(selfParamVal) { Ok(v) => v, Err(e) => return Err(e) }
+              val retVal = match self._emitToStringLogicForStructuredData(variantName, ptr, data) { Ok(v) => v, Err(e) => return Err(e) }
+              self._currentFn.block.buildReturn(Some(retVal))
+            }
+          }
+        }
+
+        self._currentFn.block.registerLabel(labelEnd)
+        self._currentFn.block.buildHalt()
+      }
+    }
+
+    fnVal.addComment(match self._fnSignature(Some(selfTy), fn) { Ok(v) => v, Err(e) => return Err(e) })
+
+    match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
+
+    self._currentFn = prevFn
+
+    Ok(fnVal)
+  }
+
+  func _emitToStringLogicForStructuredData(self, prefix: String, selfPtr: Value, data: (String, Position, Type)[]): Result<Value, CompileError> {
+    val prefixStr = self._builder.buildGlobalString(prefix)
+    var len = prefix.length + 2 + (data.length - 1) * 2
+    var lenVal = Value.Int(0)
+
+    val reprVals: (String, Value, Bool)[] = []
+    var offset = 0
+    for _p in data {
+      // TODO: destructuring
+      val itemName = _p[0]
+      val itemPosition = _p[1]
+      val itemType = _p[2]
+
+      len += (itemName.length + 2)
+
+      val itemInstanceType = match self._addResolvedGenericsLayerForInstanceMethod(itemType, "toString", itemPosition) { Ok(v) => v, Err(e) => return Err(e) }
+      val itemToStringFnVal = match self._getOrCompileToStringMethod(itemInstanceType) { Ok(v) => v, Err(e) => return Err(e) }
+      self._resolvedGenerics.popLayer()
+
+      val itemTy = match self._getQbeTypeForTypeExpect(itemType, "unacceptable type for item", Some(itemPosition)) { Ok(v) => v, Err(e) => return Err(e) }
+      val itemIsString = self._typeIsString(itemInstanceType)
+
+      val memCursorLocal = match self._currentFn.block.buildAdd(Value.Int(offset), selfPtr, Some("mem_offset_$itemName")) { Ok(v) => v, Err(e) => return qbeError(e) }
+      val itemVal = self._currentFn.block.buildLoad(itemTy, memCursorLocal)
+
+      offset += itemTy.size()
+
+      val itemToStringVal = match self._currentFn.block.buildCall(itemToStringFnVal, [itemVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
+      val itemToStringLengthVal = self._currentFn.block.buildLoadL(itemToStringVal)
+      lenVal = match self._currentFn.block.buildAdd(lenVal, itemToStringLengthVal, Some("length_total")) { Ok(v) => v, Err(e) => return qbeError(e) }
+      if itemIsString {
+        self._currentFn.block.addComment("account for opening and closing \"'s")
+        lenVal = match self._currentFn.block.buildAdd(lenVal, Value.Int(2), Some("length_total")) { Ok(v) => v, Err(e) => return qbeError(e) }
+      }
+
+      reprVals.push((itemName, itemToStringVal, itemIsString))
+    }
+
+    val totalLengthVal = match self._currentFn.block.buildAdd(Value.Int(len), lenVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+    val stringWithLengthFn = if self._project.preludeStringStruct.staticMethods.find(m => m.label.name == "withLength") |fn| fn else return unreachable("String.withLength must exist")
+    val stringWithLengthFnVal = match self._getOrCompileMethod(Type(kind: TypeKind.Type(StructOrEnum.Struct(self._project.preludeStringStruct))), stringWithLengthFn) { Ok(v) => v, Err(e) => return Err(e) }
+    val newStr = match self._currentFn.block.buildCall(stringWithLengthFnVal, [totalLengthVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+    var newStrBuf = self._currentFn.block.buildLoadL(match self._currentFn.block.buildAdd(Value.Int(8), newStr) { Ok(v) => v, Err(e) => return qbeError(e) })
+    self._currentFn.block.buildVoidCall(self._memcpy, [newStrBuf, prefixStr, Value.Int(prefix.length)])
+    var cursor = match self._currentFn.block.buildAdd(newStrBuf, Value.Int(prefix.length), Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
+    self._currentFn.block.addComment("'('")
+    self._currentFn.block.buildStoreB(Value.Int(40), cursor)
+    cursor = match self._currentFn.block.buildAdd(cursor, Value.Int(1), Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+    for _p, idx in reprVals {
+      // TODO: destructuring
+      val fieldName = _p[0]
+      val strVal = _p[1]
+      val isString = _p[2]
+
+      val fieldNameStr = self._builder.buildGlobalString(fieldName)
+      self._currentFn.block.buildVoidCall(self._memcpy, [cursor, fieldNameStr, Value.Int(fieldName.length)])
+      cursor = match self._currentFn.block.buildAdd(cursor, Value.Int(fieldName.length), Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
+      self._currentFn.block.addComment("\": \"")
+      self._currentFn.block.buildStoreB(Value.Int(58), cursor)
+      cursor = match self._currentFn.block.buildAdd(cursor, Value.Int(1), Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
+      self._currentFn.block.buildStoreB(Value.Int(32), cursor)
+      cursor = match self._currentFn.block.buildAdd(cursor, Value.Int(1), Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+      if isString {
+        self._currentFn.block.addComment("'\"'")
+        self._currentFn.block.buildStoreB(Value.Int(34), cursor)
+        cursor = match self._currentFn.block.buildAdd(cursor, Value.Int(1), Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
+      }
+
+      val strValLen = self._currentFn.block.buildLoadL(strVal)
+      val strValChars = self._currentFn.block.buildLoadL(match self._currentFn.block.buildAdd(Value.Int(8), strVal) { Ok(v) => v, Err(e) => return qbeError(e) })
+      self._currentFn.block.buildVoidCall(self._memcpy, [cursor, strValChars, strValLen])
+      cursor = match self._currentFn.block.buildAdd(cursor, strValLen, Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+      if isString {
+        self._currentFn.block.addComment("'\"'")
+        self._currentFn.block.buildStoreB(Value.Int(34), cursor)
+        cursor = match self._currentFn.block.buildAdd(cursor, Value.Int(1), Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
+      }
+
+      if idx != reprVals.length - 1 {
+        self._currentFn.block.addComment("\", \"")
+        self._currentFn.block.buildStoreB(Value.Int(44), cursor)
+        cursor = match self._currentFn.block.buildAdd(cursor, Value.Int(1), Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
+        self._currentFn.block.buildStoreB(Value.Int(32), cursor)
+        cursor = match self._currentFn.block.buildAdd(cursor, Value.Int(1), Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
+      }
+    }
+
+    self._currentFn.block.addComment("')'")
+    self._currentFn.block.buildStoreB(Value.Int(41), cursor)
+
+    Ok(newStr)
   }
 
   func _getOrCompileIntToStringMethod(self): Result<QbeFunction, CompileError> {
@@ -1772,9 +1987,14 @@ export type Compiler {
         val _fn = struct.instanceMethods.find(m => m.label.name == "eq")
         val fn = if _fn |f| f else return unreachable("every struct has a eq method defined")
 
-        (match self._methodFnName(struct, fn) { Ok(v) => v, Err(e) => return Err(e) }, fn)
+        (match self._structMethodFnName(struct, fn) { Ok(v) => v, Err(e) => return Err(e) }, fn)
       }
-      StructOrEnum.Enum => return todo("enum methods")
+      StructOrEnum.Enum(enum_) => {
+        val _fn = enum_.instanceMethods.find(m => m.label.name == "eq")
+        val fn = if _fn |f| f else return unreachable("every enum has a eq method defined")
+
+        (match self._enumMethodFnName(enum_, fn) { Ok(v) => v, Err(e) => return Err(e) }, fn)
+      }
     }
     // TODO: destructuring
     val methodName = _p[0]
@@ -1800,8 +2020,14 @@ export type Compiler {
     }
   }
 
+  func _emitGetEnumVariantIdx(self, enumVariantVal: Value): Value = self._currentFn.block.buildLoadW(enumVariantVal)
+  func _emitGetEnumVariantValueStart(self, enumVariantVal: Value): Result<Value, CompileError> {
+    val res = match self._currentFn.block.buildAdd(Value.Int(QbeType.U32.size()), enumVariantVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+    Ok(res)
+  }
+
   func _emitOptValueIsSomeVariant(self, exprVal: Value, negate = false): Result<Value, CompileError> {
-    val variantIdx = self._currentFn.block.buildLoadW(exprVal)
+    val variantIdx = self._emitGetEnumVariantIdx(exprVal)
     val optionSomeVariantIdx = if self._project.preludeOptionEnum.variants.findIndex(v => v.label.name == "Some") |_p| _p[1] else return unreachable("Option.Some must exist")
     if negate {
       val res = match self._currentFn.block.buildCompareNeq(variantIdx, Value.Int32(optionSomeVariantIdx)) { Ok(v) => v, Err(e) => return qbeError(e) }
@@ -1813,10 +2039,10 @@ export type Compiler {
   }
 
   func _emitOptValueGetValue(self, ty: QbeType, exprVal: Value): Result<Value, CompileError> {
-    val valueSlot = match self._currentFn.block.buildAdd(Value.Int(QbeType.U32.size()), exprVal) { Ok(v) => v, Err(e) => return qbeError(e) }
-    val optSomeValue = self._currentFn.block.buildLoad(ty, valueSlot)
+    val valueSlot = match self._emitGetEnumVariantValueStart(exprVal) { Ok(v) => v, Err(e) => return Err(e) }
+    val value = self._currentFn.block.buildLoad(ty, valueSlot)
 
-    Ok(optSomeValue)
+    Ok(value)
   }
 
   func _addResolvedGenericsLayerForInstanceMethod(self, ty: Type, methodName: String, position: Position, resolvedGenerics: Map<String, Type> = {}): Result<Type, CompileError> {
@@ -1828,7 +2054,12 @@ export type Compiler {
 
         (template, inst)
       }
-      StructOrEnum.Enum => return todo("enum methods")
+      StructOrEnum.Enum(enum_) => {
+        val template = Type(kind: TypeKind.Instance(_t[0], enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+        val inst = Type(kind: TypeKind.Instance(_t[0], _t[1]))
+
+        (template, inst)
+      }
     }
     // TODO: destructuring
     val template = _p[0]
@@ -1839,11 +2070,31 @@ export type Compiler {
     // TODO: destructuring
     val layerName = match _t[0] {
       StructOrEnum.Struct(struct) => "${struct.label.name}.$methodName"
-      StructOrEnum.Enum => return todo("enum methods")
+      StructOrEnum.Enum(enum_) => "${enum_.label.name}.$methodName"
     }
     match self._resolvedGenerics.addLayer(layerName, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: position, kind: CompileErrorKind.ResolvedGenericsError(context: layerName, message: e))) }
 
     Ok(selfInstanceType)
+  }
+
+  func _addResolvedGenericsLayerForEnumVariant(self, ty: Type, variantName: String, position: Position, resolvedGenerics: Map<String, Type> = {}): Result<Type, CompileError> {
+    val _t = match self._getInstanceTypeForType(ty) { Ok(v) => v, Err(e) => return Err(e) }
+    match _t[0] {
+      StructOrEnum.Struct => unreachable("type should always be an enum here")
+      StructOrEnum.Enum(enum_) => {
+        val template = Type(kind: TypeKind.Instance(_t[0], enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+        val selfInstanceType = Type(kind: TypeKind.Instance(_t[0], _t[1]))
+
+        for _p in selfInstanceType.extractGenerics(template) {
+          resolvedGenerics[_p[0]] = _p[1]
+        }
+
+        val layerName = "${enum_.label.name}.$variantName"
+        match self._resolvedGenerics.addLayer(layerName, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: position, kind: CompileErrorKind.ResolvedGenericsError(context: layerName, message: e))) }
+
+        Ok(selfInstanceType)
+      }
+    }
   }
 
   func _getInstanceTypeForType(self, ty: Type): Result<(StructOrEnum, Type[]), CompileError> {
@@ -1943,18 +2194,45 @@ export type Compiler {
       Ok(base)
     }
   }
-
   func _structInitializerFnName(self, struct: Struct): Result<String, CompileError> {
     val structTypeName = match self._structTypeName(struct) { Ok(v) => v, Err(e) => return Err(e) }
     Ok("$structTypeName.init")
   }
 
-  func _enumTypeName(self, enum_: Enum): String = ".${enum_.moduleId}.${enum_.label.name}"
-  func _enumVariantFnName(self, enum_: Enum, variant: TypedEnumVariant): String = "${self._enumTypeName(enum_)}.${variant.label.name}"
+  func _enumTypeName(self, enum_: Enum): Result<String, CompileError> {
+    val base = ".${enum_.moduleId}.${enum_.label.name}"
+    if !enum_.typeParams.isEmpty() {
+      val parts: String[] = []
+      for name in enum_.typeParams {
+        val repr = if self._resolvedGenerics.resolveGeneric(name) |ty| {
+          val r = match self._getNameForType(ty) { Ok(v) => v, Err(e) => return Err(e) }
+          r
+        } else {
+          return unreachable("here1: could not resolve '$name'")
+        }
+        parts.push(repr)
+      }
+      Ok("$base.${parts.join(".")}")
+    } else {
+      Ok(base)
+    }
+  }
+  func _enumVariantFnName(self, enum_: Enum, variant: TypedEnumVariant): Result<String, CompileError> {
+    val enumTypeName = match self._enumTypeName(enum_) { Ok(v) => v, Err(e) => return Err(e) }
+    Ok("$enumTypeName.${variant.label.name}")
+  }
 
   func _fnName(self, fn: Function): String = ".${fn.label.name}"
-  func _methodFnName(self, struct: Struct, fn: Function): Result<String, CompileError> {
+  func _structMethodFnName(self, struct: Struct, fn: Function): Result<String, CompileError> {
     val typeName = match self._structTypeName(struct) { Ok(v) => v, Err(e) => return Err(e) }
+    val sep = match fn.kind {
+      FunctionKind.InstanceMethod => ".."
+      _ => "."
+    }
+    Ok("${typeName}${sep}${fn.label.name}")
+  }
+  func _enumMethodFnName(self, enum_: Enum, fn: Function): Result<String, CompileError> {
+    val typeName = match self._enumTypeName(enum_) { Ok(v) => v, Err(e) => return Err(e) }
     val sep = match fn.kind {
       FunctionKind.InstanceMethod => ".."
       _ => "."
@@ -1979,7 +2257,20 @@ export type Compiler {
         }
         parts.push(match fn.kind { FunctionKind.InstanceMethod => "#", _ => "." })
       }
-      StructOrEnum.Enum => return todo("enum methods")
+      StructOrEnum.Enum(enum_) => {
+        parts.push(enum_.label.name)
+        if !enum_.typeParams.isEmpty() {
+          parts.push("<")
+          for name, idx in enum_.typeParams {
+            val resolvedGeneric = if self._resolvedGenerics.resolveGeneric(name) |ty| ty else return unreachable("_fnSignature:enum (${enum_.label.name}, ${fn.label.name}), could not resolve generic '$name'")
+            parts.push(resolvedGeneric.repr())
+
+            if idx != enum_.typeParams.length - 1 { parts.push(", ") }
+          }
+          parts.push(">")
+        }
+        parts.push(match fn.kind { FunctionKind.InstanceMethod => "#", _ => "." })
+      }
       None => {}
     }
     parts.push(fn.label.name)
