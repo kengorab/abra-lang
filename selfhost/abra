@@ -13,5 +13,13 @@ else
 fi
 
 qbe -o ./._abra/_main.s ./._abra/_main.ssa
-clang ./._abra/_main.s -o ./._abra/_main -lm
+
+CFLAGS="-Wno-override-module"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  # Ignore linker warnings. For some reason libgc.a has warnings on macos
+  CFLAGS="$CFLAGS -Wl,-w"
+fi
+# TODO: don't assume the location of libgc
+clang ./._abra/_main.s ../abra_llvm/ext/libgc/lib/libgc.a -o ./._abra/_main -lm $CFLAGS
+
 ./._abra/_main
