@@ -56,19 +56,19 @@ println(Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa))
 // /// Expect: false
 // println(gray.hash() == Color.Red.hash())
 
-// // Test default eq method
-// /// Expect: true
-// println(r == Color.Red)
-// /// Expect: false
-// println(r == Color.Green)
-// /// Expect: false
-// println(r == Color.Blue)
-// /// Expect: true
-// println(gray == Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa))
-// /// Expect: false
-// println(gray == Color.RGB(r: 0x33, g: 0x33, b: 0x33))
-// /// Expect: false
-// println(gray == Color.Green)
+// Test default eq method
+/// Expect: true
+println(r == Color.Red)
+/// Expect: false
+println(r == Color.Green)
+/// Expect: false
+println(r == Color.Blue)
+/// Expect: true
+println(gray == Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa))
+/// Expect: false
+println(gray == Color.RGB(r: 0x33, g: 0x33, b: 0x33))
+/// Expect: false
+println(gray == Color.Green)
 
 // // Test calling method
 // /// Expect: 0xFF0000 0xFF0000

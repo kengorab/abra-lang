@@ -1,6 +1,20 @@
-val intArr = [1, 2, 3, 4]
-println(intArr[2])
+// val intArr = [1, 2, 3, 4]
+// println(intArr[2])
 
-type Person { name: String, age: Int }
-val me = Person(name: "Ken", age: 32)
-println(me)
+// type Person { name: String, age: Int }
+// val me = Person(name: "Ken", age: 32)
+// println(me)
+
+type Person {
+  name: String
+  age: Int
+}
+
+val p1 = Person(name: "Ken", age: 32)
+
+/// Expect: true
+println(p1 == Person(name: "Ken", age: 32))
+/// Expect: false
+println(p1 == Person(name: "Ben", age: 32))
+/// Expect: false
+println(p1 == Person(name: "Ken", age: 33))
