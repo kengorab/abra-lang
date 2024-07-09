@@ -5,11 +5,11 @@ type Person {
 
 val p1 = Person(name: "Ken", age: 32)
 
-// // Test field accesses
-// /// Expect: Ken
-// println(p1.name)
-// /// Expect: 32
-// println(p1.age)
+// Test field accesses
+/// Expect: Ken
+println(p1.name)
+/// Expect: 32
+println(p1.age)
 
 // Test default toString method
 /// Expect: Person(name: "Ken", age: 32)
@@ -23,13 +23,13 @@ println(p1.toString())
 // /// Expect: false
 // println(p1.hash() == Person(name: "Ken", age: 33).hash())
 
-// // Test default eq method
-// /// Expect: true
-// println(p1 == Person(name: "Ken", age: 32))
-// /// Expect: false
-// println(p1 == Person(name: "Ben", age: 32))
-// /// Expect: false
-// println(p1 == Person(name: "Ken", age: 33))
+// Test default eq method
+/// Expect: true
+println(p1 == Person(name: "Ken", age: 32))
+/// Expect: false
+println(p1 == Person(name: "Ben", age: 32))
+/// Expect: false
+println(p1 == Person(name: "Ken", age: 33))
 
 type Person2 {
   name: String

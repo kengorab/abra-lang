@@ -952,7 +952,11 @@ export type Compiler {
 
     if left.ty != right.ty return unreachable("equality operators require matching types", right.token.position)
 
-    if self._typeIsInt(left.ty) || self._typeIsFloat(left.ty) || self._typeIsBool(left.ty) {
+    self._compileEqLogic(leftVal, rightVal, left.ty, left.token.position, localName, negate)
+  }
+
+  func _compileEqLogic(self, leftVal: Value, rightVal: Value, ty: Type, position: Position, localName: String? = None, negate = false): Result<Value, CompileError> {
+    if self._typeIsInt(ty) || self._typeIsFloat(ty) || self._typeIsBool(ty) {
       val res = if negate {
         val res = match self._currentFn.block.buildCompareNeq(leftVal, rightVal, localName) { Ok(v) => v, Err(e) => return qbeError(e) }
         res
@@ -963,7 +967,7 @@ export type Compiler {
       return Ok(res)
     }
 
-    val instType = match self._addResolvedGenericsLayerForInstanceMethod(left.ty, "eq", left.token.position) { Ok(v) => v, Err(e) => return Err(e) }
+    val instType = match self._addResolvedGenericsLayerForInstanceMethod(ty, "eq", position) { Ok(v) => v, Err(e) => return Err(e) }
     val eqFnVal = match self._getOrCompileEqMethod(instType) { Ok(v) => v, Err(e) => return Err(e) }
     self._resolvedGenerics.popLayer()
 
@@ -1647,7 +1651,7 @@ export type Compiler {
 
           val cond = match self._currentFn.block.buildCompareEq(Value.Int32(idx), variantIdxVal) { Ok(v) => v, Err(e) => return qbeError(e) }
 
-          val labelThen = self._currentFn.block.addLabel("variant_$idx")
+          val labelThen = self._currentFn.block.addLabel("variant_${variant.label.name}")
           if idx != enum_.variants.length - 1 {
             labelElse = self._currentFn.block.addLabel("next")
             self._currentFn.block.buildJnz(cond, labelThen, labelElse)
@@ -2001,11 +2005,142 @@ export type Compiler {
     val fn = _p[1]
     if self._builder.getFunction(methodName) |fn| return Ok(fn)
 
-    if fn.isGenerated {
-      return todo("_getOrCompileEqMethod: generated functions")
-    }
+    if fn.isGenerated return self._compileGeneratedEqMethod(ty, fn)
 
     self._getOrCompileMethod(ty, fn)
+  }
+
+  func _compileGeneratedEqMethod(self, selfType: Type, fn: Function): Result<QbeFunction, CompileError> {
+    val boolTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveBool), "bool qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+
+    val _t = match self._getInstanceTypeForType(selfType) { Ok(v) => v, Err(e) => return Err(e) }
+    // TODO: destructuring
+    val selfTy = _t[0]
+    val typeArgs = _t[1]
+    val selfInstanceTy = Type(kind: TypeKind.Instance(selfTy, typeArgs))
+
+    val methodName = match selfTy {
+      StructOrEnum.Struct(struct) => match self._structMethodFnName(struct, fn) { Ok(v) => v, Err(e) => return Err(e) }
+      StructOrEnum.Enum(enum_) => match self._enumMethodFnName(enum_, fn) { Ok(v) => v, Err(e) => return Err(e) }
+    }
+
+    val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(boolTypeQbe))
+    val prevFn = self._currentFn
+    self._currentFn = fnVal
+
+    val selfTyQbe = match self._getQbeTypeForTypeExpect(selfInstanceTy, "unacceptable type for self") { Ok(v) => v, Err(e) => return Err(e) }
+    val selfParamVal = fnVal.addParameter("self", selfTyQbe)
+    val otherParamVal = fnVal.addParameter("other", selfTyQbe)
+
+    match selfTy {
+      StructOrEnum.Struct(struct) => {
+        val data: (String, Position, Type)[] = []
+        for field in struct.fields {
+          data.push((field.name.name, field.name.position, field.ty))
+        }
+
+        match self._emitEqLogicForStructuredData(selfParamVal, otherParamVal, data) { Ok(v) => v, Err(e) => return Err(e) }
+      }
+      StructOrEnum.Enum(enum_) => {
+        val selfVariantIdxVal = self._emitGetEnumVariantIdx(selfParamVal)
+        val otherVariantIdxVal = self._emitGetEnumVariantIdx(otherParamVal)
+
+        val labelVariantsNeq = self._currentFn.block.addLabel("variants_not_eq")
+        val labelVariantsEq = self._currentFn.block.addLabel("variants_eq")
+
+        val cond = match self._currentFn.block.buildCompareEq(selfVariantIdxVal, otherVariantIdxVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+        self._currentFn.block.buildJnz(cond, labelVariantsEq, labelVariantsNeq)
+
+        self._currentFn.block.registerLabel(labelVariantsNeq)
+        self._currentFn.block.addComment("return false")
+        self._currentFn.block.buildReturn(Some(Value.Int32(0)))
+
+        self._currentFn.block.registerLabel(labelVariantsEq)
+
+        var labelElse = self._currentFn.block.addLabel("__initial")
+        val labelEnd = self._currentFn.block.addLabel("unreachable")
+
+        for variant, idx in enum_.variants {
+          if idx != 0 {
+            self._currentFn.block.registerLabel(labelElse)
+          }
+
+          val cond = match self._currentFn.block.buildCompareEq(Value.Int32(idx), selfVariantIdxVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+          val labelThen = self._currentFn.block.addLabel("variant_${variant.label.name}")
+          if idx != enum_.variants.length - 1 {
+            labelElse = self._currentFn.block.addLabel("next")
+            self._currentFn.block.buildJnz(cond, labelThen, labelElse)
+          } else {
+            self._currentFn.block.buildJnz(cond, labelThen, labelEnd)
+          }
+
+          self._currentFn.block.registerLabel(labelThen)
+          match variant.kind {
+            EnumVariantKind.Constant => {
+              self._currentFn.block.addComment("return true")
+              self._currentFn.block.buildReturn(Some(Value.Int32(1)))
+            }
+            EnumVariantKind.Container(fields) => {
+              val data: (String, Position, Type)[] = []
+              for field in fields {
+                data.push((field.name.name, field.name.position, field.ty))
+              }
+              val selfPtr = match self._emitGetEnumVariantValueStart(selfParamVal) { Ok(v) => v, Err(e) => return Err(e) }
+              val otherPtr = match self._emitGetEnumVariantValueStart(otherParamVal) { Ok(v) => v, Err(e) => return Err(e) }
+              match self._emitEqLogicForStructuredData(selfPtr, otherPtr, data) { Ok(v) => v, Err(e) => return Err(e) }
+            }
+          }
+        }
+
+        self._currentFn.block.registerLabel(labelEnd)
+        self._currentFn.block.buildHalt()
+      }
+    }
+
+    fnVal.addComment(match self._fnSignature(Some(selfTy), fn) { Ok(v) => v, Err(e) => return Err(e) })
+
+    match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
+
+    self._currentFn = prevFn
+
+    Ok(fnVal)
+  }
+
+  func _emitEqLogicForStructuredData(self, selfPtr: Value, otherPtr: Value, data: (String, Position, Type)[]): Result<Int, CompileError> {
+    var offset = 0
+    for _p in data {
+      // TODO: destructuring
+      val itemName = _p[0]
+      val itemPosition = _p[1]
+      val itemType = _p[2]
+
+      val itemTy = match self._getQbeTypeForTypeExpect(itemType, "unacceptable type for item", Some(itemPosition)) { Ok(v) => v, Err(e) => return Err(e) }
+
+      val selfMemCursor = match self._currentFn.block.buildAdd(Value.Int(offset), selfPtr, Some("self_mem_offset_$itemName")) { Ok(v) => v, Err(e) => return qbeError(e) }
+      val selfItemVal = self._currentFn.block.buildLoad(itemTy, selfMemCursor)
+      val otherMemCursor = match self._currentFn.block.buildAdd(Value.Int(offset), otherPtr, Some("other_mem_offset_$itemName")) { Ok(v) => v, Err(e) => return qbeError(e) }
+      val otherItemVal = self._currentFn.block.buildLoad(itemTy, otherMemCursor)
+
+      val labelNeq = self._currentFn.block.addLabel("${itemName}_vals_not_equal")
+      val labelEq = self._currentFn.block.addLabel("${itemName}_vals_equal")
+
+      val fieldsEqVal = match self._compileEqLogic(selfItemVal, otherItemVal, itemType, itemPosition) { Ok(v) => v, Err(e) => return Err(e) }
+      self._currentFn.block.buildJnz(fieldsEqVal, labelEq, labelNeq)
+
+      self._currentFn.block.registerLabel(labelNeq)
+      self._currentFn.block.addComment("return false")
+      self._currentFn.block.buildReturn(Some(Value.Int32(0)))
+
+      self._currentFn.block.registerLabel(labelEq)
+
+      offset += itemTy.size()
+    }
+
+    self._currentFn.block.addComment("return true")
+    self._currentFn.block.buildReturn(Some(Value.Int32(1)))
+
+    Ok(0)
   }
 
   func _buildStackAllocForQbeType(self, ty: QbeType, name: String? = None): Value {
