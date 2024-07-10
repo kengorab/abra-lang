@@ -509,6 +509,24 @@ export type Block {
     self.append(Instruction.StoreD(value: value, mem: mem))
   }
 
+  func buildExt(self, value: Value, signed = true, dst: String? = None): Value {
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, QbeType.U64)
+
+    self.append(Instruction.Ext(dst: Dest(name: local.repr(), ty: QbeType.U64), value: value, signed: signed))
+
+    local
+  }
+
+  func buildCastD(self, value: Value, dst: String? = None): Value {
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, QbeType.U64)
+
+    self.append(Instruction.Cast(dst: Dest(name: local.repr(), ty: QbeType.U64), value: value))
+
+    local
+  }
+
   func buildCall(self, fnValue: QbeFunction, arguments: Value[], dst: String? = None): Result<Value, String> {
     val dest = dst ?: self._nextLocal()
     val fnReturnType = if fnValue.returnType |ty| ty else {
@@ -769,6 +787,10 @@ enum Instruction {
   StoreL(value: Value, mem: Value)
   StoreS(value: Value, mem: Value)
   StoreD(value: Value, mem: Value)
+
+  Ext(dst: Dest, value: Value, signed: Bool)
+
+  Cast(dst: Dest, value: Value)
 
   Call(dst: Dest?, fn: String, args: Value[])
   CallVarargs(dst: Dest?, fn: String, varargsIdx: Int, args: Value[])
@@ -1049,6 +1071,18 @@ enum Instruction {
         v.encode(file)
         file.write(", ")
         m.encode(file)
+        file.writeln()
+      }
+      Instruction.Ext(dst, v, signed) => {
+        dst.encode(file)
+        file.write(if signed " extsw " else " extuw ")
+        v.encode(file)
+        file.writeln()
+      }
+      Instruction.Cast(dst, v) => {
+        dst.encode(file)
+        file.write(" cast ")
+        v.encode(file)
         file.writeln()
       }
       Instruction.Call(dst, fnName, args) => {

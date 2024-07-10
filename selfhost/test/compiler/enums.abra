@@ -40,21 +40,21 @@ println(gray)
 /// Expect: Color.RGB(r: 170, g: 170, b: 170)
 println(Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa))
 
-// // Test default hash method
-// /// Expect: true
-// println(r.hash() == Color.Red.hash())
-// /// Expect: true
-// println(g.hash() == Color.Green.hash())
-// /// Expect: true
-// println(b.hash() == Color.Blue.hash())
-// /// Expect: true
-// println(gray.hash() == Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa).hash())
-// /// Expect: false
-// println(r.hash() == Color.Blue.hash())
-// /// Expect: false
-// println(r.hash() == Color.Green.hash())
-// /// Expect: false
-// println(gray.hash() == Color.Red.hash())
+// Test default hash method
+/// Expect: true
+println(r.hash() == Color.Red.hash())
+/// Expect: true
+println(g.hash() == Color.Green.hash())
+/// Expect: true
+println(b.hash() == Color.Blue.hash())
+/// Expect: true
+println(gray.hash() == Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa).hash())
+/// Expect: false
+println(r.hash() == Color.Blue.hash())
+/// Expect: false
+println(r.hash() == Color.Green.hash())
+/// Expect: false
+println(gray.hash() == Color.Red.hash())
 
 // Test default eq method
 /// Expect: true

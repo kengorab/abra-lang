@@ -17,11 +17,11 @@ println(p1)
 /// Expect: Person(name: "Ken", age: 32)
 println(p1.toString())
 
-// // Test default hash method
-// /// Expect: true
-// println(p1.hash() == Person(name: "Ken", age: 32).hash())
-// /// Expect: false
-// println(p1.hash() == Person(name: "Ken", age: 33).hash())
+// Test default hash method
+/// Expect: true
+println(p1.hash() == Person(name: "Ken", age: 32).hash())
+/// Expect: false
+println(p1.hash() == Person(name: "Ken", age: 33).hash())
 
 // Test default eq method
 /// Expect: true
@@ -67,8 +67,8 @@ type Foo {
 val f = Foo()
 /// Expect: Foo(a: 12, b: "", c: [1, 2, 3])
 println(f)
-// /// Expect: true
-// println(f.hash() == Foo().hash())
+/// Expect: true
+println(f.hash() == Foo().hash())
 
 // // Methods that capture variables
 // var capturedInt = 11

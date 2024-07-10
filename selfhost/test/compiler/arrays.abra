@@ -133,14 +133,14 @@ println([1].length, [[1, 2], [3, 4]].length)
 //   println(uniqueRefs)
 // })()
 
-// // Array#hash
+// Array#hash
 // (() => {
-//   val arr = [1, 2, 3]
-//   /// Expect: true
-//   println(arr.hash() == [1, 2, 3].hash())
+  val arr3 = [1, 2, 3]
+  /// Expect: true
+  println(arr3.hash() == [1, 2, 3].hash())
 
-//   /// Expect: false
-//   println(arr.hash() == [1, 2].hash())
+  /// Expect: false
+  println(arr3.hash() == [1, 2].hash())
 // })()
 
 // // Array#iterator
