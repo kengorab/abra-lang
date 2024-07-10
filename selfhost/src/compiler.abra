@@ -563,6 +563,7 @@ export type Compiler {
 
               self._currentFn.block.registerLabel(labelThen)
               val rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
+              val rightLabel = self._currentFn.block.currentLabel
               self._currentFn.block.buildJmp(labelCont)
 
               self._currentFn.block.registerLabel(labelElse)
@@ -570,7 +571,7 @@ export type Compiler {
 
               self._currentFn.block.registerLabel(labelCont)
 
-              val phiCases = [(labelThen, rightVal), (labelElse, leftVal)]
+              val phiCases = [(rightLabel, rightVal), (labelElse, leftVal)]
               val res = match self._currentFn.block.buildPhi(phiCases) { Ok(v) => v, Err(e) => return qbeError(e) }
 
               Ok(res)
@@ -596,11 +597,12 @@ export type Compiler {
 
               self._currentFn.block.registerLabel(labelElse)
               val rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
+              val rightLabel = self._currentFn.block.currentLabel
               self._currentFn.block.buildJmp(labelCont)
 
               self._currentFn.block.registerLabel(labelCont)
 
-              val phiCases = [(labelThen, leftVal), (labelElse, rightVal)]
+              val phiCases = [(labelThen, leftVal), (rightLabel, rightVal)]
               val res = match self._currentFn.block.buildPhi(phiCases) { Ok(v) => v, Err(e) => return qbeError(e) }
 
               Ok(res)
@@ -888,7 +890,8 @@ export type Compiler {
         for node, idx in ifBlock {
           if idx == ifBlock.length - 1 {
             val res = match self._compileExpression(node) { Ok(v) => v, Err(e) => return Err(e) }
-            phiCases.push((labelThen, res))
+            val label = self._currentFn.block.currentLabel
+            phiCases.push((label, res))
           } else {
             match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
           }
@@ -902,7 +905,8 @@ export type Compiler {
           for node, idx in elseBlock {
             if idx == elseBlock.length - 1 {
               val res = match self._compileExpression(node) { Ok(v) => v, Err(e) => return Err(e) }
-              phiCases.push((labelElse, res))
+              val label = self._currentFn.block.currentLabel
+              phiCases.push((label, res))
             } else {
               match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
             }
@@ -1130,6 +1134,7 @@ export type Compiler {
 
         self._currentFn.block.registerLabel(labelUseDefaultValue)
         val res = match self._compileExpression(initializerNode) { Ok(v) => v, Err(e) => return Err(e) }
+        val resLabel = self._currentFn.block.currentLabel
         self._currentFn.block.buildJmp(labelCont)
 
         self._currentFn.block.registerLabel(labelUsePassedValue)
@@ -1137,7 +1142,7 @@ export type Compiler {
 
         self._currentFn.block.registerLabel(labelCont)
 
-        val phiCases = [(labelUseDefaultValue, res), (labelUsePassedValue, paramLocal)]
+        val phiCases = [(resLabel, res), (labelUsePassedValue, paramLocal)]
         match self._currentFn.block.buildPhi(phiCases, Some(field.name.name)) { Ok(v) => v, Err(e) => return qbeError(e) }
       } else {
         fnVal.addParameter(field.name.name, fieldTy)
@@ -1542,6 +1547,7 @@ export type Compiler {
 
         self._currentFn.block.registerLabel(labelUseDefaultValue)
         val res = match self._compileExpression(defaultValueNode) { Ok(v) => v, Err(e) => return Err(e) }
+        val resLabel = self._currentFn.block.currentLabel
         self._currentFn.block.buildJmp(labelCont)
 
         self._currentFn.block.registerLabel(labelUsePassedValue)
@@ -1549,7 +1555,7 @@ export type Compiler {
 
         self._currentFn.block.registerLabel(labelCont)
 
-        val phiCases = [(labelUseDefaultValue, res), (labelUsePassedValue, paramLocal)]
+        val phiCases = [(resLabel, res), (labelUsePassedValue, paramLocal)]
         match self._currentFn.block.buildPhi(phiCases, Some(param.label.name)) { Ok(v) => v, Err(e) => return qbeError(e) }
       } else {
         fnVal.addParameter(param.label.name, paramTy)

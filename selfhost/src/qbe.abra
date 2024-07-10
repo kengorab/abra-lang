@@ -24,8 +24,7 @@ export type ModuleBuilder {
   func buildFunction(self, name: String, returnType: QbeType?, exported = false): QbeFunction {
     if self._functionsByName[name] |fn| return fn
 
-    val start = Label(name: "start", offset: Some(0))
-    val block = Block(name: name, body: [], labelsByLine: { (0): [start] }, _usedLabels: #{start}, _labelNames: { "start": 1 }, comments: {}, numLocals: 0)
+    val block = Block.new(name: name)
 
     val fn = QbeFunction(exported: exported, name: name, returnType: returnType, _parameters: [], block: block, variadicIdx: None, _comments: [])
     self._functions.push(fn)
@@ -89,12 +88,18 @@ export type Label {
 
 export type Block {
   name: String
+  currentLabel: Label
   body: Instruction[] = []
   labelsByLine: Map<Int, Label[]> = {}
   _usedLabels: Set<Label> = #{}
   _labelNames: Map<String, Int> = {}
   comments: Map<Int, Set<String>> = {}
   numLocals: Int = 0
+
+  func new(name: String): Block {
+    val start = Label(name: "start", offset: Some(0))
+    Block(name: name, currentLabel: start, body: [], labelsByLine: { (0): [start] }, _usedLabels: #{start}, _labelNames: { "start": 1 }, comments: {}, numLocals: 0)
+  }
 
   func encode(self, file: File) {
     for instr, idx in self.body {
@@ -166,6 +171,8 @@ export type Block {
     val offset = self.body.length
     label.offset = Some(offset)
     if self.labelsByLine[offset] |labels| labels.push(label) else self.labelsByLine[offset] = [label]
+
+    self.currentLabel = label
 
     Ok(label)
   }
@@ -663,7 +670,7 @@ export type QbeFunction {
   _comments: String[] = []
 
   func spec(name: String, returnType: QbeType? = None, parameters: (String, QbeType)[] = [], variadicIdx: Int? = None): QbeFunction {
-    QbeFunction(name: name, block: Block(name: name), returnType: returnType, _parameters: parameters, variadicIdx: variadicIdx)
+    QbeFunction(name: name, block: Block.new(name), returnType: returnType, _parameters: parameters, variadicIdx: variadicIdx)
   }
 
   func encode(self, file: File) {
