@@ -21,17 +21,17 @@ println(arr3)
 //   f: Int
 // }
 
-// // Workaround because optionals technically don't have _any_ directly-callable methods
-// func hash<T>(t: T): Int = t.hash()
-// // Hashes
+// Workaround because optionals technically don't have _any_ directly-callable methods
+func hash<T>(t: T): Int = t.hash()
+// Hashes
 // (() => {
-//   val i: Int? = None
-//   /// Expect: 8
-//   println(hash(i))
+  val i: Int? = None
+  /// Expect: 1
+  println(hash(i))
 
-//   val x = Some(17)
-//   /// Expect: false
-//   println(hash(x) == (17).hash())
+  val x = Some(17)
+  /// Expect: false
+  println(hash(x) == (17).hash())
 // })()
 
 // // == operator
