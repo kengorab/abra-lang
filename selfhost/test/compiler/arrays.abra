@@ -9,8 +9,9 @@
 /// Expect: 1 2
 println([1].length, [[1, 2], [3, 4]].length)
 
-// // Test array literal construction
+// Test array literal construction
 // (() => {
+func test_arrayLiteralConstruction() {
   val emptyArr: Int[] = []
   /// Expect: []
   println(emptyArr)
@@ -31,9 +32,12 @@ println([1].length, [[1, 2], [3, 4]].length)
   /// Expect: [[1, 2], [3, 4], [5, 6]]
   println(nestedArr)
 // })()
+}
+test_arrayLiteralConstruction()
 
 // == operator (also Array#eq)
 // (() => {
+func test_arrayEq() {
   val arr = [1, 2]
 
   /// Expect: true
@@ -60,36 +64,44 @@ println([1].length, [[1, 2], [3, 4]].length)
 //   /// Expect: false
 //   println(arr == { (1): "a", (2): "b" })
 // })()
+}
+test_arrayEq()
 
 // Indexing (also Array#get(index: Int))
 // (() => {
-  val arr2 = [1, 2, 3]
+func test_arrayIndexing() {
+  val arr = [1, 2, 3]
   /// Expect: Option.None Option.Some(value: 1) Option.Some(value: 2) Option.Some(value: 3) Option.Some(value: 1) Option.Some(value: 2) Option.Some(value: 3) Option.None
-  println(arr2[-4], arr2[-3], arr2[-2], arr2[-1], arr2[0], arr2[1], arr2[2], arr2[3])
+  println(arr[-4], arr[-3], arr[-2], arr[-1], arr[0], arr[1], arr[2], arr[3])
 // })()
+}
+test_arrayIndexing()
 
-// // Range indexing (also Array#getRange(startIndex: Int, endIndex: Int))
+// Range indexing (also Array#getRange(startIndex: Int, endIndex: Int))
 // (() => {
-//   val arr = [1, 2, 3, 4, 5]
+func test_arrayRangeIndexing() {
+  val arr = [1, 2, 3, 4, 5]
 
-//   /// Expect: [2, 3, 4] [2, 3, 4] [2, 3, 4]
-//   println(arr[1:4], arr[-4:4], arr[1:-1])
+  /// Expect: [2, 3, 4] [2, 3, 4] [2, 3, 4]
+  println(arr[1:4], arr[-4:4], arr[1:-1])
 
-//   /// Expect: []
-//   println(arr[1:1])
+  /// Expect: []
+  println(arr[1:1])
 
-//   val x = 1
-//   val y = 4
+  val x = 1
+  val y = 4
 
-//   /// Expect: [2, 3, 4] [2, 3, 4]
-//   println(arr[x:y], arr[-y:y])
+  /// Expect: [2, 3, 4] [2, 3, 4]
+  println(arr[x:y], arr[-y:y])
 
-//   /// Expect: [2, 3, 4, 5] [1]
-//   println(arr[1:], arr[:1])
+  /// Expect: [2, 3, 4, 5] [1]
+  println(arr[1:], arr[:1])
 
-//   /// Expect: [2, 3, 4, 5] [1]
-//   println(arr[x:], arr[:x])
+  /// Expect: [2, 3, 4, 5] [1]
+  println(arr[x:], arr[:x])
 // })()
+}
+test_arrayRangeIndexing()
 
 // // Array.fill
 // (() => {
@@ -135,13 +147,16 @@ println([1].length, [[1, 2], [3, 4]].length)
 
 // Array#hash
 // (() => {
-  val arr3 = [1, 2, 3]
+func test_arrayHash() {
+  val arr = [1, 2, 3]
   /// Expect: true
-  println(arr3.hash() == [1, 2, 3].hash())
+  println(arr.hash() == [1, 2, 3].hash())
 
   /// Expect: false
-  println(arr3.hash() == [1, 2].hash())
+  println(arr.hash() == [1, 2].hash())
 // })()
+}
+test_arrayHash()
 
 // // Array#iterator
 // (() => {

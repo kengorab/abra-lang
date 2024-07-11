@@ -437,10 +437,10 @@ export type Block {
 
   func buildLoadB(self, mem: Value, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
-    val local = Value.Ident(dest, QbeType.U8)
+    val local = Value.Ident(dest, QbeType.U64)
 
     // TODO: condense these methods into one which automatically switches on the type of `value`
-    self.append(Instruction.LoadB(dst: Dest(name: local.repr(), ty: QbeType.U8), mem: mem))
+    self.append(Instruction.LoadB(dst: Dest(name: local.repr(), ty: QbeType.U64), mem: mem))
 
     local
   }
@@ -1027,7 +1027,7 @@ enum Instruction {
       }
       Instruction.LoadB(dst, m) => {
         dst.encode(file)
-        file.write(" loadb ")
+        file.write(" loadub ")
         m.encode(file)
         file.writeln()
       }

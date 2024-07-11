@@ -25,6 +25,7 @@ println(arr3)
 func hash<T>(t: T): Int = t.hash()
 // Hashes
 // (() => {
+func test_hashes() {
   val i: Int? = None
   /// Expect: 1
   println(hash(i))
@@ -33,9 +34,12 @@ func hash<T>(t: T): Int = t.hash()
   /// Expect: false
   println(hash(x) == (17).hash())
 // })()
+}
+test_hashes()
 
 // == operator
 // (() => {
+func test_eqOp() {
   // Test with primitive
   val i1: Int? = None
   val i2 = Some(17)
@@ -62,6 +66,8 @@ func hash<T>(t: T): Int = t.hash()
   /// Expect: true
   println(s2 == s3)
 // })()
+}
+test_eqOp()
 
 // // Coalescing (?:)
 // (() => {

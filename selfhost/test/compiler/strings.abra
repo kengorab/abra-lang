@@ -16,6 +16,7 @@ println("hello")
 
 // + operator
 // (() => {
+func test_plusOp() {
   /// Expect: helloworld
   println("hello" + "world")
   /// Expect: hello12 12hello
@@ -27,9 +28,12 @@ println("hello")
   /// Expect: hello[1, 2, 3] [1, 2, 3]hello
   println("hello" + [1, 2, 3], [1, 2, 3] + "hello")
 // })()
+}
+test_plusOp()
 
 // == operator (also String#eq)
 // (() => {
+func test_stringEq() {
   val s1 = "string"
   /// Expect: true
   println(s1 == s1)
@@ -52,6 +56,8 @@ println("hello")
 //   /// Expect: false
 //   println(s1 == { (1): "a", (2): "b" })
 // })()
+}
+test_stringEq()
 
 // // Interpolation (also String#concat<T>(other: T, *others: Any[]))
 // (() => {
@@ -60,47 +66,57 @@ println("hello")
 //   println("length of $array is ${array.length}")
 // })()
 
-// // Indexing (also String#get(index: Int))
+// Indexing (also String#get(index: Int))
 // (() => {
-//   val s = "abc"
-//   /// Expect: |  a b c a b c  |
-//   println("|", s[-4], s[-3], s[-2], s[-1], s[0], s[1], s[2], s[3], "|")
-// })()
+func test_stringIndexing() {
+  val s1 = "abc"
 
-// // Range indexing (also String#getRange(startIndex: Int, endIndex: Int))
+  /// Expect: |  a b c a b c  |
+  println("|", s1[-4], s1[-3], s1[-2], s1[-1], s1[0], s1[1], s1[2], s1[3], "|")
+
+  val s2 = "hello"
+
+  /// Expect: h e l l o
+  println(s2[0], s2[1], s2[2], s2[3], s2[4])
+
+  /// Expect: o l l e h
+  println(s2[-1], s2[-2], s2[-3], s2[-4], s2[-5])
+
+  /// Expect:   end
+  println(s2[5], s2[-6], "end")
+// })()
+}
+test_stringIndexing()
+
+// Range indexing (also String#getRange(startIndex: Int, endIndex: Int))
 // (() => {
-//   val s = "hello"
+func test_stringRangeIndexing() {
+  val s = "hello"
 
-//   /// Expect: h e l l o
-//   println(s[0], s[1], s[2], s[3], s[4])
+  /// Expect: ell ell
+  println(s[1:4], s[-4:4])
 
-//   /// Expect: o l l e h
-//   println(s[-1], s[-2], s[-3], s[-4], s[-5])
+  /// Expect:  end
+  println(s[1:1], "end")
 
-//   /// Expect:   end
-//   println(s[5], s[-6], "end")
+  val a = 1
+  val b = 4
 
-//   /// Expect: ell ell
-//   println(s[1:4], s[-4:4])
+  /// Expect: ell ell
+  println(s[a:b], s[-b:b])
 
-//   /// Expect:  end
-//   println(s[1:1], "end")
+  /// Expect: ello h
+  println(s[1:], s[:1])
 
-//   val a = 1
-//   val b = 4
-
-//   /// Expect: ell ell
-//   println(s[a:b], s[-b:b])
-
-//   /// Expect: ello h
-//   println(s[1:], s[:1])
-
-//   /// Expect: ello h
-//   println(s[a:], s[:a])
+  /// Expect: ello h
+  println(s[a:], s[:a])
 // })()
+}
+test_stringRangeIndexing()
 
 // String#hash
 // (() => {
+func test_stringHash() {
   val empty = ""
   /// Expect: true
   println(empty.hash() == "".hash())
@@ -109,38 +125,49 @@ println("hello")
   /// Expect: true
   println(nonEmpty.hash() == "hello".hash())
 // })()
+}
+test_stringHash()
 
-// // String#isEmpty
+// String#isEmpty
 // (() => {
-//   val empty = ""
-//   /// Expect: true
-//   println(empty.isEmpty())
+func test_stringIsEmpty() {
+  val empty = ""
+  /// Expect: true
+  println(empty.isEmpty())
 
-//   val nonEmpty = "hello"
-//   /// Expect: false
-//   println(nonEmpty.isEmpty())
+  val nonEmpty = "hello"
+  /// Expect: false
+  println(nonEmpty.isEmpty())
 // })()
+}
+test_stringIsEmpty()
 
-// // String#toLower
+// String#toLower
 // (() => {
-//   /// Expect:  |
-//   println("".toLower(), "|")
-//   /// Expect: -hello!
-//   println("-hElLo!".toLower())
+func test_stringToLower() {
+  /// Expect:  |
+  println("".toLower(), "|")
+  /// Expect: -hello!
+  println("-hElLo!".toLower())
 // })()
+}
+test_stringToLower()
 
-// // String#toUpper
+// String#toUpper
 // (() => {
-//   /// Expect:  |
-//   println("".toUpper(), "|")
-//   /// Expect: -HELLO!
-//   println("-hElLo!".toUpper())
+func test_stringToUpper() {
+  /// Expect:  |
+  println("".toUpper(), "|")
+  /// Expect: -HELLO!
+  println("-hElLo!".toUpper())
 // })()
+}
+test_stringToUpper()
 
 // // String#split
 // (() => {
-//   /// Expect: [a, s, d, f]
-//   println("a s d f".split(by: " "))
+  // /// Expect: [a, s, d, f]
+  // println("a s d f".split(by: " "))
 
 //   /// Expect: [, a, b, c d]
 //   println("  a  b  c d".split("  "))

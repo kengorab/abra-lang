@@ -682,7 +682,7 @@ export type Compiler {
               Ok(Value.Ident(name, varTy))
             } else {
               val slot = Value.Ident("$name.slot", QbeType.Pointer)
-              val res = self._currentFn.block.buildLoad(varTy, slot, Some(name))
+              val res = self._currentFn.block.buildLoad(varTy, slot)
               Ok(res)
             }
           }
@@ -844,14 +844,44 @@ export type Compiler {
                 // TODO: destructuring
                 val getFn = match _t[0] {
                   StructOrEnum.Struct(struct) => if struct.instanceMethods.find(m => m.label.name == "get") |fn| fn else return unreachable("#get must exist for array-like indexing")
-                  StructOrEnum.Enum => return todo("enum methods")
+                  StructOrEnum.Enum => return unreachable("array-like indexing never applies to enum instances")
                 }
                 val getFnVal = match self._getOrCompileMethod(instType, getFn) { Ok(v) => v, Err(e) => return Err(e) }
 
                 val res = match self._currentFn.block.buildCall(getFnVal, [exprVal, idxExprVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
                 Ok(res)
               }
-              IndexingMode.Range(start, end) => return todo("compiling range-indexing expression", node.token.position)
+              IndexingMode.Range(startExpr, endExpr) => {
+                var maskParam = 0
+                val startExprVal = if startExpr |startExpr| {
+                  val res = match self._compileExpression(startExpr) { Ok(v) => v, Err(e) => return Err(e) }
+                  res
+                } else {
+                  maskParam ||= 1
+                  Value.Int(0)
+                }
+                val endExprVal = if endExpr |endExpr| {
+                  val res = match self._compileExpression(endExpr) { Ok(v) => v, Err(e) => return Err(e) }
+                  res
+                } else {
+                  maskParam ||= (1 << 1)
+                  Value.Int(0)
+                }
+
+                val instType = match self._addResolvedGenericsLayerForInstanceMethod(expr.ty, "getRange", expr.token.position) { Ok(v) => v, Err(e) => return Err(e) }
+                val _t = match self._getInstanceTypeForType(expr.ty) { Ok(v) => v, Err(e) => return Err(e) }
+                // TODO: destructuring
+                val getRangeFn = match _t[0] {
+                  StructOrEnum.Struct(struct) => if struct.instanceMethods.find(m => m.label.name == "getRange") |fn| fn else return unreachable("#getRange must exist for array-like indexing")
+                  StructOrEnum.Enum => return unreachable("array-like indexing never applies to enum instances")
+                }
+                val getRangeFnVal = match self._getOrCompileMethod(instType, getRangeFn) { Ok(v) => v, Err(e) => return Err(e) }
+
+                val res = match self._currentFn.block.buildCall(getRangeFnVal, [exprVal, startExprVal, endExprVal, Value.Int32(maskParam)]) { Ok(v) => v, Err(e) => return qbeError(e) }
+                Ok(res)
+
+                // return todo("compiling range-indexing expression", node.token.position)
+              }
             }
           }
           TypedIndexingNode.Map(expr, idx) => todo("compiling map-indexing expression", node.token.position)
@@ -1433,7 +1463,21 @@ export type Compiler {
         val ptrVal = match self._compileExpression(ptr) { Ok(v) => v, Err(e) => return Err(e) }
 
         val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else return unreachable("(pointer_load) could not resolve T for Pointer<T>")
-        val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
+
+        val isByte = match innerTy.kind {
+          TypeKind.Instance(structOrEnum, _) => {
+            val r = match structOrEnum {
+              StructOrEnum.Struct(struct) => struct.moduleId == 1 && struct.label.name == "Byte"
+              _ => false
+            }
+            r
+          }
+          _ => false
+        }
+        val innerQbeType = if isByte QbeType.U8 else {
+          val res = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
+          res
+        }
 
         val v = self._currentFn.block.buildLoad(innerQbeType, ptrVal)
 
