@@ -4,17 +4,17 @@ enum Color {
   Blue
   RGB(r: Int, g: Int, b: Int)
 
-//   func hex(self): String {
-//     if self == Color.Red {
-//       "0xFF0000"
-//     } else if self == Color.Green {
-//       "0x00FF00"
-//     } else if self == Color.Blue {
-//       "0x0000FF"
-//     } else {
-//       "todo"
-//     }
-//   }
+  func hex(self): String {
+    if self == Color.Red {
+      "0xFF0000"
+    } else if self == Color.Green {
+      "0x00FF00"
+    } else if self == Color.Blue {
+      "0x0000FF"
+    } else {
+      "todo"
+    }
+  }
 }
 
 val r = Color.Red
@@ -70,15 +70,15 @@ println(gray == Color.RGB(r: 0x33, g: 0x33, b: 0x33))
 /// Expect: false
 println(gray == Color.Green)
 
-// // Test calling method
-// /// Expect: 0xFF0000 0xFF0000
-// println(Color.Red.hex(), r.hex())
-// /// Expect: 0x00FF00 0x00FF00
-// println(Color.Green.hex(), g.hex())
-// /// Expect: 0x0000FF 0x0000FF
-// println(Color.Blue.hex(), b.hex())
-// /// Expect: todo todo
-// println(Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa).hex(), gray.hex())
+// Test calling method
+/// Expect: 0xFF0000 0xFF0000
+println(Color.Red.hex(), r.hex())
+/// Expect: 0x00FF00 0x00FF00
+println(Color.Green.hex(), g.hex())
+/// Expect: 0x0000FF 0x0000FF
+println(Color.Blue.hex(), b.hex())
+/// Expect: todo todo
+println(Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa).hex(), gray.hex())
 
 enum Color2 {
   Red

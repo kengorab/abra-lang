@@ -216,6 +216,85 @@ export type Project {
   preludeMapStruct: Struct = Struct(moduleId: 0, label: Label(name: "Map", position: Position(line: 0, col: 0)), scope: Scope(name: "Array"), typeParams: ["K", "V"])
   preludeSetStruct: Struct = Struct(moduleId: 0, label: Label(name: "Set", position: Position(line: 0, col: 0)), scope: Scope(name: "Set"), typeParams: ["T"])
   preludeOptionEnum: Enum = Enum(moduleId: 0, label: Label(name: "Option", position: Position(line: 0, col: 0)), scope: Scope(name: "Option"), typeParams: ["T"])
+
+  func typesAreEquivalent(self, ty: Type, other: Type): Bool {
+    match ty.kind {
+      TypeKind.Hole => other.kind == TypeKind.Hole
+      TypeKind.Generic(n1) => match other.kind {
+        TypeKind.Generic(n2) => n1 == n2
+        _ => false
+      }
+      TypeKind.PrimitiveInt => match other.kind {
+        TypeKind.PrimitiveInt => true
+        TypeKind.Instance(structOrEnum, _) => structOrEnum == StructOrEnum.Struct(self.preludeIntStruct)
+        _ => false
+      }
+      TypeKind.PrimitiveFloat => match other.kind {
+        TypeKind.PrimitiveFloat => true
+        TypeKind.Instance(structOrEnum, _) => structOrEnum == StructOrEnum.Struct(self.preludeFloatStruct)
+        _ => false
+      }
+      TypeKind.PrimitiveBool => match other.kind {
+        TypeKind.PrimitiveBool => true
+        TypeKind.Instance(structOrEnum, _) => structOrEnum == StructOrEnum.Struct(self.preludeBoolStruct)
+        _ => false
+      }
+      TypeKind.PrimitiveString => match other.kind {
+        TypeKind.PrimitiveString => true
+        TypeKind.Instance(structOrEnum, _) => structOrEnum == StructOrEnum.Struct(self.preludeStringStruct)
+        _ => false
+      }
+      TypeKind.Func(reqParamTypes, reqRetType) => match ty.kind {
+        TypeKind.Func(paramTypes, retType) => {
+          if !self.typesAreEquivalent(ty: retType, other: reqRetType) return false
+
+          var idx = 0
+          for reqParamType, i in reqParamTypes {
+            val paramType = if paramTypes[i] |t| t[0] else { return true }
+            if !self.typesAreEquivalent(ty: paramType, other: reqParamType[0]) return false
+
+            idx = i
+          }
+          if paramTypes[idx + 1] |nextParam| {
+            if nextParam[1] return false
+          }
+
+          true
+        }
+        _ => false
+      }
+      TypeKind.Instance(reqStructOrEnum, reqTypeArgs) => match ty.kind {
+        TypeKind.Instance(structOrEnum, typeArgs) => {
+          if reqStructOrEnum != structOrEnum return false
+          if reqTypeArgs.length != typeArgs.length return false
+          for reqTypeArg, i in reqTypeArgs {
+            val typeArg = if typeArgs[i] |t| t else { return true }
+            if !self.typesAreEquivalent(ty: typeArg, other: reqTypeArg) return false
+          }
+
+          true
+        }
+        TypeKind.PrimitiveInt => reqStructOrEnum == StructOrEnum.Struct(self.preludeIntStruct)
+        TypeKind.PrimitiveFloat => reqStructOrEnum == StructOrEnum.Struct(self.preludeFloatStruct)
+        TypeKind.PrimitiveBool => reqStructOrEnum == StructOrEnum.Struct(self.preludeBoolStruct)
+        TypeKind.PrimitiveString => reqStructOrEnum == StructOrEnum.Struct(self.preludeStringStruct)
+        _ => false
+      }
+      TypeKind.Tuple(reqTypes) => match ty.kind {
+        TypeKind.Tuple(types) => {
+          if reqTypes.length != types.length return false
+          for reqTy, i in reqTypes {
+            val ty = if types[i] |t| t else { /* unreachable, length verified above to be equal */ return false }
+            if !self.typesAreEquivalent(ty: ty, other: reqTy) return false
+          }
+
+          true
+        }
+        _ => false
+      }
+      _ => false
+    }
+  }
 }
 
 export type Type {
@@ -1694,85 +1773,6 @@ export type Typechecker {
     }
 
     None
-  }
-
-  func _typesAreEquivalent(self, ty: Type, other: Type): Bool {
-    match ty.kind {
-      TypeKind.Hole => other.kind == TypeKind.Hole
-      TypeKind.Generic(n1) => match other.kind {
-        TypeKind.Generic(n2) => n1 == n2
-        _ => false
-      }
-      TypeKind.PrimitiveInt => match other.kind {
-        TypeKind.PrimitiveInt => true
-        TypeKind.Instance(structOrEnum, _) => structOrEnum == StructOrEnum.Struct(self.project.preludeIntStruct)
-        _ => false
-      }
-      TypeKind.PrimitiveFloat => match other.kind {
-        TypeKind.PrimitiveFloat => true
-        TypeKind.Instance(structOrEnum, _) => structOrEnum == StructOrEnum.Struct(self.project.preludeFloatStruct)
-        _ => false
-      }
-      TypeKind.PrimitiveBool => match other.kind {
-        TypeKind.PrimitiveBool => true
-        TypeKind.Instance(structOrEnum, _) => structOrEnum == StructOrEnum.Struct(self.project.preludeBoolStruct)
-        _ => false
-      }
-      TypeKind.PrimitiveString => match other.kind {
-        TypeKind.PrimitiveString => true
-        TypeKind.Instance(structOrEnum, _) => structOrEnum == StructOrEnum.Struct(self.project.preludeStringStruct)
-        _ => false
-      }
-      TypeKind.Func(reqParamTypes, reqRetType) => match ty.kind {
-        TypeKind.Func(paramTypes, retType) => {
-          if !self._typesAreEquivalent(ty: retType, other: reqRetType) return false
-
-          var idx = 0
-          for reqParamType, i in reqParamTypes {
-            val paramType = if paramTypes[i] |t| t[0] else { return true }
-            if !self._typesAreEquivalent(ty: paramType, other: reqParamType[0]) return false
-
-            idx = i
-          }
-          if paramTypes[idx + 1] |nextParam| {
-            if nextParam[1] return false
-          }
-
-          true
-        }
-        _ => false
-      }
-      TypeKind.Instance(reqStructOrEnum, reqTypeArgs) => match ty.kind {
-        TypeKind.Instance(structOrEnum, typeArgs) => {
-          if reqStructOrEnum != structOrEnum return false
-          if reqTypeArgs.length != typeArgs.length return false
-          for reqTypeArg, i in reqTypeArgs {
-            val typeArg = if typeArgs[i] |t| t else { return true }
-            if !self._typesAreEquivalent(ty: typeArg, other: reqTypeArg) return false
-          }
-
-          true
-        }
-        TypeKind.PrimitiveInt => reqStructOrEnum == StructOrEnum.Struct(self.project.preludeIntStruct)
-        TypeKind.PrimitiveFloat => reqStructOrEnum == StructOrEnum.Struct(self.project.preludeFloatStruct)
-        TypeKind.PrimitiveBool => reqStructOrEnum == StructOrEnum.Struct(self.project.preludeBoolStruct)
-        TypeKind.PrimitiveString => reqStructOrEnum == StructOrEnum.Struct(self.project.preludeStringStruct)
-        _ => false
-      }
-      TypeKind.Tuple(reqTypes) => match ty.kind {
-        TypeKind.Tuple(types) => {
-          if reqTypes.length != types.length return false
-          for reqTy, i in reqTypes {
-            val ty = if types[i] |t| t else { /* unreachable, length verified above to be equal */ return false }
-            if !self._typesAreEquivalent(ty: ty, other: reqTy) return false
-          }
-
-          true
-        }
-        _ => false
-      }
-      _ => false
-    }
   }
 
   func _typeSatisfiesRequired(self, ty: Type, required: Type): Bool {
@@ -3347,7 +3347,7 @@ export type Typechecker {
         }
       }
 
-      if self._typesAreEquivalent(ty: Type(kind: TypeKind.PrimitiveBool), other: typedExpr.ty) {
+      if self.project.typesAreEquivalent(ty: Type(kind: TypeKind.PrimitiveBool), other: typedExpr.ty) {
         if seenLiteralCases == #{LiteralAstNode.Bool(true), LiteralAstNode.Bool(false)} return true
       }
 
@@ -4289,7 +4289,7 @@ export type Typechecker {
               }
               _ => {}
             }
-            if !self._typesAreEquivalent(ty: original, other: _p[1]) {
+            if !self.project.typesAreEquivalent(ty: original, other: _p[1]) {
               return Err(TypeError(position: typedArg.token.position, kind: TypeErrorKind.ParameterTypeMismatch(Some(param.label.name), original, typedArg.ty)))
             }
             continue

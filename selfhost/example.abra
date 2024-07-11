@@ -1,15 +1,12 @@
-// val intArr = [1, 2, 3, 4]
-// println(intArr[2])
-
-type Person { name: String, age: Int }
-val me = Person(name: "Ken", age: 32)
-// println(me)
-
-// /// Expect: true
-// println(p1 == Person(name: "Ken", age: 32))
-// /// Expect: false
-// println(p1 == Person(name: "Ben", age: 32))
-// /// Expect: false
-// println(p1 == Person(name: "Ken", age: 33))
-
-println(me.hash())
+func foo(a: Int = if true 123 else if false 456 else 789): Int {
+  a + 1
+}
+// val a = if true {
+//   123
+// } else if false {
+//   456
+// } else {
+//   789
+// }
+// println(a)
+println(foo())
