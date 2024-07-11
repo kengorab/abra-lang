@@ -545,7 +545,19 @@ export type Compiler {
               Ok(res)
             }
           }
-          BinaryOp.Pow => todo("compiling binary expression: Pow", node.token.position)
+          BinaryOp.Pow => {
+            var leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
+            var rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
+
+            if self._typeIsInt(left.ty) && self._typeIsInt(right.ty) {
+              leftVal = self._currentFn.block.buildLToF(leftVal)
+              rightVal = self._currentFn.block.buildLToF(rightVal)
+              val res = match self._currentFn.block.buildCallRaw("pow", QbeType.F64, [leftVal, rightVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
+              Ok(res)
+            } else {
+              todo("compiling binary expression for floats: Pow", node.token.position)
+            }
+          }
           BinaryOp.And => {
             val leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
 
@@ -935,7 +947,7 @@ export type Compiler {
     var leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
     var rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
 
-    if left.ty != right.ty {
+    if !self._project.typesAreEquivalent(left.ty, right.ty) {
       val leftIsFloat = self._typeIsFloat(left.ty)
       val rightIsFloat = self._typeIsFloat(right.ty)
       if leftIsFloat && !rightIsFloat {
@@ -943,7 +955,7 @@ export type Compiler {
       } else if rightIsFloat && !leftIsFloat {
         leftVal = self._currentFn.block.buildLToF(leftVal)
       } else {
-        return unreachable("unknown operator '$op' between types '${left.ty.repr()}' and '${right.ty.repr()}")
+        return unreachable("unknown operator '$op' between types '${left.ty.repr()}' and '${right.ty.repr()}'")
       }
     }
 
@@ -954,7 +966,7 @@ export type Compiler {
     var leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
     var rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
 
-    if left.ty != right.ty return unreachable("equality operators require matching types", right.token.position)
+    if !self._project.typesAreEquivalent(left.ty, right.ty) return unreachable("equality operators require matching types", right.token.position)
 
     self._compileEqLogic(leftVal, rightVal, left.ty, left.token.position, localName, negate)
   }
@@ -1009,6 +1021,9 @@ export type Compiler {
       TypeKind.Instance(structOrEnum, generics) => {
         match structOrEnum {
           StructOrEnum.Struct(struct) => {
+            if struct == self._project.preludeIntStruct return Ok(Some(QbeType.U64))
+            if struct == self._project.preludeFloatStruct return Ok(Some(QbeType.F64))
+
             // moduleId == 1 -> "_intrinsics" module
             if struct.moduleId == 1 {
               if struct.label.name == "Byte" return Ok(Some(QbeType.U64))
@@ -1472,6 +1487,74 @@ export type Compiler {
         self._currentFn.block.addComment("...byte_as_int end")
 
         Ok(argVal)
+      }
+      "int_as_float" => {
+        self._currentFn.block.addComment("begin int_as_float...")
+
+        val _arg = if arguments[0] |arg| arg else return unreachable("'int_as_float' has 1 required argument")
+        val arg = if _arg |arg| arg else return unreachable("'int_as_float' has 1 required argument")
+        val argVal = match self._compileExpression(arg) { Ok(v) => v, Err(e) => return Err(e) }
+
+        val res = self._currentFn.block.buildLToF(argVal)
+
+        self._currentFn.block.addComment("...int_as_float end")
+
+        Ok(res)
+      }
+      "float_as_int" => {
+        self._currentFn.block.addComment("begin float_as_int...")
+
+        val _arg = if arguments[0] |arg| arg else return unreachable("'float_as_int' has 1 required argument")
+        val arg = if _arg |arg| arg else return unreachable("'float_as_int' has 1 required argument")
+        val argVal = match self._compileExpression(arg) { Ok(v) => v, Err(e) => return Err(e) }
+
+        val res = self._currentFn.block.buildFToL(argVal)
+
+        self._currentFn.block.addComment("...float_as_int end")
+
+        Ok(res)
+      }
+      "float_floor" => {
+        self._currentFn.block.addComment("begin float_floor...")
+
+        val _arg = if arguments[0] |arg| arg else return unreachable("'float_floor' has 1 required argument")
+        val arg = if _arg |arg| arg else return unreachable("'float_floor' has 1 required argument")
+        val argVal = match self._compileExpression(arg) { Ok(v) => v, Err(e) => return Err(e) }
+
+        val floorRes = match self._currentFn.block.buildCallRaw("floor", QbeType.F64, [argVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
+        val res = self._currentFn.block.buildFToL(floorRes)
+
+        self._currentFn.block.addComment("...float_floor end")
+
+        Ok(res)
+      }
+      "float_ceil" => {
+        self._currentFn.block.addComment("begin float_ceil...")
+
+        val _arg = if arguments[0] |arg| arg else return unreachable("'float_ceil' has 1 required argument")
+        val arg = if _arg |arg| arg else return unreachable("'float_ceil' has 1 required argument")
+        val argVal = match self._compileExpression(arg) { Ok(v) => v, Err(e) => return Err(e) }
+
+        val ceilRes = match self._currentFn.block.buildCallRaw("ceil", QbeType.F64, [argVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
+        val res = self._currentFn.block.buildFToL(ceilRes)
+
+        self._currentFn.block.addComment("...float_ceil end")
+
+        Ok(res)
+      }
+      "float_round" => {
+        self._currentFn.block.addComment("begin float_round...")
+
+        val _arg = if arguments[0] |arg| arg else return unreachable("'float_round' has 1 required argument")
+        val arg = if _arg |arg| arg else return unreachable("'float_round' has 1 required argument")
+        val argVal = match self._compileExpression(arg) { Ok(v) => v, Err(e) => return Err(e) }
+
+        val roundRes = match self._currentFn.block.buildCallRaw("round", QbeType.F64, [argVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
+        val res = self._currentFn.block.buildFToL(roundRes)
+
+        self._currentFn.block.addComment("...float_round end")
+
+        Ok(res)
       }
       _ => unreachable("unsupported intrinsic '$intrinsicFnName'", fn.label.position)
     }

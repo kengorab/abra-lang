@@ -126,7 +126,7 @@ type Int {
 type Float {
   func asInt(self): Int = intrinsics.floatAsInt(self)
 
-  func abs(self): Float = if self < 0 { -self } else { self }
+  func abs(self): Float = if self < 0.0 { -self } else { self }
 
   func floor(self): Int = intrinsics.floor(self)
 

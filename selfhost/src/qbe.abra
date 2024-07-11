@@ -525,6 +525,15 @@ export type Block {
     local
   }
 
+  func buildFToL(self, v: Value, signed = true, dst: String? = None): Value {
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, QbeType.U64)
+
+    self.append(Instruction.FToL(dst: Dest(name: local.repr(), ty: QbeType.U64), value: v, signed: signed))
+
+    local
+  }
+
   func buildCastD(self, value: Value, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, QbeType.U64)
@@ -796,6 +805,7 @@ enum Instruction {
   StoreD(value: Value, mem: Value)
 
   Ext(dst: Dest, value: Value, signed: Bool)
+  FToL(dst: Dest, value: Value, signed: Bool)
 
   Cast(dst: Dest, value: Value)
 
@@ -1083,6 +1093,12 @@ enum Instruction {
       Instruction.Ext(dst, v, signed) => {
         dst.encode(file)
         file.write(if signed " extsw " else " extuw ")
+        v.encode(file)
+        file.writeln()
+      }
+      Instruction.FToL(dst, v, signed) => {
+        dst.encode(file)
+        file.write(if signed " dtosi " else " dtoui ")
         v.encode(file)
         file.writeln()
       }
