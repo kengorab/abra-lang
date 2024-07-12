@@ -103,20 +103,23 @@ func test_arrayRangeIndexing() {
 }
 test_arrayRangeIndexing()
 
-// // Array.fill
+// Array.fill
 // (() => {
-//   val zeroes = Array.fill(5, 0)
-//   /// Expect: [0, 0, 0, 0, 0]
-//   println(zeroes)
+func test_arrayFill() {
+  val zeroes = Array.fill(5, 0)
+  /// Expect: [0, 0, 0, 0, 0]
+  println(zeroes)
 
-//   val arr = [1, 2]
-//   val refs = Array.fill(3, arr)
-//   /// Expect: [[1, 2], [1, 2], [1, 2]]
-//   println(refs)
-//   arr.push(3)
-//   /// Expect: [[1, 2, 3], [1, 2, 3], [1, 2, 3]]
-//   println(refs)
+  val arr = [1, 2]
+  val refs = Array.fill(3, arr)
+  /// Expect: [[1, 2], [1, 2], [1, 2]]
+  println(refs)
+  arr.push(3)
+  /// Expect: [[1, 2, 3], [1, 2, 3], [1, 2, 3]]
+  println(refs)
 // })()
+}
+test_arrayFill()
 
 // // Array.fillBy
 // (() => {
@@ -158,86 +161,101 @@ func test_arrayHash() {
 }
 test_arrayHash()
 
-// // Array#iterator
+// Array#iterator
 // (() => {
-//   val a = [1.23, 4.56, 7.89]
-//   val iter = a.iterator()
-//   /// Expect: Option.Some(value: 1.23)
-//   println(iter.next())
-//   /// Expect: Option.Some(value: 4.56)
-//   println(iter.next())
-//   /// Expect: Option.Some(value: 7.89)
-//   println(iter.next())
-//   /// Expect: Option.None
-//   println(iter.next())
-//   /// Expect: Option.None
-//   println(iter.next())
+func test_arrayIterator() {
+  val a = [1.23, 4.56, 7.89]
+  val iter = a.iterator()
+  /// Expect: Option.Some(value: 1.23)
+  println(iter.next())
+  /// Expect: Option.Some(value: 4.56)
+  println(iter.next())
+  /// Expect: Option.Some(value: 7.89)
+  println(iter.next())
+  /// Expect: Option.None
+  println(iter.next())
+  /// Expect: Option.None
+  println(iter.next())
 // })()
+}
+test_arrayIterator()
 
-// // For-loops
-// /// Expect: a
-// /// Expect: b
-// /// Expect: c
-// for ch in ["a", "b", "c"] println(ch)
+// For-loops
+/// Expect: a
+/// Expect: b
+/// Expect: c
+for ch in ["a", "b", "c"] println(ch)
 
-// // Array#push
+// Array#push
 // (() => {
-//   val intArr = [1, 2, 3]
-//   /// Expect: [1, 2, 3] 3 3
-//   println(intArr, intArr.length, intArr._capacity)
-//   // Pushing beyond the capacity should expand the array
-//   intArr.push(4)
-//   /// Expect: [1, 2, 3, 4] 4 6
-//   println(intArr, intArr.length, intArr._capacity)
+func test_arrayPush() {
+  val intArr = [1, 2, 3]
+  /// Expect: [1, 2, 3] 3 4
+  println(intArr, intArr.length, intArr._capacity)
+  // Pushing beyond the capacity should expand the array
+  intArr.push(4)
+  intArr.push(5)
+  /// Expect: [1, 2, 3, 4, 5] 5 8
+  println(intArr, intArr.length, intArr._capacity)
 
-//   // Popping element should leave _capacity
-//   intArr.pop()
-//   /// Expect: [1, 2, 3] 3 6
-//   println(intArr, intArr.length, intArr._capacity)
+  // Popping element should leave _capacity
+  intArr.pop()
+  intArr.pop()
+  /// Expect: [1, 2, 3] 3 8
+  println(intArr, intArr.length, intArr._capacity)
 
-//   val strArr = ["a", "b", "c"]
-//   val arrArr = [strArr, strArr]
-//   /// Expect: [[a, b, c], [a, b, c]] 3 3
-//   println(arrArr, strArr.length, strArr._capacity)
-//   // Pushing beyond the capacity should expand the array
-//   strArr.push("d")
-//   /// Expect: [[a, b, c, d], [a, b, c, d]] 4 6
-//   println(arrArr, strArr.length, strArr._capacity)
+  val strArr = ["a", "b", "c"]
+  val arrArr = [strArr, strArr]
+  /// Expect: [[a, b, c], [a, b, c]] 3 4
+  println(arrArr, strArr.length, strArr._capacity)
+  // Pushing beyond the capacity should expand the array
+  strArr.push("d")
+  strArr.push("e")
+  /// Expect: [[a, b, c, d, e], [a, b, c, d, e]] 5 8
+  println(arrArr, strArr.length, strArr._capacity)
 // })()
+}
+test_arrayPush()
 
-// // Array#pop
+// Array#pop
 // (() => {
-//   val arr = [1, 2, 3]
-//   /// Expect: Option.Some(value: 3)
-//   println(arr.pop())
-//   /// Expect: [1, 2]
-//   println(arr)
+func test_arrayPop() {
+  val arr = [1, 2, 3]
+  /// Expect: Option.Some(value: 3)
+  println(arr.pop())
+  /// Expect: [1, 2]
+  println(arr)
 
-//   /// Expect: Option.Some(value: 2)
-//   println(arr.pop())
-//   /// Expect: [1]
-//   println(arr)
+  /// Expect: Option.Some(value: 2)
+  println(arr.pop())
+  /// Expect: [1]
+  println(arr)
 
-//   /// Expect: Option.Some(value: 1)
-//   println(arr.pop())
-//   /// Expect: []
-//   println(arr)
+  /// Expect: Option.Some(value: 1)
+  println(arr.pop())
+  /// Expect: []
+  println(arr)
 
-//   /// Expect: Option.None
-//   println(arr.pop())
-//   /// Expect: []
-//   println(arr)
+  /// Expect: Option.None
+  println(arr.pop())
+  /// Expect: []
+  println(arr)
 // })()
+}
+test_arrayPop()
 
-// // Array#concat
+// Array#concat
 // (() => {
-//   val arr1 = [1, 2, 3, 4]
-//   val arr2 = [5, 6, 7]
-//   /// Expect: [1, 2, 3, 4, 5, 6, 7]
-//   println(arr1.concat(arr2))
-//   /// Expect: [1, 2, 3, 4] [5, 6, 7]
-//   println(arr1, arr2) // verify originals unmodified
+func test_arrayConcat() {
+  val arr1 = [1, 2, 3, 4]
+  val arr2 = [5, 6, 7]
+  /// Expect: [1, 2, 3, 4, 5, 6, 7]
+  println(arr1.concat(arr2))
+  /// Expect: [1, 2, 3, 4] [5, 6, 7]
+  println(arr1, arr2) // verify originals unmodified
 // })()
+}
+test_arrayConcat()
 
 // // Array#map
 // func addOne(i: Int): Int = i + 1
@@ -308,36 +326,42 @@ test_arrayHash()
 //   })
 // })()
 
-// // Array#join
+// Array#join
 // (() => {
-//   val arr = [123, 456, 789]
-//   /// Expect: 123|456|789
-//   println(arr.join("|"))
-//   /// Expect: 123456789
-//   println(arr.join())
+func test_arrayJoin() {
+  val arr = [123, 456, 789]
+  /// Expect: 123|456|789
+  println(arr.join("|"))
+  /// Expect: 123456789
+  println(arr.join())
 
-//   /// Expect: 1
-//   println([1].join(", "))
+  /// Expect: 1
+  println([1].join(", "))
 // })()
+}
+test_arrayJoin()
 
-// // Array#contains
+// Array#contains
 // (() => {
-//   val intArr = [123, 456, 789]
-//   /// Expect: true
-//   println(intArr.contains(123))
-//   /// Expect: false
-//   println(intArr.contains(10))
+func test_arrayContains() {
+  val intArr = [123, 456, 789]
+  /// Expect: true
+  println(intArr.contains(123))
+  /// Expect: false
+  println(intArr.contains(10))
 
-//   val empty: Int[] = []
-//   /// Expect: false
-//   println(empty.contains(123))
+  val empty: Int[] = []
+  /// Expect: false
+  println(empty.contains(123))
 
-//   val strArr = ["hello", "world"]
-//   /// Expect: true
-//   println(strArr.contains("hello"))
-//   /// Expect: false
-//   println(strArr.contains("HELLO"))
+  val strArr = ["hello", "world"]
+  /// Expect: true
+  println(strArr.contains("hello"))
+  /// Expect: false
+  println(strArr.contains("HELLO"))
 // })()
+}
+test_arrayContains()
 
 // // Array#find
 // (() => {

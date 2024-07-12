@@ -139,6 +139,7 @@ export type Compiler {
   _currentFn: QbeFunction
   _currentNode: TypedAstNode?
   _resolvedGenerics: ResolvedGenerics = ResolvedGenerics()
+  _loopStack: (/* loopStart: */ Label, /* loopEnd: */ Label)[] = []
   // cached fns
   _printf: QbeFunction = QbeFunction.spec(name: "printf", returnType: None, parameters: [], variadicIdx: Some(1))
   _snprintf: QbeFunction = QbeFunction.spec(name: "snprintf", returnType: Some(QbeType.U64), parameters: [], variadicIdx: Some(3))
@@ -236,15 +237,17 @@ export type Compiler {
             BindingPattern.Variable(label) => label.name
           }
 
+          val slotName = "$bindingName.slot"
           if condExprIsOpt |innerTy| {
             val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
             val optInnerValue = match self._emitOptValueGetValue(innerQbeType, condVal) { Ok(v) => v, Err(e) => return Err(e) }
 
-            val slotName = "$bindingName.slot"
             val slot = self._buildStackAllocForQbeType(innerQbeType, Some(slotName))
             self._currentFn.block.buildStore(innerQbeType, optInnerValue, slot)
           } else {
-            return todo("boolean cond bindings")
+            val boolTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveBool), "bool qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+            val slot = self._buildStackAllocForQbeType(boolTypeQbe, Some(slotName))
+            self._currentFn.block.buildStore(boolTypeQbe, Value.Int32(1), slot)
           }
         }
         for node in ifBlock {
@@ -269,45 +272,126 @@ export type Compiler {
         Ok(None)
       }
       TypedAstNodeKind.Match => todo("compiling match stmt/expr", node.token.position)
-      TypedAstNodeKind.While => todo("compiling while-loop", node.token.position)
+      TypedAstNodeKind.While(cond, conditionBinding, block, blockTerminator) => {
+        val loopStartLabel = self._currentFn.block.addLabel("while_loop_start")
+        val loopBodyLabel = self._currentFn.block.addLabel("while_loop_body")
+        val loopEndLabel = self._currentFn.block.addLabel("while_loop_end")
+
+        self._loopStack.push((loopStartLabel, loopEndLabel))
+
+        self._currentFn.block.registerLabel(loopStartLabel)
+        val condVal = match self._compileExpression(cond) { Ok(v) => v, Err(e) => return Err(e) }
+        val condExprIsOpt = self._typeIsOption(cond.ty)
+
+        if condExprIsOpt {
+          val variantIsOptionSome = match self._emitOptValueIsSomeVariant(condVal) { Ok(v) => v, Err(e) => return Err(e) }
+          self._currentFn.block.buildJnz(variantIsOptionSome, loopBodyLabel, loopEndLabel)
+        } else {
+          self._currentFn.block.buildJnz(condVal, loopBodyLabel, loopEndLabel)
+        }
+
+        self._currentFn.block.registerLabel(loopBodyLabel)
+        if conditionBinding |_p| {
+          // TODO: destructuring
+          val bindingPattern = _p[0]
+          val _vars = _p[1]
+
+          val bindingName = match bindingPattern {
+            BindingPattern.Variable(label) => label.name
+          }
+
+          val slotName = "$bindingName.slot"
+          if condExprIsOpt |innerTy| {
+            val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
+            val optInnerValue = match self._emitOptValueGetValue(innerQbeType, condVal) { Ok(v) => v, Err(e) => return Err(e) }
+
+            val slot = self._buildStackAllocForQbeType(innerQbeType, Some(slotName))
+            self._currentFn.block.buildStore(innerQbeType, optInnerValue, slot)
+          } else {
+            val boolTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveBool), "bool qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+            val slot = self._buildStackAllocForQbeType(boolTypeQbe, Some(slotName))
+            self._currentFn.block.buildStore(boolTypeQbe, Value.Int32(1), slot)
+          }
+        }
+
+        for node in block {
+          match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
+        }
+        if !blockTerminator {
+          self._currentFn.block.buildJmp(loopStartLabel)
+        }
+
+        self._currentFn.block.registerLabel(loopEndLabel)
+
+        self._loopStack.pop()
+
+        Ok(None)
+      }
       TypedAstNodeKind.For(typedIterator, itemBindingPattern, indexBinding, block) => {
         if indexBinding return todo("for-loop index bindings", node.token.position)
 
         val _t = match self._getInstanceTypeForType(typedIterator.ty) { Ok(v) => v, Err(e) => return Err(e) }
         // TODO: destructuring
         val instTy = _t[0]
-        val _typeArgs = _t[1]
+        val typeArgs = _t[1]
 
         val _p = match instTy {
           StructOrEnum.Struct(s) => {
-            if s == self._project.preludeArrayStruct {
-              return todo("array as for-loop target") // will probably need to add a ResolvedGenerics layer when doing this
-            }
-            if s == self._project.preludeSetStruct {
+            val _p = if s == self._project.preludeArrayStruct {
+              val innerTy = if typeArgs[0] |t| t else return unreachable("Array has 1 required type argument")
+              match self._resolvedGenerics.addLayer("array literal", { "T": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "array literal", message: e))) }
+
+              val arrayVal = match self._compileExpression(typedIterator) { Ok(v) => v, Err(e) => return Err(e) }
+              val instType = match self._addResolvedGenericsLayerForInstanceMethod(typedIterator.ty, "iterator", typedIterator.token.position) { Ok(v) => v, Err(e) => return Err(e) }
+              val iteratorFn = if s.instanceMethods.find(m => m.label.name == "iterator") |fn| fn else return unreachable("Array#iterator must exist")
+              val iteratorFnVal = match self._getOrCompileMethod(instType, iteratorFn) { Ok(v) => v, Err(e) => return Err(e) }
+              self._resolvedGenerics.popLayer()
+
+              val iter = match self._currentFn.block.buildCall(iteratorFnVal, [arrayVal], Some("iterator")) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+              val _t = match self._getInstanceTypeForType(iteratorFn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
+              // TODO: destructuring
+              val instanceMethods = match _t[0] {
+                StructOrEnum.Struct(s) => s.instanceMethods
+                StructOrEnum.Enum(e) => e.instanceMethods
+              }
+              val nextFn = if instanceMethods.find(m => m.label.name == "next") |fn| fn else return unreachable("a type must have a 'next' method if it's to be iterable")
+
+              val iterTy = Type(kind: TypeKind.Instance(_t[0], _t[1]))
+              (iter, iterTy, nextFn, true)
+            } else if s == self._project.preludeSetStruct {
               return todo("set as for-loop target")
-            }
-            if s == self._project.preludeMapStruct {
+            } else if s == self._project.preludeMapStruct {
               return todo("map as for-loop target")
+            } else {
+              val iter = match self._compileExpression(typedIterator) { Ok(v) => v, Err(e) => return Err(e) }
+              val nextFn = if s.instanceMethods.find(m => m.label.name == "next") |fn| fn else return unreachable("a type must have a 'next' method if it's to be iterable")
+
+              (iter, typedIterator.ty, nextFn, false)
             }
-
-            val iter = match self._compileExpression(typedIterator) { Ok(v) => v, Err(e) => return Err(e) }
-            val nextFn = if s.instanceMethods.find(m => m.label.name == "next") |fn| fn else return unreachable("a type must have a 'next' method if it's to be iterable")
-
-            (iter, nextFn)
+            _p
           }
           StructOrEnum.Enum(_enum) => return todo("enum as for-loop target")
         }
         // TODO: destructuring
         val iterVal = _p[0]
-        val nextFn = _p[1]
+        val iterTy = _p[1]
+        val nextFn = _p[2]
+        val popAdditionalResolvedGenericsLayer = _p[3]
+
         val nextItemTy = if self._typeIsOption(nextFn.returnType) |innerTy| innerTy else return unreachable("a 'next' method must return an Option type")
+        val iterInstTy = match self._addResolvedGenericsLayerForInstanceMethod(iterTy, "next", node.token.position) { Ok(v) => v, Err(e) => return Err(e) }
         val nextItemQbeTy = match self._getQbeTypeForTypeExpect(nextItemTy, "unacceptable type for 'next' method return type") { Ok(v) => v, Err(e) => return Err(e) }
 
-        val nextFnVal = match self._getOrCompileMethod(typedIterator.ty, nextFn) { Ok(v) => v, Err(e) => return Err(e) }
+        val nextFnVal = match self._getOrCompileMethod(iterInstTy, nextFn) { Ok(v) => v, Err(e) => return Err(e) }
+        self._resolvedGenerics.popLayer()
+        if popAdditionalResolvedGenericsLayer self._resolvedGenerics.popLayer()
 
         val loopStartLabel = self._currentFn.block.addLabel("for_loop_start")
         val loopBodyLabel = self._currentFn.block.addLabel("for_loop_body")
         val loopEndLabel = self._currentFn.block.addLabel("for_loop_end")
+
+        self._loopStack.push((loopStartLabel, loopEndLabel))
 
         self._currentFn.block.registerLabel(loopStartLabel)
         val itemName = match itemBindingPattern[0] {
@@ -331,6 +415,8 @@ export type Compiler {
 
         self._currentFn.block.registerLabel(loopEndLabel)
 
+        self._loopStack.pop()
+
         Ok(None)
       }
       TypedAstNodeKind.BindingDeclaration(bindingDeclNode) => {
@@ -353,8 +439,28 @@ export type Compiler {
       TypedAstNodeKind.FunctionDeclaration => Ok(None)
       TypedAstNodeKind.TypeDeclaration => Ok(None)
       TypedAstNodeKind.EnumDeclaration => Ok(None)
-      TypedAstNodeKind.Break => todo("compiling break statement", node.token.position)
-      TypedAstNodeKind.Continue => todo("compiling continue statement", node.token.position)
+      TypedAstNodeKind.Break => {
+        if self._loopStack[-1] |currentLoop| {
+          // TODO: destructuring
+          val loopEndLabel = currentLoop[1]
+          self._currentFn.block.buildJmp(loopEndLabel)
+
+          Ok(None)
+        } else {
+          unreachable("cannot have a break statement outside of a loop", node.token.position)
+        }
+      }
+      TypedAstNodeKind.Continue => {
+        if self._loopStack[-1] |currentLoop| {
+          // TODO: destructuring
+          val loopStartLabel = currentLoop[0]
+          self._currentFn.block.buildJmp(loopStartLabel)
+
+          Ok(None)
+        } else {
+          unreachable("cannot have a continue statement outside of a loop", node.token.position)
+        }
+      }
       TypedAstNodeKind.Return(expr) => {
         if expr |expr| {
           val retVal = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
@@ -847,6 +953,7 @@ export type Compiler {
                   StructOrEnum.Enum => return unreachable("array-like indexing never applies to enum instances")
                 }
                 val getFnVal = match self._getOrCompileMethod(instType, getFn) { Ok(v) => v, Err(e) => return Err(e) }
+                self._resolvedGenerics.popLayer()
 
                 val res = match self._currentFn.block.buildCall(getFnVal, [exprVal, idxExprVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
                 Ok(res)
@@ -876,11 +983,10 @@ export type Compiler {
                   StructOrEnum.Enum => return unreachable("array-like indexing never applies to enum instances")
                 }
                 val getRangeFnVal = match self._getOrCompileMethod(instType, getRangeFn) { Ok(v) => v, Err(e) => return Err(e) }
+                self._resolvedGenerics.popLayer()
 
                 val res = match self._currentFn.block.buildCall(getRangeFnVal, [exprVal, startExprVal, endExprVal, Value.Int32(maskParam)]) { Ok(v) => v, Err(e) => return qbeError(e) }
                 Ok(res)
-
-                // return todo("compiling range-indexing expression", node.token.position)
               }
             }
           }
@@ -918,15 +1024,17 @@ export type Compiler {
             BindingPattern.Variable(label) => label.name
           }
 
+          val slotName = "$bindingName.slot"
           if condExprIsOpt |innerTy| {
             val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
             val optInnerValue = match self._emitOptValueGetValue(innerQbeType, condVal) { Ok(v) => v, Err(e) => return Err(e) }
 
-            val slotName = "$bindingName.slot"
             val slot = self._buildStackAllocForQbeType(innerQbeType, Some(slotName))
             self._currentFn.block.buildStore(innerQbeType, optInnerValue, slot)
           } else {
-            return todo("boolean cond bindings")
+            val boolTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveBool), "bool qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+            val slot = self._buildStackAllocForQbeType(boolTypeQbe, Some(slotName))
+            self._currentFn.block.buildStore(boolTypeQbe, Value.Int32(1), slot)
           }
         }
         for node, idx in ifBlock {

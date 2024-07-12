@@ -701,7 +701,7 @@ export enum TypedAstNodeKind {
   Assignment(mode: TypedAssignmentMode, op: AssignOp, expr: TypedAstNode)
   If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], ifBlockTerminator: Terminator?, typedElseBlock: TypedAstNode[], elseBlockTerminator: Terminator?)
   Match(isStatement: Bool, expr: TypedAstNode, cases: TypedMatchCase[])
-  While(typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, block: TypedAstNode[])
+  While(typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, block: TypedAstNode[], terminator: Terminator?)
   For(typedIterator: TypedAstNode, itemBinding: (BindingPattern, Variable[]), indexBinding: Variable?, block: TypedAstNode[])
   BindingDeclaration(node: TypedBindingDeclarationNode)
   FunctionDeclaration(fn: Function)
@@ -3064,7 +3064,7 @@ export type Typechecker {
     self.currentScope = prevScope
     self.currentScope.terminator = terminator
 
-    Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.While(typedCondition, conditionBindingPattern, typedNodes)))
+    Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.While(typedCondition, conditionBindingPattern, typedNodes, terminator)))
   }
 
   func _typeIsOption(self, ty: Type): Type? {
