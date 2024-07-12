@@ -328,8 +328,6 @@ export type Compiler {
         Ok(None)
       }
       TypedAstNodeKind.For(typedIterator, itemBindingPattern, indexBinding, block) => {
-        if indexBinding return todo("for-loop index bindings", node.token.position)
-
         val _t = match self._getInstanceTypeForType(typedIterator.ty) { Ok(v) => v, Err(e) => return Err(e) }
         // TODO: destructuring
         val instTy = _t[0]
@@ -393,6 +391,15 @@ export type Compiler {
 
         self._loopStack.push((loopStartLabel, loopEndLabel))
 
+        val indexBindingSlot = if indexBinding |bindingVar| {
+          val slotName = "${bindingVar.label.name}.slot"
+          val slot = self._buildStackAllocForQbeType(QbeType.U64, Some(slotName))
+          self._currentFn.block.buildStoreL(Value.Int(-1), slot)
+          Some(slot)
+        } else {
+          None
+        }
+
         self._currentFn.block.registerLabel(loopStartLabel)
         val itemName = match itemBindingPattern[0] {
           BindingPattern.Variable(label) => label.name
@@ -407,6 +414,11 @@ export type Compiler {
         val optInnerValue = match self._emitOptValueGetValue(nextItemQbeTy, nextRet) { Ok(v) => v, Err(e) => return Err(e) }
         val itemSlot = self._buildStackAllocForQbeType(nextItemQbeTy, Some(itemSlotName))
         self._currentFn.block.buildStore(nextItemQbeTy, optInnerValue, itemSlot)
+        if indexBindingSlot |idxSlot| {
+          val idxVal = self._currentFn.block.buildLoadL(idxSlot)
+          val idxIncrVal = match self._currentFn.block.buildAdd(Value.Int(1), idxVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+          self._currentFn.block.buildStoreL(idxIncrVal, idxSlot)
+        }
 
         for node in block {
           match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }

@@ -57,34 +57,34 @@ for ch in ["a", "b", "c"] {
   println(ch)
 }
 
-// /// Expect: a 0
-// /// Expect: b 1
-// /// Expect: c 2
-// for ch, idx in ["a", "b", "c"] {
-//   println(ch, idx)
-// }
+/// Expect: a 0
+/// Expect: b 1
+/// Expect: c 2
+for ch, idx in ["a", "b", "c"] {
+  println(ch, idx)
+}
 
-// /// Expect: a 0
-// /// Expect: b 1
-// /// Expect: done
-// for ch, idx in ["a", "b", "c"] {
-//   println(ch, idx)
-//   if ch == "b" {
-//     break
-//   }
-// }
-// println("done")
+/// Expect: a 0
+/// Expect: b 1
+/// Expect: done
+for ch, idx in ["a", "b", "c"] {
+  println(ch, idx)
+  if ch == "b" {
+    break
+  }
+}
+println("done")
 
-// /// Expect: a 0
-// /// Expect: c 2
-// /// Expect: done
-// for ch, idx in ["a", "b", "c"] {
-//   if ch == "b" {
-//     continue
-//   }
-//   println(ch, idx)
-// }
-// println("done")
+/// Expect: a 0
+/// Expect: c 2
+/// Expect: done
+for ch, idx in ["a", "b", "c"] {
+  if ch == "b" {
+    continue
+  }
+  println(ch, idx)
+}
+println("done")
 
 // Iterating over `Iterator` type
 /// Expect: 0
