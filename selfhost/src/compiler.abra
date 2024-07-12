@@ -333,34 +333,59 @@ export type Compiler {
         val _t = match self._getInstanceTypeForType(typedIterator.ty) { Ok(v) => v, Err(e) => return Err(e) }
         // TODO: destructuring
         val instTy = _t[0]
-        val _typeArgs = _t[1]
+        val typeArgs = _t[1]
 
         val _p = match instTy {
           StructOrEnum.Struct(s) => {
-            if s == self._project.preludeArrayStruct {
-              return todo("array as for-loop target") // will probably need to add a ResolvedGenerics layer when doing this
-            }
-            if s == self._project.preludeSetStruct {
+            val _p = if s == self._project.preludeArrayStruct {
+              val innerTy = if typeArgs[0] |t| t else return unreachable("Array has 1 required type argument")
+              match self._resolvedGenerics.addLayer("array literal", { "T": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "array literal", message: e))) }
+
+              val arrayVal = match self._compileExpression(typedIterator) { Ok(v) => v, Err(e) => return Err(e) }
+              val instType = match self._addResolvedGenericsLayerForInstanceMethod(typedIterator.ty, "iterator", typedIterator.token.position) { Ok(v) => v, Err(e) => return Err(e) }
+              val iteratorFn = if s.instanceMethods.find(m => m.label.name == "iterator") |fn| fn else return unreachable("Array#iterator must exist")
+              val iteratorFnVal = match self._getOrCompileMethod(instType, iteratorFn) { Ok(v) => v, Err(e) => return Err(e) }
+              self._resolvedGenerics.popLayer()
+
+              val iter = match self._currentFn.block.buildCall(iteratorFnVal, [arrayVal], Some("iterator")) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+              val _t = match self._getInstanceTypeForType(iteratorFn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
+              // TODO: destructuring
+              val instanceMethods = match _t[0] {
+                StructOrEnum.Struct(s) => s.instanceMethods
+                StructOrEnum.Enum(e) => e.instanceMethods
+              }
+              val nextFn = if instanceMethods.find(m => m.label.name == "next") |fn| fn else return unreachable("a type must have a 'next' method if it's to be iterable")
+
+              val iterTy = Type(kind: TypeKind.Instance(_t[0], _t[1]))
+              (iter, iterTy, nextFn, true)
+            } else if s == self._project.preludeSetStruct {
               return todo("set as for-loop target")
-            }
-            if s == self._project.preludeMapStruct {
+            } else if s == self._project.preludeMapStruct {
               return todo("map as for-loop target")
+            } else {
+              val iter = match self._compileExpression(typedIterator) { Ok(v) => v, Err(e) => return Err(e) }
+              val nextFn = if s.instanceMethods.find(m => m.label.name == "next") |fn| fn else return unreachable("a type must have a 'next' method if it's to be iterable")
+
+              (iter, typedIterator.ty, nextFn, false)
             }
-
-            val iter = match self._compileExpression(typedIterator) { Ok(v) => v, Err(e) => return Err(e) }
-            val nextFn = if s.instanceMethods.find(m => m.label.name == "next") |fn| fn else return unreachable("a type must have a 'next' method if it's to be iterable")
-
-            (iter, nextFn)
+            _p
           }
           StructOrEnum.Enum(_enum) => return todo("enum as for-loop target")
         }
         // TODO: destructuring
         val iterVal = _p[0]
-        val nextFn = _p[1]
+        val iterTy = _p[1]
+        val nextFn = _p[2]
+        val popAdditionalResolvedGenericsLayer = _p[3]
+
         val nextItemTy = if self._typeIsOption(nextFn.returnType) |innerTy| innerTy else return unreachable("a 'next' method must return an Option type")
+        val iterInstTy = match self._addResolvedGenericsLayerForInstanceMethod(iterTy, "next", node.token.position) { Ok(v) => v, Err(e) => return Err(e) }
         val nextItemQbeTy = match self._getQbeTypeForTypeExpect(nextItemTy, "unacceptable type for 'next' method return type") { Ok(v) => v, Err(e) => return Err(e) }
 
-        val nextFnVal = match self._getOrCompileMethod(typedIterator.ty, nextFn) { Ok(v) => v, Err(e) => return Err(e) }
+        val nextFnVal = match self._getOrCompileMethod(iterInstTy, nextFn) { Ok(v) => v, Err(e) => return Err(e) }
+        self._resolvedGenerics.popLayer()
+        if popAdditionalResolvedGenericsLayer self._resolvedGenerics.popLayer()
 
         val loopStartLabel = self._currentFn.block.addLabel("for_loop_start")
         val loopBodyLabel = self._currentFn.block.addLabel("for_loop_body")
@@ -928,6 +953,7 @@ export type Compiler {
                   StructOrEnum.Enum => return unreachable("array-like indexing never applies to enum instances")
                 }
                 val getFnVal = match self._getOrCompileMethod(instType, getFn) { Ok(v) => v, Err(e) => return Err(e) }
+                self._resolvedGenerics.popLayer()
 
                 val res = match self._currentFn.block.buildCall(getFnVal, [exprVal, idxExprVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
                 Ok(res)
@@ -957,11 +983,10 @@ export type Compiler {
                   StructOrEnum.Enum => return unreachable("array-like indexing never applies to enum instances")
                 }
                 val getRangeFnVal = match self._getOrCompileMethod(instType, getRangeFn) { Ok(v) => v, Err(e) => return Err(e) }
+                self._resolvedGenerics.popLayer()
 
                 val res = match self._currentFn.block.buildCall(getRangeFnVal, [exprVal, startExprVal, endExprVal, Value.Int32(maskParam)]) { Ok(v) => v, Err(e) => return qbeError(e) }
                 Ok(res)
-
-                // return todo("compiling range-indexing expression", node.token.position)
               }
             }
           }

@@ -49,13 +49,13 @@ while x < 4 {
 
 // For-loops
 
-// // No index var
-// /// Expect: a
-// /// Expect: b
-// /// Expect: c
-// for ch in ["a", "b", "c"] {
-//   println(ch)
-// }
+// No index var
+/// Expect: a
+/// Expect: b
+/// Expect: c
+for ch in ["a", "b", "c"] {
+  println(ch)
+}
 
 // /// Expect: a 0
 // /// Expect: b 1

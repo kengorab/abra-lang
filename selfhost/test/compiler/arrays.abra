@@ -180,11 +180,11 @@ func test_arrayIterator() {
 }
 test_arrayIterator()
 
-// // For-loops
-// /// Expect: a
-// /// Expect: b
-// /// Expect: c
-// for ch in ["a", "b", "c"] println(ch)
+// For-loops
+/// Expect: a
+/// Expect: b
+/// Expect: c
+for ch in ["a", "b", "c"] println(ch)
 
 // Array#push
 // (() => {
