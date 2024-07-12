@@ -1,51 +1,51 @@
-// // While-loops
+// While-loops
 
-// var i = 0
-// while i < 3 {
-//   println(i)
-//   i += 1
-// }
-// /// Expect: 0
-// /// Expect: 1
-// /// Expect: 2
-// /// Expect: done
-// println("done")
+var i = 0
+while i < 3 {
+  println(i)
+  i += 1
+}
+/// Expect: 0
+/// Expect: 1
+/// Expect: 2
+/// Expect: done
+println("done")
 
-// // Condition bindings
-// val arr = [1, 2, 3]
-// var n = 0
-// while arr[n] |item| {
-//   println(100 + item)
-//   n += 1
-// }
-// /// Expect: 101
-// /// Expect: 102
-// /// Expect: 103
-// /// Expect: done
-// println("done")
+// Condition bindings
+val arr = [1, 2, 3]
+var n = 0
+while arr[n] |item| {
+  println(100 + item)
+  n += 1
+}
+/// Expect: 101
+/// Expect: 102
+/// Expect: 103
+/// Expect: done
+println("done")
 
-// // Control flow within loops
-// /// Expect: first loop
-// /// Expect: done
-// while true {
-//   println("first loop")
-//   break
-// }
-// println("done")
+// Control flow within loops
+/// Expect: first loop
+/// Expect: done
+while true {
+  println("first loop")
+  break
+}
+println("done")
 
 
-// /// Expect: 0
-// /// Expect: 1
-// /// Expect: 3
-// var x = 0
-// while x < 4 {
-//   if x == 2 {
-//     x += 1
-//     continue
-//   }
-//   println(x)
-//   x += 1
-// }
+/// Expect: 0
+/// Expect: 1
+/// Expect: 3
+var x = 0
+while x < 4 {
+  if x == 2 {
+    x += 1
+    continue
+  }
+  println(x)
+  x += 1
+}
 
 // For-loops
 

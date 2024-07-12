@@ -164,67 +164,79 @@ func test_stringToUpper() {
 }
 test_stringToUpper()
 
-// // String#split
+// String#split
 // (() => {
-  // /// Expect: [a, s, d, f]
-  // println("a s d f".split(by: " "))
+func test_stringSplit() {
+  /// Expect: [a, s, d, f]
+  println("a s d f".split(by: " "))
 
-//   /// Expect: [, a, b, c d]
-//   println("  a  b  c d".split("  "))
+  /// Expect: [, a, b, c d]
+  println("  a  b  c d".split("  "))
 
-//   /// Expect: [a, s, d, f]
-//   println("asdf".split(""))
+  /// Expect: [a, s, d, f]
+  println("asdf".split(""))
 
-//   /// Expect: [a, s, d, f]
-//   println("a\ns\nd\nf".split("\n"))
+  /// Expect: [a, s, d, f]
+  println("a\ns\nd\nf".split("\n"))
 
-//   /// Expect: [asdf]
-//   println("asdf".split("qwer"))
+  /// Expect: [asdf]
+  println("asdf".split("qwer"))
 // })()
+}
+test_stringSplit()
 
-// // String#lines
+// String#lines
 // (() => {
-//   /// Expect: [a s d f]
-//   println("a s d f".lines())
+func test_stringLines() {
+  /// Expect: [a s d f]
+  println("a s d f".lines())
 
-//   /// Expect: []
-//   println("".lines())
+  /// Expect: []
+  println("".lines())
 
-//   /// Expect: [a, s, d, f]
-//   println("a\ns\nd\nf".lines())
+  /// Expect: [a, s, d, f]
+  println("a\ns\nd\nf".lines())
 // })()
+}
+test_stringLines()
 
-// // String#startsWith
+// String#startsWith
 // (() => {
-//   /// Expect: true
-//   println("".startsWith(""))
-//   /// Expect: true
-//   println("hello".startsWith(""))
-//   /// Expect: true
-//   println("hello".startsWith("he"))
-//   /// Expect: true
-//   println("hello".startsWith("hello"))
-//   /// Expect: false
-//   println("hello".startsWith("hex"))
-//   /// Expect: false
-//   println("hello".startsWith("hhello"))
+func test_stringStartsWith() {
+  /// Expect: true
+  println("".startsWith(""))
+  /// Expect: true
+  println("hello".startsWith(""))
+  /// Expect: true
+  println("hello".startsWith("he"))
+  /// Expect: true
+  println("hello".startsWith("hello"))
+  /// Expect: false
+  println("hello".startsWith("hex"))
+  /// Expect: false
+  println("hello".startsWith("hhello"))
 // })()
+}
+test_stringStartsWith()
 
-// // String#endsWith
+// String#endsWith
 // (() => {
-//   /// Expect: true
-//   println("".endsWith(""))
-//   /// Expect: true
-//   println("hello".endsWith(""))
-//   /// Expect: true
-//   println("hello".endsWith("lo"))
-//   /// Expect: true
-//   println("hello".endsWith("hello"))
-//   /// Expect: false
-//   println("hello".endsWith("lo!"))
-//   /// Expect: false
-//   println("hello".endsWith("hhello"))
+func test_stringEndsWith() {
+  /// Expect: true
+  println("".endsWith(""))
+  /// Expect: true
+  println("hello".endsWith(""))
+  /// Expect: true
+  println("hello".endsWith("lo"))
+  /// Expect: true
+  println("hello".endsWith("hello"))
+  /// Expect: false
+  println("hello".endsWith("lo!"))
+  /// Expect: false
+  println("hello".endsWith("hhello"))
 // })()
+}
+test_stringEndsWith()
 
 // // String#concat
 // (() => {
@@ -242,14 +254,17 @@ test_stringToUpper()
 //   println("hello".concat(1, 2.3, true, [1, 2, 3]))
 // })()
 
-// // String#repeat
+// String#repeat
 // (() => {
-//   /// Expect:  |
-//   println("abc".repeat(0), "|")
+func test_stringRepeat() {
+  /// Expect:  |
+  println("abc".repeat(0), "|")
 
-//   /// Expect:  |
-//   println("abc".repeat(-1), "|")
+  /// Expect:  |
+  println("abc".repeat(-1), "|")
 
-//   /// Expect: abcabcabc
-//   println("abc".repeat(3))
+  /// Expect: abcabcabc
+  println("abc".repeat(3))
 // })()
+}
+test_stringRepeat()

@@ -139,6 +139,7 @@ export type Compiler {
   _currentFn: QbeFunction
   _currentNode: TypedAstNode?
   _resolvedGenerics: ResolvedGenerics = ResolvedGenerics()
+  _loopStack: (/* loopStart: */ Label, /* loopEnd: */ Label)[] = []
   // cached fns
   _printf: QbeFunction = QbeFunction.spec(name: "printf", returnType: None, parameters: [], variadicIdx: Some(1))
   _snprintf: QbeFunction = QbeFunction.spec(name: "snprintf", returnType: Some(QbeType.U64), parameters: [], variadicIdx: Some(3))
@@ -236,15 +237,17 @@ export type Compiler {
             BindingPattern.Variable(label) => label.name
           }
 
+          val slotName = "$bindingName.slot"
           if condExprIsOpt |innerTy| {
             val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
             val optInnerValue = match self._emitOptValueGetValue(innerQbeType, condVal) { Ok(v) => v, Err(e) => return Err(e) }
 
-            val slotName = "$bindingName.slot"
             val slot = self._buildStackAllocForQbeType(innerQbeType, Some(slotName))
             self._currentFn.block.buildStore(innerQbeType, optInnerValue, slot)
           } else {
-            return todo("boolean cond bindings")
+            val boolTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveBool), "bool qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+            val slot = self._buildStackAllocForQbeType(boolTypeQbe, Some(slotName))
+            self._currentFn.block.buildStore(boolTypeQbe, Value.Int32(1), slot)
           }
         }
         for node in ifBlock {
@@ -269,7 +272,61 @@ export type Compiler {
         Ok(None)
       }
       TypedAstNodeKind.Match => todo("compiling match stmt/expr", node.token.position)
-      TypedAstNodeKind.While => todo("compiling while-loop", node.token.position)
+      TypedAstNodeKind.While(cond, conditionBinding, block, blockTerminator) => {
+        val loopStartLabel = self._currentFn.block.addLabel("while_loop_start")
+        val loopBodyLabel = self._currentFn.block.addLabel("while_loop_body")
+        val loopEndLabel = self._currentFn.block.addLabel("while_loop_end")
+
+        self._loopStack.push((loopStartLabel, loopEndLabel))
+
+        self._currentFn.block.registerLabel(loopStartLabel)
+        val condVal = match self._compileExpression(cond) { Ok(v) => v, Err(e) => return Err(e) }
+        val condExprIsOpt = self._typeIsOption(cond.ty)
+
+        if condExprIsOpt {
+          val variantIsOptionSome = match self._emitOptValueIsSomeVariant(condVal) { Ok(v) => v, Err(e) => return Err(e) }
+          self._currentFn.block.buildJnz(variantIsOptionSome, loopBodyLabel, loopEndLabel)
+        } else {
+          self._currentFn.block.buildJnz(condVal, loopBodyLabel, loopEndLabel)
+        }
+
+        self._currentFn.block.registerLabel(loopBodyLabel)
+        if conditionBinding |_p| {
+          // TODO: destructuring
+          val bindingPattern = _p[0]
+          val _vars = _p[1]
+
+          val bindingName = match bindingPattern {
+            BindingPattern.Variable(label) => label.name
+          }
+
+          val slotName = "$bindingName.slot"
+          if condExprIsOpt |innerTy| {
+            val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
+            val optInnerValue = match self._emitOptValueGetValue(innerQbeType, condVal) { Ok(v) => v, Err(e) => return Err(e) }
+
+            val slot = self._buildStackAllocForQbeType(innerQbeType, Some(slotName))
+            self._currentFn.block.buildStore(innerQbeType, optInnerValue, slot)
+          } else {
+            val boolTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveBool), "bool qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+            val slot = self._buildStackAllocForQbeType(boolTypeQbe, Some(slotName))
+            self._currentFn.block.buildStore(boolTypeQbe, Value.Int32(1), slot)
+          }
+        }
+
+        for node in block {
+          match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
+        }
+        if !blockTerminator {
+          self._currentFn.block.buildJmp(loopStartLabel)
+        }
+
+        self._currentFn.block.registerLabel(loopEndLabel)
+
+        self._loopStack.pop()
+
+        Ok(None)
+      }
       TypedAstNodeKind.For(typedIterator, itemBindingPattern, indexBinding, block) => {
         if indexBinding return todo("for-loop index bindings", node.token.position)
 
@@ -309,6 +366,8 @@ export type Compiler {
         val loopBodyLabel = self._currentFn.block.addLabel("for_loop_body")
         val loopEndLabel = self._currentFn.block.addLabel("for_loop_end")
 
+        self._loopStack.push((loopStartLabel, loopEndLabel))
+
         self._currentFn.block.registerLabel(loopStartLabel)
         val itemName = match itemBindingPattern[0] {
           BindingPattern.Variable(label) => label.name
@@ -330,6 +389,8 @@ export type Compiler {
         self._currentFn.block.buildJmp(loopStartLabel)
 
         self._currentFn.block.registerLabel(loopEndLabel)
+
+        self._loopStack.pop()
 
         Ok(None)
       }
@@ -353,8 +414,28 @@ export type Compiler {
       TypedAstNodeKind.FunctionDeclaration => Ok(None)
       TypedAstNodeKind.TypeDeclaration => Ok(None)
       TypedAstNodeKind.EnumDeclaration => Ok(None)
-      TypedAstNodeKind.Break => todo("compiling break statement", node.token.position)
-      TypedAstNodeKind.Continue => todo("compiling continue statement", node.token.position)
+      TypedAstNodeKind.Break => {
+        if self._loopStack[-1] |currentLoop| {
+          // TODO: destructuring
+          val loopEndLabel = currentLoop[1]
+          self._currentFn.block.buildJmp(loopEndLabel)
+
+          Ok(None)
+        } else {
+          unreachable("cannot have a break statement outside of a loop", node.token.position)
+        }
+      }
+      TypedAstNodeKind.Continue => {
+        if self._loopStack[-1] |currentLoop| {
+          // TODO: destructuring
+          val loopStartLabel = currentLoop[0]
+          self._currentFn.block.buildJmp(loopStartLabel)
+
+          Ok(None)
+        } else {
+          unreachable("cannot have a continue statement outside of a loop", node.token.position)
+        }
+      }
       TypedAstNodeKind.Return(expr) => {
         if expr |expr| {
           val retVal = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
@@ -918,15 +999,17 @@ export type Compiler {
             BindingPattern.Variable(label) => label.name
           }
 
+          val slotName = "$bindingName.slot"
           if condExprIsOpt |innerTy| {
             val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
             val optInnerValue = match self._emitOptValueGetValue(innerQbeType, condVal) { Ok(v) => v, Err(e) => return Err(e) }
 
-            val slotName = "$bindingName.slot"
             val slot = self._buildStackAllocForQbeType(innerQbeType, Some(slotName))
             self._currentFn.block.buildStore(innerQbeType, optInnerValue, slot)
           } else {
-            return todo("boolean cond bindings")
+            val boolTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveBool), "bool qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+            val slot = self._buildStackAllocForQbeType(boolTypeQbe, Some(slotName))
+            self._currentFn.block.buildStore(boolTypeQbe, Value.Int32(1), slot)
           }
         }
         for node, idx in ifBlock {
