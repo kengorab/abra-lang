@@ -81,14 +81,15 @@ test_eqOp()
 // })()
 
 // val xyz = "abc"
-// type TestOptChainingMethodInvocation {
-//   func unitMethod(self) = println("TestOptChainingMethodInvocation#unitMethod")
+type TestOptChainingMethodInvocation {
+  func unitMethod(self) = println("TestOptChainingMethodInvocation#unitMethod")
 //   func closure(self): Int = xyz.length
-// }
+}
 
-// // Optional-chaining accessor
+// Optional-chaining accessor
 // (() => {
-//   val arr = ["a", "b", "c", "d"]
+func test_optSafe() {
+  val arr = ["a", "b", "c", "d"]
 
 //   // Getting field of known-non-None value
 //   /// Expect: 4
@@ -103,18 +104,18 @@ test_eqOp()
 //   /// Expect: Option.None
 //   println(arr[6]?.length)
 
-//   // Calling method of Option value
-//   /// Expect: Option.Some(value: false)
-//   println(arr[0]?.isEmpty())
-//   /// Expect: Option.None
-//   println(arr[6]?.isEmpty())
+  // Calling method of Option value
+  /// Expect: Option.Some(value: false)
+  println(arr[0]?.isEmpty())
+  /// Expect: Option.None
+  println(arr[6]?.isEmpty())
 
-//   // Calling unit method of Option value
-//   val t1: TestOptChainingMethodInvocation? = None
-//   t1?.unitMethod()
-//   val t2 = Some(TestOptChainingMethodInvocation())
-//   /// Expect: TestOptChainingMethodInvocation#unitMethod
-//   t2?.unitMethod()
+  // Calling unit method of Option value
+  val t1: TestOptChainingMethodInvocation? = None
+  t1?.unitMethod()
+  val t2 = Some(TestOptChainingMethodInvocation())
+  /// Expect: TestOptChainingMethodInvocation#unitMethod
+  t2?.unitMethod()
 
 //   // Calling closure method of Option value
 //   val t3: TestOptChainingMethodInvocation? = None
@@ -124,6 +125,8 @@ test_eqOp()
 //   /// Expect: Option.Some(value: 3)
 //   println(t4?.closure())
 // })()
+}
+test_optSafe()
 
 // Negate operator
 val someInt = Some(123)
@@ -137,15 +140,18 @@ println(!!noneInt, !!someInt)
 
 // Optional enum instances
 
-//enum Color {
-//  Red
-//  Green
-//  Blue
-//}
-//(() => {
-//  val colors = [Color.Red, Color.Green, Color.Blue]
-//  /// Expect: Option.None
-//  println(colors[3]?.toString())
-//  /// Expect: Color.Blue
-//  println(colors[2]?.toString())
-//})()
+enum Color {
+  Red
+  Green
+  Blue
+}
+// (() => {
+func test_optEnumInstances() {
+  val colors = [Color.Red, Color.Green, Color.Blue]
+  /// Expect: Option.None
+  println(colors[3]?.toString())
+  /// Expect: Option.Some(value: "Color.Blue")
+  println(colors[2]?.toString())
+// })()
+}
+test_optEnumInstances()

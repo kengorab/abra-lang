@@ -1,4 +1,9 @@
-// println("-hElLo!".toLower())
-for x in [1, 2, 3] {
-  println(x)
+enum Color {
+  Red
+  Green
+  Blue
 }
+
+val colors = [Color.Red, Color.Green, Color.Blue]
+println(colors[3]?.toString())
+println(colors[2]?.toString())

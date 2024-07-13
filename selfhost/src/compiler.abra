@@ -811,6 +811,7 @@ export type Compiler {
       TypedAstNodeKind.Invocation(invokee, arguments, resolvedGenerics) => {
         val args: Value[] = []
         var fnHasOptionalParameters = false
+        var optSafeCtx: (Label, Value?, QbeFunction, Label)? = None
 
         val fnVal = match invokee {
           TypedInvokee.Function(fn) => {
@@ -852,23 +853,62 @@ export type Compiler {
 
             fnVal
           }
-          TypedInvokee.Method(fn, selfVal, isOptSafe) => {
-            val selfInstanceType = match self._addResolvedGenericsLayerForInstanceMethod(selfVal.ty, fn.label.name, node.token.position, resolvedGenerics) { Ok(v) => v, Err(e) => return Err(e) }
-
-            fnHasOptionalParameters = fn.params.any(p => !!p.defaultValue)
-
-            if isOptSafe return todo("opt-safe method invocation", node.token.position)
+          TypedInvokee.Method(fn, selfExpr, isOptSafe) => {
+            var selfInstanceType = match self._addResolvedGenericsLayerForInstanceMethod(selfExpr.ty, fn.label.name, node.token.position, resolvedGenerics) { Ok(v) => v, Err(e) => return Err(e) }
 
             val intrinsicDec = fn.decorators.find(dec => dec.label.name == "Intrinsic")
             if intrinsicDec |dec| {
-              val res = self._invokeIntrinsicFn(dec, fn, [Some(selfVal)].concat(arguments))
+              if isOptSafe return unreachable("cannot have opt-safe intrinsic method calls")
+              val res = self._invokeIntrinsicFn(dec, fn, [Some(selfExpr)].concat(arguments))
               self._resolvedGenerics.popLayer()
               return res
             }
 
-            val fnVal = match self._getOrCompileMethod(selfInstanceType, fn) { Ok(v) => v, Err(e) => return Err(e) }
+            fnHasOptionalParameters = fn.params.any(p => !!p.defaultValue)
 
-            args.push(match self._compileExpression(selfVal) { Ok(v) => v, Err(e) => return Err(e) })
+            val selfVal = if isOptSafe {
+              val innerTy = if self._typeIsOption(selfInstanceType) |innerTy| innerTy else return unreachable("an opt-safe invocation needs to have an Option type as its lhs")
+              selfInstanceType = innerTy
+
+              val selfVal = match self._compileExpression(selfExpr) { Ok(v) => v, Err(e) => return Err(e) }
+              val variantIsOptionSome = match self._emitOptValueIsSomeVariant(selfVal) { Ok(v) => v, Err(e) => return Err(e) }
+
+              val labelIsSome = self._currentFn.block.addLabel("optsafe_is_some")
+              val labelIsNone = self._currentFn.block.addLabel("optsafe_is_none")
+              val labelCont = self._currentFn.block.addLabel("optsafe_cont")
+
+              self._currentFn.block.addComment("begin opt-safe call...")
+              self._currentFn.block.buildJnz(variantIsOptionSome, labelIsSome, labelIsNone)
+
+              self._currentFn.block.registerLabel(labelIsNone)
+              val noneRes = if fn.returnType.kind != TypeKind.PrimitiveUnit {
+                val optNoneVariant = if self._project.preludeOptionEnum.variants.find(v => v.label.name == "None") |v| v else return unreachable("Option.None must exist")
+                match self._resolvedGenerics.addLayer("Option.None", { "V": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "Option.None", message: e))) }
+                val noneVariantFn = match self._getOrCompileEnumVariantFn(self._project.preludeOptionEnum, optNoneVariant) { Ok(v) => v, Err(e) => return Err(e) }
+                self._resolvedGenerics.popLayer()
+                val noneRes = match self._currentFn.block.buildCall(noneVariantFn, []) { Ok(v) => v, Err(e) => return qbeError(e) }
+                Some(noneRes)
+              } else None
+              self._currentFn.block.buildJmp(labelCont)
+
+              self._currentFn.block.registerLabel(labelIsSome)
+              val optSomeVariant = if self._project.preludeOptionEnum.variants.find(v => v.label.name == "Some") |v| v else return unreachable("Option.Some must exist")
+              match self._resolvedGenerics.addLayer("Option.Some", { "V": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "Option.Some", message: e))) }
+              val someVariantFn = match self._getOrCompileEnumVariantFn(self._project.preludeOptionEnum, optSomeVariant) { Ok(v) => v, Err(e) => return Err(e) }
+              self._resolvedGenerics.popLayer()
+
+              optSafeCtx = Some((labelIsNone, noneRes, someVariantFn, labelCont))
+
+              val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
+              val v = match self._emitOptValueGetValue(innerQbeType, selfVal) { Ok(v) => v, Err(e) => return Err(e) }
+              v
+            } else {
+              val v = match self._compileExpression(selfExpr) { Ok(v) => v, Err(e) => return Err(e) }
+              v
+            }
+
+            val fnVal = match self._getOrCompileMethod(selfInstanceType, fn) { Ok(v) => v, Err(e) => return Err(e) }
+            args.push(selfVal)
 
             fnVal
           }
@@ -905,12 +945,38 @@ export type Compiler {
           args.push(Value.Int32(defaultValueFlags))
         }
 
-        val res = if fnVal.returnType {
+        var res = if fnVal.returnType {
           val res = match self._currentFn.block.buildCall(fnVal, args, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
           res
         } else {
           self._currentFn.block.buildVoidCall(fnVal, args)
           Value.Ident("bogus", QbeType.F32)
+        }
+
+        if optSafeCtx |_ctx| {
+          val labelIsNone = _ctx[0]
+          val noneRes = _ctx[1]
+          val someVariantFn = _ctx[2]
+          val labelCont = _ctx[3]
+
+          val labelIsSome = if noneRes |noneRes| {
+            val labelIsSome = self._currentFn.block.currentLabel
+            val someRes = match self._currentFn.block.buildCall(someVariantFn, [res]) { Ok(v) => v, Err(e) => return qbeError(e) }
+            Some((labelIsSome, someRes, noneRes))
+          } else None
+          self._currentFn.block.buildJmp(labelCont)
+
+          self._currentFn.block.addComment("...opt-safe call end")
+          self._currentFn.block.registerLabel(labelCont)
+
+          if labelIsSome |_p| {
+            // TODO: destructuring
+            val labelIsSome = _p[0]
+            val someRes = _p[1]
+            val noneRes = _p[2]
+            val phiCases = [(labelIsNone, noneRes), (labelIsSome, someRes)]
+            res = match self._currentFn.block.buildPhi(phiCases) { Ok(v) => v, Err(e) => return qbeError(e) }
+          }
         }
 
         self._resolvedGenerics.popLayer()
