@@ -873,9 +873,9 @@ export type Compiler {
               val selfVal = match self._compileExpression(selfExpr) { Ok(v) => v, Err(e) => return Err(e) }
               val variantIsOptionSome = match self._emitOptValueIsSomeVariant(selfVal) { Ok(v) => v, Err(e) => return Err(e) }
 
-              val labelIsSome = self._currentFn.block.addLabel("optsafe_is_some")
-              val labelIsNone = self._currentFn.block.addLabel("optsafe_is_none")
-              val labelCont = self._currentFn.block.addLabel("optsafe_cont")
+              val labelIsSome = self._currentFn.block.addLabel("optsafe_call_is_some")
+              val labelIsNone = self._currentFn.block.addLabel("optsafe_call_is_none")
+              val labelCont = self._currentFn.block.addLabel("optsafe_call_cont")
 
               self._currentFn.block.addComment("begin opt-safe call...")
               self._currentFn.block.buildJnz(variantIsOptionSome, labelIsSome, labelIsNone)
@@ -1271,18 +1271,20 @@ export type Compiler {
         val _t = match self._getInstanceTypeForType(head.ty) { Ok(v) => v, Err(e) => return Err(e) }
         // TODO: destructuring
         val instTy = _t[0]
-        val _typeArgs = _t[1]
+        val typeArgs = _t[1]
+        val instType = Type(kind: TypeKind.Instance(instTy, typeArgs))
 
         val curVal = match self._compileExpression(head) { Ok(v) => v, Err(e) => return Err(e) }
         self._currentFn.block.addCommentBefore("${curVal.repr()}: ${head.ty.repr()}")
 
-        (instTy, curVal)
+        (instTy, instType, curVal)
       }
-      _ => (StructOrEnum.Struct(self._project.preludeBoolStruct), Value.Ident("bogus", QbeType.F32))
+      _ => (StructOrEnum.Struct(self._project.preludeBoolStruct), Type(kind: TypeKind.Instance(StructOrEnum.Struct(self._project.preludeBoolStruct), [])), Value.Ident("bogus", QbeType.F32))
     }
     // TODO: destructuring
     var instTy = _p[0]
-    var curVal = _p[1]
+    var instType = _p[1]
+    var curVal = _p[2]
 
     for seg, idx in segs {
       match seg {
@@ -1294,8 +1296,45 @@ export type Compiler {
 
           instTy = StructOrEnum.Enum(enum_)
         }
-        AccessorPathSegment.Method(label, fn) => return todo("method accessor")
-        AccessorPathSegment.Field(label, ty, field) => {
+        AccessorPathSegment.Method(label, fn, _) => return todo("method accessor")
+        AccessorPathSegment.Field(label, ty, field, isOptSafe) => {
+          var optSafeCtx: (Label, Value, QbeFunction, Label)? = None
+
+          if isOptSafe {
+            val innerTy = if self._typeIsOption(instType) |innerTy| innerTy else return unreachable("an opt-safe field accessor needs to have an Option type as its lhs")
+            instType = innerTy
+            val _t = match self._getInstanceTypeForType(innerTy) { Ok(v) => v, Err(e) => return Err(e) }
+            // TODO: destructuring
+            instTy = _t[0]
+
+            val variantIsOptionSome = match self._emitOptValueIsSomeVariant(curVal) { Ok(v) => v, Err(e) => return Err(e) }
+            val labelIsSome = self._currentFn.block.addLabel("optsafe_field_is_some")
+            val labelIsNone = self._currentFn.block.addLabel("optsafe_field_is_none")
+            val labelCont = self._currentFn.block.addLabel("optsafe_field_cont")
+
+            self._currentFn.block.addComment("begin opt-safe field accessor...")
+            self._currentFn.block.buildJnz(variantIsOptionSome, labelIsSome, labelIsNone)
+
+            self._currentFn.block.registerLabel(labelIsNone)
+            val optNoneVariant = if self._project.preludeOptionEnum.variants.find(v => v.label.name == "None") |v| v else return unreachable("Option.None must exist")
+            match self._resolvedGenerics.addLayer("Option.None", { "V": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: label.position, kind: CompileErrorKind.ResolvedGenericsError(context: "Option.None", message: e))) }
+            val noneVariantFn = match self._getOrCompileEnumVariantFn(self._project.preludeOptionEnum, optNoneVariant) { Ok(v) => v, Err(e) => return Err(e) }
+            self._resolvedGenerics.popLayer()
+            val noneRes = match self._currentFn.block.buildCall(noneVariantFn, []) { Ok(v) => v, Err(e) => return qbeError(e) }
+            self._currentFn.block.buildJmp(labelCont)
+
+            self._currentFn.block.registerLabel(labelIsSome)
+            val optSomeVariant = if self._project.preludeOptionEnum.variants.find(v => v.label.name == "Some") |v| v else return unreachable("Option.Some must exist")
+            match self._resolvedGenerics.addLayer("Option.Some", { "V": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: label.position, kind: CompileErrorKind.ResolvedGenericsError(context: "Option.Some", message: e))) }
+            val someVariantFn = match self._getOrCompileEnumVariantFn(self._project.preludeOptionEnum, optSomeVariant) { Ok(v) => v, Err(e) => return Err(e) }
+            self._resolvedGenerics.popLayer()
+
+            optSafeCtx = Some((labelIsNone, noneRes, someVariantFn, labelCont))
+
+            val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
+            curVal = match self._emitOptValueGetValue(innerQbeType, curVal) { Ok(v) => v, Err(e) => return Err(e) }
+          }
+
           match instTy {
             StructOrEnum.Struct(struct) => {
               var offset = 0
@@ -1323,6 +1362,29 @@ export type Compiler {
             }
             StructOrEnum.Enum(_enum) => return todo("enum field accessor")
           }
+
+          if optSafeCtx |_ctx| {
+            val labelIsNone = _ctx[0]
+            val noneRes = _ctx[1]
+            val someVariantFn = _ctx[2]
+            val labelCont = _ctx[3]
+
+            val labelIsSome = self._currentFn.block.currentLabel
+            val someRes = match self._currentFn.block.buildCall(someVariantFn, [curVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
+            self._currentFn.block.buildJmp(labelCont)
+
+            self._currentFn.block.addComment("...opt-safe field accessor end")
+            self._currentFn.block.registerLabel(labelCont)
+
+            val phiCases = [(labelIsNone, noneRes), (labelIsSome, someRes)]
+            curVal = match self._currentFn.block.buildPhi(phiCases, localName) { Ok(v) => v, Err(e) => return qbeError(e) }
+          }
+
+          val _t = match self._getInstanceTypeForType(ty) { Ok(v) => v, Err(e) => return Err(e) }
+          // TODO: destructuring
+          instTy = _t[0]
+          val typeArgs = _t[1]
+          instType = Type(kind: TypeKind.Instance(instTy, typeArgs))
         }
       }
     }

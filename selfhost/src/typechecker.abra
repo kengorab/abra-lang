@@ -716,14 +716,14 @@ export enum TypedAstNodeKind {
 
 export enum AccessorPathSegment {
   EnumVariant(label: Label, ty: Type, enum_: Enum, variant: TypedEnumVariant)
-  Method(label: Label, fn: Function)
-  Field(label: Label, ty: Type, f: Field)
+  Method(label: Label, fn: Function, optSafe: Bool)
+  Field(label: Label, ty: Type, f: Field, optSafe: Bool)
 
   func getType(self): Type {
     match self {
       AccessorPathSegment.EnumVariant(_, ty, _, _) => ty
-      AccessorPathSegment.Method(_, fn) => fn.getType()
-      AccessorPathSegment.Field(_, ty, _) => ty
+      AccessorPathSegment.Method(_, fn, _) => fn.getType()
+      AccessorPathSegment.Field(_, ty, _, _) => ty
     }
   }
 }
@@ -2998,7 +2998,7 @@ export type Typechecker {
               AccessorPathSegment.EnumVariant(label, _, _, variant) => {
                 return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAssignment("enum variant", variant.label.name, IllegalAssignmentReason.EnumVariant)))
               }
-              AccessorPathSegment.Method(label, fn) => {
+              AccessorPathSegment.Method(label, fn, _) => {
                 val _p = match fn.kind {
                   FunctionKind.StaticMethod => ("static method", IllegalAssignmentReason.StaticMethod)
                   _ => ("method", IllegalAssignmentReason.Method)
@@ -3804,7 +3804,7 @@ export type Typechecker {
     Ok(TypedAstNode(token: token, ty: _p[0], kind: TypedAstNodeKind.Identifier(_p[1])))
   }
 
-  func _resolveAccessorPathSegmentAny(self, label: Label): AccessorPathSegment? {
+  func _resolveAccessorPathSegmentAny(self, label: Label, optSafe: Bool): AccessorPathSegment? {
     val scope = self.project.preludeScope.makeChild("Any", ScopeKind.Type)
     val method: Function? = if label.name == "toString" {
       Some(Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(None)))
@@ -3817,22 +3817,22 @@ export type Typechecker {
     }
 
     if method |method| {
-      Some(AccessorPathSegment.Method(label, method))
+      Some(AccessorPathSegment.Method(label, method, optSafe))
     } else {
       None
     }
   }
 
-  func _resolveAccessorPathSegment(self, ty: Type, label: Label, typeHint: Type?): Result<AccessorPathSegment?, TypeError> {
+  func _resolveAccessorPathSegment(self, ty: Type, label: Label, typeHint: Type?, optSafe = false): Result<AccessorPathSegment?, TypeError> {
     val foundSegment = match ty.kind {
-      TypeKind.Any => self._resolveAccessorPathSegmentAny(label)
+      TypeKind.Any => self._resolveAccessorPathSegmentAny(label, optSafe)
       TypeKind.PrimitiveUnit => None
-      TypeKind.PrimitiveInt => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeIntStruct), [])), label, None)
-      TypeKind.PrimitiveFloat => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeFloatStruct), [])), label, None)
-      TypeKind.PrimitiveBool => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeBoolStruct), [])), label, None)
-      TypeKind.PrimitiveString => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeStringStruct), [])), label, None)
+      TypeKind.PrimitiveInt => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeIntStruct), [])), label, None, optSafe)
+      TypeKind.PrimitiveFloat => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeFloatStruct), [])), label, None, optSafe)
+      TypeKind.PrimitiveBool => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeBoolStruct), [])), label, None, optSafe)
+      TypeKind.PrimitiveString => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeStringStruct), [])), label, None, optSafe)
       TypeKind.Never => None
-      TypeKind.Generic => self._resolveAccessorPathSegmentAny(label)
+      TypeKind.Generic => self._resolveAccessorPathSegmentAny(label, optSafe)
       TypeKind.Instance(structOrEnum, generics) => {
         val _p = match structOrEnum {
           StructOrEnum.Struct(struct) => {
@@ -3842,8 +3842,11 @@ export type Typechecker {
                 for name, idx in struct.typeParams {
                   resolvedGenerics[name] = if generics[idx] |g| g else return unreachable(label.position, "typeParams.length != generics.length")
                 }
-                val ty = field.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
-                return Ok(Some(AccessorPathSegment.Field(label, ty, field)))
+                var ty = field.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
+                if optSafe {
+                  ty = Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeOptionEnum), [ty]))
+                }
+                return Ok(Some(AccessorPathSegment.Field(label, ty, field, optSafe)))
               }
             }
 
@@ -3862,7 +3865,7 @@ export type Typechecker {
               resolvedGenerics[name] = if generics[idx] |g| g else return unreachable(label.position, "typeParams.length != generics.length")
             }
             val method = if resolvedGenerics.isEmpty() fn else fn.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: true, genericsInScope: #{})
-            return Ok(Some(AccessorPathSegment.Method(label, method)))
+            return Ok(Some(AccessorPathSegment.Method(label, method, optSafe)))
           }
         }
 
@@ -3916,7 +3919,7 @@ export type Typechecker {
         }
 
         for method in staticMethods {
-          if method.label.name == label.name return Ok(Some(AccessorPathSegment.Method(label, method)))
+          if method.label.name == label.name return Ok(Some(AccessorPathSegment.Method(label, method, optSafe)))
         }
 
         None
@@ -4007,15 +4010,16 @@ export type Typechecker {
         ty
       }
 
-      val seg = match self._resolveAccessorPathSegment(subjTy, label, typeHint) { Ok(v) => v, Err(e) => return Err(e) }
+      val seg = match self._resolveAccessorPathSegment(subjTy, label, typeHint, isOptSafe) { Ok(v) => v, Err(e) => return Err(e) }
       if seg |seg| {
-        // TODO: destructuring
-        // val seg = _s[0]
         val nextTy = seg.getType()
 
         path.push(seg)
         ty = if isOptSafe {
-          Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeOptionEnum), [nextTy]))
+          match seg {
+            AccessorPathSegment.Field => nextTy // type is already wrapped in Option in _resolveAccessorPathSegment for fields if opt-safe
+            _ => Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeOptionEnum), [nextTy]))
+          }
         } else {
           nextTy
         }
@@ -4095,7 +4099,7 @@ export type Typechecker {
 
             self._typecheckInvocationOfFunction(token, invokee, enumVariantAsFn, node, typeHint, None, Some(Instantiatable.EnumContainerVariant(enum_, variant, fields)))
           }
-          AccessorPathSegment.Method(l, fn) => {
+          AccessorPathSegment.Method(l, fn, optSafe) => {
             match fn.kind {
               FunctionKind.InstanceMethod => {
                 val selfVal = if mid[-1] |newTail| {
@@ -4104,7 +4108,7 @@ export type Typechecker {
                   head
                 }
 
-                if self._typeIsOption(invokee.ty) {
+                if optSafe {
                   val typedNode = match self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint, Some((selfVal, true))) { Ok(v) => v, Err(e) => return Err(e) }
                   typedNode.ty = Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeOptionEnum), [typedNode.ty]))
                   Ok(typedNode)

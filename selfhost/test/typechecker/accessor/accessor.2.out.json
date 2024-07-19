@@ -317,9 +317,15 @@
                 "kind": "field",
                 "name": "bar",
                 "type": {
-                  "kind": "instance",
-                  "struct": { "moduleId": 3, "name": "Bar" },
-                  "typeParams": []
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 0, "name": "Option" },
+                  "typeParams": [
+                    {
+                      "kind": "instance",
+                      "struct": { "moduleId": 3, "name": "Bar" },
+                      "typeParams": []
+                    }
+                  ]
                 }
               }
             ],
@@ -327,8 +333,14 @@
               "kind": "field",
               "name": "str",
               "type": {
-                "kind": "primitive",
-                "primitive": "String"
+                "kind": "enumInstance",
+                "enum": { "moduleId": 0, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  }
+                ]
               }
             }
           }
