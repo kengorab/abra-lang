@@ -1,5 +1,5 @@
 import LiteralAstNode, IndexingMode from "./parser"
-import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, FunctionKind, Scope, Struct, Enum, StructOrEnum, AccessorPathSegment, TypedIdentifierKind, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export, TypedMatchCaseKind from "./typechecker"
+import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, FunctionKind, Scope, Struct, Enum, StructOrEnum, AccessorPathSegment, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export, TypedMatchCaseKind from "./typechecker"
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 
 export type Jsonifier {
@@ -368,14 +368,9 @@ export type Jsonifier {
         self.printNode(inner)
         println()
       }
-      TypedAstNodeKind.Identifier(kind) => {
+      TypedAstNodeKind.Identifier(name, _) => {
         self.println("\"kind\": \"identifier\",")
 
-        val name = match kind {
-          TypedIdentifierKind.Named(name) => name
-          TypedIdentifierKind.Discard => "_"
-          TypedIdentifierKind.None_ => "None"
-        }
         self.print("\"name\": \"$name\"")
         println()
       }

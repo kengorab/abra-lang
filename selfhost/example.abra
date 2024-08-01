@@ -14,3 +14,7 @@ println(arr[0]?.name?.length)
 // println(arr[0]?.length)
 // /// Expect: Option.None
 // println(arr[6]?.length)
+
+// val s = #{1, 2, 3, 2, 1}
+// val m = { a: 1, b: 2 }
+// println(m)

@@ -1,7 +1,7 @@
 import "fs" as fs
 import Position from "./lexer"
 import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern, IndexingMode from "./parser"
-import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedIdentifierKind, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode from "./typechecker"
+import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode from "./typechecker"
 import ModuleBuilder, QbeType, Dest, QbeFunction, Value, Label from "./qbe"
 
 type CompilationError {
@@ -103,6 +103,26 @@ type ResolvedGenerics {
     None
   }
 
+  func _resolveType(self, ty: Type): Result<Type, String> {
+    match ty.kind {
+      TypeKind.Generic(genericName) => {
+        if self.resolveGeneric(genericName) |resolved| {
+          Ok(resolved)
+        } else {
+          Err("layer: could not resolve generic '$genericName'")
+        }
+      }
+      TypeKind.Instance(structOrEnum, typeArgs) => {
+        val resolvedGenerics: Type[] = []
+        for typeArg in typeArgs {
+          resolvedGenerics.push(match self._resolveType(typeArg) { Ok(v) => v, Err(e) => return Err(e) })
+        }
+        Ok(Type(kind: TypeKind.Instance(structOrEnum, resolvedGenerics)))
+      }
+      _ => Ok(ty)
+    }
+  }
+
   func addLayer(self, context: String, given: Map<String, Type>): Result<Int, String> {
     val newLayer: Map<String, Type> = {}
     for _p in given {
@@ -110,16 +130,7 @@ type ResolvedGenerics {
       val name = _p[0]
       val ty = _p[1]
 
-      match ty.kind {
-        TypeKind.Generic(genericName) => {
-          if self.resolveGeneric(genericName) |resolved| {
-            newLayer[name] = resolved
-          } else {
-            return Err("layer: could not resolve generic '$name'")
-          }
-        }
-        _ => newLayer[name] = ty
-      }
+      newLayer[name] = match self._resolveType(ty) { Ok(v) => v, Err(e) => return Err(e) }
     }
 
     self._layers.push((context, newLayer))
@@ -789,22 +800,17 @@ export type Compiler {
         }
       }
       TypedAstNodeKind.Grouped(inner) => self._compileExpression(inner, resultLocalName)
-      TypedAstNodeKind.Identifier(kind) => {
-        match kind {
-          TypedIdentifierKind.Named(name, variable) => {
-            // If a variable is function parameter, it can just be referenced by name as a temporary/local, otherwise it can be obtained by
-            // loading the value pointed to by the temporary/local with that name.
-            // TODO: handle captured variables in closures, global variables, etc).
-            val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
-            if variable.isParameter {
-              Ok(Value.Ident(name, varTy))
-            } else {
-              val slot = Value.Ident("$name.slot", QbeType.Pointer)
-              val res = self._currentFn.block.buildLoad(varTy, slot)
-              Ok(res)
-            }
-          }
-          _ => todo("other identifier kinds (${node.token})", node.token.position)
+      TypedAstNodeKind.Identifier(name, variable) => {
+        // If a variable is function parameter, it can just be referenced by name as a temporary/local, otherwise it can be obtained by
+        // loading the value pointed to by the temporary/local with that name.
+        // TODO: handle captured variables in closures, global variables, etc).
+        val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
+        if variable.isParameter {
+          Ok(Value.Ident(name, varTy))
+        } else {
+          val slot = Value.Ident("$name.slot", QbeType.Pointer)
+          val res = self._currentFn.block.buildLoad(varTy, slot)
+          Ok(res)
         }
       }
       TypedAstNodeKind.Accessor(head, middle, tail) => self._followAccessorPath(head: head, middle: middle, tail: tail, loadFinal: true, localName: resultLocalName)
@@ -1011,8 +1017,63 @@ export type Compiler {
 
         Ok(arrayInstance)
       }
-      TypedAstNodeKind.Set => todo("compiling set expression", node.token.position)
-      TypedAstNodeKind.Map => todo("compiling map expression", node.token.position)
+      TypedAstNodeKind.Set(items) => {
+        match node.ty.kind {
+          TypeKind.Instance(_, generics) => {
+            val inner = if generics[0] |t| t else return unreachable("Set has 1 required type argument")
+            match self._resolvedGenerics.addLayer("set literal", { "T": inner }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "set literal", message: e))) }
+          }
+          _ => return unreachable("we know it's a set instance here")
+        }
+
+        val setNewFn = if self._project.preludeSetStruct.staticMethods.find(m => m.label.name == "new") |fn| fn else return unreachable("Set.new must exist")
+        val setNewFnVal = match self._getOrCompileMethod(node.ty, setNewFn) { Ok(v) => v, Err(e) => return Err(e) }
+
+        val setInstance = match self._currentFn.block.buildCall(setNewFnVal, [], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+        self._currentFn.block.addCommentBefore("${setInstance.repr()}: ${node.ty.repr()}")
+
+        val setInsertFn = if self._project.preludeSetStruct.instanceMethods.find(m => m.label.name == "insert") |fn| fn else return unreachable("Set#insert must exist")
+        val setInsertFnVal = match self._getOrCompileMethod(node.ty, setInsertFn) { Ok(v) => v, Err(e) => return Err(e) }
+
+        for item in items {
+          val itemVal = match self._compileExpression(item) { Ok(v) => v, Err(e) => return Err(e) }
+          self._currentFn.block.buildVoidCall(setInsertFnVal, [setInstance, itemVal])
+        }
+
+        self._resolvedGenerics.popLayer()
+
+        Ok(setInstance)
+      }
+      TypedAstNodeKind.Map(items) => {
+        match node.ty.kind {
+          TypeKind.Instance(_, generics) => {
+            val key = if generics[0] |t| t else return unreachable("Map has 2 required type arguments")
+            val value = if generics[1] |t| t else return unreachable("Map has 2 required type arguments")
+            match self._resolvedGenerics.addLayer("map literal", { "K": key, "V": value }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "map literal", message: e))) }
+          }
+          _ => return unreachable("we know it's a map instance here")
+        }
+
+
+        val mapNewFn = if self._project.preludeMapStruct.staticMethods.find(m => m.label.name == "new") |fn| fn else return unreachable("Map.new must exist")
+        val mapNewFnVal = match self._getOrCompileMethod(node.ty, mapNewFn) { Ok(v) => v, Err(e) => return Err(e) }
+
+        val mapInstance = match self._currentFn.block.buildCall(mapNewFnVal, [], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+        self._currentFn.block.addCommentBefore("${mapInstance.repr()}: ${node.ty.repr()}")
+
+        val mapInsertFn = if self._project.preludeMapStruct.instanceMethods.find(m => m.label.name == "insert") |fn| fn else return unreachable("Map#insert must exist")
+        val mapInsertFnVal = match self._getOrCompileMethod(node.ty, mapInsertFn) { Ok(v) => v, Err(e) => return Err(e) }
+
+        for _item in items {
+          val keyVal = match self._compileExpression(_item[0]) { Ok(v) => v, Err(e) => return Err(e) }
+          val valueVal = match self._compileExpression(_item[1]) { Ok(v) => v, Err(e) => return Err(e) }
+          self._currentFn.block.buildVoidCall(mapInsertFnVal, [mapInstance, keyVal, valueVal])
+        }
+
+        self._resolvedGenerics.popLayer()
+
+        Ok(mapInstance)
+      }
       TypedAstNodeKind.Tuple => todo("compiling tuple expression", node.token.position)
       TypedAstNodeKind.Indexing(indexingNode) => {
         match indexingNode {
