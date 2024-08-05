@@ -1,7 +1,7 @@
 import "fs" as fs
 import Position from "./lexer"
 import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern, IndexingMode from "./parser"
-import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode from "./typechecker"
+import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode from "./typechecker"
 import ModuleBuilder, QbeType, Dest, QbeFunction, Value, Label from "./qbe"
 
 type CompilationError {
@@ -151,12 +151,13 @@ export type Compiler {
   _currentNode: TypedAstNode?
   _resolvedGenerics: ResolvedGenerics = ResolvedGenerics()
   _loopStack: (/* loopStart: */ Label, /* loopEnd: */ Label)[] = []
-  // cached fns
+  // cached things
   _printf: QbeFunction = QbeFunction.spec(name: "printf", returnType: None, parameters: [], variadicIdx: Some(1))
   _snprintf: QbeFunction = QbeFunction.spec(name: "snprintf", returnType: Some(QbeType.U64), parameters: [], variadicIdx: Some(3))
   _memcpy: QbeFunction = QbeFunction.spec(name: "memcpy", returnType: None)
   _malloc: QbeFunction = QbeFunction.spec(name: "GC_malloc", returnType: Some(QbeType.Pointer))
   _realloc: QbeFunction = QbeFunction.spec(name: "GC_realloc", returnType: Some(QbeType.Pointer))
+  _tupleStructs: Map<String, Struct> = {}
 
   func compile(project: Project, entry: TypedModule): Result<ModuleBuilder, CompilationError> {
     val builder = ModuleBuilder()
@@ -506,7 +507,54 @@ export type Compiler {
             val slot = Value.Ident(slotName, QbeType.Pointer)
             self._currentFn.block.buildStoreL(res, slot)
           }
-          TypedAssignmentMode.Indexing(_node) => return todo("compiling indexing assignment stmt", node.token.position)
+          TypedAssignmentMode.Indexing(idxNode) => {
+            match idxNode {
+              TypedIndexingNode.ArrayLike(expr, indexingMode) => {
+                match indexingMode {
+                  IndexingMode.Single(idxExpr) => {
+                    val exprVal = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
+                    val idxExprVal = match self._compileExpression(idxExpr) { Ok(v) => v, Err(e) => return Err(e) }
+
+                    val instType = match self._addResolvedGenericsLayerForInstanceMethod(expr.ty, "set", expr.token.position) { Ok(v) => v, Err(e) => return Err(e) }
+                    val _t = match self._getInstanceTypeForType(expr.ty) { Ok(v) => v, Err(e) => return Err(e) }
+                    // TODO: destructuring
+                    val struct = match _t[0] {
+                      StructOrEnum.Struct(struct) => struct
+                      StructOrEnum.Enum => return unreachable("index-assignment only implemented for arrays")
+                    }
+                    if struct != self._project.preludeArrayStruct return unreachable("index-assignment only implemented for arrays")
+
+                    val setFn = if self._project.preludeArrayStruct.instanceMethods.find(m => m.label.name == "set") |fn| fn else return unreachable("Array#set must exist")
+                    val setFnVal = match self._getOrCompileMethod(instType, setFn) { Ok(v) => v, Err(e) => return Err(e) }
+                    self._resolvedGenerics.popLayer()
+
+                    match self._currentFn.block.buildCall(setFnVal, [exprVal, idxExprVal, res]) { Ok(v) => v, Err(e) => return qbeError(e) }
+                  }
+                  _ => return unreachable("cannot use range index in index-assignment")
+                }
+              }
+              TypedIndexingNode.Map(expr, idxExpr) => {
+                val exprVal = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
+                val idxExprVal = match self._compileExpression(idxExpr) { Ok(v) => v, Err(e) => return Err(e) }
+
+                val instType = match self._addResolvedGenericsLayerForInstanceMethod(expr.ty, "set", expr.token.position) { Ok(v) => v, Err(e) => return Err(e) }
+                val _t = match self._getInstanceTypeForType(expr.ty) { Ok(v) => v, Err(e) => return Err(e) }
+                // TODO: destructuring
+                val struct = match _t[0] {
+                  StructOrEnum.Struct(struct) => struct
+                  StructOrEnum.Enum => return unreachable("index-assignment only implemented for maps")
+                }
+                if struct != self._project.preludeMapStruct return unreachable("index-assignment only implemented for map")
+
+                val insertFn = if self._project.preludeMapStruct.instanceMethods.find(m => m.label.name == "insert") |fn| fn else return unreachable("Map#insert must exist")
+                val insertFnVal = match self._getOrCompileMethod(instType, insertFn) { Ok(v) => v, Err(e) => return Err(e) }
+                self._resolvedGenerics.popLayer()
+
+                match self._currentFn.block.buildCall(insertFnVal, [exprVal, idxExprVal, res]) { Ok(v) => v, Err(e) => return qbeError(e) }
+              }
+              TypedIndexingNode.Tuple(_, _) => return unreachable("tuples are not assignable via index-assignment")
+            }
+          }
           TypedAssignmentMode.Accessor(head, middle, tail) => {
             val ptr = match self._followAccessorPath(head: head, middle: middle, tail: tail, loadFinal: false) { Ok(v) => v, Err(e) => return Err(e) }
 
@@ -1074,7 +1122,29 @@ export type Compiler {
 
         Ok(mapInstance)
       }
-      TypedAstNodeKind.Tuple => todo("compiling tuple expression", node.token.position)
+      TypedAstNodeKind.Tuple(items) => {
+        val tupleStruct = self._tupleStruct(items.length)
+        val selfType = Type(kind: TypeKind.Instance(StructOrEnum.Struct(tupleStruct), items.map(node => node.ty)))
+
+        val resolvedGenerics: Map<String, Type> = {}
+        val template = Type(kind: TypeKind.Instance(StructOrEnum.Struct(tupleStruct), tupleStruct.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+        for _p in selfType.extractGenerics(template) {
+          resolvedGenerics[_p[0]] = _p[1]
+        }
+        match self._resolvedGenerics.addLayer(tupleStruct.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: tupleStruct.label.name, message: e))) }
+        val fnVal = match self._getOrCompileStructInitializer(tupleStruct) { Ok(v) => v, Err(e) => return Err(e) }
+
+        self._resolvedGenerics.popLayer()
+
+        val itemVals: Value[] = []
+        for item in items {
+          val itemVal = match self._compileExpression(item) { Ok(v) => v, Err(e) => return Err(e) }
+          itemVals.push(itemVal)
+        }
+
+        val tuple = match self._currentFn.block.buildCall(fnVal, itemVals) { Ok(v) => v, Err(e) => return qbeError(e) }
+        Ok(tuple)
+      }
       TypedAstNodeKind.Indexing(indexingNode) => {
         match indexingNode {
           TypedIndexingNode.ArrayLike(expr, indexingMode) => {
@@ -1129,8 +1199,60 @@ export type Compiler {
               }
             }
           }
-          TypedIndexingNode.Map(expr, idx) => todo("compiling map-indexing expression", node.token.position)
-          TypedIndexingNode.Tuple(tupleExpr, idx) => todo("compiling map-indexing expression", node.token.position)
+          TypedIndexingNode.Map(expr, idxExpr) => {
+            val exprVal = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
+            val idxExprVal = match self._compileExpression(idxExpr) { Ok(v) => v, Err(e) => return Err(e) }
+
+            val instType = match self._addResolvedGenericsLayerForInstanceMethod(expr.ty, "get", expr.token.position) { Ok(v) => v, Err(e) => return Err(e) }
+            val _t = match self._getInstanceTypeForType(expr.ty) { Ok(v) => v, Err(e) => return Err(e) }
+            // TODO: destructuring
+            val struct = match _t[0] {
+              StructOrEnum.Struct(struct) => struct
+              StructOrEnum.Enum => return unreachable("map indexing never applies to enum instances")
+            }
+            if struct != self._project.preludeMapStruct return unreachable("map indexing only implemented for map")
+
+            val getFn = if self._project.preludeMapStruct.instanceMethods.find(m => m.label.name == "get") |fn| fn else return unreachable("Map#get must exist")
+            val getFnVal = match self._getOrCompileMethod(instType, getFn) { Ok(v) => v, Err(e) => return Err(e) }
+            self._resolvedGenerics.popLayer()
+
+            val res = match self._currentFn.block.buildCall(getFnVal, [exprVal, idxExprVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
+            Ok(res)
+          }
+          TypedIndexingNode.Tuple(tupleExpr, idx) => {
+            val exprVal = match self._compileExpression(tupleExpr) { Ok(v) => v, Err(e) => return Err(e) }
+
+            val _t = match self._getInstanceTypeForType(tupleExpr.ty) { Ok(v) => v, Err(e) => return Err(e) }
+            // TODO: destructuring
+            val struct = match _t[0] {
+              StructOrEnum.Struct(struct) => struct
+              StructOrEnum.Enum => return unreachable("tuples are represented as structs")
+            }
+
+            val selfType = Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), _t[1]))
+
+            val resolvedGenerics: Map<String, Type> = {}
+            val template = Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), struct.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+            for _p in selfType.extractGenerics(template) {
+              resolvedGenerics[_p[0]] = _p[1]
+            }
+            match self._resolvedGenerics.addLayer(struct.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: struct.label.name, message: e))) }
+
+            var offset = 0
+            for f, fieldIdx in struct.fields {
+              if fieldIdx == idx break
+
+              val fieldTy = match self._getQbeTypeForTypeExpect(f.ty, "unacceptable type for field", Some(f.name.position)) { Ok(v) => v, Err(e) => return Err(e) }
+              offset += fieldTy.size()
+            }
+
+            self._resolvedGenerics.popLayer()
+
+            val ptr = match self._currentFn.block.buildAdd(Value.Int(offset), exprVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+            val res = self._currentFn.block.buildLoadL(ptr)
+            self._currentFn.block.addCommentBefore("${res.repr()}: ${exprVal.repr()}.$idx")
+            Ok(res)
+          }
         }
       }
       TypedAstNodeKind.Lambda => todo("compiling lambda expression", node.token.position)
@@ -1314,7 +1436,7 @@ export type Compiler {
       }
       TypeKind.Func(paramTypes, returnType) => todo("TypeKind.Func")
       TypeKind.Type(type_) => todo("TypeKind.Type")
-      TypeKind.Tuple(types) => todo("TypeKind.Tuple")
+      TypeKind.Tuple(_) => Ok(Some(QbeType.Pointer))
       TypeKind.Hole => unreachable("unexpected hole in emitted typed ast")
     }
   }
@@ -2074,11 +2196,15 @@ export type Compiler {
     match selfTy {
       StructOrEnum.Struct(struct) => {
         val data: (String, Position, Type)[] = []
+
+        val isTuple = self._isTupleStruct(struct)
         for field in struct.fields {
-          data.push((field.name.name, field.name.position, field.ty))
+          val fieldName = if isTuple "" else field.name.name
+          data.push((fieldName, field.name.position, field.ty))
         }
 
-        val res = match self._emitToStringLogicForStructuredData(struct.label.name, selfParamVal, data) { Ok(v) => v, Err(e) => return Err(e) }
+        val prefix = if isTuple "" else struct.label.name
+        val res = match self._emitToStringLogicForStructuredData(prefix, selfParamVal, data) { Ok(v) => v, Err(e) => return Err(e) }
         self._currentFn.block.buildReturn(Some(res))
       }
       StructOrEnum.Enum(enum_) => {
@@ -2138,18 +2264,19 @@ export type Compiler {
 
   func _emitToStringLogicForStructuredData(self, prefix: String, selfPtr: Value, data: (String, Position, Type)[]): Result<Value, CompileError> {
     val prefixStr = self._builder.buildGlobalString(prefix)
-    var len = prefix.length + 2 + (data.length - 1) * 2
+    var len = prefix.length + 2 + (data.length - 1) * 2 // account for '(' and ')', as well as ',' and ' ' between items
     var lenVal = Value.Int(0)
 
     val reprVals: (String, Value, Bool)[] = []
     var offset = 0
-    for _p in data {
+    for _p, idx in data {
       // TODO: destructuring
       val itemName = _p[0]
       val itemPosition = _p[1]
       val itemType = _p[2]
 
-      len += (itemName.length + 2)
+      // If the item label is meant to be output, account for the label as well as ':' and ' ' between the label and the value
+      if !itemName.isEmpty() { len += (itemName.length + 2) }
 
       val itemInstanceType = match self._addResolvedGenericsLayerForInstanceMethod(itemType, "toString", itemPosition) { Ok(v) => v, Err(e) => return Err(e) }
       val itemToStringFnVal = match self._getOrCompileToStringMethod(itemInstanceType) { Ok(v) => v, Err(e) => return Err(e) }
@@ -2158,7 +2285,8 @@ export type Compiler {
       val itemTy = match self._getQbeTypeForTypeExpect(itemType, "unacceptable type for item", Some(itemPosition)) { Ok(v) => v, Err(e) => return Err(e) }
       val itemIsString = self._typeIsString(itemInstanceType)
 
-      val memCursorLocal = match self._currentFn.block.buildAdd(Value.Int(offset), selfPtr, Some("mem_offset_$itemName")) { Ok(v) => v, Err(e) => return qbeError(e) }
+      val memCursorLocalName = if itemName.isEmpty() "$idx" else itemName
+      val memCursorLocal = match self._currentFn.block.buildAdd(Value.Int(offset), selfPtr, Some("mem_offset_$memCursorLocalName")) { Ok(v) => v, Err(e) => return qbeError(e) }
       val itemVal = self._currentFn.block.buildLoad(itemTy, memCursorLocal)
 
       offset += itemTy.size()
@@ -2180,7 +2308,9 @@ export type Compiler {
     val newStr = match self._currentFn.block.buildCall(stringWithLengthFnVal, [totalLengthVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
 
     var newStrBuf = self._currentFn.block.buildLoadL(match self._currentFn.block.buildAdd(Value.Int(8), newStr) { Ok(v) => v, Err(e) => return qbeError(e) })
-    self._currentFn.block.buildVoidCall(self._memcpy, [newStrBuf, prefixStr, Value.Int(prefix.length)])
+    if !prefix.isEmpty() {
+      self._currentFn.block.buildVoidCall(self._memcpy, [newStrBuf, prefixStr, Value.Int(prefix.length)])
+    }
     var cursor = match self._currentFn.block.buildAdd(newStrBuf, Value.Int(prefix.length), Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
     self._currentFn.block.addComment("'('")
     self._currentFn.block.buildStoreB(Value.Int(40), cursor)
@@ -2192,14 +2322,16 @@ export type Compiler {
       val strVal = _p[1]
       val isString = _p[2]
 
-      val fieldNameStr = self._builder.buildGlobalString(fieldName)
-      self._currentFn.block.buildVoidCall(self._memcpy, [cursor, fieldNameStr, Value.Int(fieldName.length)])
-      cursor = match self._currentFn.block.buildAdd(cursor, Value.Int(fieldName.length), Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
-      self._currentFn.block.addComment("\": \"")
-      self._currentFn.block.buildStoreB(Value.Int(58), cursor)
-      cursor = match self._currentFn.block.buildAdd(cursor, Value.Int(1), Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
-      self._currentFn.block.buildStoreB(Value.Int(32), cursor)
-      cursor = match self._currentFn.block.buildAdd(cursor, Value.Int(1), Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
+      if !fieldName.isEmpty() {
+        val fieldNameStr = self._builder.buildGlobalString(fieldName)
+        self._currentFn.block.buildVoidCall(self._memcpy, [cursor, fieldNameStr, Value.Int(fieldName.length)])
+        cursor = match self._currentFn.block.buildAdd(cursor, Value.Int(fieldName.length), Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
+        self._currentFn.block.addComment("\": \"")
+        self._currentFn.block.buildStoreB(Value.Int(58), cursor)
+        cursor = match self._currentFn.block.buildAdd(cursor, Value.Int(1), Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
+        self._currentFn.block.buildStoreB(Value.Int(32), cursor)
+        cursor = match self._currentFn.block.buildAdd(cursor, Value.Int(1), Some("str_cursor")) { Ok(v) => v, Err(e) => return qbeError(e) }
+      }
 
       if isString {
         self._currentFn.block.addComment("'\"'")
@@ -2478,8 +2610,11 @@ export type Compiler {
     match selfTy {
       StructOrEnum.Struct(struct) => {
         val data: (String, Position, Type)[] = []
+
+        val isTuple = self._isTupleStruct(struct)
         for field in struct.fields {
-          data.push((field.name.name, field.name.position, field.ty))
+          val fieldName = if isTuple "" else field.name.name
+          data.push((fieldName, field.name.position, field.ty))
         }
 
         match self._emitEqLogicForStructuredData(selfParamVal, otherParamVal, data) { Ok(v) => v, Err(e) => return Err(e) }
@@ -2704,8 +2839,10 @@ export type Compiler {
     match selfTy {
       StructOrEnum.Struct(struct) => {
         val data: (String, Position, Type)[] = []
+        val isTuple = self._isTupleStruct(struct)
         for field in struct.fields {
-          data.push((field.name.name, field.name.position, field.ty))
+          val fieldName = if isTuple "" else field.name.name
+          data.push((fieldName, field.name.position, field.ty))
         }
 
         match self._emitHashLogicForStructuredData(selfParamVal, data) { Ok(v) => v, Err(e) => return Err(e) }
@@ -2881,6 +3018,24 @@ export type Compiler {
     }
   }
 
+  func _tupleStruct(self, arity: Int): Struct {
+    val name = "Tuple$arity"
+
+    if self._tupleStructs[name] |struct| struct else {
+      val dummyModuleId = 0
+      val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      val typeParams = alphabet[:arity].split("")
+      val fields = typeParams.map((p, idx) => ("_$idx", Type(kind: TypeKind.Generic(name: p))))
+      val struct = Struct.makeDummy(moduleId: dummyModuleId, name: name, typeParams: typeParams, fields: fields)
+
+      self._tupleStructs[name] = struct
+
+      struct
+    }
+  }
+
+  func _isTupleStruct(self, struct: Struct): Bool = if self._tupleStructs[struct.label.name] |s| s == struct else false
+
   func _getInstanceTypeForType(self, ty: Type): Result<(StructOrEnum, Type[]), CompileError> {
     match ty.kind {
       TypeKind.Any => unreachable("getInstanceTypeForType: Any")
@@ -2894,7 +3049,10 @@ export type Compiler {
         if self._resolvedGenerics.resolveGeneric(name) |ty| self._getInstanceTypeForType(ty) else unreachable("failed to resolve generic: '$name'")
       }
       TypeKind.Instance(structOrEnum, typeParams) => Ok((structOrEnum, typeParams))
-      TypeKind.Tuple(types) => todo("getInstanceTypeForType: Tuple${types.length}")
+      TypeKind.Tuple(types) => {
+        val struct = self._tupleStruct(types.length)
+        Ok((StructOrEnum.Struct(struct), types))
+      }
       TypeKind.Func(_paramTypes, _returnType) => todo("getInstanceTypeForType: Func")
       TypeKind.Type(structOrEnum) => Ok((structOrEnum, []))
       TypeKind.Hole => unreachable("getInstanceTypeForType: Hole")
@@ -2922,7 +3080,10 @@ export type Compiler {
           Ok(n)
         }
       }
-      TypeKind.Tuple(types) => todo("_getReprForType: Tuple${types.length}")
+      TypeKind.Tuple(types) => {
+        val tupleStruct = self._tupleStruct(types.length)
+        self._getReprForType(Type(kind: TypeKind.Instance(StructOrEnum.Struct(tupleStruct), types)))
+      }
       TypeKind.Func(_paramTypes, _returnType) => todo("_getReprForType: Func")
       _ => Ok(ty.repr())
     }
@@ -2949,7 +3110,10 @@ export type Compiler {
           Ok(n)
         }
       }
-      TypeKind.Tuple(types) => todo("_getNameForType: Tuple${types.length}")
+      TypeKind.Tuple(types) => {
+        val tupleStruct = self._tupleStruct(types.length)
+        self._getNameForType(Type(kind: TypeKind.Instance(StructOrEnum.Struct(tupleStruct), types)))
+      }
       TypeKind.Func(_paramTypes, _returnType) => todo("_getNameForType: Func")
       _ => Ok(ty.repr())
     }

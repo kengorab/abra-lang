@@ -1,9 +1,9 @@
-type Foo { name: String }
+// type Foo { name: String }
 
-val foo = Foo(name: "abc")
-val arr = [foo]
+// val foo = Foo(name: "abc")
+// val arr = [foo]
 
-println(arr[0]?.name?.length)
+// println(arr[0]?.name?.length)
 // println(foo.name.length)
 
 // val arr = ["a", "b", "c", "d"]
@@ -15,6 +15,10 @@ println(arr[0]?.name?.length)
 // /// Expect: Option.None
 // println(arr[6]?.length)
 
+// val arr = [1, 2, 3]
+// println(arr)
+// arr[-1] = 4
+// println(arr)
 // val s = #{1, 2, 3, 2, 1}
-// val m = { a: 1, b: 2 }
-// println(m)
+val m = { a: 1 }
+println(m)

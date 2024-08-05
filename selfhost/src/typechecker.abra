@@ -168,6 +168,34 @@ export type Struct {
 
   // Override eq method since default implementation recurses infinitely (scope -> variables -> TypeKind.Struct)
   func eq(self, other: Struct): Bool = self.moduleId == other.moduleId && self.label == other.label
+
+  // Override hash method since default implementation recurses infinitely (scope -> variables -> TypeKind.Struct)
+  func hash(self): Int = self.moduleId + self.label.hash() * 17
+
+  func makeDummy(moduleId: Int, name: String, typeParams: String[] = [], fields: (String, Type)[] = []): Struct {
+    val bogusPosition = Position(line: 0, col: 0)
+    val bogusScope = Scope(name: "bogus($name)")
+
+    val struct = Struct(
+      moduleId: moduleId,
+      label: Label(name: name, position: bogusPosition),
+      scope: bogusScope,
+      typeParams: typeParams,
+      fields: fields.map(_f => Field(name: Label(name: _f[0], position: bogusPosition), ty: _f[1], initializer: None)),
+      instanceMethods: [],
+      staticMethods: [],
+    )
+
+    val structOrEnum = StructOrEnum.Struct(struct)
+    val typeArgs = struct.typeParams.map(p => Type(kind: TypeKind.Generic(p)))
+    val selfInstanceType = Type(kind: TypeKind.Instance(structOrEnum, typeArgs))
+
+    struct.instanceMethods.push(Function.generated(bogusScope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(Some(structOrEnum))))
+    struct.instanceMethods.push(Function.generated(bogusScope, "hash", [], Type(kind: TypeKind.PrimitiveInt), FunctionKind.InstanceMethod(Some(structOrEnum))))
+    struct.instanceMethods.push(Function.generated(bogusScope, "eq", [("other", selfInstanceType)], Type(kind: TypeKind.PrimitiveBool), FunctionKind.InstanceMethod(Some(structOrEnum))))
+
+    struct
+  }
 }
 
 export type TypedEnumVariant {
