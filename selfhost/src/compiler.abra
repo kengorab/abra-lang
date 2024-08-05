@@ -505,7 +505,8 @@ export type Compiler {
 
             val slotName = "${variable.label.name}.slot"
             val slot = Value.Ident(slotName, QbeType.Pointer)
-            self._currentFn.block.buildStoreL(res, slot)
+            val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
+            self._currentFn.block.buildStore(varTy, res, slot)
           }
           TypedAssignmentMode.Indexing(idxNode) => {
             match idxNode {
@@ -557,9 +558,7 @@ export type Compiler {
           }
           TypedAssignmentMode.Accessor(head, middle, tail) => {
             val ptr = match self._followAccessorPath(head: head, middle: middle, tail: tail, loadFinal: false) { Ok(v) => v, Err(e) => return Err(e) }
-
-            // TODO: this only works for int-assignable (ie. Int and Pointer types, not Bool or Float types)
-            self._currentFn.block.buildStoreL(res, ptr)
+            self._currentFn.block.buildStore(res.ty(), res, ptr)
           }
         }
 
@@ -583,7 +582,6 @@ export type Compiler {
   func _compileExpression(self, node: TypedAstNode, resultLocalName: String? = None): Result<Value, CompileError> {
     val prevNode = self._currentNode
     self._currentNode = Some(node)
-    // println(node.token)
 
     val res: Result<Value, CompileError> = match node.kind {
       TypedAstNodeKind.Literal(lit) => {
@@ -1521,24 +1519,29 @@ export type Compiler {
           match instTy {
             StructOrEnum.Struct(struct) => {
               var offset = 0
+              var fieldTyQbe = QbeType.F32 // placeholder sentinel value
               for f in struct.fields {
-                if f.name.name == field.name.name break
-
                 val fieldTy = match self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position)) { Ok(v) => v, Err(e) => return Err(e) }
+                if f.name.name == field.name.name {
+                  fieldTyQbe = fieldTy
+                  break
+                }
+
                 offset += fieldTy.size()
               }
+              if fieldTyQbe == QbeType.F32 return unreachable("fieldTyQbe == QbeType.F32")
 
               val ptr = match self._currentFn.block.buildAdd(Value.Int(offset), curVal) { Ok(v) => v, Err(e) => return qbeError(e) }
               if idx == segs.length - 1 {
                 if !loadFinal {
                   curVal = ptr
                 } else {
-                  val nextVal = self._currentFn.block.buildLoadL(ptr, localName)
+                  val nextVal = self._currentFn.block.buildLoad(fieldTyQbe, ptr, localName)
                   self._currentFn.block.addCommentBefore("${nextVal.repr()}: ${curVal.repr()}.${field.name.name}")
                   curVal = nextVal
                 }
               } else {
-                val nextVal = self._currentFn.block.buildLoadL(ptr)
+                val nextVal = self._currentFn.block.buildLoad(fieldTyQbe, ptr)
                 self._currentFn.block.addCommentBefore("${nextVal.repr()}: ${curVal.repr()}.${field.name.name}")
                 curVal = nextVal
               }
