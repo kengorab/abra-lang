@@ -20,5 +20,26 @@
 // arr[-1] = 4
 // println(arr)
 // val s = #{1, 2, 3, 2, 1}
-val m = { a: 1 }
-println(m)
+// val m = { a: 1 }
+// println(m)
+// val a = 1.2
+// val b = 4.5
+// if a > b {
+//   println("huh")
+// } else {
+//   println("ok")
+// }
+
+  val m = { a: 1, b: 2 }
+  m.insert("c", 3)
+  m["d"] = 4
+  /// Expect: { d: 4, c: 3, b: 2, a: 1 }
+  println(m)
+
+  val letters = ["e", "f", "g", "h", "i", "j", "l", "k", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"]
+  for ch, idx in letters {
+    m[ch] = idx + 4
+  }
+  // Map should have been resized
+  /// Expect: { y: 24, w: 22, u: 20, s: 18, q: 16, o: 14, m: 12, k: 11, i: 8, g: 6, e: 4, c: 3, a: 1, z: 25, x: 23, v: 21, t: 19, r: 17, p: 15, n: 13, l: 10, j: 9, h: 7, f: 5, d: 4, b: 2 }
+  println(m)

@@ -119,6 +119,13 @@ type ResolvedGenerics {
         }
         Ok(Type(kind: TypeKind.Instance(structOrEnum, resolvedGenerics)))
       }
+      TypeKind.Tuple(typeArgs) => {
+        val resolvedGenerics: Type[] = []
+        for typeArg in typeArgs {
+          resolvedGenerics.push(match self._resolveType(typeArg) { Ok(v) => v, Err(e) => return Err(e) })
+        }
+        Ok(Type(kind: TypeKind.Tuple(resolvedGenerics)))
+      }
       _ => Ok(ty)
     }
   }
@@ -372,7 +379,29 @@ export type Compiler {
             } else if s == self._project.preludeSetStruct {
               return todo("set as for-loop target")
             } else if s == self._project.preludeMapStruct {
-              return todo("map as for-loop target")
+              // return todo("map as for-loop target")
+              val keyTy = if typeArgs[0] |t| t else return unreachable("Map has 2 required type arguments")
+              val valTy = if typeArgs[1] |t| t else return unreachable("Map has 2 required type arguments")
+              match self._resolvedGenerics.addLayer("map literal", { "K": keyTy, "V": valTy }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "map literal", message: e))) }
+
+              val mapVal = match self._compileExpression(typedIterator) { Ok(v) => v, Err(e) => return Err(e) }
+              val instType = match self._addResolvedGenericsLayerForInstanceMethod(typedIterator.ty, "iterator", typedIterator.token.position) { Ok(v) => v, Err(e) => return Err(e) }
+              val iteratorFn = if s.instanceMethods.find(m => m.label.name == "iterator") |fn| fn else return unreachable("Map#iterator must exist")
+              val iteratorFnVal = match self._getOrCompileMethod(instType, iteratorFn) { Ok(v) => v, Err(e) => return Err(e) }
+              self._resolvedGenerics.popLayer()
+
+              val iter = match self._currentFn.block.buildCall(iteratorFnVal, [mapVal], Some("iterator")) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+              val _t = match self._getInstanceTypeForType(iteratorFn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
+              // TODO: destructuring
+              val instanceMethods = match _t[0] {
+                StructOrEnum.Struct(s) => s.instanceMethods
+                StructOrEnum.Enum(e) => e.instanceMethods
+              }
+              val nextFn = if instanceMethods.find(m => m.label.name == "next") |fn| fn else return unreachable("a type must have a 'next' method if it's to be iterable")
+
+              val iterTy = Type(kind: TypeKind.Instance(_t[0], _t[1]))
+              (iter, iterTy, nextFn, true)
             } else {
               val iter = match self._compileExpression(typedIterator) { Ok(v) => v, Err(e) => return Err(e) }
               val nextFn = if s.instanceMethods.find(m => m.label.name == "next") |fn| fn else return unreachable("a type must have a 'next' method if it's to be iterable")
@@ -865,7 +894,7 @@ export type Compiler {
         var fnHasOptionalParameters = false
         var optSafeCtx: (Label, Value?, QbeFunction, Label)? = None
 
-        val fnVal = match invokee {
+        val _p = match invokee {
           TypedInvokee.Function(fn) => {
             match self._resolvedGenerics.addLayer(fn.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: fn.label.name, message: e))) }
 
@@ -903,7 +932,8 @@ export type Compiler {
               FunctionKind.InstanceMethod => return unreachable("instance methods handled elsewhere", node.token.position)
             }
 
-            fnVal
+            val argMetadata = fn.params.map(p => (!!p.defaultValue, p.ty))
+            (fnVal, argMetadata)
           }
           TypedInvokee.Method(fn, selfExpr, isOptSafe) => {
             var selfInstanceType = match self._addResolvedGenericsLayerForInstanceMethod(selfExpr.ty, fn.label.name, node.token.position, resolvedGenerics) { Ok(v) => v, Err(e) => return Err(e) }
@@ -962,33 +992,51 @@ export type Compiler {
             val fnVal = match self._getOrCompileMethod(selfInstanceType, fn) { Ok(v) => v, Err(e) => return Err(e) }
             args.push(selfVal)
 
-            fnVal
+            val argMetadata = fn.params.map(p => (!!p.defaultValue, p.ty))
+            (fnVal, argMetadata)
           }
           TypedInvokee.Struct(struct) => {
             match self._resolvedGenerics.addLayer(struct.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: struct.label.name, message: e))) }
             fnHasOptionalParameters = struct.fields.any(f => !!f.initializer)
             val fnVal = match self._getOrCompileStructInitializer(struct) { Ok(v) => v, Err(e) => return Err(e) }
-            fnVal
+            val argMetadata = struct.fields.map(f => (!!f.initializer, f.ty))
+            (fnVal, argMetadata)
           }
           TypedInvokee.EnumVariant(enum_, variant) => {
             match self._resolvedGenerics.addLayer(variant.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: variant.label.name, message: e))) }
             val enumVariantFn = match self._getOrCompileEnumVariantFn(enum_, variant) { Ok(v) => v, Err(e) => return Err(e) }
-            enumVariantFn
+
+            val argMetadata = match variant.kind {
+              EnumVariantKind.Container(fields) => fields.map(f => (!!f.initializer, f.ty))
+              _ => []
+            }
+            (enumVariantFn, argMetadata)
           }
           TypedInvokee.Expr => return todo("invocation of arbitrary function expression", node.token.position)
         }
+        // TODO: destructuring
+        val fnVal = _p[0]
+        val argMetadata = _p[1]
 
-        var defaultValueParamIdx = 0
+        var defaultValueParamIdx = -1
         var defaultValueFlags = 0
-        for arg in arguments {
+        for arg, idx in arguments {
+          val _m = if argMetadata[idx] |m| m else return unreachable("arguments.length != argMetadata.length")
+          // TODO: destructuring
+          val argHasDefaultValue = _m[0]
+          val argTy = _m[1]
+
+          if argHasDefaultValue {
+            defaultValueParamIdx += 1
+          }
+
           if arg |node| {
             val arg = match self._compileExpression(node) { Ok(v) => v, Err(e) => return Err(e) }
             args.push(arg)
           } else {
             defaultValueFlags ||= (1 << defaultValueParamIdx)
-            defaultValueParamIdx += 1
 
-            val argQbeType = match self._getQbeTypeForTypeExpect(node.ty, "unacceptable type", Some(node.token.position)) { Ok(v) => v, Err(e) => return Err(e) }
+            val argQbeType = match self._getQbeTypeForTypeExpect(argTy, "unacceptable type", Some(node.token.position)) { Ok(v) => v, Err(e) => return Err(e) }
             args.push(argQbeType.zeroValue())
           }
         }
@@ -1075,7 +1123,7 @@ export type Compiler {
         val setNewFn = if self._project.preludeSetStruct.staticMethods.find(m => m.label.name == "new") |fn| fn else return unreachable("Set.new must exist")
         val setNewFnVal = match self._getOrCompileMethod(node.ty, setNewFn) { Ok(v) => v, Err(e) => return Err(e) }
 
-        val setInstance = match self._currentFn.block.buildCall(setNewFnVal, [], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+        val setInstance = match self._currentFn.block.buildCall(setNewFnVal, [Value.Int(0), Value.Int32(1)], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
         self._currentFn.block.addCommentBefore("${setInstance.repr()}: ${node.ty.repr()}")
 
         val setInsertFn = if self._project.preludeSetStruct.instanceMethods.find(m => m.label.name == "insert") |fn| fn else return unreachable("Set#insert must exist")
@@ -1083,7 +1131,7 @@ export type Compiler {
 
         for item in items {
           val itemVal = match self._compileExpression(item) { Ok(v) => v, Err(e) => return Err(e) }
-          self._currentFn.block.buildVoidCall(setInsertFnVal, [setInstance, itemVal])
+          match self._currentFn.block.buildCall(setInsertFnVal, [setInstance, itemVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
         }
 
         self._resolvedGenerics.popLayer()
@@ -1104,7 +1152,7 @@ export type Compiler {
         val mapNewFn = if self._project.preludeMapStruct.staticMethods.find(m => m.label.name == "new") |fn| fn else return unreachable("Map.new must exist")
         val mapNewFnVal = match self._getOrCompileMethod(node.ty, mapNewFn) { Ok(v) => v, Err(e) => return Err(e) }
 
-        val mapInstance = match self._currentFn.block.buildCall(mapNewFnVal, [], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+        val mapInstance = match self._currentFn.block.buildCall(mapNewFnVal, [Value.Int(0), Value.Int32(1)], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
         self._currentFn.block.addCommentBefore("${mapInstance.repr()}: ${node.ty.repr()}")
 
         val mapInsertFn = if self._project.preludeMapStruct.instanceMethods.find(m => m.label.name == "insert") |fn| fn else return unreachable("Map#insert must exist")
@@ -1113,7 +1161,7 @@ export type Compiler {
         for _item in items {
           val keyVal = match self._compileExpression(_item[0]) { Ok(v) => v, Err(e) => return Err(e) }
           val valueVal = match self._compileExpression(_item[1]) { Ok(v) => v, Err(e) => return Err(e) }
-          self._currentFn.block.buildVoidCall(mapInsertFnVal, [mapInstance, keyVal, valueVal])
+          match self._currentFn.block.buildCall(mapInsertFnVal, [mapInstance, keyVal, valueVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
         }
 
         self._resolvedGenerics.popLayer()
