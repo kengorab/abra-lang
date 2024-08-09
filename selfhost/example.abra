@@ -1,16 +1,2 @@
-type Foo { name: String }
-
-val foo = Foo(name: "abc")
-val arr = [foo]
-
-println(arr[0]?.name?.length)
-// println(foo.name.length)
-
-// val arr = ["a", "b", "c", "d"]
-
-// val _ = arr[0]?.length?.abs()
-
-// /// Expect: Option.Some(value: 1)
-// println(arr[0]?.length)
-// /// Expect: Option.None
-// println(arr[6]?.length)
+val set = #{17, 18, 19}
+println(set)

@@ -429,7 +429,14 @@ export type Block {
       QbeType.U16 => self.buildLoadW(mem, dst)
       QbeType.U32 => self.buildLoadW(mem, dst)
       QbeType.U64 => self.buildLoadL(mem, dst)
-      QbeType.Pointer => self.buildLoadL(mem, dst)
+      QbeType.Pointer => {
+        val dest = dst ?: self._nextLocal()
+        val local = Value.Ident(dest, ty)
+
+        self.append(Instruction.LoadL(dst: Dest(name: local.repr(), ty: ty), mem: mem))
+
+        local
+      }
       QbeType.F32 => self.buildLoadS(mem, dst)
       QbeType.F64 => self.buildLoadD(mem, dst)
     }

@@ -1,0 +1,276 @@
+// Test raw construction of map
+// (() => {
+func test_mapRawConstruction() {
+  val m0: Map<Int, String> = Map.new()
+  /// Expect: {}
+  println(m0)
+
+  val m1: Map<Int, String> = Map.new()
+  m1.insert(24, "hello")
+  /// Expect: { 24: hello }
+  println(m1)
+
+  val m2: Map<Int, String> = Map.new()
+  m2.insert(24, "hello")
+  m2.insert(17, "bonjour")
+  /// Expect: { 17: bonjour, 24: hello }
+  println(m2)
+
+  // Forcing a hash-collision
+  val m3: Map<Int, String> = Map.new()
+  m3.insert(1, "hello")
+  m3.insert(m3._capacity + 1, "world")
+  /// Expect: { 1: hello, 17: world }
+  println(m3)
+// })()
+}
+test_mapRawConstruction()
+
+// Test map literal construction
+// (() => {
+func test_mapLiteralConstruction() {
+  val m0: Map<Int, String> = {}
+  /// Expect: {}
+  println(m0)
+
+  val m1 = { (24): "hello" }
+  /// Expect: { 24: hello }
+  println(m1)
+
+  val m2 = { (24): "hello", (17): "bonjour" }
+  /// Expect: { 17: bonjour, 24: hello }
+  println(m2)
+
+  // Forcing a hash-collision (16 initial buckets by default)
+  val m3 = { (1): "hello", (17): "world" }
+  /// Expect: { 1: hello, 17: world }
+  println(m3)
+// })()
+}
+test_mapLiteralConstruction()
+
+// == operator (also Map#eq)
+// (() => {
+func test_mapEq() {
+  val map = { a: "abc", b: "def" }
+
+  /// Expect: true
+  println(map == { b: "def", a: "abc" })
+  /// Expect: true
+  println({ (1): { (1): ["a"], (2): ["b"] } } == { (1): { (1): ["a"], (2): ["b"] } })
+
+//   /// Expect: false
+//   println(map == ["a", "b"])
+//   /// Expect: false
+//   println(map == "ab")
+//   /// Expect: false
+//   println(map == 123)
+//   /// Expect: false
+//   println(map == 12.3)
+//   /// Expect: false
+//   println(map == [1, 2, 3])
+//   /// Expect: false
+//   println(map == #{1, 2, 3})
+//   /// Expect: false
+//   println(map == { (1): "a", (2): "b" })
+// })()
+}
+test_mapEq()
+
+// Map.fromPairs
+// (() => {
+func test_mapFromPairs() {
+  // TODO: The typechecker won't recognize this if it's inlined for some reason
+  val pairs = [("a", 1), ("b", 2), ("c", 3)]
+  val m = Map.fromPairs(pairs)
+
+  /// Expect: { c: 3, b: 2, a: 1 }
+  println(m)
+// })()
+}
+test_mapFromPairs()
+
+// Map#keys
+// (() => {
+func test_mapKeys() {
+  val map1 = { a: 1, b: 2 }
+  /// Expect: #{b, a}
+  println(map1.keys())
+
+  val map2 = { ((1, 1)): true, ((0, 1)): false }
+  /// Expect: #{(0, 1), (1, 1)}
+  println(map2.keys())
+// })()
+}
+test_mapKeys()
+
+// Map#values
+// (() => {
+func test_mapValues() {
+  val map1 = { a: 1, b: 2 }
+  /// Expect: [2, 1]
+  println(map1.values())
+
+  val map2 = { ((1, 1)): true, ((0, 1)): false }
+  /// Expect: [false, true]
+  println(map2.values())
+// })()
+}
+test_mapValues()
+
+// Map#entries
+// (() => {
+func test_mapEntries() {
+  val map1 = { a: 1, b: 2 }
+  /// Expect: #{("b", 2), ("a", 1)}
+  println(map1.entries())
+
+  val map2 = { ((1, 1)): true, ((0, 1)): false }
+  /// Expect: #{((1, 1), true), ((0, 1), false)}
+  println(map2.entries())
+// })()
+}
+test_mapEntries()
+
+// Map#iterator
+// (() => {
+func test_mapIterator() {
+  val m = { a: 1, b: 2, c: 3 }
+  val iter = m.iterator()
+
+  /// Expect: Option.Some(value: ("c", 3))
+  println(iter.next())
+  /// Expect: Option.Some(value: ("b", 2))
+  println(iter.next())
+  /// Expect: Option.Some(value: ("a", 1))
+  println(iter.next())
+  /// Expect: Option.None
+  println(iter.next())
+  /// Expect: Option.None
+  println(iter.next())
+// })()
+}
+test_mapIterator()
+
+// For-loops
+/// Expect: ("c", 3) 0
+/// Expect: ("b", 2) 1
+/// Expect: ("a", 1) 2
+for ch, idx in { a: 1, b: 2, c: 3 } { println(ch, idx) }
+
+// Map#containsKey
+// (() => {
+func test_mapContainsKey() {
+  val m = { (1): "a", (2): "b" }
+
+  /// Expect: true
+  println(m.containsKey(1))
+  /// Expect: false
+  println(m.containsKey(3))
+// })()
+}
+test_mapContainsKey()
+
+// // Map#mapValues
+// (() => {
+//   val m1 = { (1): "abc", (2): "defg" }
+
+//   val m2 = m1.mapValues((_, v) => v + "!")
+//   /// Expect: { 1: abc!, 2: defg! }
+//   println(m2)
+
+//   val m3 = m1.mapValues((_, v) => v.length)
+//   /// Expect: { 1: 3, 2: 4 }
+//   println(m3)
+// })()
+
+// Map#insert (also []= operator)
+// (() => {
+func test_mapInsert() {
+  val m = { a: 1, b: 2 }
+  m.insert("c", 3)
+  m["d"] = 4
+  /// Expect: { d: 4, c: 3, b: 2, a: 1 }
+  println(m)
+
+  val letters = ["e", "f", "g", "h", "i", "j", "l", "k", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"]
+  for ch, idx in letters {
+    m[ch] = idx + 4
+  }
+  // Map should have been resized
+  /// Expect: { y: 24, w: 22, u: 20, s: 18, q: 16, o: 14, m: 12, k: 11, i: 8, g: 6, e: 4, c: 3, a: 1, z: 25, x: 23, v: 21, t: 19, r: 17, p: 15, n: 13, l: 10, j: 9, h: 7, f: 5, d: 4, b: 2 }
+  println(m)
+  /// Expect: false
+  println(m._needsResize())
+// })()
+}
+test_mapInsert()
+
+// Map#get
+// (() => {
+func test_mapGet() {
+  val m = { (1): "a", (2): "b" }
+
+  /// Expect: Option.Some(value: "a")
+  println(m.get(1))
+  /// Expect: Option.Some(value: "b")
+  println(m.get(2))
+  /// Expect: Option.None
+  println(m.get(3))
+// })()
+}
+test_mapGet()
+
+// // Map#getOr
+// (() => {
+//   val m = { (1): "a", (2): "b" }
+
+//   /// Expect: a
+//   println(m.getOr(1, "c"))
+//   /// Expect: b
+//   println(m.getOr(2, "c"))
+//   /// Expect: c
+//   println(m.getOr(3, "c"))
+// })()
+
+// // Map#getOrElse
+// (() => {
+//   val m = { (1): "a", (2): "b" }
+
+//   /// Expect: a
+//   println(m.getOrElse(1, () => {
+//     println("calling default fn")
+//     "c"
+//   }))
+//   /// Expect: b
+//   println(m.getOrElse(2, () => {
+//     println("calling default fn")
+//     "c"
+//   }))
+//   /// Expect: calling default fn
+//   /// Expect: c
+//   println(m.getOrElse(3, () => {
+//     println("calling default fn")
+//     "c"
+//   }))
+// })()
+
+// // Map#update
+// (() => {
+//   val m = { (1): "a", (2): "b" }
+
+//   /// Expect: { 1: a, 2: b }
+//   println(m)
+
+//   val old1 = m.update(1, () => "A")
+//   /// Expect: { 1: A, 2: b }
+//   println(m)
+//   /// Expect: Option.Some(value: "a")
+//   println(old1)
+
+//   val old2 = m.update(4, () => "???")
+//   /// Expect: { 1: A, 2: b }
+//   println(m)
+//   /// Expect: Option.None
+//   println(old2)
+// })()
