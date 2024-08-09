@@ -858,7 +858,8 @@ type Set<T> {
     }
 
     val items = reprs.join(", ")
-    "#{${items}}"
+    // "#{${items}}"
+    "#{" + items + "}"
   }
 
   func eq(self, other: Set<T>): Bool {
@@ -959,19 +960,17 @@ type MapIterator<K, V> {
   _cursor: MapEntry<K, V>? = None
 
   func next(self): (K, V)? {
-    if self._i >= self.map._entries.length { return None }
-
-    if !self._cursor {
+    while self._i < self.map._entries.length && !self._cursor {
       self._i += 1
       self._cursor = flattenOption(self.map._entries[self._i])
     }
 
     if self._cursor |cur| {
       self._cursor = cur.next
-      return Some((cur.key, cur.value))
+      Some((cur.key, cur.value))
+    } else {
+      None
     }
-
-    self.next()
   }
 }
 

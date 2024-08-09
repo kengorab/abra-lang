@@ -377,9 +377,28 @@ export type Compiler {
               val iterTy = Type(kind: TypeKind.Instance(_t[0], _t[1]))
               (iter, iterTy, nextFn, true)
             } else if s == self._project.preludeSetStruct {
-              return todo("set as for-loop target")
+              val innerTy = if typeArgs[0] |t| t else return unreachable("Set has 1 required type argument")
+              match self._resolvedGenerics.addLayer("set literal", { "T": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "set literal", message: e))) }
+
+              val mapVal = match self._compileExpression(typedIterator) { Ok(v) => v, Err(e) => return Err(e) }
+              val instType = match self._addResolvedGenericsLayerForInstanceMethod(typedIterator.ty, "iterator", typedIterator.token.position) { Ok(v) => v, Err(e) => return Err(e) }
+              val iteratorFn = if s.instanceMethods.find(m => m.label.name == "iterator") |fn| fn else return unreachable("Set#iterator must exist")
+              val iteratorFnVal = match self._getOrCompileMethod(instType, iteratorFn) { Ok(v) => v, Err(e) => return Err(e) }
+              self._resolvedGenerics.popLayer()
+
+              val iter = match self._currentFn.block.buildCall(iteratorFnVal, [mapVal], Some("iterator")) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+              val _t = match self._getInstanceTypeForType(iteratorFn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
+              // TODO: destructuring
+              val instanceMethods = match _t[0] {
+                StructOrEnum.Struct(s) => s.instanceMethods
+                StructOrEnum.Enum(e) => e.instanceMethods
+              }
+              val nextFn = if instanceMethods.find(m => m.label.name == "next") |fn| fn else return unreachable("a type must have a 'next' method if it's to be iterable")
+
+              val iterTy = Type(kind: TypeKind.Instance(_t[0], _t[1]))
+              (iter, iterTy, nextFn, true)
             } else if s == self._project.preludeMapStruct {
-              // return todo("map as for-loop target")
               val keyTy = if typeArgs[0] |t| t else return unreachable("Map has 2 required type arguments")
               val valTy = if typeArgs[1] |t| t else return unreachable("Map has 2 required type arguments")
               match self._resolvedGenerics.addLayer("map literal", { "K": keyTy, "V": valTy }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "map literal", message: e))) }
@@ -1014,6 +1033,8 @@ export type Compiler {
           }
           TypedInvokee.Expr => return todo("invocation of arbitrary function expression", node.token.position)
         }
+        self._resolvedGenerics.popLayer()
+
         // TODO: destructuring
         val fnVal = _p[0]
         val argMetadata = _p[1]
@@ -1079,8 +1100,6 @@ export type Compiler {
           }
         }
 
-        self._resolvedGenerics.popLayer()
-
         Ok(res)
       }
       TypedAstNodeKind.Array(items) => {
@@ -1131,7 +1150,7 @@ export type Compiler {
 
         for item in items {
           val itemVal = match self._compileExpression(item) { Ok(v) => v, Err(e) => return Err(e) }
-          match self._currentFn.block.buildCall(setInsertFnVal, [setInstance, itemVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
+          self._currentFn.block.buildVoidCall(setInsertFnVal, [setInstance, itemVal])
         }
 
         self._resolvedGenerics.popLayer()
@@ -1569,7 +1588,7 @@ export type Compiler {
               var offset = 0
               var fieldTyQbe = QbeType.F32 // placeholder sentinel value
               for f in struct.fields {
-                val fieldTy = match self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position)) { Ok(v) => v, Err(e) => return Err(e) }
+                val fieldTy = match self._getQbeTypeForTypeExpect(f.ty, "unacceptable type for field", Some(f.name.position)) { Ok(v) => v, Err(e) => return Err(e) }
                 if f.name.name == field.name.name {
                   fieldTyQbe = fieldTy
                   break
