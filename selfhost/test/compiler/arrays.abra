@@ -35,6 +35,57 @@ func test_arrayLiteralConstruction() {
 }
 test_arrayLiteralConstruction()
 
+// Test array indexing assignment
+// (() => {
+func test_arrayIndexingAssignment() {
+  val emptyArr: Int[] = []
+  emptyArr[0] = 123
+  /// Expect: []
+  println(emptyArr)
+
+  val intArr = [1, 2, 3, 4]
+  /// Expect: [1, 2, 3, 4]
+  println(intArr)
+  intArr[0] = 0
+  /// Expect: [0, 2, 3, 4]
+  println(intArr)
+  intArr[-1] = 0
+  /// Expect: [0, 2, 3, 0]
+  println(intArr)
+
+  val floatArr = [0.12, 3.45, 6.0]
+  /// Expect: [0.12, 3.45, 6]
+  println(floatArr)
+  floatArr[0] = 0.001
+  /// Expect: [0.001, 3.45, 6]
+  println(floatArr)
+  floatArr[-1] = 0.001
+  /// Expect: [0.001, 3.45, 0.001]
+  println(floatArr)
+
+  val stringArr = ["ab", "cd", "ef"]
+  /// Expect: [ab, cd, ef]
+  println(stringArr)
+  stringArr[0] = "ba"
+  /// Expect: [ba, cd, ef]
+  println(stringArr)
+  stringArr[-1] = "fe"
+  /// Expect: [ba, cd, fe]
+  println(stringArr)
+
+  val nestedArr = [[1, 2], [3, 4], [5, 6]]
+  /// Expect: [[1, 2], [3, 4], [5, 6]]
+  println(nestedArr)
+  nestedArr[0] = [0, 1]
+  /// Expect: [[0, 1], [3, 4], [5, 6]]
+  println(nestedArr)
+  nestedArr[-1] = [3, 2]
+  /// Expect: [[0, 1], [3, 4], [3, 2]]
+  println(nestedArr)
+// })()
+}
+test_arrayIndexingAssignment()
+
 // == operator (also Array#eq)
 // (() => {
 func test_arrayEq() {

@@ -760,6 +760,9 @@ fn compiler_tests() {
         .add_test("compiler/loops.abra")
         .add_test("compiler/types.abra")
         .add_test("compiler/enums.abra")
+        .add_test("compiler/tuples.abra")
+        .add_test("compiler/maps.abra")
+        .add_test("compiler/sets.abra")
 
         .run_tests();
 }

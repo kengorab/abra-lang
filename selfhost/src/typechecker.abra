@@ -168,6 +168,34 @@ export type Struct {
 
   // Override eq method since default implementation recurses infinitely (scope -> variables -> TypeKind.Struct)
   func eq(self, other: Struct): Bool = self.moduleId == other.moduleId && self.label == other.label
+
+  // Override hash method since default implementation recurses infinitely (scope -> variables -> TypeKind.Struct)
+  func hash(self): Int = self.moduleId + self.label.hash() * 17
+
+  func makeDummy(moduleId: Int, name: String, typeParams: String[] = [], fields: (String, Type)[] = []): Struct {
+    val bogusPosition = Position(line: 0, col: 0)
+    val bogusScope = Scope(name: "bogus($name)")
+
+    val struct = Struct(
+      moduleId: moduleId,
+      label: Label(name: name, position: bogusPosition),
+      scope: bogusScope,
+      typeParams: typeParams,
+      fields: fields.map(_f => Field(name: Label(name: _f[0], position: bogusPosition), ty: _f[1], initializer: None)),
+      instanceMethods: [],
+      staticMethods: [],
+    )
+
+    val structOrEnum = StructOrEnum.Struct(struct)
+    val typeArgs = struct.typeParams.map(p => Type(kind: TypeKind.Generic(p)))
+    val selfInstanceType = Type(kind: TypeKind.Instance(structOrEnum, typeArgs))
+
+    struct.instanceMethods.push(Function.generated(bogusScope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(Some(structOrEnum))))
+    struct.instanceMethods.push(Function.generated(bogusScope, "hash", [], Type(kind: TypeKind.PrimitiveInt), FunctionKind.InstanceMethod(Some(structOrEnum))))
+    struct.instanceMethods.push(Function.generated(bogusScope, "eq", [("other", selfInstanceType)], Type(kind: TypeKind.PrimitiveBool), FunctionKind.InstanceMethod(Some(structOrEnum))))
+
+    struct
+  }
 }
 
 export type TypedEnumVariant {
@@ -536,12 +564,6 @@ export type TypedAstNode {
   kind: TypedAstNodeKind
 }
 
-export enum TypedIdentifierKind {
-  Named(name: String, variable: Variable)
-  None_
-  Discard
-}
-
 export type Decorator {
   label: Label
   arguments: LiteralAstNode[]
@@ -689,7 +711,7 @@ export enum TypedAstNodeKind {
   Unary(op: UnaryOp, expr: TypedAstNode)
   Binary(left: TypedAstNode, op: BinaryOp, right: TypedAstNode)
   Grouped(inner: TypedAstNode)
-  Identifier(kind: TypedIdentifierKind)
+  Identifier(name: String, variable: Variable)
   Accessor(head: TypedAstNode, middle: AccessorPathSegment[], tail: AccessorPathSegment)
   Invocation(invokee: TypedInvokee, arguments: TypedAstNode?[], resolvedGenerics: Map<String, Type>)
   Array(items: TypedAstNode[])
@@ -3774,7 +3796,7 @@ export type Typechecker {
           }
           return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName(name, "variable")))
         }
-        (variable.ty, TypedIdentifierKind.Named(name, variable))
+        (variable.ty, name, variable)
       }
       IdentifierKind.Discard => return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName("_", "variable")))
       IdentifierKind.None_ => {
@@ -3796,12 +3818,12 @@ export type Typechecker {
           }
           return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName("self", "variable")))
         }
-        (variable.ty, TypedIdentifierKind.Named("self", variable))
+        (variable.ty, "self", variable)
       }
     }
 
     // TODO: destructuring
-    Ok(TypedAstNode(token: token, ty: _p[0], kind: TypedAstNodeKind.Identifier(_p[1])))
+    Ok(TypedAstNode(token: token, ty: _p[0], kind: TypedAstNodeKind.Identifier(_p[1], _p[2])))
   }
 
   func _resolveAccessorPathSegmentAny(self, label: Label, optSafe: Bool): AccessorPathSegment? {
@@ -3963,8 +3985,7 @@ export type Typechecker {
       }
 
       val token = Token(position: label.position, kind: TokenKind.Ident(label.name))
-      val identifierKind = TypedIdentifierKind.Named(label.name, exportVar)
-      Some(TypedAstNode(token: token, ty: exportVar.ty, kind: TypedAstNodeKind.Identifier(identifierKind)))
+      Some(TypedAstNode(token: token, ty: exportVar.ty, kind: TypedAstNodeKind.Identifier(label.name, exportVar)))
     } else {
       None
     }
@@ -4072,20 +4093,16 @@ export type Typechecker {
     self.isStructOrEnumValueAllowed = false
 
     match invokee.kind {
-      TypedAstNodeKind.Identifier(identKind) => match identKind {
-        TypedIdentifierKind.Named(name, variable) => {
-          match variable.alias {
-            VariableAlias.Function(fn) => self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint)
-            VariableAlias.Struct(struct) => {
-              val initializerFn = Function.initializer(self.currentScope, struct)
-              self._typecheckInvocationOfFunction(token, invokee, initializerFn, node, typeHint, None, Some(Instantiatable.Struct(struct)))
-            }
-            VariableAlias.Enum(enum_) => return Err(TypeError(position: invokee.token.position, kind: TypeErrorKind.IllegalCallableType(Type(kind: TypeKind.Type(StructOrEnum.Enum(enum_))))))
-            None => self._typecheckInvocationOfExpression(token, invokee, invokee.token.position, node)
+      TypedAstNodeKind.Identifier(name, variable) => {
+        match variable.alias {
+          VariableAlias.Function(fn) => self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint)
+          VariableAlias.Struct(struct) => {
+            val initializerFn = Function.initializer(self.currentScope, struct)
+            self._typecheckInvocationOfFunction(token, invokee, initializerFn, node, typeHint, None, Some(Instantiatable.Struct(struct)))
           }
+          VariableAlias.Enum(enum_) => return Err(TypeError(position: invokee.token.position, kind: TypeErrorKind.IllegalCallableType(Type(kind: TypeKind.Type(StructOrEnum.Enum(enum_))))))
+          None => self._typecheckInvocationOfExpression(token, invokee, invokee.token.position, node)
         }
-        TypedIdentifierKind.None_ => return Err(TypeError(position: invokee.token.position, kind: TypeErrorKind.IllegalCallableType(Type(kind: TypeKind.Hole, /*nullable: true*/))))
-        TypedIdentifierKind.Discard => return unreachable(invokee.token.position, "resolving '_' should fail before reaching here")
       }
       TypedAstNodeKind.Accessor(head, mid, tail) => {
         match tail {
