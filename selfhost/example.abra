@@ -1,2 +1,14 @@
-val set = #{17, 18, 19}
-println(set)
+// val set = #{17, 18, 19}
+// println(set)
+
+// func callFn(fn: (Int) => Int, a: Int): Int {
+//   fn(a)
+// }
+
+// val res = callFn//(x => x + 1, 7)
+// println(res)
+
+func add_(a: Int, b: Int): Int = a + b
+
+val add = add_
+println(add(1, 2))

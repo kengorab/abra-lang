@@ -550,19 +550,26 @@ export type Block {
     local
   }
 
-  func buildCall(self, fnValue: QbeFunction, arguments: Value[], dst: String? = None): Result<Value, String> {
+  func buildCall(self, callable: Callable, arguments: Value[], dst: String? = None): Result<Value, String> {
     val dest = dst ?: self._nextLocal()
-    val fnReturnType = if fnValue.returnType |ty| ty else {
-      return Err("function value '${fnValue.name}' has no return type; cannot store result into destination '%$dest'")
-    }
+
+    val fnReturnType = if callable.returnType() |ty| ty else return Err("function value has no return type; cannot store result into destination '%$dest'")
 
     val local = Value.Ident(dest, fnReturnType)
 
-    val fnName = "\$${fnValue.name}"
-    if fnValue.variadicIdx |idx| {
-      self.append(Instruction.CallVarargs(dst: Some(Dest(name: local.repr(), ty: fnReturnType)), fn: fnName, varargsIdx: idx, args: arguments))
-    } else {
-      self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: fnReturnType)), fn: fnName, args: arguments))
+    match callable {
+      Callable.Function(fn) => {
+        val fnIdent = Value.Global(fn.name, QbeType.Pointer)
+
+        if fn.variadicIdx |idx| {
+          self.append(Instruction.CallVarargs(dst: Some(Dest(name: local.repr(), ty: fnReturnType)), fn: fnIdent, varargsIdx: idx, args: arguments))
+        } else {
+          self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: fnReturnType)), fn: fnIdent, args: arguments))
+        }
+      }
+      Callable.Value(fnValue) => {
+        self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: fnReturnType)), fn: fnValue, args: arguments))
+      }
     }
 
     Ok(local)
@@ -572,22 +579,29 @@ export type Block {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, returnType)
 
-    self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: returnType)), fn: "\$$fnName", args: arguments))
+    self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: returnType)), fn: Value.Global(fnName, QbeType.Pointer), args: arguments))
 
     Ok(local)
   }
 
-  func buildVoidCall(self, fnValue: QbeFunction, arguments: Value[]) {
-    val fnName = "\$${fnValue.name}"
-    if fnValue.variadicIdx |idx| {
-      self.append(Instruction.CallVarargs(dst: None, fn: fnName, varargsIdx: idx, args: arguments))
-    } else {
-      self.append(Instruction.Call(dst: None, fn: fnName, args: arguments))
+  func buildVoidCall(self, callable: Callable, arguments: Value[]) {
+    match callable {
+      Callable.Function(fn) => {
+        val fnIdent = Value.Global(fn.name, QbeType.Pointer)
+        if fn.variadicIdx |idx| {
+          self.append(Instruction.CallVarargs(dst: None, fn: fnIdent, varargsIdx: idx, args: arguments))
+        } else {
+          self.append(Instruction.Call(dst: None, fn: fnIdent, args: arguments))
+        }
+      }
+      Callable.Value(fnValue) => {
+        self.append(Instruction.Call(dst: None, fn: fnValue, args: arguments))
+      }
     }
   }
 
   func buildVoidCallRaw(self, fnName: String, arguments: Value[]) {
-    self.append(Instruction.Call(dst: None, fn: "\$$fnName", args: arguments))
+    self.append(Instruction.Call(dst: None, fn: Value.Global(fnName, QbeType.Pointer), args: arguments))
   }
 
   func buildPhi(self, cases: (Label, Value)[], dst: String? = None): Result<Value, String> {
@@ -623,6 +637,16 @@ export type Block {
 
   func buildHalt(self) {
     self.append(Instruction.Hlt)
+  }
+}
+
+export enum Callable {
+  Function(fn: QbeFunction)
+  Value(v: Value, returnType: QbeType?)
+
+  func returnType(self): QbeType? = match self {
+    Callable.Function(fn) => fn.returnType
+    Callable.Value(_, returnType) => returnType
   }
 }
 
@@ -816,8 +840,8 @@ enum Instruction {
 
   Cast(dst: Dest, value: Value)
 
-  Call(dst: Dest?, fn: String, args: Value[])
-  CallVarargs(dst: Dest?, fn: String, varargsIdx: Int, args: Value[])
+  Call(dst: Dest?, fn: Value, args: Value[])
+  CallVarargs(dst: Dest?, fn: Value, varargsIdx: Int, args: Value[])
 
   Phi(dst: Dest, cases: (Label, Value)[])
 
@@ -1115,13 +1139,13 @@ enum Instruction {
         v.encode(file)
         file.writeln()
       }
-      Instruction.Call(dst, fnName, args) => {
+      Instruction.Call(dst, fnVal, args) => {
         if dst |dst| {
           dst.encode(file)
           file.write(" ")
         }
         file.write("call ")
-        file.write(fnName)
+        fnVal.encode(file)
         file.write("(")
         for arg, idx in args {
           arg.ty().encode(file)
@@ -1131,13 +1155,13 @@ enum Instruction {
         }
         file.writeln(")")
       }
-      Instruction.CallVarargs(dst, fnName, varargsIdx, args) => {
+      Instruction.CallVarargs(dst, fnVal, varargsIdx, args) => {
         if dst |dst| {
           dst.encode(file)
           file.write(" ")
         }
         file.write("call ")
-        file.write(fnName)
+        fnVal.encode(file)
         file.write("(")
         for arg, idx in args {
           if idx == varargsIdx {
