@@ -8,7 +8,20 @@
 // val res = callFn//(x => x + 1, 7)
 // println(res)
 
-func add_(a: Int, b: Int): Int = a + b
+// func add_(a: Int, b: Int): Int = a + b
 
-val add = add_
-println(add(1, 2))
+// val add = add_
+// println(add(1, 2))
+
+func callFn1(fn: (Int, String) => Int) {
+  println(fn(24, "abc"))
+}
+// func callFn2(fn: (String) => Int) {
+//   println(fn("abc"))
+// }
+// func foo(a: Int, b: Int): Int = a + b
+func foo(a: Int): Int = a + 1
+// func foo(): Int = 12
+callFn1(foo)
+// callFn2(foo)
+

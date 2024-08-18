@@ -79,10 +79,10 @@ callFn(f0)
 // /// Expect: 25
 // callFn((x = 12, y = 6) => x + y + xyz.length)
 
-// func f4(x: Int): Int = x
+func f4(x: Int): Int = x
 // func f4Closure(x: Int): Int = x + xyz.length
-// /// Expect: 16
-// callFn2(f4)
+/// Expect: 16
+callFn2(f4)
 // /// Expect: 16
 // callFn2(x => x)
 // /// Expect: 19
@@ -90,10 +90,10 @@ callFn(f0)
 // /// Expect: 19
 // callFn2(x => x + xyz.length)
 
-// func f5(x: Int, y: Int): Int = x + y
+func f5(x: Int, y: Int): Int = x + y
 // func f5Closure(x: Int, y: Int): Int = x + y + xyz.length
-// /// Expect: 33
-// callFn2(f5)
+/// Expect: 33
+callFn2(f5)
 // /// Expect: 33
 // callFn2((x, y) => x + y)
 // /// Expect: 36

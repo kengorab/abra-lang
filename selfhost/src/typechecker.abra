@@ -711,7 +711,7 @@ export enum TypedAstNodeKind {
   Unary(op: UnaryOp, expr: TypedAstNode)
   Binary(left: TypedAstNode, op: BinaryOp, right: TypedAstNode)
   Grouped(inner: TypedAstNode)
-  Identifier(name: String, variable: Variable)
+  Identifier(name: String, variable: Variable, fnAliasTypeHint: Type?)
   Accessor(head: TypedAstNode, middle: AccessorPathSegment[], tail: AccessorPathSegment)
   Invocation(invokee: TypedInvokee, arguments: TypedAstNode?[], resolvedGenerics: Map<String, Type>)
   Array(items: TypedAstNode[])
@@ -3796,7 +3796,12 @@ export type Typechecker {
           }
           return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName(name, "variable")))
         }
-        (variable.ty, name, variable)
+        val fnTypeHint = match variable.alias {
+          VariableAlias.Function(fn) => typeHint
+          _ => None
+        }
+
+        (variable.ty, name, variable, fnTypeHint)
       }
       IdentifierKind.Discard => return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName("_", "variable")))
       IdentifierKind.None_ => {
@@ -3818,12 +3823,12 @@ export type Typechecker {
           }
           return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName("self", "variable")))
         }
-        (variable.ty, "self", variable)
+        (variable.ty, "self", variable, None)
       }
     }
 
     // TODO: destructuring
-    Ok(TypedAstNode(token: token, ty: _p[0], kind: TypedAstNodeKind.Identifier(_p[1], _p[2])))
+    Ok(TypedAstNode(token: token, ty: _p[0], kind: TypedAstNodeKind.Identifier(_p[1], _p[2], _p[3])))
   }
 
   func _resolveAccessorPathSegmentAny(self, label: Label, optSafe: Bool): AccessorPathSegment? {
@@ -3985,7 +3990,7 @@ export type Typechecker {
       }
 
       val token = Token(position: label.position, kind: TokenKind.Ident(label.name))
-      Some(TypedAstNode(token: token, ty: exportVar.ty, kind: TypedAstNodeKind.Identifier(label.name, exportVar)))
+      Some(TypedAstNode(token: token, ty: exportVar.ty, kind: TypedAstNodeKind.Identifier(label.name, exportVar, None)))
     } else {
       None
     }
