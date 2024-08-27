@@ -1551,103 +1551,43 @@ export type Compiler {
         // In this case, consider the following example:
         //   func foo(): Int = ...
         //   callFn(foo)
-        // Create a wrapper of higher arity which discards parameters.
-        val numDiscardedParams = targetArity - numParams
-        var wrapperSuffix = "..w"
-        val discardedParamTypeReprs: String[] = []
-        for d in range(0, numDiscardedParams) {
-          val paramTy = if fnValParamTypes[numParams + d] |p| p else return unreachable("expected param type to exist at idx ${targetArity + d}", position)
-          discardedParamTypeReprs.push(paramTy.repr())
-          val _t = match self._getInstanceTypeForType(paramTy) { Ok(v) => v, Err(e) => return Err(e) }
-          // TODO: destructuring
-          val instTy = _t[0]
-          val typeArgs = _t[1]
-          val instType = Type(kind: TypeKind.Instance(instTy, typeArgs))
-
-          val resolvedGenerics: Map<String, Type> = {}
-          val typeParams = match instTy {
-            StructOrEnum.Struct(s) => s.typeParams
-            StructOrEnum.Enum(e) => e.typeParams
-          }
-          val template = Type(kind: TypeKind.Instance(instTy, typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
-          for _p in instType.extractGenerics(template) {
-            resolvedGenerics[_p[0]] = _p[1]
-          }
-          match self._resolvedGenerics.addLayer("discarded param $d", resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: position, kind: CompileErrorKind.ResolvedGenericsError(context: "discarded param $d", message: e))) }
-
-          val _paramTypeName = match instTy {
-            StructOrEnum.Struct(s) => self._structTypeName(s)
-            StructOrEnum.Enum(e) => self._enumTypeName(e)
-          }
-          val paramTypeName = match _paramTypeName { Ok(v) => v, Err(e) => return Err(e) }
-          self._resolvedGenerics.popLayer()
-
-          wrapperSuffix += "D${d + 1}$paramTypeName"
-        }
-        val wrapperFnName = self._fnName(fn) + wrapperSuffix
-        if self._builder.getFunction(wrapperFnName) |wrapperFnVal| {
-          wrapperFnVal
-        } else {
-          val returnTypeQbe = match self._getQbeTypeForType(fn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
-          val wrapperFnVal = self._builder.buildFunction(name: wrapperFnName, returnType: returnTypeQbe)
-
-          val prevFn = self._currentFn
-          self._currentFn = wrapperFnVal
-
-          val args: Value[] = []
-          for paramType, idx in fnValParamTypes {
-            val paramTy = match self._getQbeTypeForTypeExpect(paramType, "unacceptable type for param", Some(position)) { Ok(v) => v, Err(e) => return Err(e) }
-            if fn.params[idx] |param| {
-              args.push(wrapperFnVal.addParameter(param.label.name, paramTy))
-            } else {
-              wrapperFnVal.addParameter("_$idx", paramTy)
-            }
-          }
-
-          if fn.returnType.kind != TypeKind.PrimitiveUnit {
-            val res = match self._currentFn.block.buildCall(Callable.Function(fnValBase), args) { Ok(v) => v, Err(e) => return qbeError(e) }
-            wrapperFnVal.block.buildReturn(Some(res))
-          } else {
-            wrapperFnVal.block.buildReturn(None)
-          }
-
-          self._currentFn = prevFn
-
-          wrapperFnVal.addComment("Parameter-discarding wrapper for ${self._fnName(fn)}, adding discarded params: ${discardedParamTypeReprs.join(", ")}")
-          wrapperFnVal
-        }
+        // Create a wrapper of higher arity which discards parameters (and which doesn't consider default-valued parameters, since we
+        // know the wrapped function does not have any).
+        val wrapper = match self._compileParamDiscardingFunctionWrapper(targetArity, numParams, fnValParamTypes, fn, fnValBase, position, false) { Ok(v) => v, Err(e) => return Err(e) }
+        wrapper
       }
-    // } else if targetArity < fnNumReqParams {
-    //   // In this case, consider the following example:
-    //   //   func foo(a: Int, b: Int, c = 12): Int = ...
-    //   //   callFn(foo)
-    //   // In this case, typechecking fails since `callFn` won't provide a value for the parameter `b`.
-    //   // This is similar to the case above, except here we have an optional parameter.
-    //   return unreachable("This should be caught during typechecking", position)
-    // } else if fnNumReqParams <= targetArity && targetArity <= numParams {
-    //   // In this case, we need to "artificially (monotonically) shrink" the arity of the underlying function.
-    //   // It's "monotonically" because the arity itself might not actually shrink; consider this example:
-    //   //   func foo(x = 12): Int = ...
-    //   //   callFn(foo)
-    //   // In this case, the optional parameter `x` must be treated as if it's a required parameter, and so the
-    //   // arity of the wrapper function becomes 1.
-    //   // Nominally though, the arity must be artificially shrunk in these cases:
-    //   //   func foo1(x: Int, y = 12): Int = ...
-    //   //   callFn(foo1)
-    //   //   func foo2(x = 12, y = 16): Int = ...
-    //   //   callFn(foo2)
-    //   // In the case of `foo1`, the wrapper function has arity 1 and the parameter `y` will receive its default
-    //   // value. In the case of `foo2`, the wrapper function still has arity 1 and the parameter `y` will still
-    //   // receive its default value, but `x` will _not_.
-    //   return todo("default-valued param wrapper", position)
-    // } else if targetArity > numParams {
-    //   // In this case, consider the following example:
-    //   //   func callFn2(fn: (Int, Int, Int) => Int) = ...
-    //   //   func foo(x: Int, y = 12): Int = ...
-    //   //   callFn2(foo)
-    //   // Create a wrapper function of higher arity which discards parameters and _also_ passes 0 to the optional params flag; we know we can do this
-    //   // because in order to reach this case, it must be the case that all of the optional parameters are passed a value.
-    //   return todo("param-discarding wrapper", position)
+    } else if targetArity < fnNumReqParams {
+      // In this case, consider the following example:
+      //   func foo(a: Int, b: Int, c = 12): Int = ...
+      //   callFn(foo)
+      // In this case, typechecking fails since `callFn` won't provide a value for the parameter `b`.
+      // This is similar to the case above, except here we have an optional parameter.
+      return unreachable("This should be caught during typechecking", position)
+    } else if fnNumReqParams <= targetArity && targetArity <= numParams {
+      // In this case, we need to "artificially (monotonically) shrink" the arity of the underlying function.
+      // It's "monotonically" because the arity itself might not actually shrink; consider this example:
+      //   func foo(x = 12): Int = ...
+      //   callFn(foo)
+      // In this case, the optional parameter `x` must be treated as if it's a required parameter, and so the
+      // arity of the wrapper function becomes 1.
+      // Nominally though, the arity must be artificially shrunk in these cases:
+      //   func foo1(x: Int, y = 12): Int = ...
+      //   callFn(foo1)
+      //   func foo2(x = 12, y = 16): Int = ...
+      //   callFn(foo2)
+      // In the case of `foo1`, the wrapper function has arity 1 and the parameter `y` will receive its default
+      // value. In the case of `foo2`, the wrapper function still has arity 1 and the parameter `y` will still
+      // receive its default value, but `x` will _not_.
+      return todo("default-valued param wrapper", position)
+    } else if targetArity > numParams {
+      // In this case, consider the following example:
+      //   func callFn2(fn: (Int, Int, Int) => Int) = ...
+      //   func foo(x: Int, y = 12): Int = ...
+      //   callFn2(foo)
+      // Create a wrapper function of higher arity which discards parameters and _also_ passes 0 to the optional params flag; we know we can do this
+      // because in order to reach this case, it must be the case that all of the optional parameters are passed a value.
+      val wrapper = match self._compileParamDiscardingFunctionWrapper(targetArity, numParams, fnValParamTypes, fn, fnValBase, position, true) { Ok(v) => v, Err(e) => return Err(e) }
+      wrapper
     } else {
       return todo("the rest of the cases", position)
     }
@@ -1669,6 +1609,87 @@ export type Compiler {
 
     val res = match self._currentFn.block.buildCall(Callable.Function(initFnVal), [Value.Global(fnVal.name, QbeType.Pointer)]) { Ok(v) => v, Err(e) => return qbeError(e) }
     Ok(res)
+  }
+
+  func _compileParamDiscardingFunctionWrapper(
+    self,
+    targetArity: Int,
+    numParams: Int,
+    fnValParamTypes: Type[],
+    fn: Function,
+    fnValBase: QbeFunction,
+    position: Position,
+    passDefaultParamMask: Bool,
+  ): Result<QbeFunction, CompileError> {
+    val numDiscardedParams = targetArity - numParams
+    var wrapperSuffix = "..w"
+    val discardedParamTypeReprs: String[] = []
+    for d in range(0, numDiscardedParams) {
+      val paramTy = if fnValParamTypes[numParams + d] |p| p else return unreachable("expected param type to exist at idx ${targetArity + d}", position)
+      discardedParamTypeReprs.push(paramTy.repr())
+      val _t = match self._getInstanceTypeForType(paramTy) { Ok(v) => v, Err(e) => return Err(e) }
+      // TODO: destructuring
+      val instTy = _t[0]
+      val typeArgs = _t[1]
+      val instType = Type(kind: TypeKind.Instance(instTy, typeArgs))
+
+      val resolvedGenerics: Map<String, Type> = {}
+      val typeParams = match instTy {
+        StructOrEnum.Struct(s) => s.typeParams
+        StructOrEnum.Enum(e) => e.typeParams
+      }
+      val template = Type(kind: TypeKind.Instance(instTy, typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+      for _p in instType.extractGenerics(template) {
+        resolvedGenerics[_p[0]] = _p[1]
+      }
+      match self._resolvedGenerics.addLayer("discarded param $d", resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: position, kind: CompileErrorKind.ResolvedGenericsError(context: "discarded param $d", message: e))) }
+
+      val _paramTypeName = match instTy {
+        StructOrEnum.Struct(s) => self._structTypeName(s)
+        StructOrEnum.Enum(e) => self._enumTypeName(e)
+      }
+      val paramTypeName = match _paramTypeName { Ok(v) => v, Err(e) => return Err(e) }
+      self._resolvedGenerics.popLayer()
+
+      wrapperSuffix += "D${d + 1}$paramTypeName"
+    }
+    val wrapperFnName = self._fnName(fn) + wrapperSuffix
+
+    if self._builder.getFunction(wrapperFnName) |wrapperFnVal| return Ok(wrapperFnVal)
+
+    val returnTypeQbe = match self._getQbeTypeForType(fn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
+    val wrapperFnVal = self._builder.buildFunction(name: wrapperFnName, returnType: returnTypeQbe)
+
+    val prevFn = self._currentFn
+    self._currentFn = wrapperFnVal
+
+    val args: Value[] = []
+    for paramType, idx in fnValParamTypes {
+      val paramTy = match self._getQbeTypeForTypeExpect(paramType, "unacceptable type for param", Some(position)) { Ok(v) => v, Err(e) => return Err(e) }
+      if fn.params[idx] |param| {
+        args.push(wrapperFnVal.addParameter(param.label.name, paramTy))
+      } else {
+        wrapperFnVal.addParameter("_$idx", paramTy)
+      }
+    }
+
+    if passDefaultParamMask {
+      args.push(Value.Int32(0))
+    }
+
+    val ret = if fn.returnType.kind != TypeKind.PrimitiveUnit {
+      val res = match self._currentFn.block.buildCall(Callable.Function(fnValBase), args) { Ok(v) => v, Err(e) => return qbeError(e) }
+      Some(res)
+    } else {
+      self._currentFn.block.buildVoidCall(Callable.Function(fnValBase), args)
+      None
+    }
+    wrapperFnVal.block.buildReturn(ret)
+
+    self._currentFn = prevFn
+
+    wrapperFnVal.addComment("Parameter-discarding wrapper for ${self._fnName(fn)}, adding discarded params: ${discardedParamTypeReprs.join(", ")}")
+    Ok(wrapperFnVal)
   }
 
   func _constructString(self, ptrVal: Value, lenVal: Value, localName: String? = None): Result<Value, CompileError> {
