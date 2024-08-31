@@ -13,15 +13,18 @@
 // val add = add_
 // println(add(1, 2))
 
-func callFn1(fn: (Int, String) => Int) {
-  println(fn(24, "abc"))
-}
-// func callFn2(fn: (String) => Int) {
-//   println(fn("abc"))
+val fn: (Int, Int) => Int = (x) => x + 10
+println(fn(23, 24))
+
+// func callFn1(fn: (Int, String) => Int) {
+//   println(fn(24, "abc"))
 // }
-// func foo(a: Int, b: Int): Int = a + b
-func foo(a: Int, s = "qwer", d = 1): Int = a + s.length + d
-// func foo(): Int = 12
-callFn1(foo)
-// callFn2(foo)
+// // func callFn2(fn: (String) => Int) {
+// //   println(fn("abc"))
+// // }
+// // func foo(a: Int, b: Int): Int = a + b
+// func foo(a: Int, s = "qwer", d = 1): Int = a + s.length + d
+// // func foo(): Int = 12
+// callFn1(foo)
+// // callFn2(foo)
 

@@ -1373,7 +1373,20 @@ export type Compiler {
           }
         }
       }
-      TypedAstNodeKind.Lambda => todo("compiling lambda expression", node.token.position)
+      TypedAstNodeKind.Lambda(fn, typeHint) => {
+        val targetParamTypes = if typeHint |hint| {
+          val paramTypes = match hint.kind {
+            TypeKind.Func(paramTypes, _) => Some(paramTypes)
+            TypeKind.Any => None // if the function value is being treated as an Any, then no param type info needs to be known later anyway
+            _ => return unreachable("typeKind must be TypeKind.Func", node.token.position)
+          }
+          paramTypes
+        } else {
+          None
+        }
+
+        self._compileFunctionValue(node.token.position, fn, targetParamTypes)
+      }
       TypedAstNodeKind.If(isStatement, cond, conditionBinding, ifBlock, ifBlockTerminator, elseBlock, elseBlockTerminator) => {
         if isStatement return unreachable("if-statements are handled elsewhere", node.token.position)
         if elseBlock.isEmpty() return unreachable("if-expressions must not have empty else-blocks", node.token.position)

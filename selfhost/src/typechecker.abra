@@ -719,7 +719,7 @@ export enum TypedAstNodeKind {
   Map(items: (TypedAstNode, TypedAstNode)[])
   Tuple(items: TypedAstNode[])
   Indexing(node: TypedIndexingNode)
-  Lambda(fn: Function)
+  Lambda(fn: Function, typeHint: Type?)
   Assignment(mode: TypedAssignmentMode, op: AssignOp, expr: TypedAstNode)
   If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], ifBlockTerminator: Terminator?, typedElseBlock: TypedAstNode[], elseBlockTerminator: Terminator?)
   Match(isStatement: Bool, expr: TypedAstNode, cases: TypedMatchCase[])
@@ -4743,7 +4743,7 @@ export type Typechecker {
 
     val lambdaTy = fn.getType()
 
-    Ok(TypedAstNode(token: token, ty: lambdaTy, kind: TypedAstNodeKind.Lambda(fn)))
+    Ok(TypedAstNode(token: token, ty: lambdaTy, kind: TypedAstNodeKind.Lambda(fn, typeHint)))
   }
 }
 

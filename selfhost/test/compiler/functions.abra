@@ -39,8 +39,8 @@ func f0(x: Int): Int = x
 // func f0Closure(x: Int): Int = x + xyz.length
 /// Expect: 16
 callFn(f0)
-// /// Expect: 16
-// callFn(x => x)
+/// Expect: 16
+callFn(x => x)
 // /// Expect: 19
 // callFn(f0Closure)
 // /// Expect: 19
@@ -50,8 +50,8 @@ func f1(x = 12): Int = x
 // func f1Closure(x = 12): Int = x + xyz.length
 /// Expect: 16
 callFn(f1)
-// /// Expect: 16
-// callFn((x = 12) => x)
+/// Expect: 16
+callFn((x = 12) => x)
 // /// Expect: 19
 // callFn(f1Closure)
 // /// Expect: 19
@@ -61,8 +61,8 @@ func f2(x: Int, y = 6): Int = x + y
 // func f2Closure(x: Int, y = 6): Int = x + y + xyz.length
 /// Expect: 22
 callFn(f2)
-// /// Expect: 22
-// callFn((x, y = 6) => x + y)
+/// Expect: 22
+callFn((x, y = 6) => x + y)
 // /// Expect: 25
 // callFn(f2Closure)
 // /// Expect: 25
@@ -72,8 +72,8 @@ func f3(x = 12, y = 6): Int = x + y
 // func f3Closure(x = 12, y = 6): Int = x + y + xyz.length
 /// Expect: 22
 callFn(f3)
-// /// Expect: 22
-// callFn((x = 12, y = 6) => x + y)
+/// Expect: 22
+callFn((x = 12, y = 6) => x + y)
 // /// Expect: 25
 // callFn(f3Closure)
 // /// Expect: 25
@@ -83,8 +83,8 @@ func f4(x: Int): Int = x
 // func f4Closure(x: Int): Int = x + xyz.length
 /// Expect: 16
 callFn2(f4)
-// /// Expect: 16
-// callFn2(x => x)
+/// Expect: 16
+callFn2(x => x)
 // /// Expect: 19
 // callFn2(f4Closure)
 // /// Expect: 19
@@ -94,8 +94,8 @@ func f5(x: Int, y: Int): Int = x + y
 // func f5Closure(x: Int, y: Int): Int = x + y + xyz.length
 /// Expect: 33
 callFn2(f5)
-// /// Expect: 33
-// callFn2((x, y) => x + y)
+/// Expect: 33
+callFn2((x, y) => x + y)
 // /// Expect: 36
 // callFn2(f5Closure)
 // /// Expect: 36
@@ -105,8 +105,8 @@ func f6(x: Int, y = 12): Int = x + y
 // func f6Closure(x: Int, y = 12): Int = x + y + xyz.length
 /// Expect: 33
 callFn2(f6)
-// /// Expect: 33
-// callFn2((x, y = 12) => x + y)
+/// Expect: 33
+callFn2((x, y = 12) => x + y)
 // /// Expect: 36
 // callFn2(f6Closure)
 // /// Expect: 36
@@ -116,8 +116,8 @@ func f7(x: Int, y = 12, z = 100): Int = x + y + z
 // func f7Closure(x: Int, y = 12, z = 100): Int = x + y + z + xyz.length
 /// Expect: 51
 callFn3(f7)
-// /// Expect: 51
-// callFn3((x, y = 12, z = 100) => x + y + z)
+/// Expect: 51
+callFn3((x, y = 12, z = 100) => x + y + z)
 // /// Expect: 54
 // callFn3(f7Closure)
 // /// Expect: 54
