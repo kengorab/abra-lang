@@ -20,7 +20,7 @@ func callFn1(fn: (Int, String) => Int) {
 //   println(fn("abc"))
 // }
 // func foo(a: Int, b: Int): Int = a + b
-func foo(a: Int): Int = a + 1
+func foo(a: Int, s = "qwer", d = 1): Int = a + s.length + d
 // func foo(): Int = 12
 callFn1(foo)
 // callFn2(foo)
