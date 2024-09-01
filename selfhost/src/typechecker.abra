@@ -142,12 +142,6 @@ export type Scope {
   terminator: Terminator? = None
   numLambdas: Int = 0
 
-  func nextLambdaName(self): String {
-    val name = "lambda_${self.numLambdas}"
-    self.numLambdas += 1
-    name
-  }
-
   func makeChild(self, name: String, kind: ScopeKind): Scope = Scope(name: "${self.name}::$name", kind: kind, parent: Some(self))
 }
 
@@ -1360,6 +1354,7 @@ export type Typechecker {
   paramDefaultValueContext: ParamDefaultValueContext? = None
   isStructOrEnumValueAllowed: Bool = false
   isEnumContainerValueAllowed: Bool = false
+  numLambdas: Int = 0
 
   func typecheckEntrypoint(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
     val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
@@ -1932,6 +1927,13 @@ export type Typechecker {
       Ok(0) // <-- unnecessary int
     }
   }
+
+  func _nextLambdaName(self): String {
+    val name = "lambda_${self.currentModuleId}_${self.numLambdas}"
+    self.numLambdas += 1
+    name
+  }
+
 
   func _typecheckModule(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
     val moduleId = self.project.modules.size
@@ -4721,7 +4723,7 @@ export type Typechecker {
       }
     }
 
-    val lambdaName = self.currentScope.nextLambdaName()
+    val lambdaName = self._nextLambdaName()
     val fnScope = self.currentScope.makeChild(lambdaName, ScopeKind.Func)
     var returnType = retHint ?: Type(kind: TypeKind.Hole)
     if returnType.containsGenerics() {

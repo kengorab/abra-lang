@@ -553,7 +553,7 @@ export type Block {
   func buildCall(self, callable: Callable, arguments: Value[], dst: String? = None): Result<Value, String> {
     val dest = dst ?: self._nextLocal()
 
-    val fnReturnType = if callable.returnType() |ty| ty else return Err("function value has no return type; cannot store result into destination '%$dest'")
+    val fnReturnType = if callable.returnType() |ty| ty else return Err("function value ($callable) has no return type; cannot store result into destination '%$dest'")
 
     val local = Value.Ident(dest, fnReturnType)
 

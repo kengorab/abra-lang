@@ -1074,7 +1074,7 @@ export type Compiler {
             val fnObj = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
             val fnValPtr = self._currentFn.block.buildLoadL(fnObj)
 
-            val retTypeQbe = if node.ty == TypeKind.PrimitiveUnit {
+            val retTypeQbe = if node.ty.kind == TypeKind.PrimitiveUnit {
               None
             } else {
               val ty = match self._getQbeTypeForTypeExpect(node.ty, "unacceptable return type", None) { Ok(v) => v, Err(e) => return Err(e) }

@@ -13,8 +13,13 @@
 // val add = add_
 // println(add(1, 2))
 
-val fn: (Int, Int) => Int = (x) => x + 10
-println(fn(23, 24))
+// val fn: (Int, Int) => Int = (x) => x + 10
+// println(fn(23, 24))
+
+val x = (() => {
+  1 + 23
+})()
+println(x)
 
 // func callFn1(fn: (Int, String) => Int) {
 //   println(fn(24, "abc"))
