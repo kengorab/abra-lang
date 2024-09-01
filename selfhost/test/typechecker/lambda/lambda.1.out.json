@@ -81,9 +81,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_0", "position": [1, 37] },
+              "label": { "name": "lambda_3_1", "position": [1, 37] },
               "scope": {
-                "name": "$root::module_3::lambda_0",
+                "name": "$root::module_3::lambda_3_1",
                 "variables": [
                   {
                     "label": { "name": "a", "position": [1, 31] },
@@ -267,9 +267,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_1", "position": [2, 28] },
+              "label": { "name": "lambda_3_2", "position": [2, 28] },
               "scope": {
-                "name": "$root::module_3::lambda_1",
+                "name": "$root::module_3::lambda_3_2",
                 "variables": [
                   {
                     "label": { "name": "a", "position": [2, 12] },
@@ -451,9 +451,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_2", "position": [3, 20] },
+              "label": { "name": "lambda_3_3", "position": [3, 20] },
               "scope": {
-                "name": "$root::module_3::lambda_2",
+                "name": "$root::module_3::lambda_3_3",
                 "variables": [
                   {
                     "label": { "name": "a", "position": [3, 12] },
@@ -690,9 +690,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_3", "position": [4, 33] },
+              "label": { "name": "lambda_3_4", "position": [4, 33] },
               "scope": {
-                "name": "$root::module_3::lambda_3",
+                "name": "$root::module_3::lambda_3_4",
                 "variables": [
                   {
                     "label": { "name": "a", "position": [4, 26] },
@@ -868,9 +868,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_4", "position": [5, 36] },
+              "label": { "name": "lambda_3_5", "position": [5, 36] },
               "scope": {
-                "name": "$root::module_3::lambda_4",
+                "name": "$root::module_3::lambda_3_5",
                 "variables": [
                   {
                     "label": { "name": "a", "position": [5, 26] },
@@ -1052,9 +1052,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_5", "position": [7, 27] },
+              "label": { "name": "lambda_3_6", "position": [7, 27] },
               "scope": {
-                "name": "$root::module_3::lambda_5",
+                "name": "$root::module_3::lambda_3_6",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -1174,9 +1174,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_6", "position": [8, 28] },
+              "label": { "name": "lambda_3_7", "position": [8, 28] },
               "scope": {
-                "name": "$root::module_3::lambda_6",
+                "name": "$root::module_3::lambda_3_7",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -1332,9 +1332,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_7", "position": [9, 28] },
+              "label": { "name": "lambda_3_8", "position": [9, 28] },
               "scope": {
-                "name": "$root::module_3::lambda_7",
+                "name": "$root::module_3::lambda_3_8",
                 "variables": [],
                 "functions": [],
                 "types": []
