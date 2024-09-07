@@ -4,12 +4,12 @@ func bar(x: Int, y = 10): Int = x + y
 /// Expect: 31
 println(foo(2))
 
-// // Variadic parameters
-// func variadic(*items: Int[]) = println(items)
-// /// Expect: [1, 2, 3]
-// variadic(1, 2, 3)
-// /// Expect: []
-// variadic()
+// Variadic parameters
+func variadic(*items: Int[]) = println(items)
+/// Expect: [1, 2, 3]
+variadic(1, 2, 3)
+/// Expect: []
+variadic()
 
 // Functions and closures as value (lambdas too)
 func abc(): Int = 24
@@ -123,64 +123,64 @@ callFn3((x, y = 12, z = 100) => x + y + z)
 // /// Expect: 54
 // callFn3((x, y = 12, z = 100) => x + y + z + xyz.length)
 
-// // Closures
-// var capturedFloat = 1.1
-// func closure1(one: Int): Float {
-//   capturedFloat += 1.1
-//   val x = capturedFloat + one
-//   x
-// }
-// /// Expect: 1.1
-// println(capturedFloat)
-// /// Expect: 3.2
-// println(closure1(one: 1))
-// /// Expect: 2.2
-// println(capturedFloat)
+// Closures
+var capturedFloat = 1.1
+func closure1(one: Int): Float {
+  capturedFloat += 1.1
+  val x = capturedFloat + one
+  x
+}
+/// Expect: 1.1
+println(capturedFloat)
+/// Expect: 3.2
+println(closure1(one: 1))
+/// Expect: 2.2
+println(capturedFloat)
 
-// capturedFloat = 10.1
-// /// Expect: 10.1
-// println(capturedFloat)
-// /// Expect: 12.2
-// println(closure1(one: 1))
-// /// Expect: 11.2
-// println(capturedFloat)
+capturedFloat = 10.1
+/// Expect: 10.1
+println(capturedFloat)
+/// Expect: 12.2
+println(closure1(one: 1))
+/// Expect: 11.2
+println(capturedFloat)
 
-// val capturedArray = [1, 2, 3]
-// func closure2(zero = 0): Int {
-//   capturedArray.pop()
-//   capturedArray.length + zero
-// }
-// /// Expect: [1, 2, 3]
-// println(capturedArray)
-// /// Expect: 2
-// println(closure2())
-// /// Expect: [1, 2]
-// println(capturedArray)
-// capturedArray.push(3)
-// /// Expect: [1, 2, 3]
-// println(capturedArray)
+val capturedArray = [1, 2, 3]
+func closure2(zero = 0): Int {
+  capturedArray.pop()
+  capturedArray.length + zero
+}
+/// Expect: [1, 2, 3]
+println(capturedArray)
+/// Expect: 2
+println(closure2())
+/// Expect: [1, 2]
+println(capturedArray)
+capturedArray.push(3)
+/// Expect: [1, 2, 3]
+println(capturedArray)
 
-// var capturedInt = 1
-// func closure3<T>(arr: T[], extra = 0) {
-//   capturedInt += arr.length + extra
-// }
+var capturedInt = 1
+func closure3<T>(arr: T[], extra = 0) {
+  capturedInt += arr.length + extra
+}
 
-// /// Expect: 1
-// println(capturedInt)
-// closure3([1, 2, 3])
-// /// Expect: 4
-// println(capturedInt)
-// capturedInt = 1
-// closure3(["a", "b"], 12)
-// /// Expect: 15
-// println(capturedInt)
+/// Expect: 1
+println(capturedInt)
+closure3([1, 2, 3])
+/// Expect: 4
+println(capturedInt)
+capturedInt = 1
+closure3(["a", "b"], 12)
+/// Expect: 15
+println(capturedInt)
 
-// func closure4(a: Int, b = a + capturedInt): Int = a + b
-// /// Expect: 3
-// println(closure4(1, 2))
-// /// Expect: 16
-// capturedInt = 14
-// println(closure4(1))
+func closure4(a: Int, b = a + capturedInt): Int = a + b
+/// Expect: 3
+println(closure4(1, 2))
+/// Expect: 16
+capturedInt = 14
+println(closure4(1))
 
 // capturedInt = 1
 // func closure5() { capturedInt += 2 }

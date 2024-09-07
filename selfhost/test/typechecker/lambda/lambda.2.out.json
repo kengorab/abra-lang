@@ -502,6 +502,7 @@
               {
                 "label": { "name": "fn", "position": [8, 30] },
                 "mutable": false,
+                "isCaptured": true,
                 "type": {
                   "kind": "function",
                   "parameters": [
@@ -760,6 +761,29 @@
                           "kind": "primitive",
                           "primitive": "Unit"
                         },
+                        "captures": [
+                          {
+                            "label": { "name": "fn", "position": [8, 30] },
+                            "mutable": false,
+                            "isCaptured": true,
+                            "type": {
+                              "kind": "function",
+                              "parameters": [
+                                {
+                                  "required": true,
+                                  "type": {
+                                    "kind": "generic",
+                                    "name": "T"
+                                  }
+                                }
+                              ],
+                              "returnType": {
+                                "kind": "primitive",
+                                "primitive": "Unit"
+                              }
+                            }
+                          }
+                        ],
                         "body": [
                           {
                             "token": {
@@ -870,6 +894,7 @@
               {
                 "label": { "name": "fn", "position": [11, 26] },
                 "mutable": false,
+                "isCaptured": true,
                 "type": {
                   "kind": "function",
                   "parameters": [
@@ -1160,6 +1185,29 @@
                               "kind": "generic",
                               "name": "U"
                             },
+                            "captures": [
+                              {
+                                "label": { "name": "fn", "position": [11, 26] },
+                                "mutable": false,
+                                "isCaptured": true,
+                                "type": {
+                                  "kind": "function",
+                                  "parameters": [
+                                    {
+                                      "required": true,
+                                      "type": {
+                                        "kind": "generic",
+                                        "name": "T"
+                                      }
+                                    }
+                                  ],
+                                  "returnType": {
+                                    "kind": "generic",
+                                    "name": "U"
+                                  }
+                                }
+                              }
+                            ],
                             "body": [
                               {
                                 "token": {

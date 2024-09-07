@@ -166,6 +166,7 @@ export type Compiler {
   _builder: ModuleBuilder
   _currentModule: TypedModule
   _currentFn: QbeFunction
+  _currentFunction: Function?
   _currentNode: TypedAstNode?
   _resolvedGenerics: ResolvedGenerics = ResolvedGenerics()
   _loopStack: (/* loopStart: */ Label, /* loopEnd: */ Label)[] = []
@@ -185,7 +186,7 @@ export type Compiler {
     fn.addComment("main entrypoint function")
     val mainFnBlock = fn.block
 
-    val compiler = Compiler(_project: project, _builder: builder, _currentModule: entry, _currentNode: None, _currentFn: fn)
+    val compiler = Compiler(_project: project, _builder: builder, _currentModule: entry, _currentNode: None, _currentFn: fn, _currentFunction: None)
 
     val moduleFn = match compiler._compileModule(entry) { Ok(v) => v, Err(e) => {
       // println(compiler._currentNode?.token)
@@ -511,16 +512,49 @@ export type Compiler {
 
         val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
         val slotName = "${variable.label.name}.slot"
-        val slot = self._buildStackAllocForQbeType(varTy, Some(slotName))
 
         if bindingDeclNode.expr |expr| {
           val res = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
-          self._currentFn.block.buildStore(varTy, res, slot)
+          if variable.isCaptured {
+            self._currentFn.block.addComment("move captured '${variable.label.name}' to heap")
+            val size = varTy.size()
+            val heapMem = match self._currentFn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
+            self._currentFn.block.buildStore(varTy, res, heapMem)
+
+            val slot = self._buildStackAllocForQbeType(QbeType.Pointer, Some(slotName))
+            self._currentFn.block.buildStore(QbeType.Pointer, heapMem, slot)
+          } else {
+            val slot = self._buildStackAllocForQbeType(varTy, Some(slotName))
+            self._currentFn.block.buildStore(varTy, res, slot)
+          }
         }
 
         Ok(None)
       }
-      TypedAstNodeKind.FunctionDeclaration => Ok(None)
+      TypedAstNodeKind.FunctionDeclaration(fn) => {
+        if !fn.captures.isEmpty() {
+          val capturesName = "${fn.label.name}.captures"
+          val capturesSlot = self._buildStackAllocForQbeType(QbeType.Pointer, Some(capturesName))
+
+          var size = 0
+          for variable in fn.captures {
+            val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
+            size += varTy.size()
+          }
+          val capturesMem = match self._currentFn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
+          var cursor = capturesMem
+
+          for variable in fn.captures {
+            val ptr = match self._getCapturedVarPtr(variable.label.name) { Ok(v) => v, Err(e) => return Err(e) }
+            self._currentFn.block.buildStore(QbeType.Pointer, ptr, cursor)
+            cursor = match self._currentFn.block.buildAdd(Value.Int(QbeType.Pointer.size()), cursor) { Ok(v) => v, Err(e) => return qbeError(e) }
+          }
+
+          self._currentFn.block.buildStore(QbeType.Pointer, capturesMem, capturesSlot)
+        }
+
+        Ok(None)
+      }
       TypedAstNodeKind.TypeDeclaration => Ok(None)
       TypedAstNodeKind.EnumDeclaration => Ok(None)
       TypedAstNodeKind.Break => {
@@ -563,10 +597,16 @@ export type Compiler {
           TypedAssignmentMode.Variable(variable) => {
             if variable.isParameter return unreachable("parameters cannot be reassigned to", node.token.position)
 
-            val slotName = "${variable.label.name}.slot"
-            val slot = Value.Ident(slotName, QbeType.Pointer)
             val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
-            self._currentFn.block.buildStore(varTy, res, slot)
+            if variable.isCaptured {
+              val ptr = match self._getCapturedVarPtr(variable.label.name) { Ok(v) => v, Err(e) => return Err(e) }
+              self._currentFn.block.addComment("overwrite ptr to captured '${variable.label.name}'")
+              self._currentFn.block.buildStore(varTy, res, ptr)
+            } else {
+              val slotName = "${variable.label.name}.slot"
+              val slot = Value.Ident(slotName, QbeType.Pointer)
+              self._currentFn.block.buildStore(varTy, res, slot)
+            }
           }
           TypedAssignmentMode.Indexing(idxNode) => {
             match idxNode {
@@ -930,9 +970,16 @@ export type Compiler {
               self._compileFunctionValue(node.token.position, fn, targetParamTypes)
             }
             _ => {
-              val slot = Value.Ident("$name.slot", QbeType.Pointer)
-              val res = self._currentFn.block.buildLoad(varTy, slot)
-              Ok(res)
+              if variable.isCaptured {
+                val ptr = match self._getCapturedVarPtr(variable.label.name) { Ok(v) => v, Err(e) => return Err(e) }
+                self._currentFn.block.addComment("deref ptr to captured '${variable.label.name}'")
+                val res = self._currentFn.block.buildLoad(varTy, ptr)
+                Ok(res)
+              } else {
+                val slot = Value.Ident("$name.slot", QbeType.Pointer)
+                val res = self._currentFn.block.buildLoad(varTy, slot)
+                Ok(res)
+              }
             }
           }
         }
@@ -942,6 +989,7 @@ export type Compiler {
         val args: Value[] = []
         var fnHasOptionalParameters = false
         var optSafeCtx: (Label, Value?, QbeFunction, Label)? = None
+        var closureEnvPtr: Value? = None
 
         val _p = match invokee {
           TypedInvokee.Function(fn) => {
@@ -965,6 +1013,10 @@ export type Compiler {
               val res = self._invokeCBindingFn(dec, fn, arguments)
               self._resolvedGenerics.popLayer()
               return res
+            }
+
+            if !fn.captures.isEmpty() {
+              closureEnvPtr = Some(self._getCapturesForClosure(fn))
             }
 
             fnHasOptionalParameters = fn.params.any(p => !!p.defaultValue)
@@ -995,6 +1047,10 @@ export type Compiler {
               val res = self._invokeIntrinsicFn(dec, fn, [Some(selfExpr)].concat(arguments))
               self._resolvedGenerics.popLayer()
               return res
+            }
+
+            if !fn.captures.isEmpty() {
+              closureEnvPtr = Some(self._getCapturesForClosure(fn))
             }
 
             fnHasOptionalParameters = fn.params.any(p => !!p.defaultValue)
@@ -1120,10 +1176,10 @@ export type Compiler {
         }
 
         var res = if fnVal.returnType() {
-          val res = match self._currentFn.block.buildCall(fnVal, args, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+          val res = match self._currentFn.block.buildCall(fnVal, args, resultLocalName, closureEnvPtr) { Ok(v) => v, Err(e) => return qbeError(e) }
           res
         } else {
-          self._currentFn.block.buildVoidCall(fnVal, args)
+          self._currentFn.block.buildVoidCall(fnVal, args, closureEnvPtr)
           Value.Ident("bogus", QbeType.F32)
         }
 
@@ -1473,6 +1529,34 @@ export type Compiler {
     res
   }
 
+  func _getCapturedVarPtr(self, name: String): Result<Value, CompileError> {
+    if self._currentFunction |fn| {
+      val fnCaptures = if self._currentFn._env |env| env else return unreachable("cannot resolve captured `$name`, current function has no `env` param", fn.label.position)
+      for v, idx in fn.captures {
+        if v.label.name == name {
+          self._currentFn.block.addComment("get ptr to captured '$name'")
+          val captureSlot = match self._currentFn.block.buildAdd(Value.Int(idx * QbeType.Pointer.size()), fnCaptures) { Ok(v) => v, Err(e) => return qbeError(e) }
+          val ptr = self._currentFn.block.buildLoad(QbeType.Pointer, captureSlot)
+          return Ok(ptr)
+        }
+      }
+    }
+
+    // If we're not currently in a function body, or if the captured variable is not a capture of the current function, then
+    // we need to undo the extra layer of pointer indirection which comes as a result of being captured by some other function.
+    self._currentFn.block.addComment("get ptr to captured '$name'")
+    val slot = Value.Ident("$name.slot", QbeType.Pointer)
+    val res = self._currentFn.block.buildLoad(QbeType.Pointer, slot)
+    Ok(res)
+  }
+
+  func _getCapturesForClosure(self, fn: Function): Value {
+    // TODO: this assumes that the closure is being called in the same scope in which it was declared (and thus the `*.captures`
+    // value is visible as a stack local). This does not hold true for nested scopes, and will need to be handled.
+    val capturesName = "${fn.label.name}.captures"
+    self._currentFn.block.buildLoadL(Value.Ident(capturesName, QbeType.Pointer))
+  }
+
   func _compileBinaryOperands(self, left: TypedAstNode, right: TypedAstNode, op: String): Result<(Value, Value), CompileError> {
     var leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
     var rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
@@ -1528,6 +1612,8 @@ export type Compiler {
   }
 
   func _compileFunctionValue(self, position: Position, fn: Function, targetParamTypes: (Type, Bool)[]?): Result<Value, CompileError> {
+    if !fn.captures.isEmpty() return todo("closures as values", fn.label.position)
+
     val numParams = fn.params.length
     var fnNumReqParams = 0
     var fnNumOptParams = 0
@@ -2385,6 +2471,8 @@ export type Compiler {
 
     val returnTypeQbe = match self._getQbeTypeForType(fn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
     val fnVal = self._builder.buildFunction(name: fnName, returnType: returnTypeQbe)
+    if !fn.captures.isEmpty() fnVal.addEnv()
+
     match self._compileFunc(fnVal, fn) { Ok(v) => v, Err(e) => return Err(e) }
     fnVal.addComment(match self._fnSignature(None, fn) { Ok(v) => v, Err(e) => return Err(e) })
 
@@ -2424,6 +2512,8 @@ export type Compiler {
   func _compileFunc(self, fnVal: QbeFunction, fn: Function): Result<Int, CompileError> {
     val prevFn = self._currentFn
     self._currentFn = fnVal
+    val prevFunction = self._currentFunction
+    self._currentFunction = Some(fn)
 
     var defaultValueParamIdx = 0
     var defaultValuesMaskParam: Value? = None
@@ -2477,6 +2567,7 @@ export type Compiler {
     fnVal.block.buildReturn(retVal)
 
     self._currentFn = prevFn
+    self._currentFunction = prevFunction
 
     Ok(0)
   }
@@ -2533,6 +2624,8 @@ export type Compiler {
     val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(stringTypeQbe))
     val prevFn = self._currentFn
     self._currentFn = fnVal
+    val prevFunction = self._currentFunction
+    self._currentFunction = Some(fn)
 
     val selfTyQbe = match self._getQbeTypeForTypeExpect(selfInstanceTy, "unacceptable type for self") { Ok(v) => v, Err(e) => return Err(e) }
     val selfParamVal = fnVal.addParameter("self", selfTyQbe)
@@ -2609,6 +2702,7 @@ export type Compiler {
     match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
 
     self._currentFn = prevFn
+    self._currentFunction = prevFunction
 
     Ok(fnVal)
   }
@@ -2953,6 +3047,8 @@ export type Compiler {
     val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(boolTypeQbe))
     val prevFn = self._currentFn
     self._currentFn = fnVal
+    val prevFunction = self._currentFunction
+    self._currentFunction = Some(fn)
 
     val selfTyQbe = match self._getQbeTypeForTypeExpect(selfInstanceTy, "unacceptable type for self") { Ok(v) => v, Err(e) => return Err(e) }
     val selfParamVal = fnVal.addParameter("self", selfTyQbe)
@@ -3032,6 +3128,7 @@ export type Compiler {
     match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
 
     self._currentFn = prevFn
+    self._currentFunction = prevFunction
 
     Ok(fnVal)
   }
@@ -3183,6 +3280,8 @@ export type Compiler {
     val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(intTypeQbe))
     val prevFn = self._currentFn
     self._currentFn = fnVal
+    val prevFunction = self._currentFunction
+    self._currentFunction = Some(fn)
 
     val selfTyQbe = match self._getQbeTypeForTypeExpect(selfInstanceTy, "unacceptable type for self") { Ok(v) => v, Err(e) => return Err(e) }
     val selfParamVal = fnVal.addParameter("self", selfTyQbe)
@@ -3246,6 +3345,7 @@ export type Compiler {
     match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
 
     self._currentFn = prevFn
+    self._currentFunction = prevFunction
 
     Ok(fnVal)
   }

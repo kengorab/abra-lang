@@ -99,6 +99,7 @@ export type Variable {
   alias: VariableAlias? = None
   isExported: Bool = false
   isParameter: Bool = false
+  isCaptured: Bool = false
 }
 
 export enum Terminator {
@@ -141,6 +142,8 @@ export type Scope {
   parent: Scope? = None
   terminator: Terminator? = None
   numLambdas: Int = 0
+
+  func eq(self, other: Scope): Bool = self.name == other.name
 
   func makeChild(self, name: String, kind: ScopeKind): Scope = Scope(name: "${self.name}::$name", kind: kind, parent: Some(self))
 }
@@ -593,6 +596,7 @@ export type Function {
   isGenerated: Bool = false
   isLambda: Bool = false
   decorators: Decorator[] = []
+  captures: Variable[] = []
 
   func generated(
     scope: Scope,
@@ -1761,16 +1765,47 @@ export type Typechecker {
   }
 
   func _resolveIdentifier(self, ident: String): Variable? {
+    val currentFnScope = self.currentFunction?.scope
     var scope: Scope? = Some(self.currentScope)
+    var fnBarrierBreached = false
+
     while scope |s| {
       for v in s.variables {
-        if v.label.name == ident return Some(v)
+        if v.label.name == ident {
+          if !v.alias && fnBarrierBreached {
+            v.isCaptured = true
+            if self.currentFunction |fn| {
+              if !fn.captures.contains(v) {
+                fn.captures.push(v)
+              }
+            }
+          }
+
+          return Some(v)
+        }
       }
+
       scope = s.parent
+      if currentFnScope |currentFnScope| {
+        if scope == currentFnScope.parent {
+          fnBarrierBreached = true
+        }
+      }
     }
 
     for v in self.project.preludeScope.variables {
-      if v.label.name == ident return Some(v)
+      if v.label.name == ident {
+        if !v.alias && fnBarrierBreached {
+          v.isCaptured = true
+          if self.currentFunction |fn| {
+            if !fn.captures.contains(v) {
+              fn.captures.push(v)
+            }
+          }
+        }
+
+        return Some(v)
+      }
     }
 
     for importedModule in self.currentModuleImports.values() {
@@ -1780,7 +1815,18 @@ export type Typechecker {
         val importedValue = _p[1]
         if importedName == ident {
           val v = match importedValue.kind {
-            TypedImportKind.Variable(v) => v
+            TypedImportKind.Variable(v) => {
+              if !v.alias && fnBarrierBreached {
+                v.isCaptured = true
+                if self.currentFunction |fn| {
+                  if !fn.captures.contains(v) {
+                    fn.captures.push(v)
+                  }
+                }
+              }
+
+              v
+            }
             TypedImportKind.Function(aliasVar) => aliasVar
             TypedImportKind.Type(_, aliasVar) => aliasVar
           }

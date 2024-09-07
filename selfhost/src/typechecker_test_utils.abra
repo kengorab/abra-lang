@@ -798,6 +798,10 @@ export type Jsonifier {
 
     self.println("\"mutable\": ${variable.mutable},")
 
+    if variable.isCaptured {
+      self.println("\"isCaptured\": true,")
+    }
+
     self.print("\"type\": ")
     self.printType(variable.ty)
     println()
@@ -875,6 +879,14 @@ export type Jsonifier {
     self.print("\"returnType\": ")
     self.printType(function.returnType)
     println(",")
+
+    if !function.captures.isEmpty() {
+      self.print("\"captures\": ")
+      self.array(function.captures, v => {
+        self.printVariable(v)
+      })
+      println(",")
+    }
 
     self.print("\"body\": ")
     self.array(function.body, n => self.printNode(n))
