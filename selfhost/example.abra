@@ -17,14 +17,15 @@
 // println(fn(23, 24))
 
 val arr = [1]
-println(arr)
+// println(arr)
 
-func foo(b: Int): Int = arr.length + b
+// func foo(b: Int): Int = arr.length + b
+val foo: (Int) => Int = b => b + 1
 println(foo(23))
 
-arr.push(2)
-println(arr)
-println(foo(23))
+// arr.push(2)
+// println(arr)
+// println(foo(23))
 
 // func callFn1(fn: (Int, String) => Int) {
 //   println(fn(24, "abc"))
