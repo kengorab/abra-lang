@@ -937,7 +937,14 @@ export type Compiler {
         // TODO: handle captured variables in closures, global variables, etc).
         val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
         if variable.isParameter {
-          Ok(Value.Ident(name, varTy))
+          if variable.isCaptured {
+            val ptr = match self._getCapturedVarPtr(variable.label.name) { Ok(v) => v, Err(e) => return Err(e) }
+            self._currentFn.block.addComment("deref ptr to captured '${variable.label.name}'")
+            val res = self._currentFn.block.buildLoad(varTy, ptr)
+            Ok(res)
+          } else {
+            Ok(Value.Ident(name, varTy))
+          }
         } else {
           match variable.alias {
             VariableAlias.Function(fn) => {
@@ -1590,13 +1597,14 @@ export type Compiler {
 
   func _getCapturedVarPtr(self, name: String): Result<Value, CompileError> {
     if self._currentFunction |fn| {
-      val fnCaptures = if self._currentFn._env |env| env else return unreachable("cannot resolve captured `$name`, current function has no `env` param", fn.label.position)
-      for v, idx in fn.captures {
-        if v.label.name == name {
-          self._currentFn.block.addComment("get ptr to captured '$name'")
-          val captureSlot = match self._currentFn.block.buildAdd(Value.Int(idx * QbeType.Pointer.size()), fnCaptures) { Ok(v) => v, Err(e) => return qbeError(e) }
-          val ptr = self._currentFn.block.buildLoad(QbeType.Pointer, captureSlot)
-          return Ok(ptr)
+      if self._currentFn._env |env| {
+        for v, idx in fn.captures {
+          if v.label.name == name {
+            self._currentFn.block.addComment("get ptr to captured '$name'")
+            val captureSlot = match self._currentFn.block.buildAdd(Value.Int(idx * QbeType.Pointer.size()), env) { Ok(v) => v, Err(e) => return qbeError(e) }
+            val ptr = self._currentFn.block.buildLoad(QbeType.Pointer, captureSlot)
+            return Ok(ptr)
+          }
         }
       }
     }
@@ -2629,6 +2637,17 @@ export type Compiler {
         match self._currentFn.block.buildPhi(phiCases, Some(param.label.name)) { Ok(v) => v, Err(e) => return qbeError(e) }
       } else {
         fnVal.addParameter(param.label.name, paramTy)
+      }
+
+      if param.variable.isCaptured {
+        self._currentFn.block.addComment("move param '${param.label.name}' to heap")
+        val size = paramTy.size()
+        val heapMem = match self._currentFn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
+        self._currentFn.block.buildStore(paramTy, Value.Ident(param.label.name, paramTy), heapMem)
+
+        val slotName = "${param.label.name}.slot"
+        val slot = self._buildStackAllocForQbeType(QbeType.Pointer, Some(slotName))
+        self._currentFn.block.buildStore(QbeType.Pointer, heapMem, slot)
       }
     }
     if addMaskParam {

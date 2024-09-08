@@ -16,12 +16,19 @@
 // val fn: (Int, Int) => Int = (x) => x + 10
 // println(fn(23, 24))
 
-val arr = [1]
-// println(arr)
+// val arr = [1]
+// // println(arr)
 
-// func foo(b: Int): Int = arr.length + b
-val foo: (Int) => Int = b => b + 1
-println(foo(23))
+// // func foo(b: Int): Int = arr.length + b
+// val foo: (Int) => Int = b => b + 1
+// println(foo(23))
+
+func makeAdder(x: Int): (Int) => Int {
+  i => i + x
+}
+val addOne = makeAdder(1)
+/// Expect: 12
+println(addOne(11))
 
 // arr.push(2)
 // println(arr)

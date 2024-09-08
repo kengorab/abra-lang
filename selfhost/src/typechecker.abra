@@ -100,6 +100,11 @@ export type Variable {
   isExported: Bool = false
   isParameter: Bool = false
   isCaptured: Bool = false
+
+  func bogus(): Variable {
+    val label = Label(name: "_bogus", position: Position(line: 0, col: 0))
+    Variable(label: label, mutable: false, ty: Type(kind: TypeKind.Never))
+  }
 }
 
 export enum Terminator {
@@ -577,6 +582,7 @@ type TypedFunctionParam {
   ty: Type
   defaultValue: TypedAstNode? = None
   isVariadic: Bool = false
+  variable: Variable
 }
 
 export enum FunctionKind {
@@ -610,7 +616,7 @@ export type Function {
 
     val label = Label(name: name, position: bogusPosition)
     val fnScope = scope.makeChild(name, ScopeKind.Func)
-    val fnParams = params.map(p => TypedFunctionParam(label: Label(name: p[0], position: bogusPosition), ty: p[1]))
+    val fnParams = params.map(p => TypedFunctionParam(label: Label(name: p[0], position: bogusPosition), ty: p[1], variable: Variable.bogus()))
     Function(label: label, scope: fnScope, kind: kind, typeParams: typeParams, params: fnParams, returnType: returnType, body: [], isGenerated: true)
   }
 
@@ -622,7 +628,7 @@ export type Function {
 
     val fnScope = scope.makeChild(struct.label.name, ScopeKind.Func)
     val structTypeParams = struct.typeParams.map(t => (Type(kind: TypeKind.Generic(t)), Label(name: t, position: bogusPosition)))
-    val params = struct.fields.map(f => TypedFunctionParam(label: Label(name: f.name.name, position: bogusPosition), ty: f.ty, defaultValue: f.initializer))
+    val params = struct.fields.map(f => TypedFunctionParam(label: Label(name: f.name.name, position: bogusPosition), ty: f.ty, defaultValue: f.initializer, variable: Variable.bogus()))
     val typeArgs = struct.typeParams.map(t => Type(kind: TypeKind.Generic(t)))
     val returnType = Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), typeArgs))
 
@@ -639,7 +645,7 @@ export type Function {
 
     val fnScope = scope.makeChild("${enum_.label.name}.${variantLabel.name}", ScopeKind.Func)
     val typeParams = enum_.typeParams.map(t => (Type(kind: TypeKind.Generic(t)), Label(name: t, position: bogusPosition)))
-    val params = variantFields.map(f => TypedFunctionParam(label: Label(name: f.name.name, position: bogusPosition), ty: f.ty, defaultValue: f.initializer))
+    val params = variantFields.map(f => TypedFunctionParam(label: Label(name: f.name.name, position: bogusPosition), ty: f.ty, defaultValue: f.initializer, variable: Variable.bogus()))
     val typeArgs = enum_.typeParams.map(t => Type(kind: TypeKind.Generic(t)))
     val returnType = Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), typeArgs))
 
@@ -651,7 +657,7 @@ export type Function {
   func withSubstitutedGenerics(self, resolvedGenerics: Map<String, Type>, retainUnknown: Bool, genericsInScope: Set<String>): Function {
     val params = self.params.map(p => {
       val ty = p.ty.withSubstitutedGenerics(resolvedGenerics, retainUnknown, genericsInScope)
-      TypedFunctionParam(label: p.label, ty: ty, defaultValue: p.defaultValue, isVariadic: p.isVariadic)
+      TypedFunctionParam(label: p.label, ty: ty, defaultValue: p.defaultValue, isVariadic: p.isVariadic, variable: p.variable)
     })
     val returnType = self.returnType.withSubstitutedGenerics(resolvedGenerics, retainUnknown, genericsInScope)
 
@@ -2147,7 +2153,7 @@ export type Typechecker {
         val variable = Variable(label: param.label, mutable: false, ty: ty, isParameter: true)
         match self._addVariableToScope(variable) { Ok(v) => v, Err(e) => return Err(e) }
 
-        val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: None, isVariadic: false)
+        val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: None, isVariadic: false, variable: variable)
         return Ok((typedParam, false))
       }
 
@@ -2183,7 +2189,7 @@ export type Typechecker {
             self.paramDefaultValueContext = None
             if ctx.exprContainsFunctionCall || ctx.exprContainsVariableRef {
               val placeholder = Some(TypedAstNode(token: node.token, ty: Type(kind: TypeKind.Hole), kind: TypedAstNodeKind.Placeholder))
-              val typedParam = TypedFunctionParam(label: param.label, ty: Type(kind: TypeKind.Hole), defaultValue: placeholder, isVariadic: param.isVariadic)
+              val typedParam = TypedFunctionParam(label: param.label, ty: Type(kind: TypeKind.Hole), defaultValue: placeholder, isVariadic: param.isVariadic, variable: Variable.bogus())
               return Ok((typedParam, true))
             }
             return Err(e)
@@ -2191,7 +2197,7 @@ export type Typechecker {
         }
         self.paramDefaultValueContext = None
         if ctx.exprContainsFunctionCall || ctx.exprContainsVariableRef {
-          val typedParam = TypedFunctionParam(label: param.label, ty: paramType ?: expr.ty, defaultValue: Some(expr), isVariadic: param.isVariadic)
+          val typedParam = TypedFunctionParam(label: param.label, ty: paramType ?: expr.ty, defaultValue: Some(expr), isVariadic: param.isVariadic, variable: Variable.bogus())
           return Ok((typedParam, true))
         }
         defaultValue = Some(expr)
@@ -2229,7 +2235,7 @@ export type Typechecker {
       return Err(TypeError(position: param.label.position, kind: TypeErrorKind.IllegalValueType(ty: ty, purpose: "parameter")))
     }
 
-    val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: defaultValue, isVariadic: param.isVariadic)
+    val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: defaultValue, isVariadic: param.isVariadic, variable: variable)
     Ok((typedParam, false))
   }
 

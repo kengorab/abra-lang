@@ -196,11 +196,19 @@ println(closure4(1))
 // /// Expect: 5
 // println(capturedInt)
 
-// // Returning a function/closure value
-// func makeNonClosure(): (Int) => Int = i => i + 1
-// val nonClosure = makeNonClosure()
-// /// Expect: 12
-// println(nonClosure(11))
+// Returning a function/closure value
+func makeNonClosure(): (Int) => Int = i => i + 1
+val nonClosure = makeNonClosure()
+/// Expect: 12
+println(nonClosure(11))
+
+func makeClosure(): (Int) => Int {
+  val x = 123
+  i => i + x
+}
+val closure = makeClosure()
+/// Expect: 134
+println(closure(11))
 
 // val one = 1
 // func makeClosureCapturingOutside(): (Int) => Int {
@@ -210,12 +218,12 @@ println(closure4(1))
 // /// Expect: 12
 // println(closureCapturingOutside(11))
 
-// func makeAdder(x: Int): (Int) => Int {
-//   i => i + x
-// }
-// val addOne = makeAdder(1)
-// /// Expect: 12
-// println(addOne(11))
+func makeAdder(x: Int): (Int) => Int {
+  i => i + x
+}
+val addOne = makeAdder(1)
+/// Expect: 12
+println(addOne(11))
 
 // val capturedArr = [1, 2, 3]
 // func makeClosureCapturingOutsideAndParam(arr: Int[]): (Int) => Int {
