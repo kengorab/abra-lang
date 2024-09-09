@@ -532,7 +532,7 @@ export type Compiler {
         Ok(None)
       }
       TypedAstNodeKind.FunctionDeclaration(fn) => {
-        if !fn.captures.isEmpty() {
+        if fn.isClosure() {
           val capturesMem = match self._createClosureCaptures(fn) { Ok(v) => v, Err(e) => return Err(e) }
           val capturesSlot = self._buildStackAllocForQbeType(QbeType.Pointer, Some("${fn.label.name}.captures"))
           self._currentFn.block.buildStore(QbeType.Pointer, capturesMem, capturesSlot)
@@ -959,7 +959,7 @@ export type Compiler {
                 None
               }
 
-              val capturesMem = if fn.captures.isEmpty() None else {
+              val capturesMem = if !fn.isClosure() None else {
                 val mem = match self._createClosureCaptures(fn) { Ok(v) => v, Err(e) => return Err(e) }
                 Some(mem)
               }
@@ -1012,8 +1012,9 @@ export type Compiler {
               return res
             }
 
-            if !fn.captures.isEmpty() {
-              closureEnvCtx = Some((self._getCapturesForClosure(fn), false))
+            if fn.isClosure() {
+              val capturesArr = match self._getCapturesArrForClosure(fn) { Ok(v) => v, Err(e) => return Err(e) }
+              closureEnvCtx = Some((capturesArr, false))
             }
 
             fnHasOptionalParameters = fn.params.any(p => !!p.defaultValue)
@@ -1046,8 +1047,9 @@ export type Compiler {
               return res
             }
 
-            if !fn.captures.isEmpty() {
-              closureEnvCtx = Some((self._getCapturesForClosure(fn), false))
+            if fn.isClosure() {
+              val capturesArr = match self._getCapturesArrForClosure(fn) { Ok(v) => v, Err(e) => return Err(e) }
+              closureEnvCtx = Some((capturesArr, false))
             }
 
             fnHasOptionalParameters = fn.params.any(p => !!p.defaultValue)
@@ -1502,7 +1504,7 @@ export type Compiler {
           None
         }
 
-        val capturesMem = if fn.captures.isEmpty() None else {
+        val capturesMem = if !fn.isClosure() None else {
           val mem = match self._createClosureCaptures(fn) { Ok(v) => v, Err(e) => return Err(e) }
           Some(mem)
         }
@@ -1618,28 +1620,55 @@ export type Compiler {
   }
 
   func _createClosureCaptures(self, fn: Function): Result<Value, CompileError> {
-    var size = 0
-    for variable in fn.captures {
-      val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
-      size += varTy.size()
-    }
+    val size = QbeType.Pointer.size() * (fn.captures.length + fn.capturedClosures.length)
     val capturesMem = match self._currentFn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
     var cursor = capturesMem
 
     for variable in fn.captures {
       val ptr = match self._getCapturedVarPtr(variable.label.name) { Ok(v) => v, Err(e) => return Err(e) }
       self._currentFn.block.buildStore(QbeType.Pointer, ptr, cursor)
-      cursor = match self._currentFn.block.buildAdd(Value.Int(QbeType.Pointer.size()), cursor) { Ok(v) => v, Err(e) => return qbeError(e) }
+      if fn.captures.length > 1 || fn.capturedClosures.length > 0 {
+        cursor = match self._currentFn.block.buildAdd(Value.Int(QbeType.Pointer.size()), cursor) { Ok(v) => v, Err(e) => return qbeError(e) }
+      }
+    }
+
+    for capturedFn in fn.capturedClosures {
+      val capturesArr = match self._getCapturesArrForClosure(capturedFn) { Ok(v) => v, Err(e) => return Err(e) }
+      self._currentFn.block.buildStore(QbeType.Pointer, capturesArr, cursor)
+      if fn.capturedClosures.length > 1 {
+        cursor = match self._currentFn.block.buildAdd(Value.Int(QbeType.Pointer.size()), cursor) { Ok(v) => v, Err(e) => return qbeError(e) }
+      }
     }
 
     Ok(capturesMem)
   }
 
-  func _getCapturesForClosure(self, fn: Function): Value {
-    // TODO: this assumes that the closure is being called in the same scope in which it was declared (and thus the `*.captures`
-    // value is visible as a stack local). This does not hold true for nested scopes, and will need to be handled.
-    val capturesName = "${fn.label.name}.captures"
-    self._currentFn.block.buildLoadL(Value.Ident(capturesName, QbeType.Pointer))
+  func _getCapturesArrForClosure(self, fn: Function): Result<Value, CompileError> {
+    val fnInvocationIsAtDeclaredScope = if self._currentFunction |currentFunc| {
+      fn.scope.parent == Some(currentFunc.scope)
+    } else {
+      true
+    }
+
+    val res = if !fnInvocationIsAtDeclaredScope {
+      val currentFunc = if self._currentFunction |currentFn| currentFn else return unreachable("we must be within a function to enter this case", fn.label.position)
+
+      val _p = if currentFunc.capturedClosures.findIndex(f => f.label.name == fn.label.name) |_p| _p else return unreachable("closure '${fn.label.name}' called within function '${currentFunc.label.name}', but not tracked in its capturedClosures", fn.label.position)
+      // TODO: destructuring
+      val idx = _p[1]
+
+      val env = if self._currentFn._env |env| env else return unreachable("expected currentFn ('${self._currentFn.name}') to have an `_env`, but it didn't")
+      val offset = QbeType.Pointer.size() * (currentFunc.captures.length + idx)
+
+      val ptr = match self._currentFn.block.buildAdd(Value.Int(offset), env) { Ok(v) => v, Err(e) => return qbeError(e) }
+      self._currentFn.block.buildLoadL(ptr)
+    } else {
+      // If the closure is being called in the same scope in which it was declared, then the `*.captures` value is visible as a stack local.
+      val capturesName = "${fn.label.name}.captures"
+      self._currentFn.block.buildLoadL(Value.Ident(capturesName, QbeType.Pointer))
+    }
+
+    Ok(res)
   }
 
   func _compileBinaryOperands(self, left: TypedAstNode, right: TypedAstNode, op: String): Result<(Value, Value), CompileError> {
@@ -2557,7 +2586,7 @@ export type Compiler {
 
     val returnTypeQbe = match self._getQbeTypeForType(fn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
     val fnVal = self._builder.buildFunction(name: fnName, returnType: returnTypeQbe)
-    if !fn.captures.isEmpty() fnVal.addEnv()
+    if fn.isClosure() fnVal.addEnv()
 
     match self._compileFunc(fnVal, fn) { Ok(v) => v, Err(e) => return Err(e) }
     fnVal.addComment(match self._fnSignature(None, fn) { Ok(v) => v, Err(e) => return Err(e) })

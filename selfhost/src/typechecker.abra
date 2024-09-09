@@ -94,6 +94,7 @@ export enum VariableAlias {
 
 export type Variable {
   label: Label
+  scope: Scope
   mutable: Bool
   ty: Type
   alias: VariableAlias? = None
@@ -103,7 +104,7 @@ export type Variable {
 
   func bogus(): Variable {
     val label = Label(name: "_bogus", position: Position(line: 0, col: 0))
-    Variable(label: label, mutable: false, ty: Type(kind: TypeKind.Never))
+    Variable(label: label, scope: Scope.bogus(), mutable: false, ty: Type(kind: TypeKind.Never))
   }
 }
 
@@ -148,9 +149,24 @@ export type Scope {
   terminator: Terminator? = None
   numLambdas: Int = 0
 
+  func bogus(name = ""): Scope {
+    val scopeName = if name == "" "bogus" else "bogus($name)"
+    Scope(name: scopeName)
+  }
+
   func eq(self, other: Scope): Bool = self.name == other.name
 
   func makeChild(self, name: String, kind: ScopeKind): Scope = Scope(name: "${self.name}::$name", kind: kind, parent: Some(self))
+
+  func contains(self, other: Scope): Bool {
+    var child = Some(other)
+    while child |ch| {
+      if self == ch return true
+      child = ch.parent
+    }
+
+    false
+  }
 }
 
 export type Field {
@@ -176,7 +192,7 @@ export type Struct {
 
   func makeDummy(moduleId: Int, name: String, typeParams: String[] = [], fields: (String, Type)[] = []): Struct {
     val bogusPosition = Position(line: 0, col: 0)
-    val bogusScope = Scope(name: "bogus($name)")
+    val bogusScope = Scope.bogus(name)
 
     val struct = Struct(
       moduleId: moduleId,
@@ -237,7 +253,7 @@ enum Instantiatable {
 
 export type Project {
   modules: Map<String, TypedModule> = {}
-  preludeScope: Scope = Scope(name: "bogus")
+  preludeScope: Scope = Scope.bogus()
   preludeIntStruct: Struct = Struct(moduleId: 0, label: Label(name: "Int", position: Position(line: 0, col: 0)), scope: Scope(name: "Int"))
   preludeFloatStruct: Struct = Struct(moduleId: 0, label: Label(name: "Float", position: Position(line: 0, col: 0)), scope: Scope(name: "Float"))
   preludeBoolStruct: Struct = Struct(moduleId: 0, label: Label(name: "Bool", position: Position(line: 0, col: 0)), scope: Scope(name: "Bool"))
@@ -603,6 +619,7 @@ export type Function {
   isLambda: Bool = false
   decorators: Decorator[] = []
   captures: Variable[] = []
+  capturedClosures: Function[] = []
 
   func generated(
     scope: Scope,
@@ -673,6 +690,8 @@ export type Function {
       decorators: self.decorators,
     )
   }
+
+  func isClosure(self): Bool = !self.captures.isEmpty() || !self.capturedClosures.isEmpty()
 }
 
 export enum TypedInvokee {
@@ -1477,7 +1496,7 @@ export type Typechecker {
     val structTy = Type(kind: TypeKind.Type(type_: StructOrEnum.Struct(struct)))
     match self._addTypeToScope(structTy) { Ok(v) => v, Err(e) => return Err(e) }
 
-    val variable = Variable(label: struct.label, mutable: false, ty: structTy, alias: Some(VariableAlias.Struct(struct)))
+    val variable = Variable(label: struct.label, scope: scope, mutable: false, ty: structTy, alias: Some(VariableAlias.Struct(struct)))
     match self._addVariableToScope(variable) { Ok(v) => v, Err(e) => return Err(e) }
 
     scope.structs.push(struct)
@@ -1494,7 +1513,7 @@ export type Typechecker {
     val enumTy = Type(kind: TypeKind.Type(type_: StructOrEnum.Enum(enum_)))
     match self._addTypeToScope(enumTy) { Ok(v) => v, Err(e) => return Err(e) }
 
-    val variable = Variable(label: enum_.label, mutable: false, ty: enumTy, alias: Some(VariableAlias.Enum(enum_)))
+    val variable = Variable(label: enum_.label, scope: scope, mutable: false, ty: enumTy, alias: Some(VariableAlias.Enum(enum_)))
     match self._addVariableToScope(variable) { Ok(v) => v, Err(e) => return Err(e) }
 
     scope.enums.push(enum_)
@@ -2150,7 +2169,7 @@ export type Typechecker {
           }
         }
 
-        val variable = Variable(label: param.label, mutable: false, ty: ty, isParameter: true)
+        val variable = Variable(label: param.label, scope: self.currentScope, mutable: false, ty: ty, isParameter: true)
         match self._addVariableToScope(variable) { Ok(v) => v, Err(e) => return Err(e) }
 
         val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: None, isVariadic: false, variable: variable)
@@ -2220,7 +2239,7 @@ export type Typechecker {
       }
     }
 
-    val variable = Variable(label: param.label, mutable: false, ty: ty, isParameter: true)
+    val variable = Variable(label: param.label, scope: self.currentScope, mutable: false, ty: ty, isParameter: true)
     match self._addVariableToScope(variable) { Ok(v) => v, Err(e) => return Err(e) }
 
     if param.isVariadic {
@@ -2817,7 +2836,7 @@ export type Typechecker {
       }
 
       val fn = match self._typecheckFunctionPass1(node) { Ok(v) => v, Err(e) => return Err(e) }
-      val aliasVar = Variable(label: fn.label, mutable: false, ty: fn.getType(), alias: Some(VariableAlias.Function(fn)))
+      val aliasVar = Variable(label: fn.label, scope: self.currentScope, mutable: false, ty: fn.getType(), alias: Some(VariableAlias.Function(fn)))
       self.currentScope.variables.push(aliasVar)
       functionsPass1.push((fn, aliasVar, node))
       if isExported {
@@ -2954,7 +2973,7 @@ export type Typechecker {
   func _typecheckBindingPattern(self, mutable: Bool, pattern: BindingPattern, ty: Type): Result<Variable[], TypeError> {
     match pattern {
       BindingPattern.Variable(label) => {
-        val variable = Variable(label: label, mutable: mutable, ty: ty)
+        val variable = Variable(label: label, scope: self.currentScope, mutable: mutable, ty: ty)
         match self._addVariableToScope(variable) { Ok(v) => v, Err(e) => return Err(e) }
 
         Ok([variable])
@@ -3465,7 +3484,7 @@ export type Typechecker {
               self.currentScope = self.currentScope.makeChild("matchcase_${caseTy.repr()}", ScopeKind.MatchCase)
               if case.binding |binding| {
                 // TODO: generics in ty
-                caseVar = Some(Variable(label: binding, mutable: false, ty: caseTy))
+                caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: caseTy))
               }
 
               TypedMatchCaseKind.Type(caseTy)
@@ -3517,7 +3536,7 @@ export type Typechecker {
                       } else {
                         field.ty
                       }
-                      val variable = Variable(label: arg, mutable: false, ty: variableTy)
+                      val variable = Variable(label: arg, scope: self.currentScope, mutable: false, ty: variableTy)
                       match self._addVariableToScope(variable) { Ok(v) => v, Err(e) => return Err(e) }
                       variables.push(variable)
                     }
@@ -3526,7 +3545,7 @@ export type Typechecker {
               }
 
               if case.binding |binding| {
-                caseVar = Some(Variable(label: binding, mutable: false, ty: caseTy))
+                caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: caseTy))
               }
 
               TypedMatchCaseKind.EnumVariant(enum_, variant, variantIdx, variables)
@@ -3548,7 +3567,7 @@ export type Typechecker {
 
           self.currentScope = self.currentScope.makeChild("matchcase_$value", ScopeKind.MatchCase)
           if case.binding |binding| {
-            caseVar = Some(Variable(label: binding, mutable: false, ty: literalTy))
+            caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: literalTy))
           }
 
           val subjectTy = if self._typeIsOption(subjectTy) |innerTy| innerTy else subjectTy
@@ -3566,7 +3585,7 @@ export type Typechecker {
 
           self.currentScope = self.currentScope.makeChild("matchcase_None", ScopeKind.MatchCase)
           if case.binding |binding| {
-            caseVar = Some(Variable(label: binding, mutable: false, ty: subjectTy))
+            caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: subjectTy))
           }
 
           if self._typeIsOption(subjectTy) |ty| {
@@ -3582,7 +3601,7 @@ export type Typechecker {
 
           self.currentScope = self.currentScope.makeChild("matchcase_else", ScopeKind.MatchCase)
           if case.binding |binding| {
-            caseVar = Some(Variable(label: binding, mutable: false, ty: subjectTy))
+            caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: subjectTy))
           }
 
           TypedMatchCaseKind.Else
@@ -4459,6 +4478,14 @@ export type Typechecker {
       TypedInvokee.Function(fn)
     }
 
+    if fn.isClosure() {
+      if self.currentFunction |currentFn| {
+        if !currentFn.capturedClosures.find(f => f.label.name == fn.label.name) {
+          currentFn.capturedClosures.push(fn)
+        }
+      }
+    }
+
     Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(typedInvokee, typedArguments, resolvedGenerics)))
   }
 
@@ -4794,6 +4821,23 @@ export type Typechecker {
 
     val paramsNeedingRevisit = match self._typecheckFunctionPass2(fn: fn, allowSelf: false, params: node.params, paramHints: paramHints) { Ok(v) => v, Err(e) => return Err(e) }
     match self._typecheckFunctionPass3(fn: fn, allowSelf: false, params: node.params, body: node.body, paramsNeedingRevisit: paramsNeedingRevisit) { Ok(v) => v, Err(e) => return Err(e) }
+
+    if fn.isClosure() {
+      if self.currentFunction |currentFn| {
+        for capturedVar in fn.captures {
+          if !currentFn.captures.find(v => v.label.name == capturedVar.label.name) {
+            if !currentFn.scope.contains(capturedVar.scope) {
+              currentFn.captures.push(capturedVar)
+            }
+          }
+        }
+        for capturedClosure in fn.capturedClosures {
+          if !currentFn.capturedClosures.find(fn => fn.label.name == capturedClosure.label.name) {
+            currentFn.capturedClosures.push(capturedClosure)
+          }
+        }
+      }
+    }
 
     val lambdaTy = fn.getType()
 

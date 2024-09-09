@@ -182,19 +182,19 @@ println(closure4(1, 2))
 capturedInt = 14
 println(closure4(1))
 
-// capturedInt = 1
-// func closure5() { capturedInt += 2 }
-// func containsClosures1() { closure5() }
-// func containsClosures2() { containsClosures1() }
+capturedInt = 1
+func closure5() { capturedInt += 2 }
+func containsClosures1() { closure5() }
+func containsClosures2() { containsClosures1() }
 
-// /// Expect: 1
-// println(capturedInt)
-// containsClosures2()
-// /// Expect: 3
-// println(capturedInt)
-// containsClosures2()
-// /// Expect: 5
-// println(capturedInt)
+/// Expect: 1
+println(capturedInt)
+containsClosures2()
+/// Expect: 3
+println(capturedInt)
+containsClosures2()
+/// Expect: 5
+println(capturedInt)
 
 // Returning a function/closure value
 func makeNonClosure(): (Int) => Int = i => i + 1
@@ -210,13 +210,21 @@ val closure = makeClosure()
 /// Expect: 134
 println(closure(11))
 
-// val one = 1
-// func makeClosureCapturingOutside(): (Int) => Int {
-//   i => i + one
-// }
-// val closureCapturingOutside = makeClosureCapturingOutside()
-// /// Expect: 12
-// println(closureCapturingOutside(11))
+val one = 1
+func makeClosureCapturingOutside(): (Int) => Int {
+  i => i + one
+}
+val closureCapturingOutside1 = makeClosureCapturingOutside()
+/// Expect: 12
+println(closureCapturingOutside1(11))
+// Even more ridiculous example
+func getClosureCapturingOutside(): (Int) => Int {
+  val fn = () => makeClosureCapturingOutside()
+  fn()
+}
+val closureCapturingOutside2 = getClosureCapturingOutside()
+/// Expect: 12
+println(closureCapturingOutside2(11))
 
 func makeAdder(x: Int): (Int) => Int {
   i => i + x
@@ -225,49 +233,60 @@ val addOne = makeAdder(1)
 /// Expect: 12
 println(addOne(11))
 
-// val capturedArr = [1, 2, 3]
-// func makeClosureCapturingOutsideAndParam(arr: Int[]): (Int) => Int {
-//   val f = (i: Int) => i + arr.length + one
-//   arr.pop()
-//   f
-// }
-// val closureCapturingOutsideAndParam = makeClosureCapturingOutsideAndParam(capturedArr)
-// /// Expect: [1, 2]
-// println(capturedArr)
-// capturedArr.push(3)
-// /// Expect: [1, 2, 3]
-// println(capturedArr)
-// /// Expect: 15
-// println(closureCapturingOutsideAndParam(11))
+val capturedArr = [1, 2, 3]
+func makeClosureCapturingOutsideAndParam(arr: Int[]): (Int) => Int {
+  val f = (i: Int) => i + arr.length + one
+  arr.pop()
+  f
+}
+val closureCapturingOutsideAndParam = makeClosureCapturingOutsideAndParam(capturedArr)
+/// Expect: [1, 2]
+println(capturedArr)
+capturedArr.push(3)
+/// Expect: [1, 2, 3]
+println(capturedArr)
+/// Expect: 15
+println(closureCapturingOutsideAndParam(11))
 
-// // This is a pretty cool stress-test for closures and functions as values
+// This is a pretty cool stress-test for closures and functions as values
+// TODO: there's some issue here with the generics. the error is: "unexpected generic 'A' at this point"
 // type JankInstance<A, B> {
 //   a: A
 //   b: B
-//   setA: (A) => A
-//   setB: (B) => B
+//   setA: (A) => Unit
+//   setB: (B) => Unit
 //   toString: () => String
 // }
-// func makeJankClass(className: String, a: Int, b: Float[]): JankInstance<Int, Float[]> {
-//   var selfA = a
-//   var selfB = b
+type JankInstance {
+  a: Int
+  b: Float[]
+  setA: (Int) => Unit
+  setB: (Float[]) => Unit
+  toString: () => String
+}
+func makeJankClass(className: String, a: Int, b: Float[]): JankInstance {
+  var selfA = a
+  var selfB = b
 
-//   JankInstance(
-//     a: a,
-//     b: b,
-//     setA: a => selfA = a,
-//     setB: b => selfB = b,
-//     toString: () => "$className(a: $selfA, b: $selfB)"
-//   )
-// }
-// val jank = makeJankClass("Wow", 1, [2.3, 4.5])
-// /// Expect: Wow(a: 1, b: [2.3, 4.5])
-// println(jank.toString())
-
-// jank.setA(0)
-// jank.setB([1.2, 3.4])
-// /// Expect: Wow(a: 0, b: [1.2, 3.4])
-// println(jank.toString())
+  JankInstance(
+    a: a,
+    b: b,
+    setA: a => selfA = a,
+    setB: b => selfB = b,
+    toString: () => className + "(a: " + selfA + ", b: " + selfB + ")" //"$className(a: $selfA, b: $selfB)"
+  )
+}
+val jank = makeJankClass("Wow", 1, [2.3, 4.5])
+/// Expect: Wow(a: 1, b: [2.3, 4.5])
+println(jank.toString())
+jank.setA(2)
+jank.b.push(6.7)
+/// Expect: Wow(a: 2, b: [2.3, 4.5, 6.7])
+println(jank.toString())
+jank.setA(0)
+jank.setB([1.2, 3.4])
+/// Expect: Wow(a: 0, b: [1.2, 3.4])
+println(jank.toString())
 
 // // Return statements in if-expressions
 // func returnExprInArr(i: Int): Int[] {

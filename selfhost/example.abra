@@ -23,12 +23,39 @@
 // val foo: (Int) => Int = b => b + 1
 // println(foo(23))
 
-func makeAdder(x: Int): (Int) => Int {
+// func makeAdder(x: Int): (Int) => Int {
+//   i => i + x
+// }
+// val addOne = makeAdder(1)
+// /// Expect: 12
+// println(addOne(11))
+
+// var capturedInt = 1
+// func closure5() { capturedInt += 2 }
+// func containsClosures1() { closure5() }
+// containsClosures1()
+
+// println(capturedInt)
+
+// val one = 1
+// func makeClosureCapturingOutside(): (Int) => Int {
+//   i => i + one
+// }
+// func getClosureCapturingOutside(): (Int) => Int {
+//   val f = () => makeClosureCapturingOutside()
+//   f()
+// }
+// val closureCapturingOutside = getClosureCapturingOutside()
+// /// Expect: 12
+// println(closureCapturingOutside(11))
+
+func makeClosure(): (Int) => Int {
+  val x = 123
   i => i + x
 }
-val addOne = makeAdder(1)
-/// Expect: 12
-println(addOne(11))
+val closure = makeClosure()
+/// Expect: 134
+println(closure(11))
 
 // arr.push(2)
 // println(arr)

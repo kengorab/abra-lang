@@ -888,6 +888,14 @@ export type Jsonifier {
       println(",")
     }
 
+    if !function.capturedClosures.isEmpty() {
+      self.print("\"capturedClosures\": ")
+      self.array(function.capturedClosures, fn => {
+        print("\"${fn.label.name}\"")
+      })
+      println(",")
+    }
+
     self.print("\"body\": ")
     self.array(function.body, n => self.printNode(n))
     println()
