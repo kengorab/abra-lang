@@ -26,7 +26,7 @@ export type ModuleBuilder {
 
     val block = Block.new(name: name)
 
-    val fn = QbeFunction(exported: exported, name: name, returnType: returnType, _parameters: [], block: block, variadicIdx: None, _comments: [])
+    val fn = QbeFunction(exported: exported, name: name, returnType: returnType, _parameters: [], block: block, variadicIdx: None, _comments: [], _env: None)
     self._functions.push(fn)
     self._functionsByName[name] = fn
     fn
@@ -550,19 +550,26 @@ export type Block {
     local
   }
 
-  func buildCall(self, fnValue: QbeFunction, arguments: Value[], dst: String? = None): Result<Value, String> {
+  func buildCall(self, callable: Callable, arguments: Value[], dst: String? = None, envPtr: Value? = None): Result<Value, String> {
     val dest = dst ?: self._nextLocal()
-    val fnReturnType = if fnValue.returnType |ty| ty else {
-      return Err("function value '${fnValue.name}' has no return type; cannot store result into destination '%$dest'")
-    }
+
+    val fnReturnType = if callable.returnType() |ty| ty else return Err("function value ($callable) has no return type; cannot store result into destination '%$dest'")
 
     val local = Value.Ident(dest, fnReturnType)
 
-    val fnName = "\$${fnValue.name}"
-    if fnValue.variadicIdx |idx| {
-      self.append(Instruction.CallVarargs(dst: Some(Dest(name: local.repr(), ty: fnReturnType)), fn: fnName, varargsIdx: idx, args: arguments))
-    } else {
-      self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: fnReturnType)), fn: fnName, args: arguments))
+    match callable {
+      Callable.Function(fn) => {
+        val fnIdent = Value.Global(fn.name, QbeType.Pointer)
+
+        if fn.variadicIdx |idx| {
+          self.append(Instruction.CallVarargs(dst: Some(Dest(name: local.repr(), ty: fnReturnType)), fn: fnIdent, varargsIdx: idx, args: arguments, env: envPtr))
+        } else {
+          self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: fnReturnType)), fn: fnIdent, args: arguments, env: envPtr))
+        }
+      }
+      Callable.Value(fnValue) => {
+        self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: fnReturnType)), fn: fnValue, args: arguments, env: envPtr))
+      }
     }
 
     Ok(local)
@@ -572,22 +579,29 @@ export type Block {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, returnType)
 
-    self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: returnType)), fn: "\$$fnName", args: arguments))
+    self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: returnType)), fn: Value.Global(fnName, QbeType.Pointer), args: arguments, env: None))
 
     Ok(local)
   }
 
-  func buildVoidCall(self, fnValue: QbeFunction, arguments: Value[]) {
-    val fnName = "\$${fnValue.name}"
-    if fnValue.variadicIdx |idx| {
-      self.append(Instruction.CallVarargs(dst: None, fn: fnName, varargsIdx: idx, args: arguments))
-    } else {
-      self.append(Instruction.Call(dst: None, fn: fnName, args: arguments))
+  func buildVoidCall(self, callable: Callable, arguments: Value[], envPtr: Value? = None) {
+    match callable {
+      Callable.Function(fn) => {
+        val fnIdent = Value.Global(fn.name, QbeType.Pointer)
+        if fn.variadicIdx |idx| {
+          self.append(Instruction.CallVarargs(dst: None, fn: fnIdent, varargsIdx: idx, args: arguments, env: envPtr))
+        } else {
+          self.append(Instruction.Call(dst: None, fn: fnIdent, args: arguments, env: envPtr))
+        }
+      }
+      Callable.Value(fnValue) => {
+        self.append(Instruction.Call(dst: None, fn: fnValue, args: arguments, env: envPtr))
+      }
     }
   }
 
   func buildVoidCallRaw(self, fnName: String, arguments: Value[]) {
-    self.append(Instruction.Call(dst: None, fn: "\$$fnName", args: arguments))
+    self.append(Instruction.Call(dst: None, fn: Value.Global(fnName, QbeType.Pointer), args: arguments, env: None))
   }
 
   func buildPhi(self, cases: (Label, Value)[], dst: String? = None): Result<Value, String> {
@@ -623,6 +637,16 @@ export type Block {
 
   func buildHalt(self) {
     self.append(Instruction.Hlt)
+  }
+}
+
+export enum Callable {
+  Function(fn: QbeFunction)
+  Value(v: Value, returnType: QbeType?)
+
+  func returnType(self): QbeType? = match self {
+    Callable.Function(fn) => fn.returnType
+    Callable.Value(_, returnType) => returnType
   }
 }
 
@@ -684,9 +708,10 @@ export type QbeFunction {
   _parameters: (String, QbeType)[] = []
   variadicIdx: Int? = None
   _comments: String[] = []
+  _env: Value? = None
 
   func spec(name: String, returnType: QbeType? = None, parameters: (String, QbeType)[] = [], variadicIdx: Int? = None): QbeFunction {
-    QbeFunction(name: name, block: Block.new(name), returnType: returnType, _parameters: parameters, variadicIdx: variadicIdx)
+    QbeFunction(name: name, block: Block.new(name), returnType: returnType, _parameters: parameters, variadicIdx: variadicIdx, _env: None)
   }
 
   func encode(self, file: File) {
@@ -698,6 +723,11 @@ export type QbeFunction {
     self.returnType?.encode(file)
     file.write(" \$${self.name}")
     file.write("(")
+    if self._env |env| {
+      file.write("env ")
+      env.encode(file)
+      if !self._parameters.isEmpty() file.write(", ")
+    }
     for param, idx in self._parameters {
       param[1].encode(file)
       file.write(" %${param[0]}")
@@ -724,6 +754,12 @@ export type QbeFunction {
   func addParameter(self, name: String, ty: QbeType): Value {
     self._parameters.push((name, ty))
     Value.Ident(name, ty)
+  }
+
+  func addEnv(self): Value {
+    val env = Value.Ident("__env__", QbeType.Pointer)
+    self._env = Some(env)
+    env
   }
 }
 
@@ -816,8 +852,8 @@ enum Instruction {
 
   Cast(dst: Dest, value: Value)
 
-  Call(dst: Dest?, fn: String, args: Value[])
-  CallVarargs(dst: Dest?, fn: String, varargsIdx: Int, args: Value[])
+  Call(dst: Dest?, fn: Value, args: Value[], env: Value?)
+  CallVarargs(dst: Dest?, fn: Value, varargsIdx: Int, args: Value[], env: Value?)
 
   Phi(dst: Dest, cases: (Label, Value)[])
 
@@ -1115,14 +1151,19 @@ enum Instruction {
         v.encode(file)
         file.writeln()
       }
-      Instruction.Call(dst, fnName, args) => {
+      Instruction.Call(dst, fnVal, args, env) => {
         if dst |dst| {
           dst.encode(file)
           file.write(" ")
         }
         file.write("call ")
-        file.write(fnName)
+        fnVal.encode(file)
         file.write("(")
+        if env |env| {
+          file.write("env ")
+          env.encode(file)
+          if !args.isEmpty() file.write(", ")
+        }
         for arg, idx in args {
           arg.ty().encode(file)
           file.write(" ")
@@ -1131,14 +1172,19 @@ enum Instruction {
         }
         file.writeln(")")
       }
-      Instruction.CallVarargs(dst, fnName, varargsIdx, args) => {
+      Instruction.CallVarargs(dst, fnVal, varargsIdx, args, env) => {
         if dst |dst| {
           dst.encode(file)
           file.write(" ")
         }
         file.write("call ")
-        file.write(fnName)
+        fnVal.encode(file)
         file.write("(")
+        if env |env| {
+          file.write("env ")
+          env.encode(file)
+          if !args.isEmpty() file.write(", ")
+        }
         for arg, idx in args {
           if idx == varargsIdx {
             file.write("..., ")

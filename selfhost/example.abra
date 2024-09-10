@@ -1,2 +1,75 @@
-val set = #{17, 18, 19}
-println(set)
+// val set = #{17, 18, 19}
+// println(set)
+
+// func callFn(fn: (Int) => Int, a: Int): Int {
+//   fn(a)
+// }
+
+// val res = callFn//(x => x + 1, 7)
+// println(res)
+
+// func add_(a: Int, b: Int): Int = a + b
+
+// val add = add_
+// println(add(1, 2))
+
+// val fn: (Int, Int) => Int = (x) => x + 10
+// println(fn(23, 24))
+
+// val arr = [1]
+// // println(arr)
+
+// // func foo(b: Int): Int = arr.length + b
+// val foo: (Int) => Int = b => b + 1
+// println(foo(23))
+
+// func makeAdder(x: Int): (Int) => Int {
+//   i => i + x
+// }
+// val addOne = makeAdder(1)
+// /// Expect: 12
+// println(addOne(11))
+
+// var capturedInt = 1
+// func closure5() { capturedInt += 2 }
+// func containsClosures1() { closure5() }
+// containsClosures1()
+
+// println(capturedInt)
+
+// val one = 1
+// func makeClosureCapturingOutside(): (Int) => Int {
+//   i => i + one
+// }
+// func getClosureCapturingOutside(): (Int) => Int {
+//   val f = () => makeClosureCapturingOutside()
+//   f()
+// }
+// val closureCapturingOutside = getClosureCapturingOutside()
+// /// Expect: 12
+// println(closureCapturingOutside(11))
+
+func makeClosure(): (Int) => Int {
+  val x = 123
+  i => i + x
+}
+val closure = makeClosure()
+/// Expect: 134
+println(closure(11))
+
+// arr.push(2)
+// println(arr)
+// println(foo(23))
+
+// func callFn1(fn: (Int, String) => Int) {
+//   println(fn(24, "abc"))
+// }
+// // func callFn2(fn: (String) => Int) {
+// //   println(fn("abc"))
+// // }
+// // func foo(a: Int, b: Int): Int = a + b
+// func foo(a: Int, s = "qwer", d = 1): Int = a + s.length + d
+// // func foo(): Int = 12
+// callFn1(foo)
+// // callFn2(foo)
+

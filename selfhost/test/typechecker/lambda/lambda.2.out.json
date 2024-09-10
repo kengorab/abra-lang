@@ -316,9 +316,9 @@
                 "node": {
                   "kind": "lambda",
                   "function": {
-                    "label": { "name": "lambda_0", "position": [4, 25] },
+                    "label": { "name": "lambda_3_1", "position": [4, 25] },
                     "scope": {
-                      "name": "$root::module_3::lambda_0",
+                      "name": "$root::module_3::lambda_3_1",
                       "variables": [
                         {
                           "label": { "name": "x", "position": [4, 22] },
@@ -502,6 +502,7 @@
               {
                 "label": { "name": "fn", "position": [8, 30] },
                 "mutable": false,
+                "isCaptured": true,
                 "type": {
                   "kind": "function",
                   "parameters": [
@@ -727,9 +728,9 @@
                     "node": {
                       "kind": "lambda",
                       "function": {
-                        "label": { "name": "lambda_0", "position": [9, 24] },
+                        "label": { "name": "lambda_3_2", "position": [9, 24] },
                         "scope": {
-                          "name": "$root::module_3::forEach::lambda_0",
+                          "name": "$root::module_3::forEach::lambda_3_2",
                           "variables": [
                             {
                               "label": { "name": "key", "position": [9, 20] },
@@ -760,6 +761,29 @@
                           "kind": "primitive",
                           "primitive": "Unit"
                         },
+                        "captures": [
+                          {
+                            "label": { "name": "fn", "position": [8, 30] },
+                            "mutable": false,
+                            "isCaptured": true,
+                            "type": {
+                              "kind": "function",
+                              "parameters": [
+                                {
+                                  "required": true,
+                                  "type": {
+                                    "kind": "generic",
+                                    "name": "T"
+                                  }
+                                }
+                              ],
+                              "returnType": {
+                                "kind": "primitive",
+                                "primitive": "Unit"
+                              }
+                            }
+                          }
+                        ],
                         "body": [
                           {
                             "token": {
@@ -870,6 +894,7 @@
               {
                 "label": { "name": "fn", "position": [11, 26] },
                 "mutable": false,
+                "isCaptured": true,
                 "type": {
                   "kind": "function",
                   "parameters": [
@@ -1127,9 +1152,9 @@
                         "node": {
                           "kind": "lambda",
                           "function": {
-                            "label": { "name": "lambda_0", "position": [12, 26] },
+                            "label": { "name": "lambda_3_3", "position": [12, 26] },
                             "scope": {
-                              "name": "$root::module_3::map::lambda_0",
+                              "name": "$root::module_3::map::lambda_3_3",
                               "variables": [
                                 {
                                   "label": { "name": "v", "position": [12, 24] },
@@ -1160,6 +1185,29 @@
                               "kind": "generic",
                               "name": "U"
                             },
+                            "captures": [
+                              {
+                                "label": { "name": "fn", "position": [11, 26] },
+                                "mutable": false,
+                                "isCaptured": true,
+                                "type": {
+                                  "kind": "function",
+                                  "parameters": [
+                                    {
+                                      "required": true,
+                                      "type": {
+                                        "kind": "generic",
+                                        "name": "T"
+                                      }
+                                    }
+                                  ],
+                                  "returnType": {
+                                    "kind": "generic",
+                                    "name": "U"
+                                  }
+                                }
+                              }
+                            ],
                             "body": [
                               {
                                 "token": {
