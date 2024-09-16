@@ -29,6 +29,18 @@ val ghiVal = ghi
 /// Expect: 24
 println(ghiVal(11, 13))
 
+// Test reference to closure as value, from a nested scope
+val bang = "!"
+func bangbang(): String = bang + "!"
+func functionReferencingClosureAsValue() {
+  val fn = bangbang
+  println(fn())
+}
+/// Expect: !!
+functionReferencingClosureAsValue()
+
+// Test passing function/closure values as parameters
+
 func callFn(fn: (Int) => Int) = println(fn(16))
 func callFn2(fn: (Int, Int, Int) => Int) = println(fn(16, 17, 18))
 func callFn3(fn: (Int, Int, Int, Int) => Int) = println(fn(16, 17, 18, 19))

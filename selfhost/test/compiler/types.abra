@@ -70,38 +70,168 @@ println(f)
 /// Expect: true
 println(f.hash() == Foo().hash())
 
-// // Methods that capture variables
-// var capturedInt = 11
-// type FooWithCaptures {
-//   i: Int
+// Methods that capture variables
+var capturedInt = 11
+type FooWithCaptures {
+  i: Int
 
-//   func foo(self): Int = self.i + capturedInt
-//   func foo2(self, a = capturedInt): Int = self.i + a
-//   func fooStatic(): Int = capturedInt
-// }
+  func foo(self): Int = self.i + capturedInt
+  func foo2(self, a = capturedInt): Int = self.i + a
+  func fooStatic(): Int = capturedInt
+}
 
-// val fooWithCaptures = FooWithCaptures(i: 12)
-// /// Expect: 23
-// println(fooWithCaptures.foo())
-// capturedInt = 17
-// /// Expect: 29
-// println(fooWithCaptures.foo())
+val fooWithCaptures = FooWithCaptures(i: 12)
+/// Expect: 23
+println(fooWithCaptures.foo())
+capturedInt = 17
+/// Expect: 29
+println(fooWithCaptures.foo())
 
-// capturedInt = 17
-// /// Expect: 29
-// println(fooWithCaptures.foo2())
-// capturedInt = 17
-// /// Expect: 15
-// println(fooWithCaptures.foo2(3))
-// /// Expect: 17
-// println(FooWithCaptures.fooStatic())
+capturedInt = 17
+/// Expect: 29
+println(fooWithCaptures.foo2())
+capturedInt = 17
+/// Expect: 15
+println(fooWithCaptures.foo2(3))
+/// Expect: 17
+println(FooWithCaptures.fooStatic())
 
-// capturedInt = 11
-// func wrapper() {
-//   val f = FooWithCaptures(i: 12)
-//   /// Expect: 23
-//   println(f.foo())
-//   /// Expect: 11
-//   println(FooWithCaptures.fooStatic())
-// }
-// wrapper()
+val foo1Ref1 = fooWithCaptures.foo
+func wrapper1() {
+  val foo1Ref2 = fooWithCaptures.foo
+
+  /// Expect: 29
+  println(fooWithCaptures.foo())
+  /// Expect: 29
+  println(foo1Ref1())
+  /// Expect: 29
+  println(foo1Ref2())
+}
+wrapper1()
+
+capturedInt = 11
+func wrapper() {
+  val f = FooWithCaptures(i: 12)
+  /// Expect: 23
+  println(f.foo())
+  /// Expect: 11
+  println(FooWithCaptures.fooStatic())
+}
+wrapper()
+
+// Test passing function/closure values as parameters
+// This is similar to the suite of tests in `functions.abra`, but for references to methods instead
+func callFn(fn: (Int) => Int) = println(fn(16))
+func callFn2(fn: (Int, Int, Int) => Int) = println(fn(16, 17, 18))
+func callFn3(fn: (Int, Int, Int, Int) => Int) = println(fn(16, 17, 18, 19))
+
+val xyz = "xyz"
+type Foo2 {
+  a: Int
+
+  func f0(self, x: Int): Int = self.a + x
+  func f0Closure(self, x: Int): Int = self.a + x + xyz.length
+  func f0Static(x: Int): Int = x
+  func f0ClosureStatic(x: Int): Int = x + xyz.length
+
+  func f1(self, x = 12): Int = self.a + x
+  func f1Closure(self, x = 12): Int = self.a + x + xyz.length
+  func f1Static(x = 12): Int = x
+  func f1ClosureStatic(x = 12): Int = x + xyz.length
+
+  func f2(self, x: Int, y = 6): Int = self.a + x + y
+  func f2Closure(self, x: Int, y = 6): Int = self.a + x + y + xyz.length
+  func f2Static(x: Int, y = 6): Int = x + y
+  func f2ClosureStatic(x: Int, y = 6): Int =  x + y + xyz.length
+
+  func f3(self, x = 12, y = 6): Int = self.a + x + y
+  func f3Closure(self, x = 12, y = 6): Int = self.a + x + y + xyz.length
+  func f3Static(x = 12, y = 6): Int = x + y
+  func f3ClosureStatic(x = 12, y = 6): Int = x + y + xyz.length
+
+  func f4(self, x: Int): Int = self.a + x
+  func f4Closure(self, x: Int): Int = self.a + x + xyz.length
+  func f4Static(x: Int): Int = x
+  func f4ClosureStatic(x: Int): Int = x + xyz.length
+
+  func f5(self, x: Int, y: Int): Int = self.a + x + y
+  func f5Closure(self, x: Int, y: Int): Int = self.a + x + y + xyz.length
+  func f5Static(x: Int, y: Int): Int = x + y
+  func f5ClosureStatic(x: Int, y: Int): Int = x + y + xyz.length
+
+  func f6(self, x: Int, y = 12): Int = self.a + x + y
+  func f6Closure(self, x: Int, y = 12): Int = self.a + x + y + xyz.length
+  func f6Static(x: Int, y = 12): Int = x + y
+  func f6ClosureStatic(x: Int, y = 12): Int = x + y + xyz.length
+
+  func f7(self, x: Int, y = 12, z = 100): Int = self.a + x + y + z
+  func f7Closure(self, x: Int, y = 12, z = 100): Int = self.a + x + y + z + xyz.length
+  func f7Static(x: Int, y = 12, z = 100): Int = x + y + z
+  func f7ClosureStatic(x: Int, y = 12, z = 100): Int = x + y + z + xyz.length
+}
+val foo2 = Foo2(a: 1)
+
+/// Expect: 17
+callFn(foo2.f0)
+/// Expect: 20
+callFn(foo2.f0Closure)
+/// Expect: 16
+callFn(Foo2.f0Static)
+/// Expect: 19
+callFn(Foo2.f0ClosureStatic)
+/// Expect: 17
+callFn(foo2.f1)
+/// Expect: 20
+callFn(foo2.f1Closure)
+/// Expect: 16
+callFn(Foo2.f1Static)
+/// Expect: 19
+callFn(Foo2.f1ClosureStatic)
+/// Expect: 23
+callFn(foo2.f2)
+/// Expect: 26
+callFn(foo2.f2Closure)
+/// Expect: 22
+callFn(Foo2.f2Static)
+/// Expect: 25
+callFn(Foo2.f2ClosureStatic)
+/// Expect: 23
+callFn(foo2.f3)
+/// Expect: 26
+callFn(foo2.f3Closure)
+/// Expect: 22
+callFn(Foo2.f3Static)
+/// Expect: 25
+callFn(Foo2.f3ClosureStatic)
+/// Expect: 17
+callFn2(foo2.f4)
+/// Expect: 20
+callFn2(foo2.f4Closure)
+/// Expect: 16
+callFn2(Foo2.f4Static)
+/// Expect: 19
+callFn2(Foo2.f4ClosureStatic)
+/// Expect: 34
+callFn2(foo2.f5)
+/// Expect: 37
+callFn2(foo2.f5Closure)
+/// Expect: 33
+callFn2(Foo2.f5Static)
+/// Expect: 36
+callFn2(Foo2.f5ClosureStatic)
+/// Expect: 34
+callFn2(foo2.f6)
+/// Expect: 37
+callFn2(foo2.f6Closure)
+/// Expect: 33
+callFn2(Foo2.f6Static)
+/// Expect: 36
+callFn2(Foo2.f6ClosureStatic)
+/// Expect: 52
+callFn3(foo2.f7)
+/// Expect: 55
+callFn3(foo2.f7Closure)
+/// Expect: 51
+callFn3(Foo2.f7Static)
+/// Expect: 54
+callFn3(Foo2.f7ClosureStatic)
