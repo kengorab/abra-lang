@@ -540,7 +540,27 @@ export type Compiler {
 
         Ok(None)
       }
-      TypedAstNodeKind.TypeDeclaration => Ok(None)
+      TypedAstNodeKind.TypeDeclaration(struct) => {
+        for fn in struct.instanceMethods {
+          if fn.isClosure() {
+            val capturesMem = match self._createClosureCaptures(fn) { Ok(v) => v, Err(e) => return Err(e) }
+            val methodName = "${struct.label.name}..${fn.label.name}"
+            val capturesSlot = self._buildStackAllocForQbeType(QbeType.Pointer, Some("$methodName.captures"))
+            self._currentFn.block.buildStore(QbeType.Pointer, capturesMem, capturesSlot)
+          }
+        }
+
+        for fn in struct.staticMethods {
+          if fn.isClosure() {
+            val capturesMem = match self._createClosureCaptures(fn) { Ok(v) => v, Err(e) => return Err(e) }
+            val methodName = "${struct.label.name}.${fn.label.name}"
+            val capturesSlot = self._buildStackAllocForQbeType(QbeType.Pointer, Some("$methodName.captures"))
+            self._currentFn.block.buildStore(QbeType.Pointer, capturesMem, capturesSlot)
+          }
+        }
+
+        Ok(None)
+      }
       TypedAstNodeKind.EnumDeclaration => Ok(None)
       TypedAstNodeKind.Break => {
         if self._loopStack[-1] |currentLoop| {
@@ -960,11 +980,12 @@ export type Compiler {
               }
 
               val capturesMem = if !fn.isClosure() None else {
-                val mem = match self._createClosureCaptures(fn) { Ok(v) => v, Err(e) => return Err(e) }
+                val mem = match self._getCapturesArrForClosure(fn) { Ok(v) => v, Err(e) => return Err(e) }
                 Some(mem)
               }
 
-              self._compileFunctionValue(node.token.position, fn, targetParamTypes, capturesMem)
+              val fnValBase = match self._getOrCompileFunction(fn) { Ok(v) => v, Err(e) => return Err(e) }
+              self._compileFunctionValue(node.token.position, fn, fnValBase, targetParamTypes, capturesMem, None)
             }
             _ => {
               if variable.isCaptured {
@@ -987,6 +1008,7 @@ export type Compiler {
         var fnHasOptionalParameters = false
         var optSafeCtx: (Label, Value?, QbeFunction, Label)? = None
         var closureEnvCtx: (Value, Bool)? = None
+        var closureSelfCtx: Value? = None
 
         val _p = match invokee {
           TypedInvokee.Function(fn) => {
@@ -1130,6 +1152,10 @@ export type Compiler {
             val envPtr = self._currentFn.block.buildLoadL(fnObj)
             closureEnvCtx = Some((envPtr, true))
 
+            val selfPtrSlot = match self._currentFn.block.buildAdd(Value.Int(QbeType.Pointer.size() * 2), fnObj) { Ok(v) => v, Err(e) => return qbeError(e) }
+            val selfPtr = self._currentFn.block.buildLoadL(selfPtrSlot)
+            closureSelfCtx = Some(selfPtr)
+
             val fnValPtrSlot = match self._currentFn.block.buildAdd(Value.Int(QbeType.Pointer.size()), fnObj) { Ok(v) => v, Err(e) => return qbeError(e) }
             val fnValPtr = self._currentFn.block.buildLoadL(fnValPtrSlot)
 
@@ -1178,6 +1204,7 @@ export type Compiler {
           args.push(Value.Int32(defaultValueFlags))
         }
 
+        // TODO: yikes...
         var res = if fnVal.returnType() {
           if closureEnvCtx |_ctx| {
             // TODO: destructuring
@@ -1191,12 +1218,62 @@ export type Compiler {
               self._currentFn.block.buildJnz(closureEnvPtr, labelCallWithEnv, labelCallWithoutEnv)
 
               self._currentFn.block.registerLabel(labelCallWithEnv)
-              val resWithEnv = match self._currentFn.block.buildCall(fnVal, args, resultLocalName, Some(closureEnvPtr)) { Ok(v) => v, Err(e) => return qbeError(e) }
+              val resWithEnv = if closureSelfCtx |selfVal| {
+                val labelCallWithSelf = self._currentFn.block.addLabel("call_fn_val_with_env_with_self")
+                val labelCallWithoutSelf = self._currentFn.block.addLabel("call_fn_val_with_env_without_self")
+                val labelCont = self._currentFn.block.addLabel("call_fn_val_cont_with_env")
+
+                self._currentFn.block.buildJnz(selfVal, labelCallWithSelf, labelCallWithoutSelf)
+
+                self._currentFn.block.registerLabel(labelCallWithSelf)
+                val resWithSelf = match self._currentFn.block.buildCall(fnVal, [selfVal].concat(args), resultLocalName, Some(closureEnvPtr)) { Ok(v) => v, Err(e) => return qbeError(e) }
+                val resWithSelfLabel = self._currentFn.block.currentLabel
+                self._currentFn.block.buildJmp(labelCont)
+
+                self._currentFn.block.registerLabel(labelCallWithoutSelf)
+                val resWithoutSelf = match self._currentFn.block.buildCall(fnVal, args, resultLocalName, Some(closureEnvPtr)) { Ok(v) => v, Err(e) => return qbeError(e) }
+                val resWithoutSelfLabel = self._currentFn.block.currentLabel
+                self._currentFn.block.buildJmp(labelCont)
+
+                self._currentFn.block.registerLabel(labelCont)
+
+                val phiCases = [(resWithSelfLabel, resWithSelf), (resWithoutSelfLabel, resWithoutSelf)]
+                val res = match self._currentFn.block.buildPhi(phiCases) { Ok(v) => v, Err(e) => return qbeError(e) }
+                res
+              } else {
+                val res = match self._currentFn.block.buildCall(fnVal, args, resultLocalName, Some(closureEnvPtr)) { Ok(v) => v, Err(e) => return qbeError(e) }
+                res
+              }
               val resWithEnvLabel = self._currentFn.block.currentLabel
               self._currentFn.block.buildJmp(labelCont)
 
               self._currentFn.block.registerLabel(labelCallWithoutEnv)
-              val resWithoutEnv = match self._currentFn.block.buildCall(fnVal, args, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+              val resWithoutEnv = if closureSelfCtx |selfVal| {
+                val labelCallWithSelf = self._currentFn.block.addLabel("call_fn_val_without_env_with_self")
+                val labelCallWithoutSelf = self._currentFn.block.addLabel("call_fn_val_without_env_without_self")
+                val labelCont = self._currentFn.block.addLabel("call_fn_val_cont_without_env")
+
+                self._currentFn.block.buildJnz(selfVal, labelCallWithSelf, labelCallWithoutSelf)
+
+                self._currentFn.block.registerLabel(labelCallWithSelf)
+                val resWithSelf = match self._currentFn.block.buildCall(fnVal, [selfVal].concat(args), resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+                val resWithSelfLabel = self._currentFn.block.currentLabel
+                self._currentFn.block.buildJmp(labelCont)
+
+                self._currentFn.block.registerLabel(labelCallWithoutSelf)
+                val resWithoutSelf = match self._currentFn.block.buildCall(fnVal, args, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+                val resWithoutSelfLabel = self._currentFn.block.currentLabel
+                self._currentFn.block.buildJmp(labelCont)
+
+                self._currentFn.block.registerLabel(labelCont)
+
+                val phiCases = [(resWithSelfLabel, resWithSelf), (resWithoutSelfLabel, resWithoutSelf)]
+                val res = match self._currentFn.block.buildPhi(phiCases) { Ok(v) => v, Err(e) => return qbeError(e) }
+                res
+              } else {
+                val res = match self._currentFn.block.buildCall(fnVal, args, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+                res
+              }
               val resWithoutEnvLabel = self._currentFn.block.currentLabel
               self._currentFn.block.buildJmp(labelCont)
 
@@ -1228,11 +1305,47 @@ export type Compiler {
               self._currentFn.block.buildJnz(closureEnvPtr, labelCallWithEnv, labelCallWithoutEnv)
 
               self._currentFn.block.registerLabel(labelCallWithEnv)
-              self._currentFn.block.buildVoidCall(fnVal, args, Some(closureEnvPtr))
+              if closureSelfCtx |selfVal| {
+                val labelCallWithSelf = self._currentFn.block.addLabel("call_fn_val_with_env_with_self")
+                val labelCallWithoutSelf = self._currentFn.block.addLabel("call_fn_val_with_env_without_self")
+                val labelCont = self._currentFn.block.addLabel("call_fn_val_cont_with_env")
+
+                self._currentFn.block.buildJnz(selfVal, labelCallWithSelf, labelCallWithoutSelf)
+
+                self._currentFn.block.registerLabel(labelCallWithSelf)
+                self._currentFn.block.buildVoidCall(fnVal, [selfVal].concat(args), Some(closureEnvPtr))
+                self._currentFn.block.buildJmp(labelCont)
+
+                self._currentFn.block.registerLabel(labelCallWithoutSelf)
+                self._currentFn.block.buildVoidCall(fnVal, args, Some(closureEnvPtr))
+                self._currentFn.block.buildJmp(labelCont)
+
+                self._currentFn.block.registerLabel(labelCont)
+              } else {
+                self._currentFn.block.buildVoidCall(fnVal, args, Some(closureEnvPtr))
+              }
               self._currentFn.block.buildJmp(labelCont)
 
               self._currentFn.block.registerLabel(labelCallWithoutEnv)
-              self._currentFn.block.buildVoidCall(fnVal, args)
+              if closureSelfCtx |selfVal| {
+                val labelCallWithSelf = self._currentFn.block.addLabel("call_fn_val_without_env_with_self")
+                val labelCallWithoutSelf = self._currentFn.block.addLabel("call_fn_val_without_env_without_self")
+                val labelCont = self._currentFn.block.addLabel("call_fn_val_cont_without_env")
+
+                self._currentFn.block.buildJnz(selfVal, labelCallWithSelf, labelCallWithoutSelf)
+
+                self._currentFn.block.registerLabel(labelCallWithSelf)
+                self._currentFn.block.buildVoidCall(fnVal, [selfVal].concat(args))
+                self._currentFn.block.buildJmp(labelCont)
+
+                self._currentFn.block.registerLabel(labelCallWithoutSelf)
+                self._currentFn.block.buildVoidCall(fnVal, args)
+                self._currentFn.block.buildJmp(labelCont)
+
+                self._currentFn.block.registerLabel(labelCont)
+              } else {
+                self._currentFn.block.buildVoidCall(fnVal, args, Some(closureEnvPtr))
+              }
               self._currentFn.block.buildJmp(labelCont)
 
               self._currentFn.block.registerLabel(labelCont)
@@ -1240,7 +1353,25 @@ export type Compiler {
               self._currentFn.block.buildVoidCall(fnVal, args, Some(closureEnvPtr))
             }
           } else {
-            self._currentFn.block.buildVoidCall(fnVal, args)
+            if closureSelfCtx |selfVal| {
+              val labelCallWithSelf = self._currentFn.block.addLabel("call_fn_val_with_env_with_self")
+              val labelCallWithoutSelf = self._currentFn.block.addLabel("call_fn_val_with_env_without_self")
+              val labelCont = self._currentFn.block.addLabel("call_fn_val_cont_with_env")
+
+              self._currentFn.block.buildJnz(selfVal, labelCallWithSelf, labelCallWithoutSelf)
+
+              self._currentFn.block.registerLabel(labelCallWithSelf)
+              self._currentFn.block.buildVoidCall(fnVal, [selfVal].concat(args))
+              self._currentFn.block.buildJmp(labelCont)
+
+              self._currentFn.block.registerLabel(labelCallWithoutSelf)
+              self._currentFn.block.buildVoidCall(fnVal, args)
+              self._currentFn.block.buildJmp(labelCont)
+
+              self._currentFn.block.registerLabel(labelCont)
+            } else {
+              self._currentFn.block.buildVoidCall(fnVal, args)
+            }
           }
 
           Value.Ident("bogus", QbeType.F32)
@@ -1509,7 +1640,8 @@ export type Compiler {
           Some(mem)
         }
 
-        self._compileFunctionValue(node.token.position, fn, targetParamTypes, capturesMem)
+        val fnValBase = match self._getOrCompileFunction(fn) { Ok(v) => v, Err(e) => return Err(e) }
+        self._compileFunctionValue(node.token.position, fn, fnValBase, targetParamTypes, capturesMem, None)
       }
       TypedAstNodeKind.If(isStatement, cond, conditionBinding, ifBlock, ifBlockTerminator, elseBlock, elseBlockTerminator) => {
         if isStatement return unreachable("if-statements are handled elsewhere", node.token.position)
@@ -1664,7 +1796,27 @@ export type Compiler {
       self._currentFn.block.buildLoadL(ptr)
     } else {
       // If the closure is being called in the same scope in which it was declared, then the `*.captures` value is visible as a stack local.
-      val capturesName = "${fn.label.name}.captures"
+      val prefix = match fn.kind {
+        FunctionKind.InstanceMethod(structOrEnum) => {
+          val v = if structOrEnum |structOrEnum| {
+            val typeName = match structOrEnum {
+              StructOrEnum.Struct(struct) => struct.label.name
+              StructOrEnum.Enum(enum_) => enum_.label.name
+            }
+            "$typeName.."
+          } else return unreachable("an instance method should have a structOrEnum", fn.label.position)
+          v
+        }
+        FunctionKind.StaticMethod(structOrEnum) => {
+          val typeName = match structOrEnum {
+            StructOrEnum.Struct(struct) => struct.label.name
+            StructOrEnum.Enum(enum_) => enum_.label.name
+          }
+          "$typeName."
+        }
+        _ => ""
+      }
+      val capturesName = "$prefix${fn.label.name}.captures"
       self._currentFn.block.buildLoadL(Value.Ident(capturesName, QbeType.Pointer))
     }
 
@@ -1725,8 +1877,27 @@ export type Compiler {
     }
   }
 
-  func _compileFunctionValue(self, position: Position, fn: Function, targetParamTypes: (Type, Bool)[]?, capturesPtr: Value?): Result<Value, CompileError> {
+  func _compileFunctionValue(
+    self,
+    position: Position,
+    fn: Function,
+    fnValBase: QbeFunction,
+    targetParamTypes: (Type, Bool)[]?,
+    capturesPtr: Value?,
+    capturedSelf: (Value, Type)?,
+  ): Result<Value, CompileError> {
     val closureEnvPtr = capturesPtr ?: Value.Int(0)
+
+    val _s = if capturedSelf |_p| {
+      val selfVal = _p[0]
+      val selfTy = match self._getQbeTypeForTypeExpect(_p[1], "unacceptable type for param", Some(position)) { Ok(v) => v, Err(e) => return Err(e) }
+      (selfVal, Some(selfTy))
+    } else {
+      (Value.Int(0), None)
+    }
+    // TODO: destructuring
+    val selfVal = _s[0]
+    val selfTy = _s[1]
 
     val numParams = fn.params.length
     var fnNumReqParams = 0
@@ -1751,7 +1922,8 @@ export type Compiler {
       if targetArity == numParams {
         // If the referenced function's arity matches the required arity, and it has no optional parameters,
         // then we don't need to create a wrapper for it.
-        self._getOrCompileFunction(fn)
+        val res: Result<QbeFunction, CompileError> = Ok(fnValBase)
+        res
       } else if targetArity < numParams {
         // In this case, consider the following example:
         //   func foo(a: Int, b: Int): Int = ...
@@ -1764,7 +1936,7 @@ export type Compiler {
         //   callFn(foo)
         // Create a wrapper of higher arity which discards parameters (and which doesn't consider default-valued parameters, since we
         // know the wrapped function does not have any).
-        self._compileParamDiscardingFunctionWrapper(fnValParamTypes, fn, position, false)
+        self._compileParamDiscardingFunctionWrapper(fnValParamTypes, fn, fnValBase, position, false, selfTy)
       }
     } else if targetArity < fnNumReqParams {
       // In this case, consider the following example:
@@ -1801,7 +1973,7 @@ export type Compiler {
         val prevFn = self._currentFn
         self._currentFn = wrapperFnVal
 
-        val args: Value[] = []
+        val args = if selfTy |selfTy| [wrapperFnVal.addParameter("self", selfTy)] else []
         for paramType, idx in fnValParamTypes {
           val paramTy = match self._getQbeTypeForTypeExpect(paramType, "unacceptable type for param", Some(position)) { Ok(v) => v, Err(e) => return Err(e) }
           if fn.params[idx] |param| {
@@ -1819,7 +1991,6 @@ export type Compiler {
         }
         args.push(Value.Int32(defaultMaskFlag))
 
-        val fnValBase = match self._getOrCompileFunction(fn) { Ok(v) => v, Err(e) => return Err(e) }
         val ret = if fn.returnType.kind != TypeKind.PrimitiveUnit {
           val res = match self._currentFn.block.buildCall(Callable.Function(fnValBase), args) { Ok(v) => v, Err(e) => return qbeError(e) }
           Some(res)
@@ -1841,7 +2012,7 @@ export type Compiler {
       //   callFn2(foo)
       // Create a wrapper function of higher arity which discards parameters and _also_ passes 0 to the optional params flag; we know we can do this
       // because in order to reach this case, it must be the case that all of the optional parameters are passed a value.
-      self._compileParamDiscardingFunctionWrapper(fnValParamTypes, fn, position, true)
+      self._compileParamDiscardingFunctionWrapper(fnValParamTypes, fn, fnValBase, position, true, selfTy)
     } else {
       return unreachable("All valid cases exhausted above", position)
     }
@@ -1862,12 +2033,20 @@ export type Compiler {
 
     self._resolvedGenerics.popLayer()
 
-    val initArgs = [closureEnvPtr, Value.Global(fnVal.name, QbeType.Pointer)]
+    val initArgs = [closureEnvPtr, Value.Global(fnVal.name, QbeType.Pointer), selfVal]
     val res = match self._currentFn.block.buildCall(Callable.Function(initFnVal), initArgs) { Ok(v) => v, Err(e) => return qbeError(e) }
     Ok(res)
   }
 
-  func _compileParamDiscardingFunctionWrapper(self, fnValParamTypes: Type[], fn: Function, position: Position, passDefaultParamMask: Bool): Result<QbeFunction, CompileError> {
+  func _compileParamDiscardingFunctionWrapper(
+    self,
+    fnValParamTypes: Type[],
+    fn: Function,
+    fnValBase: QbeFunction,
+    position: Position,
+    passDefaultParamMask: Bool,
+    selfInstTy: QbeType?,
+  ): Result<QbeFunction, CompileError> {
     var wrapperSuffix = "..w"
     val numParams = fn.params.length
     val discardedParamTypeReprs: String[] = []
@@ -1899,6 +2078,7 @@ export type Compiler {
 
       wrapperSuffix += "D${idx + 1}$paramTypeName"
     }
+    // TODO: if `fn` is a method then the wrapper name should include the parent type as well
     val wrapperFnName = self._fnName(fn) + wrapperSuffix
 
     if self._builder.getFunction(wrapperFnName) |wrapperFnVal| return Ok(wrapperFnVal)
@@ -1909,7 +2089,7 @@ export type Compiler {
     val prevFn = self._currentFn
     self._currentFn = wrapperFnVal
 
-    val args: Value[] = []
+    val args = if selfInstTy |selfInstTy| [wrapperFnVal.addParameter("self", selfInstTy)] else []
     for paramType, idx in fnValParamTypes {
       val paramTy = match self._getQbeTypeForTypeExpect(paramType, "unacceptable type for param", Some(position)) { Ok(v) => v, Err(e) => return Err(e) }
       if fn.params[idx] |param| {
@@ -1920,7 +2100,6 @@ export type Compiler {
     }
     if passDefaultParamMask args.push(Value.Int32(0))
 
-    val fnValBase = match self._getOrCompileFunction(fn) { Ok(v) => v, Err(e) => return Err(e) }
     val ret = if fn.returnType.kind != TypeKind.PrimitiveUnit {
       val res = match self._currentFn.block.buildCall(Callable.Function(fnValBase), args) { Ok(v) => v, Err(e) => return qbeError(e) }
       Some(res)
@@ -1988,26 +2167,40 @@ export type Compiler {
 
   func _followAccessorPath(self, head: TypedAstNode, middle: AccessorPathSegment[], tail: AccessorPathSegment, loadFinal: Bool, localName: String? = None): Result<Value, CompileError> {
     val segs = middle.concat([tail])
-    val _p = match segs[0] {
+    // val bogusValue = (StructOrEnum.Struct(self._project.preludeBoolStruct), Type(kind: TypeKind.Instance(StructOrEnum.Struct(self._project.preludeBoolStruct), [])), Value.Ident("bogus", QbeType.F32))
+    var instTy = StructOrEnum.Struct(self._project.preludeBoolStruct)
+    var instType = Type(kind: TypeKind.Instance(StructOrEnum.Struct(self._project.preludeBoolStruct), []))
+    var curVal = Value.Ident("bogus", QbeType.F32)
+    match segs[0] {
       AccessorPathSegment.Field => {
         // TODO: assert that `head.ty` is a pointer type (attempting to do pointer arithmetic later on will fail otherwise)
         val _t = match self._getInstanceTypeForType(head.ty) { Ok(v) => v, Err(e) => return Err(e) }
         // TODO: destructuring
-        val instTy = _t[0]
+        instTy = _t[0]
         val typeArgs = _t[1]
-        val instType = Type(kind: TypeKind.Instance(instTy, typeArgs))
+        instType = Type(kind: TypeKind.Instance(instTy, typeArgs))
 
-        val curVal = match self._compileExpression(head) { Ok(v) => v, Err(e) => return Err(e) }
+        curVal = match self._compileExpression(head) { Ok(v) => v, Err(e) => return Err(e) }
         self._currentFn.block.addCommentBefore("${curVal.repr()}: ${head.ty.repr()}")
-
-        (instTy, instType, curVal)
       }
-      _ => (StructOrEnum.Struct(self._project.preludeBoolStruct), Type(kind: TypeKind.Instance(StructOrEnum.Struct(self._project.preludeBoolStruct), [])), Value.Ident("bogus", QbeType.F32))
+      AccessorPathSegment.Method(_, fn, _, _) => {
+        match fn.kind {
+          FunctionKind.InstanceMethod => {
+            // TODO: assert that `head.ty` is a pointer type (attempting to do pointer arithmetic later on will fail otherwise)
+            val _t = match self._getInstanceTypeForType(head.ty) { Ok(v) => v, Err(e) => return Err(e) }
+            // TODO: destructuring
+            instTy = _t[0]
+            val typeArgs = _t[1]
+            instType = Type(kind: TypeKind.Instance(instTy, typeArgs))
+
+            curVal = match self._compileExpression(head) { Ok(v) => v, Err(e) => return Err(e) }
+            self._currentFn.block.addCommentBefore("${curVal.repr()}: ${head.ty.repr()}")
+          }
+          _ => {}
+        }
+      }
+      _ => {}
     }
-    // TODO: destructuring
-    var instTy = _p[0]
-    var instType = _p[1]
-    var curVal = _p[2]
 
     for seg, idx in segs {
       match seg {
@@ -2019,7 +2212,41 @@ export type Compiler {
 
           instTy = StructOrEnum.Enum(enum_)
         }
-        AccessorPathSegment.Method(label, fn, _) => return todo("method accessor")
+        AccessorPathSegment.Method(label, fn, isOptSafe, fnAliasTypeHint) => {
+          if isOptSafe return todo("opt-safe method accessor", label.position)
+
+          val selfInstType = match fn.kind {
+            FunctionKind.InstanceMethod => {
+              val selfInstType = match self._addResolvedGenericsLayerForInstanceMethod(instType, fn.label.name, label.position) { Ok(v) => v, Err(e) => return Err(e) }
+              Some(selfInstType)
+            }
+            _ => None
+          }
+          val fnBaseVal = match self._getOrCompileMethod(instType, fn) { Ok(v) => v, Err(e) => return Err(e) }
+
+          val capturesMem = if fn.isClosure() {
+            val capturesArr = match self._getCapturesArrForClosure(fn) { Ok(v) => v, Err(e) => return Err(e) }
+            Some(capturesArr)
+          } else {
+            None
+          }
+
+          val targetParamTypes = if fnAliasTypeHint |hint| {
+            val paramTypes = match hint.kind {
+              TypeKind.Func(paramTypes, _) => Some(paramTypes)
+              TypeKind.Any => None // if the function value is being treated as an Any, then no param type info needs to be known later anyway
+              _ => return unreachable("fnAliasTypeKind must be TypeKind.Func", label.position)
+            }
+            paramTypes
+          } else {
+            None
+          }
+
+          self._resolvedGenerics.popLayer()
+
+          val selfVal = if selfInstType |selfInstType| Some((curVal, selfInstType)) else None
+          curVal = match self._compileFunctionValue(label.position, fn, fnBaseVal, targetParamTypes, capturesMem, selfVal) { Ok(v) => v, Err(e) => return Err(e) }
+        }
         AccessorPathSegment.Field(label, ty, field, isOptSafe) => {
           var optSafeCtx: (Label, Value, QbeFunction, Label)? = None
 
@@ -2605,14 +2832,12 @@ export type Compiler {
     val selfTy = _t[0]
     val _typeArgs = _t[1]
 
-    val methodName = match selfTy {
-      StructOrEnum.Struct(struct) => match self._structMethodFnName(struct, fn) { Ok(v) => v, Err(e) => return Err(e) }
-      StructOrEnum.Enum(enum_) => match self._enumMethodFnName(enum_, fn) { Ok(v) => v, Err(e) => return Err(e) }
-    }
+    val methodName = match self._methodFnName(selfTy, fn) { Ok(v) => v, Err(e) => return Err(e) }
     if self._builder.getFunction(methodName) |fn| return Ok(fn)
 
     val returnTypeQbe = match self._getQbeTypeForType(fn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
     val fnVal = self._builder.buildFunction(name: methodName, returnType: returnTypeQbe)
+    if fn.isClosure() fnVal.addEnv()
 
     if isInstanceMethod {
       val selfTyQbe = match self._getQbeTypeForTypeExpect(selfType, "unacceptable type for self") { Ok(v) => v, Err(e) => return Err(e) }
@@ -2742,10 +2967,7 @@ export type Compiler {
     val typeArgs = _t[1]
     val selfInstanceTy = Type(kind: TypeKind.Instance(selfTy, typeArgs))
 
-    val methodName = match selfTy {
-      StructOrEnum.Struct(struct) => match self._structMethodFnName(struct, fn) { Ok(v) => v, Err(e) => return Err(e) }
-      StructOrEnum.Enum(enum_) => match self._enumMethodFnName(enum_, fn) { Ok(v) => v, Err(e) => return Err(e) }
-    }
+    val methodName = match self._methodFnName(selfTy, fn) { Ok(v) => v, Err(e) => return Err(e) }
 
     val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(stringTypeQbe))
     val prevFn = self._currentFn
@@ -3165,10 +3387,7 @@ export type Compiler {
     val typeArgs = _t[1]
     val selfInstanceTy = Type(kind: TypeKind.Instance(selfTy, typeArgs))
 
-    val methodName = match selfTy {
-      StructOrEnum.Struct(struct) => match self._structMethodFnName(struct, fn) { Ok(v) => v, Err(e) => return Err(e) }
-      StructOrEnum.Enum(enum_) => match self._enumMethodFnName(enum_, fn) { Ok(v) => v, Err(e) => return Err(e) }
-    }
+    val methodName = match self._methodFnName(selfTy, fn) { Ok(v) => v, Err(e) => return Err(e) }
 
     val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(boolTypeQbe))
     val prevFn = self._currentFn
@@ -3398,10 +3617,7 @@ export type Compiler {
     val typeArgs = _t[1]
     val selfInstanceTy = Type(kind: TypeKind.Instance(selfTy, typeArgs))
 
-    val methodName = match selfTy {
-      StructOrEnum.Struct(struct) => match self._structMethodFnName(struct, fn) { Ok(v) => v, Err(e) => return Err(e) }
-      StructOrEnum.Enum(enum_) => match self._enumMethodFnName(enum_, fn) { Ok(v) => v, Err(e) => return Err(e) }
-    }
+    val methodName = match self._methodFnName(selfTy, fn) { Ok(v) => v, Err(e) => return Err(e) }
 
     val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(intTypeQbe))
     val prevFn = self._currentFn
@@ -3602,7 +3818,7 @@ export type Compiler {
       val dummyModuleId = 0
       val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
       val typeParams = (if hasReturnType { ["_R"] } else []).concat(alphabet[:arity].split(""))
-      val fields = [("_env", Type(kind: TypeKind.PrimitiveInt)), ("_ptr", Type(kind: TypeKind.PrimitiveInt))]
+      val fields = [("_env", Type(kind: TypeKind.PrimitiveInt)), ("_ptr", Type(kind: TypeKind.PrimitiveInt)), ("_self", Type(kind: TypeKind.PrimitiveInt))]
       val struct = Struct.makeDummy(moduleId: dummyModuleId, name: name, typeParams: typeParams, fields: fields)
 
       self._functionStructs[name] = struct
@@ -3799,6 +4015,14 @@ export type Compiler {
       _ => "."
     }
     Ok("${typeName}${sep}${fn.label.name}")
+  }
+
+  func _methodFnName(self, structOrEnum: StructOrEnum, fn: Function): Result<String, CompileError> {
+    val methodName = match structOrEnum {
+      StructOrEnum.Struct(struct) => match self._structMethodFnName(struct, fn) { Ok(v) => v, Err(e) => return Err(e) }
+      StructOrEnum.Enum(enum_) => match self._enumMethodFnName(enum_, fn) { Ok(v) => v, Err(e) => return Err(e) }
+    }
+    Ok(methodName)
   }
 
   func _fnSignature(self, structOrEnum: StructOrEnum?, fn: Function): Result<String, CompileError> {
