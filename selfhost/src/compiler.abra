@@ -2251,9 +2251,10 @@ export type Compiler {
           var optSafeCtx: (Label, Value, QbeFunction, Label)? = None
 
           if isOptSafe {
-            val innerTy = if self._typeIsOption(instType) |innerTy| innerTy else return unreachable("an opt-safe field accessor needs to have an Option type as its lhs")
-            instType = innerTy
-            val _t = match self._getInstanceTypeForType(innerTy) { Ok(v) => v, Err(e) => return Err(e) }
+            val innerTy = if self._typeIsOption(ty) |innerTy| innerTy else return unreachable("an opt-safe field accessor needs to have an Option type as its lhs")
+            val unwrappedInstType = if self._typeIsOption(instType) |innerTy| innerTy else return unreachable("an opt-safe field accessor needs to have an Option type as its lhs")
+            instType = unwrappedInstType
+            val _t = match self._getInstanceTypeForType(unwrappedInstType) { Ok(v) => v, Err(e) => return Err(e) }
             // TODO: destructuring
             instTy = _t[0]
 
