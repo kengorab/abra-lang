@@ -1,12 +1,15 @@
-val bang = "!"
+// val s = "hello"
 
-type Foo<A> {
-  a: A
+// match s {
+//   "hi" => println("here 1")
+//   "hello" v => println("here 2", v)
+//   _ v => println("default", v)
+// }
 
-  func echo(self) { println(self.a + bang) }
-  func printA(self, bang = "!") { println(self.a + bang) }
+val i = 124
+
+match i {
+  12 => println("here 1")
+  123 v => println("here 2", v)
+  _ v => println("default", v)
 }
-
-val foo = Foo(a: 11)
-val printA: () => Unit = foo.printA
-printA()

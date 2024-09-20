@@ -1,7 +1,7 @@
 import "fs" as fs
 import Position from "./lexer"
 import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern, IndexingMode from "./parser"
-import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias from "./typechecker"
+import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCaseKind from "./typechecker"
 import ModuleBuilder, QbeType, Dest, QbeFunction, Value, Label, Callable from "./qbe"
 
 type CompilationError {
@@ -303,7 +303,66 @@ export type Compiler {
 
         Ok(None)
       }
-      TypedAstNodeKind.Match => todo("compiling match stmt/expr", node.token.position)
+      TypedAstNodeKind.Match(isStatement, expr, cases) => {
+        val exprVal = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
+
+        val matchLabelPrefix = "match_${node.token.position.line}_${node.token.position.col}"
+        val endLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_end")
+
+        for case, idx in cases {
+          match case.kind {
+            TypedMatchCaseKind.Literal(lit) => {
+              val _p = match self._compileLiteral(lit) { Ok(v) => v, Err(e) => return Err(e) }
+              // TODO: destructuring
+              val litVal = _p[0]
+              val litType = _p[1]
+
+              if !self._project.typesAreEquivalent(expr.ty, litType) return unreachable("equality operators require matching types", node.token.position)
+
+              val cond = match self._compileEqLogic(exprVal, litVal, expr.ty, expr.token.position) { Ok(v) => v, Err(e) => return Err(e) }
+              val isEqLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_iseq")
+              val nextCaseLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_next_$idx")
+
+              self._currentFn.block.buildJnz(cond, isEqLabel, nextCaseLabel)
+              self._currentFn.block.registerLabel(isEqLabel)
+
+              if case.binding |v| {
+                val slotName = "${v.label.name}.slot"
+                val bindingTypeQbe = match self._getQbeTypeForTypeExpect(expr.ty, "qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+                val slot = self._buildStackAllocForQbeType(bindingTypeQbe, Some(slotName))
+                self._currentFn.block.buildStore(bindingTypeQbe, exprVal, slot)
+              }
+
+              for node in case.body {
+                match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
+              }
+              // if !blockTerminator {
+              //   self._currentFn.block.buildJmp(loopStartLabel)
+              // }
+              self._currentFn.block.buildJmp(endLabel)
+
+              self._currentFn.block.registerLabel(nextCaseLabel)
+            }
+            TypedMatchCaseKind.Else => {
+              if case.binding |v| {
+                val slotName = "${v.label.name}.slot"
+                val bindingTypeQbe = match self._getQbeTypeForTypeExpect(expr.ty, "qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+                val slot = self._buildStackAllocForQbeType(bindingTypeQbe, Some(slotName))
+                self._currentFn.block.buildStore(bindingTypeQbe, exprVal, slot)
+              }
+
+              for node in case.body {
+                match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
+              }
+            }
+            _ => return todo("other match case types", node.token.position)
+          }
+        }
+
+        self._currentFn.block.registerLabel(endLabel)
+
+        Ok(None)
+      }
       TypedAstNodeKind.While(cond, conditionBinding, block, blockTerminator) => {
         val loopStartLabel = self._currentFn.block.addLabel("while_loop_start")
         val loopBodyLabel = self._currentFn.block.addLabel("while_loop_body")
@@ -690,26 +749,9 @@ export type Compiler {
 
     val res: Result<Value, CompileError> = match node.kind {
       TypedAstNodeKind.Literal(lit) => {
-        match lit {
-          LiteralAstNode.Int(v) => {
-            val res = match self._currentFn.block.buildAdd(Value.Int(0), Value.Int(v), resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
-            Ok(res)
-          }
-          LiteralAstNode.Float(f) => {
-            val res = match self._currentFn.block.buildAdd(Value.Float(0.0), Value.Float(f), resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
-            Ok(res)
-          }
-          LiteralAstNode.Bool(b) => {
-            val res = match self._currentFn.block.buildAdd(Value.Int32(0), Value.Int32(if b 1 else 0), resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
-            self._currentFn.block.addCommentBefore(b.toString())
-            Ok(res)
-          }
-          LiteralAstNode.String(s) => {
-            val dataPtr = self._builder.buildGlobalString(s)
-            val instancePtr = match self._constructString(dataPtr, Value.Int(s.length), resultLocalName) { Ok(v) => v, Err(e) => return Err(e) }
-            Ok(instancePtr)
-          }
-        }
+        val _p = match self._compileLiteral(lit) { Ok(v) => v, Err(e) => return Err(e) }
+        // TODO: destructuring
+        Ok(_p[0])
       }
       TypedAstNodeKind.StringInterpolation => todo("compiling string interpolation expression", node.token.position)
       TypedAstNodeKind.Unary(op, expr) => {
@@ -1727,6 +1769,19 @@ export type Compiler {
     self._currentNode = prevNode
 
     res
+  }
+
+  func _compileLiteral(self, lit: LiteralAstNode): Result<(Value, Type), CompileError> {
+    Ok(match lit {
+      LiteralAstNode.Int(v) => (Value.Int(v), Type(kind: TypeKind.PrimitiveInt))
+      LiteralAstNode.Float(f) => (Value.Float(f), Type(kind: TypeKind.PrimitiveFloat))
+      LiteralAstNode.Bool(b) => (Value.Int32(if b 1 else 0), Type(kind: TypeKind.PrimitiveBool))
+      LiteralAstNode.String(s) => {
+        val dataPtr = self._builder.buildGlobalString(s)
+        val instancePtr = match self._constructString(dataPtr, Value.Int(s.length)) { Ok(v) => v, Err(e) => return Err(e) }
+        (instancePtr, Type(kind: TypeKind.PrimitiveString))
+      }
+    })
   }
 
   func _getCapturedVarPtr(self, name: String): Result<Value, CompileError> {
