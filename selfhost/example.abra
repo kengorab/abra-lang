@@ -6,10 +6,11 @@
 //   _ v => println("default", v)
 // }
 
-val i = 124
+val arr = [1]
 
-match i {
-  12 => println("here 1")
-  123 v => println("here 2", v)
+match arr[1] {
+  1 v => println("here 1", v)
+  None v => println("here 2", v)
+  124 v => println("here 3", v)
   _ v => println("default", v)
 }

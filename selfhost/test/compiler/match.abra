@@ -1,8 +1,14 @@
-// Basic test
+// Basic test (catch-all case)
 (() => {
   /// Expect: here
   match "abc" {
     _ => println("here")
+  }
+
+  // v2 syntax
+  /// Expect: here
+  match "abc" {
+    else => println("here")
   }
 })()
 
@@ -59,86 +65,93 @@
   println("done")
 })()
 
-// // Testing option type
-// (() => {
-//   val arr = [1, 2, 3, 4]
-//   /// Expect: found a number
-//   match arr[1] {
-//     None => println("nothing here")
-//     _ => println("found a number")
-//   }
-//   /// Expect: nothing here
-//   match arr[14] {
-//     None => println("nothing here")
-//     _ => println("found a number")
-//   }
+// Testing option type
+(() => {
+  val arr = [1, 2, 3, 4]
 
-//   // With case binding
+  /// Expect: found a number
+  match arr[1] {
+    None => println("nothing here")
+    else => println("found a number")
+  }
+  /// Expect: nothing here
+  match arr[14] {
+    None => println("nothing here")
+    else => println("found a number")
+  }
 
-//   /// Expect: found a number: 2
-//   match arr[1] {
-//     None v => println("nothing here: ${v}")
-//     _ v => println("found a number: ${v}")
-//   }
-//   /// Expect: nothing here: Option.None
-//   match arr[14] {
-//     None v => println("nothing here: ${v}")
-//     _ v => println("found a number: ${v}")
-//   }
+  // With case binding
 
-//   // With case binding and _no_ `None` case
+  /// Expect: found a number: 2
+  match arr[1] {
+    None v => println("nothing here:", v)
+    else v => println("found a number:", v)
+  }
+  /// Expect: nothing here: Option.None
+  match arr[14] {
+    None v => println("nothing here:", v)
+    else v => println("found a number:", v)
+  }
 
-//   /// Expect: value: Option.Some(value: 2)
-//   match arr[1] {
-//     _ v => println("value: ${v}")
-//   }
-//   /// Expect: value: Option.None
-//   match arr[14] {
-//     _ v => println("value: ${v}")
-//   }
+  // With case binding and _no_ `None` case
 
-//   //// With constant cases
+  /// Expect: value: Option.Some(value: 2)
+  match arr[1] {
+    else v => println("value:", v)
+  }
+  /// Expect: value: Option.None
+  match arr[14] {
+    else v => println("value:", v)
+  }
 
-//   /// Expect: 18
-//   match arr[1] {
-//     2 v => println(16 + v)
-//     1 => println(15)
-//     None => println(-4)
-//     _ => println(100)
-//   }
-//   /// Expect: 18
-//   match arr[1] {
-//     None => println(-4)
-//     2 v => println(16 + v)
-//     1 => println(15)
-//     _ => println(100)
-//   }
-//   /// Expect: 18
-//   match arr[1] {
-//     2 v => println(16 + v)
-//     1 => println(15)
-//     _ => println(100)
-//   }
-//   /// Expect: -4
-//   match arr[5] {
-//     2 v => println(16 + v)
-//     1 => println(15)
-//     None => println(-4)
-//     _ => println(100)
-//   }
-//   /// Expect: -4
-//   match arr[5] {
-//     None => println(-4)
-//     2 v => println(16 + v)
-//     1 => println(15)
-//     _ => println(100)
-//   }
-//   /// Expect: 100
-//   match arr[5] {
-//     2 v => println(16 + v)
-//     1 => println(15)
-//     _ => println(100)
-//   }
+  // With constant cases
+
+  /// Expect: 18
+  match arr[1] {
+    2 v => println(16 + v)
+    1 => println(15)
+    None => println(-4)
+    else => println(100)
+  }
+  /// Expect: 18
+  match arr[1] {
+    None => println(-4)
+    2 v => println(16 + v)
+    1 => println(15)
+    else => println(100)
+  }
+  /// Expect: 18
+  match arr[1] {
+    2 v => println(16 + v)
+    1 => println(15)
+    else => println(100)
+  }
+  /// Expect: -4
+  match arr[5] {
+    2 v => println(16 + v)
+    1 => println(15)
+    None => println(-4)
+    else => println(100)
+  }
+  /// Expect: -4
+  match arr[5] {
+    None => println(-4)
+    2 v => println(16 + v)
+    1 => println(15)
+    else => println(100)
+  }
+  /// Expect: 100 Option.None
+  match arr[5] {
+    2 v => println(16 + v)
+    1 => println(15)
+    else v => println(100, v)
+  }
+  /// Expect: 100 Option.Some(value: 4)
+  match arr[3] {
+    2 v => println(16 + v)
+    1 => println(15)
+    else v => println(100, v)
+  }
 
 //   // With type cases
 
@@ -158,7 +171,7 @@
 //     1 => println(15)
 //     _ => println(100)
 //   }
-// })()
+})()
 
 // // With enums
 

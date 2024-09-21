@@ -308,23 +308,73 @@ export type Compiler {
 
         val matchLabelPrefix = "match_${node.token.position.line}_${node.token.position.col}"
         val endLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_end")
+        var seenNoneCase = false
+        val exprTypeIsOpt = self._typeIsOption(expr.ty)
 
         for case, idx in cases {
           match case.kind {
             TypedMatchCaseKind.Literal(lit) => {
+              val nextCaseLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_case_${idx}__next")
+
+              val _e = if exprTypeIsOpt |innerTy| {
+                val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
+                if seenNoneCase {
+                  val optInnerValue = match self._emitOptValueGetValue(innerQbeType, exprVal) { Ok(v) => v, Err(e) => return Err(e) }
+                  (optInnerValue, innerTy)
+                } else {
+                  val isSomeCond = match self._emitOptValueIsSomeVariant(exprVal) { Ok(v) => v, Err(e) => return Err(e) }
+                  val isSomeLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_case_${idx}__issome")
+                  self._currentFn.block.buildJnz(isSomeCond, isSomeLabel, nextCaseLabel)
+                  self._currentFn.block.registerLabel(isSomeLabel)
+                  val optInnerValue = match self._emitOptValueGetValue(innerQbeType, exprVal) { Ok(v) => v, Err(e) => return Err(e) }
+                  (optInnerValue, innerTy)
+                }
+              } else {
+                (exprVal, expr.ty)
+              }
+              // TODO: destructuring
+              val exprVal = _e[0]
+              val exprType = _e[1]
+
               val _p = match self._compileLiteral(lit) { Ok(v) => v, Err(e) => return Err(e) }
               // TODO: destructuring
               val litVal = _p[0]
               val litType = _p[1]
 
-              if !self._project.typesAreEquivalent(expr.ty, litType) return unreachable("equality operators require matching types", node.token.position)
+              if !self._project.typesAreEquivalent(exprType, litType) return unreachable("equality operators require matching types", node.token.position)
 
-              val cond = match self._compileEqLogic(exprVal, litVal, expr.ty, expr.token.position) { Ok(v) => v, Err(e) => return Err(e) }
+              val cond = match self._compileEqLogic(exprVal, litVal, litType, expr.token.position) { Ok(v) => v, Err(e) => return Err(e) }
               val isEqLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_iseq")
-              val nextCaseLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_next_$idx")
 
               self._currentFn.block.buildJnz(cond, isEqLabel, nextCaseLabel)
               self._currentFn.block.registerLabel(isEqLabel)
+
+              if case.binding |v| {
+                val slotName = "${v.label.name}.slot"
+                val bindingTypeQbe = match self._getQbeTypeForTypeExpect(exprType, "qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+                val slot = self._buildStackAllocForQbeType(bindingTypeQbe, Some(slotName))
+                self._currentFn.block.buildStore(bindingTypeQbe, exprVal, slot)
+              }
+
+              for node in case.body {
+                match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
+              }
+              // if !blockTerminator {
+              //   self._currentFn.block.buildJmp(loopStartLabel)
+              // }
+              self._currentFn.block.buildJmp(endLabel)
+
+              self._currentFn.block.registerLabel(nextCaseLabel)
+            }
+            TypedMatchCaseKind.None_ => {
+              seenNoneCase = true
+
+              val isNoneCond = match self._emitOptValueIsSomeVariant(exprVal: exprVal, negate: true) { Ok(v) => v, Err(e) => return Err(e) }
+              val isNoneLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_isnone")
+              val nextCaseLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_next_$idx")
+
+              self._currentFn.block.buildJnz(isNoneCond, isNoneLabel, nextCaseLabel)
+              self._currentFn.block.registerLabel(isNoneLabel)
 
               if case.binding |v| {
                 val slotName = "${v.label.name}.slot"
@@ -344,6 +394,15 @@ export type Compiler {
               self._currentFn.block.registerLabel(nextCaseLabel)
             }
             TypedMatchCaseKind.Else => {
+              val exprVal = if exprTypeIsOpt |innerTy| {
+                if seenNoneCase {
+                  val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
+                  val optInnerValue = match self._emitOptValueGetValue(innerQbeType, exprVal) { Ok(v) => v, Err(e) => return Err(e) }
+
+                  optInnerValue
+                } else exprVal
+              } else exprVal
+
               if case.binding |v| {
                 val slotName = "${v.label.name}.slot"
                 val bindingTypeQbe = match self._getQbeTypeForTypeExpect(expr.ty, "qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
