@@ -6,11 +6,26 @@
 //   _ v => println("default", v)
 // }
 
-val arr = [1]
+// val arr = [1]
 
-match arr[1] {
-  1 v => println("here 1", v)
-  None v => println("here 2", v)
-  124 v => println("here 3", v)
-  _ v => println("default", v)
+// match arr[1] {
+//   1 v => println("here 1", v)
+//   None v => println("here 2", v)
+//   124 v => println("here 3", v)
+//   _ v => println("default", v)
+// }
+enum Color {
+  Red
+  Blue
+  Green
+  RGB(r: Int, g: Int, b: Int)
+}
+
+val c = [Color.Red, Color.Blue, Color.Green, Color.RGB(r: 1, g: 2, b: 3)]
+match c[4] {
+  Color.Red => println("red")
+  Color.Blue => println("blue")
+  Color.Green => println("green")
+  Color.RGB(r, g, b) => println("r:", r, "g:", g, "b:", b)
+  None => println("None")
 }

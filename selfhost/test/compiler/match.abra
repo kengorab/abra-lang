@@ -173,63 +173,63 @@
 //   }
 })()
 
-// // With enums
+// With enums
 
-// enum Color {
-//   Red
-//   Blue
-//   Green
-//   RGB(r: Int, g: Int, b: Int)
-// }
+enum Color {
+  Red
+  Blue
+  Green
+  RGB(r: Int, g: Int, b: Int)
+}
 
-// (() => {
-//   val colors = [Color.Red, Color.Blue, Color.Green, Color.RGB(r: 1, g: 2, b: 3)]
-//   /// Expect: red
-//   /// Expect: blue
-//   /// Expect: green
-//   /// Expect: rgb(1, 2, 3)
-//   for color in colors {
-//     match color {
-//       Color.Red => println("red")
-//       Color.Blue => println("blue")
-//       Color.Green => println("green")
-//       Color.RGB(r, g, b) => println("rgb($r, $g, $b)")
-//     }
-//   }
+(() => {
+  val colors = [Color.Red, Color.Blue, Color.Green, Color.RGB(r: 1, g: 2, b: 3)]
+  /// Expect: red
+  /// Expect: blue
+  /// Expect: green
+  /// Expect: rgb(1, 2, 3)
+  for color in colors {
+    match color {
+      Color.Red => println("red")
+      Color.Blue => println("blue")
+      Color.Green => println("green")
+      Color.RGB(r, g, b) => println("rgb(" + r + ",", g + ",", b + ")")
+    }
+  }
 
-//   /// Expect: blue
-//   match colors[1] {
-//     None => println("none")
-//     Color.Red => println("red")
-//     Color.Blue => println("blue")
-//     Color.Green => println("green")
-//     Color.RGB => println("rgb")
-//   }
-//   /// Expect: blue
-//   match colors[1] {
-//     Color.Red => println("red")
-//     Color.Blue => println("blue")
-//     Color.Green => println("green")
-//     Color.RGB => println("rgb")
-//     None => println("none")
-//   }
+  /// Expect: blue
+  match colors[1] {
+    None => println("none")
+    Color.Red => println("red")
+    Color.Blue => println("blue")
+    Color.Green => println("green")
+    Color.RGB(r, g, b) => println("rgb(" + r + ",", g + ",", b + ")")
+  }
+  /// Expect: blue
+  match colors[1] {
+    Color.Red => println("red")
+    Color.Blue => println("blue")
+    Color.Green => println("green")
+    Color.RGB(r, g, b) => println("rgb(" + r + ",", g + ",", b + ")")
+    None => println("none")
+  }
 
-//   /// Expect: none
-//   match colors[5] {
-//     None => println("none")
-//     Color.Red => println("red")
-//     Color.Blue => println("blue")
-//     Color.Green => println("green")
-//     Color.RGB => println("rgb")
-//   }
-//   /// Expect: none
-//   match colors[5] {
-//     Color.Red => println("red")
-//     Color.Blue => println("blue")
-//     Color.Green => println("green")
-//     Color.RGB => println("rgb")
-//     None => println("none")
-//   }
+  /// Expect: none
+  match colors[5] {
+    None => println("none")
+    Color.Red => println("red")
+    Color.Blue => println("blue")
+    Color.Green => println("green")
+    Color.RGB(r, g, b) => println("rgb(" + r + ",", g + ",", b + ")")
+  }
+  /// Expect: none
+  match colors[5] {
+    Color.Red => println("red")
+    Color.Blue => println("blue")
+    Color.Green => println("green")
+    Color.RGB(r, g, b) => println("rgb(" + r + ",", g + ",", b + ")")
+    None => println("none")
+  }
 
 //   // Updating values of enum variant
 
@@ -242,7 +242,7 @@
 //   }
 //   /// Expect: Color.RGB(r: 1, g: 2, b: 100)
 //   println(c)
-// })()
+})()
 
 // // Testing match as expression
 // (() => {
