@@ -14,18 +14,25 @@
 //   124 v => println("here 3", v)
 //   _ v => println("default", v)
 // }
-enum Color {
-  Red
-  Blue
-  Green
-  RGB(r: Int, g: Int, b: Int)
+// enum Color {
+//   Red
+//   Blue
+//   Green
+//   RGB(r: Int, g: Int, b: Int)
+// }
+
+// val c = [Color.Red, Color.Blue, Color.Green, Color.RGB(r: 1, g: 2, b: 3)]
+// match c[4] {
+//   Color.Red => println("red")
+//   Color.Blue => println("blue")
+//   Color.Green => println("green")
+//   Color.RGB(r, g, b) => println("r:", r, "g:", g, "b:", b)
+//   None => println("None")
+// }
+
+func finalIfExpressionReturns(b: Bool): Int {
+  if b return 1 else return 2
 }
 
-val c = [Color.Red, Color.Blue, Color.Green, Color.RGB(r: 1, g: 2, b: 3)]
-match c[4] {
-  Color.Red => println("red")
-  Color.Blue => println("blue")
-  Color.Green => println("green")
-  Color.RGB(r, g, b) => println("r:", r, "g:", g, "b:", b)
-  None => println("None")
-}
+/// Expect: 1 2
+println(finalIfExpressionReturns(true), finalIfExpressionReturns(false))

@@ -1859,12 +1859,14 @@ export type Compiler {
           }
         }
         for node, idx in ifBlock {
+          val res = match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
           if idx == ifBlock.length - 1 {
-            val res = match self._compileExpression(node) { Ok(v) => v, Err(e) => return Err(e) }
-            val label = self._currentFn.block.currentLabel
-            phiCases.push((label, res))
-          } else {
-            match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
+            if res |res| {
+              val label = self._currentFn.block.currentLabel
+              phiCases.push((label, res))
+            } else if !ifBlockTerminator {
+              return unreachable("last statement in if-expr block has no value and is not a terminator", node.token.position)
+            }
           }
         }
         if !ifBlockTerminator {
@@ -1874,12 +1876,14 @@ export type Compiler {
         if !elseBlock.isEmpty() {
           self._currentFn.block.registerLabel(labelElse)
           for node, idx in elseBlock {
+            val res = match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
             if idx == elseBlock.length - 1 {
-              val res = match self._compileExpression(node) { Ok(v) => v, Err(e) => return Err(e) }
-              val label = self._currentFn.block.currentLabel
-              phiCases.push((label, res))
-            } else {
-              match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
+              if res |res| {
+                val label = self._currentFn.block.currentLabel
+                phiCases.push((label, res))
+              } else if !elseBlockTerminator {
+                return unreachable("last statement in if-expr else block has no value and is not a terminator", node.token.position)
+              }
             }
           }
           if !elseBlockTerminator {
@@ -1889,9 +1893,13 @@ export type Compiler {
 
         self._currentFn.block.registerLabel(labelCont)
 
-        val res = match self._currentFn.block.buildPhi(phiCases, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
-
-        Ok(res)
+        if !phiCases.isEmpty() {
+          val res = match self._currentFn.block.buildPhi(phiCases, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+          Ok(res)
+        } else {
+          self._currentFn.block.buildHalt()
+          Ok(Value.Ident("bogus", QbeType.F32))
+        }
       }
       TypedAstNodeKind.Match => todo("compiling match stmt/expr", node.token.position)
       _ => unreachable("node must be a statement", node.token.position)
@@ -3102,7 +3110,9 @@ export type Compiler {
         retVal = res
       }
     }
-    fnVal.block.buildReturn(retVal)
+    if !fn.scope.terminator {
+      fnVal.block.buildReturn(retVal)
+    }
 
     self._currentFn = prevFn
     self._currentFunction = prevFunction

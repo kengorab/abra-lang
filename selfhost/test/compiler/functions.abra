@@ -300,32 +300,41 @@ jank.setB([1.2, 3.4])
 /// Expect: Wow(a: 0, b: [1.2, 3.4])
 println(jank.toString())
 
-// // Return statements in if-expressions
-// func returnExprInArr(i: Int): Int[] {
-//   val arr = [
-//     1,
-//     if i == 0 { return [] } else 2,
-//     3
-//   ]
+// Returns
 
-//   arr
-// }
-// /// Expect: []
-// println(returnExprInArr(0))
-// /// Expect: [1, 2, 3]
-// println(returnExprInArr(1))
+func finalIfExpressionReturns(b: Bool): Int {
+  if b return 1 else return 2
+}
 
-// func returnInVarDecl(i: Int): Int {
-//   val a = if i == 100 {
-//     17
-//   } else {
-//     return -1
-//   }
+/// Expect: 1 2
+println(finalIfExpressionReturns(true), finalIfExpressionReturns(false))
 
-//   return a
-// }
+// Return statements in if-expressions
+func returnExprInArr(i: Int): Int[] {
+  val arr = [
+    1,
+    if i == 0 { return [] } else 2,
+    3
+  ]
 
-// /// Expect: 17
-// println(returnInVarDecl(100))
-// /// Expect: -1
-// println(returnInVarDecl(0))
+  arr
+}
+/// Expect: []
+println(returnExprInArr(0))
+/// Expect: [1, 2, 3]
+println(returnExprInArr(1))
+
+func returnInVarDecl(i: Int): Int {
+  val a = if i == 100 {
+    17
+  } else {
+    return -1
+  }
+
+  return a
+}
+
+/// Expect: 17
+println(returnInVarDecl(100))
+/// Expect: -1
+println(returnInVarDecl(0))
