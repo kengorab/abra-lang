@@ -30,9 +30,16 @@
 //   None => println("None")
 // }
 
-func finalIfExpressionReturns(b: Bool): Int {
-  if b return 1 else return 2
-}
+func matchStmtCaseHasReturn(input: Int?): Int {
+  match input {
+    None => return -1
+    else v => println(v * 100)
+  }
 
-/// Expect: 1 2
-println(finalIfExpressionReturns(true), finalIfExpressionReturns(false))
+  1
+}
+/// Expect: -1
+println(matchStmtCaseHasReturn(None))
+/// Expect: 401
+/// Expect: 1
+println(matchStmtCaseHasReturn(Option.Some(value: 4)))

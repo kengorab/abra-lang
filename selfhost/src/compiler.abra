@@ -359,10 +359,9 @@ export type Compiler {
               for node in case.body {
                 match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
               }
-              // if !blockTerminator {
-              //   self._currentFn.block.buildJmp(loopStartLabel)
-              // }
-              self._currentFn.block.buildJmp(endLabel)
+              if !case.terminator {
+                self._currentFn.block.buildJmp(endLabel)
+              }
 
               self._currentFn.block.registerLabel(nextCaseLabel)
             }
@@ -386,10 +385,9 @@ export type Compiler {
               for node in case.body {
                 match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
               }
-              // if !blockTerminator {
-              //   self._currentFn.block.buildJmp(loopStartLabel)
-              // }
-              self._currentFn.block.buildJmp(endLabel)
+              if !case.terminator {
+                self._currentFn.block.buildJmp(endLabel)
+              }
 
               self._currentFn.block.registerLabel(nextCaseLabel)
             }
@@ -458,10 +456,9 @@ export type Compiler {
               for node in case.body {
                 match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
               }
-              // if !blockTerminator {
-              //   self._currentFn.block.buildJmp(loopStartLabel)
-              // }
-              self._currentFn.block.buildJmp(endLabel)
+              if !case.terminator {
+                self._currentFn.block.buildJmp(endLabel)
+              }
 
               self._currentFn.block.registerLabel(nextCaseLabel)
             }
@@ -484,6 +481,9 @@ export type Compiler {
 
               for node in case.body {
                 match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
+              }
+              if !case.terminator {
+                self._currentFn.block.buildJmp(endLabel)
               }
             }
             _ => return todo("other match case types", node.token.position)

@@ -729,6 +729,7 @@ export type TypedMatchCase {
   kind: TypedMatchCaseKind
   binding: Variable?
   body: TypedAstNode[]
+  terminator: Terminator?
 }
 
 export enum TypedAstNodeKind {
@@ -3655,7 +3656,7 @@ export type Typechecker {
       val terminator = self.currentScope.terminator
       self.currentScope = prevScope
 
-      typedCases.push(TypedMatchCase(kind: typedMatchCaseKind, binding: caseVar, body: typedBody))
+      typedCases.push(TypedMatchCase(kind: typedMatchCaseKind, binding: caseVar, body: typedBody, terminator: terminator))
     }
 
     if !isStatement && !allCasesHandled() {

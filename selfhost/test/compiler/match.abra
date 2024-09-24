@@ -262,9 +262,9 @@ enum Color {
 //   println(y)
 // })()
 
-// // Testing match as expression: terminator in block
+// Testing terminator in block
 
-// func matchCaseHasReturn(input: Int?): Int {
+// func matchExprCaseHasReturn(input: Int?): Int {
 //   val x = match input {
 //     None => return -1
 //     _ v => v * 100
@@ -272,6 +272,20 @@ enum Color {
 //   x + 1
 // }
 // /// Expect: -1
-// println(matchCaseHasReturn(None))
+// println(matchExprCaseHasReturn(None))
 // /// Expect: 401
-// println(matchCaseHasReturn(Option.Some(value: 4)))
+// println(matchExprCaseHasReturn(Option.Some(value: 4)))
+
+func matchStmtCaseHasReturn(input: Int?): Int {
+  match input {
+    None => return -1
+    else v => println(v * 100)
+  }
+
+  1
+}
+/// Expect: -1
+println(matchStmtCaseHasReturn(None))
+/// Expect: 400
+/// Expect: 1
+println(matchStmtCaseHasReturn(Option.Some(value: 4)))
