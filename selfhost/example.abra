@@ -1,12 +1,31 @@
-val bang = "!"
+// val s = "hello"
 
-type Foo<A> {
-  a: A
+// match s {
+//   "hi" => println("here 1")
+//   "hello" v => println("here 2", v)
+//   _ v => println("default", v)
+// }
 
-  func echo(self) { println(self.a + bang) }
-  func printA(self, bang = "!") { println(self.a + bang) }
+// val arr = [1]
+
+// match arr[1] {
+//   1 v => println("here 1", v)
+//   None v => println("here 2", v)
+//   124 v => println("here 3", v)
+//   _ v => println("default", v)
+// }
+enum Color {
+  Red
+  Blue
+  Green
+  RGB(r: Int, g: Int, b: Int)
 }
 
-val foo = Foo(a: 11)
-val printA: () => Unit = foo.printA
-printA()
+val c = [Color.Red, Color.Blue, Color.Green, Color.RGB(r: 1, g: 2, b: 3)]
+match c[4] {
+  Color.Red => println("red")
+  Color.Blue => println("blue")
+  Color.Green => println("green")
+  Color.RGB(r, g, b) => println("r:", r, "g:", g, "b:", b)
+  None => println("None")
+}

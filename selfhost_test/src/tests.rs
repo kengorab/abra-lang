@@ -763,6 +763,7 @@ fn compiler_tests() {
         .add_test("compiler/tuples.abra")
         .add_test("compiler/maps.abra")
         .add_test("compiler/sets.abra")
+        .add_test("compiler/match.abra")
 
         .run_tests();
 }
