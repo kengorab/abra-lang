@@ -244,37 +244,37 @@ enum Color {
 //   println(c)
 })()
 
-// // Testing match as expression
-// (() => {
-//   val arr = [1, 2, 3, 4]
-//   val x = match arr[1] {
-//     None => -1
-//     _ v => v * 100
-//   }
-//   /// Expect: 200
-//   println(x)
+// Testing match as expression
+(() => {
+  val arr = [1, 2, 3, 4]
+  val x = match arr[1] {
+    None => -1
+    _ v => v * 100
+  }
+  /// Expect: 200
+  println(x)
 
-//   val y = match arr[14] {
-//     None => -1
-//     _ v => v * 100
-//   }
-//   /// Expect: -1
-//   println(y)
-// })()
+  val y = match arr[14] {
+    None => -1
+    _ v => v * 100
+  }
+  /// Expect: -1
+  println(y)
+})()
 
 // Testing terminator in block
 
-// func matchExprCaseHasReturn(input: Int?): Int {
-//   val x = match input {
-//     None => return -1
-//     _ v => v * 100
-//   }
-//   x + 1
-// }
-// /// Expect: -1
-// println(matchExprCaseHasReturn(None))
-// /// Expect: 401
-// println(matchExprCaseHasReturn(Option.Some(value: 4)))
+func matchExprCaseHasReturn(input: Int?): Int {
+  val x = match input {
+    None => return -1
+    _ v => v * 100
+  }
+  x + 1
+}
+/// Expect: -1
+println(matchExprCaseHasReturn(None))
+/// Expect: 401
+println(matchExprCaseHasReturn(Option.Some(value: 4)))
 
 func matchStmtCaseHasReturn(input: Int?): Int {
   match input {

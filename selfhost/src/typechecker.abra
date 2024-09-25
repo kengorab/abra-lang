@@ -3670,7 +3670,9 @@ export type Typechecker {
       Type(kind: TypeKind.PrimitiveUnit)
     }
 
-    val kind = TypedAstNodeKind.Match(isStatement, typedExpr, typedCases)
+    // If the resulting type is Unit after visiting all the cases' blocks, then treat this as a statement
+    val isStmt = isStatement || ty.kind == TypeKind.PrimitiveUnit
+    val kind = TypedAstNodeKind.Match(isStmt, typedExpr, typedCases)
     Ok(TypedAstNode(token: token, ty: ty, kind: kind))
   }
 

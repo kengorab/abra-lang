@@ -30,16 +30,24 @@
 //   None => println("None")
 // }
 
-func matchStmtCaseHasReturn(input: Int?): Int {
-  match input {
-    None => return -1
-    else v => println(v * 100)
-  }
+// func matchStmtCaseHasReturn(input: Int?): Int {
+//   match input {
+//     None => return -1
+//     else v => println(v * 100)
+//   }
 
-  1
+//   1
+// }
+// /// Expect: -1
+// println(matchStmtCaseHasReturn(None))
+// /// Expect: 401
+// /// Expect: 1
+// println(matchStmtCaseHasReturn(Option.Some(value: 4)))
+
+val arr = [1, 2, 3, 4]
+val x = match arr[1] {
+  None => -1
+  _ v => v * 100
 }
-/// Expect: -1
-println(matchStmtCaseHasReturn(None))
-/// Expect: 401
-/// Expect: 1
-println(matchStmtCaseHasReturn(Option.Some(value: 4)))
+/// Expect: 200
+println(x)
