@@ -15,8 +15,7 @@
 println("hello")
 
 // + operator
-// (() => {
-func test_plusOp() {
+(() => {
   /// Expect: helloworld
   println("hello" + "world")
   /// Expect: hello12 12hello
@@ -27,13 +26,10 @@ func test_plusOp() {
   println("hello" + true, true + "hello")
   /// Expect: hello[1, 2, 3] [1, 2, 3]hello
   println("hello" + [1, 2, 3], [1, 2, 3] + "hello")
-// })()
-}
-test_plusOp()
+})()
 
 // == operator (also String#eq)
-// (() => {
-func test_stringEq() {
+(() => {
   val s1 = "string"
   /// Expect: true
   println(s1 == s1)
@@ -55,9 +51,7 @@ func test_stringEq() {
 //   println(s1 == #{1, 2, 3})
 //   /// Expect: false
 //   println(s1 == { (1): "a", (2): "b" })
-// })()
-}
-test_stringEq()
+})()
 
 // // Interpolation (also String#concat<T>(other: T, *others: Any[]))
 // (() => {
@@ -67,8 +61,7 @@ test_stringEq()
 // })()
 
 // Indexing (also String#get(index: Int))
-// (() => {
-func test_stringIndexing() {
+(() => {
   val s1 = "abc"
 
   /// Expect: |  a b c a b c  |
@@ -84,13 +77,10 @@ func test_stringIndexing() {
 
   /// Expect:   end
   println(s2[5], s2[-6], "end")
-// })()
-}
-test_stringIndexing()
+})()
 
 // Range indexing (also String#getRange(startIndex: Int, endIndex: Int))
-// (() => {
-func test_stringRangeIndexing() {
+(() => {
   val s = "hello"
 
   /// Expect: ell ell
@@ -110,13 +100,10 @@ func test_stringRangeIndexing() {
 
   /// Expect: ello h
   println(s[a:], s[:a])
-// })()
-}
-test_stringRangeIndexing()
+})()
 
 // String#hash
-// (() => {
-func test_stringHash() {
+(() => {
   val empty = ""
   /// Expect: true
   println(empty.hash() == "".hash())
@@ -124,13 +111,10 @@ func test_stringHash() {
   val nonEmpty = "hello"
   /// Expect: true
   println(nonEmpty.hash() == "hello".hash())
-// })()
-}
-test_stringHash()
+})()
 
 // String#isEmpty
-// (() => {
-func test_stringIsEmpty() {
+(() => {
   val empty = ""
   /// Expect: true
   println(empty.isEmpty())
@@ -138,35 +122,26 @@ func test_stringIsEmpty() {
   val nonEmpty = "hello"
   /// Expect: false
   println(nonEmpty.isEmpty())
-// })()
-}
-test_stringIsEmpty()
+})()
 
 // String#toLower
-// (() => {
-func test_stringToLower() {
+(() => {
   /// Expect:  |
   println("".toLower(), "|")
   /// Expect: -hello!
   println("-hElLo!".toLower())
-// })()
-}
-test_stringToLower()
+})()
 
 // String#toUpper
-// (() => {
-func test_stringToUpper() {
+(() => {
   /// Expect:  |
   println("".toUpper(), "|")
   /// Expect: -HELLO!
   println("-hElLo!".toUpper())
-// })()
-}
-test_stringToUpper()
+})()
 
 // String#split
-// (() => {
-func test_stringSplit() {
+(() => {
   /// Expect: [a, s, d, f]
   println("a s d f".split(by: " "))
 
@@ -181,13 +156,10 @@ func test_stringSplit() {
 
   /// Expect: [asdf]
   println("asdf".split("qwer"))
-// })()
-}
-test_stringSplit()
+})()
 
 // String#lines
-// (() => {
-func test_stringLines() {
+(() => {
   /// Expect: [a s d f]
   println("a s d f".lines())
 
@@ -196,13 +168,10 @@ func test_stringLines() {
 
   /// Expect: [a, s, d, f]
   println("a\ns\nd\nf".lines())
-// })()
-}
-test_stringLines()
+})()
 
 // String#startsWith
-// (() => {
-func test_stringStartsWith() {
+(() => {
   /// Expect: true
   println("".startsWith(""))
   /// Expect: true
@@ -215,13 +184,10 @@ func test_stringStartsWith() {
   println("hello".startsWith("hex"))
   /// Expect: false
   println("hello".startsWith("hhello"))
-// })()
-}
-test_stringStartsWith()
+})()
 
 // String#endsWith
-// (() => {
-func test_stringEndsWith() {
+(() => {
   /// Expect: true
   println("".endsWith(""))
   /// Expect: true
@@ -234,9 +200,7 @@ func test_stringEndsWith() {
   println("hello".endsWith("lo!"))
   /// Expect: false
   println("hello".endsWith("hhello"))
-// })()
-}
-test_stringEndsWith()
+})()
 
 // // String#concat
 // (() => {
@@ -255,8 +219,7 @@ test_stringEndsWith()
 // })()
 
 // String#repeat
-// (() => {
-func test_stringRepeat() {
+(() => {
   /// Expect:  |
   println("abc".repeat(0), "|")
 
@@ -265,6 +228,4 @@ func test_stringRepeat() {
 
   /// Expect: abcabcabc
   println("abc".repeat(3))
-// })()
-}
-test_stringRepeat()
+})()

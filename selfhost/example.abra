@@ -1,53 +1,12 @@
-// val s = "hello"
+// val m = { (1): "a", (2): "b" }
 
-// match s {
-//   "hi" => println("here 1")
-//   "hello" v => println("here 2", v)
-//   _ v => println("default", v)
-// }
+// /// Expect: a
+// println(m.getOr(1, "c"))
+// /// Expect: b
+// println(m.getOr(2, "c"))
+// /// Expect: c
+// println(m.getOr(3, "c"))
 
-// val arr = [1]
-
-// match arr[1] {
-//   1 v => println("here 1", v)
-//   None v => println("here 2", v)
-//   124 v => println("here 3", v)
-//   _ v => println("default", v)
-// }
-// enum Color {
-//   Red
-//   Blue
-//   Green
-//   RGB(r: Int, g: Int, b: Int)
-// }
-
-// val c = [Color.Red, Color.Blue, Color.Green, Color.RGB(r: 1, g: 2, b: 3)]
-// match c[4] {
-//   Color.Red => println("red")
-//   Color.Blue => println("blue")
-//   Color.Green => println("green")
-//   Color.RGB(r, g, b) => println("r:", r, "g:", g, "b:", b)
-//   None => println("None")
-// }
-
-// func matchStmtCaseHasReturn(input: Int?): Int {
-//   match input {
-//     None => return -1
-//     else v => println(v * 100)
-//   }
-
-//   1
-// }
-// /// Expect: -1
-// println(matchStmtCaseHasReturn(None))
-// /// Expect: 401
-// /// Expect: 1
-// println(matchStmtCaseHasReturn(Option.Some(value: 4)))
-
-val arr = [1, 2, 3, 4]
-val x = match arr[1] {
-  None => -1
-  _ v => v * 100
-}
-/// Expect: 200
-println(x)
+val arr = ["a", "b", "c"]
+val item = arr[3] ?: "d"
+println(item)

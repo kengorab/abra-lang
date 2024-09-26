@@ -24,8 +24,7 @@ type Foo {
 // Workaround because optionals technically don't have _any_ directly-callable methods
 func hash<T>(t: T): Int = t.hash()
 // Hashes
-// (() => {
-func test_hashes() {
+(() => {
   val i: Int? = None
   /// Expect: 1
   println(hash(i))
@@ -33,13 +32,10 @@ func test_hashes() {
   val x = Some(17)
   /// Expect: false
   println(hash(x) == (17).hash())
-// })()
-}
-test_hashes()
+})()
 
 // == operator
-// (() => {
-func test_eqOp() {
+(() => {
   // Test with primitive
   val i1: Int? = None
   val i2 = Some(17)
@@ -65,30 +61,27 @@ func test_eqOp() {
   println(s2 == s4)
   /// Expect: true
   println(s2 == s3)
-// })()
-}
-test_eqOp()
+})()
 
-// // Coalescing (?:)
-// (() => {
-//   val i1: Int? = None
-//   /// Expect: 17
-//   println(i1 ?: 17)
+// Coalescing (?:)
+(() => {
+  val i1: Int? = None
+  /// Expect: 17
+  println(i1 ?: 17)
 
-//   val i2 = Some(value: 9)
-//   /// Expect: 9
-//   println(i2 ?: 17)
-// })()
+  val i2 = Some(value: 9)
+  /// Expect: 9
+  println(i2 ?: 17)
+})()
 
-// val xyz = "abc"
+val xyz = "abc"
 type TestOptChainingMethodInvocation {
   func unitMethod(self) = println("TestOptChainingMethodInvocation#unitMethod")
-//   func closure(self): Int = xyz.length
+  func closure(self): Int = xyz.length
 }
 
 // Optional-chaining accessor
-// (() => {
-func test_optSafe() {
+(() => {
   val arr = ["a", "b", "c", "d"]
 
 //   // Getting field of known-non-None value
@@ -126,16 +119,14 @@ func test_optSafe() {
   /// Expect: TestOptChainingMethodInvocation#unitMethod
   t2?.unitMethod()
 
-//   // Calling closure method of Option value
-//   val t3: TestOptChainingMethodInvocation? = None
-//   /// Expect: Option.None
-//   println(t3?.closure())
-//   val t4 = Some(TestOptChainingMethodInvocation())
-//   /// Expect: Option.Some(value: 3)
-//   println(t4?.closure())
-// })()
-}
-test_optSafe()
+  // Calling closure method of Option value
+  val t3: TestOptChainingMethodInvocation? = None
+  /// Expect: Option.None
+  println(t3?.closure())
+  val t4 = Some(TestOptChainingMethodInvocation())
+  /// Expect: Option.Some(value: 3)
+  println(t4?.closure())
+})()
 
 // Negate operator
 val someInt = Some(123)
@@ -154,13 +145,10 @@ enum Color {
   Green
   Blue
 }
-// (() => {
-func test_optEnumInstances() {
+(() => {
   val colors = [Color.Red, Color.Green, Color.Blue]
   /// Expect: Option.None
   println(colors[3]?.toString())
   /// Expect: Option.Some(value: "Color.Blue")
   println(colors[2]?.toString())
-// })()
-}
-test_optEnumInstances()
+})()

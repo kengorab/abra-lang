@@ -894,7 +894,36 @@ export type Compiler {
               unreachable("unknown operator '^' between types '${left.ty.repr()}' and '${right.ty.repr()}")
             }
           }
-          BinaryOp.Coalesce => todo("compiling binary expression: Coalesce", node.token.position)
+          BinaryOp.Coalesce => {
+            val leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
+
+            val labelThen = self._currentFn.block.addLabel("coalesce_then")
+            val labelElse = self._currentFn.block.addLabel("coalesce_else")
+            val labelCont = self._currentFn.block.addLabel("coalesce_cont")
+
+            val isSome = match self._emitOptValueIsSomeVariant(leftVal) { Ok(v) => v, Err(e) => return Err(e) }
+
+            self._currentFn.block.buildJnz(isSome, labelThen, labelElse)
+
+            self._currentFn.block.registerLabel(labelThen)
+            val innerTy = if self._typeIsOption(left.ty) |innerTy| innerTy else return unreachable("", node.token.position)
+            val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
+            val innerVal = match self._emitOptValueGetValue(innerQbeType, leftVal) { Ok(v) => v, Err(e) => return Err(e) }
+            val leftLabel = self._currentFn.block.currentLabel
+            self._currentFn.block.buildJmp(labelCont)
+
+            self._currentFn.block.registerLabel(labelElse)
+            val rightVal = match self._compileExpression(right) { Ok(v) => v, Err(e) => return Err(e) }
+            val rightLabel = self._currentFn.block.currentLabel
+            self._currentFn.block.buildJmp(labelCont)
+
+            self._currentFn.block.registerLabel(labelCont)
+
+            val phiCases = [(leftLabel, innerVal), (rightLabel, rightVal)]
+            val res = match self._currentFn.block.buildPhi(phiCases) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+            Ok(res)
+          }
           BinaryOp.Eq => self._compileBinaryEq(left, right)
           BinaryOp.Neq => self._compileBinaryEq(left: left, right: right, negate: true)
           BinaryOp.LT => {
