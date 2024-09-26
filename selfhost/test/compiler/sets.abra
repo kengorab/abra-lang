@@ -4,8 +4,7 @@ type Person {
 }
 
 // Test raw construction of set
-// (() => {
-func test_setRawConstruction() {
+(() => {
   val set: Set<Int> = Set.new()
   set.insert(1)
   set.insert(2)
@@ -16,13 +15,10 @@ func test_setRawConstruction() {
   println(set.size)
   /// Expect: #{1, 2, 3}
   println(set)
-// })()
-}
-test_setRawConstruction()
+})()
 
 // Test set literal construction
-// (() => {
-func test_setLiteralConstruction() {
+(() => {
   // Primitives
   val set1 = #{1, 2, 3, 3}
 
@@ -42,13 +38,10 @@ func test_setLiteralConstruction() {
   println(set2.size)
   /// Expect: #{Person(name: "Goo", age: 102), Person(name: "Foo", age: 100), Person(name: "Boo", age: 101)}
   println(set2)
-// })()
-}
-test_setLiteralConstruction()
+})()
 
 // == operator (also Set#eq)
-// (() => {
-func test_setEq() {
+(() => {
   val set = #{1, 2, 3}
 
   /// Expect: true
@@ -70,13 +63,10 @@ func test_setEq() {
   println(set == #{1, 2, 3, 4})
 //   /// Expect: false
 //   println(set == { (1): "a", (2): "b" })
-// })()
-}
-test_setEq()
+})()
 
 // Set#isEmpty
-// (() => {
-func test_setIsEmpty() {
+(() => {
   val set: Set<Int> = #{}
   /// Expect: true
   println(set.isEmpty())
@@ -84,13 +74,10 @@ func test_setIsEmpty() {
   set.insert(1)
   /// Expect: false
   println(set.isEmpty())
-// })()
-}
-test_setIsEmpty()
+})()
 
 // Set#iterator
-// (() => {
-func test_setIterator() {
+(() => {
   val s = #{"a", "b", "a", "c"}
   val iter = s.iterator()
   /// Expect: Option.Some(value: "c")
@@ -103,9 +90,7 @@ func test_setIterator() {
   println(iter.next())
   /// Expect: Option.None
   println(iter.next())
-// })()
-}
-test_setIterator()
+})()
 
 // For-loops
 /// Expect: c 0
@@ -114,8 +99,7 @@ test_setIterator()
 for ch, idx in #{"a", "b", "c"} { println(ch, idx) }
 
 // Set#contains
-// (() => {
-func test_setContains() {
+(() => {
   val set: Set<Int> = #{}
   /// Expect: false
   println(set.contains(1))
@@ -125,79 +109,65 @@ func test_setContains() {
   println(set.contains(1))
   /// Expect: false
   println(set.contains(12))
-// })()
-}
-test_setContains()
+})()
 
-// // Set#forEach
-// (() => {
-//   val set = #{1, 17, 0, 16}
-//   /// Expect: 0
-//   /// Expect: 16
-//   /// Expect: 1
-//   /// Expect: 17
-//   set.forEach(i => println(i))
-// })()
+// Set#forEach
+(() => {
+  val set = #{1, 17, 0, 16}
+  /// Expect: 0
+  /// Expect: 16
+  /// Expect: 1
+  /// Expect: 17
+  set.forEach(i => println(i))
+})()
 
-// // Set#map
-// (() => {
-//   val set = #{1, 17, 0, 16}
-//   /// Expect: [0, 0, 1, 1]
-//   println(set.map(i => i % 16))
-// })()
+// Set#map
+(() => {
+  val set = #{1, 17, 0, 16}
+  /// Expect: [0, 0, 1, 1]
+  println(set.map(i => i % 16))
+})()
 
-// // Set#filter
-// (() => {
-//   val set = #{1, 17, 0, 16}
-//   /// Expect: #{16, 17}
-//   println(set.filter(i => i >= 16))
-// })()
+// Set#filter
+(() => {
+  val set = #{1, 17, 0, 16}
+  /// Expect: #{16, 17}
+  println(set.filter(i => i >= 16))
+})()
 
 // Set#asArray
-// (() => {
-func test_setAsArray() {
+(() => {
   val set1 = #{0, 1, 1, 2, 3, 3, 4}
   /// Expect: [0, 1, 2, 3, 4]
   println(set1.asArray())
-// })()
-}
-test_setAsArray()
+})()
 
 // Set#union
-// (() => {
-func test_setUnion() {
+(() => {
   val evens = #{0, 2, 4, 6}
   val odds = #{1, 3, 5, 7}
   /// Expect: #{0, 1, 2, 3, 4, 5, 6, 7}
   println(evens.union(odds))
   /// Expect: #{0, 1, 2, 3, 4, 5, 6, 7}
   println(odds.union(evens))
-// })()
-}
-test_setUnion()
+})()
 
 // Set#difference
-// (() => {
-func test_setDifference() {
+(() => {
   val set1 = #{1, 2, 3, 4}
   val set2 = #{0, 2, 3, 5}
   /// Expect: #{1, 4}
   println(set1.difference(set2))
   /// Expect: #{0, 5}
   println(set2.difference(set1))
-// })()
-}
-test_setDifference()
+})()
 
 // Set#intersection
-// (() => {
-func test_setIntersection() {
+(() => {
   val set1 = #{1, 2, 3, 4}
   val set2 = #{0, 2, 3, 5}
   /// Expect: #{2, 3}
   println(set1.intersection(set2))
   /// Expect: #{2, 3}
   println(set2.intersection(set1))
-// })()
-}
-test_setIntersection()
+})()

@@ -20,8 +20,7 @@ println(quad[3][0])
 // println(quad.hash() == (1, "two", ["three"], (2, 3)).hash())
 
 // == operator
-// (() => {
-func test_tupleEq() {
+(() => {
   val t1 = (1, "abc", [true, false])
 
   /// Expect: true
@@ -43,6 +42,4 @@ func test_tupleEq() {
 //   println(t1 == #{1, 2, 3})
 //   /// Expect: false
 //   println(t1 == { (1): "a", (2): "b" })
-// })()
-}
-test_tupleEq()
+})()

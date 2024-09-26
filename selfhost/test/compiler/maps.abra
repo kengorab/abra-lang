@@ -171,18 +171,18 @@ func test_mapContainsKey() {
 }
 test_mapContainsKey()
 
-// // Map#mapValues
-// (() => {
-//   val m1 = { (1): "abc", (2): "defg" }
+// Map#mapValues
+(() => {
+  val m1 = { (1): "abc", (2): "defg" }
 
-//   val m2 = m1.mapValues((_, v) => v + "!")
-//   /// Expect: { 1: abc!, 2: defg! }
-//   println(m2)
+  val m2 = m1.mapValues((_, v) => v + "!")
+  /// Expect: { 1: abc!, 2: defg! }
+  println(m2)
 
-//   val m3 = m1.mapValues((_, v) => v.length)
-//   /// Expect: { 1: 3, 2: 4 }
-//   println(m3)
-// })()
+  val m3 = m1.mapValues((_, v) => v.length)
+  /// Expect: { 1: 3, 2: 4 }
+  println(m3)
+})()
 
 // Map#insert (also []= operator)
 // (() => {
@@ -221,56 +221,56 @@ func test_mapGet() {
 }
 test_mapGet()
 
-// // Map#getOr
-// (() => {
-//   val m = { (1): "a", (2): "b" }
+// Map#getOr
+(() => {
+  val m = { (1): "a", (2): "b" }
 
-//   /// Expect: a
-//   println(m.getOr(1, "c"))
-//   /// Expect: b
-//   println(m.getOr(2, "c"))
-//   /// Expect: c
-//   println(m.getOr(3, "c"))
-// })()
+  /// Expect: a
+  println(m.getOr(1, "c"))
+  /// Expect: b
+  println(m.getOr(2, "c"))
+  /// Expect: c
+  println(m.getOr(3, "c"))
+})()
 
-// // Map#getOrElse
-// (() => {
-//   val m = { (1): "a", (2): "b" }
+// Map#getOrElse
+(() => {
+  val m = { (1): "a", (2): "b" }
 
-//   /// Expect: a
-//   println(m.getOrElse(1, () => {
-//     println("calling default fn")
-//     "c"
-//   }))
-//   /// Expect: b
-//   println(m.getOrElse(2, () => {
-//     println("calling default fn")
-//     "c"
-//   }))
-//   /// Expect: calling default fn
-//   /// Expect: c
-//   println(m.getOrElse(3, () => {
-//     println("calling default fn")
-//     "c"
-//   }))
-// })()
+  /// Expect: a
+  println(m.getOrElse(1, () => {
+    println("calling default fn")
+    "c"
+  }))
+  /// Expect: b
+  println(m.getOrElse(2, () => {
+    println("calling default fn")
+    "c"
+  }))
+  /// Expect: calling default fn
+  /// Expect: c
+  println(m.getOrElse(3, () => {
+    println("calling default fn")
+    "c"
+  }))
+})()
 
-// // Map#update
-// (() => {
-//   val m = { (1): "a", (2): "b" }
+// Map#update
+(() => {
+  val m = { (1): "a", (2): "b" }
 
-//   /// Expect: { 1: a, 2: b }
-//   println(m)
+  /// Expect: { 1: a, 2: b }
+  println(m)
 
-//   val old1 = m.update(1, () => "A")
-//   /// Expect: { 1: A, 2: b }
-//   println(m)
-//   /// Expect: Option.Some(value: "a")
-//   println(old1)
+  val old1 = m.update(1, () => "A")
+  /// Expect: { 1: A, 2: b }
+  println(m)
+  /// Expect: Option.Some(value: "a")
+  println(old1)
 
-//   val old2 = m.update(4, () => "???")
-//   /// Expect: { 1: A, 2: b }
-//   println(m)
-//   /// Expect: Option.None
-//   println(old2)
-// })()
+  val old2 = m.update(4, () => "???")
+  /// Expect: { 1: A, 2: b }
+  println(m)
+  /// Expect: Option.None
+  println(old2)
+})()
