@@ -106,34 +106,34 @@ println(Color2.Green.hash())
 /// Expect: false
 println(Color2.Blue == Color2.Blue)
 
-// // Test generic enum
+// Test generic enum
 
-// enum List<T> {
-//   Cons(value: T, next: List<T>)
-//   Nil
+enum List<T> {
+  Cons(value: T, next: List<T>)
+  Nil
 
-//   // Silly static method
-//   func lengthOf<T>(list: List<T>): Int {
-//     list.length()
-//   }
+  // Silly static method
+  func lengthOf<T>(list: List<T>): Int {
+    list.length()
+  }
 
-//   func length(self): Int {
-//     var length = 0
-//     var node = self
-//     while true {
-//       match node {
-//         List.Cons(_, next) => {
-//           length += 1
-//           node = next
-//         }
-//         List.Nil => break
-//       }
-//     }
+  func length(self): Int {
+    var length = 0
+    var node = self
+    while true {
+      match node {
+        List.Cons(_, next) => {
+          length += 1
+          node = next
+        }
+        List.Nil => break
+      }
+    }
 
-//     length
-//   }
-// }
+    length
+  }
+}
 
-// val list = List.Cons(value: "a", next: List.Cons(value: "b", next: List.Cons(value: "c", next: List.Nil)))
-// /// Expect: 3 3
-// println(list.length(), List.lengthOf(list))
+val list = List.Cons(value: "a", next: List.Cons(value: "b", next: List.Cons(value: "c", next: List.Nil)))
+/// Expect: 3 3
+println(list.length(), List.lengthOf(list))

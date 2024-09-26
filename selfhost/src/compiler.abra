@@ -1,7 +1,7 @@
 import "fs" as fs
 import Position from "./lexer"
 import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern, IndexingMode from "./parser"
-import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCaseKind from "./typechecker"
+import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCase, TypedMatchCaseKind from "./typechecker"
 import ModuleBuilder, QbeType, Dest, QbeFunction, Value, Label, Callable from "./qbe"
 
 type CompilationError {
@@ -303,197 +303,7 @@ export type Compiler {
 
         Ok(None)
       }
-      TypedAstNodeKind.Match(isStatement, expr, cases) => {
-        val exprVal = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
-
-        val matchLabelPrefix = "match_${node.token.position.line}_${node.token.position.col}"
-        val endLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_end")
-        var seenNoneCase = false
-        val exprTypeIsOpt = self._typeIsOption(expr.ty)
-
-        for case, idx in cases {
-          match case.kind {
-            TypedMatchCaseKind.Literal(lit) => {
-              val nextCaseLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_case_${idx}__next")
-
-              val _e = if exprTypeIsOpt |innerTy| {
-                val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
-                if seenNoneCase {
-                  val optInnerValue = match self._emitOptValueGetValue(innerQbeType, exprVal) { Ok(v) => v, Err(e) => return Err(e) }
-                  (optInnerValue, innerTy)
-                } else {
-                  val isSomeCond = match self._emitOptValueIsSomeVariant(exprVal) { Ok(v) => v, Err(e) => return Err(e) }
-                  val isSomeLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_case_${idx}__issome")
-                  self._currentFn.block.buildJnz(isSomeCond, isSomeLabel, nextCaseLabel)
-                  self._currentFn.block.registerLabel(isSomeLabel)
-                  val optInnerValue = match self._emitOptValueGetValue(innerQbeType, exprVal) { Ok(v) => v, Err(e) => return Err(e) }
-                  (optInnerValue, innerTy)
-                }
-              } else {
-                (exprVal, expr.ty)
-              }
-              // TODO: destructuring
-              val exprVal = _e[0]
-              val exprType = _e[1]
-
-              val _p = match self._compileLiteral(lit) { Ok(v) => v, Err(e) => return Err(e) }
-              // TODO: destructuring
-              val litVal = _p[0]
-              val litType = _p[1]
-
-              if !self._project.typesAreEquivalent(exprType, litType) return unreachable("equality operators require matching types", node.token.position)
-
-              val cond = match self._compileEqLogic(exprVal, litVal, litType, expr.token.position) { Ok(v) => v, Err(e) => return Err(e) }
-              val isEqLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_iseq")
-
-              self._currentFn.block.buildJnz(cond, isEqLabel, nextCaseLabel)
-              self._currentFn.block.registerLabel(isEqLabel)
-
-              if case.binding |v| {
-                val slotName = "${v.label.name}.slot"
-                val bindingTypeQbe = match self._getQbeTypeForTypeExpect(exprType, "qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
-                val slot = self._buildStackAllocForQbeType(bindingTypeQbe, Some(slotName))
-                self._currentFn.block.buildStore(bindingTypeQbe, exprVal, slot)
-              }
-
-              for node in case.body {
-                match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
-              }
-              // if !blockTerminator {
-              //   self._currentFn.block.buildJmp(loopStartLabel)
-              // }
-              self._currentFn.block.buildJmp(endLabel)
-
-              self._currentFn.block.registerLabel(nextCaseLabel)
-            }
-            TypedMatchCaseKind.None_ => {
-              seenNoneCase = true
-
-              val isNoneCond = match self._emitOptValueIsSomeVariant(exprVal: exprVal, negate: true) { Ok(v) => v, Err(e) => return Err(e) }
-              val isNoneLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_isnone")
-              val nextCaseLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_next_$idx")
-
-              self._currentFn.block.buildJnz(isNoneCond, isNoneLabel, nextCaseLabel)
-              self._currentFn.block.registerLabel(isNoneLabel)
-
-              if case.binding |v| {
-                val slotName = "${v.label.name}.slot"
-                val bindingTypeQbe = match self._getQbeTypeForTypeExpect(expr.ty, "qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
-                val slot = self._buildStackAllocForQbeType(bindingTypeQbe, Some(slotName))
-                self._currentFn.block.buildStore(bindingTypeQbe, exprVal, slot)
-              }
-
-              for node in case.body {
-                match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
-              }
-              // if !blockTerminator {
-              //   self._currentFn.block.buildJmp(loopStartLabel)
-              // }
-              self._currentFn.block.buildJmp(endLabel)
-
-              self._currentFn.block.registerLabel(nextCaseLabel)
-            }
-            TypedMatchCaseKind.EnumVariant(enum_, variant, variantIdx, destructuredVariables) => {
-              val nextCaseLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_case_${idx}__next")
-              val _e = if exprTypeIsOpt |innerTy| {
-                val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
-                if seenNoneCase {
-                  val optInnerValue = match self._emitOptValueGetValue(innerQbeType, exprVal) { Ok(v) => v, Err(e) => return Err(e) }
-                  (optInnerValue, innerTy)
-                } else {
-                  val isSomeCond = match self._emitOptValueIsSomeVariant(exprVal) { Ok(v) => v, Err(e) => return Err(e) }
-                  val isSomeLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_case_${idx}__issome")
-                  self._currentFn.block.buildJnz(isSomeCond, isSomeLabel, nextCaseLabel)
-                  self._currentFn.block.registerLabel(isSomeLabel)
-                  val optInnerValue = match self._emitOptValueGetValue(innerQbeType, exprVal) { Ok(v) => v, Err(e) => return Err(e) }
-                  (optInnerValue, innerTy)
-                }
-              } else {
-                (exprVal, expr.ty)
-              }
-              // TODO: destructuring
-              val exprVal = _e[0]
-              val exprType = _e[1]
-
-              val exprValVariantIdxVal = self._emitGetEnumVariantIdx(exprVal)
-              val cond = match self._currentFn.block.buildCompareEq(exprValVariantIdxVal, Value.Int32(variantIdx)) { Ok(v) => v, Err(e) => return qbeError(e) }
-              val isVariantLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_is${variant.label.name}")
-
-              self._currentFn.block.buildJnz(cond, isVariantLabel, nextCaseLabel)
-              self._currentFn.block.registerLabel(isVariantLabel)
-
-              if !destructuredVariables.isEmpty() {
-                match self._addResolvedGenericsLayerForEnumVariant(exprType, variant.label.name, node.token.position) { Ok(v) => v, Err(e) => return Err(e) }
-                val variantFields = match variant.kind {
-                  EnumVariantKind.Container(fields) => fields
-                  _ => return unreachable("cannot destructure a non-container enum variant", node.token.position)
-                }
-
-                var memCursor = match self._emitGetEnumVariantValueStart(exprVal) { Ok(v) => v, Err(e) => return Err(e) }
-                for v, idx in destructuredVariables {
-                  val field = if variantFields[idx] |f| f else return unreachable("this should be caught during typechecking", node.token.position)
-                  val fieldTy = match self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position)) { Ok(v) => v, Err(e) => return Err(e) }
-
-                  val fieldVal = self._currentFn.block.buildLoad(fieldTy, memCursor)
-                  val slotName = "${v.label.name}.slot"
-                  val slot = self._buildStackAllocForQbeType(fieldTy, Some(slotName))
-                  self._currentFn.block.buildStore(fieldTy, fieldVal, slot)
-
-                  if idx != destructuredVariables.length - 1 {
-                    val offset = fieldTy.size()
-                    memCursor = match self._currentFn.block.buildAdd(Value.Int(offset), memCursor) { Ok(v) => v, Err(e) => return qbeError(e) }
-                  }
-                }
-
-                self._resolvedGenerics.popLayer()
-              }
-
-              if case.binding |v| {
-                val slotName = "${v.label.name}.slot"
-                val bindingTypeQbe = match self._getQbeTypeForTypeExpect(exprType, "qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
-                val slot = self._buildStackAllocForQbeType(bindingTypeQbe, Some(slotName))
-                self._currentFn.block.buildStore(bindingTypeQbe, exprVal, slot)
-              }
-
-              for node in case.body {
-                match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
-              }
-              // if !blockTerminator {
-              //   self._currentFn.block.buildJmp(loopStartLabel)
-              // }
-              self._currentFn.block.buildJmp(endLabel)
-
-              self._currentFn.block.registerLabel(nextCaseLabel)
-            }
-            TypedMatchCaseKind.Else => {
-              val exprVal = if exprTypeIsOpt |innerTy| {
-                if seenNoneCase {
-                  val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
-                  val optInnerValue = match self._emitOptValueGetValue(innerQbeType, exprVal) { Ok(v) => v, Err(e) => return Err(e) }
-
-                  optInnerValue
-                } else exprVal
-              } else exprVal
-
-              if case.binding |v| {
-                val slotName = "${v.label.name}.slot"
-                val bindingTypeQbe = match self._getQbeTypeForTypeExpect(expr.ty, "qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
-                val slot = self._buildStackAllocForQbeType(bindingTypeQbe, Some(slotName))
-                self._currentFn.block.buildStore(bindingTypeQbe, exprVal, slot)
-              }
-
-              for node in case.body {
-                match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
-              }
-            }
-            _ => return todo("other match case types", node.token.position)
-          }
-        }
-
-        self._currentFn.block.registerLabel(endLabel)
-
-        Ok(None)
-      }
+      TypedAstNodeKind.Match(isStatement, expr, cases) => self._compileMatch(node, isStatement, expr, cases)
       TypedAstNodeKind.While(cond, conditionBinding, block, blockTerminator) => {
         val loopStartLabel = self._currentFn.block.addLabel("while_loop_start")
         val loopBodyLabel = self._currentFn.block.addLabel("while_loop_body")
@@ -1859,12 +1669,14 @@ export type Compiler {
           }
         }
         for node, idx in ifBlock {
+          val res = match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
           if idx == ifBlock.length - 1 {
-            val res = match self._compileExpression(node) { Ok(v) => v, Err(e) => return Err(e) }
-            val label = self._currentFn.block.currentLabel
-            phiCases.push((label, res))
-          } else {
-            match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
+            if res |res| {
+              val label = self._currentFn.block.currentLabel
+              phiCases.push((label, res))
+            } else if !ifBlockTerminator {
+              return unreachable("last statement in if-expr block has no value and is not a terminator", node.token.position)
+            }
           }
         }
         if !ifBlockTerminator {
@@ -1874,12 +1686,14 @@ export type Compiler {
         if !elseBlock.isEmpty() {
           self._currentFn.block.registerLabel(labelElse)
           for node, idx in elseBlock {
+            val res = match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
             if idx == elseBlock.length - 1 {
-              val res = match self._compileExpression(node) { Ok(v) => v, Err(e) => return Err(e) }
-              val label = self._currentFn.block.currentLabel
-              phiCases.push((label, res))
-            } else {
-              match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
+              if res |res| {
+                val label = self._currentFn.block.currentLabel
+                phiCases.push((label, res))
+              } else if !elseBlockTerminator {
+                return unreachable("last statement in if-expr else block has no value and is not a terminator", node.token.position)
+              }
             }
           }
           if !elseBlockTerminator {
@@ -1889,11 +1703,18 @@ export type Compiler {
 
         self._currentFn.block.registerLabel(labelCont)
 
-        val res = match self._currentFn.block.buildPhi(phiCases, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
-
-        Ok(res)
+        if !phiCases.isEmpty() {
+          val res = match self._currentFn.block.buildPhi(phiCases, resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
+          Ok(res)
+        } else {
+          self._currentFn.block.buildHalt()
+          Ok(Value.Ident("bogus", QbeType.F32))
+        }
       }
-      TypedAstNodeKind.Match => todo("compiling match stmt/expr", node.token.position)
+      TypedAstNodeKind.Match(isStatement, expr, cases) => {
+        val res = match self._compileMatch(node, isStatement, expr, cases) { Ok(v) => v, Err(e) => return Err(e) }
+        if res |res| Ok(res) else return unreachable("match expression needs a resulting value", node.token.position)
+      }
       _ => unreachable("node must be a statement", node.token.position)
     }
 
@@ -1913,6 +1734,195 @@ export type Compiler {
         (instancePtr, Type(kind: TypeKind.PrimitiveString))
       }
     })
+  }
+
+  func _compileMatch(self, node: TypedAstNode, isStatement: Bool, expr: TypedAstNode, cases: TypedMatchCase[]): Result<Value?, CompileError> {
+    val exprVal = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
+
+    val matchLabelPrefix = "match_${node.token.position.line}_${node.token.position.col}"
+    val endLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_end")
+    var seenNoneCase = false
+    val exprTypeIsOpt = self._typeIsOption(expr.ty)
+
+    val resValSlotCtx = if !isStatement {
+      val slotName = "${matchLabelPrefix}_result.slot"
+      val nodeTypeQbe = match self._getQbeTypeForTypeExpect(node.ty, "qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+      val slot = self._buildStackAllocForQbeType(nodeTypeQbe, Some(slotName))
+      Some((slot, nodeTypeQbe))
+    } else None
+
+    for case, idx in cases {
+      val _p = match case.kind {
+        TypedMatchCaseKind.Literal(lit) => {
+          val nextCaseLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_case_${idx}__next")
+
+          val _e = if exprTypeIsOpt |innerTy| {
+            val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
+            if seenNoneCase {
+              val optInnerValue = match self._emitOptValueGetValue(innerQbeType, exprVal) { Ok(v) => v, Err(e) => return Err(e) }
+              (optInnerValue, innerTy)
+            } else {
+              val isSomeCond = match self._emitOptValueIsSomeVariant(exprVal) { Ok(v) => v, Err(e) => return Err(e) }
+              val isSomeLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_case_${idx}__issome")
+              self._currentFn.block.buildJnz(isSomeCond, isSomeLabel, nextCaseLabel)
+              self._currentFn.block.registerLabel(isSomeLabel)
+              val optInnerValue = match self._emitOptValueGetValue(innerQbeType, exprVal) { Ok(v) => v, Err(e) => return Err(e) }
+              (optInnerValue, innerTy)
+            }
+          } else {
+            (exprVal, expr.ty)
+          }
+          // TODO: destructuring
+          val exprVal = _e[0]
+          val exprType = _e[1]
+
+          val _p = match self._compileLiteral(lit) { Ok(v) => v, Err(e) => return Err(e) }
+          // TODO: destructuring
+          val litVal = _p[0]
+          val litType = _p[1]
+
+          if !self._project.typesAreEquivalent(exprType, litType) return unreachable("equality operators require matching types", node.token.position)
+
+          val cond = match self._compileEqLogic(exprVal, litVal, litType, expr.token.position) { Ok(v) => v, Err(e) => return Err(e) }
+          val isEqLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_iseq")
+
+          self._currentFn.block.buildJnz(cond, isEqLabel, nextCaseLabel)
+          self._currentFn.block.registerLabel(isEqLabel)
+
+          (Some(nextCaseLabel), exprVal, exprType)
+        }
+        TypedMatchCaseKind.None_ => {
+          seenNoneCase = true
+
+          val isNoneCond = match self._emitOptValueIsSomeVariant(exprVal: exprVal, negate: true) { Ok(v) => v, Err(e) => return Err(e) }
+          val isNoneLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_isnone")
+          val nextCaseLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_next_$idx")
+
+          self._currentFn.block.buildJnz(isNoneCond, isNoneLabel, nextCaseLabel)
+          self._currentFn.block.registerLabel(isNoneLabel)
+
+          (Some(nextCaseLabel), exprVal, expr.ty)
+        }
+        TypedMatchCaseKind.EnumVariant(enum_, variant, variantIdx, destructuredVariables) => {
+          val nextCaseLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_case_${idx}__next")
+          val _e = if exprTypeIsOpt |innerTy| {
+            val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
+            if seenNoneCase {
+              val optInnerValue = match self._emitOptValueGetValue(innerQbeType, exprVal) { Ok(v) => v, Err(e) => return Err(e) }
+              (optInnerValue, innerTy)
+            } else {
+              val isSomeCond = match self._emitOptValueIsSomeVariant(exprVal) { Ok(v) => v, Err(e) => return Err(e) }
+              val isSomeLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_case_${idx}__issome")
+              self._currentFn.block.buildJnz(isSomeCond, isSomeLabel, nextCaseLabel)
+              self._currentFn.block.registerLabel(isSomeLabel)
+              val optInnerValue = match self._emitOptValueGetValue(innerQbeType, exprVal) { Ok(v) => v, Err(e) => return Err(e) }
+              (optInnerValue, innerTy)
+            }
+          } else {
+            (exprVal, expr.ty)
+          }
+          // TODO: destructuring
+          val exprVal = _e[0]
+          val exprType = _e[1]
+
+          val exprValVariantIdxVal = self._emitGetEnumVariantIdx(exprVal)
+          val cond = match self._currentFn.block.buildCompareEq(exprValVariantIdxVal, Value.Int32(variantIdx)) { Ok(v) => v, Err(e) => return qbeError(e) }
+          val isVariantLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_is${variant.label.name}")
+
+          self._currentFn.block.buildJnz(cond, isVariantLabel, nextCaseLabel)
+          self._currentFn.block.registerLabel(isVariantLabel)
+
+          if !destructuredVariables.isEmpty() {
+            match self._addResolvedGenericsLayerForEnumVariant(exprType, variant.label.name, node.token.position) { Ok(v) => v, Err(e) => return Err(e) }
+            val variantFields = match variant.kind {
+              EnumVariantKind.Container(fields) => fields
+              _ => return unreachable("cannot destructure a non-container enum variant", node.token.position)
+            }
+
+            var memCursor = match self._emitGetEnumVariantValueStart(exprVal) { Ok(v) => v, Err(e) => return Err(e) }
+            for v, idx in destructuredVariables {
+              val field = if variantFields[idx] |f| f else return unreachable("this should be caught during typechecking", node.token.position)
+              val fieldTy = match self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position)) { Ok(v) => v, Err(e) => return Err(e) }
+
+              val fieldVal = self._currentFn.block.buildLoad(fieldTy, memCursor)
+              val slotName = "${v.label.name}.slot"
+              val slot = self._buildStackAllocForQbeType(fieldTy, Some(slotName))
+              self._currentFn.block.buildStore(fieldTy, fieldVal, slot)
+
+              if idx != destructuredVariables.length - 1 {
+                val offset = fieldTy.size()
+                memCursor = match self._currentFn.block.buildAdd(Value.Int(offset), memCursor) { Ok(v) => v, Err(e) => return qbeError(e) }
+              }
+            }
+
+            self._resolvedGenerics.popLayer()
+          }
+
+          (Some(nextCaseLabel), exprVal, exprType)
+        }
+        TypedMatchCaseKind.Else => {
+          val _e = if exprTypeIsOpt |innerTy| {
+            if seenNoneCase {
+              val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
+              val optInnerValue = match self._emitOptValueGetValue(innerQbeType, exprVal) { Ok(v) => v, Err(e) => return Err(e) }
+
+              (optInnerValue, innerTy)
+            } else (exprVal, expr.ty)
+          } else (exprVal, expr.ty)
+          val exprVal = _e[0]
+          val exprType = _e[1]
+
+          // No nextCaseLabel, since the `else` case will always be the last case if present
+          (None, exprVal, exprType)
+        }
+        _ => return todo("other match case types", node.token.position)
+      }
+      // TODO: destructuring
+      val nextCaseLabel = _p[0]
+      val exprVal = _p[1]
+      val exprType = _p[2]
+
+      if case.binding |v| {
+        val slotName = "${v.label.name}.slot"
+        val bindingTypeQbe = match self._getQbeTypeForTypeExpect(exprType, "qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+        val slot = self._buildStackAllocForQbeType(bindingTypeQbe, Some(slotName))
+        self._currentFn.block.buildStore(bindingTypeQbe, exprVal, slot)
+      }
+
+      for node, idx in case.body {
+        val res = match self._compileStatement(node) { Ok(v) => v, Err(e) => return Err(e) }
+        if idx == case.body.length - 1 {
+          if resValSlotCtx |_p| {
+            if res |res| {
+              // TODO: destructuring
+              val slot = _p[0]
+              val slotTy = _p[1]
+              self._currentFn.block.buildStore(slotTy, res, slot)
+            }
+          }
+        }
+      }
+      if !case.terminator {
+        self._currentFn.block.buildJmp(endLabel)
+      }
+
+      if nextCaseLabel |nextCaseLabel| {
+        self._currentFn.block.registerLabel(nextCaseLabel)
+      }
+    }
+
+    self._currentFn.block.registerLabel(endLabel)
+
+    val result = if resValSlotCtx |_p| {
+      val slot = _p[0]
+      val slotTy = _p[1]
+      val res = self._currentFn.block.buildLoad(slotTy, slot)
+      Some(res)
+    } else {
+      None
+    }
+
+    Ok(result)
   }
 
   func _getCapturedVarPtr(self, name: String): Result<Value, CompileError> {
@@ -3102,7 +3112,9 @@ export type Compiler {
         retVal = res
       }
     }
-    fnVal.block.buildReturn(retVal)
+    if !fn.scope.terminator {
+      fnVal.block.buildReturn(retVal)
+    }
 
     self._currentFn = prevFn
     self._currentFunction = prevFunction
