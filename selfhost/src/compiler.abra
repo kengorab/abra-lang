@@ -2,7 +2,7 @@ import "fs" as fs
 import Position from "./lexer"
 import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern, IndexingMode from "./parser"
 import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCase, TypedMatchCaseKind from "./typechecker"
-import ModuleBuilder, QbeType, Dest, QbeFunction, Value, Label, Callable from "./qbe"
+import ModuleBuilder, QbeType, Dest, QbeFunction, Value, Label, Callable, QbeData, QbeDataKind from "./qbe"
 
 type CompilationError {
   modulePath: String
@@ -168,6 +168,8 @@ export type Compiler {
   _currentFn: QbeFunction
   _currentFunction: Function?
   _currentNode: TypedAstNode?
+  _argcPtr: Value
+  _argvPtr: Value
   _resolvedGenerics: ResolvedGenerics = ResolvedGenerics()
   _loopStack: (/* loopStart: */ Label, /* loopEnd: */ Label)[] = []
   // cached things
@@ -182,21 +184,29 @@ export type Compiler {
   func compile(project: Project, entry: TypedModule): Result<ModuleBuilder, CompilationError> {
     val builder = ModuleBuilder()
 
-    val fn = builder.buildFunction(name: "main", returnType: Some(QbeType.U32), exported: true)
-    fn.addComment("main entrypoint function")
-    val mainFnBlock = fn.block
+    val mainFn = builder.buildFunction(name: "main", returnType: Some(QbeType.U32), exported: true)
+    mainFn.addComment("main entrypoint function")
+    val argcParam = mainFn.addParameter("argc", QbeType.U64)
+    val argvParam = mainFn.addParameter("argv", QbeType.U64)
 
-    val compiler = Compiler(_project: project, _builder: builder, _currentModule: entry, _currentNode: None, _currentFn: fn, _currentFunction: None)
+    val argcPtr = builder.addData(QbeData(name: "__argc", kind: QbeDataKind.Constants([(QbeType.U64, Value.Int(0))])))
+    mainFn.block.buildStoreL(argcParam, argcPtr)
+    val argvPtr = builder.addData(QbeData(name: "__argv", kind: QbeDataKind.Constants([(QbeType.U64, Value.Int(0))])))
+    mainFn.block.buildStoreL(argvParam, argvPtr)
+
+    mainFn.block.buildVoidCallRaw("GC_init", [])
+
+    val compiler = Compiler(_project: project, _builder: builder, _currentModule: entry, _currentFn: mainFn, _currentFunction: None, _currentNode: None, _argcPtr: argcPtr, _argvPtr: argvPtr)
 
     val moduleFn = match compiler._compileModule(entry) { Ok(v) => v, Err(e) => {
       // println(compiler._currentNode?.token)
       return Err(CompilationError(modulePath: entry.name, error: e))
     }}
-    mainFnBlock.buildVoidCallRaw("GC_init", [])
-    mainFnBlock.buildVoidCall(Callable.Function(moduleFn), [])
-    mainFnBlock.buildReturn(Some(Value.Int(0)))
 
-    match mainFnBlock.verify() { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: entry.name, error: CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(e)))) }
+    mainFn.block.buildVoidCall(Callable.Function(moduleFn), [])
+    mainFn.block.buildReturn(Some(Value.Int(0)))
+
+    match mainFn.block.verify() { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: entry.name, error: CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(e)))) }
 
     Ok(builder)
   }
@@ -2805,6 +2815,34 @@ export type Compiler {
 
         Ok(Value.Ident("__pointer_null__", QbeType.Pointer))
       }
+      "pointer_is_null" => {
+        self._currentFn.block.addComment("begin pointer_is_null...")
+
+        val _ptr = if arguments[0] |arg| arg else return unreachable("'pointer_is_null' has 1 required argument")
+        val ptr = if _ptr |arg| arg else return unreachable("'pointer_is_null' has 1 required argument")
+        val ptrVal = match self._compileExpression(ptr) { Ok(v) => v, Err(e) => return Err(e) }
+
+        val labelIsNull = self._currentFn.block.addLabel("ptr_is_null")
+        val labelIsNotNull = self._currentFn.block.addLabel("ptr_is_not_null")
+        val labelCont = self._currentFn.block.addLabel("ptr_null_cont")
+
+        self._currentFn.block.buildJnz(ptrVal, labelIsNotNull, labelIsNull)
+
+        self._currentFn.block.registerLabel(labelIsNotNull)
+        val f = Value.Int32(0)
+        self._currentFn.block.buildJmp(labelCont)
+        self._currentFn.block.registerLabel(labelIsNull)
+        val t = Value.Int32(1)
+        self._currentFn.block.buildJmp(labelCont)
+        self._currentFn.block.registerLabel(labelCont)
+
+        val phiCases = [(labelIsNotNull, f), (labelIsNull, t)]
+        val ptrIsNull = match self._currentFn.block.buildPhi(phiCases) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+        self._currentFn.block.addComment("...pointer_is_null end")
+
+        Ok(ptrIsNull)
+      }
       "pointer_malloc" => {
         self._currentFn.block.addComment("begin pointer_malloc...")
 
@@ -3026,6 +3064,20 @@ export type Compiler {
         val res = self._currentFn.block.buildFToL(roundRes)
 
         self._currentFn.block.addComment("...float_round end")
+
+        Ok(res)
+      }
+      "argc" => {
+        self._currentFn.block.addComment("begin argc...")
+        val res = self._currentFn.block.buildLoadL(self._argcPtr)
+        self._currentFn.block.addComment("...argc end")
+
+        Ok(res)
+      }
+      "argv" => {
+        self._currentFn.block.addComment("begin argv...")
+        val res = self._currentFn.block.buildLoadL(self._argvPtr)
+        self._currentFn.block.addComment("...argv end")
 
         Ok(res)
       }

@@ -1,4 +1,5 @@
 use std::{fs, io};
+use std::collections::HashMap;
 use std::env::temp_dir;
 use std::io::BufWriter;
 use std::io::Write;
@@ -139,13 +140,27 @@ impl TestRunner {
     }
 }
 
+struct CompilerTest {
+    test_path: &'static str,
+    program_args: &'static [&'static str],
+    env: &'static [(&'static str, &'static str)],
+}
+
 pub struct CompilerTestRunner {
-    tests: Vec<&'static str>,
+    tests: Vec<CompilerTest>,
 }
 
 impl CompilerTestRunner {
-    pub fn add_test(mut self, test_path: &'static str) -> Self {
-        self.tests.push(test_path);
+    pub fn add_test(self, test_path: &'static str) -> Self {
+        // run_test_file_with_args_and_env("process.abra", &["-f", "bar", "--baz", "qux"], &[("FOO", "bar")]);
+        // self.tests.push(CompilerTest { test_path, program_args: &[], env: &[] });
+        // self
+        self.add_test_with_args_and_env(test_path, &[], &[])
+    }
+
+    pub fn add_test_with_args_and_env(mut self, test_path: &'static str, program_args: &'static [&'static str], env: &'static [(&'static str, &'static str)]) -> Self {
+        // run_test_file_with_args_and_env("process.abra", &["-f", "bar", "--baz", "qux"], &[("FOO", "bar")]);
+        self.tests.push(CompilerTest { test_path, program_args, env });
         self
     }
 
@@ -156,8 +171,9 @@ impl CompilerTestRunner {
         let compiler_test_bin = build_test_runner("compiler.test.abra", "compiler_test");
         let abra_wrapper_script = selfhost_dir.join("abra");
 
-        for test_file_path in self.tests {
-            let test_path = selfhost_dir.join("test").join(test_file_path);
+        for test in self.tests {
+            let CompilerTest { test_path, program_args, env } = test;
+            let test_path = selfhost_dir.join("test").join(test_path);
             let test_path = test_path.to_str().unwrap().to_string();
             let test_file = fs::read_to_string(&test_path).unwrap_or_else(|_| {
                 println!("No such file {}", &test_path);
@@ -167,7 +183,9 @@ impl CompilerTestRunner {
             let output = Command::new(&abra_wrapper_script)
                 .current_dir(&selfhost_dir)
                 .env("COMPILER_BIN", &compiler_test_bin)
+                .envs(env.to_vec().into_iter().collect::<HashMap<_, _>>())
                 .arg(&test_path)
+                .args(program_args)
                 .output()
                 .unwrap();
             if !output.stderr.is_empty() {

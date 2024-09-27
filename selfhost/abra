@@ -22,4 +22,4 @@ fi
 # TODO: don't assume the location of libgc
 clang ./._abra/_main.s ../abra_llvm/ext/libgc/lib/libgc.a -o ./._abra/_main -lm $CFLAGS
 
-./._abra/_main
+./._abra/_main "$@"

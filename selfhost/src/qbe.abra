@@ -37,15 +37,19 @@ export type ModuleBuilder {
 
     val dataName = name ?: "_${self._data.length}"
     val data = QbeData(name: dataName, align: None, kind: QbeDataKind.String(string))
-    self._data.push(data)
-    val ptr = Value.Global(dataName, QbeType.Pointer)
+    val ptr = self.addData(data)
     self._globalStrs[string] = ptr
 
     ptr
   }
+
+  func addData(self, data: QbeData): Value {
+    self._data.push(data)
+    Value.Global(data.name, QbeType.Pointer)
+  }
 }
 
-type QbeData {
+export type QbeData {
   name: String
   align: Int? = None
   kind: QbeDataKind
@@ -64,15 +68,28 @@ type QbeData {
   }
 }
 
-enum QbeDataKind {
+export enum QbeDataKind {
   Zeros(size: Int)
+  Constants(values: (QbeType, Value)[])
   String(str: String)
-  // others
 
   func encode(self, file: File) {
     match self {
       QbeDataKind.Zeros(size) => {
         file.write("z $size")
+      }
+      QbeDataKind.Constants(values) => {
+        for _p, idx in values {
+          val ty = _p[0]
+          val v = _p[1]
+
+          file.write(ty.repr())
+          file.write(" ")
+          v.encode(file)
+          if idx != values.length - 1 {
+            file.write(", ")
+          }
+        }
       }
       QbeDataKind.String(str) => {
         file.write("b \"$str\", b 0")
