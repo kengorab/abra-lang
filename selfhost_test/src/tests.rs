@@ -764,6 +764,7 @@ fn compiler_tests() {
         .add_test("compiler/maps.abra")
         .add_test("compiler/sets.abra")
         .add_test("compiler/match.abra")
+        .add_test_with_args_and_env("compiler/process.abra", &["-f", "bar", "--baz", "qux"], &[("FOO", "bar")])
 
         .run_tests();
 }

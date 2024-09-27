@@ -1,12 +1,2 @@
-// val m = { (1): "a", (2): "b" }
-
-// /// Expect: a
-// println(m.getOr(1, "c"))
-// /// Expect: b
-// println(m.getOr(2, "c"))
-// /// Expect: c
-// println(m.getOr(3, "c"))
-
-val arr = ["a", "b", "c"]
-val item = arr[3] ?: "d"
-println(item)
+println(Process.args())
+// println("hello")
