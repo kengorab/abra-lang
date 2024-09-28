@@ -795,6 +795,14 @@ type Array<T> {
   @Stub func reversed(self): T[]
 }
 
+type Uname {
+  sysname: String
+  nodename: String
+  release: String
+  version: String
+  machine: String
+}
+
 type Process {
   func args(): String[] {
     val argc = intrinsics.argc()
@@ -816,6 +824,50 @@ type Process {
 
     val len = libc.strlen(str)
     Some(String(length: len, _buffer: str))
+  }
+
+  func uname(): Uname {
+    // On macOS, each field in the utsname struct is a char[256]; on other platforms it's different, so
+    // this can be wasteful of memory.
+    var utsnameBuf = Pointer.malloc<Byte>(256 * 5)
+    val res = libc.uname(utsnameBuf)
+    if res != 0 { /* todo: handle error code */ }
+
+    val sysnameLen = libc.strlen(utsnameBuf)
+    val sysname = String.withLength(sysnameLen)
+    sysname._buffer.copyFrom(utsnameBuf, sysnameLen)
+
+    // The utsname struct has 5 fields (6 on some platforms), of constant and equal sizes, but the size of
+    // each field differs per platform. After extracting the first string, skip over the \0 bytes until we
+    // reach the start of the next string. From that offset, we can determine the size of each field, and
+    // extract the remaining fields more efficiently.
+    var offset = sysnameLen
+    utsnameBuf = utsnameBuf.offset(offset)
+    while utsnameBuf.load().asInt() == 0 {
+      utsnameBuf = utsnameBuf.offset(1)
+      offset += 1
+    }
+
+    val nodenameLen = libc.strlen(utsnameBuf)
+    val nodename = String.withLength(nodenameLen)
+    nodename._buffer.copyFrom(utsnameBuf, nodenameLen)
+    utsnameBuf = utsnameBuf.offset(offset)
+
+    val releaseLen = libc.strlen(utsnameBuf)
+    val release = String.withLength(releaseLen)
+    release._buffer.copyFrom(utsnameBuf, releaseLen)
+    utsnameBuf = utsnameBuf.offset(offset)
+
+    val versionLen = libc.strlen(utsnameBuf)
+    val version = String.withLength(versionLen)
+    version._buffer.copyFrom(utsnameBuf, versionLen)
+    utsnameBuf = utsnameBuf.offset(offset)
+
+    val machineLen = libc.strlen(utsnameBuf)
+    val machine = String.withLength(machineLen)
+    machine._buffer.copyFrom(utsnameBuf, machineLen)
+
+    Uname(sysname: sysname, nodename: nodename, release: release, version: version, machine: machine)
   }
 }
 

@@ -43,3 +43,14 @@ export func getcwd(buf: Pointer<Byte>, count: Int): String
 
 @CBinding("strlen")
 export func strlen(s: Pointer<Byte>): Int
+
+// type _utsname {
+//   sysname: Pointer<Byte>
+//   nodename: Pointer<Byte>
+//   release: Pointer<Byte>
+//   version: Pointer<Byte>
+//   machine: Pointer<Byte>
+//   domainname: Pointer<Byte>
+// }
+@CBinding("uname")
+export func uname(utsnameBuf: Pointer<Byte>): Int

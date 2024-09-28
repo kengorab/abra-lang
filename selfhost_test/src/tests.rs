@@ -749,7 +749,7 @@ fn typechecker_tests() {
 
 #[test]
 fn compiler_tests() {
-    TestRunner::compiler_test_runner()
+    let mut test_runner = TestRunner::compiler_test_runner()
         .add_test("compiler/ints.abra")
         .add_test("compiler/floats.abra")
         .add_test("compiler/bools.abra")
@@ -764,7 +764,15 @@ fn compiler_tests() {
         .add_test("compiler/maps.abra")
         .add_test("compiler/sets.abra")
         .add_test("compiler/match.abra")
-        .add_test_with_args_and_env("compiler/process.abra", &["-f", "bar", "--baz", "qux"], &[("FOO", "bar")])
+        .add_test_with_args_and_env("compiler/process.abra", &["-f", "bar", "--baz", "qux"], &[("FOO", "bar")]);
 
-        .run_tests();
+    test_runner = if cfg!(target_os = "linux") {
+        test_runner.add_test("compiler/process_linus.abra")
+    } else if cfg!(target_os = "macos") {
+        test_runner.add_test("compiler/process_macos.abra")
+    } else {
+        unreachable!("unsupported operating system {}", std::env::consts::OS)
+    };
+
+    test_runner.run_tests();
 }

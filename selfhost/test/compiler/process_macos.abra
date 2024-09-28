@@ -1,0 +1,4 @@
+// This file is run on macos only
+
+/// Expect: Uname(sysname: "Darwin", nodename: "Kens-MBP", release: "23.6.0", version: "Darwin Kernel Version 23.6.0: Mon Jul 29 21:14:30 PDT 2024; root:xnu-10063.141.2~1/RELEASE_ARM64_T6000", machine: "arm64")
+println(Process.uname())

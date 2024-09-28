@@ -1,2 +1,2 @@
-println(Process.args())
+println(Process.uname())
 // println("hello")
