@@ -580,7 +580,7 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
       println(",\n$fieldsIndent\"op\": \"$op\",")
       print("$fieldsIndent\"mode\": ")
       match mode {
-        AssignmentMode.Variable(name) => {
+        AssignmentMode.Variable(name, _) => {
           println("{\n$fieldsIndent  \"mode\": \"variable\",")
           println("$fieldsIndent  \"variable\": \"$name\"")
           println("$fieldsIndent}")

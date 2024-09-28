@@ -43,3 +43,6 @@ export func getcwd(buf: Pointer<Byte>, count: Int): String
 
 @CBinding("strlen")
 export func strlen(s: Pointer<Byte>): Int
+
+@CBinding("uname")
+export func uname(utsnameBuf: Pointer<Byte>): Int
