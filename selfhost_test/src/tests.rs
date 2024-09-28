@@ -767,7 +767,7 @@ fn compiler_tests() {
         .add_test_with_args_and_env("compiler/process.abra", &["-f", "bar", "--baz", "qux"], &[("FOO", "bar")]);
 
     test_runner = if cfg!(target_os = "linux") {
-        test_runner.add_test("compiler/process_linus.abra")
+        test_runner.add_test("compiler/process_linux.abra")
     } else if cfg!(target_os = "macos") {
         test_runner.add_test("compiler/process_macos.abra")
     } else {
