@@ -1,2 +1,4 @@
-println(Process.uname())
-// println("hello")
+import "fs" as fs
+
+val res = fs.readFile("asdf")
+println(res)
