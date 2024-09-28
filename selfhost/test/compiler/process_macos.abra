@@ -1,4 +1,10 @@
 // This file is run on macos only
+// These tests are difficult by nature since there's not many assumptions which will hold 100% of the time.
+// Verify the sysname and machine per-platform should be sufficient to prove that it's working correctly.
 
-/// Expect: Uname(sysname: "Darwin", nodename: "Kens-MBP", release: "23.6.0", version: "Darwin Kernel Version 23.6.0: Mon Jul 29 21:14:30 PDT 2024; root:xnu-10063.141.2~1/RELEASE_ARM64_T6000", machine: "arm64")
-println(Process.uname())
+val uname = Process.uname()
+
+/// Expect: Darwin
+println(uname.sysname)
+/// Expect: arm64
+println(uname.machine)
