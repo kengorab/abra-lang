@@ -7,7 +7,7 @@ export func getenv(name: Pointer<Byte>): Pointer<Byte>
 export func errno(): Int
 
 @CBinding("strerror")
-export func strerror(errno: Int): String
+export func strerror(errno: Int): Pointer<Byte>
 
 export val O_RDONLY = 0
 export val O_WRONLY = 1

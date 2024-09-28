@@ -2977,6 +2977,22 @@ export type Compiler {
 
         Ok(Value.Ident("bogus", QbeType.F32))
       }
+      "errno" => {
+        self._currentFn.block.addComment("begin errno...")
+
+        val errnoFnName = match Process.uname().sysname {
+          "Linux" => "__errno_location"
+          "Darwin" => "__error"
+          _ sysname => return todo("[errno] unsupported system " + sysname)
+        }
+        val errnoPtr = match self._currentFn.block.buildCallRaw(errnoFnName, QbeType.Pointer, []) { Ok(v) => v, Err(e) => return qbeError(e) }
+        val errnoVal = self._currentFn.block.buildLoadW(errnoPtr)
+        val res = self._currentFn.block.buildExt(value: errnoVal, signed: false)
+
+        self._currentFn.block.addComment("...errno end")
+
+        Ok(res)
+      }
       "byte_from_int" => {
         self._currentFn.block.addComment("begin byte_from_int...")
 
