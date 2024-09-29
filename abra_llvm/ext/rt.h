@@ -1,6 +1,7 @@
 #ifndef __ABRA_RT_H
 #define __ABRA_RT_H
 
+#include "ctype.h"
 #include "stdarg.h"
 #include "stdio.h"
 #include "stdlib.h"
