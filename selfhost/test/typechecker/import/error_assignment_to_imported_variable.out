@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:3:1
+Cannot assign to variable 'a'
+  |  a = 456
+     ^
+'a' is an import, which cannot be overwritten

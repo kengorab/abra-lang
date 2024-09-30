@@ -738,7 +738,7 @@ export enum TypedAstNodeKind {
   Unary(op: UnaryOp, expr: TypedAstNode)
   Binary(left: TypedAstNode, op: BinaryOp, right: TypedAstNode)
   Grouped(inner: TypedAstNode)
-  Identifier(name: String, variable: Variable, fnAliasTypeHint: Type?)
+  Identifier(name: String, variable: Variable, fnAliasTypeHint: Type?, varImportModule: TypedModule?)
   Accessor(head: TypedAstNode, middle: AccessorPathSegment[], tail: AccessorPathSegment)
   Invocation(invokee: TypedInvokee, arguments: TypedAstNode?[], resolvedGenerics: Map<String, Type>)
   Array(items: TypedAstNode[])
@@ -1181,6 +1181,7 @@ type TypeError {
           IllegalAssignmentReason.EnumVariant => lines.push("'$name' is an enum variant, which cannot be overwritten")
           IllegalAssignmentReason.Method => lines.push("'$name' is a method, which cannot be overwritten")
           IllegalAssignmentReason.StaticMethod => lines.push("'$name' is a static method, which cannot be overwritten")
+          IllegalAssignmentReason.Import => lines.push("'$name' is an import, which cannot be overwritten")
         }
       }
       TypeErrorKind.UnknownModule(modulePath, isRelativeImport) => {
@@ -1309,6 +1310,7 @@ enum IllegalAssignmentReason {
   EnumVariant
   Method
   StaticMethod
+  Import
 }
 
 enum UnreachableMatchCaseReason {
@@ -1793,7 +1795,7 @@ export type Typechecker {
     }
   }
 
-  func _resolveIdentifier(self, ident: String): Variable? {
+  func _resolveIdentifier(self, ident: String): (Variable, TypedModule?)? {
     val currentFnScope = self.currentFunction?.scope
     var scope: Scope? = Some(self.currentScope)
     var fnBarrierBreached = false
@@ -1810,7 +1812,7 @@ export type Typechecker {
             }
           }
 
-          return Some(v)
+          return Some((v, None))
         }
       }
 
@@ -1833,11 +1835,13 @@ export type Typechecker {
           }
         }
 
-        return Some(v)
+        return Some((v, None))
       }
     }
 
-    for importedModule in self.currentModuleImports.values() {
+    for _m in self.currentModuleImports {
+      val name = _m[0]
+      val importedModule = _m[1]
       for _p in importedModule.imports {
         // TODO: destructuring
         val importedName = _p[0]
@@ -1859,7 +1863,8 @@ export type Typechecker {
             TypedImportKind.Function(aliasVar) => aliasVar
             TypedImportKind.Type(_, aliasVar) => aliasVar
           }
-          return Some(v)
+
+          return Some((v, self.project.modules[name]))
         }
       }
     }
@@ -2744,8 +2749,8 @@ export type Typechecker {
   }
 
   func _typecheckImport(self, mod: TypedModule, node: ImportNode): Result<Int, TypeError> {
+    // TODO: better API for this (Map#getOrInsert?)
     val importedModule = if self.currentModuleImports[mod.name] |importedModule| importedModule else {
-      // TODO: better API for this
       val importedModule = ImportedModule()
       self.currentModuleImports[mod.name] = importedModule
       importedModule
@@ -3054,7 +3059,14 @@ export type Typechecker {
       AssignmentMode.Variable(name, varToken) => {
         val pos = varToken.position
 
-        val variable = if self._resolveIdentifier(name) |variable| variable else {
+        val variable = if self._resolveIdentifier(name) |_v| {
+          // TODO: destructuring
+          val v = _v[0]
+          val modExportedFrom = _v[1]
+          if modExportedFrom return Err(TypeError(position: pos, kind: TypeErrorKind.IllegalAssignment(kind: "variable", name: name, reason: IllegalAssignmentReason.Import)))
+
+          v
+        } else {
           return Err(TypeError(position: pos, kind: TypeErrorKind.UnknownName(name, "variable")))
         }
         match variable.alias {
@@ -3114,6 +3126,11 @@ export type Typechecker {
               }
             }
             t
+          }
+          TypedAstNodeKind.Identifier(name, _, _, varImportMod) => {
+            val pos = typedLhs.token.position
+            if varImportMod return Err(TypeError(position: pos, kind: TypeErrorKind.IllegalAssignment(kind: "member", name: name, reason: IllegalAssignmentReason.Import)))
+            return unreachable(pos, "_typecheckAccessor returned unexpected TypedAstNodeKind")
           }
           _ => return unreachable(typedLhs.token.position, "_typecheckAccessor returned unexpected TypedAstNodeKind")
         }
@@ -3869,12 +3886,13 @@ export type Typechecker {
   func _typecheckIdentifier(self, token: Token, kind: IdentifierKind, typeHint: Type?): Result<TypedAstNode, TypeError> {
     val _p = match kind {
       IdentifierKind.Named(name) => {
-        val variable = if self._resolveIdentifier(name) |variable| variable else {
+        val resolvedIdentifier = if self._resolveIdentifier(name) |_v| _v else {
           if self.paramDefaultValueContext |ctx| {
             ctx.exprContainsVariableRef = true
           }
           return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName(name, "variable")))
         }
+        val variable = resolvedIdentifier[0]
         val fnTypeHint = match variable.alias {
           VariableAlias.Function(fn) => {
             if fn.isClosure() {
@@ -3890,7 +3908,8 @@ export type Typechecker {
           _ => None
         }
 
-        (variable.ty, name, variable, fnTypeHint)
+        // (variable.ty, name, variable, fnTypeHint)
+        (resolvedIdentifier, name, fnTypeHint)
       }
       IdentifierKind.Discard => return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName("_", "variable")))
       IdentifierKind.None_ => {
@@ -3906,18 +3925,23 @@ export type Typechecker {
         return Ok(e)
       }
       IdentifierKind.Self => {
-        val variable = if self._resolveIdentifier("self") |variable| variable else {
+        val resolvedIdentifier = if self._resolveIdentifier("self") |_v| _v else {
           if self.paramDefaultValueContext |ctx| {
             ctx.exprContainsVariableRef = true
           }
           return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName("self", "variable")))
         }
-        (variable.ty, "self", variable, None)
+        (resolvedIdentifier, "self", None)
       }
     }
-
     // TODO: destructuring
-    Ok(TypedAstNode(token: token, ty: _p[0], kind: TypedAstNodeKind.Identifier(_p[1], _p[2], _p[3])))
+    val _v = _p[0]
+    val name = _p[1]
+    val fnTypeHint = _p[2]
+    val variable = _v[0]
+    val varImportMod = _v[1]
+
+    Ok(TypedAstNode(token: token, ty: variable.ty, kind: TypedAstNodeKind.Identifier(name, variable, fnTypeHint, varImportMod)))
   }
 
   func _resolveAccessorPathSegmentAny(self, label: Label, optSafe: Bool, typeHint: Type?): AccessorPathSegment? {
@@ -4079,7 +4103,7 @@ export type Typechecker {
       }
 
       val token = Token(position: label.position, kind: TokenKind.Ident(label.name))
-      Some(TypedAstNode(token: token, ty: exportVar.ty, kind: TypedAstNodeKind.Identifier(label.name, exportVar, None)))
+      Some(TypedAstNode(token: token, ty: exportVar.ty, kind: TypedAstNodeKind.Identifier(label.name, exportVar, None, Some(mod))))
     } else {
       None
     }
@@ -4200,7 +4224,7 @@ export type Typechecker {
     self.isStructOrEnumValueAllowed = false
 
     match invokee.kind {
-      TypedAstNodeKind.Identifier(name, variable) => {
+      TypedAstNodeKind.Identifier(name, variable, _, _) => {
         match variable.alias {
           VariableAlias.Function(fn) => self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint)
           VariableAlias.Struct(struct) => {

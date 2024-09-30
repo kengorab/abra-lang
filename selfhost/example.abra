@@ -1,4 +1,5 @@
-import "fs" as fs
+// import abc from "./example2" //as ex2
+import "./example2" as ex2
 
-val res = fs.readFile("asdf")
-println(res)
+//println(abc)
+ex2.abc = 432
