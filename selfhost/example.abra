@@ -1,5 +1,9 @@
-// import abc from "./example2" //as ex2
-import "./example2" as ex2
+// import abc from "./example2"
+// // import "./example2" as ex2
 
-//println(abc)
-ex2.abc = 432
+// println(abc)
+
+val arr: Int[] = []
+arr.push(1)
+
+println(arr)

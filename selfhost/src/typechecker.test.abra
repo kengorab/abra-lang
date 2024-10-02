@@ -43,9 +43,9 @@ func main() {
       Ok => {
         val allModules = project.modules.values().sortBy(m => m.id)
 
-        if !verifyStdModule(allModules, 0, "prelude") return
-        if !verifyStdModule(allModules, 1, "_intrinsics") return
-        if !verifyStdModule(allModules, 2, "libc") return
+        if !verifyStdModule(allModules, 0, "_intrinsics") return
+        if !verifyStdModule(allModules, 1, "libc") return
+        if !verifyStdModule(allModules, 2, "prelude") return
 
         val userModules = allModules[3:]
         val json = Jsonifier()

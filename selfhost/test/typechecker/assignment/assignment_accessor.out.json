@@ -32,7 +32,7 @@
               "name": { "name": "b", "position": [1, 20] },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "struct": { "moduleId": 2, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -184,7 +184,7 @@
                 },
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "struct": { "moduleId": 2, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -339,7 +339,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "struct": { "moduleId": 2, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -379,7 +379,7 @@
             "name": "b",
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "struct": { "moduleId": 2, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",

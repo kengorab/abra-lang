@@ -169,6 +169,11 @@ export type Scope {
   }
 }
 
+export enum BuiltinModule {
+  Prelude
+  Intrinsics
+}
+
 export type Field {
   name: Label
   ty: Type
@@ -183,6 +188,7 @@ export type Struct {
   fields: Field[] = []
   instanceMethods: Function[] = []
   staticMethods: Function[] = []
+  builtin: BuiltinModule? = None
 
   // Override eq method since default implementation recurses infinitely (scope -> variables -> TypeKind.Struct)
   func eq(self, other: Struct): Bool = self.moduleId == other.moduleId && self.label == other.label
@@ -234,6 +240,7 @@ export type Enum {
   variants: TypedEnumVariant[] = []
   instanceMethods: Function[] = []
   staticMethods: Function[] = []
+  builtin: BuiltinModule? = None
 
   func toString(self): String = "Enum(moduleId: ${self.moduleId}, label: ${self.label})"
 
@@ -359,7 +366,7 @@ export type Type {
       TypeKind.Instance(structOrEnum, typeParams) => {
         match structOrEnum {
           StructOrEnum.Struct(struct) => {
-            if struct.moduleId == 0 && struct.label.name == "Array" {
+            if struct.builtin == Some(BuiltinModule.Prelude) && struct.label.name == "Array" {
               val innerRepr = typeParams[0]?.repr() ?: "<unknown>"
               "$innerRepr[]"
             } else {
@@ -371,7 +378,7 @@ export type Type {
             }
           }
           StructOrEnum.Enum(enum_) => {
-            if enum_.moduleId == 0 && enum_.label.name == "Option" {
+            if enum_.builtin == Some(BuiltinModule.Prelude) && enum_.label.name == "Option" {
               val innerRepr = typeParams[0]?.repr() ?: "<unknown>"
               "$innerRepr?"
             } else {
@@ -827,7 +834,7 @@ type TypeError {
   func _typeIsOption(self, ty: Type): Type? {
     match ty.kind {
       TypeKind.Instance(structOrEnum, generics) => match structOrEnum {
-        StructOrEnum.Enum(enum_) => if enum_.moduleId == 0 && enum_.label.name == "Option" {
+        StructOrEnum.Enum(enum_) => if enum_.builtin == Some(BuiltinModule.Prelude) && enum_.label.name == "Option" {
           generics[0]
         } else {
           None
@@ -1390,6 +1397,7 @@ export type Typechecker {
   isStructOrEnumValueAllowed: Bool = false
   isEnumContainerValueAllowed: Bool = false
   numLambdas: Int = 0
+  typecheckingBuiltin: BuiltinModule? = None
 
   func typecheckEntrypoint(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
     val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
@@ -2016,19 +2024,23 @@ export type Typechecker {
 
 
   func _typecheckModule(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
-    val moduleId = self.project.modules.size
-    self.currentModuleId = moduleId
-
-    val moduleScope = self.currentScope.makeChild("module_$moduleId", ScopeKind.Module)
-    if moduleId == 0 {
-      self.project.preludeScope = moduleScope
+    self.typecheckingBuiltin = if modulePathAbs == self.moduleLoader.stdRoot + "/prelude.abra" {
+      self.project.preludeScope = self.currentScope.makeChild("module_prelude", ScopeKind.Module)
+      Some(BuiltinModule.Prelude)
+    } else if modulePathAbs == self.moduleLoader.stdRoot + "/_intrinsics.abra" {
+      Some(BuiltinModule.Intrinsics)
+    } else {
+      None
     }
-    val prevScope = self.currentScope
-    self.currentScope = moduleScope
-    val mod = TypedModule(id: moduleId, name: modulePathAbs, code: [], rootScope: moduleScope)
+
+    // Insert module with placeholder scope and moduleId. These values will be filled in after typechecking
+    // this module's imports; this ensures that sorting the final list of modules by id results in a resolved
+    // dependency graph.
+    val mod = TypedModule(id: -1, name: modulePathAbs, code: [], rootScope: Scope.bogus())
     self.project.modules[modulePathAbs] = mod
 
     val parsedModule = match self._tokenizeAndParse(modulePathAbs) { Ok(v) => v, Err(e) => return Err(e) }
+    val imports: (TypedModule, ImportNode)[] = []
     for importNode in parsedModule.imports {
       var importNodePath = importNode.moduleName.name
       val isRelativeImport = importNodePath.startsWith(".")
@@ -2073,6 +2085,26 @@ export type Typechecker {
         typedImportModule
       }
 
+      imports.push((typedImportModule, importNode))
+    }
+
+    val moduleId = self.project.modules.values().filter(m => m.id != -1).length
+    self.currentModuleId = moduleId
+
+    val moduleScope = if self.typecheckingBuiltin == Some(BuiltinModule.Prelude) {
+      self.project.preludeScope
+    } else {
+      self.currentScope.makeChild("module_$moduleId", ScopeKind.Module)
+    }
+    val prevScope = self.currentScope
+    self.currentScope = moduleScope
+    mod.id = moduleId
+    mod.rootScope = moduleScope
+
+    for _p in imports {
+      // TODO: destructuring
+      val typedImportModule = _p[0]
+      val importNode = _p[1]
       match self._typecheckImport(typedImportModule, importNode) {
         Ok(v) => v
         Err(e) => return Err(TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(e)))
@@ -2093,6 +2125,11 @@ export type Typechecker {
     self.currentScope = prevScope
 
     mod.complete = true
+
+    if self.typecheckingBuiltin {
+      self.typecheckingBuiltin = None
+    }
+
     Ok(mod)
   }
 
@@ -2417,7 +2454,7 @@ export type Typechecker {
 
     self.currentScope = prevScope
 
-    val struct = Struct(moduleId: self.currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams)
+    val struct = Struct(moduleId: self.currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, builtin: self.typecheckingBuiltin)
     match self._addStructToScope(struct, isExported) { Ok(v) => v, Err(e) => return Err(e) }
 
     Ok(struct)
@@ -2619,7 +2656,7 @@ export type Typechecker {
 
     self.currentScope = prevScope
 
-    val enum_ = Enum(moduleId: self.currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams)
+    val enum_ = Enum(moduleId: self.currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, builtin: self.typecheckingBuiltin)
     match self._addEnumToScope(enum_, isExported) { Ok(v) => v, Err(e) => return Err(e) }
 
     Ok(enum_)
@@ -2805,10 +2842,11 @@ export type Typechecker {
 
     // --- Pass 1 for types, enums, and functions
 
+    val typecheckingPrelude = self.typecheckingBuiltin == Some(BuiltinModule.Prelude)
     val structsPass1: (Struct, TypeDeclarationNode)[] = []
     for node in typeDecls {
       val struct = match self._typecheckStructPass1(node) { Ok(v) => v, Err(e) => return Err(e) }
-      if self.currentModuleId == 0 {
+      if typecheckingPrelude {
         match struct.label.name {
           "Int" => self.project.preludeIntStruct = struct
           "Float" => self.project.preludeFloatStruct = struct
@@ -2826,9 +2864,10 @@ export type Typechecker {
     val enumsPass1: (Enum, EnumDeclarationNode)[] = []
     for node in enumDecls {
       val enum_ = match self._typecheckEnumPass1(node) { Ok(v) => v, Err(e) => return Err(e) }
-      if self.currentModuleId == 0 {
+      if typecheckingPrelude {
         match enum_.label.name {
           "Option" => self.project.preludeOptionEnum = enum_
+          // "Result" => self.project.preludeResultEnum = enum_
           _ => {}
         }
       }

@@ -408,7 +408,7 @@
               ],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 0, "name": "Option" },
+                "enum": { "moduleId": 2, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -439,7 +439,7 @@
             ],
             "returnType": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 0, "name": "Option" },
+              "enum": { "moduleId": 2, "name": "Option" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -482,7 +482,7 @@
               ],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 0, "name": "Option" },
+                "enum": { "moduleId": 2, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -500,7 +500,7 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 0, "name": "Option" },
+                    "enum": { "moduleId": 2, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -539,7 +539,7 @@
                         },
                         "type": {
                           "kind": "enumInstance",
-                          "enum": { "moduleId": 0, "name": "Option" },
+                          "enum": { "moduleId": 2, "name": "Option" },
                           "typeParams": [
                             {
                               "kind": "primitive",
@@ -559,7 +559,7 @@
                             },
                             "type": {
                               "kind": "enum",
-                              "enum": { "moduleId": 0, "name": "Option" }
+                              "enum": { "moduleId": 2, "name": "Option" }
                             },
                             "node": {
                               "kind": "identifier",
@@ -584,7 +584,7 @@
                         },
                         "type": {
                           "kind": "enumInstance",
-                          "enum": { "moduleId": 0, "name": "Option" },
+                          "enum": { "moduleId": 2, "name": "Option" },
                           "typeParams": [
                             {
                               "kind": "primitive",
@@ -1017,7 +1017,7 @@
               "parameters": [],
               "returnType": {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "struct": { "moduleId": 2, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -1040,7 +1040,7 @@
             "parameters": [],
             "returnType": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "struct": { "moduleId": 2, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -1064,7 +1064,7 @@
               "parameters": [],
               "returnType": {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "struct": { "moduleId": 2, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -1082,7 +1082,7 @@
                   },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 0, "name": "Array" },
+                    "struct": { "moduleId": 2, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -1127,11 +1127,11 @@
               "parameters": [],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 0, "name": "Option" },
+                "enum": { "moduleId": 2, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "instance",
-                    "struct": { "moduleId": 0, "name": "Array" },
+                    "struct": { "moduleId": 2, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -1156,11 +1156,11 @@
             "parameters": [],
             "returnType": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 0, "name": "Option" },
+              "enum": { "moduleId": 2, "name": "Option" },
               "typeParams": [
                 {
                   "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "struct": { "moduleId": 2, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -1186,11 +1186,11 @@
               "parameters": [],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 0, "name": "Option" },
+                "enum": { "moduleId": 2, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "instance",
-                    "struct": { "moduleId": 0, "name": "Array" },
+                    "struct": { "moduleId": 2, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -1210,11 +1210,11 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 0, "name": "Option" },
+                    "enum": { "moduleId": 2, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "instance",
-                        "struct": { "moduleId": 0, "name": "Array" },
+                        "struct": { "moduleId": 2, "name": "Array" },
                         "typeParams": [
                           {
                             "kind": "primitive",
@@ -1237,7 +1237,7 @@
                         },
                         "type": {
                           "kind": "instance",
-                          "struct": { "moduleId": 0, "name": "Array" },
+                          "struct": { "moduleId": 2, "name": "Array" },
                           "typeParams": [
                             {
                               "kind": "primitive",
@@ -1285,11 +1285,11 @@
               "parameters": [],
               "returnType": {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "struct": { "moduleId": 2, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 0, "name": "Option" },
+                    "enum": { "moduleId": 2, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -1314,11 +1314,11 @@
             "parameters": [],
             "returnType": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "struct": { "moduleId": 2, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 0, "name": "Option" },
+                  "enum": { "moduleId": 2, "name": "Option" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -1344,11 +1344,11 @@
               "parameters": [],
               "returnType": {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "struct": { "moduleId": 2, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 0, "name": "Option" },
+                    "enum": { "moduleId": 2, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -1368,11 +1368,11 @@
                   },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 0, "name": "Array" },
+                    "struct": { "moduleId": 2, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "enumInstance",
-                        "enum": { "moduleId": 0, "name": "Option" },
+                        "enum": { "moduleId": 2, "name": "Option" },
                         "typeParams": [
                           {
                             "kind": "primitive",
