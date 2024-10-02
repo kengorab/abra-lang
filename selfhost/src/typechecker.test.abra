@@ -6,7 +6,6 @@
 // the actual resulting binary; this results in a separate binary being compiled which is only used for
 // testing.
 
-import "fs" as fs
 import getAbsolutePath from "./utils"
 import ModuleLoader, Project, Typechecker, TypedModule from "./typechecker"
 import Jsonifier from "./typechecker_test_utils"

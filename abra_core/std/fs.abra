@@ -1,38 +1,38 @@
 import Pointer, Byte from "./_intrinsics"
 import "libc" as libc
 
-export enum ReadFileError {
+export enum FileIOError {
   CouldNotOpen(message: String)
   CouldNotClose(message: String)
   CouldNotSeek(message: String)
   CouldNotRead(message: String)
 }
 
-export func readFile(path: String): Result<String, ReadFileError> {
+export func readFile(path: String): Result<String, FileIOError> {
   val fd = libc.open(path._buffer, libc.O_RDONLY)
   if fd == -1 {
     val errMsg = _strerror(libc.errno())
-    return Err(error: ReadFileError.CouldNotOpen(message: errMsg))
+    return Err(error: FileIOError.CouldNotOpen(message: errMsg))
   }
 
   val len = libc.lseek(fd, 0, libc.SEEK_END)
   if len == -1 {
     val errMsg = _strerror(libc.errno())
-    return Err(error: ReadFileError.CouldNotSeek(message: errMsg))
+    return Err(error: FileIOError.CouldNotSeek(message: errMsg))
   }
   if libc.lseek(fd, 0, libc.SEEK_SET) == -1 {
     val errMsg = _strerror(libc.errno())
-    return Err(error: ReadFileError.CouldNotSeek(message: errMsg))
+    return Err(error: FileIOError.CouldNotSeek(message: errMsg))
   }
 
   val str = String.withLength(len)
   if libc.read(fd, str._buffer, len) == -1 {
     val errMsg = _strerror(libc.errno())
-    return Err(error: ReadFileError.CouldNotRead(message: errMsg))
+    return Err(error: FileIOError.CouldNotRead(message: errMsg))
   }
   if libc.close(fd) == -1 {
     val errMsg = _strerror(libc.errno())
-    return Err(error: ReadFileError.CouldNotClose(message: errMsg))
+    return Err(error: FileIOError.CouldNotClose(message: errMsg))
   }
 
   Ok(value: str)
@@ -48,11 +48,10 @@ export type File {
   _fd: Int
   accessMode: AccessMode
 
-  func close(self): Result<Int, ReadFileError> {
+  func close(self): Result<Int, FileIOError> {
     if libc.close(self._fd) == -1 {
       val errMsg = _strerror(libc.errno())
-      // TODO: change ReadFileError to FileError (?)
-      return Err(error: ReadFileError.CouldNotClose(message: errMsg))
+      return Err(error: FileIOError.CouldNotClose(message: errMsg))
     }
 
     Ok(self._fd)
@@ -64,13 +63,12 @@ export type File {
   }
 
   func writeln(self, str: String = "") {
-    // TODO: i can do better than this
-    self.write(str)
-    self.write("\n")
+    if !str.isEmpty() libc.write(self._fd, str._buffer, str.length)
+    libc.write(self._fd, "\n"._buffer, 1)
   }
 }
 
-export func openFile(path: String, accessMode: AccessMode): Result<File, ReadFileError> {
+export func openFile(path: String, accessMode: AccessMode): Result<File, FileIOError> {
   val oflag = match accessMode {
     AccessMode.ReadOnly => libc.O_RDONLY
     AccessMode.WriteOnly => libc.O_WRONLY
@@ -79,7 +77,7 @@ export func openFile(path: String, accessMode: AccessMode): Result<File, ReadFil
   val fd = libc.open(path._buffer, oflag)
   if fd == -1 {
     val errMsg = _strerror(libc.errno())
-    return Err(error: ReadFileError.CouldNotOpen(message: errMsg))
+    return Err(error: FileIOError.CouldNotOpen(message: errMsg))
   }
 
   Ok(File(_fd: fd, accessMode: accessMode))
