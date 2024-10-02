@@ -837,7 +837,34 @@ export type Compiler {
               val res = match self._currentFn.block.buildCallRaw("pow", QbeType.F64, [leftVal, rightVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
               Ok(res)
             } else {
-              todo("compiling binary expression for floats: Pow", node.token.position)
+              // if a < 0 { -(-a ** b) } else { a ** b }
+              if !self._typeIsFloat(left.ty)
+                leftVal = self._currentFn.block.buildLToF(leftVal)
+              if !self._typeIsFloat(right.ty)
+                rightVal = self._currentFn.block.buildLToF(rightVal)
+
+              val labelThen = self._currentFn.block.addLabel("fpow_l_neg")
+              val labelElse = self._currentFn.block.addLabel("fpow_l_pos")
+              val labelCont = self._currentFn.block.addLabel("fpow_cont")
+              val cond = match self._currentFn.block.buildCompareLt(leftVal, Value.Float(0.0)) { Ok(v) => v, Err(e) => return qbeError(e) }
+              self._currentFn.block.buildJnz(cond, labelThen, labelElse)
+
+              self._currentFn.block.registerLabel(labelThen)
+              val leftValNeg = match self._currentFn.block.buildMul(leftVal, Value.Float(-1.0)) { Ok(v) => v, Err(e) => return qbeError(e) }
+              val thenValNeg = match self._currentFn.block.buildCallRaw("pow", QbeType.F64, [leftValNeg, rightVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
+              val thenVal = match self._currentFn.block.buildMul(thenValNeg, Value.Float(-1.0)) { Ok(v) => v, Err(e) => return qbeError(e) }
+              self._currentFn.block.buildJmp(labelCont)
+
+              self._currentFn.block.registerLabel(labelElse)
+              val elseVal = match self._currentFn.block.buildCallRaw("pow", QbeType.F64, [leftVal, rightVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
+              self._currentFn.block.buildJmp(labelCont)
+
+              self._currentFn.block.registerLabel(labelCont)
+
+              val phiCases = [(labelThen, thenVal), (labelElse, elseVal)]
+              val res = match self._currentFn.block.buildPhi(phiCases) { Ok(v) => v, Err(e) => return qbeError(e) }
+
+              Ok(res)
             }
           }
           BinaryOp.And => {
