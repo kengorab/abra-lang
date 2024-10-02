@@ -10,14 +10,13 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
       "node": {
         "kind": "typeDeclaration",
         "struct": {
-          "moduleId": 1,
+          "moduleId": 3,
           "name": { "name": "Foo", "position": [1, 6] },
           "typeParams": [
             "T"
@@ -26,20 +25,17 @@
             {
               "name": { "name": "fn", "position": [1, 15] },
               "type": {
-                "nullable": false,
                 "kind": "function",
                 "parameters": [
                   {
                     "required": true,
                     "type": {
-                      "nullable": false,
                       "kind": "generic",
                       "name": "T"
                     }
                   }
                 ],
                 "returnType": {
-                  "nullable": false,
                   "kind": "generic",
                   "name": "T"
                 }
@@ -51,7 +47,7 @@
             {
               "label": { "name": "toString", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_1::Foo::toString",
+                "name": "$root::module_3::Foo::toString",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -61,7 +57,6 @@
               "typeParameters": [],
               "parameters": [],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "String"
               },
@@ -70,7 +65,7 @@
             {
               "label": { "name": "hash", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_1::Foo::hash",
+                "name": "$root::module_3::Foo::hash",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -80,7 +75,6 @@
               "typeParameters": [],
               "parameters": [],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -89,7 +83,7 @@
             {
               "label": { "name": "eq", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_1::Foo::eq",
+                "name": "$root::module_3::Foo::eq",
                 "variables": [],
                 "functions": [],
                 "types": []
@@ -101,17 +95,20 @@
                 {
                   "label": { "name": "other", "position": [0, 0] },
                   "type": {
-                    "nullable": false,
                     "kind": "instance",
-                    "struct": { "moduleId": 1, "name": "Foo" },
-                    "typeParams": []
+                    "struct": { "moduleId": 3, "name": "Foo" },
+                    "typeParams": [
+                      {
+                        "kind": "generic",
+                        "name": "T"
+                      }
+                    ]
                   },
                   "defaultValue": null,
                   "isVariadic": false
                 }
               ],
               "returnType": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Bool"
               },
@@ -130,7 +127,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -139,13 +135,12 @@
         "function": {
           "label": { "name": "identity", "position": [3, 6] },
           "scope": {
-            "name": "$root::module_1::identity",
+            "name": "$root::module_3::identity",
             "variables": [
               {
                 "label": { "name": "i", "position": [3, 15] },
                 "mutable": false,
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -160,7 +155,6 @@
             {
               "label": { "name": "i", "position": [3, 15] },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -169,7 +163,6 @@
             }
           ],
           "returnType": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },
@@ -183,7 +176,6 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               },
@@ -204,7 +196,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -219,12 +210,10 @@
             "label": { "name": "f", "position": [5, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "instance",
-              "struct": { "moduleId": 1, "name": "Foo" },
+              "struct": { "moduleId": 3, "name": "Foo" },
               "typeParams": [
                 {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -240,12 +229,10 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "instance",
-            "struct": { "moduleId": 1, "name": "Foo" },
+            "struct": { "moduleId": 3, "name": "Foo" },
             "typeParams": [
               {
-                "nullable": false,
                 "kind": "primitive",
                 "primitive": "Int"
               }
@@ -253,7 +240,7 @@
           },
           "node": {
             "kind": "invocation",
-            "invokee": { "moduleId": 1, "name": "Foo" },
+            "invokee": { "moduleId": 3, "name": "Foo" },
             "arguments": [
               {
                 "token": {
@@ -264,20 +251,17 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "function",
                   "parameters": [
                     {
                       "required": true,
                       "type": {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       }
                     }
                   ],
                   "returnType": {
-                    "nullable": false,
                     "kind": "primitive",
                     "primitive": "Int"
                   }
@@ -300,7 +284,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -315,7 +298,6 @@
             "label": { "name": "int", "position": [6, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -329,7 +311,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },
@@ -343,20 +324,17 @@
                 }
               },
               "type": {
-                "nullable": false,
                 "kind": "function",
                 "parameters": [
                   {
                     "required": true,
                     "type": {
-                      "nullable": false,
                       "kind": "primitive",
                       "primitive": "Int"
                     }
                   }
                 ],
                 "returnType": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 }
@@ -372,12 +350,10 @@
                     }
                   },
                   "type": {
-                    "nullable": false,
                     "kind": "instance",
-                    "struct": { "moduleId": 1, "name": "Foo" },
+                    "struct": { "moduleId": 3, "name": "Foo" },
                     "typeParams": [
                       {
-                        "nullable": false,
                         "kind": "primitive",
                         "primitive": "Int"
                       }
@@ -391,7 +367,23 @@
                 "middle": [],
                 "tail": {
                   "kind": "field",
-                  "name": "fn"
+                  "name": "fn",
+                  "type": {
+                    "kind": "function",
+                    "parameters": [
+                      {
+                        "required": true,
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      }
+                    ],
+                    "returnType": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  }
                 }
               }
             },
@@ -405,7 +397,6 @@
                   }
                 },
                 "type": {
-                  "nullable": false,
                   "kind": "primitive",
                   "primitive": "Int"
                 },
@@ -427,7 +418,6 @@
         }
       },
       "type": {
-        "nullable": false,
         "kind": "primitive",
         "primitive": "Unit"
       },
@@ -442,7 +432,6 @@
             "label": { "name": "_", "position": [7, 5] },
             "mutable": false,
             "type": {
-              "nullable": false,
               "kind": "primitive",
               "primitive": "Int"
             }
@@ -457,7 +446,6 @@
             }
           },
           "type": {
-            "nullable": false,
             "kind": "primitive",
             "primitive": "Int"
           },

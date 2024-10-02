@@ -25,7 +25,7 @@
                 "mutable": false,
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "struct": { "moduleId": 2, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -44,7 +44,7 @@
                       "required": true,
                       "type": {
                         "kind": "instance",
-                        "struct": { "moduleId": 0, "name": "Array" },
+                        "struct": { "moduleId": 2, "name": "Array" },
                         "typeParams": [
                           {
                             "kind": "primitive",
@@ -71,7 +71,7 @@
               "label": { "name": "a", "position": [2, 8] },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "struct": { "moduleId": 2, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -116,7 +116,7 @@
                           "required": true,
                           "type": {
                             "kind": "instance",
-                            "struct": { "moduleId": 0, "name": "Array" },
+                            "struct": { "moduleId": 2, "name": "Array" },
                             "typeParams": [
                               {
                                 "kind": "primitive",
@@ -148,7 +148,7 @@
                         "required": true,
                         "type": {
                           "kind": "instance",
-                          "struct": { "moduleId": 0, "name": "Array" },
+                          "struct": { "moduleId": 2, "name": "Array" },
                           "typeParams": [
                             {
                               "kind": "primitive",

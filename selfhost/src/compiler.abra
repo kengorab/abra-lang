@@ -1,7 +1,7 @@
 import "fs" as fs
 import Position from "./lexer"
 import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern, IndexingMode from "./parser"
-import Project, TypedModule, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCase, TypedMatchCaseKind from "./typechecker"
+import Project, TypedModule, Scope, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCase, TypedMatchCaseKind, BuiltinModule from "./typechecker"
 import ModuleBuilder, QbeType, Dest, QbeFunction, Value, Label, Callable, QbeData, QbeDataKind from "./qbe"
 
 type CompilationError {
@@ -181,7 +181,7 @@ export type Compiler {
   _tupleStructs: Map<String, Struct> = {}
   _functionStructs: Map<String, Struct> = {}
 
-  func compile(project: Project, entry: TypedModule): Result<ModuleBuilder, CompilationError> {
+  func compile(project: Project): Result<ModuleBuilder, CompilationError> {
     val builder = ModuleBuilder()
 
     val mainFn = builder.buildFunction(name: "main", returnType: Some(QbeType.U32), exported: true)
@@ -196,17 +196,22 @@ export type Compiler {
 
     mainFn.block.buildVoidCallRaw("GC_init", [])
 
-    val compiler = Compiler(_project: project, _builder: builder, _currentModule: entry, _currentFn: mainFn, _currentFunction: None, _currentNode: None, _argcPtr: argcPtr, _argvPtr: argvPtr)
+    val dummyMod = TypedModule(id: -1, name: "dummy", code: [], rootScope: Scope.bogus())
+    val compiler = Compiler(_project: project, _builder: builder, _currentModule: dummyMod, _currentFn: mainFn, _currentFunction: None, _currentNode: None, _argcPtr: argcPtr, _argvPtr: argvPtr)
 
-    val moduleFn = match compiler._compileModule(entry) { Ok(v) => v, Err(e) => {
-      // println(compiler._currentNode?.token)
-      return Err(CompilationError(modulePath: entry.name, error: e))
-    }}
+    val allModules = project.modules.values().sortBy(m => m.id)
+    for mod in allModules {
+      val moduleFn = match compiler._compileModule(mod) { Ok(v) => v, Err(e) => {
+        // println(compiler._currentNode?.token)
+        return Err(CompilationError(modulePath: mod.name, error: e))
+      }}
+      match moduleFn.block.verify() { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: mod.name, error: CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(e)))) }
+      mainFn.block.buildVoidCall(Callable.Function(moduleFn), [])
+    }
 
-    mainFn.block.buildVoidCall(Callable.Function(moduleFn), [])
     mainFn.block.buildReturn(Some(Value.Int(0)))
 
-    match mainFn.block.verify() { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: entry.name, error: CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(e)))) }
+    match mainFn.block.verify() { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: "<entrypoint>", error: CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(e)))) }
 
     Ok(builder)
   }
@@ -525,7 +530,11 @@ export type Compiler {
 
         if bindingDeclNode.expr |expr| {
           val res = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
-          if variable.isCaptured {
+          if variable.isExported {
+            val name = "mod${self._currentModule.id}exp_$slotName"
+            val slot = self._builder.addData(QbeData(name: name, kind: QbeDataKind.Constants([(varTy, varTy.zeroValue())])))
+            self._currentFn.block.buildStore(varTy, res, slot)
+          } else if variable.isCaptured {
             self._currentFn.block.addComment("move captured '${variable.label.name}' to heap")
             val size = varTy.size()
             val heapMem = match self._currentFn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
@@ -973,7 +982,7 @@ export type Compiler {
         }
       }
       TypedAstNodeKind.Grouped(inner) => self._compileExpression(inner, resultLocalName)
-      TypedAstNodeKind.Identifier(name, variable, fnAliasTypeHint) => {
+      TypedAstNodeKind.Identifier(name, variable, fnAliasTypeHint, varImportModule) => {
         // If a variable is function parameter, it can just be referenced by name as a temporary/local, otherwise it can be obtained by
         // loading the value pointed to by the temporary/local with that name.
         // TODO: handle captured variables in closures, global variables, etc).
@@ -1010,7 +1019,12 @@ export type Compiler {
               self._compileFunctionValue(node.token.position, fn, fnValBase, targetParamTypes, capturesMem, None)
             }
             _ => {
-              if variable.isCaptured {
+              if varImportModule |mod| {
+                val name = "mod${mod.id}exp_$name.slot"
+                val slot = Value.Global(name, QbeType.Pointer)
+                val res = self._currentFn.block.buildLoad(varTy, slot)
+                Ok(res)
+              } else if variable.isCaptured {
                 val ptr = match self._getCapturedVarPtr(variable.label.name) { Ok(v) => v, Err(e) => return Err(e) }
                 self._currentFn.block.addComment("deref ptr to captured '${variable.label.name}'")
                 val res = self._currentFn.block.buildLoad(varTy, ptr)
@@ -2377,8 +2391,7 @@ export type Compiler {
             if struct == self._project.preludeIntStruct return Ok(Some(QbeType.U64))
             if struct == self._project.preludeFloatStruct return Ok(Some(QbeType.F64))
 
-            // moduleId == 1 -> "_intrinsics" module
-            if struct.moduleId == 1 {
+            if struct.builtin == Some(BuiltinModule.Intrinsics) {
               if struct.label.name == "Byte" return Ok(Some(QbeType.U64))
               if struct.label.name == "Pointer" return Ok(Some(QbeType.Pointer))
             }
@@ -2787,8 +2800,7 @@ export type Compiler {
       TypeKind.Instance(structOrEnum, generics) => {
         match structOrEnum {
           StructOrEnum.Struct(struct) => {
-            // moduleId == 1 -> "_intrinsics" module
-            if struct.moduleId == 1 && struct.label.name == "Byte" 1 else 8
+            if struct.builtin == Some(BuiltinModule.Intrinsics) && struct.label.name == "Byte" 1 else 8
           }
           _ => 8
         }
@@ -2934,7 +2946,7 @@ export type Compiler {
         val isByte = match innerTy.kind {
           TypeKind.Instance(structOrEnum, _) => {
             val r = match structOrEnum {
-              StructOrEnum.Struct(struct) => struct.moduleId == 1 && struct.label.name == "Byte"
+              StructOrEnum.Struct(struct) => struct.builtin == Some(BuiltinModule.Intrinsics) && struct.label.name == "Byte"
               _ => false
             }
             r

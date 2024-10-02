@@ -1,172 +1,6 @@
 [
   {
     "id": 3,
-    "name": "%TEST_DIR%/typechecker/import/import_type_identifier.1.abra",
-    "code": [
-      {
-        "token": {
-          "position": [3, 1],
-          "kind": {
-            "name": "Val"
-          }
-        },
-        "type": {
-          "kind": "primitive",
-          "primitive": "Unit"
-        },
-        "node": {
-          "kind": "bindingDeclaration",
-          "pattern": {
-            "kind": "variable",
-            "label": { "name": "_", "position": [3, 5] }
-          },
-          "variables": [
-            {
-              "label": { "name": "_", "position": [3, 5] },
-              "mutable": false,
-              "type": {
-                "kind": "enumInstance",
-                "enum": { "moduleId": 0, "name": "Option" },
-                "typeParams": [
-                  {
-                    "kind": "instance",
-                    "struct": { "moduleId": 4, "name": "Foo" },
-                    "typeParams": []
-                  }
-                ]
-              }
-            }
-          ],
-          "expr": {
-            "token": {
-              "position": [3, 15],
-              "kind": {
-                "name": "None"
-              }
-            },
-            "type": {
-              "kind": "enumInstance",
-              "enum": { "moduleId": 0, "name": "Option" },
-              "typeParams": [
-                {
-                  "kind": "instance",
-                  "struct": { "moduleId": 4, "name": "Foo" },
-                  "typeParams": []
-                }
-              ]
-            },
-            "node": {
-              "kind": "accessor",
-              "head": {
-                "token": {
-                  "position": [3, 15],
-                  "kind": {
-                    "name": "Ident",
-                    "value": "Option"
-                  }
-                },
-                "type": {
-                  "kind": "enum",
-                  "enum": { "moduleId": 0, "name": "Option" }
-                },
-                "node": {
-                  "kind": "identifier",
-                  "name": "Option"
-                }
-              },
-              "middle": [],
-              "tail": {
-                "kind": "enumVariant",
-                "name": "Option.None"
-              }
-            }
-          }
-        }
-      },
-      {
-        "token": {
-          "position": [4, 1],
-          "kind": {
-            "name": "Val"
-          }
-        },
-        "type": {
-          "kind": "primitive",
-          "primitive": "Unit"
-        },
-        "node": {
-          "kind": "bindingDeclaration",
-          "pattern": {
-            "kind": "variable",
-            "label": { "name": "_", "position": [4, 5] }
-          },
-          "variables": [
-            {
-              "label": { "name": "_", "position": [4, 5] },
-              "mutable": false,
-              "type": {
-                "kind": "enumInstance",
-                "enum": { "moduleId": 0, "name": "Option" },
-                "typeParams": [
-                  {
-                    "kind": "enumInstance",
-                    "enum": { "moduleId": 4, "name": "Color" },
-                    "typeParams": []
-                  }
-                ]
-              }
-            }
-          ],
-          "expr": {
-            "token": {
-              "position": [4, 17],
-              "kind": {
-                "name": "None"
-              }
-            },
-            "type": {
-              "kind": "enumInstance",
-              "enum": { "moduleId": 0, "name": "Option" },
-              "typeParams": [
-                {
-                  "kind": "enumInstance",
-                  "enum": { "moduleId": 4, "name": "Color" },
-                  "typeParams": []
-                }
-              ]
-            },
-            "node": {
-              "kind": "accessor",
-              "head": {
-                "token": {
-                  "position": [4, 17],
-                  "kind": {
-                    "name": "Ident",
-                    "value": "Option"
-                  }
-                },
-                "type": {
-                  "kind": "enum",
-                  "enum": { "moduleId": 0, "name": "Option" }
-                },
-                "node": {
-                  "kind": "identifier",
-                  "name": "Option"
-                }
-              },
-              "middle": [],
-              "tail": {
-                "kind": "enumVariant",
-                "name": "Option.None"
-              }
-            }
-          }
-        }
-      }
-    ]
-  },
-  {
-    "id": 4,
     "name": "%TEST_DIR%/typechecker/import/_exports.abra",
     "exports": [
       {
@@ -253,7 +87,7 @@
           "function": {
             "label": { "name": "add", "position": [3, 13] },
             "scope": {
-              "name": "$root::module_4::add",
+              "name": "$root::module_3::add",
               "variables": [
                 {
                   "label": { "name": "a", "position": [3, 17] },
@@ -370,7 +204,7 @@
         "node": {
           "kind": "typeDeclaration",
           "struct": {
-            "moduleId": 4,
+            "moduleId": 3,
             "name": { "name": "Foo", "position": [5, 13] },
             "typeParams": [],
             "fields": [
@@ -378,7 +212,7 @@
                 "name": { "name": "color", "position": [6, 3] },
                 "type": {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 4, "name": "Color" },
+                  "enum": { "moduleId": 3, "name": "Color" },
                   "typeParams": []
                 },
                 "initializer": null
@@ -388,7 +222,7 @@
               {
                 "label": { "name": "toString", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_4::Foo::toString",
+                  "name": "$root::module_3::Foo::toString",
                   "variables": [],
                   "functions": [],
                   "types": []
@@ -406,7 +240,7 @@
               {
                 "label": { "name": "hash", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_4::Foo::hash",
+                  "name": "$root::module_3::Foo::hash",
                   "variables": [],
                   "functions": [],
                   "types": []
@@ -424,7 +258,7 @@
               {
                 "label": { "name": "eq", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_4::Foo::eq",
+                  "name": "$root::module_3::Foo::eq",
                   "variables": [],
                   "functions": [],
                   "types": []
@@ -437,7 +271,7 @@
                     "label": { "name": "other", "position": [0, 0] },
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 4, "name": "Foo" },
+                      "struct": { "moduleId": 3, "name": "Foo" },
                       "typeParams": []
                     },
                     "defaultValue": null,
@@ -453,14 +287,14 @@
               {
                 "label": { "name": "foo", "position": [8, 8] },
                 "scope": {
-                  "name": "$root::module_4::Foo::foo",
+                  "name": "$root::module_3::Foo::foo",
                   "variables": [
                     {
                       "label": { "name": "self", "position": [8, 12] },
                       "mutable": false,
                       "type": {
                         "kind": "instance",
-                        "struct": { "moduleId": 4, "name": "Foo" },
+                        "struct": { "moduleId": 3, "name": "Foo" },
                         "typeParams": []
                       }
                     }
@@ -523,7 +357,7 @@
               "mutable": false,
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 4, "name": "Foo" },
+                "struct": { "moduleId": 3, "name": "Foo" },
                 "typeParams": []
               }
             }
@@ -537,12 +371,12 @@
             },
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 4, "name": "Foo" },
+              "struct": { "moduleId": 3, "name": "Foo" },
               "typeParams": []
             },
             "node": {
               "kind": "invocation",
-              "invokee": { "moduleId": 4, "name": "Foo" },
+              "invokee": { "moduleId": 3, "name": "Foo" },
               "arguments": [
                 {
                   "token": {
@@ -553,7 +387,7 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 4, "name": "Color" },
+                    "enum": { "moduleId": 3, "name": "Color" },
                     "typeParams": []
                   },
                   "node": {
@@ -568,7 +402,7 @@
                       },
                       "type": {
                         "kind": "enum",
-                        "enum": { "moduleId": 4, "name": "Color" }
+                        "enum": { "moduleId": 3, "name": "Color" }
                       },
                       "node": {
                         "kind": "identifier",
@@ -601,7 +435,7 @@
         "node": {
           "kind": "enumDeclaration",
           "enum": {
-            "moduleId": 4,
+            "moduleId": 3,
             "name": { "name": "Color", "position": [12, 13] },
             "typeParams": [],
             "variants": [
@@ -652,7 +486,7 @@
               {
                 "label": { "name": "toString", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_4::Color::toString",
+                  "name": "$root::module_3::Color::toString",
                   "variables": [],
                   "functions": [],
                   "types": []
@@ -670,7 +504,7 @@
               {
                 "label": { "name": "hash", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_4::Color::hash",
+                  "name": "$root::module_3::Color::hash",
                   "variables": [],
                   "functions": [],
                   "types": []
@@ -688,7 +522,7 @@
               {
                 "label": { "name": "eq", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_4::Color::eq",
+                  "name": "$root::module_3::Color::eq",
                   "variables": [],
                   "functions": [],
                   "types": []
@@ -701,7 +535,7 @@
                     "label": { "name": "other", "position": [0, 0] },
                     "type": {
                       "kind": "enumInstance",
-                      "enum": { "moduleId": 4, "name": "Color" },
+                      "enum": { "moduleId": 3, "name": "Color" },
                       "typeParams": []
                     },
                     "defaultValue": null,
@@ -716,6 +550,172 @@
               }
             ],
             "staticMethods": []
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "name": "%TEST_DIR%/typechecker/import/import_type_identifier.1.abra",
+    "code": [
+      {
+        "token": {
+          "position": [3, 1],
+          "kind": {
+            "name": "Val"
+          }
+        },
+        "type": {
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "bindingDeclaration",
+          "pattern": {
+            "kind": "variable",
+            "label": { "name": "_", "position": [3, 5] }
+          },
+          "variables": [
+            {
+              "label": { "name": "_", "position": [3, 5] },
+              "mutable": false,
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 2, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "instance",
+                    "struct": { "moduleId": 3, "name": "Foo" },
+                    "typeParams": []
+                  }
+                ]
+              }
+            }
+          ],
+          "expr": {
+            "token": {
+              "position": [3, 15],
+              "kind": {
+                "name": "None"
+              }
+            },
+            "type": {
+              "kind": "enumInstance",
+              "enum": { "moduleId": 2, "name": "Option" },
+              "typeParams": [
+                {
+                  "kind": "instance",
+                  "struct": { "moduleId": 3, "name": "Foo" },
+                  "typeParams": []
+                }
+              ]
+            },
+            "node": {
+              "kind": "accessor",
+              "head": {
+                "token": {
+                  "position": [3, 15],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "Option"
+                  }
+                },
+                "type": {
+                  "kind": "enum",
+                  "enum": { "moduleId": 2, "name": "Option" }
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "Option"
+                }
+              },
+              "middle": [],
+              "tail": {
+                "kind": "enumVariant",
+                "name": "Option.None"
+              }
+            }
+          }
+        }
+      },
+      {
+        "token": {
+          "position": [4, 1],
+          "kind": {
+            "name": "Val"
+          }
+        },
+        "type": {
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "bindingDeclaration",
+          "pattern": {
+            "kind": "variable",
+            "label": { "name": "_", "position": [4, 5] }
+          },
+          "variables": [
+            {
+              "label": { "name": "_", "position": [4, 5] },
+              "mutable": false,
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 2, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 3, "name": "Color" },
+                    "typeParams": []
+                  }
+                ]
+              }
+            }
+          ],
+          "expr": {
+            "token": {
+              "position": [4, 17],
+              "kind": {
+                "name": "None"
+              }
+            },
+            "type": {
+              "kind": "enumInstance",
+              "enum": { "moduleId": 2, "name": "Option" },
+              "typeParams": [
+                {
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 3, "name": "Color" },
+                  "typeParams": []
+                }
+              ]
+            },
+            "node": {
+              "kind": "accessor",
+              "head": {
+                "token": {
+                  "position": [4, 17],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "Option"
+                  }
+                },
+                "type": {
+                  "kind": "enum",
+                  "enum": { "moduleId": 2, "name": "Option" }
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "Option"
+                }
+              },
+              "middle": [],
+              "tail": {
+                "kind": "enumVariant",
+                "name": "Option.None"
+              }
+            }
           }
         }
       }

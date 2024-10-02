@@ -1,4 +1,9 @@
-import "fs" as fs
+// import abc from "./example2"
+// // import "./example2" as ex2
 
-val res = fs.readFile("asdf")
-println(res)
+// println(abc)
+
+val arr: Int[] = []
+arr.push(1)
+
+println(arr)

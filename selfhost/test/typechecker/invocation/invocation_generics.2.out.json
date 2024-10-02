@@ -25,7 +25,7 @@
                 "mutable": false,
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "struct": { "moduleId": 2, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -58,7 +58,7 @@
               "label": { "name": "t", "position": [1, 14] },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "struct": { "moduleId": 2, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "generic",
@@ -72,7 +72,7 @@
           ],
           "returnType": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "struct": { "moduleId": 2, "name": "Array" },
             "typeParams": [
               {
                 "kind": "generic",
@@ -91,7 +91,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "struct": { "moduleId": 2, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "generic",
@@ -131,7 +131,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "struct": { "moduleId": 2, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -150,7 +150,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "struct": { "moduleId": 2, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -169,7 +169,7 @@
                     "required": true,
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 0, "name": "Array" },
+                      "struct": { "moduleId": 2, "name": "Array" },
                       "typeParams": [
                         {
                           "kind": "generic",
@@ -181,7 +181,7 @@
                 ],
                 "returnType": {
                   "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "struct": { "moduleId": 2, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -201,7 +201,7 @@
                 },
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "struct": { "moduleId": 2, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -260,7 +260,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "struct": { "moduleId": 2, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -280,7 +280,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "struct": { "moduleId": 2, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -318,7 +318,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "struct": { "moduleId": 2, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -337,7 +337,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "struct": { "moduleId": 2, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -356,7 +356,7 @@
                     "required": true,
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 0, "name": "Array" },
+                      "struct": { "moduleId": 2, "name": "Array" },
                       "typeParams": [
                         {
                           "kind": "generic",
@@ -368,7 +368,7 @@
                 ],
                 "returnType": {
                   "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "struct": { "moduleId": 2, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -388,7 +388,7 @@
                 },
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "struct": { "moduleId": 2, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -447,7 +447,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "struct": { "moduleId": 2, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -467,7 +467,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "struct": { "moduleId": 2, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -540,7 +540,7 @@
           ],
           "returnType": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "struct": { "moduleId": 2, "name": "Array" },
             "typeParams": [
               {
                 "kind": "generic",
@@ -558,7 +558,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "struct": { "moduleId": 2, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "generic",
@@ -616,7 +616,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "struct": { "moduleId": 2, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -635,7 +635,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "struct": { "moduleId": 2, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -660,7 +660,7 @@
                 ],
                 "returnType": {
                   "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "struct": { "moduleId": 2, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -716,7 +716,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "struct": { "moduleId": 2, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -736,7 +736,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "struct": { "moduleId": 2, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -774,7 +774,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "struct": { "moduleId": 2, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -793,7 +793,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "struct": { "moduleId": 2, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -818,7 +818,7 @@
                 ],
                 "returnType": {
                   "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "struct": { "moduleId": 2, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -874,7 +874,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "struct": { "moduleId": 2, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -894,7 +894,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "struct": { "moduleId": 2, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",

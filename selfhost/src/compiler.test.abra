@@ -30,15 +30,15 @@ func main() {
     val project = Project()
     val typechecker = Typechecker(moduleLoader: moduleLoader, project: project)
 
-    val entryMod = match typechecker.typecheckEntrypoint(filePathAbs) {
+    match typechecker.typecheckEntrypoint(filePathAbs) {
       Err(e) => {
         println(e.getMessage())
         return
       }
-      Ok(mod) => mod
+      Ok(_) => {}
     }
 
-    val builder = match Compiler.compile(project, entryMod) {
+    val builder = match Compiler.compile(project) {
       Ok(v) => v
       Err(e) => {
         println(e.getMessage())

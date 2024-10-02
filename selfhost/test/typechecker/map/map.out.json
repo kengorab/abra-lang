@@ -11,7 +11,7 @@
       },
       "type": {
         "kind": "instance",
-        "struct": { "moduleId": 0, "name": "Map" },
+        "struct": { "moduleId": 2, "name": "Map" },
         "typeParams": [
           {
             "kind": "primitive",
@@ -110,7 +110,7 @@
       },
       "type": {
         "kind": "instance",
-        "struct": { "moduleId": 0, "name": "Map" },
+        "struct": { "moduleId": 2, "name": "Map" },
         "typeParams": [
           {
             "kind": "primitive",
@@ -118,7 +118,7 @@
           },
           {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Map" },
+            "struct": { "moduleId": 2, "name": "Map" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -126,7 +126,7 @@
               },
               {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "struct": { "moduleId": 2, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -168,7 +168,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Map" },
+                "struct": { "moduleId": 2, "name": "Map" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -176,7 +176,7 @@
                   },
                   {
                     "kind": "instance",
-                    "struct": { "moduleId": 0, "name": "Array" },
+                    "struct": { "moduleId": 2, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -216,7 +216,7 @@
                       },
                       "type": {
                         "kind": "instance",
-                        "struct": { "moduleId": 0, "name": "Array" },
+                        "struct": { "moduleId": 2, "name": "Array" },
                         "typeParams": [
                           {
                             "kind": "primitive",
@@ -296,7 +296,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Map" },
+                "struct": { "moduleId": 2, "name": "Map" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -304,7 +304,7 @@
                   },
                   {
                     "kind": "instance",
-                    "struct": { "moduleId": 0, "name": "Array" },
+                    "struct": { "moduleId": 2, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -332,7 +332,7 @@
       },
       "type": {
         "kind": "instance",
-        "struct": { "moduleId": 0, "name": "Map" },
+        "struct": { "moduleId": 2, "name": "Map" },
         "typeParams": [
           {
             "kind": "primitive",
@@ -340,7 +340,7 @@
           },
           {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Map" },
+            "struct": { "moduleId": 2, "name": "Map" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -348,7 +348,7 @@
               },
               {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "struct": { "moduleId": 2, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -390,7 +390,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Map" },
+                "struct": { "moduleId": 2, "name": "Map" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -398,7 +398,7 @@
                   },
                   {
                     "kind": "instance",
-                    "struct": { "moduleId": 0, "name": "Array" },
+                    "struct": { "moduleId": 2, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -441,7 +441,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Map" },
+                "struct": { "moduleId": 2, "name": "Map" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -449,7 +449,7 @@
                   },
                   {
                     "kind": "instance",
-                    "struct": { "moduleId": 0, "name": "Array" },
+                    "struct": { "moduleId": 2, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -489,7 +489,7 @@
                       },
                       "type": {
                         "kind": "instance",
-                        "struct": { "moduleId": 0, "name": "Array" },
+                        "struct": { "moduleId": 2, "name": "Array" },
                         "typeParams": [
                           {
                             "kind": "primitive",
@@ -568,7 +568,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Map" },
+              "struct": { "moduleId": 2, "name": "Map" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -591,7 +591,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Map" },
+            "struct": { "moduleId": 2, "name": "Map" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -633,7 +633,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Map" },
+              "struct": { "moduleId": 2, "name": "Map" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -656,7 +656,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Map" },
+            "struct": { "moduleId": 2, "name": "Map" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -735,11 +735,11 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Map" },
+              "struct": { "moduleId": 2, "name": "Map" },
               "typeParams": [
                 {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 0, "name": "Option" },
+                  "enum": { "moduleId": 2, "name": "Option" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -764,11 +764,11 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Map" },
+            "struct": { "moduleId": 2, "name": "Map" },
             "typeParams": [
               {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 0, "name": "Option" },
+                "enum": { "moduleId": 2, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -812,11 +812,11 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Map" },
+              "struct": { "moduleId": 2, "name": "Map" },
               "typeParams": [
                 {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 0, "name": "Option" },
+                  "enum": { "moduleId": 2, "name": "Option" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -841,11 +841,11 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Map" },
+            "struct": { "moduleId": 2, "name": "Map" },
             "typeParams": [
               {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 0, "name": "Option" },
+                "enum": { "moduleId": 2, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -872,7 +872,7 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 0, "name": "Option" },
+                    "enum": { "moduleId": 2, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -932,7 +932,7 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 0, "name": "Option" },
+                    "enum": { "moduleId": 2, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -952,7 +952,7 @@
                       },
                       "type": {
                         "kind": "enum",
-                        "enum": { "moduleId": 0, "name": "Option" }
+                        "enum": { "moduleId": 2, "name": "Option" }
                       },
                       "node": {
                         "kind": "identifier",
@@ -1012,11 +1012,11 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Map" },
+              "struct": { "moduleId": 2, "name": "Map" },
               "typeParams": [
                 {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 0, "name": "Option" },
+                  "enum": { "moduleId": 2, "name": "Option" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -1026,11 +1026,11 @@
                 },
                 {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 0, "name": "Option" },
+                  "enum": { "moduleId": 2, "name": "Option" },
                   "typeParams": [
                     {
                       "kind": "instance",
-                      "struct": { "moduleId": 0, "name": "Array" },
+                      "struct": { "moduleId": 2, "name": "Array" },
                       "typeParams": [
                         {
                           "kind": "primitive",
@@ -1053,11 +1053,11 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Map" },
+            "struct": { "moduleId": 2, "name": "Map" },
             "typeParams": [
               {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 0, "name": "Option" },
+                "enum": { "moduleId": 2, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -1067,11 +1067,11 @@
               },
               {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 0, "name": "Option" },
+                "enum": { "moduleId": 2, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "instance",
-                    "struct": { "moduleId": 0, "name": "Array" },
+                    "struct": { "moduleId": 2, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -1096,7 +1096,7 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 0, "name": "Option" },
+                    "enum": { "moduleId": 2, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -1137,11 +1137,11 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 0, "name": "Option" },
+                    "enum": { "moduleId": 2, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "instance",
-                        "struct": { "moduleId": 0, "name": "Array" },
+                        "struct": { "moduleId": 2, "name": "Array" },
                         "typeParams": [
                           {
                             "kind": "primitive",
@@ -1164,7 +1164,7 @@
                         },
                         "type": {
                           "kind": "instance",
-                          "struct": { "moduleId": 0, "name": "Array" },
+                          "struct": { "moduleId": 2, "name": "Array" },
                           "typeParams": [
                             {
                               "kind": "primitive",
@@ -1191,7 +1191,7 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 0, "name": "Option" },
+                    "enum": { "moduleId": 2, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -1211,7 +1211,7 @@
                       },
                       "type": {
                         "kind": "enum",
-                        "enum": { "moduleId": 0, "name": "Option" }
+                        "enum": { "moduleId": 2, "name": "Option" }
                       },
                       "node": {
                         "kind": "identifier",
@@ -1234,11 +1234,11 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 0, "name": "Option" },
+                    "enum": { "moduleId": 2, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "instance",
-                        "struct": { "moduleId": 0, "name": "Array" },
+                        "struct": { "moduleId": 2, "name": "Array" },
                         "typeParams": [
                           {
                             "kind": "primitive",
@@ -1260,7 +1260,7 @@
                       },
                       "type": {
                         "kind": "enum",
-                        "enum": { "moduleId": 0, "name": "Option" }
+                        "enum": { "moduleId": 2, "name": "Option" }
                       },
                       "node": {
                         "kind": "identifier",
@@ -1285,7 +1285,7 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 0, "name": "Option" },
+                    "enum": { "moduleId": 2, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -1326,11 +1326,11 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 0, "name": "Option" },
+                    "enum": { "moduleId": 2, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "instance",
-                        "struct": { "moduleId": 0, "name": "Array" },
+                        "struct": { "moduleId": 2, "name": "Array" },
                         "typeParams": [
                           {
                             "kind": "primitive",
@@ -1353,7 +1353,7 @@
                         },
                         "type": {
                           "kind": "instance",
-                          "struct": { "moduleId": 0, "name": "Array" },
+                          "struct": { "moduleId": 2, "name": "Array" },
                           "typeParams": [
                             {
                               "kind": "primitive",
@@ -1433,11 +1433,11 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Map" },
+              "struct": { "moduleId": 2, "name": "Map" },
               "typeParams": [
                 {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 0, "name": "Option" },
+                  "enum": { "moduleId": 2, "name": "Option" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -1447,11 +1447,11 @@
                 },
                 {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 0, "name": "Option" },
+                  "enum": { "moduleId": 2, "name": "Option" },
                   "typeParams": [
                     {
                       "kind": "instance",
-                      "struct": { "moduleId": 0, "name": "Array" },
+                      "struct": { "moduleId": 2, "name": "Array" },
                       "typeParams": [
                         {
                           "kind": "primitive",
@@ -1475,11 +1475,11 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Map" },
+            "struct": { "moduleId": 2, "name": "Map" },
             "typeParams": [
               {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 0, "name": "Option" },
+                "enum": { "moduleId": 2, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -1489,11 +1489,11 @@
               },
               {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 0, "name": "Option" },
+                "enum": { "moduleId": 2, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "instance",
-                    "struct": { "moduleId": 0, "name": "Array" },
+                    "struct": { "moduleId": 2, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "primitive",

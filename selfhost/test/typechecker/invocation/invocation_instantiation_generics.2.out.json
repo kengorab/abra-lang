@@ -35,7 +35,7 @@
               "name": { "name": "u", "position": [3, 3] },
               "type": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 0, "name": "Option" },
+                "enum": { "moduleId": 2, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "generic",
@@ -52,7 +52,7 @@
                 },
                 "type": {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 0, "name": "Option" },
+                  "enum": { "moduleId": 2, "name": "Option" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -72,7 +72,7 @@
                     },
                     "type": {
                       "kind": "enum",
-                      "enum": { "moduleId": 0, "name": "Option" }
+                      "enum": { "moduleId": 2, "name": "Option" }
                     },
                     "node": {
                       "kind": "identifier",

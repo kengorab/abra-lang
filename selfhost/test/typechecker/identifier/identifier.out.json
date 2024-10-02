@@ -133,7 +133,7 @@
             "mutable": false,
             "type": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 0, "name": "Option" },
+              "enum": { "moduleId": 2, "name": "Option" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -152,7 +152,7 @@
           },
           "type": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 0, "name": "Option" },
+            "enum": { "moduleId": 2, "name": "Option" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -172,7 +172,7 @@
               },
               "type": {
                 "kind": "enum",
-                "enum": { "moduleId": 0, "name": "Option" }
+                "enum": { "moduleId": 2, "name": "Option" }
               },
               "node": {
                 "kind": "identifier",

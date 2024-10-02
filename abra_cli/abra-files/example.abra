@@ -51,4 +51,4 @@
 //  Some(123)
 //}
 //println(x)
-val x = None
+val x: Int? = None

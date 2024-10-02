@@ -30,7 +30,7 @@
                   "name": { "name": "a", "position": [2, 7] },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 0, "name": "Option" },
+                    "enum": { "moduleId": 2, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "generic",
@@ -177,7 +177,7 @@
                 },
                 "type": {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 0, "name": "Option" },
+                  "enum": { "moduleId": 2, "name": "Option" },
                   "typeParams": [
                     {
                       "kind": "primitive",

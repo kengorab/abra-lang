@@ -25,7 +25,7 @@
                 "mutable": false,
                 "type": {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 0, "name": "Result" },
+                  "enum": { "moduleId": 2, "name": "Result" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -57,7 +57,7 @@
               "label": { "name": "res", "position": [1, 13] },
               "type": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 0, "name": "Result" },
+                "enum": { "moduleId": 2, "name": "Result" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -75,7 +75,7 @@
           ],
           "returnType": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 0, "name": "Result" },
+            "enum": { "moduleId": 2, "name": "Result" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -139,7 +139,7 @@
                       },
                       "type": {
                         "kind": "enumInstance",
-                        "enum": { "moduleId": 0, "name": "Result" },
+                        "enum": { "moduleId": 2, "name": "Result" },
                         "typeParams": [
                           {
                             "kind": "primitive",
@@ -161,7 +161,7 @@
                         "kind": {
                           "kind": "enumVariant",
                           "variantIdx": 0,
-                          "enum": { "moduleId": 0, "name": "Result" },
+                          "enum": { "moduleId": 2, "name": "Result" },
                           "destructuredVariables": [
                             {
                               "label": { "name": "v", "position": [2, 26] },
@@ -198,7 +198,7 @@
                         "kind": {
                           "kind": "enumVariant",
                           "variantIdx": 1,
-                          "enum": { "moduleId": 0, "name": "Result" },
+                          "enum": { "moduleId": 2, "name": "Result" },
                           "destructuredVariables": [
                             {
                               "label": { "name": "e", "position": [2, 38] },
@@ -233,7 +233,7 @@
                                 },
                                 "type": {
                                   "kind": "enumInstance",
-                                  "enum": { "moduleId": 0, "name": "Result" },
+                                  "enum": { "moduleId": 2, "name": "Result" },
                                   "typeParams": [
                                     {
                                       "kind": "primitive",
@@ -262,7 +262,7 @@
                                       ],
                                       "returnType": {
                                         "kind": "enumInstance",
-                                        "enum": { "moduleId": 0, "name": "Result" },
+                                        "enum": { "moduleId": 2, "name": "Result" },
                                         "typeParams": [
                                           {
                                             "kind": "generic",
@@ -315,7 +315,7 @@
               },
               "type": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 0, "name": "Result" },
+                "enum": { "moduleId": 2, "name": "Result" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -344,7 +344,7 @@
                     ],
                     "returnType": {
                       "kind": "enumInstance",
-                      "enum": { "moduleId": 0, "name": "Result" },
+                      "enum": { "moduleId": 2, "name": "Result" },
                       "typeParams": [
                         {
                           "kind": "generic",

@@ -25,7 +25,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "struct": { "moduleId": 2, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -44,7 +44,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "struct": { "moduleId": 2, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -134,7 +134,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "struct": { "moduleId": 2, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -154,7 +154,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "struct": { "moduleId": 2, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -192,7 +192,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "struct": { "moduleId": 2, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -211,7 +211,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "struct": { "moduleId": 2, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -255,7 +255,7 @@
                 ],
                 "returnType": {
                   "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "struct": { "moduleId": 2, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -275,7 +275,7 @@
                 },
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "struct": { "moduleId": 2, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -432,7 +432,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 0, "name": "Array" },
+              "struct": { "moduleId": 2, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -452,7 +452,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "struct": { "moduleId": 2, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -490,7 +490,7 @@
                 "mutable": false,
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Set" },
+                  "struct": { "moduleId": 2, "name": "Set" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -544,7 +544,7 @@
               "label": { "name": "set", "position": [8, 17] },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Set" },
+                "struct": { "moduleId": 2, "name": "Set" },
                 "typeParams": [
                   {
                     "kind": "generic",
@@ -642,7 +642,7 @@
                     },
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 0, "name": "Map" },
+                      "struct": { "moduleId": 2, "name": "Map" },
                       "typeParams": [
                         {
                           "kind": "generic",
@@ -666,7 +666,7 @@
                         },
                         "type": {
                           "kind": "instance",
-                          "struct": { "moduleId": 0, "name": "Set" },
+                          "struct": { "moduleId": 2, "name": "Set" },
                           "typeParams": [
                             {
                               "kind": "generic",
@@ -685,7 +685,7 @@
                         "name": "_map",
                         "type": {
                           "kind": "instance",
-                          "struct": { "moduleId": 0, "name": "Map" },
+                          "struct": { "moduleId": 2, "name": "Map" },
                           "typeParams": [
                             {
                               "kind": "generic",
@@ -882,7 +882,7 @@
                 "mutable": false,
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "struct": { "moduleId": 2, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -917,7 +917,7 @@
                 "mutable": false,
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 0, "name": "Array" },
+                  "struct": { "moduleId": 2, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -961,7 +961,7 @@
               "label": { "name": "arr", "position": [11, 16] },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "struct": { "moduleId": 2, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "generic",
@@ -996,7 +996,7 @@
           ],
           "returnType": {
             "kind": "instance",
-            "struct": { "moduleId": 0, "name": "Array" },
+            "struct": { "moduleId": 2, "name": "Array" },
             "typeParams": [
               {
                 "kind": "generic",
@@ -1028,7 +1028,7 @@
                     "mutable": false,
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 0, "name": "Array" },
+                      "struct": { "moduleId": 2, "name": "Array" },
                       "typeParams": [
                         {
                           "kind": "generic",
@@ -1047,7 +1047,7 @@
                   },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 0, "name": "Array" },
+                    "struct": { "moduleId": 2, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "generic",
@@ -1091,7 +1091,7 @@
                         ],
                         "returnType": {
                           "kind": "instance",
-                          "struct": { "moduleId": 0, "name": "Array" },
+                          "struct": { "moduleId": 2, "name": "Array" },
                           "typeParams": [
                             {
                               "kind": "generic",
@@ -1111,7 +1111,7 @@
                         },
                         "type": {
                           "kind": "instance",
-                          "struct": { "moduleId": 0, "name": "Array" },
+                          "struct": { "moduleId": 2, "name": "Array" },
                           "typeParams": [
                             {
                               "kind": "generic",
@@ -1291,7 +1291,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 0, "name": "Array" },
+                "struct": { "moduleId": 2, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "generic",
