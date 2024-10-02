@@ -12,6 +12,6 @@ import "fs" as fs
   val cwd = fs.getCurrentWorkingDirectory()
   /// Expect: Result.Ok(value: "Test file to test fs module")
   println(fs.readFile(cwd + "/tests/_test_file.txt"))
-  /// Expect: Result.Err(error: ReadFileError.CouldNotOpen(message: "No such file or directory"))
+  /// Expect: Result.Err(error: FileIOError.CouldNotOpen(message: "No such file or directory"))
   println(fs.readFile(cwd + "/tests/_not_exist.txt"))
 })()
