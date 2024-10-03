@@ -713,7 +713,44 @@ export type Compiler {
         // TODO: destructuring
         Ok(_p[0])
       }
-      TypedAstNodeKind.StringInterpolation => todo("compiling string interpolation expression", node.token.position)
+      TypedAstNodeKind.StringInterpolation(exprs) => {
+        self._currentFn.block.addComment("begin string interpolation...")
+
+        val strVals: Value[] = []
+        var lenVal = Value.Int(0)
+        for item in exprs {
+          val itemVal = match self._compileExpression(item) { Ok(v) => v, Err(e) => return Err(e) }
+
+          val itemInstanceType = match self._addResolvedGenericsLayerForInstanceMethod(item.ty, "toString", item.token.position) { Ok(v) => v, Err(e) => return Err(e) }
+          val itemToStringFnVal = match self._getOrCompileToStringMethod(itemInstanceType) { Ok(v) => v, Err(e) => return Err(e) }
+          self._resolvedGenerics.popLayer()
+
+          val toStringVal = match self._currentFn.block.buildCall(Callable.Function(itemToStringFnVal), [itemVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
+          strVals.push(toStringVal)
+
+          val stringLength = self._currentFn.block.buildLoadL(toStringVal)
+          lenVal = match self._currentFn.block.buildAdd(lenVal, stringLength) { Ok(v) => v, Err(e) => return qbeError(e) }
+        }
+
+        val stringWithLengthFn = if self._project.preludeStringStruct.staticMethods.find(m => m.label.name == "withLength") |fn| fn else return unreachable("String.withLength must exist")
+        val stringWithLengthFnVal = match self._getOrCompileMethod(Type(kind: TypeKind.Type(StructOrEnum.Struct(self._project.preludeStringStruct))), stringWithLengthFn) { Ok(v) => v, Err(e) => return Err(e) }
+        val newString = match self._currentFn.block.buildCall(Callable.Function(stringWithLengthFnVal), [lenVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
+        var newBuffer = self._currentFn.block.buildLoadL(match self._currentFn.block.buildAdd(Value.Int(8), newString) { Ok(v) => v, Err(e) => return qbeError(e) })
+
+        for strVal, idx in strVals {
+          val strValLen = self._currentFn.block.buildLoadL(strVal)
+          val strValBuf = self._currentFn.block.buildLoadL(match self._currentFn.block.buildAdd(Value.Int(8), strVal) { Ok(v) => v, Err(e) => return qbeError(e) })
+
+          self._currentFn.block.buildVoidCall(Callable.Function(self._memcpy), [newBuffer, strValBuf, strValLen])
+          if idx != strVals.length {
+            newBuffer = match self._currentFn.block.buildAdd(newBuffer, strValLen) { Ok(v) => v, Err(e) => return qbeError(e) }
+          }
+        }
+
+        self._currentFn.block.addComment("...string interpolation end")
+
+        Ok(newString)
+      }
       TypedAstNodeKind.Unary(op, expr) => {
         match op {
           UnaryOp.Minus => {
@@ -1077,8 +1114,8 @@ export type Compiler {
           TypedInvokee.Function(fn) => {
             match self._resolvedGenerics.addLayer(fn.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: fn.label.name, message: e))) }
 
-            if fn.label.name == "println" {
-              val res = self._invokePrintln(arguments)
+            if fn.label.name == "println" || fn.label.name == "print" {
+              val res = self._invokePrint(arguments: arguments, withNewline: fn.label.name == "println")
               self._resolvedGenerics.popLayer()
               return res
             }
@@ -2751,16 +2788,17 @@ export type Compiler {
     Ok(fn)
   }
 
-  func _invokePrintln(self, arguments: TypedAstNode?[]): Result<Value, CompileError> {
-    self._currentFn.block.addComment("begin println...")
+  func _invokePrint(self, arguments: TypedAstNode?[], withNewline = false): Result<Value, CompileError> {
+    val fnName = if withNewline "println" else "print"
+    self._currentFn.block.addComment("begin $fnName...")
     val varargItems = if arguments[0] |node| {
       if node |node| {
         val items = match node.kind {
           TypedAstNodeKind.Array(items) => items
-          _ => return unreachable("`println` receives an array of its variadic arguments")
+          _ => return unreachable("`$fnName` receives an array of its variadic arguments")
         }
         items
-      } else return unreachable("`println` receives an array of its variadic arguments")
+      } else return unreachable("`$fnName` receives an array of its variadic arguments")
     } else []
 
     val stdoutWriteFn = if self._project.preludeScope.functions.find(fn => fn.label.name == "stdoutWrite") |fn| fn else return unreachable("`stdoutWrite` must exist in prelude")
@@ -2768,8 +2806,6 @@ export type Compiler {
 
     val space = self._builder.buildGlobalString(" ")
     val spaceStr = match self._constructString(space, Value.Int(1)) { Ok(v) => v, Err(e) => return Err(e) }
-    val newline = self._builder.buildGlobalString("\\n")
-    val newlineStr = match self._constructString(newline, Value.Int(1)) { Ok(v) => v, Err(e) => return Err(e) }
 
     for item, idx in varargItems {
       val itemVal = match self._compileExpression(item) { Ok(v) => v, Err(e) => return Err(e) }
@@ -2782,13 +2818,18 @@ export type Compiler {
 
       self._currentFn.block.buildVoidCall(Callable.Function(stdoutWriteFnVal), [toStringVal])
 
-      if idx == varargItems.length - 1 {
-        self._currentFn.block.buildVoidCall(Callable.Function(stdoutWriteFnVal), [newlineStr])
-      } else {
+      if idx != varargItems.length - 1 {
         self._currentFn.block.buildVoidCall(Callable.Function(stdoutWriteFnVal), [spaceStr])
       }
     }
-    self._currentFn.block.addComment("...println end")
+
+    if withNewline {
+      val newline = self._builder.buildGlobalString("\\n")
+      val newlineStr = match self._constructString(newline, Value.Int(1)) { Ok(v) => v, Err(e) => return Err(e) }
+      self._currentFn.block.buildVoidCall(Callable.Function(stdoutWriteFnVal), [newlineStr])
+    }
+
+    self._currentFn.block.addComment("...$fnName end")
 
     Ok(Value.Ident("bogus", QbeType.F32))
   }
