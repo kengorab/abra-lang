@@ -506,7 +506,7 @@ export type Lexer {
             }
           }
           val chunks = [initialChunk, StringInterpolationChunk.Interpolation(interpolatedTokens)]
-          interpolationChunks = Some(chunks)
+          interpolationChunks = Some(if interpolationChunks |existingChunks| { existingChunks.concat(chunks) } else { chunks })
           start = self._cursor
           startPos = self._curPos()
           continue

@@ -53,12 +53,12 @@ println("hello")
 //   println(s1 == { (1): "a", (2): "b" })
 })()
 
-// // Interpolation (also String#concat<T>(other: T, *others: Any[]))
-// (() => {
-//   val array = [1, 2, 3]
-//   /// Expect: length of [1, 2, 3] is 3
-//   println("length of $array is ${array.length}")
-// })()
+// Interpolation
+(() => {
+  val array = [1, 2, 3]
+  /// Expect: length of [1, 2, 3] is 3
+  println("length of $array is ${array.length}")
+})()
 
 // Indexing (also String#get(index: Int))
 (() => {

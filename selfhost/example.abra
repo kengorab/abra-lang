@@ -1,23 +1,10 @@
-// import abc from "./example2"
-// // import "./example2" as ex2
+val a = 123
+val b = [1, 2, 3]
 
-// println(abc)
+val s = "$a + ${b.length} = ${a + b.length}"
+// val s = "$a ${a + 1}!"
+println(s)
 
-/// Expect: 34.2968
-println(2 ** 5.1)
-/// Expect: 43.9864
-println(2.1 ** 5.1)
-/// Expect: 40.841
-println(2.1 ** 5)
-/// Expect: -34.2968
-println(-2 ** 5.1)
-/// Expect: -43.9864
-println(-2.1 ** 5.1)
-/// Expect: -40.841
-println(-2.1 ** 5)
-/// Expect: 0.0291573
-println(2 ** -5.1)
-/// Expect: 0.0227343
-println(2.1 ** -5.1)
-/// Expect: 0.0244852
-println(2.1 ** -5)
+val array = [1, 2, 3]
+/// Expect: length of [1, 2, 3] is 3
+println("length of $array is ${array.length}")
