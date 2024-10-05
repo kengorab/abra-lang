@@ -3,7 +3,7 @@
 val args = Process.args()
 
 /// Expect: [-f, bar, --baz, qux]
-println(args[2:])
+println(args[1:])
 
 val bogusEnvVar = Process.getEnvVar("BOGUS")
 /// Expect: Option.None

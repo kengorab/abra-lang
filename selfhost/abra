@@ -12,6 +12,8 @@ else
   $(echo "$COMPILER_BIN $1")
 fi
 
+shift 1
+
 qbe -o ./._abra/_main.s ./._abra/_main.ssa
 
 CFLAGS="-Wno-override-module"
