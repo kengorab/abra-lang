@@ -1,10 +1,1 @@
-val a = 123
-val b = [1, 2, 3]
-
-val s = "$a + ${b.length} = ${a + b.length}"
-// val s = "$a ${a + 1}!"
-println(s)
-
-val array = [1, 2, 3]
-/// Expect: length of [1, 2, 3] is 3
-println("length of $array is ${array.length}")
+println("\"hello\"".replaceAll("\"", "\\\""))

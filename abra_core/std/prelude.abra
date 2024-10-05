@@ -345,7 +345,55 @@ type String {
     newString
   }
 
-  @Stub func replaceAll(self, pattern: String, replacement: String): String
+  func replaceAll(self, pattern: String, replacement: String): String {
+    if pattern.isEmpty() && replacement.isEmpty() return self
+
+    var cursor = 0
+    var replacementIndices: Int[] = []
+    if pattern.isEmpty() {
+      while cursor < self.length {
+        replacementIndices.push(cursor)
+        cursor += 1
+      }
+      replacementIndices.push(cursor)
+    } else {
+      while cursor < self.length {
+        if self.getRange(cursor, cursor + pattern.length) == pattern {
+          replacementIndices.push(cursor)
+          cursor += pattern.length
+        } else {
+          cursor += 1
+        }
+      }
+    }
+
+    val numReplacements = replacementIndices.length
+    if numReplacements == 0 return self
+
+    val newStringLength = self.length + (numReplacements * (replacement.length - pattern.length))
+    val newString = String.withLength(newStringLength)
+
+    val selfBuf = self._buffer
+    var resCursor = 0
+    var selfCursor = 0
+    for idx in replacementIndices {
+      if selfCursor < idx {
+        newString._buffer.offset(resCursor).copyFrom(selfBuf.offset(selfCursor), idx - selfCursor)
+        resCursor += (idx - selfCursor)
+      }
+      selfCursor = idx + pattern.length
+      if replacement.length != 0 {
+        newString._buffer.offset(resCursor).copyFrom(replacement._buffer, replacement.length)
+      }
+      resCursor += replacement.length
+    }
+
+    if selfCursor < self.length {
+      newString._buffer.offset(resCursor).copyFrom(selfBuf.offset(selfCursor), self.length - selfCursor)
+    }
+
+    newString
+  }
 
   func get(self, index: Int): String {
     var idx = if index < 0 index + self.length else index

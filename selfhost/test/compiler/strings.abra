@@ -60,6 +60,45 @@ println("hello")
   println("length of $array is ${array.length}")
 })()
 
+// String#replaceAll(pattern: String, replacement: String)
+(() => {
+  /// Expect: LLaaLLa
+  println("laala".replaceAll("l", "LL"))
+
+  /// Expect: aaLLaLL
+  println("aalal".replaceAll("l", "LL"))
+
+  /// Expect: LLaaLLaLL
+  println("laalal".replaceAll("l", "LL"))
+
+  /// Expect: feebar
+  println("foobar".replaceAll("o", "e"))
+
+  /// Expect: fexexbar
+  println("foobar".replaceAll("o", "ex"))
+
+  /// Expect: foobar
+  println("foobar".replaceAll("x", "yz"))
+
+  /// Expect: -ä
+  println("/ä".replaceAll("/", "-"))
+
+  /// Expect: xfxoxox
+  println("foo".replaceAll("", "x"))
+
+  /// Expect: x
+  println("".replaceAll("", "x"))
+
+  /// Expect: abcd
+  println("abcd".replaceAll("", ""))
+
+  /// Expect: fa bar baaz
+  println("foo boor booooz".replaceAll("oo", "a"))
+
+  // /// Expect: "hello"
+  // println("\"hello\"".replaceAll("\"", "\\\""))
+})()
+
 // Indexing (also String#get(index: Int))
 (() => {
   val s1 = "abc"
