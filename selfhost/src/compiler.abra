@@ -1943,7 +1943,7 @@ export type Compiler {
           val exprType = _e[1]
 
           val exprValVariantIdxVal = self._emitGetEnumVariantIdx(exprVal)
-          val cond = match self._currentFn.block.buildCompareEq(exprValVariantIdxVal, Value.Int32(variantIdx)) { Ok(v) => v, Err(e) => return qbeError(e) }
+          val cond = match self._currentFn.block.buildCompareEq(exprValVariantIdxVal, Value.Int(variantIdx)) { Ok(v) => v, Err(e) => return qbeError(e) }
           val isVariantLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_is${variant.label.name}")
 
           self._currentFn.block.buildJnz(cond, isVariantLabel, nextCaseLabel)
@@ -2747,7 +2747,7 @@ export type Compiler {
     fn.addComment(match self._enumVariantSignature(enum_, variant) { Ok(v) => v, Err(e) => return Err(e) })
 
     var size = 0
-    size += QbeType.U32.size() // account for space for variant idx slot
+    size += QbeType.U64.size() // account for space for variant idx slot
     match variant.kind {
       EnumVariantKind.Container(fields) => {
         for field in fields {
@@ -2762,8 +2762,8 @@ export type Compiler {
     val memLocal = match fn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
 
     val variantIdx = if enum_.variants.findIndex(v => v.label.name == variant.label.name) |_v| _v[1] else return unreachable("variant '${variant.label.name}' must exist")
-    fn.block.buildStoreW(Value.Int32(variantIdx), memLocal) // Store variant idx at designated slot
-    var offset = QbeType.U32.size() // begin inserting any fields after that variant idx slot
+    fn.block.buildStoreW(Value.Int(variantIdx), memLocal) // Store variant idx at designated slot
+    var offset = QbeType.U64.size() // begin inserting any fields after that variant idx slot
 
     match variant.kind {
       EnumVariantKind.Container(fields) => {
@@ -3386,7 +3386,7 @@ export type Compiler {
             self._currentFn.block.registerLabel(labelElse)
           }
 
-          val cond = match self._currentFn.block.buildCompareEq(Value.Int32(idx), variantIdxVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+          val cond = match self._currentFn.block.buildCompareEq(Value.Int(idx), variantIdxVal) { Ok(v) => v, Err(e) => return qbeError(e) }
 
           val labelThen = self._currentFn.block.addLabel("variant_${variant.label.name}")
           if idx != enum_.variants.length - 1 {
@@ -3811,7 +3811,7 @@ export type Compiler {
             self._currentFn.block.registerLabel(labelElse)
           }
 
-          val cond = match self._currentFn.block.buildCompareEq(Value.Int32(idx), selfVariantIdxVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+          val cond = match self._currentFn.block.buildCompareEq(Value.Int(idx), selfVariantIdxVal) { Ok(v) => v, Err(e) => return qbeError(e) }
 
           val labelThen = self._currentFn.block.addLabel("variant_${variant.label.name}")
           if idx != enum_.variants.length - 1 {
@@ -4026,7 +4026,7 @@ export type Compiler {
             self._currentFn.block.registerLabel(labelElse)
           }
 
-          val cond = match self._currentFn.block.buildCompareEq(Value.Int32(idx), variantIdxVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+          val cond = match self._currentFn.block.buildCompareEq(Value.Int(idx), variantIdxVal) { Ok(v) => v, Err(e) => return qbeError(e) }
 
           val labelThen = self._currentFn.block.addLabel("variant_${variant.label.name}")
           if idx != enum_.variants.length - 1 {
@@ -4039,8 +4039,7 @@ export type Compiler {
           self._currentFn.block.registerLabel(labelThen)
           match variant.kind {
             EnumVariantKind.Constant => {
-              val res = self._currentFn.block.buildExt(value: variantIdxVal, signed: false)
-              self._currentFn.block.buildReturn(Some(res))
+              self._currentFn.block.buildReturn(Some(variantIdxVal))
             }
             EnumVariantKind.Container(fields) => {
               val data: (String, Position, Type)[] = []
@@ -4110,9 +4109,9 @@ export type Compiler {
     }
   }
 
-  func _emitGetEnumVariantIdx(self, enumVariantVal: Value): Value = self._currentFn.block.buildLoadW(enumVariantVal)
+  func _emitGetEnumVariantIdx(self, enumVariantVal: Value): Value = self._currentFn.block.buildLoadL(enumVariantVal)
   func _emitGetEnumVariantValueStart(self, enumVariantVal: Value): Result<Value, CompileError> {
-    val res = match self._currentFn.block.buildAdd(Value.Int(QbeType.U32.size()), enumVariantVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+    val res = match self._currentFn.block.buildAdd(Value.Int(QbeType.U64.size()), enumVariantVal) { Ok(v) => v, Err(e) => return qbeError(e) }
     Ok(res)
   }
 
@@ -4120,10 +4119,10 @@ export type Compiler {
     val variantIdx = self._emitGetEnumVariantIdx(exprVal)
     val optionSomeVariantIdx = if self._project.preludeOptionEnum.variants.findIndex(v => v.label.name == "Some") |_p| _p[1] else return unreachable("Option.Some must exist")
     if negate {
-      val res = match self._currentFn.block.buildCompareNeq(variantIdx, Value.Int32(optionSomeVariantIdx)) { Ok(v) => v, Err(e) => return qbeError(e) }
+      val res = match self._currentFn.block.buildCompareNeq(variantIdx, Value.Int(optionSomeVariantIdx)) { Ok(v) => v, Err(e) => return qbeError(e) }
       Ok(res)
     } else {
-      val res = match self._currentFn.block.buildCompareEq(variantIdx, Value.Int32(optionSomeVariantIdx)) { Ok(v) => v, Err(e) => return qbeError(e) }
+      val res = match self._currentFn.block.buildCompareEq(variantIdx, Value.Int(optionSomeVariantIdx)) { Ok(v) => v, Err(e) => return qbeError(e) }
       Ok(res)
     }
   }
