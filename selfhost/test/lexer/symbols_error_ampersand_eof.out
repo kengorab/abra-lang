@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:2
+Unexpected end of file:
+  |  &
+      ^

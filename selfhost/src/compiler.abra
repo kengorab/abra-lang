@@ -375,6 +375,7 @@ export type Compiler {
         Ok(None)
       }
       TypedAstNodeKind.For(typedIterator, itemBindingPattern, indexBinding, block) => {
+        val forLabelPrefix = "for_${node.token.position.line}_${node.token.position.col}"
         val _t = match self._getInstanceTypeForType(typedIterator.ty) { Ok(v) => v, Err(e) => return Err(e) }
         // TODO: destructuring
         val instTy = _t[0]
@@ -392,7 +393,7 @@ export type Compiler {
               val iteratorFnVal = match self._getOrCompileMethod(instType, iteratorFn) { Ok(v) => v, Err(e) => return Err(e) }
               self._resolvedGenerics.popLayer()
 
-              val iter = match self._currentFn.block.buildCall(Callable.Function(iteratorFnVal), [arrayVal], Some("iterator")) { Ok(v) => v, Err(e) => return qbeError(e) }
+              val iter = match self._currentFn.block.buildCall(Callable.Function(iteratorFnVal), [arrayVal], Some("${forLabelPrefix}_iterator")) { Ok(v) => v, Err(e) => return qbeError(e) }
 
               val _t = match self._getInstanceTypeForType(iteratorFn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
               // TODO: destructuring
@@ -414,7 +415,7 @@ export type Compiler {
               val iteratorFnVal = match self._getOrCompileMethod(instType, iteratorFn) { Ok(v) => v, Err(e) => return Err(e) }
               self._resolvedGenerics.popLayer()
 
-              val iter = match self._currentFn.block.buildCall(Callable.Function(iteratorFnVal), [mapVal], Some("iterator")) { Ok(v) => v, Err(e) => return qbeError(e) }
+              val iter = match self._currentFn.block.buildCall(Callable.Function(iteratorFnVal), [mapVal], Some("${forLabelPrefix}_iterator")) { Ok(v) => v, Err(e) => return qbeError(e) }
 
               val _t = match self._getInstanceTypeForType(iteratorFn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
               // TODO: destructuring
@@ -437,7 +438,7 @@ export type Compiler {
               val iteratorFnVal = match self._getOrCompileMethod(instType, iteratorFn) { Ok(v) => v, Err(e) => return Err(e) }
               self._resolvedGenerics.popLayer()
 
-              val iter = match self._currentFn.block.buildCall(Callable.Function(iteratorFnVal), [mapVal], Some("iterator")) { Ok(v) => v, Err(e) => return qbeError(e) }
+              val iter = match self._currentFn.block.buildCall(Callable.Function(iteratorFnVal), [mapVal], Some("${forLabelPrefix}_iterator")) { Ok(v) => v, Err(e) => return qbeError(e) }
 
               val _t = match self._getInstanceTypeForType(iteratorFn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
               // TODO: destructuring
@@ -473,9 +474,9 @@ export type Compiler {
         self._resolvedGenerics.popLayer()
         if popAdditionalResolvedGenericsLayer self._resolvedGenerics.popLayer()
 
-        val loopStartLabel = self._currentFn.block.addLabel("for_loop_start")
-        val loopBodyLabel = self._currentFn.block.addLabel("for_loop_body")
-        val loopEndLabel = self._currentFn.block.addLabel("for_loop_end")
+        val loopStartLabel = self._currentFn.block.addLabel("${forLabelPrefix}_loop_start")
+        val loopBodyLabel = self._currentFn.block.addLabel("${forLabelPrefix}_loop_body")
+        val loopEndLabel = self._currentFn.block.addLabel("${forLabelPrefix}_loop_end")
 
         self._loopStack.push((loopStartLabel, loopEndLabel))
 

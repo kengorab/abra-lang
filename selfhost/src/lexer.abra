@@ -436,7 +436,7 @@ export type Lexer {
       return Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedChar(char)))
     }
 
-    val float = wholeNumber + (num / 10 ** pow)
+    val float = wholeNumber + (num / (10 ** pow))
     Ok(Token(position: startPos, kind: TokenKind.Float(float)))
   }
 
@@ -505,8 +505,13 @@ export type Lexer {
               return Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedEof))
             }
           }
-          val chunks = [initialChunk, StringInterpolationChunk.Interpolation(interpolatedTokens)]
-          interpolationChunks = Some(if interpolationChunks |existingChunks| { existingChunks.concat(chunks) } else { chunks })
+
+          if interpolationChunks |existingChunks| {
+            existingChunks.push(initialChunk)
+            existingChunks.push(StringInterpolationChunk.Interpolation(interpolatedTokens))
+          } else {
+            interpolationChunks = Some([initialChunk, StringInterpolationChunk.Interpolation(interpolatedTokens)])
+          }
           start = self._cursor
           startPos = self._curPos()
           continue
@@ -515,9 +520,9 @@ export type Lexer {
           val token = self._tokenizeIdentifier(position)
           val chunk = StringInterpolationChunk.Interpolation([token])
 
-          if interpolationChunks |interpolationChunks| {
-            interpolationChunks.push(StringInterpolationChunk.String(position: startPos, value: str))
-            interpolationChunks.push(chunk)
+          if interpolationChunks |existingChunks| {
+            existingChunks.push(StringInterpolationChunk.String(position: startPos, value: str))
+            existingChunks.push(chunk)
           } else {
             interpolationChunks = Some([StringInterpolationChunk.String(position: startPos, value: str), chunk])
           }

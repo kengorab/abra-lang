@@ -22,7 +22,9 @@ func main() {
     return
   }
 
-  if Process.args()[1] |fileName| {
+  val args = Process.args()
+
+  if args[1] |fileName| {
     val absPathSegs = getAbsolutePath(fileName)
     val filePathAbs = "/" + absPathSegs.join("/")
 
@@ -49,7 +51,8 @@ func main() {
     // TODO: right now the code assumes that the output file and directory will exist prior to writing
     // to it. Instead, we should create the directory and file if we need to.
     val cwd = fs.getCurrentWorkingDirectory()
-    val ssaOutPath = "$cwd/._abra/_main.ssa"
+    val ssaOutFileName = args[2] ?: "_main"
+    val ssaOutPath = "$cwd/._abra/$ssaOutFileName.ssa"
     val ssaOutFile = match fs.openFile(ssaOutPath, fs.AccessMode.WriteOnly) {
       Ok(v) => v
       Err(e) => {

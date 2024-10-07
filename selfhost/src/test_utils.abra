@@ -45,10 +45,12 @@ func printTokenKindAsJson(kind: TokenKind, indentLevelStart: Int, currentIndentL
           }
           StringInterpolationChunk.Interpolation(tokens) => {
             println("$fieldsIndent  [")
-            for token, idx in tokens {
+            // TODO: rename `idx2` to `idx` - when compiled with the selfhosted compiler, this `idx` would shadow the outer scope's `idx`
+            //       value and overwrite it. This is an issue with the selfhosted compiler, and needs to be fixed there.
+            for token, idx2 in tokens {
               printTokenAsJson(token, indentLevelStart + currentIndentLevel + 3, currentIndentLevel + 3)
 
-              val comma = if idx != tokens.length - 1 "," else ""
+              val comma = if idx2 != tokens.length - 1 "," else ""
               println(comma)
             }
             print("$fieldsIndent  ]")

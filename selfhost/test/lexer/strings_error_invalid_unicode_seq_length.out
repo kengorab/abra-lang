@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:1:2
+Unsupported escape sequence:
+  |  "\u04"
+      ^^^^
+Unicode escape sequences must be \u followed by 4 hexadecimal characters (between 0000 and 7FFF)
