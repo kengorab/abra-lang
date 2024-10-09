@@ -40,7 +40,7 @@ impl TestRunner {
         let bin_path = build_test_runner(&src_file, &output_bin_file);
 
         let selfhosted_bin_path = if test_selfhosted {
-            let selfhosted_compiler_bin = build_test_runner("compiler.test.abra", "compiler_test");
+            let selfhosted_compiler_bin = build_test_runner("compiler.test.abra", "selfhosted_compiler");
 
             let project_root = get_project_root().unwrap();
             let selfhost_dir = project_root.join("selfhost");
