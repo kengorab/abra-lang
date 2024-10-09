@@ -1,0 +1,8 @@
+Error at %FILE_NAME%:1:5
+Unterminated string:
+  String begins at (1:1)
+  |  "abc
+     ^
+  String is terminated at (1:5)
+  |  "abc
+         ^

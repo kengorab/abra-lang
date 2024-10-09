@@ -1,0 +1,23 @@
+[
+  {
+    "position": [1, 1],
+    "kind": {
+      "name": "Int",
+      "value": 123
+    }
+  },
+  {
+    "position": [6, 15],
+    "kind": {
+      "name": "Int",
+      "value": 234
+    }
+  },
+  {
+    "position": [8, 1],
+    "kind": {
+      "name": "Int",
+      "value": 456
+    }
+  }
+]

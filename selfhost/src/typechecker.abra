@@ -3947,7 +3947,6 @@ export type Typechecker {
           _ => None
         }
 
-        // (variable.ty, name, variable, fnTypeHint)
         (resolvedIdentifier, name, fnTypeHint)
       }
       IdentifierKind.Discard => return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName("_", "variable")))

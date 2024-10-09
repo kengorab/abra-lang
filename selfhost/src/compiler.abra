@@ -1,8 +1,8 @@
 import "fs" as fs
 import Position from "./lexer"
 import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern, IndexingMode from "./parser"
-import Project, TypedModule, Scope, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCase, TypedMatchCaseKind, BuiltinModule from "./typechecker"
-import ModuleBuilder, QbeType, Dest, QbeFunction, Value, Label, Callable, QbeData, QbeDataKind from "./qbe"
+import Project, TypedModule, Scope, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCase, TypedMatchCaseKind, BuiltinModule, Variable from "./typechecker"
+import ModuleBuilder, QbeType, Dest, QbeFunction, Value, Label, Callable, QbeData, QbeDataKind, Var from "./qbe"
 
 type CompilationError {
   modulePath: String
@@ -161,6 +161,8 @@ type ResolvedGenerics {
   }
 }
 
+func variableToVar(v: Variable): Var = Var(name: v.label.name, location: (v.label.position.line, v.label.position.col))
+
 export type Compiler {
   _project: Project
   _builder: ModuleBuilder
@@ -277,14 +279,11 @@ export type Compiler {
         self._currentFn.block.registerLabel(labelThen)
         if conditionBinding |_p| {
           // TODO: destructuring
-          val bindingPattern = _p[0]
-          val _vars = _p[1]
+          val _bindingPattern = _p[0]
+          val vars = _p[1]
 
-          val bindingName = match bindingPattern {
-            BindingPattern.Variable(label) => label.name
-          }
-
-          val slotName = "$bindingName.slot"
+          val bindingVar = if vars[0] |v| v else return unreachable("Binding pattern requires 1 variable", node.token.position)
+          val slotName = self._currentFn.block.addVar(variableToVar(bindingVar))
           if condExprIsOpt |innerTy| {
             val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
             val optInnerValue = match self._emitOptValueGetValue(innerQbeType, condVal) { Ok(v) => v, Err(e) => return Err(e) }
@@ -340,14 +339,12 @@ export type Compiler {
         self._currentFn.block.registerLabel(loopBodyLabel)
         if conditionBinding |_p| {
           // TODO: destructuring
-          val bindingPattern = _p[0]
-          val _vars = _p[1]
+          val _bindingPattern = _p[0]
+          val vars = _p[1]
 
-          val bindingName = match bindingPattern {
-            BindingPattern.Variable(label) => label.name
-          }
-
-          val slotName = "$bindingName.slot"
+          // }
+          val bindingVar = if vars[0] |v| v else return unreachable("Binding pattern requires 1 variable", node.token.position)
+          val slotName = self._currentFn.block.addVar(variableToVar(bindingVar))
           if condExprIsOpt |innerTy| {
             val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
             val optInnerValue = match self._emitOptValueGetValue(innerQbeType, condVal) { Ok(v) => v, Err(e) => return Err(e) }
@@ -375,6 +372,7 @@ export type Compiler {
         Ok(None)
       }
       TypedAstNodeKind.For(typedIterator, itemBindingPattern, indexBinding, block) => {
+        val forLabelPrefix = "for_${node.token.position.line}_${node.token.position.col}"
         val _t = match self._getInstanceTypeForType(typedIterator.ty) { Ok(v) => v, Err(e) => return Err(e) }
         // TODO: destructuring
         val instTy = _t[0]
@@ -392,7 +390,7 @@ export type Compiler {
               val iteratorFnVal = match self._getOrCompileMethod(instType, iteratorFn) { Ok(v) => v, Err(e) => return Err(e) }
               self._resolvedGenerics.popLayer()
 
-              val iter = match self._currentFn.block.buildCall(Callable.Function(iteratorFnVal), [arrayVal], Some("iterator")) { Ok(v) => v, Err(e) => return qbeError(e) }
+              val iter = match self._currentFn.block.buildCall(Callable.Function(iteratorFnVal), [arrayVal], Some("${forLabelPrefix}_iterator")) { Ok(v) => v, Err(e) => return qbeError(e) }
 
               val _t = match self._getInstanceTypeForType(iteratorFn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
               // TODO: destructuring
@@ -414,7 +412,7 @@ export type Compiler {
               val iteratorFnVal = match self._getOrCompileMethod(instType, iteratorFn) { Ok(v) => v, Err(e) => return Err(e) }
               self._resolvedGenerics.popLayer()
 
-              val iter = match self._currentFn.block.buildCall(Callable.Function(iteratorFnVal), [mapVal], Some("iterator")) { Ok(v) => v, Err(e) => return qbeError(e) }
+              val iter = match self._currentFn.block.buildCall(Callable.Function(iteratorFnVal), [mapVal], Some("${forLabelPrefix}_iterator")) { Ok(v) => v, Err(e) => return qbeError(e) }
 
               val _t = match self._getInstanceTypeForType(iteratorFn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
               // TODO: destructuring
@@ -437,7 +435,7 @@ export type Compiler {
               val iteratorFnVal = match self._getOrCompileMethod(instType, iteratorFn) { Ok(v) => v, Err(e) => return Err(e) }
               self._resolvedGenerics.popLayer()
 
-              val iter = match self._currentFn.block.buildCall(Callable.Function(iteratorFnVal), [mapVal], Some("iterator")) { Ok(v) => v, Err(e) => return qbeError(e) }
+              val iter = match self._currentFn.block.buildCall(Callable.Function(iteratorFnVal), [mapVal], Some("${forLabelPrefix}_iterator")) { Ok(v) => v, Err(e) => return qbeError(e) }
 
               val _t = match self._getInstanceTypeForType(iteratorFn.returnType) { Ok(v) => v, Err(e) => return Err(e) }
               // TODO: destructuring
@@ -473,14 +471,14 @@ export type Compiler {
         self._resolvedGenerics.popLayer()
         if popAdditionalResolvedGenericsLayer self._resolvedGenerics.popLayer()
 
-        val loopStartLabel = self._currentFn.block.addLabel("for_loop_start")
-        val loopBodyLabel = self._currentFn.block.addLabel("for_loop_body")
-        val loopEndLabel = self._currentFn.block.addLabel("for_loop_end")
+        val loopStartLabel = self._currentFn.block.addLabel("${forLabelPrefix}_loop_start")
+        val loopBodyLabel = self._currentFn.block.addLabel("${forLabelPrefix}_loop_body")
+        val loopEndLabel = self._currentFn.block.addLabel("${forLabelPrefix}_loop_end")
 
         self._loopStack.push((loopStartLabel, loopEndLabel))
 
         val indexBindingSlot = if indexBinding |bindingVar| {
-          val slotName = "${bindingVar.label.name}.slot"
+          val slotName = self._currentFn.block.addVar(variableToVar(bindingVar))
           val slot = self._buildStackAllocForQbeType(QbeType.U64, Some(slotName))
           self._currentFn.block.buildStoreL(Value.Int(-1), slot)
           Some(slot)
@@ -489,16 +487,14 @@ export type Compiler {
         }
 
         self._currentFn.block.registerLabel(loopStartLabel)
-        val itemName = match itemBindingPattern[0] {
-          BindingPattern.Variable(label) => label.name
-        }
+        val itemBindingVar = if itemBindingPattern[1][0] |v| v else return unreachable("Binding pattern requires 1 variable", node.token.position)
         val nextRet = match self._currentFn.block.buildCall(Callable.Function(nextFnVal), [iterVal], Some("next_ret")) { Ok(v) => v, Err(e) => return qbeError(e) }
 
         val variantIsOptionSome = match self._emitOptValueIsSomeVariant(nextRet) { Ok(v) => v, Err(e) => return Err(e) }
         self._currentFn.block.buildJnz(variantIsOptionSome, loopBodyLabel, loopEndLabel)
 
         self._currentFn.block.registerLabel(loopBodyLabel)
-        val itemSlotName = "$itemName.slot"
+        val itemSlotName = self._currentFn.block.addVar(variableToVar(itemBindingVar))
         val optInnerValue = match self._emitOptValueGetValue(nextItemQbeTy, nextRet) { Ok(v) => v, Err(e) => return Err(e) }
         val itemSlot = self._buildStackAllocForQbeType(nextItemQbeTy, Some(itemSlotName))
         self._currentFn.block.buildStore(nextItemQbeTy, optInnerValue, itemSlot)
@@ -526,12 +522,12 @@ export type Compiler {
         val variable = if bindingDeclNode.variables[0] |v| v else return unreachable("binding decl needs at least 1 variable")
 
         val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
-        val slotName = "${variable.label.name}.slot"
+        val slotName = self._currentFn.block.addVar(variableToVar(variable))
 
         if bindingDeclNode.expr |expr| {
           val res = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
           if variable.isExported {
-            val name = "mod${self._currentModule.id}exp_$slotName"
+            val name = self._exportedVarName(self._currentModule.id, variable.label.name)
             val slot = self._builder.addData(QbeData(name: name, kind: QbeDataKind.Constants([(varTy, varTy.zeroValue())])))
             self._currentFn.block.buildStore(varTy, res, slot)
           } else if variable.isCaptured {
@@ -623,11 +619,11 @@ export type Compiler {
 
             val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
             if variable.isCaptured {
-              val ptr = match self._getCapturedVarPtr(variable.label.name) { Ok(v) => v, Err(e) => return Err(e) }
+              val ptr = match self._getCapturedVarPtr(variable) { Ok(v) => v, Err(e) => return Err(e) }
               self._currentFn.block.addComment("overwrite ptr to captured '${variable.label.name}'")
               self._currentFn.block.buildStore(varTy, res, ptr)
             } else {
-              val slotName = "${variable.label.name}.slot"
+              val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'", node.token.position)
               val slot = Value.Ident(slotName, QbeType.Pointer)
               self._currentFn.block.buildStore(varTy, res, slot)
             }
@@ -1053,12 +1049,13 @@ export type Compiler {
         val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
         if variable.isParameter {
           if variable.isCaptured {
-            val ptr = match self._getCapturedVarPtr(variable.label.name) { Ok(v) => v, Err(e) => return Err(e) }
+            val ptr = match self._getCapturedVarPtr(variable) { Ok(v) => v, Err(e) => return Err(e) }
             self._currentFn.block.addComment("deref ptr to captured '${variable.label.name}'")
             val res = self._currentFn.block.buildLoad(varTy, ptr)
             Ok(res)
           } else {
-            Ok(Value.Ident(name, varTy))
+            val varName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'", node.token.position)
+            Ok(Value.Ident(varName, varTy))
           }
         } else {
           match variable.alias {
@@ -1084,17 +1081,18 @@ export type Compiler {
             }
             _ => {
               if varImportModule |mod| {
-                val name = "mod${mod.id}exp_$name.slot"
+                val name = self._exportedVarName(mod.id, name)
                 val slot = Value.Global(name, QbeType.Pointer)
                 val res = self._currentFn.block.buildLoad(varTy, slot)
                 Ok(res)
               } else if variable.isCaptured {
-                val ptr = match self._getCapturedVarPtr(variable.label.name) { Ok(v) => v, Err(e) => return Err(e) }
+                val ptr = match self._getCapturedVarPtr(variable) { Ok(v) => v, Err(e) => return Err(e) }
                 self._currentFn.block.addComment("deref ptr to captured '${variable.label.name}'")
                 val res = self._currentFn.block.buildLoad(varTy, ptr)
                 Ok(res)
               } else {
-                val slot = Value.Ident("$name.slot", QbeType.Pointer)
+                val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'")
+                val slot = Value.Ident(slotName, QbeType.Pointer)
                 val res = self._currentFn.block.buildLoad(varTy, slot)
                 Ok(res)
               }
@@ -1765,14 +1763,11 @@ export type Compiler {
         self._currentFn.block.registerLabel(labelThen)
         if conditionBinding |_p| {
           // TODO: destructuring
-          val bindingPattern = _p[0]
-          val _vars = _p[1]
+          val _bindingPattern = _p[0]
+          val vars = _p[1]
 
-          val bindingName = match bindingPattern {
-            BindingPattern.Variable(label) => label.name
-          }
-
-          val slotName = "$bindingName.slot"
+          val bindingVar = if vars[0] |v| v else return unreachable("Binding pattern requires 1 variable", node.token.position)
+          val slotName = self._currentFn.block.addVar(variableToVar(bindingVar))
           if condExprIsOpt |innerTy| {
             val innerQbeType = match self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
             val optInnerValue = match self._emitOptValueGetValue(innerQbeType, condVal) { Ok(v) => v, Err(e) => return Err(e) }
@@ -1962,7 +1957,7 @@ export type Compiler {
               val fieldTy = match self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position)) { Ok(v) => v, Err(e) => return Err(e) }
 
               val fieldVal = self._currentFn.block.buildLoad(fieldTy, memCursor)
-              val slotName = "${v.label.name}.slot"
+              val slotName = self._currentFn.block.addVar(variableToVar(v))
               val slot = self._buildStackAllocForQbeType(fieldTy, Some(slotName))
               self._currentFn.block.buildStore(fieldTy, fieldVal, slot)
 
@@ -2000,7 +1995,7 @@ export type Compiler {
       val exprType = _p[2]
 
       if case.binding |v| {
-        val slotName = "${v.label.name}.slot"
+        val slotName = self._currentFn.block.addVar(variableToVar(v))
         val bindingTypeQbe = match self._getQbeTypeForTypeExpect(exprType, "qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
         val slot = self._buildStackAllocForQbeType(bindingTypeQbe, Some(slotName))
         self._currentFn.block.buildStore(bindingTypeQbe, exprVal, slot)
@@ -2042,12 +2037,12 @@ export type Compiler {
     Ok(result)
   }
 
-  func _getCapturedVarPtr(self, name: String): Result<Value, CompileError> {
+  func _getCapturedVarPtr(self, variable: Variable): Result<Value, CompileError> {
     if self._currentFunction |fn| {
       if self._currentFn._env |env| {
         for v, idx in fn.captures {
-          if v.label.name == name {
-            self._currentFn.block.addComment("get ptr to captured '$name'")
+          if v.label.name == variable.label.name {
+            self._currentFn.block.addComment("get ptr to captured '${variable.label.name}'")
             val captureSlot = match self._currentFn.block.buildAdd(Value.Int(idx * QbeType.Pointer.size()), env) { Ok(v) => v, Err(e) => return qbeError(e) }
             val ptr = self._currentFn.block.buildLoad(QbeType.Pointer, captureSlot)
             return Ok(ptr)
@@ -2058,8 +2053,9 @@ export type Compiler {
 
     // If we're not currently in a function body, or if the captured variable is not a capture of the current function, then
     // we need to undo the extra layer of pointer indirection which comes as a result of being captured by some other function.
-    self._currentFn.block.addComment("get ptr to captured '$name'")
-    val slot = Value.Ident("$name.slot", QbeType.Pointer)
+    self._currentFn.block.addComment("get ptr to captured '${variable.label.name}'")
+    val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'")
+    val slot = Value.Ident(slotName, QbeType.Pointer)
     val res = self._currentFn.block.buildLoad(QbeType.Pointer, slot)
     Ok(res)
   }
@@ -2070,7 +2066,7 @@ export type Compiler {
     var cursor = capturesMem
 
     for variable in fn.captures {
-      val ptr = match self._getCapturedVarPtr(variable.label.name) { Ok(v) => v, Err(e) => return Err(e) }
+      val ptr = match self._getCapturedVarPtr(variable) { Ok(v) => v, Err(e) => return Err(e) }
       self._currentFn.block.buildStore(QbeType.Pointer, ptr, cursor)
       if fn.captures.length > 1 || fn.capturedClosures.length > 0 {
         cursor = match self._currentFn.block.buildAdd(Value.Int(QbeType.Pointer.size()), cursor) { Ok(v) => v, Err(e) => return qbeError(e) }
@@ -3216,6 +3212,8 @@ export type Compiler {
     if isInstanceMethod {
       val selfTyQbe = match self._getQbeTypeForTypeExpect(selfType, "unacceptable type for self") { Ok(v) => v, Err(e) => return Err(e) }
       fnVal.addParameter("self", selfTyQbe)
+      val selfVariable = if fn.scope.variables.find(v => v.label.name == "self") |selfVariable| selfVariable else return unreachable("Function '${fn.label.name}' is an instance method but does not have a variable 'self' in its scope", fn.label.position)
+      fnVal.block.addVar(variableToVar(selfVariable), Some("self"))
     }
     match self._compileFunc(fnVal, fn) { Ok(v) => v, Err(e) => return Err(e) }
     fnVal.addComment(match self._fnSignature(Some(selfTy), fn) { Ok(v) => v, Err(e) => return Err(e) })
@@ -3273,9 +3271,11 @@ export type Compiler {
         val heapMem = match self._currentFn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
         self._currentFn.block.buildStore(paramTy, Value.Ident(param.label.name, paramTy), heapMem)
 
-        val slotName = "${param.label.name}.slot"
+        val slotName = self._currentFn.block.addVar(variableToVar(param.variable))
         val slot = self._buildStackAllocForQbeType(QbeType.Pointer, Some(slotName))
         self._currentFn.block.buildStore(QbeType.Pointer, heapMem, slot)
+      } else {
+        self._currentFn.block.addVar(variableToVar(param.variable), Some(param.label.name))
       }
     }
     if addMaskParam {
@@ -4327,6 +4327,8 @@ export type Compiler {
   // starts with two dots, which is not possible in ordinary Abra source code and will
   // thus introduce no conflicts (qbe doesn't care about function name rules).
   func _moduleWrapperFnName(self, module: TypedModule): String = "..module_${module.id}"
+
+  func _exportedVarName(self, modId: Int, name: String): String = "mod${modId}exp_${name}.slot"
 
   func _structTypeName(self, struct: Struct): Result<String, CompileError> {
     val base = ".${struct.moduleId}.${struct.label.name}"

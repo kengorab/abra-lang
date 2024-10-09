@@ -1,1 +1,11 @@
-println("\"hello\"".replaceAll("\"", "\\\""))
+func foo(b: Bool) {
+  val a = "hello"
+
+  if b {
+    val a = [1, 2, 3]
+  }
+
+  println(a)
+}
+
+foo(true)

@@ -103,6 +103,11 @@ export type Label {
   offset: Int? = None
 }
 
+export type Var {
+  name: String
+  location: (Int, Int)
+}
+
 export type Block {
   name: String
   currentLabel: Label
@@ -112,6 +117,7 @@ export type Block {
   _labelNames: Map<String, Int> = {}
   comments: Map<Int, Set<String>> = {}
   numLocals: Int = 0
+  variables: Map<String, Map<Var, String>> = {}
 
   func new(name: String): Block {
     val start = Label(name: "start", offset: Some(0))
@@ -193,6 +199,20 @@ export type Block {
 
     Ok(label)
   }
+
+  func addVar(self, v: Var, name: String? = None): String {
+    val varsForName = if self.variables[v.name] |vars| vars else {
+      val vars: Map<Var, String> = {}
+      self.variables[v.name] = vars
+      vars
+    }
+
+    val varName = name ?: "${v.name}.${varsForName.size}.slot"
+    varsForName[v] = varName
+    varName
+  }
+
+  func lookupVarName(self, v: Var): String? = if self.variables[v.name] |varsForName| varsForName[v] else None
 
   // instruction builders
 
