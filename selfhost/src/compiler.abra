@@ -182,6 +182,7 @@ export type Compiler {
   _realloc: QbeFunction = QbeFunction.spec(name: "GC_realloc", returnType: Some(QbeType.Pointer))
   _tupleStructs: Map<String, Struct> = {}
   _functionStructs: Map<String, Struct> = {}
+  _aliasedTypeNames: Map<String, String> = {}
 
   func compile(project: Project): Result<ModuleBuilder, CompilationError> {
     val builder = ModuleBuilder()
@@ -195,6 +196,10 @@ export type Compiler {
     mainFn.block.buildStoreL(argcParam, argcPtr)
     val argvPtr = builder.addData(QbeData(name: "__argv", kind: QbeDataKind.Constants([(QbeType.U64, Value.Int(0))])))
     mainFn.block.buildStoreL(argvParam, argvPtr)
+
+    // Seed the RNG, for any future calls to `libc.rand()`
+    val timeVal = match mainFn.block.buildCallRaw("time", QbeType.U64, [Value.Int(0)]) { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: "<entrypoint>", error: CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(e)))) }
+    mainFn.block.buildVoidCallRaw("srand", [timeVal])
 
     mainFn.block.buildVoidCallRaw("GC_init", [])
 
@@ -4332,7 +4337,7 @@ export type Compiler {
 
   func _structTypeName(self, struct: Struct): Result<String, CompileError> {
     val base = ".${struct.moduleId}.${struct.label.name}"
-    if !struct.typeParams.isEmpty() {
+    val name = if !struct.typeParams.isEmpty() {
       val parts: String[] = []
       for name in struct.typeParams {
         val repr = if self._resolvedGenerics.resolveGeneric(name) |ty| {
@@ -4343,9 +4348,24 @@ export type Compiler {
         }
         parts.push(repr)
       }
-      Ok("$base.${parts.join(".")}")
+      "$base.${parts.join(".")}"
     } else {
-      Ok(base)
+      base
+    }
+
+    // qbe limits its identifiers to 80 chars, so if the resulting type name is long, we instead use a randomly-generated alias
+    // in place of the type. 16 chars seems like a good balance between long enough that there won't be any conflicts, but also
+    // short enough that there's enough room for this type to be used as a generic in other types without making that type's or
+    // function's identifier too long.
+    if name.length >= 80 {
+      val alias = if self._aliasedTypeNames[name] |alias| alias else {
+        val replacement = String.random(16)
+        self._aliasedTypeNames[name] = replacement
+        replacement
+      }
+      Ok(alias)
+    } else {
+      Ok(name)
     }
   }
   func _structInitializerFnName(self, struct: Struct): Result<String, CompileError> {
@@ -4355,20 +4375,35 @@ export type Compiler {
 
   func _enumTypeName(self, enum_: Enum): Result<String, CompileError> {
     val base = ".${enum_.moduleId}.${enum_.label.name}"
-    if !enum_.typeParams.isEmpty() {
+    val name = if !enum_.typeParams.isEmpty() {
       val parts: String[] = []
       for name in enum_.typeParams {
         val repr = if self._resolvedGenerics.resolveGeneric(name) |ty| {
           val r = match self._getNameForType(ty) { Ok(v) => v, Err(e) => return Err(e) }
           r
         } else {
-          return unreachable("here1: could not resolve '$name'")
+          return unreachable("could not resolve '$name'")
         }
         parts.push(repr)
       }
-      Ok("$base.${parts.join(".")}")
+      "$base.${parts.join(".")}"
     } else {
-      Ok(base)
+      base
+    }
+
+    // qbe limits its identifiers to 80 chars, so if the resulting type name is long, we instead use a randomly-generated alias
+    // in place of the type. 16 chars seems like a good balance between long enough that there won't be any conflicts, but also
+    // short enough that there's enough room for this type to be used as a generic in other types without making that type's or
+    // function's identifier too long.
+    if name.length >= 80 {
+      val alias = if self._aliasedTypeNames[name] |alias| alias else {
+        val replacement = String.random(40)
+        self._aliasedTypeNames[name] = replacement
+        replacement
+      }
+      Ok(alias)
+    } else {
+      Ok(name)
     }
   }
   func _enumVariantFnName(self, enum_: Enum, variant: TypedEnumVariant): Result<String, CompileError> {

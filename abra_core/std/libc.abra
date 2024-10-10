@@ -46,3 +46,6 @@ export func strlen(s: Pointer<Byte>): Int
 
 @CBinding("uname")
 export func uname(utsnameBuf: Pointer<Byte>): Int
+
+@CBinding("rand")
+export func rand(): Int

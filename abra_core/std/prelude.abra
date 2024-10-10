@@ -157,6 +157,20 @@ type String {
     String(length: length, _buffer: Pointer.malloc(length + 1))
   }
 
+  func random(length: Int, choices = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"): String {
+    // TODO: this implementation is pretty bad, and it also relies on using `%` with libc.rand() which allows for skew.
+    //       But it's fine for now.
+
+    val str = String.withLength(length)
+
+    for i in range(0, length) {
+      val ch = choices._buffer.offset(libc.rand() % choices.length).load()
+      str._buffer.offset(i).store(ch)
+    }
+
+    str
+  }
+
   func hash(self): Int {
     var hash = 31 * self.length
     for i in range(0, self.length) {
