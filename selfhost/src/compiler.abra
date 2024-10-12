@@ -535,8 +535,10 @@ export type Compiler {
             val name = self._exportedVarName(self._currentModule.id, variable.label.name)
             val slot = self._builder.addData(QbeData(name: name, kind: QbeDataKind.Constants([(varTy, varTy.zeroValue())])))
             self._currentFn.block.buildStore(varTy, res, slot)
-          } else if variable.isCaptured {
-            self._currentFn.block.addComment("move captured '${variable.label.name}' to heap")
+          } else if variable.isCaptured && variable.mutable {
+            // Only move captured variables to the heap if they're mutable - captured immutable variables can just have their value present in
+            // a closure's captures array, but a mutable variable needs an additional layer of indirection to handle possible reassignment.
+            self._currentFn.block.addComment("move captured mutable '${variable.label.name}' to heap")
             val size = varTy.size()
             val heapMem = match self._currentFn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
             self._currentFn.block.buildStore(varTy, res, heapMem)
@@ -1054,10 +1056,9 @@ export type Compiler {
         val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
         if variable.isParameter {
           if variable.isCaptured {
-            val ptr = match self._getCapturedVarPtr(variable) { Ok(v) => v, Err(e) => return Err(e) }
-            self._currentFn.block.addComment("deref ptr to captured '${variable.label.name}'")
-            val res = self._currentFn.block.buildLoad(varTy, ptr)
-            Ok(res)
+            if variable.mutable return unreachable("parameters cannot be mutable", node.token.position)
+            val value = match self._getCapturedVarPtr(variable) { Ok(v) => v, Err(e) => return Err(e) }
+            Ok(value)
           } else {
             val varName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'", node.token.position)
             Ok(Value.Ident(varName, varTy))
@@ -1092,8 +1093,12 @@ export type Compiler {
                 Ok(res)
               } else if variable.isCaptured {
                 val ptr = match self._getCapturedVarPtr(variable) { Ok(v) => v, Err(e) => return Err(e) }
-                self._currentFn.block.addComment("deref ptr to captured '${variable.label.name}'")
-                val res = self._currentFn.block.buildLoad(varTy, ptr)
+                val res = if variable.mutable {
+                  self._currentFn.block.addComment("deref ptr to captured mutable '${variable.label.name}'")
+                  self._currentFn.block.buildLoad(varTy, ptr)
+                } else {
+                  ptr
+                }
                 Ok(res)
               } else {
                 val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'")
@@ -2047,22 +2052,49 @@ export type Compiler {
       if self._currentFn._env |env| {
         for v, idx in fn.captures {
           if v.label.name == variable.label.name {
-            self._currentFn.block.addComment("get ptr to captured '${variable.label.name}'")
+            // When loading the captured variable from the closure env, if the captured variable is immutable then we
+            // don't need to dereference the value of `env[idx]`; only mutable variables need to be stored using an
+            // additional indirection layer to account for reassignment.
             val captureSlot = match self._currentFn.block.buildAdd(Value.Int(idx * QbeType.Pointer.size()), env) { Ok(v) => v, Err(e) => return qbeError(e) }
-            val ptr = self._currentFn.block.buildLoad(QbeType.Pointer, captureSlot)
-            return Ok(ptr)
+            var varTy = if variable.mutable {
+              self._currentFn.block.addComment("get ptr to captured mutable '${variable.label.name}'")
+              QbeType.Pointer
+            } else {
+              self._currentFn.block.addComment("get captured '${variable.label.name}'")
+              val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
+              varTy
+            }
+            val ptrOrValue = self._currentFn.block.buildLoad(varTy, captureSlot)
+            return Ok(ptrOrValue)
           }
         }
       }
     }
 
+    // If the captured variable is a parameter but we're not currently referencing it from a closure, then it can be resolved as any ordinary
+    // parameter (simply by name) since it's an immutable variable that has not been moved to the heap.
+    if variable.isParameter {
+      val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'")
+      val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
+      return Ok(Value.Ident(slotName, varTy))
+    }
+
     // If we're not currently in a function body, or if the captured variable is not a capture of the current function, then
-    // we need to undo the extra layer of pointer indirection which comes as a result of being captured by some other function.
-    self._currentFn.block.addComment("get ptr to captured '${variable.label.name}'")
+    // we may need to undo the extra layer of pointer indirection which comes as a result of being captured by some other function,
+    // if the captured variable is mutable. If it's not mutable then it will not have been moved to the heap, so no additional pointer
+    // needs to be dereferenced.
     val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'")
     val slot = Value.Ident(slotName, QbeType.Pointer)
-    val res = self._currentFn.block.buildLoad(QbeType.Pointer, slot)
-    Ok(res)
+    var varTy = if variable.mutable {
+      self._currentFn.block.addComment("get ptr to captured mutable '${variable.label.name}'")
+      QbeType.Pointer
+    } else {
+      self._currentFn.block.addComment("get captured '${variable.label.name}'")
+      val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
+      varTy
+    }
+    val ptrOrValue = self._currentFn.block.buildLoad(varTy, slot)
+    Ok(ptrOrValue)
   }
 
   func _createClosureCaptures(self, fn: Function): Result<Value, CompileError> {
@@ -2072,7 +2104,15 @@ export type Compiler {
 
     for variable in fn.captures {
       val ptr = match self._getCapturedVarPtr(variable) { Ok(v) => v, Err(e) => return Err(e) }
-      self._currentFn.block.buildStore(QbeType.Pointer, ptr, cursor)
+      var varTy = if variable.mutable {
+        self._currentFn.block.addComment("store ptr to captured mutable '${variable.label.name}' in captures")
+        QbeType.Pointer
+      } else {
+        self._currentFn.block.addComment("store captured mutable '${variable.label.name}' in captures")
+        val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
+        varTy
+      }
+      self._currentFn.block.buildStore(varTy, ptr, cursor)
       if fn.captures.length > 1 || fn.capturedClosures.length > 0 {
         cursor = match self._currentFn.block.buildAdd(Value.Int(QbeType.Pointer.size()), cursor) { Ok(v) => v, Err(e) => return qbeError(e) }
       }
@@ -3270,18 +3310,7 @@ export type Compiler {
         fnVal.addParameter(param.label.name, paramTy)
       }
 
-      if param.variable.isCaptured {
-        self._currentFn.block.addComment("move param '${param.label.name}' to heap")
-        val size = paramTy.size()
-        val heapMem = match self._currentFn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
-        self._currentFn.block.buildStore(paramTy, Value.Ident(param.label.name, paramTy), heapMem)
-
-        val slotName = self._currentFn.block.addVar(variableToVar(param.variable))
-        val slot = self._buildStackAllocForQbeType(QbeType.Pointer, Some(slotName))
-        self._currentFn.block.buildStore(QbeType.Pointer, heapMem, slot)
-      } else {
-        self._currentFn.block.addVar(variableToVar(param.variable), Some(param.label.name))
-      }
+      self._currentFn.block.addVar(variableToVar(param.variable), Some(param.label.name))
     }
     if addMaskParam {
       fnVal.addParameter("__default_params_mask__", QbeType.U32)
