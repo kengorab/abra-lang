@@ -13,40 +13,23 @@ type Foo {
 
 func plusOne(fn: () => Int): Int = fn() + 1
 
-val f = Foo()
-val arr = [1, 2, 3]
-f.printNumber(arr)
-println(arr)
+// // val f = Foo()
+// // val arr = [1, 2, 3]
+// // f.printNumber(arr)
+// // println(arr)
 
-// func foo() {
-//   var arr = [1, 2, 3]
-
-//   val five = plusOne(() => {
-//     arr = [1]
-//     arr.push(4)
-//     arr.length
-//   })
-//   println(five)
-//   println(arr)
+// enum Foo {
+//   Bar(arr: Int[], name: String)
 // }
 
-// foo()
-
-// func makeAdder(b: Bool, x: Int): (Int) => Int {
-//   i => i + ((if b 1 else -1) * x)
+// val f = Foo.Bar(arr: [1, 2, 3], name: "hello")
+// match f {
+//   Foo.Bar(arr, name) => {
+//     println(arr, name)
+//   }
 // }
-// // func makeAdder(f: Float, x: Int): (Int) => Int {
-// //   i => i + (f.floor() * x)
-// // }
-// val addOne = makeAdder(false, 1)
-// /// Expect: 12
-// println(addOne(11))
 
-// val bang = "!"
-// func bangbang(): String = bang + "!"
-// func functionReferencingClosureAsValue() {
-//   val fn = bangbang
-//   println(fn())
+// val arr = ["a", "b", "c"]
+// if arr[0] |item| {
+//   println(item.length)
 // }
-// /// Expect: !!
-// functionReferencingClosureAsValue()
