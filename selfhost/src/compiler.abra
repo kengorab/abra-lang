@@ -182,6 +182,7 @@ export type Compiler {
   _realloc: QbeFunction = QbeFunction.spec(name: "GC_realloc", returnType: Some(QbeType.Pointer))
   _tupleStructs: Map<String, Struct> = {}
   _functionStructs: Map<String, Struct> = {}
+  _aliasedTypeNames: Map<String, String> = {}
 
   func compile(project: Project): Result<ModuleBuilder, CompilationError> {
     val builder = ModuleBuilder()
@@ -195,6 +196,10 @@ export type Compiler {
     mainFn.block.buildStoreL(argcParam, argcPtr)
     val argvPtr = builder.addData(QbeData(name: "__argv", kind: QbeDataKind.Constants([(QbeType.U64, Value.Int(0))])))
     mainFn.block.buildStoreL(argvParam, argvPtr)
+
+    // Seed the RNG, for any future calls to `libc.rand()`
+    val timeVal = match mainFn.block.buildCallRaw("time", QbeType.U64, [Value.Int(0)]) { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: "<entrypoint>", error: CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(e)))) }
+    mainFn.block.buildVoidCallRaw("srand", [timeVal])
 
     mainFn.block.buildVoidCallRaw("GC_init", [])
 
@@ -293,7 +298,7 @@ export type Compiler {
           } else {
             val boolTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveBool), "bool qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
             val slot = self._buildStackAllocForQbeType(boolTypeQbe, Some(slotName))
-            self._currentFn.block.buildStore(boolTypeQbe, Value.Int32(1), slot)
+            self._currentFn.block.buildStore(boolTypeQbe, Value.Int(1), slot)
           }
         }
         for node in ifBlock {
@@ -354,7 +359,7 @@ export type Compiler {
           } else {
             val boolTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveBool), "bool qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
             val slot = self._buildStackAllocForQbeType(boolTypeQbe, Some(slotName))
-            self._currentFn.block.buildStore(boolTypeQbe, Value.Int32(1), slot)
+            self._currentFn.block.buildStore(boolTypeQbe, Value.Int(1), slot)
           }
         }
 
@@ -530,8 +535,10 @@ export type Compiler {
             val name = self._exportedVarName(self._currentModule.id, variable.label.name)
             val slot = self._builder.addData(QbeData(name: name, kind: QbeDataKind.Constants([(varTy, varTy.zeroValue())])))
             self._currentFn.block.buildStore(varTy, res, slot)
-          } else if variable.isCaptured {
-            self._currentFn.block.addComment("move captured '${variable.label.name}' to heap")
+          } else if variable.isCaptured && variable.mutable {
+            // Only move captured variables to the heap if they're mutable - captured immutable variables can just have their value present in
+            // a closure's captures array, but a mutable variable needs an additional layer of indirection to handle possible reassignment.
+            self._currentFn.block.addComment("move captured mutable '${variable.label.name}' to heap")
             val size = varTy.size()
             val heapMem = match self._currentFn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
             self._currentFn.block.buildStore(varTy, res, heapMem)
@@ -760,10 +767,11 @@ export type Compiler {
             val exprIsOpt = self._typeIsOption(expr.ty)
             if exprIsOpt {
               val variantIsNotOptionSome = match self._emitOptValueIsSomeVariant(exprVal: exprVal, negate: true) { Ok(v) => v, Err(e) => return Err(e) }
-              Ok(variantIsNotOptionSome)
+              val res = self._currentFn.block.buildExt(variantIsNotOptionSome, false)
+              Ok(res)
             } else {
-              val plusOneVal = match self._currentFn.block.buildAdd(Value.Int32(1), exprVal) { Ok(v) => v, Err(e) => return qbeError(e) }
-              val res = match self._currentFn.block.buildRem(plusOneVal, Value.Int32(2)) { Ok(v) => v, Err(e) => return qbeError(e) }
+              val plusOneVal = match self._currentFn.block.buildAdd(Value.Int(1), exprVal) { Ok(v) => v, Err(e) => return qbeError(e) }
+              val res = match self._currentFn.block.buildRem(plusOneVal, Value.Int(2)) { Ok(v) => v, Err(e) => return qbeError(e) }
               Ok(res)
             }
           }
@@ -1008,12 +1016,12 @@ export type Compiler {
           BinaryOp.LT => {
             val vals = match self._compileBinaryOperands(left, right, "<") { Ok(v) => v, Err(e) => return Err(e) }
             val res = match self._currentFn.block.buildCompareLt(vals[0], vals[1], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
-            Ok(res)
+            Ok(self._currentFn.block.buildExt(res, false))
           }
           BinaryOp.LTE => {
             val vals = match self._compileBinaryOperands(left, right, "<=") { Ok(v) => v, Err(e) => return Err(e) }
             val res = match self._currentFn.block.buildCompareLte(vals[0], vals[1], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
-            Ok(res)
+            Ok(self._currentFn.block.buildExt(res, false))
           }
           BinaryOp.Shl => {
             val leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
@@ -1025,12 +1033,12 @@ export type Compiler {
           BinaryOp.GT => {
             val vals = match self._compileBinaryOperands(left, right, ">") { Ok(v) => v, Err(e) => return Err(e) }
             val res = match self._currentFn.block.buildCompareGt(vals[0], vals[1], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
-            Ok(res)
+            Ok(self._currentFn.block.buildExt(res, false))
           }
           BinaryOp.GTE => {
             val vals = match self._compileBinaryOperands(left, right, ">=") { Ok(v) => v, Err(e) => return Err(e) }
             val res = match self._currentFn.block.buildCompareGte(vals[0], vals[1], resultLocalName) { Ok(v) => v, Err(e) => return qbeError(e) }
-            Ok(res)
+            Ok(self._currentFn.block.buildExt(res, false))
           }
           BinaryOp.Shr => {
             val leftVal = match self._compileExpression(left) { Ok(v) => v, Err(e) => return Err(e) }
@@ -1049,10 +1057,9 @@ export type Compiler {
         val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
         if variable.isParameter {
           if variable.isCaptured {
-            val ptr = match self._getCapturedVarPtr(variable) { Ok(v) => v, Err(e) => return Err(e) }
-            self._currentFn.block.addComment("deref ptr to captured '${variable.label.name}'")
-            val res = self._currentFn.block.buildLoad(varTy, ptr)
-            Ok(res)
+            if variable.mutable return unreachable("parameters cannot be mutable", node.token.position)
+            val value = match self._getCapturedVarPtr(variable) { Ok(v) => v, Err(e) => return Err(e) }
+            Ok(value)
           } else {
             val varName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'", node.token.position)
             Ok(Value.Ident(varName, varTy))
@@ -1087,8 +1094,12 @@ export type Compiler {
                 Ok(res)
               } else if variable.isCaptured {
                 val ptr = match self._getCapturedVarPtr(variable) { Ok(v) => v, Err(e) => return Err(e) }
-                self._currentFn.block.addComment("deref ptr to captured '${variable.label.name}'")
-                val res = self._currentFn.block.buildLoad(varTy, ptr)
+                val res = if variable.mutable {
+                  self._currentFn.block.addComment("deref ptr to captured mutable '${variable.label.name}'")
+                  self._currentFn.block.buildLoad(varTy, ptr)
+                } else {
+                  ptr
+                }
                 Ok(res)
               } else {
                 val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'")
@@ -1777,7 +1788,7 @@ export type Compiler {
           } else {
             val boolTypeQbe = match self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveBool), "bool qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
             val slot = self._buildStackAllocForQbeType(boolTypeQbe, Some(slotName))
-            self._currentFn.block.buildStore(boolTypeQbe, Value.Int32(1), slot)
+            self._currentFn.block.buildStore(boolTypeQbe, Value.Int(1), slot)
           }
         }
         for node, idx in ifBlock {
@@ -1839,7 +1850,7 @@ export type Compiler {
     Ok(match lit {
       LiteralAstNode.Int(v) => (Value.Int(v), Type(kind: TypeKind.PrimitiveInt))
       LiteralAstNode.Float(f) => (Value.Float(f), Type(kind: TypeKind.PrimitiveFloat))
-      LiteralAstNode.Bool(b) => (Value.Int32(if b 1 else 0), Type(kind: TypeKind.PrimitiveBool))
+      LiteralAstNode.Bool(b) => (Value.Int(if b 1 else 0), Type(kind: TypeKind.PrimitiveBool))
       LiteralAstNode.String(s) => {
         val dataPtr = self._builder.buildGlobalString(s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n"))
         val instancePtr = match self._constructString(dataPtr, Value.Int(s.length)) { Ok(v) => v, Err(e) => return Err(e) }
@@ -2042,22 +2053,49 @@ export type Compiler {
       if self._currentFn._env |env| {
         for v, idx in fn.captures {
           if v.label.name == variable.label.name {
-            self._currentFn.block.addComment("get ptr to captured '${variable.label.name}'")
+            // When loading the captured variable from the closure env, if the captured variable is immutable then we
+            // don't need to dereference the value of `env[idx]`; only mutable variables need to be stored using an
+            // additional indirection layer to account for reassignment.
             val captureSlot = match self._currentFn.block.buildAdd(Value.Int(idx * QbeType.Pointer.size()), env) { Ok(v) => v, Err(e) => return qbeError(e) }
-            val ptr = self._currentFn.block.buildLoad(QbeType.Pointer, captureSlot)
-            return Ok(ptr)
+            var varTy = if variable.mutable {
+              self._currentFn.block.addComment("get ptr to captured mutable '${variable.label.name}'")
+              QbeType.Pointer
+            } else {
+              self._currentFn.block.addComment("get captured '${variable.label.name}'")
+              val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
+              varTy
+            }
+            val ptrOrValue = self._currentFn.block.buildLoad(varTy, captureSlot)
+            return Ok(ptrOrValue)
           }
         }
       }
     }
 
+    // If the captured variable is a parameter but we're not currently referencing it from a closure, then it can be resolved as any ordinary
+    // parameter (simply by name) since it's an immutable variable that has not been moved to the heap.
+    if variable.isParameter {
+      val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'")
+      val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
+      return Ok(Value.Ident(slotName, varTy))
+    }
+
     // If we're not currently in a function body, or if the captured variable is not a capture of the current function, then
-    // we need to undo the extra layer of pointer indirection which comes as a result of being captured by some other function.
-    self._currentFn.block.addComment("get ptr to captured '${variable.label.name}'")
+    // we may need to undo the extra layer of pointer indirection which comes as a result of being captured by some other function,
+    // if the captured variable is mutable. If it's not mutable then it will not have been moved to the heap, so no additional pointer
+    // needs to be dereferenced.
     val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'")
     val slot = Value.Ident(slotName, QbeType.Pointer)
-    val res = self._currentFn.block.buildLoad(QbeType.Pointer, slot)
-    Ok(res)
+    var varTy = if variable.mutable {
+      self._currentFn.block.addComment("get ptr to captured mutable '${variable.label.name}'")
+      QbeType.Pointer
+    } else {
+      self._currentFn.block.addComment("get captured '${variable.label.name}'")
+      val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
+      varTy
+    }
+    val ptrOrValue = self._currentFn.block.buildLoad(varTy, slot)
+    Ok(ptrOrValue)
   }
 
   func _createClosureCaptures(self, fn: Function): Result<Value, CompileError> {
@@ -2067,7 +2105,15 @@ export type Compiler {
 
     for variable in fn.captures {
       val ptr = match self._getCapturedVarPtr(variable) { Ok(v) => v, Err(e) => return Err(e) }
-      self._currentFn.block.buildStore(QbeType.Pointer, ptr, cursor)
+      var varTy = if variable.mutable {
+        self._currentFn.block.addComment("store ptr to captured mutable '${variable.label.name}' in captures")
+        QbeType.Pointer
+      } else {
+        self._currentFn.block.addComment("store captured '${variable.label.name}' in captures")
+        val varTy = match self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
+        varTy
+      }
+      self._currentFn.block.buildStore(varTy, ptr, cursor)
       if fn.captures.length > 1 || fn.capturedClosures.length > 0 {
         cursor = match self._currentFn.block.buildAdd(Value.Int(QbeType.Pointer.size()), cursor) { Ok(v) => v, Err(e) => return qbeError(e) }
       }
@@ -2164,10 +2210,10 @@ export type Compiler {
     if self._typeIsInt(ty) || self._typeIsFloat(ty) || self._typeIsBool(ty) {
       val res = if negate {
         val res = match self._currentFn.block.buildCompareNeq(leftVal, rightVal, localName) { Ok(v) => v, Err(e) => return qbeError(e) }
-        res
+        self._currentFn.block.buildExt(res, false)
       } else {
         val res = match self._currentFn.block.buildCompareEq(leftVal, rightVal, localName) { Ok(v) => v, Err(e) => return qbeError(e) }
-        res
+        self._currentFn.block.buildExt(res, false)
       }
       return Ok(res)
     }
@@ -2178,8 +2224,8 @@ export type Compiler {
 
     val res = match self._currentFn.block.buildCall(Callable.Function(eqFnVal), [leftVal, rightVal], localName) { Ok(v) => v, Err(e) => return qbeError(e) }
     if negate {
-      val plusOneVal = match self._currentFn.block.buildAdd(Value.Int32(1), res) { Ok(v) => v, Err(e) => return qbeError(e) }
-      val res = match self._currentFn.block.buildRem(plusOneVal, Value.Int32(2)) { Ok(v) => v, Err(e) => return qbeError(e) }
+      val plusOneVal = match self._currentFn.block.buildAdd(Value.Int(1), res) { Ok(v) => v, Err(e) => return qbeError(e) }
+      val res = match self._currentFn.block.buildRem(plusOneVal, Value.Int(2)) { Ok(v) => v, Err(e) => return qbeError(e) }
       Ok(res)
     } else {
       Ok(res)
@@ -2438,7 +2484,7 @@ export type Compiler {
       TypeKind.PrimitiveUnit => Ok(None)
       TypeKind.PrimitiveInt => Ok(Some(QbeType.U64))
       TypeKind.PrimitiveFloat => Ok(Some(QbeType.F64))
-      TypeKind.PrimitiveBool => Ok(Some(QbeType.U32))
+      TypeKind.PrimitiveBool => Ok(Some(QbeType.U64))
       TypeKind.PrimitiveString => Ok(Some(QbeType.Pointer))
       TypeKind.Never => Ok(None)
       TypeKind.Any => todo("TypeKind.Any")
@@ -2905,10 +2951,10 @@ export type Compiler {
         self._currentFn.block.buildJnz(ptrVal, labelIsNotNull, labelIsNull)
 
         self._currentFn.block.registerLabel(labelIsNotNull)
-        val f = Value.Int32(0)
+        val f = Value.Int(0)
         self._currentFn.block.buildJmp(labelCont)
         self._currentFn.block.registerLabel(labelIsNull)
-        val t = Value.Int32(1)
+        val t = Value.Int(1)
         self._currentFn.block.buildJmp(labelCont)
         self._currentFn.block.registerLabel(labelCont)
 
@@ -3265,18 +3311,7 @@ export type Compiler {
         fnVal.addParameter(param.label.name, paramTy)
       }
 
-      if param.variable.isCaptured {
-        self._currentFn.block.addComment("move param '${param.label.name}' to heap")
-        val size = paramTy.size()
-        val heapMem = match self._currentFn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
-        self._currentFn.block.buildStore(paramTy, Value.Ident(param.label.name, paramTy), heapMem)
-
-        val slotName = self._currentFn.block.addVar(variableToVar(param.variable))
-        val slot = self._buildStackAllocForQbeType(QbeType.Pointer, Some(slotName))
-        self._currentFn.block.buildStore(QbeType.Pointer, heapMem, slot)
-      } else {
-        self._currentFn.block.addVar(variableToVar(param.variable), Some(param.label.name))
-      }
+      self._currentFn.block.addVar(variableToVar(param.variable), Some(param.label.name))
     }
     if addMaskParam {
       fnVal.addParameter("__default_params_mask__", QbeType.U32)
@@ -3681,7 +3716,7 @@ export type Compiler {
           val selfParam = fnVal.addParameter("self", intTypeQbe)
           val otherParam = fnVal.addParameter("other", intTypeQbe)
           val res = match self._currentFn.block.buildCompareEq(selfParam, otherParam) { Ok(v) => v, Err(e) => return qbeError(e) }
-          fnVal.block.buildReturn(Some(res))
+          fnVal.block.buildReturn(Some(self._currentFn.block.buildExt(res, false)))
 
           match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
 
@@ -3703,7 +3738,7 @@ export type Compiler {
           val selfParam = fnVal.addParameter("self", floatTypeQbe)
           val otherParam = fnVal.addParameter("other", floatTypeQbe)
           val res = match self._currentFn.block.buildCompareEq(selfParam, otherParam) { Ok(v) => v, Err(e) => return qbeError(e) }
-          fnVal.block.buildReturn(Some(res))
+          fnVal.block.buildReturn(Some(self._currentFn.block.buildExt(res, false)))
 
           match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
 
@@ -3723,7 +3758,7 @@ export type Compiler {
           val selfParam = fnVal.addParameter("self", boolTypeQbe)
           val otherParam = fnVal.addParameter("other", boolTypeQbe)
           val res = match self._currentFn.block.buildCompareEq(selfParam, otherParam) { Ok(v) => v, Err(e) => return qbeError(e) }
-          fnVal.block.buildReturn(Some(res))
+          fnVal.block.buildReturn(Some(self._currentFn.block.buildExt(res, false)))
 
           match fnVal.block.verify() { Ok(v) => v, Err(e) => return qbeError(e) }
 
@@ -3799,7 +3834,7 @@ export type Compiler {
 
         self._currentFn.block.registerLabel(labelVariantsNeq)
         self._currentFn.block.addComment("return false")
-        self._currentFn.block.buildReturn(Some(Value.Int32(0)))
+        self._currentFn.block.buildReturn(Some(Value.Int(0)))
 
         self._currentFn.block.registerLabel(labelVariantsEq)
 
@@ -3825,7 +3860,7 @@ export type Compiler {
           match variant.kind {
             EnumVariantKind.Constant => {
               self._currentFn.block.addComment("return true")
-              self._currentFn.block.buildReturn(Some(Value.Int32(1)))
+              self._currentFn.block.buildReturn(Some(Value.Int(1)))
             }
             EnumVariantKind.Container(fields) => {
               val data: (String, Position, Type)[] = []
@@ -3877,7 +3912,7 @@ export type Compiler {
 
       self._currentFn.block.registerLabel(labelNeq)
       self._currentFn.block.addComment("return false")
-      self._currentFn.block.buildReturn(Some(Value.Int32(0)))
+      self._currentFn.block.buildReturn(Some(Value.Int(0)))
 
       self._currentFn.block.registerLabel(labelEq)
 
@@ -3885,7 +3920,7 @@ export type Compiler {
     }
 
     self._currentFn.block.addComment("return true")
-    self._currentFn.block.buildReturn(Some(Value.Int32(1)))
+    self._currentFn.block.buildReturn(Some(Value.Int(1)))
 
     Ok(0)
   }
@@ -4332,7 +4367,7 @@ export type Compiler {
 
   func _structTypeName(self, struct: Struct): Result<String, CompileError> {
     val base = ".${struct.moduleId}.${struct.label.name}"
-    if !struct.typeParams.isEmpty() {
+    val name = if !struct.typeParams.isEmpty() {
       val parts: String[] = []
       for name in struct.typeParams {
         val repr = if self._resolvedGenerics.resolveGeneric(name) |ty| {
@@ -4343,9 +4378,24 @@ export type Compiler {
         }
         parts.push(repr)
       }
-      Ok("$base.${parts.join(".")}")
+      "$base.${parts.join(".")}"
     } else {
-      Ok(base)
+      base
+    }
+
+    // qbe limits its identifiers to 80 chars, so if the resulting type name is long, we instead use a randomly-generated alias
+    // in place of the type. 16 chars seems like a good balance between long enough that there won't be any conflicts, but also
+    // short enough that there's enough room for this type to be used as a generic in other types without making that type's or
+    // function's identifier too long.
+    if name.length >= 80 {
+      val alias = if self._aliasedTypeNames[name] |alias| alias else {
+        val replacement = String.random(16)
+        self._aliasedTypeNames[name] = replacement
+        replacement
+      }
+      Ok(alias)
+    } else {
+      Ok(name)
     }
   }
   func _structInitializerFnName(self, struct: Struct): Result<String, CompileError> {
@@ -4355,20 +4405,35 @@ export type Compiler {
 
   func _enumTypeName(self, enum_: Enum): Result<String, CompileError> {
     val base = ".${enum_.moduleId}.${enum_.label.name}"
-    if !enum_.typeParams.isEmpty() {
+    val name = if !enum_.typeParams.isEmpty() {
       val parts: String[] = []
       for name in enum_.typeParams {
         val repr = if self._resolvedGenerics.resolveGeneric(name) |ty| {
           val r = match self._getNameForType(ty) { Ok(v) => v, Err(e) => return Err(e) }
           r
         } else {
-          return unreachable("here1: could not resolve '$name'")
+          return unreachable("could not resolve '$name'")
         }
         parts.push(repr)
       }
-      Ok("$base.${parts.join(".")}")
+      "$base.${parts.join(".")}"
     } else {
-      Ok(base)
+      base
+    }
+
+    // qbe limits its identifiers to 80 chars, so if the resulting type name is long, we instead use a randomly-generated alias
+    // in place of the type. 16 chars seems like a good balance between long enough that there won't be any conflicts, but also
+    // short enough that there's enough room for this type to be used as a generic in other types without making that type's or
+    // function's identifier too long.
+    if name.length >= 80 {
+      val alias = if self._aliasedTypeNames[name] |alias| alias else {
+        val replacement = String.random(40)
+        self._aliasedTypeNames[name] = replacement
+        replacement
+      }
+      Ok(alias)
+    } else {
+      Ok(name)
     }
   }
   func _enumVariantFnName(self, enum_: Enum, variant: TypedEnumVariant): Result<String, CompileError> {
