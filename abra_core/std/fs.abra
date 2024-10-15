@@ -86,8 +86,8 @@ export func openFile(path: String, accessMode: AccessMode): Result<File, FileIOE
 export func getCurrentWorkingDirectory(): String {
   val buf = Pointer.malloc<Byte>(libc.PATH_MAX)
 
-  val cwd = libc.getcwd(buf, libc.PATH_MAX)
-  val len = libc.strlen(cwd._buffer)
+  libc.getcwd(buf, libc.PATH_MAX)
+  val len = libc.strlen(buf)
 
   val str = String.withLength(len)
   str._buffer.copyFrom(buf, len)

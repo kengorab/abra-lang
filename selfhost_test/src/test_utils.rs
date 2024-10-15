@@ -29,7 +29,7 @@ impl TestRunner {
     }
 
     pub fn typechecker_test_runner() -> Self {
-        Self::test_runner("typechecker", "typechecker.test.abra", "typechecker_test", false)
+        Self::test_runner("typechecker", "typechecker.test.abra", "typechecker_test", true)
     }
 
     pub fn compiler_test_runner() -> CompilerTestRunner {

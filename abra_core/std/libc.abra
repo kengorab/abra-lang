@@ -39,7 +39,7 @@ export func write(fd: Int, buf: Pointer<Byte>, count: Int): Int
 export val PATH_MAX = 4096
 
 @CBinding("getcwd")
-export func getcwd(buf: Pointer<Byte>, count: Int): String
+export func getcwd(buf: Pointer<Byte>, count: Int): Pointer<Byte>
 
 @CBinding("strlen")
 export func strlen(s: Pointer<Byte>): Int
