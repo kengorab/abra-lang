@@ -368,7 +368,7 @@ export type Jsonifier {
         self.printNode(inner)
         println()
       }
-      TypedAstNodeKind.Identifier(name, _) => {
+      TypedAstNodeKind.Identifier(name, _, _, _) => {
         self.println("\"kind\": \"identifier\",")
 
         self.print("\"name\": \"$name\"")
@@ -391,11 +391,11 @@ export type Jsonifier {
               self.println("\"kind\": \"enumVariant\",")
               self.println("\"name\": \"${enum_.label.name}.${variant.label.name}\"")
             }
-            AccessorPathSegment.Method(_, f) => {
+            AccessorPathSegment.Method(_, f, _, _) => {
               self.println("\"kind\": \"method\",")
               self.println("\"name\": \"${f.label.name}\"")
             }
-            AccessorPathSegment.Field(_, ty, f) => {
+            AccessorPathSegment.Field(_, ty, f, _) => {
               self.println("\"kind\": \"field\",")
               self.println("\"name\": \"${f.name.name}\",")
               self.print("\"type\": ")
@@ -416,11 +416,11 @@ export type Jsonifier {
             self.println("\"kind\": \"enumVariant\",")
             self.println("\"name\": \"${enum_.label.name}.${variant.label.name}\"")
           }
-          AccessorPathSegment.Method(_, f) => {
+          AccessorPathSegment.Method(_, f, _, _) => {
             self.println("\"kind\": \"method\",")
             self.println("\"name\": \"${f.label.name}\"")
           }
-          AccessorPathSegment.Field(_, ty, f) => {
+          AccessorPathSegment.Field(_, ty, f, _) => {
             self.println("\"kind\": \"field\",")
             self.println("\"name\": \"${f.name.name}\",")
             self.print("\"type\": ")
@@ -431,7 +431,7 @@ export type Jsonifier {
         self.indentDec()
         self.println("}")
       }
-      TypedAstNodeKind.Invocation(invokee, arguments) => {
+      TypedAstNodeKind.Invocation(invokee, arguments, _) => {
         self.println("\"kind\": \"invocation\",")
 
         self.print("\"invokee\": ")
@@ -514,7 +514,7 @@ export type Jsonifier {
         self.printTypedIndexingNode(node)
         println()
       }
-      TypedAstNodeKind.Lambda(fn) => {
+      TypedAstNodeKind.Lambda(fn, _) => {
         self.println("\"kind\": \"lambda\",")
         self.print("\"function\": ")
         self.printFunc(fn)
@@ -679,7 +679,7 @@ export type Jsonifier {
       }
 
       // Statements
-      TypedAstNodeKind.While(condition, conditionBindingPattern, block) => {
+      TypedAstNodeKind.While(condition, conditionBindingPattern, block, _) => {
         self.println("\"kind\": \"while\",")
 
         self.print("\"condition\": ")
@@ -977,9 +977,9 @@ export type Jsonifier {
 
   func indent(self) = print("  ".repeat(self.indentLevel))
 
-  func indentInc(self) = self.indentLevel += 1
+  func indentInc(self) { self.indentLevel += 1 }
 
-  func indentDec(self) = self.indentLevel -= 1
+  func indentDec(self) { self.indentLevel -= 1 }
 
   func print(self, str: String) {
     self.indent()

@@ -1,7 +1,7 @@
 import "fs" as fs
 import Position from "./lexer"
 import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern, IndexingMode from "./parser"
-import Project, TypedModule, Scope, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCase, TypedMatchCaseKind, BuiltinModule, Variable from "./typechecker"
+import Project, TypedModule, Scope, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCase, TypedMatchCaseKind, BuiltinModule, Variable, Terminator from "./typechecker"
 import ModuleBuilder, QbeType, Dest, QbeFunction, Value, Label, Callable, QbeData, QbeDataKind, Var from "./qbe"
 
 type CompilationError {
@@ -1852,7 +1852,7 @@ export type Compiler {
       LiteralAstNode.Float(f) => (Value.Float(f), Type(kind: TypeKind.PrimitiveFloat))
       LiteralAstNode.Bool(b) => (Value.Int(if b 1 else 0), Type(kind: TypeKind.PrimitiveBool))
       LiteralAstNode.String(s) => {
-        val dataPtr = self._builder.buildGlobalString(s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n"))
+        val dataPtr = self._builder.buildGlobalString(s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r"))
         val instancePtr = match self._constructString(dataPtr, Value.Int(s.length)) { Ok(v) => v, Err(e) => return Err(e) }
         (instancePtr, Type(kind: TypeKind.PrimitiveString))
       }
@@ -1869,7 +1869,7 @@ export type Compiler {
 
     val resValSlotCtx = if !isStatement {
       val slotName = "${matchLabelPrefix}_result.slot"
-      val nodeTypeQbe = match self._getQbeTypeForTypeExpect(node.ty, "qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+      val nodeTypeQbe = match self._getQbeTypeForTypeExpect(node.ty, "qbe type should exist", Some(node.token.position)) { Ok(v) => v, Err(e) => return Err(e) }
       val slot = self._buildStackAllocForQbeType(nodeTypeQbe, Some(slotName))
       Some((slot, nodeTypeQbe))
     } else None
@@ -2007,7 +2007,7 @@ export type Compiler {
 
       if case.binding |v| {
         val slotName = self._currentFn.block.addVar(variableToVar(v))
-        val bindingTypeQbe = match self._getQbeTypeForTypeExpect(exprType, "qbe type should exist") { Ok(v) => v, Err(e) => return Err(e) }
+        val bindingTypeQbe = match self._getQbeTypeForTypeExpect(exprType, "qbe type should exist", Some(v.label.position)) { Ok(v) => v, Err(e) => return Err(e) }
         val slot = self._buildStackAllocForQbeType(bindingTypeQbe, Some(slotName))
         self._currentFn.block.buildStore(bindingTypeQbe, exprVal, slot)
       }
@@ -3324,7 +3324,8 @@ export type Compiler {
         retVal = res
       }
     }
-    if !fn.scope.terminator {
+
+    if fn.scope.terminator != Some(Terminator.Returning) {
       fnVal.block.buildReturn(retVal)
     }
 

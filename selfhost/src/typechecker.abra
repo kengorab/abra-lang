@@ -3159,7 +3159,7 @@ export type Typechecker {
 
                 return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAssignment(kind, fn.label.name, reason)))
               }
-              AccessorPathSegment.Field(label, _, field) => {
+              AccessorPathSegment.Field(label, _, field, _) => {
                 val mode = TypedAssignmentMode.Accessor(head, mid, tail)
                 (mode, label, field)
               }
@@ -3726,8 +3726,8 @@ export type Typechecker {
       Type(kind: TypeKind.PrimitiveUnit)
     }
 
-    // If the resulting type is Unit after visiting all the cases' blocks, then treat this as a statement
-    val isStmt = isStatement || ty.kind == TypeKind.PrimitiveUnit
+    // If the resulting type is Unit or Never after visiting all the cases' blocks, then treat this as a statement
+    val isStmt = isStatement || ty.kind == TypeKind.PrimitiveUnit || ty.kind == TypeKind.Never
     val kind = TypedAstNodeKind.Match(isStmt, typedExpr, typedCases)
     Ok(TypedAstNode(token: token, ty: ty, kind: kind))
   }
@@ -4305,7 +4305,7 @@ export type Typechecker {
               _ => self._typecheckInvocationOfFunction(token, invokee, fn, node, typeHint)
             }
           }
-          AccessorPathSegment.Field(label, _, _) => self._typecheckInvocationOfExpression(token, invokee, label.position, node)
+          AccessorPathSegment.Field(label, _, _, _) => self._typecheckInvocationOfExpression(token, invokee, label.position, node)
         }
       }
       _ => self._typecheckInvocationOfExpression(token, invokee, invokee.token.position, node)

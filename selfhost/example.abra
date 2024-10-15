@@ -1,35 +1,4 @@
-type Foo {
-  func number(self): Int = 123
+import "fs" as fs
 
-  func printNumber(self, arr: Int[]) {
-    val n = plusOne(() => {
-      val num = self.number()
-      arr.push(num)
-      num
-    })
-    println("number:", n)
-  }
-}
-
-func plusOne(fn: () => Int): Int = fn() + 1
-
-// // val f = Foo()
-// // val arr = [1, 2, 3]
-// // f.printNumber(arr)
-// // println(arr)
-
-// enum Foo {
-//   Bar(arr: Int[], name: String)
-// }
-
-// val f = Foo.Bar(arr: [1, 2, 3], name: "hello")
-// match f {
-//   Foo.Bar(arr, name) => {
-//     println(arr, name)
-//   }
-// }
-
-// val arr = ["a", "b", "c"]
-// if arr[0] |item| {
-//   println(item.length)
-// }
+val cwd = fs.getCurrentWorkingDirectory()
+println(cwd)
