@@ -540,7 +540,7 @@ export type Compiler {
             // a closure's captures array, but a mutable variable needs an additional layer of indirection to handle possible reassignment.
             self._currentFn.block.addComment("move captured mutable '${variable.label.name}' to heap")
             val size = varTy.size()
-            val heapMem = match self._currentFn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
+            val heapMem = match self._currentFn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("${variable.label.name}.mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
             self._currentFn.block.buildStore(varTy, res, heapMem)
 
             val slot = self._buildStackAllocForQbeType(QbeType.Pointer, Some(slotName))
@@ -2100,7 +2100,7 @@ export type Compiler {
 
   func _createClosureCaptures(self, fn: Function): Result<Value, CompileError> {
     val size = QbeType.Pointer.size() * (fn.captures.length + fn.capturedClosures.length)
-    val capturesMem = match self._currentFn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
+    val capturesMem = match self._currentFn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("${fn.label.name}_captures.mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
     var cursor = capturesMem
 
     for variable in fn.captures {
@@ -2755,7 +2755,7 @@ export type Compiler {
       fnVal.addParameter("__default_params_mask__", QbeType.U32)
     }
 
-    val memLocal = match fnVal.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
+    val memLocal = match fnVal.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("struct.mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
 
     var offset = 0
     for field in struct.fields {
@@ -2801,7 +2801,7 @@ export type Compiler {
       _ => {}
     }
 
-    val memLocal = match fn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
+    val memLocal = match fn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("enum_variant.mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
 
     val variantIdx = if enum_.variants.findIndex(v => v.label.name == variant.label.name) |_v| _v[1] else return unreachable("variant '${variant.label.name}' must exist")
     fn.block.buildStoreW(Value.Int(variantIdx), memLocal) // Store variant idx at designated slot
@@ -2976,7 +2976,7 @@ export type Compiler {
         val innerTySize = match self._pointerSize(innerTy) { Ok(v) => v, Err(e) => return Err(e) }
         val sizeVal = match self._currentFn.block.buildMul(Value.Int(innerTySize), countVal) { Ok(v) => v, Err(e) => return qbeError(e) }
 
-        val mem = match self._currentFn.block.buildCall(Callable.Function(self._malloc), [sizeVal], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
+        val mem = match self._currentFn.block.buildCall(Callable.Function(self._malloc), [sizeVal], Some("ptr.mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
 
         self._currentFn.block.addComment("...pointer_malloc end")
 
@@ -3589,7 +3589,7 @@ export type Compiler {
     val sizeVal = match fnVal.block.buildCall(Callable.Function(self._snprintf), [Value.Int(0), Value.Int(0), intFmtPtr, selfParam]) { Ok(v) => v, Err(e) => return qbeError(e) }
     val mallocSizeVal = match fnVal.block.buildAdd(Value.Int(1), sizeVal) { Ok(v) => v, Err(e) => return qbeError(e) }
 
-    val mem = match fnVal.block.buildCall(Callable.Function(self._malloc), [mallocSizeVal], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
+    val mem = match fnVal.block.buildCall(Callable.Function(self._malloc), [mallocSizeVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
     match fnVal.block.buildCall(Callable.Function(self._snprintf), [mem, mallocSizeVal, intFmtPtr, selfParam]) { Ok(v) => v, Err(e) => return qbeError(e) }
 
     val str = match self._constructString(mem, sizeVal) { Ok(v) => v, Err(e) => return Err(e) }
@@ -3621,7 +3621,7 @@ export type Compiler {
     val sizeVal = match fnVal.block.buildCall(Callable.Function(self._snprintf), [Value.Int(0), Value.Int(0), floatFmtPtr, selfParam]) { Ok(v) => v, Err(e) => return qbeError(e) }
     val mallocSizeVal = match fnVal.block.buildAdd(Value.Int(1), sizeVal) { Ok(v) => v, Err(e) => return qbeError(e) }
 
-    val mem = match fnVal.block.buildCall(Callable.Function(self._malloc), [mallocSizeVal], Some("mem")) { Ok(v) => v, Err(e) => return qbeError(e) }
+    val mem = match fnVal.block.buildCall(Callable.Function(self._malloc), [mallocSizeVal]) { Ok(v) => v, Err(e) => return qbeError(e) }
     match fnVal.block.buildCall(Callable.Function(self._snprintf), [mem, mallocSizeVal, floatFmtPtr, selfParam]) { Ok(v) => v, Err(e) => return qbeError(e) }
 
     val str = match self._constructString(mem, sizeVal) { Ok(v) => v, Err(e) => return Err(e) }
@@ -4517,7 +4517,10 @@ export type Compiler {
     parts.push("(")
 
     val args: String[] = []
-    if fn.kind == FunctionKind.InstanceMethod args.push("self")
+    match fn.kind {
+      FunctionKind.InstanceMethod => args.push("self")
+      _ => {}
+    }
     for param in fn.params {
       val paramTyRepr = match self._getReprForType(param.ty) { Ok(v) => v, Err(e) => return Err(e) }
       val defaultExpr = if param.defaultValue " = ..." else ""
