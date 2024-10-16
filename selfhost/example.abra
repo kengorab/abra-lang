@@ -1,4 +1,1 @@
-import "fs" as fs
-
-val cwd = fs.getCurrentWorkingDirectory()
-println(cwd)
+println("hello")

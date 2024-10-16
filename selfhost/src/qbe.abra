@@ -26,7 +26,7 @@ export type ModuleBuilder {
 
     val block = Block.new(name: name)
 
-    val fn = QbeFunction(exported: exported, name: name, returnType: returnType, _parameters: [], block: block, variadicIdx: None, _comments: [], _env: None)
+    val fn = QbeFunction(exported: exported, name: name, block: block, returnType: returnType, _parameters: [], variadicIdx: None, _comments: [], _env: None)
     self._functions.push(fn)
     self._functionsByName[name] = fn
     fn
@@ -604,7 +604,7 @@ export type Block {
           self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: fnReturnType)), fn: fnIdent, args: arguments, env: envPtr))
         }
       }
-      Callable.Value(fnValue) => {
+      Callable.Value(fnValue, _) => {
         self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: fnReturnType)), fn: fnValue, args: arguments, env: envPtr))
       }
     }
@@ -631,7 +631,7 @@ export type Block {
           self.append(Instruction.Call(dst: None, fn: fnIdent, args: arguments, env: envPtr))
         }
       }
-      Callable.Value(fnValue) => {
+      Callable.Value(fnValue, _) => {
         self.append(Instruction.Call(dst: None, fn: fnValue, args: arguments, env: envPtr))
       }
     }

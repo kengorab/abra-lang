@@ -33,34 +33,16 @@ impl TestRunner {
     }
 
     pub fn compiler_test_runner() -> CompilerTestRunner {
-        CompilerTestRunner {tests: vec![]}
+        let runner = Self::test_runner("compiler", "compiler.test.abra", "compiler_test", true);
+
+        CompilerTestRunner { bin_path: runner.bin_path, selfhosted_bin_path: runner.selfhosted_bin_path, tests: vec![] }
     }
 
     pub fn test_runner(runner_name: &'static str, src_file: &str, output_bin_file: &str, test_selfhosted: bool) -> Self {
-        let bin_path = build_test_runner(&src_file, &output_bin_file);
+        let bin_path = build_test_runner_using_rust_impl(&src_file, &output_bin_file);
 
         let selfhosted_bin_path = if test_selfhosted {
-            let selfhosted_compiler_bin = build_test_runner("compiler.test.abra", &format!("selfhosted_compiler_for_{}", runner_name));
-
-            let project_root = get_project_root().unwrap();
-            let selfhost_dir = project_root.join("selfhost");
-            let src_file = &selfhost_dir.join("src").join(&src_file);
-            let abra_wrapper_script = selfhost_dir.join("abra");
-            let output = Command::new(&abra_wrapper_script)
-                .current_dir(&selfhost_dir)
-                .env("COMPILER_BIN", &selfhosted_compiler_bin)
-                .arg("build")
-                .arg("-o")
-                .arg(&output_bin_file)
-                .arg(&src_file)
-                .output()
-                .unwrap();
-            if !output.stderr.is_empty() {
-                eprintln!("Failed to build test runner '{runner_name}'");
-                eprintln!("  Failed to compile {src_file:?} using selfhosted compiler: {}", String::from_utf8(output.stderr).unwrap());
-                panic!();
-            }
-            Some(selfhost_dir.join("._abra").join(&output_bin_file).to_str().unwrap().to_owned())
+            Some(build_test_runner_using_selfhosted_impl(runner_name, src_file, output_bin_file))
         } else {
             None
         };
@@ -177,6 +159,8 @@ struct CompilerTest {
 }
 
 pub struct CompilerTestRunner {
+    bin_path: String,
+    selfhosted_bin_path: Option<String>,
     tests: Vec<CompilerTest>,
 }
 
@@ -194,7 +178,6 @@ impl CompilerTestRunner {
         let mut failures = vec![];
         let selfhost_dir = get_project_root().unwrap().join("selfhost");
 
-        let compiler_test_bin = build_test_runner("compiler.test.abra", "compiler_test");
         let abra_wrapper_script = selfhost_dir.join("abra");
 
         for test in self.tests {
@@ -208,7 +191,7 @@ impl CompilerTestRunner {
 
             let output = Command::new(&abra_wrapper_script)
                 .current_dir(&selfhost_dir)
-                .env("COMPILER_BIN", &compiler_test_bin)
+                .env("COMPILER_BIN", &self.bin_path)
                 .envs(env.to_vec().into_iter().collect::<HashMap<_, _>>())
                 .arg(&test_path)
                 .args(program_args)
@@ -216,7 +199,7 @@ impl CompilerTestRunner {
                 .unwrap();
             if !output.stderr.is_empty() {
                 eprintln!("Compilation error: {}", String::from_utf8(output.stderr).unwrap());
-                failures.push(test_path);
+                failures.push((test_path, "reference"));
                 continue;
             }
             let output = String::from_utf8(output.stdout).unwrap();
@@ -229,25 +212,47 @@ impl CompilerTestRunner {
                 .map(|(line_num, line)| (line_num + 1, line.replace(prefix, "")))
                 .collect_vec();
 
-            let output_lines = output.lines();
-            for pair in expectations.iter().zip_longest(output_lines) {
-                match pair {
-                    EitherOrBoth::Both((line_num, expected), actual) => {
-                        if expected != actual {
-                            eprintln!("Expectation mismatch at {}:{} (expected '{}' but got '{}')", &test_path, line_num, expected, actual);
-                            failures.push(test_path);
+            let mut outputs = vec![(output, "reference")];
+
+            if let Some(selfhosted_bin_path) = &self.selfhosted_bin_path {
+                let project_root = get_project_root().unwrap();
+
+                let selfhost_dir = project_root.join("selfhost");
+
+                let output = Command::new(&abra_wrapper_script)
+                    .current_dir(&selfhost_dir)
+                    .env("COMPILER_BIN", &selfhosted_bin_path)
+                    .envs(env.to_vec().into_iter().collect::<HashMap<_, _>>())
+                    .arg(&test_path)
+                    .args(program_args)
+                    .output()
+                    .unwrap();
+                assert!(output.stderr.is_empty(), "Runtime error: {}", String::from_utf8(output.stderr).unwrap());
+                let output = String::from_utf8(output.stdout).unwrap();
+
+                outputs.push((output, "selfhosted"));
+            }
+
+            for (output, implementation) in outputs {
+                for pair in expectations.iter().zip_longest(output.lines()) {
+                    match pair {
+                        EitherOrBoth::Both((line_num, expected), actual) => {
+                            if expected != actual {
+                                eprintln!("Expectation mismatch at {}:{} (expected '{}' but got '{}')", &test_path, line_num, expected, actual);
+                                failures.push((test_path.clone(), implementation));
+                                break;
+                            }
+                        }
+                        EitherOrBoth::Left((line_num, expected)) => {
+                            eprintln!("Expected: {} (line {}), but reached end of output", expected, line_num);
+                            failures.push((test_path.clone(), implementation));
                             break;
                         }
-                    }
-                    EitherOrBoth::Left((line_num, expected)) => {
-                        eprintln!("Expected: {} (line {}), but reached end of output", expected, line_num);
-                        failures.push(test_path);
-                        break;
-                    }
-                    EitherOrBoth::Right(actual) => {
-                        eprintln!("Received line: {}, but there were no more expectations", actual);
-                        failures.push(test_path);
-                        break;
+                        EitherOrBoth::Right(actual) => {
+                            eprintln!("Received line: {}, but there were no more expectations", actual);
+                            failures.push((test_path.clone(), implementation));
+                            break;
+                        }
                     }
                 }
             }
@@ -255,8 +260,8 @@ impl CompilerTestRunner {
 
         if !failures.is_empty() {
             eprintln!("Failures running compiler tests:");
-            for test_path in failures {
-                eprintln!("  Test path '{}' failed", &test_path)
+            for (test_path, implementation) in failures {
+                eprintln!("  Test path '{}' failed (testing {})", &test_path, implementation)
             }
             panic!("Failures running compiler tests!");
         } else {
@@ -265,7 +270,7 @@ impl CompilerTestRunner {
     }
 }
 
-fn build_test_runner(runner_src_file: &str, output_bin_file: &str) -> String {
+fn build_test_runner_using_rust_impl(runner_src_file: &str, output_bin_file: &str) -> String {
     let selfhost_dir = get_project_root().unwrap().join("selfhost");
     let build_dir = if let Some(test_temp_dir) = std::env::var("TEST_TMP_DIR").ok() {
         let dir = Path::new(&test_temp_dir).join(random_string(12));
@@ -291,4 +296,28 @@ fn build_test_runner(runner_src_file: &str, output_bin_file: &str) -> String {
     println!("...built {}", &runner_bin);
 
     runner_bin
+}
+
+fn build_test_runner_using_selfhosted_impl(runner_name: &str, src_file: &str, output_bin_file: &str) -> String {
+    let selfhosted_compiler_bin = build_test_runner_using_rust_impl("compiler.test.abra", &format!("selfhosted_compiler_for_{}_tests", runner_name));
+
+    let project_root = get_project_root().unwrap();
+    let selfhost_dir = project_root.join("selfhost");
+    let src_file = &selfhost_dir.join("src").join(&src_file);
+    let abra_wrapper_script = selfhost_dir.join("abra");
+    let output = Command::new(&abra_wrapper_script)
+        .current_dir(&selfhost_dir)
+        .env("COMPILER_BIN", &selfhosted_compiler_bin)
+        .arg("build")
+        .arg("-o")
+        .arg(&output_bin_file)
+        .arg(&src_file)
+        .output()
+        .unwrap();
+    if !output.stderr.is_empty() {
+        eprintln!("Failed to build test runner '{runner_name}'");
+        eprintln!("  Failed to compile {src_file:?} using selfhosted compiler: {}", String::from_utf8(output.stderr).unwrap());
+        panic!();
+    }
+    selfhost_dir.join("._abra").join(&output_bin_file).to_str().unwrap().to_owned()
 }
