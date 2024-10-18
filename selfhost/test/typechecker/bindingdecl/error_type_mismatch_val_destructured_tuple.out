@@ -1,0 +1,6 @@
+Error at /Users/kengorab/Desktop/abra-lang/selfhost/test/typechecker/bindingdecl/error_type_mismatch_val_destructured_tuple.abra:1:29
+Type mismatch
+  |  val (a, b): (Int, String) = "abcd"
+                                 ^
+Expected: (Int, String)
+but instead found: String

@@ -172,6 +172,14 @@ export enum TypeIdentifier {
 
 export enum BindingPattern {
   Variable(label: Label)
+  Tuple(lParenTok: Token, patterns: BindingPattern[])
+
+  func position(self): Position {
+    match self {
+      BindingPattern.Variable(label) => label.position
+      BindingPattern.Tuple(lParenTok, _) => lParenTok.position
+    }
+  }
 }
 
 export type BindingDeclarationNode {
@@ -560,6 +568,17 @@ export type Parser {
       TokenKind.Ident => {
         val label = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
         BindingPattern.Variable(label)
+      }
+      TokenKind.LParen => {
+        val lParenTok = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+        val itemsRes = self._commaSeparated(end: TokenKind.RParen, consumeFinal: false, fn: () => self._parseBindingPattern())
+        val items = match itemsRes { Ok(v) => v, Err(e) => return Err(e) }
+        val rParenTok = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+        if items.isEmpty() {
+          return Err(ParseError(position: rParenTok.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident(""), TokenKind.LParen(true)], token.kind)))
+        }
+
+        BindingPattern.Tuple(lParenTok, items)
       }
       _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
     }

@@ -1,1 +1,2 @@
-println("hello")
+val tuple = ("a", 3, true)
+val (a, t) = tuple
