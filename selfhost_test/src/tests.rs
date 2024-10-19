@@ -165,6 +165,11 @@ fn parser_tests() {
         .add_test_vs_file("parser/for.abra", "parser/for.out.json")
         .add_test_vs_file("parser/for_error_no_in.abra", "parser/for_error_no_in.out")
         .add_test_vs_file("parser/for_error_no_iterator.abra", "parser/for_error_no_iterator.out")
+        .add_test_vs_file("typechecker/for/error_iteratee_invalid_destructuring_tuple.abra", "typechecker/for/error_iteratee_invalid_destructuring_tuple.out")
+        .add_test_vs_file("typechecker/for/for.1.abra", "typechecker/for/for.1.out.json")
+        .add_test_vs_file("typechecker/for/for.2.abra", "typechecker/for/for.2.out.json")
+        .add_test_vs_file("typechecker/for/for.3.abra", "typechecker/for/for.3.out.json")
+
         // Type identifiers
         .add_test_vs_file("parser/typeidentifiers.abra", "parser/typeidentifiers.out.json")
         .add_test_vs_file("parser/typeidentifiers_error_empty_typeargs.abra", "parser/typeidentifiers_error_empty_typeargs.out")
@@ -395,6 +400,7 @@ fn typechecker_tests() {
         .add_test_vs_file("typechecker/indexing/tuple_error_range.abra", "typechecker/indexing/tuple_error_range.out")
         .add_test_vs_file("typechecker/indexing/tuple_error_type_mismatch.abra", "typechecker/indexing/tuple_error_type_mismatch.out")
         // If expressions & statements
+        .add_test_vs_file("typechecker/if/error_binding_invalid_destructuring_tuple.abra", "typechecker/if/error_binding_invalid_destructuring_tuple.out")
         .add_test_vs_file("typechecker/if/error_bad_cond_type.abra", "typechecker/if/error_bad_cond_type.out")
         .add_test_vs_file("typechecker/if/error_block_mismatch.1.abra", "typechecker/if/error_block_mismatch.1.out")
         .add_test_vs_file("typechecker/if/error_block_mismatch.2.abra", "typechecker/if/error_block_mismatch.2.out")
@@ -589,7 +595,10 @@ fn typechecker_tests() {
         .add_test_vs_file("typechecker/while/while.1.abra", "typechecker/while/while.1.out.json")
         .add_test_vs_file("typechecker/while/while.2.abra", "typechecker/while/while.2.out.json")
         .add_test_vs_file("typechecker/while/while.3.abra", "typechecker/while/while.3.out.json")
+        .add_test_vs_file("typechecker/while/while.4.abra", "typechecker/while/while.4.out.json")
         .add_test_vs_file("typechecker/while/error_bad_cond_type.abra", "typechecker/while/error_bad_cond_type.out")
+        .add_test_vs_file("typechecker/while/error_condition_invalid_destructuring_tuple.abra", "typechecker/while/error_condition_invalid_destructuring_tuple.out")
+
         // For
         .add_test_vs_file("typechecker/for/for.1.abra", "typechecker/for/for.1.out.json")
         .add_test_vs_file("typechecker/for/for.2.abra", "typechecker/for/for.2.out.json")

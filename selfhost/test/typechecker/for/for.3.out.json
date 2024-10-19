@@ -1,0 +1,367 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "map", "position": [1, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "map", "position": [1, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "instance",
+              "struct": { "moduleId": 2, "name": "Map" },
+              "typeParams": [
+                {
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                {
+                  "kind": "primitive",
+                  "primitive": "Float"
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [1, 11],
+            "kind": {
+              "name": "LBrace"
+            }
+          },
+          "type": {
+            "kind": "instance",
+            "struct": { "moduleId": 2, "name": "Map" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              {
+                "kind": "primitive",
+                "primitive": "Float"
+              }
+            ]
+          },
+          "node": {
+            "kind": "map",
+            "pairs": [
+              [
+                {
+                  "token": {
+                    "position": [1, 13],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "a"
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": "a"
+                  }
+                },
+                {
+                  "token": {
+                    "position": [1, 16],
+                    "kind": {
+                      "name": "Float",
+                      "value": 1.2
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Float"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 1.2
+                  }
+                }
+              ],
+              [
+                {
+                  "token": {
+                    "position": [1, 21],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "b"
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": "b"
+                  }
+                },
+                {
+                  "token": {
+                    "position": [1, 24],
+                    "kind": {
+                      "name": "Float",
+                      "value": 3.4
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Float"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 3.4
+                  }
+                }
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "For"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "for",
+        "iterator": {
+          "token": {
+            "position": [2, 20],
+            "kind": {
+              "name": "Ident",
+              "value": "map"
+            }
+          },
+          "type": {
+            "kind": "instance",
+            "struct": { "moduleId": 2, "name": "Map" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              {
+                "kind": "primitive",
+                "primitive": "Float"
+              }
+            ]
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "map"
+          }
+        },
+        "itemBindingPattern": {
+          "bindingPattern": {
+            "kind": "tuple",
+            "patterns": [
+              {
+                "kind": "variable",
+                "label": { "name": "k", "position": [2, 6] }
+              },
+              {
+                "kind": "variable",
+                "label": { "name": "v", "position": [2, 9] }
+              }
+            ]
+          },
+          "variables": [
+            {
+              "label": { "name": "k", "position": [2, 6] },
+              "mutable": false,
+              "type": {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            },
+            {
+              "label": { "name": "v", "position": [2, 9] },
+              "mutable": false,
+              "type": {
+                "kind": "primitive",
+                "primitive": "Float"
+              }
+            }
+          ]
+        },
+        "indexBinding": {
+          "label": { "name": "idx", "position": [2, 13] },
+          "mutable": false,
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          }
+        },
+        "block": [
+          {
+            "token": {
+              "position": [3, 3],
+              "kind": {
+                "name": "Val"
+              }
+            },
+            "type": {
+              "kind": "primitive",
+              "primitive": "Unit"
+            },
+            "node": {
+              "kind": "bindingDeclaration",
+              "pattern": {
+                "kind": "variable",
+                "label": { "name": "_", "position": [3, 7] }
+              },
+              "variables": [
+                {
+                  "label": { "name": "_", "position": [3, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  }
+                }
+              ],
+              "expr": {
+                "token": {
+                  "position": [3, 19],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "k"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "k"
+                }
+              }
+            }
+          },
+          {
+            "token": {
+              "position": [4, 3],
+              "kind": {
+                "name": "Val"
+              }
+            },
+            "type": {
+              "kind": "primitive",
+              "primitive": "Unit"
+            },
+            "node": {
+              "kind": "bindingDeclaration",
+              "pattern": {
+                "kind": "variable",
+                "label": { "name": "_", "position": [4, 7] }
+              },
+              "variables": [
+                {
+                  "label": { "name": "_", "position": [4, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Float"
+                  }
+                }
+              ],
+              "expr": {
+                "token": {
+                  "position": [4, 18],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "v"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Float"
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "v"
+                }
+              }
+            }
+          },
+          {
+            "token": {
+              "position": [5, 3],
+              "kind": {
+                "name": "Val"
+              }
+            },
+            "type": {
+              "kind": "primitive",
+              "primitive": "Unit"
+            },
+            "node": {
+              "kind": "bindingDeclaration",
+              "pattern": {
+                "kind": "variable",
+                "label": { "name": "_", "position": [5, 7] }
+              },
+              "variables": [
+                {
+                  "label": { "name": "_", "position": [5, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                }
+              ],
+              "expr": {
+                "token": {
+                  "position": [5, 16],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "idx"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "idx"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

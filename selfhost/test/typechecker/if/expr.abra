@@ -60,3 +60,9 @@ val _: Foo1 = k
 enum Foo2 { Bar, Baz }
 val l = if true Foo2.Bar else Foo2.Baz
 val _: Foo2 = l
+
+val pairs = [("a", 1), ("b", 2)]
+if pairs[0] |(k, v)| {
+  val _: String = k
+  val _: Int = v
+}
