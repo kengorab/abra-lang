@@ -165,10 +165,6 @@ fn parser_tests() {
         .add_test_vs_file("parser/for.abra", "parser/for.out.json")
         .add_test_vs_file("parser/for_error_no_in.abra", "parser/for_error_no_in.out")
         .add_test_vs_file("parser/for_error_no_iterator.abra", "parser/for_error_no_iterator.out")
-        .add_test_vs_file("typechecker/for/error_iteratee_invalid_destructuring_tuple.abra", "typechecker/for/error_iteratee_invalid_destructuring_tuple.out")
-        .add_test_vs_file("typechecker/for/for.1.abra", "typechecker/for/for.1.out.json")
-        .add_test_vs_file("typechecker/for/for.2.abra", "typechecker/for/for.2.out.json")
-        .add_test_vs_file("typechecker/for/for.3.abra", "typechecker/for/for.3.out.json")
 
         // Type identifiers
         .add_test_vs_file("parser/typeidentifiers.abra", "parser/typeidentifiers.out.json")
@@ -602,10 +598,12 @@ fn typechecker_tests() {
         // For
         .add_test_vs_file("typechecker/for/for.1.abra", "typechecker/for/for.1.out.json")
         .add_test_vs_file("typechecker/for/for.2.abra", "typechecker/for/for.2.out.json")
+        .add_test_vs_file("typechecker/for/for.3.abra", "typechecker/for/for.3.out.json")
         .add_test_vs_file("typechecker/for/error_bad_iterator_option_type.abra", "typechecker/for/error_bad_iterator_option_type.out")
         .add_test_vs_file("typechecker/for/error_bad_iterator.abra", "typechecker/for/error_bad_iterator.out")
         .add_test_vs_file("typechecker/for/error_bad_iterator_unfilled_hole.abra", "typechecker/for/error_bad_iterator_unfilled_hole.out")
         .add_test_vs_file("typechecker/for/error_duplicate_ident.abra", "typechecker/for/error_duplicate_ident.out")
+        .add_test_vs_file("typechecker/for/error_iteratee_invalid_destructuring_tuple.abra", "typechecker/for/error_iteratee_invalid_destructuring_tuple.out")
         // Binding declaration
         .add_test_vs_file("typechecker/bindingdecl/bindingdecl.abra", "typechecker/bindingdecl/bindingdecl.out.json")
         .add_test_vs_file("typechecker/bindingdecl/bindingdecl_exported.abra", "typechecker/bindingdecl/bindingdecl_exported.out.json")
