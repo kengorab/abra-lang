@@ -303,6 +303,16 @@ export func printBindingPatternAsJson(bindingPattern: BindingPattern, indentLeve
       print("\"variable\",\n$fieldsIndent\"label\": ")
       printLabelAsJson(label)
     }
+    BindingPattern.Tuple(_, patterns) => {
+      println("\"tuple\",\n$fieldsIndent\"patterns\": [")
+      for pat, idx in patterns {
+        printBindingPatternAsJson(pat, currentIndentLevel + 2, currentIndentLevel + 2)
+        if idx != patterns.length - 1 {
+          println(",")
+        }
+      }
+      print("\n$fieldsIndent]")
+    }
   }
   print("\n$endIndent}")
 }

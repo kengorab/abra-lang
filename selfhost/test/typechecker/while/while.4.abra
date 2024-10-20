@@ -1,0 +1,5 @@
+val pairs = [("a", 1), ("b", 2)]
+while pairs[0] |(k, v)| {
+  val _: String = k
+  val _: Int = v
+}

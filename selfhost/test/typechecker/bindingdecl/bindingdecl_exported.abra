@@ -1,1 +1,4 @@
 export val a = 123
+
+val tuple = ("a", (true, false), [1, 2, 3])
+export val (tA, (tTrue, tFalse), tArray) = tuple

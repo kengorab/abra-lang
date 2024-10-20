@@ -918,11 +918,19 @@ type TypeError {
         }
       }
       TypeErrorKind.MissingValExpr(name) => {
-        lines.push("Missing initializer for immutable variable '$name'")
+        if name |name| {
+          lines.push("Missing initializer for immutable variable '$name'")
+        } else {
+          lines.push("Missing initializer for immutable variables")
+        }
         lines.push(self._getCursorLine(self.position, contents))
       }
       TypeErrorKind.MissingVarExprAndTypeAnn(name) => {
-        lines.push("Could not determine type of mutable variable '$name'")
+        if name |name| {
+          lines.push("Could not determine type of mutable variable '$name'")
+        } else {
+          lines.push("Could not determine type of mutable variables")
+        }
         lines.push(self._getCursorLine(self.position, contents))
         lines.push("A 'var' must have either an initial value or a type annotation (or both)")
       }
@@ -1278,6 +1286,25 @@ type TypeError {
           }
         }
       }
+      TypeErrorKind.InvalidDestructuring(reason) => {
+        match reason {
+          InvalidDestructuringReason.NonTupleAsTuple(ty) => {
+            lines.push("Invalid destructuring")
+            lines.push(self._getCursorLine(self.position, contents))
+            lines.push("A value of type '${ty.repr()}' cannot be destructured as a tuple")
+          }
+          InvalidDestructuringReason.InvalidTupleArity(expected, given) => {
+            val verbStr = if given == 1 "was" else "were"
+
+            lines.push("Incorrect number of destructuring arguments for tuple")
+            lines.push(self._getCursorLine(self.position, contents))
+            lines.push("Expected $expected, but $given $verbStr provided")
+            if given < expected {
+              lines.push("(You can use '_' to denote positions that you wish to discard)")
+            }
+          }
+        }
+      }
     }
 
     lines.join("\n")
@@ -1331,6 +1358,11 @@ enum InvalidMatchCaseDestructuringReason {
   InvalidArity(expected: Int, given: Int)
 }
 
+enum InvalidDestructuringReason {
+  NonTupleAsTuple(ty: Type)
+  InvalidTupleArity(expected: Int, given: Int)
+}
+
 enum TypeErrorKind {
   NotYetImplemented(reason: String)
   Unreachable(message: String)
@@ -1338,8 +1370,8 @@ enum TypeErrorKind {
   DuplicateName(original: Label)
   UnknownName(name: String, kind: String)
   UnknownField(ty: Type, name: String, specialCase: UnknownFieldSpecialCase?)
-  MissingValExpr(name: String)
-  MissingVarExprAndTypeAnn(name: String)
+  MissingValExpr(name: String?)
+  MissingVarExprAndTypeAnn(name: String?)
   IllegalNonConstantEnumVariant
   IllegalValueType(ty: Type, purpose: String)
   IllegalControlFlowType(ty: Type, purpose: String)
@@ -1377,6 +1409,7 @@ enum TypeErrorKind {
   EmptyMatchBlock
   NonExhaustiveMatch(subjectTy: Type)
   InvalidMatchCaseDestructuring(reason: InvalidMatchCaseDestructuringReason)
+  InvalidDestructuring(reason: InvalidDestructuringReason)
 }
 
 type ParamDefaultValueContext {
@@ -3026,6 +3059,30 @@ export type Typechecker {
 
         Ok([variable])
       }
+      BindingPattern.Tuple(lParenTok, patterns) => {
+        val innerTypes = match ty.kind {
+          TypeKind.Tuple(innerTypes) => innerTypes
+          _ => return Err(TypeError(position: lParenTok.position, kind: TypeErrorKind.InvalidDestructuring(InvalidDestructuringReason.NonTupleAsTuple(ty))))
+        }
+
+        if patterns[innerTypes.length] |invalidPat| {
+          val kind = TypeErrorKind.InvalidDestructuring(InvalidDestructuringReason.InvalidTupleArity(expected: innerTypes.length, given: patterns.length))
+          return Err(TypeError(position: invalidPat.position(), kind: kind))
+        }
+
+        val variables: Variable[] = []
+        for innerType, idx in innerTypes {
+          val pat = if patterns[idx] |pat| pat else {
+            val kind = TypeErrorKind.InvalidDestructuring(InvalidDestructuringReason.InvalidTupleArity(expected: innerTypes.length, given: patterns.length))
+            return Err(TypeError(position: lParenTok.position, kind: kind))
+          }
+
+          val foundVars = match self._typecheckBindingPattern(mutable, pat, innerType) { Ok(v) => v, Err(e) => return Err(e) }
+          for v in foundVars variables.push(v)
+        }
+
+        Ok(variables)
+      }
     }
   }
 
@@ -3063,19 +3120,19 @@ export type Typechecker {
 
       (Some(typedExpr), ty)
     } else if !isMutable {
-      val label = match node.bindingPattern {
-        BindingPattern.Variable(label) => label
-        // _ => return Err(TypeError(position: token.position, kind: TypeErrorKind.MissingValExpr(None)))
+      val err = match node.bindingPattern {
+        BindingPattern.Variable(label) => TypeError(position: label.position, kind: TypeErrorKind.MissingValExpr(Some(label.name)))
+        BindingPattern.Tuple(lParenTok, _) => TypeError(position: lParenTok.position, kind: TypeErrorKind.MissingValExpr(None))
       }
-      return Err(TypeError(position: label.position, kind: TypeErrorKind.MissingValExpr(label.name)))
+      return Err(err)
     } else if annType |ty| {
       (None, ty)
     } else {
-      val label = match node.bindingPattern {
-        BindingPattern.Variable(label) => label
-        // _ => return Err(TypeError(position: token.position, kind: TypeErrorKind.MissingVarExprAndTypeAnn(None)))
+      val err = match node.bindingPattern {
+        BindingPattern.Variable(label) => TypeError(position: label.position, kind: TypeErrorKind.MissingVarExprAndTypeAnn(Some(label.name)))
+        BindingPattern.Tuple(lParenTok, _) => TypeError(position: lParenTok.position, kind: TypeErrorKind.MissingVarExprAndTypeAnn(None))
       }
-      return Err(TypeError(position: label.position, kind: TypeErrorKind.MissingVarExprAndTypeAnn(label.name)))
+      return Err(err)
     }
     // TODO: destructuring
     val expr = _pair[0]
@@ -4799,7 +4856,7 @@ export type Typechecker {
                 return Err(TypeError(position: typedIdxExpr.token.position, kind: TypeErrorKind.TypeMismatch([keyTy], typedIdxExpr.ty)))
               }
 
-              val ty = Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeOptionEnum), [Type(kind: valTy.kind, )]))//nullable: true)
+              val ty = Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeOptionEnum), [Type(kind: valTy.kind, )]))
               Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Indexing(TypedIndexingNode.Map(typedExpr, typedIdxExpr))))
             }
             IndexingMode.Range => return Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.IllegalIndexableType(ty: typedExpr.ty, isRange: true)))

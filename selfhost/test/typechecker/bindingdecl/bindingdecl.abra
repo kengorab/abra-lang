@@ -7,3 +7,8 @@ var y: Int
 // Option
 val i1: Int? = None
 val i2: Int? = Some(16)
+
+// Tuple destructuring
+val tuple = ("a", (true, false), [1, 2, 3])
+val (tA, tBools, tArr) = tuple
+var (tTrue, tFalse) = tBools
