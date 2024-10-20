@@ -778,6 +778,7 @@ fn compiler_tests() {
         .add_test("compiler/arrays.abra")
         .add_test("compiler/functions.abra")
         .add_test("compiler/optionals.abra")
+        .add_test("compiler/ifs.abra")
         .add_test("compiler/loops.abra")
         .add_test("compiler/types.abra")
         .add_test("compiler/enums.abra")

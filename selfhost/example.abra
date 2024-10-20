@@ -1,2 +1,4 @@
-val tuple = ("a", 3, true)
-val (a, t) = tuple
+val tuple = ("a", (3.14, true))
+println(tuple)
+val (a, (three, tTrue)) = tuple
+println("a:", a, "three:", three, "tTrue:", tTrue)
