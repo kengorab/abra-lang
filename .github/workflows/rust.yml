@@ -69,7 +69,7 @@ jobs:
         echo "PATH=$(pwd)/qbe/qbe-1.2:$PATH" >> $GITHUB_ENV
     - name: Build rust
       run: cargo build
-    - name: Install ext dependencies (for C compilation)
+    - name: Install ext dependencies
       run: ./configure-libgc.sh
     - name: Run rust tests
       run: TEST_TMP_DIR=${{ runner.temp }} cargo test --verbose
