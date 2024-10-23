@@ -61,13 +61,12 @@ jobs:
         run: cargo build
       - name: Install ext dependencies
         run: ./configure-libgc.sh
-      - name: Build selfhosted compiler
+      - name: Build package
         run: |
           cd selfhost
-          ./abra build -o compiler ./src/compiler.test.abra
-          cp ./._abra/compiler "./abra-${{ github.ref_name }}-linux"
+          ./gen-pkg/gen.sh linux
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files:
-            "selfhost/abra-${{ github.ref_name }}-linux"
+            "selfhost/gen-pkg/abra-linux.tar.gz"

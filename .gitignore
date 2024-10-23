@@ -12,3 +12,6 @@ abra_wasm/js-tests/node_modules
 **/._abra
 libgc
 a.out
+
+selfhost/gen-pkg/abra
+selfhost/gen-pkg/*.tar.gz
