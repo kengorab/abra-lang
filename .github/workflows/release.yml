@@ -74,20 +74,6 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v2
-      - name: Cache Cargo
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - name: Cache LLVM
-        id: cache-llvm
-        uses: actions/cache@v3
-        with:
-          path: ./llvm
-          key: llvm-11.1.0
       - name: Cache QBE
         id: cache-qbe
         uses: actions/cache@v3
@@ -97,7 +83,6 @@ jobs:
       - name: Install LLVM (11.1.0)
         run:
           brew install llvm@11
-        if: steps.cache-llvm.outputs.cache-hit != 'true'
       - name: Setup LLVM
         run: |
           echo "PATH=$(brew --prefix llvm@11)/bin:$PATH" >> $GITHUB_ENV
