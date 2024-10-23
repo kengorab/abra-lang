@@ -6,7 +6,7 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout source
@@ -54,8 +54,6 @@ jobs:
         if: steps.cache-qbe.outputs.cache-hit != 'true'
       - name: Setup QBE
         run: |
-          ls -la ./qbe
-          ls -la ./qbe/qbe-1.2
           echo "PATH=$(pwd)/qbe/qbe-1.2:$PATH" >> $GITHUB_ENV
       - name: Build reference compiler
         run: cargo build
@@ -68,5 +66,65 @@ jobs:
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files:
-            "selfhost/gen-pkg/abra-linux.tar.gz"
+          tag_name: ${{ github.ref }}
+          files: selfhost/gen-pkg/abra-linux.tar.gz
+          append_body: true
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v2
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache LLVM
+        id: cache-llvm
+        uses: actions/cache@v3
+        with:
+          path: ./llvm
+          key: llvm-11.1.0
+      - name: Cache QBE
+        id: cache-qbe
+        uses: actions/cache@v3
+        with:
+          path: ./qbe/qbe-1.2
+          key: qbe-1.2
+      - name: Install LLVM (11.1.0)
+        run:
+          brew install llvm@11
+        if: steps.cache-llvm.outputs.cache-hit != 'true'
+      - name: Setup LLVM
+        run: |
+          echo "PATH=$(brew --prefix llvm@11)/bin:$PATH" >> $GITHUB_ENV
+          echo "LLVM_CONFIG=$(brew --prefix llvm@11)/bin/llvm-config" >> $GITHUB_ENV
+      - name: Install QBE
+        run: |
+          mkdir -p qbe
+          cd qbe
+          wget https://c9x.me/compile/release/qbe-1.2.tar.xz
+          tar -xf qbe-1.2.tar.xz
+          cd qbe-1.2
+          make
+        if: steps.cache-qbe.outputs.cache-hit != 'true'
+      - name: Setup QBE
+        run: |
+          echo "PATH=$(pwd)/qbe/qbe-1.2:$PATH" >> $GITHUB_ENV
+      - name: Build reference compiler
+        run: cargo build
+      - name: Install ext dependencies
+        run: ./configure-libgc.sh
+      - name: Build package
+        run: |
+          cd selfhost
+          ./gen-pkg/gen.sh darwin-arm64
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref }}
+          files: selfhost/gen-pkg/abra-darwin-arm64.tar.gz
+          append_body: true
