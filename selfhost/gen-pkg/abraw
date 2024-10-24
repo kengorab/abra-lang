@@ -2,12 +2,49 @@
 
 set -e # exit on non-zero exit status
 
-# abra <file-name> [program-args]
-#     Compiles and executes program from source <file-name>, passing along any [program-args]
-# abra build [-r|--run] [-o <output-file>] <file-name> [program-args]
-#     Compiles program from source <file-name>, saving resulting binary as <output-file> (if specified, `_main` otherwise),
-#     and running the file if -r/--run flag provided, passing along any [program-args]
-if [[ "$1" == "build" ]]; then
+abra_root=$(dirname "$(readlink -f "$0")")
+abra_version=$(cat "$abra_root/version")
+
+usage=$(cat <<EOF
+abra $abra_version
+
+USAGE:
+  abra <SUBCOMMAND>
+
+SUBCOMMANDS:
+  build     Compiles abra source file into binary
+    USAGE:
+      abra build [FLAGS] [OPTIONS] <file-path> [<program-args>...]
+
+    ARGS:
+      <file-path>         Path of the abra source file to compile
+      <program-args>...   Arguments to pass to the built abra program, if [-r/--run] is passed
+
+    FLAGS:
+      -r, --run           Run after building, forwarding along <program-args>...
+
+    OPTIONS:
+      -o <out-file-name>  Where the resulting binary should be placed
+
+  help/-h     Prints this usage info
+    USAGE:
+      abra help
+      abra -h
+
+  default     Compiles and runs abra source file
+    USAGE:
+      abra <file-path> [<program-args>...]
+
+    ARGS:
+      <file-path>         Path of the abra source file to compile
+      <program-args>...   Arguments to pass to the built abra program
+EOF
+)
+
+if [[ "$1" == "-h" ]]; then
+  echo "$usage"
+  exit 0
+elif [[ "$1" == "build" ]]; then
   shift
   a="$1"
   if [[ "$a" == "-r" || "$a" == "--run" ]]; then
@@ -35,8 +72,6 @@ dotabradir="$(pwd)/._abra"
 mkdir -p "$dotabradir"
 touch "$dotabradir/$outfile.ssa"
 : > "$dotabradir/$outfile.ssa" # truncate file
-
-abra_root=$(cd "$(dirname "$0")"; pwd)
 
 export ABRA_HOME="$abra_root/std"
 $(echo "$abra_root/compiler $filepath $outfile")

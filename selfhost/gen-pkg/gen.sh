@@ -13,6 +13,12 @@ if [[ "$platform" != "linux" && "$platform" != "darwin-x86" && "$platform" != "d
   exit 1
 fi
 
+version="$2"
+if [ -z "$version" ]; then
+  echo "Missing required 'version' argument (eg. v1.2.3)"
+  exit 1
+fi
+
 script_dir=$(cd "$(dirname "$0")"; pwd)
 pkg_dir="$script_dir/abra"
 
@@ -25,6 +31,7 @@ mkdir "$pkg_dir"
 cp ./._abra/compiler "$pkg_dir/compiler"
 
 cp "$script_dir/abraw" "$pkg_dir/abra"
+echo -n "$version" > "$pkg_dir/version"
 
 mkdir "$pkg_dir/include"
 cp "$script_dir/../../abra_llvm/ext/libgc/lib/libgc.a" "$pkg_dir/include/."
