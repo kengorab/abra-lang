@@ -62,7 +62,7 @@ jobs:
       - name: Build package
         run: |
           cd selfhost
-          ./gen-pkg/gen.sh linux
+          ./gen-pkg/gen.sh linux ${{ github.ref_name }}
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
