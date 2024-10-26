@@ -44,9 +44,9 @@ jobs:
         ls abra-linux
         echo "PATH=$(pwd)/abra-linux:$PATH" >> $GITHUB_ENV
         echo "ABRA_HOME=`realpath $(pwd)/abra-linux/std`" >> $GITHUB_ENV
-        which abra
     - name: Run tests
       run: |
         cd selfhost
         echo "$PATH"
+        which abra
         node test/run-tests.js
