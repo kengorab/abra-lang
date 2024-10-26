@@ -1,0 +1,47 @@
+name: Test selfhosted
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout source
+      uses: actions/checkout@v2
+    - name: Cache QBE
+      id: cache-qbe
+      uses: actions/cache@v3
+      with:
+        path: ./qbe/qbe-1.2
+        key: qbe-1.2
+    - name: Install QBE
+      run: |
+        mkdir -p qbe
+        cd qbe
+        wget https://c9x.me/compile/release/qbe-1.2.tar.xz
+        tar -xf qbe-1.2.tar.xz
+        cd qbe-1.2
+        make
+      if: steps.cache-qbe.outputs.cache-hit != 'true'
+    - name: Setup QBE
+      run: |
+        echo "PATH=$(pwd)/qbe/qbe-1.2:$PATH" >> $GITHUB_ENV
+    - name: Install ext dependencies
+      run: ./configure-libgc.sh
+    - name: Install abra
+      run: |
+        wget https://github.com/kengorab/abra-lang/releases/latest/download/abra-linux.tar.gz
+        tar –xvzf abra-linux.tar.gz
+        echo "PATH=$(pwd)/abra-linux:$PATH" >> $GITHUB_ENV
+        echo "ABRA_HOME=`realpath $(pwd)/abra-linux/std`" >> $GITHUB_ENV
+    - name: Run tests
+      run: |
+        cd selfhost
+        node test/run-tests.js
