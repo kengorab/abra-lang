@@ -39,6 +39,7 @@ jobs:
       run: |
         wget https://github.com/kengorab/abra-lang/releases/latest/download/abra-linux.tar.gz
         tar -xvzf abra-linux.tar.gz
+        ls
         ls abra-linux
         echo "PATH=$(pwd)/abra-linux:$PATH" >> $GITHUB_ENV
         echo "ABRA_HOME=`realpath $(pwd)/abra-linux/std`" >> $GITHUB_ENV
