@@ -14,9 +14,9 @@ class TestRunner {
       console.log(`  Compiling test harness '${this.harnessPath}'\n`)
       await runCommand('abra', ['build', '-o', this.runnerName, this.harnessPath])
     } catch (err) {
-      console.log('  Failed to compile test harness:')
+      console.log(red('  Failed to compile test harness:'))
       const errFmt = err.toString().split('\n').map(line => `    ${line}`).join('\n')
-      console.log(errFmt)
+      console.log(red(errFmt))
       return { numPass: 0, numFail: 0, numErr: tests.length }
     }
 
@@ -100,12 +100,12 @@ class TestRunner {
       switch (result.status) {
         case 'pass': {
           numPass += 1
-          console.log(`  [PASS] ${result.testFile}`)
+          console.log(green(`  [PASS] ${result.testFile}`))
           break
         }
         case 'fail': {
           numFail += 1
-          console.log(`  [FAIL] ${result.testFile}`)
+          console.log(magenta(`  [FAIL] ${result.testFile}`))
           console.log('EXPECTED')
           console.log(result.expected)
           console.log('ACTUAL')
@@ -114,19 +114,22 @@ class TestRunner {
         }
         case 'error': {
           numErr += 1
-          console.log(`  [ERROR] ${result.testFile}`)
+          console.log(red(`  [ERROR] ${result.testFile}`))
 
           const errFmt = result.error.toString().split('\n').map(line => `    ${line}`).join('\n')
-          console.log(errFmt)
+          console.log(red(errFmt))
           break
         }
       }
     }
 
     console.log()
-    console.log(`  Pass: ${numPass} / ${results.length}`)
-    console.log(`  Fail: ${numFail} / ${results.length}`)
-    console.log(`  Error: ${numErr} / ${results.length}`)
+    const passMsg = `  Pass: ${numPass} / ${results.length}`
+    console.log(numPass === results.length ? green(passMsg) : passMsg)
+    const failMsg = `  Fail: ${numFail} / ${results.length}`
+    console.log(numFail > 0 ? magenta(failMsg) : failMsg)
+    const errMsg = `  Error: ${numErr} / ${results.length}`
+    console.log(numErr > 0 ? magenta(errMsg) : errMsg)
 
     return { numPass, numFail, numErr }
   }
@@ -148,4 +151,22 @@ function runCommand(command, args, envVars = {}) {
   })
 }
 
-module.exports = { TestRunner }
+const colors = {
+  reset: "\x1b[0m",
+  black: "\x1b[30m",
+  red: "\x1b[31m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  blue: "\x1b[34m",
+  magenta: "\x1b[35m",
+  cyan: "\x1b[36m",
+  white: "\x1b[37m",
+  gray: "\x1b[90m",
+  crimson: "\x1b[38m"
+}
+
+const red = str => `${colors.red}${str}${colors.reset}`
+const green = str => `${colors.green}${str}${colors.reset}`
+const magenta = str => `${colors.magenta}${str}${colors.reset}`
+
+module.exports = { TestRunner, red, green, magenta }

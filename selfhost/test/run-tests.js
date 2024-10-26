@@ -1,4 +1,4 @@
-const { TestRunner } = require('./test-runner')
+const { TestRunner, red, green, magenta } = require('./test-runner')
 
 const LEXER_TESTS = [
   // Ints
@@ -810,9 +810,12 @@ async function main() {
   }
 
   console.log('\nTotals:')
-  console.log(`  Pass: ${numPass} / ${numTests}`)
-  console.log(`  Fail: ${numFail} / ${numTests}`)
-  console.log(`  Error: ${numErr} / ${numTests}`)
+  const passMsg = `  Pass: ${numPass} / ${numTests}`
+  console.log(numPass === numTests ? green(passMsg) : passMsg)
+  const failMsg = `  Fail: ${numFail} / ${numTests}`
+  console.log(numFail > 0 ? magenta(failMsg) : failMsg)
+  const errMsg = `  Error: ${numErr} / ${numTests}`
+  console.log(numErr > 0 ? magenta(errMsg) : errMsg)
 
   if (numPass !== numTests)
     return process.exit(1)
