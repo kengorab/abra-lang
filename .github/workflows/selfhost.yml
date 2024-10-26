@@ -37,6 +37,7 @@ jobs:
       run: ./configure-libgc.sh
     - name: Install abra
       run: |
+        mkdir abra-linux
         wget https://github.com/kengorab/abra-lang/releases/latest/download/abra-linux.tar.gz
         tar -xzf abra-linux.tar.gz -C abra-linux
         ls
