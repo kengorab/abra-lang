@@ -326,10 +326,10 @@ export type Lexer {
 
   func _multiCharToken(self, default: TokenKind, cases: (String, TokenKind)[]): TokenKind {
     val peekCursor = self._cursor + 1
-    for case in cases {
-      if self._input[peekCursor:(peekCursor + case[0].length)] == case[0] {
-        self._advance(by: case[0].length)
-        return case[1]
+    for (str, tokenKind) in cases {
+      if self._input[peekCursor:(peekCursor + str.length)] == str {
+        self._advance(by: str.length)
+        return tokenKind
       }
     }
 

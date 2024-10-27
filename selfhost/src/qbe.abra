@@ -79,10 +79,7 @@ export enum QbeDataKind {
         file.write("z $size")
       }
       QbeDataKind.Constants(values) => {
-        for _p, idx in values {
-          val ty = _p[0]
-          val v = _p[1]
-
+        for (ty, v), idx in values {
           file.write(ty.repr())
           file.write(" ")
           v.encode(file)
@@ -642,11 +639,11 @@ export type Block {
   }
 
   func buildPhi(self, cases: (Label, Value)[], dst: String? = None): Result<Value, String> {
-    var ty = if cases[0] |_c| _c[1].ty() else return Err("phi requires at least 1 label")
-    for case in cases {
-      if ty != case[1].ty() return Err("phi case type mismatch: @${case[0].name} (type: ${case[1].ty()}) doesn't match previous (type: $ty)")
+    var ty = if cases[0] |(_, value)| value.ty() else return Err("phi requires at least 1 label")
+    for (label, value) in cases {
+      if ty != value.ty() return Err("phi case type mismatch: @${label.name} (type: ${value.ty()}) doesn't match previous (type: $ty)")
 
-      self._usedLabels.insert(case[0])
+      self._usedLabels.insert(label)
     }
 
     val dest = dst ?: self._nextLocal()
@@ -765,9 +762,9 @@ export type QbeFunction {
       env.encode(file)
       if !self._parameters.isEmpty() file.write(", ")
     }
-    for param, idx in self._parameters {
-      param[1].encode(file)
-      file.write(" %${param[0]}")
+    for (name, ty), idx in self._parameters {
+      ty.encode(file)
+      file.write(" %$name")
       if idx != self._parameters.length - 1 {
         file.write(", ")
       }
@@ -1236,9 +1233,9 @@ enum Instruction {
       Instruction.Phi(dst, cases) => {
         dst.encode(file)
         file.write(" phi ")
-        for case, idx in cases {
-          file.write("@${case[0].name} ")
-          case[1].encode(file)
+        for (label, value), idx in cases {
+          file.write("@${label.name} ")
+          value.encode(file)
 
           if idx != cases.length - 1 {
             file.write(", ")

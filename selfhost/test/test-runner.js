@@ -31,13 +31,13 @@ class TestRunner {
     return this._outputResults(results)
   }
 
-  async _runTest(lexerBin, testFile, outputFile) {
+  async _runTest(bin, testFile, outputFile) {
     const testFilePath = `${__dirname}/${testFile}`
     const outputFilePath = `${__dirname}/${outputFile}`
 
     try {
       const [actual, expectedOutput] = await Promise.all([
-        runCommand(lexerBin, [testFilePath]),
+        runCommand(bin, [testFilePath]),
         fs.readFile(outputFilePath, { encoding: 'utf8' }),
       ])
 
@@ -55,12 +55,12 @@ class TestRunner {
     }
   }
 
-  async _runCompilerTest(lexerBin, testFile, args = [], env = {}) {
+  async _runCompilerTest(bin, testFile, args = [], env = {}) {
     const testFilePath = `${__dirname}/${testFile}`
 
     try {
       const [actual, expectedOutput] = await Promise.all([
-        runCommand('abra', [testFilePath, ...args], { COMPILER_BIN: lexerBin, ...env }),
+        runCommand('abra', [testFilePath, ...args], { COMPILER_BIN: bin, ...env }),
         fs.readFile(testFilePath, { encoding: 'utf8' }),
       ])
 

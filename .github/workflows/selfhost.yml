@@ -46,3 +46,8 @@ jobs:
       run: |
         cd selfhost
         node test/run-tests.js
+    - name: Run tests against compiler-next
+      run: |
+        cd selfhost
+        abra build -o compiler_next ./src/compiler.test.abra
+        COMPILER_BIN=./._abra/compiler_next node test/run-tests.js
