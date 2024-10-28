@@ -11,6 +11,8 @@ jobs:
     steps:
       - name: Create non-latest release
         run: gh release create ${{ github.ref_name }} --latest=false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   build-and-release:
     needs:
       - create-gh-release
@@ -52,6 +54,8 @@ jobs:
           ./gen-pkg/gen.sh ${{ matrix.platform.suffix }} ${{ github.ref_name }}
       - name: Upload to release
         run: gh release upload ${{ github.ref_name }} selfhost/gen-pkg/abra-${{ matrix.platform.suffix }}.tar.gz
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   mark-release-as-latest:
     needs:
       - build-and-release
@@ -59,3 +63,5 @@ jobs:
     steps:
       - name: Mark release as latest
         run: gh release edit ${{ github.ref_name }} --latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
