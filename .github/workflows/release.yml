@@ -11,8 +11,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
-      - name: Create non-latest release
-        run: gh release create ${{ github.ref_name }} --latest=false
+      - name: Create pre-release release
+        run: gh release create ${{ github.ref_name }} -p
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   build-and-release:
@@ -66,6 +66,6 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
       - name: Mark release as latest
-        run: gh release edit ${{ github.ref_name }} --latest
+        run: gh release edit ${{ github.ref_name }} --prerelease=false --latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
