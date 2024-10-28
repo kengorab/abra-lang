@@ -18,12 +18,6 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v2
-      - name: Cache QBE
-        id: cache-qbe
-        uses: actions/cache@v3
-        with:
-          path: ./qbe/qbe-1.2
-          key: qbe-1.2
       - name: Install QBE
         run: |
           mkdir -p qbe
