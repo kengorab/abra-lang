@@ -6,8 +6,15 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
-  build-linux:
-    runs-on: ubuntu-22.04
+  build-and-release:
+    strategy:
+      matrix:
+        platform:
+          - os: ubuntu-latest
+            suffix: linux
+          - os: macos-14
+            suffix: darwin-arm64
+    runs-on: ${{ matrix.platform.os }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v2
@@ -33,18 +40,18 @@ jobs:
         run: ./configure-libgc.sh
       - name: Install abra
         run: |
-          mkdir abra-linux
-          wget https://github.com/kengorab/abra-lang/releases/latest/download/abra-linux.tar.gz
-          tar -xzf abra-linux.tar.gz -C abra-linux
-          echo "PATH=$(pwd)/abra-linux:$PATH" >> $GITHUB_ENV
-          echo "ABRA_HOME=`realpath $(pwd)/abra-linux/std`" >> $GITHUB_ENV
+          mkdir abra-installation
+          wget https://github.com/kengorab/abra-lang/releases/latest/download/abra-${{ matrix.platform.suffix }}.tar.gz
+          tar -xzf abra-${{ matrix.platform.suffix }}.tar.gz -C abra-installation
+          echo "PATH=$(pwd)/abra-installation:$PATH" >> $GITHUB_ENV
+          echo "ABRA_HOME=`realpath $(pwd)/abra-installation/std`" >> $GITHUB_ENV
       - name: Build package
         run: |
           cd selfhost
-          ./gen-pkg/gen.sh linux ${{ github.ref_name }}
+          ./gen-pkg/gen.sh ${{ matrix.platform.suffix }} ${{ github.ref_name }}
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref }}
-          files: selfhost/gen-pkg/abra-linux.tar.gz
+          files: selfhost/gen-pkg/abra-${{ matrix.platform.suffix }}.tar.gz
           append_body: true
