@@ -1,15 +1,24 @@
 # Abra
-A small programming language, written in Rust
+A small statically-typed compiled programming language.
+
+Originally written in Rust, but recently self-hosted (the compiler is written in itself).
 
 ![Build & Test](https://github.com/kengorab/abra-lang/workflows/Build%20&%20Test/badge.svg)
 
 This project is very much a work in progress: you can check the [documentation site](https://abra.kenrg.co) for more information
 
 ## Getting Started
-Download the latest `abra` binary from the [Releases](https://github.com/kengorab/abra-lang/releases/latest) page.
+Download the latest `abra` binary from the [Releases](https://github.com/kengorab/abra-lang/releases/latest) page, and 
+place it wherever you want on your system (e.g. `~/.abra`). You will then need to export an `$ABRA_HOME` environment
+variable which points to the `~/.abra/std/` directory.
 You should then be able to run
+```swift
+// example.abra
+println("Hello world")
+```
 ```sh
-abra run my-file.abra
+$ abra example.abra
+Hello world
 ```
 
 ## What's it look like?
