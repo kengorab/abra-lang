@@ -73,8 +73,13 @@ mkdir -p "$dotabradir"
 touch "$dotabradir/$outfile.ssa"
 : > "$dotabradir/$outfile.ssa" # truncate file
 
-export ABRA_HOME="$abra_root/std"
-$(echo "$abra_root/compiler $filepath $outfile")
+if [[ -z "$ABRA_HOME" ]]; then
+  echo "Cannot determine ABRA_HOME. Ensure the environment variable exists and points to the std/ dir of the installation"
+  exit 1
+fi
+
+compiler_bin="${COMPILER_BIN:-"$abra_root/compiler"}"
+$(echo "$compiler_bin $filepath $outfile")
 
 qbe -o "$dotabradir/$outfile.s" "$dotabradir/$outfile.ssa"
 

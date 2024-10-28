@@ -43,13 +43,9 @@ export type Jsonifier {
       self.println("\"exports\": [")
       self.indentInc()
 
-      for _e, idx in mod.exports {
+      for (name, exp), idx in mod.exports {
         self.println("{")
         self.indentInc()
-
-        // TODO: Destructuring
-        val name = _e[0]
-        val exp = _e[1]
 
         match exp {
           Export.Variable => self.println("\"kind\": \"variable\",")

@@ -337,7 +337,7 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
   println("$startIndent{")
   match kind {
     AstNodeKind.Literal(literal) => {
-      val pair = match literal {
+      val (kind, value) = match literal {
         LiteralAstNode.Int(value) => ("int", value.toString())
         LiteralAstNode.Float(value) => ("float", value.toString())
         LiteralAstNode.Bool(value) => ("bool", value.toString())
@@ -345,8 +345,8 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
       }
 
       println("$fieldsIndent\"name\": \"literal\",")
-      println("$fieldsIndent\"type\": \"${pair[0]}\",")
-      println("$fieldsIndent\"value\": ${pair[1]}")
+      println("$fieldsIndent\"type\": \"$kind\",")
+      println("$fieldsIndent\"value\": $value")
     }
     AstNodeKind.StringInterpolation(exprs) => {
       println("$fieldsIndent\"name\": \"stringInterpolation\",")
@@ -401,9 +401,7 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
       println(",\n$fieldsIndent\"path\": [")
       val pathIndent = "  ".repeat(currentIndentLevel + 2)
       val pathsIndent = "  ".repeat(currentIndentLevel + 3)
-      for seg, idx in accessorNode.path {
-        val dotToken = seg[0]
-        val label = seg[1]
+      for (dotToken, label), idx in accessorNode.path {
         print("$pathIndent{\n$pathsIndent\"dotToken\": ")
         printTokenAsJson(dotToken, 0, currentIndentLevel + 3)
         println(",\n$pathsIndent\"ident\": \"${label.name}\",")
@@ -485,9 +483,7 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         println("$fieldsIndent\"items\": []")
       } else {
         println("$fieldsIndent\"items\": [")
-        for item, idx in items {
-          val key = item[0]
-          val value = item[1]
+        for (key, value), idx in items {
           println("$fieldsIndent  {")
           print("$fieldsIndent    \"key\": ")
           printAstNodeAsJson(key, 0, currentIndentLevel + 3)
@@ -664,15 +660,15 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
             }
             MatchCaseKind.Literal(literal) => {
               println("$fieldsIndent      \"kind\": \"literal\",")
-              val pair = match literal {
+              val (kind, value) = match literal {
                 LiteralAstNode.Int(value) => ("int", value.toString())
                 LiteralAstNode.Float(value) => ("float", value.toString())
                 LiteralAstNode.Bool(value) => ("bool", value.toString())
                 LiteralAstNode.String(value) => ("string", "\"$value\"")
               }
 
-              println("$fieldsIndent      \"type\": \"${pair[0]}\",")
-              println("$fieldsIndent      \"value\": ${pair[1]}")
+              println("$fieldsIndent      \"type\": \"$kind\",")
+              println("$fieldsIndent      \"value\": $value")
             }
             MatchCaseKind.Type(path, last, args) => {
               println("$fieldsIndent      \"kind\": \"type\",")

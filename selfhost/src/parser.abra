@@ -751,10 +751,7 @@ export type Parser {
       }
     }
 
-    val tuple = match self._parseBodyForTypeOrEnum() { Ok(v) => v, Err(e) => return Err(e) }
-    val methods = tuple[0]
-    val types = tuple[1]
-    val enums = tuple[2]
+    val (methods, types, enums) = match self._parseBodyForTypeOrEnum() { Ok(v) => v, Err(e) => return Err(e) }
 
     match self._expectNextTokenKind(TokenKind.RBrace) { Ok(v) => v, Err(e) => return Err(e) }
 
@@ -831,10 +828,7 @@ export type Parser {
       variants.push(variant)
     }
 
-    val tuple = match self._parseBodyForTypeOrEnum() { Ok(v) => v, Err(e) => return Err(e) }
-    val methods = tuple[0]
-    val types = tuple[1]
-    val enums = tuple[2]
+    val (methods, types, enums) = match self._parseBodyForTypeOrEnum() { Ok(v) => v, Err(e) => return Err(e) }
 
     match self._expectNextTokenKind(TokenKind.RBrace) { Ok(v) => v, Err(e) => return Err(e) }
 

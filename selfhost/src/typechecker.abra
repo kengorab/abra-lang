@@ -459,14 +459,13 @@ export type Type {
   func withSubstitutedGenerics(self, resolvedGenerics: Map<String, Type>, retainUnknown: Bool, genericsInScope: Set<String>): Type {
     val resultType = match self.kind {
       TypeKind.Generic(name) => {
-        val t = if resolvedGenerics[name] |substitute| {
+        if resolvedGenerics[name] |substitute| {
           substitute
         } else if retainUnknown || genericsInScope.contains(name) {
           self
         } else {
           Type(kind: TypeKind.Hole)
         }
-        t
       }
       TypeKind.Instance(structOrEnum, typeArgs) => {
         val substTypeArgs = typeArgs.map(ty => ty.withSubstitutedGenerics(resolvedGenerics, retainUnknown, genericsInScope))
@@ -1492,10 +1491,7 @@ export type Typechecker {
           return Some(TypeError(position: label.position, kind: TypeErrorKind.DuplicateName(original: alias)))
         }
       }
-      for _p in importedModule.imports {
-        // TODO: destructuring
-        val name = _p[0]
-        val imp = _p[1]
+      for (name, imp) in importedModule.imports {
         if name == label.name {
           return Some(TypeError(position: label.position, kind: TypeErrorKind.DuplicateName(original: imp.label)))
         }
@@ -1580,10 +1576,7 @@ export type Typechecker {
   }
 
   func _findModuleByAlias(self, name: String): Result<(TypedModule, Label)?, TypeError> {
-    for _m in self.currentModuleImports {
-      // TODO: destructuring
-      val importModulePath = _m[0]
-      val importedModule = _m[1]
+    for (importModulePath, importedModule) in self.currentModuleImports {
       if importedModule.aliases.find(a => a.name == name) |alias| {
         val mod = if self.project.modules[importModulePath] |m| m else return unreachable(alias.position, "unknown module")
         return Ok(Some((mod, alias)))
@@ -1669,10 +1662,7 @@ export type Typechecker {
         }
 
         for importedModule in self.currentModuleImports.values() {
-          for _p in importedModule.imports {
-            // TODO: destructuring
-            val name = _p[0]
-            val imp = _p[1]
+          for (name, imp) in importedModule.imports {
             if name == label.name {
               match imp.kind {
                 TypedImportKind.Type(structOrEnum, _) => {
@@ -1698,10 +1688,7 @@ export type Typechecker {
       TypeIdentifier.Normal(label, typeArguments, path) => {
         if path[0] |firstSeg| {
           val _mod = match self._findModuleByAlias(firstSeg.name) { Ok(v) => v, Err(e) => return Err(e) }
-          val _m = if _mod |mod| mod else return Err(TypeError(position: firstSeg.position, kind: TypeErrorKind.UnknownName(firstSeg.name, "module")))
-          // TODO: destructuring
-          val mod = _m[0]
-          val aliasLabel = _m[1]
+          val (mod, aliasLabel) = if _mod |mod| mod else return Err(TypeError(position: firstSeg.position, kind: TypeErrorKind.UnknownName(firstSeg.name, "module")))
 
           if path[1] |seg| return todo(seg.position, "qualified type paths longer than 2")
 
@@ -1799,34 +1786,22 @@ export type Typechecker {
             } else {
               last
             }
-            val _p = match ty.kind {
+
+            match ty.kind {
               TypeKind.Type(structOrEnum) => {
-                val _p = match structOrEnum {
+                match structOrEnum {
                   StructOrEnum.Enum(enum_) => {
-                    val t = if enum_.variants.findIndex(v => v.label.name == label.name) |_p| {
-                      // TODO: destructuring
-                      Some((enum_, _p))
-                    } else {
-                      return Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
+                    if enum_.variants.findIndex(v => v.label.name == label.name) |(variant, variantIdx)| {
+                      return Ok(Either.Right((enum_, variant, variantIdx)))
                     }
-                    t
                   }
-                  _ => None
+                  _ => {}
                 }
-                _p
               }
-              _ => None
+              _ => {}
             }
 
-            if _p |_p| {
-              // TODO: destructuring
-              val enum_ = _p[0]
-              val variant = _p[1][0]
-              val variantIdx = _p[1][1]
-              Ok(Either.Right((enum_, variant, variantIdx)))
-            } else {
-              Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
-            }
+            Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
           }
           _ => {
             return todo(first.position, "module aliases")
@@ -1880,13 +1855,8 @@ export type Typechecker {
       }
     }
 
-    for _m in self.currentModuleImports {
-      val name = _m[0]
-      val importedModule = _m[1]
-      for _p in importedModule.imports {
-        // TODO: destructuring
-        val importedName = _p[0]
-        val importedValue = _p[1]
+    for (name, importedModule) in self.currentModuleImports {
+      for (importedName, importedValue) in importedModule.imports {
         if importedName == ident {
           val v = match importedValue.kind {
             TypedImportKind.Variable(v) => {
@@ -1997,8 +1967,8 @@ export type Typechecker {
   func _genericsInScope(self): Set<String> {
     val genericsInScope: Set<String> = #{}
     if self.currentFunction |fn| {
-      for _p in fn.typeParams {
-        match _p[0].kind {
+      for (ty, _) in fn.typeParams {
+        match ty.kind {
           TypeKind.Generic(name) => genericsInScope.insert(name)
           _ => {
             __assertUnreachable("typeParam.kind != TypeKind.Generic")
@@ -2134,10 +2104,7 @@ export type Typechecker {
     mod.id = moduleId
     mod.rootScope = moduleScope
 
-    for _p in imports {
-      // TODO: destructuring
-      val typedImportModule = _p[0]
-      val importNode = _p[1]
+    for (typedImportModule, importNode) in imports {
       match self._typecheckImport(typedImportModule, importNode) {
         Ok(v) => v
         Err(e) => return Err(TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(e)))
@@ -2361,10 +2328,7 @@ export type Typechecker {
       }
 
       val hint = paramHints[idx]
-      val _p = match self._typecheckFunctionParam(param, hint, allowSelf) { Ok(v) => v, Err(e) => return Err(e) }
-      // TODO: destructuring
-      val typedParam = _p[0]
-      val needsRevisit = _p[1]
+      val (typedParam, needsRevisit) = match self._typecheckFunctionParam(param, hint, allowSelf) { Ok(v) => v, Err(e) => return Err(e) }
       val paramName = typedParam.label.name
       // This is a bit messy - if param is `self` then don't add here; it's already denoted as an instance method via its FunctionKind
       if paramName != "self" { fn.params.push(typedParam) }
@@ -2401,10 +2365,7 @@ export type Typechecker {
       val defaultValueNode = if paramNode.defaultValue |n| n else return unreachable(param.label.position, "the only way a parameter needs revisiting is if it has a default value")
 
       val hint = paramHints[idx]
-      val _p = match self._typecheckFunctionParam(param: paramNode, typeHint: hint, allowSelf: allowSelf, isRevisit: true) { Ok(v) => v, Err(e) => return Err(e) }
-      // TODO: destructuring
-      val typedParam = _p[0]
-      val needsRevisit = _p[1]
+      val (typedParam, needsRevisit) = match self._typecheckFunctionParam(param: paramNode, typeHint: hint, allowSelf: allowSelf, isRevisit: true) { Ok(v) => v, Err(e) => return Err(e) }
       if needsRevisit return unreachable(param.label.position, "parameters should not need to be revisited more than once")
       fn.params[idx] = typedParam
     }
@@ -2528,14 +2489,10 @@ export type Typechecker {
   func _typecheckMethodsPass2(self, structOrEnum: StructOrEnum, funcDeclNodes: FunctionDeclarationNode[]): Result<Map<Label, Int[]>, TypeError> {
     val allParamsNeedingRevisit: Map<Label, Int[]> = {}
 
-    val _p = match structOrEnum {
+    val (scope, instanceMethods, staticMethods) = match structOrEnum {
       StructOrEnum.Struct(struct) => (struct.scope, struct.instanceMethods, struct.staticMethods)
       StructOrEnum.Enum(enum_) => (enum_.scope, enum_.instanceMethods, enum_.staticMethods)
     }
-    // TODO: destructuring
-    val scope = _p[0]
-    val instanceMethods = _p[1]
-    val staticMethods = _p[2]
 
     val selfInstanceType = match structOrEnum {
       StructOrEnum.Struct(struct) => {
@@ -2830,10 +2787,7 @@ export type Typechecker {
       ImportKind.List(importNames) => {
         for imp in importNames {
           for importedModule in self.currentModuleImports.values() {
-            for _p in importedModule.imports {
-              // TODO: destructuring
-              val importedName = _p[0]
-              val importedValue = _p[1]
+            for (importedName, importedValue) in importedModule.imports {
               if importedName == imp.name {
                 return Err(TypeError(position: imp.position, kind: TypeErrorKind.DuplicateName(original: importedValue.label)))
               }
@@ -2929,46 +2883,35 @@ export type Typechecker {
     // --- Pass 2 for types, enums, and functions
 
     val structsPass2_1: (Struct, TypeDeclarationNode)[] = []
-    for pair in structsPass1 {
-      val struct = pair[0]
-      val node = pair[1]
+    for (struct, node) in structsPass1 {
       match self._typecheckStructPass2_1(struct, node) { Ok(v) => v, Err(e) => return Err(e) }
 
       structsPass2_1.push((struct, node))
     }
 
     val enumsPass2_1: (Enum, EnumDeclarationNode)[] = []
-    for pair in enumsPass1 {
-      val enum_ = pair[0]
-      val node = pair[1]
+    for (enum_, node) in enumsPass1 {
       match self._typecheckEnumPass2_1(enum_, node) { Ok(v) => v, Err(e) => return Err(e) }
 
       enumsPass2_1.push((enum_, node))
     }
 
     val structsPass2_2: (Struct, TypeDeclarationNode, Map<Label, Int[]>)[] = []
-    for pair in structsPass1 {
-      val struct = pair[0]
-      val node = pair[1]
+    for (struct, node) in structsPass1 {
       val toRevisit = match self._typecheckStructPass2_2(struct, node) { Ok(v) => v, Err(e) => return Err(e) }
 
       structsPass2_2.push((struct, node, toRevisit))
     }
 
     val enumsPass2_2: (Enum, EnumDeclarationNode, Map<Label, Int[]>)[] = []
-    for pair in enumsPass2_1 {
-      val enum_ = pair[0]
-      val node = pair[1]
+    for (enum_, node) in enumsPass2_1 {
       val toRevisit = match self._typecheckEnumPass2_2(enum_, node) { Ok(v) => v, Err(e) => return Err(e) }
 
       enumsPass2_2.push((enum_, node, toRevisit))
     }
 
     val functionsPass2: (Function, FunctionDeclarationNode, Int[])[] = []
-    for fnPair in functionsPass1 {
-      val fn = fnPair[0]
-      val aliasVar = fnPair[1]
-      val node = fnPair[2]
+    for (fn, aliasVar, node) in functionsPass1 {
       val paramsNeedingRevisit = match self._typecheckFunctionPass2(fn: fn, allowSelf: false, params: node.params) { Ok(v) => v, Err(e) => return Err(e) }
 
       aliasVar.ty = fn.getType()
@@ -2983,10 +2926,7 @@ export type Typechecker {
     for node in nodes {
       val res = match node.kind {
         AstNodeKind.FunctionDeclaration => {
-          val typedNode = if functionsIter.next() |pair| {
-            val fn = pair[0]
-            val fnDeclNode = pair[1]
-            val paramsNeedingRevisit = pair[2]
+          val typedNode = if functionsIter.next() |(fn, fnDeclNode, paramsNeedingRevisit)| {
             match self._typecheckFunctionPass3(fn: fn, allowSelf: false, params: fnDeclNode.params, body: fnDeclNode.body, paramsNeedingRevisit: paramsNeedingRevisit) { Ok(v) => v, Err(e) => return Err(e) }
             TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.FunctionDeclaration(fn))
           } else {
@@ -2997,11 +2937,7 @@ export type Typechecker {
           continue
         }
         AstNodeKind.TypeDeclaration => {
-          val typedNode = if structsIter.next() |pair| {
-            val struct = pair[0]
-            val typeDeclNode = pair[1]
-            val toRevisit = pair[2]
-
+          val typedNode = if structsIter.next() |(struct, typeDeclNode, toRevisit)| {
             match self._typecheckStructPass3(struct, typeDeclNode, toRevisit) { Ok(v) => v, Err(e) => return Err(e) }
             TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.TypeDeclaration(struct))
           } else {
@@ -3012,11 +2948,7 @@ export type Typechecker {
           continue
         }
         AstNodeKind.EnumDeclaration => {
-          val typedNode = if enumsIter.next() |pair| {
-            val enum_ = pair[0]
-            val enumDeclNode = pair[1]
-            val toRevisit = pair[2]
-
+          val typedNode = if enumsIter.next() |(enum_, enumDeclNode, toRevisit)| {
             match self._typecheckEnumPass3(enum_, enumDeclNode, toRevisit) { Ok(v) => v, Err(e) => return Err(e) }
             TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.EnumDeclaration(enum_))
           } else {
@@ -3102,7 +3034,7 @@ export type Typechecker {
       None
     }
 
-    val _pair = if node.expr |expr| {
+    val (expr, ty) = if node.expr |expr| {
       val typedExpr = match self._typecheckExpression(expr, annType) { Ok(v) => v, Err(e) => return Err(e) }
       val ty = if annType |annotatedType| {
         if !self._typeSatisfiesRequired(ty: typedExpr.ty, required: annotatedType) {
@@ -3134,9 +3066,6 @@ export type Typechecker {
       }
       return Err(err)
     }
-    // TODO: destructuring
-    val expr = _pair[0]
-    val ty = _pair[1]
 
     val variables = match self._typecheckBindingPattern(isMutable, node.bindingPattern, ty) { Ok(v) => v, Err(e) => return Err(e) }
     for v in variables {
@@ -3155,10 +3084,7 @@ export type Typechecker {
       AssignmentMode.Variable(name, varToken) => {
         val pos = varToken.position
 
-        val variable = if self._resolveIdentifier(name) |_v| {
-          // TODO: destructuring
-          val v = _v[0]
-          val modExportedFrom = _v[1]
+        val variable = if self._resolveIdentifier(name) |(v, modExportedFrom)| {
           if modExportedFrom return Err(TypeError(position: pos, kind: TypeErrorKind.IllegalAssignment(kind: "variable", name: name, reason: IllegalAssignmentReason.Import)))
 
           v
@@ -3199,20 +3125,17 @@ export type Typechecker {
       }
       AssignmentMode.Accessor(accessorNode) => {
         val typedLhs = match self._typecheckAccessor(token, accessorNode, None) { Ok(v) => v, Err(e) => return Err(e) }
-        val _p = match typedLhs.kind {
+        val (mode, fieldLabel, field) = match typedLhs.kind {
           TypedAstNodeKind.Accessor(head, mid, tail) => {
             val t = match tail {
               AccessorPathSegment.EnumVariant(label, _, _, variant) => {
                 return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAssignment("enum variant", variant.label.name, IllegalAssignmentReason.EnumVariant)))
               }
               AccessorPathSegment.Method(label, fn, _, _) => {
-                val _p = match fn.kind {
+                val (kind, reason) = match fn.kind {
                   FunctionKind.StaticMethod => ("static method", IllegalAssignmentReason.StaticMethod)
                   _ => ("method", IllegalAssignmentReason.Method)
                 }
-                // TODO: destructuring
-                val kind = _p[0]
-                val reason = _p[1]
 
                 return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAssignment(kind, fn.label.name, reason)))
               }
@@ -3230,10 +3153,6 @@ export type Typechecker {
           }
           _ => return unreachable(typedLhs.token.position, "_typecheckAccessor returned unexpected TypedAstNodeKind")
         }
-        // TODO: destructuring
-        val mode = _p[0]
-        val fieldLabel = _p[1]
-        val field = _p[2]
 
         val typedExpr = match self._typecheckExpression(expr, Some(field.ty)) { Ok(v) => v, Err(e) => return Err(e) }
         if !self._typeSatisfiesRequired(ty: typedExpr.ty, required: field.ty) {
@@ -3547,10 +3466,7 @@ export type Typechecker {
     val allCasesHandled: () => Bool = () => {
       if seenElseCase return true
 
-      for _p in seenEnumVariants {
-        // TODO: destructuring
-        val enum_ = _p[0]
-        val seenVariantIdxs = _p[1]
+      for (enum_, seenVariantIdxs) in seenEnumVariants {
         val enumVariantIdxs = enum_.variants.map((_, i) => i).asSet()
         if seenVariantIdxs == enumVariantIdxs {
           if self._typeIsOption(typedExpr.ty) {
@@ -3607,10 +3523,8 @@ export type Typechecker {
               TypedMatchCaseKind.Type(caseTy)
             }
             Either.Right(_p) => {
-              // TODO: destructuring
-              val enum_ = _p[0]
-              val variant = _p[1]
-              val variantIdx = _p[2]
+              // TODO: destructuring in match cases
+              val (enum_, variant, variantIdx) = _p
               if seenEnumVariants[enum_] |seenVariants| {
                 if seenVariants.contains(variantIdx) return Err(TypeError(position: case.position, kind: TypeErrorKind.DuplicateMatchCase))
                 seenVariants.insert(variantIdx)
@@ -3622,8 +3536,8 @@ export type Typechecker {
               val template = Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
               val extractedGenerics = subjectTy.extractGenerics(template: template)
               val resolvedGenerics: Map<String, Type> = {}
-              for _p in extractedGenerics {
-                resolvedGenerics[_p[0]] = _p[1]
+              for (name, ty) in extractedGenerics {
+                resolvedGenerics[name] = ty
               }
 
               val caseTy = template.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
@@ -3882,12 +3796,7 @@ export type Typechecker {
     val handleCases: ((TypeKind, TypeKind, TypeKind)[]) => Result<TypedAstNode, TypeError> = (cases) => {
       val left = match self._typecheckExpression(node.left, None) { Ok(v) => v, Err(e) => return Err(e) }
       val right = match self._typecheckExpression(node.right, None) { Ok(v) => v, Err(e) => return Err(e) }
-      for _case in cases {
-        // TODO: destructuring
-        val lTy = _case[0]
-        val rTy = _case[1]
-        val outTy = _case[2]
-
+      for (lTy, rTy, outTy) in cases {
         if (lTy == TypeKind.Hole || self._typeSatisfiesRequired(ty: left.ty, required: Type(kind: lTy))) &&
           ((rTy == TypeKind.Hole || self._typeSatisfiesRequired(ty: right.ty, required: Type(kind: rTy)))) {
           return Ok(TypedAstNode(token: token, ty: Type(kind: outTy), kind: TypedAstNodeKind.Binary(left, node.op, right)))
@@ -3980,7 +3889,7 @@ export type Typechecker {
   }
 
   func _typecheckIdentifier(self, token: Token, kind: IdentifierKind, typeHint: Type?): Result<TypedAstNode, TypeError> {
-    val _p = match kind {
+    val ((variable, varImportMod), name, fnTypeHint) = match kind {
       IdentifierKind.Named(name) => {
         val resolvedIdentifier = if self._resolveIdentifier(name) |_v| _v else {
           if self.paramDefaultValueContext |ctx| {
@@ -4029,12 +3938,6 @@ export type Typechecker {
         (resolvedIdentifier, "self", None)
       }
     }
-    // TODO: destructuring
-    val _v = _p[0]
-    val name = _p[1]
-    val fnTypeHint = _p[2]
-    val variable = _v[0]
-    val varImportMod = _v[1]
 
     Ok(TypedAstNode(token: token, ty: variable.ty, kind: TypedAstNodeKind.Identifier(name, variable, fnTypeHint, varImportMod)))
   }
@@ -4069,7 +3972,7 @@ export type Typechecker {
       TypeKind.Never => None
       TypeKind.Generic => self._resolveAccessorPathSegmentAny(label, optSafe, typeHint)
       TypeKind.Instance(structOrEnum, generics) => {
-        val _p = match structOrEnum {
+        val (instanceMethods, typeParams) = match structOrEnum {
           StructOrEnum.Struct(struct) => {
             for field in struct.fields {
               if field.name.name == label.name {
@@ -4089,9 +3992,6 @@ export type Typechecker {
           }
           StructOrEnum.Enum(enum_) => (enum_.instanceMethods, enum_.typeParams)
         }
-        // TODO: destructuring
-        val instanceMethods = _p[0]
-        val typeParams = _p[1]
 
         for fn in instanceMethods {
           if fn.label.name == label.name {
@@ -4121,13 +4021,13 @@ export type Typechecker {
                   val template = Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), typeArgs))
                   val extractedGenerics = hint.extractGenerics(template: template)
                   val resolvedGenerics: Map<String, Type> = {}
-                  for _p in extractedGenerics {
-                    resolvedGenerics[_p[0]] = _p[1]
+                  for (name, ty) in extractedGenerics {
+                    resolvedGenerics[name] = ty
                   }
 
                   template.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
                 } else {
-                  val t = match variant.kind {
+                  match variant.kind {
                     EnumVariantKind.Container => {
                       Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), typeArgs))
                     }
@@ -4135,7 +4035,6 @@ export type Typechecker {
                       Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), enum_.typeParams.map(() => Type(kind: TypeKind.Hole))))
                     }
                   }
-                  t
                 }
 
                 match variant.kind {
@@ -4180,14 +4079,8 @@ export type Typechecker {
       _ => None
     }
 
-    val identifierNode = if _mod |_mod| {
-      // TODO: destructuring
-      val mod = _mod[0]
-      val aliasLabel = _mod[1]
-
-      // TODO: destructuring
-      val dotTok = field[0]
-      val label = field[1]
+    val identifierNode = if _mod |(mod, aliasLabel)| {
+      val (dotTok, label) = field
       if dotTok.kind == TokenKind.QuestionDot return Err(TypeError(position: dotTok.position, kind: TypeErrorKind.UnnecessaryOptSafety))
 
       val exportVar = match mod.exports[label.name] {
@@ -4209,8 +4102,8 @@ export type Typechecker {
   func _typecheckAccessor(self, token: Token, node: AccessorAstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
     var accessorPath = node.path
 
-    val _firstSeg = if accessorPath[0] |p| p else return unreachable(token.position, "path should have at least 1 segment")
-    val maybeModuleAccessor = match self._resolveModuleAliasAccessor(node.root, _firstSeg) { Ok(v) => v, Err(e) => return Err(e) }
+    val firstSeg = if accessorPath[0] |p| p else return unreachable(token.position, "path should have at least 1 segment")
+    val maybeModuleAccessor = match self._resolveModuleAliasAccessor(node.root, firstSeg) { Ok(v) => v, Err(e) => return Err(e) }
     val typedRoot = if maybeModuleAccessor |n| {
       if accessorPath.length == 1 return Ok(n)
 
@@ -4226,10 +4119,7 @@ export type Typechecker {
     val path: AccessorPathSegment[] = []
     var ty = typedRoot.ty
     var seenOptSafeDot = false
-    for _p, idx in accessorPath {
-      // TODO: destructuring
-      val token = _p[0]
-      val label = _p[1]
+    for (token, label), idx in accessorPath {
       val isOptSafe = token.kind == TokenKind.QuestionDot
       seenOptSafeDot ||= isOptSafe
       val optInnerTy = self._typeIsOption(ty)
@@ -4283,12 +4173,10 @@ export type Typechecker {
             TypeKind.Instance(structOrEnum, _) => {
               val seg = match structOrEnum {
                 StructOrEnum.Struct(struct) => {
-                  val seg = match self._resolveAccessorPathSegment(Type(kind: TypeKind.Type(StructOrEnum.Struct(struct))), label, typeHint) { Ok(v) => v, Err(e) => return Err(e) }
-                  seg
+                  match self._resolveAccessorPathSegment(Type(kind: TypeKind.Type(StructOrEnum.Struct(struct))), label, typeHint) { Ok(v) => v, Err(e) => return Err(e) }
                 }
                 StructOrEnum.Enum(enum_) => {
-                  val seg = match self._resolveAccessorPathSegment(Type(kind: TypeKind.Type(StructOrEnum.Enum(enum_))), label, typeHint) { Ok(v) => v, Err(e) => return Err(e) }
-                  seg
+                  match self._resolveAccessorPathSegment(Type(kind: TypeKind.Type(StructOrEnum.Enum(enum_))), label, typeHint) { Ok(v) => v, Err(e) => return Err(e) }
                 }
               }
 
@@ -4370,13 +4258,10 @@ export type Typechecker {
   }
 
   func _typecheckInvocationOfExpression(self, token: Token, invokeeExpr: TypedAstNode, exprPos: Position, invocationNode: InvocationAstNode): Result<TypedAstNode, TypeError> {
-    val _pair = match invokeeExpr.ty.kind {
+    val (paramTypes, returnType) = match invokeeExpr.ty.kind {
       TypeKind.Func(paramTypes, returnType) => (paramTypes.map(p => p[0]), returnType)
       _ => return Err(TypeError(position: exprPos, kind: TypeErrorKind.IllegalCallableType(invokeeExpr.ty)))
     }
-    // TODO: destructuring
-    val paramTypes = _pair[0]
-    val returnType = _pair[1]
 
     if self.paramDefaultValueContext |ctx| {
       ctx.exprContainsFunctionCall = true
@@ -4442,15 +4327,15 @@ export type Typechecker {
       if hint.kind != TypeKind.PrimitiveUnit && fn.returnType.containsGenerics() {
         val extractedGenerics = hint.extractGenerics(template: fn.returnType)
 
-        for _p in extractedGenerics {
-          if resolvedGenerics[_p[0]] |original| {
-            if original != _p[1] {
+        for (name, ty) in extractedGenerics {
+          if resolvedGenerics[name] |original| {
+            if original != ty {
               val returnType = fn.returnType.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
               return Err(TypeError(position: invokee.token.position, kind: TypeErrorKind.TypeMismatch([hint], returnType)))
             }
             continue
           }
-          resolvedGenerics[_p[0]] = _p[1]
+          resolvedGenerics[name] = ty
         }
       }
     }
@@ -4472,11 +4357,8 @@ export type Typechecker {
     val variadicArgs: TypedAstNode[] = []
     var mostRecentLabeledOptionalParam: Label? = None
     val argumentsQueue = invocationNode.arguments.map((arg, idx) => (arg, idx, 0))
-    for _a in argumentsQueue {
-      // TODO: destructuring
-      val arg = _a[0]
-      val idx = if variadicParam |p| p[1] else _a[1]
-      val numAttempts = _a[2]
+    for (arg, argIdx, numAttempts) in argumentsQueue {
+      val idx = if variadicParam |(_, idx)| idx else argIdx
 
       var param = if fn.params[idx] |param| param else {
         return Err(TypeError(position: arg.position(), kind: TypeErrorKind.WrongInvocationArity(expected: fn.params.length, given: invocationNode.arguments.length)))
@@ -4512,36 +4394,36 @@ export type Typechecker {
         if param.isVariadic { variadicParam = Some((param, idx)) }
       }
 
-      val _p = if param.ty.containsGenerics() {
+      val (typedArg, paramType) = if param.ty.containsGenerics() {
         var paramType = paramTy.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: genericsInScope)
 
         val typedArg = match self._typecheckExpression(arg.value, Some(paramType)) { Ok(v) => v, Err(e) => return Err(e) }
         if numAttempts < 1 && typedArg.ty.hasUnfilledHoles() {
-          argumentsQueue.push((_a[0], _a[1], numAttempts + 1))
+          argumentsQueue.push((arg, argIdx, numAttempts + 1))
           continue
         }
 
         val extractedGenerics = typedArg.ty.extractGenerics(template: paramTy)
 
-        for _p in extractedGenerics {
-          if resolvedGenerics[_p[0]] |original| {
+        for (name, ty) in extractedGenerics {
+          if resolvedGenerics[name] |original| {
             match original.kind {
               TypeKind.Generic => {
-                resolvedGenerics[_p[0]] = _p[1]
+                resolvedGenerics[name] = ty
                 continue
               }
               TypeKind.Hole => {
-                resolvedGenerics[_p[0]] = _p[1]
+                resolvedGenerics[name] = ty
                 continue
               }
               _ => {}
             }
-            if !self.project.typesAreEquivalent(ty: original, other: _p[1]) {
+            if !self.project.typesAreEquivalent(ty: original, other: ty) {
               return Err(TypeError(position: typedArg.token.position, kind: TypeErrorKind.ParameterTypeMismatch(Some(param.label.name), original, typedArg.ty)))
             }
             continue
           }
-          resolvedGenerics[_p[0]] = _p[1]
+          resolvedGenerics[name] = ty
         }
 
         paramType = paramTy.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: genericsInScope)
@@ -4550,9 +4432,6 @@ export type Typechecker {
         val typedArg = match self._typecheckExpression(arg.value, Some(paramTy)) { Ok(v) => v, Err(e) => return Err(e) }
         (typedArg, paramTy)
       }
-      // TODO: destructuring
-      val typedArg = _p[0]
-      val paramType = _p[1]
       if !self._typeSatisfiesRequired(ty: typedArg.ty, required: paramType) {
         return Err(TypeError(position: typedArg.token.position, kind: TypeErrorKind.ParameterTypeMismatch(Some(param.label.name), paramType, typedArg.ty)))
       }
@@ -4564,8 +4443,7 @@ export type Typechecker {
       }
     }
 
-    if variadicParam |_p| {
-      val param = _p[0]
+    if variadicParam |(param, _)| {
       var innerType = param.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: genericsInScope)
       val paramType = Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeArrayStruct), [innerType]))
       typedArgumentsByName[param.label.name] = TypedAstNode(token: token, ty: paramType, kind: TypedAstNodeKind.Array(variadicArgs))
@@ -4617,10 +4495,7 @@ export type Typechecker {
         Instantiatable.EnumContainerVariant(enum_, variant, _) => TypedInvokee.EnumVariant(enum_, variant)
       }
       v
-    } else if selfVal |_p| {
-      // TODO: destructuring
-      val selfVal = _p[0]
-      val isOptSafe = _p[1]
+    } else if selfVal |(selfVal, isOptSafe)| {
       TypedInvokee.Method(fn, selfVal, isOptSafe)
     } else {
       TypedInvokee.Function(fn)
@@ -4721,10 +4596,7 @@ export type Typechecker {
     var keyTy: Type? = None
     var valTy: Type? = None
     if typeHint |hint| {
-      if self._typeAsInstance2(hint, self.project.preludeMapStruct) |_p| {
-        // TODO: destructuring
-        val keyHintTy = _p[0]
-        val valHintTy = _p[1]
+      if self._typeAsInstance2(hint, self.project.preludeMapStruct) |(keyHintTy, valHintTy)| {
         if keyHintTy.kind != TypeKind.Hole {
           keyTy = Some(keyHintTy)
         }
@@ -4735,11 +4607,7 @@ export type Typechecker {
     }
 
     val typedItems: (TypedAstNode, TypedAstNode)[] = []
-    for _p in items {
-      // TODO: destructuring
-      val keyNode = _p[0]
-      val valNode = _p[1]
-
+    for (keyNode, valNode) in items {
       val typedKey = match keyNode.kind {
         AstNodeKind.Identifier(identKind) => match identKind {
           IdentifierKind.Named(name) => TypedAstNode(token: keyNode.token, ty: Type(kind: TypeKind.PrimitiveString), kind: TypedAstNodeKind.Literal(LiteralAstNode.String(name)))
@@ -4785,11 +4653,7 @@ export type Typechecker {
     val keyTyHasUnfilledHoles = kTy.hasUnfilledHoles()
     val valTyHasUnfilledHoles = vTy.hasUnfilledHoles()
 
-    for _p in typedItems {
-      // TODO: destructuring
-      val typedKey = _p[0]
-      val typedVal = _p[1]
-
+    for (typedKey, typedVal) in typedItems {
       if !keyTyHasUnfilledHoles && typedKey.ty.hasUnfilledHoles() { typedKey.ty.tryFillHoles(kTy) }
       if !valTyHasUnfilledHoles && typedVal.ty.hasUnfilledHoles() { typedVal.ty.tryFillHoles(vTy) }
      }
@@ -4844,11 +4708,7 @@ export type Typechecker {
         if self._typeAsInstance1(typedExpr.ty, self.project.preludeArrayStruct) |inner| {
           val innerAsOpt = Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeOptionEnum), [inner]))
           self._typecheckIndexingArraylike(token: token, typedExpr: typedExpr, indexMode: indexMode, singleModeType: innerAsOpt, rangeModeType: typedExpr.ty)
-        } else if self._typeAsInstance2(typedExpr.ty, self.project.preludeMapStruct) |_p| {
-          // TODO: destructuring
-          val keyTy = _p[0]
-          val valTy = _p[1]
-
+        } else if self._typeAsInstance2(typedExpr.ty, self.project.preludeMapStruct) |(keyTy, valTy)| {
           match indexMode {
             IndexingMode.Single(idxExpr) => {
               val typedIdxExpr = match self._typecheckExpression(idxExpr, Some(keyTy)) { Ok(v) => v, Err(e) => return Err(e) }
@@ -4937,9 +4797,7 @@ export type Typechecker {
     if typeHint |hint| {
       match hint.kind {
         TypeKind.Func(paramTypes, retType) => {
-          for _p in paramTypes {
-            val ty = _p[0]
-            val isRequired = _p[1]
+          for (ty, isRequired) in paramTypes {
             if !isRequired return unreachable(token.position, "unexpected non-required param in lambda param type hint")
 
             paramHints.push(ty)
