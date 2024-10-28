@@ -27,7 +27,7 @@ if [ -d "$pkg_dir" ]; then
 fi
 mkdir "$pkg_dir"
 
-./abra build -o compiler ./src/compiler.test.abra
+abra build -o compiler ./src/compiler.test.abra
 cp ./._abra/compiler "$pkg_dir/compiler"
 
 cp "$script_dir/abraw" "$pkg_dir/abra"
