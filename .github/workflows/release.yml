@@ -9,6 +9,8 @@ jobs:
   create-gh-release:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
       - name: Create non-latest release
         run: gh release create ${{ github.ref_name }} --latest=false
         env:
@@ -26,7 +28,7 @@ jobs:
     runs-on: ${{ matrix.platform.os }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Install QBE
         run: |
           mkdir -p qbe
@@ -61,6 +63,8 @@ jobs:
       - build-and-release
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
       - name: Mark release as latest
         run: gh release edit ${{ github.ref_name }} --latest
         env:
