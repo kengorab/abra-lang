@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:1:1
-Could not determine type for parameter 'a'
-  |  a => 123
-     ^
-Consider adding a type annotation

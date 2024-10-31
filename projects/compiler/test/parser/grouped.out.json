@@ -1,0 +1,93 @@
+{
+  "imports": [],
+  "nodes": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "LParen"
+        }
+      },
+      "kind": {
+        "name": "grouped",
+        "inner": {
+          "token": {
+            "position": [1, 5],
+            "kind": {
+              "name": "Star"
+            }
+          },
+          "kind": {
+            "name": "binary",
+            "op": "BinaryOp.Mul",
+            "left": {
+              "token": {
+                "position": [1, 2],
+                "kind": {
+                  "name": "Int",
+                  "value": 12
+                }
+              },
+              "kind": {
+                "name": "literal",
+                "type": "int",
+                "value": 12
+              }
+            },
+            "right": {
+              "token": {
+                "position": [1, 7],
+                "kind": {
+                  "name": "LParen"
+                }
+              },
+              "kind": {
+                "name": "grouped",
+                "inner": {
+                  "token": {
+                    "position": [1, 10],
+                    "kind": {
+                      "name": "Plus"
+                    }
+                  },
+                  "kind": {
+                    "name": "binary",
+                    "op": "BinaryOp.Add",
+                    "left": {
+                      "token": {
+                        "position": [1, 8],
+                        "kind": {
+                          "name": "Int",
+                          "value": 3
+                        }
+                      },
+                      "kind": {
+                        "name": "literal",
+                        "type": "int",
+                        "value": 3
+                      }
+                    },
+                    "right": {
+                      "token": {
+                        "position": [1, 12],
+                        "kind": {
+                          "name": "Int",
+                          "value": 4
+                        }
+                      },
+                      "kind": {
+                        "name": "literal",
+                        "type": "int",
+                        "value": 4
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

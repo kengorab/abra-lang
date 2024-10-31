@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:1:12
-Forbidden type for if-condition
-  |  val a = if 123 { "123" } else 456
-                ^
-Conditions must either be Bool or Option types
-but instead found Int

@@ -1,3 +1,0 @@
-import "./abc" as abc
-val a = 1
-import a, b, c, from "./abc"

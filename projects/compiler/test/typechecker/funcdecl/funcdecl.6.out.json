@@ -1,0 +1,132 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo1", "position": [2, 6] },
+          "scope": {
+            "name": "$root::module_3::foo1",
+            "variables": [
+              {
+                "label": { "name": "a", "position": [2, 12] },
+                "mutable": false,
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 2, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                }
+              }
+            ],
+            "functions": [],
+            "types": []
+          },
+          "kind": "FunctionKind.Standalone",
+          "typeParameters": [],
+          "parameters": [
+            {
+              "label": { "name": "a", "position": [2, 12] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "defaultValue": null,
+              "isVariadic": true
+            }
+          ],
+          "returnType": {
+            "kind": "primitive",
+            "primitive": "Unit"
+          },
+          "body": []
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [3, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo2", "position": [3, 6] },
+          "scope": {
+            "name": "$root::module_3::foo2",
+            "variables": [
+              {
+                "label": { "name": "arrs", "position": [3, 12] },
+                "mutable": false,
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 2, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "instance",
+                      "struct": { "moduleId": 2, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "functions": [],
+            "types": []
+          },
+          "kind": "FunctionKind.Standalone",
+          "typeParameters": [],
+          "parameters": [
+            {
+              "label": { "name": "arrs", "position": [3, 12] },
+              "type": {
+                "kind": "instance",
+                "struct": { "moduleId": 2, "name": "Array" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
+              },
+              "defaultValue": null,
+              "isVariadic": true
+            }
+          ],
+          "returnType": {
+            "kind": "primitive",
+            "primitive": "Unit"
+          },
+          "body": []
+        }
+      }
+    }
+  ]
+}

@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:1:6
-Illegal operator
-  |  1234 << "def"
-          ^
-No operator '<<' exists between types Int and String

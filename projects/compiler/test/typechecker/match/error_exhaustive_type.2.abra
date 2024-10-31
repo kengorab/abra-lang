@@ -1,0 +1,6 @@
+val a = Some(123)
+val x = match a {
+  Int a => a + 1
+  None => 0
+  _ => 4
+}

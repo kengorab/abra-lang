@@ -1,9 +1,0 @@
-type Foo<T> {
-  t: T
-
-  func foo(self, t: T): T[] = [self.t, t]
-}
-
-val f = Foo(t: 123)
-val arr = f.foo(456)
-val _: Int[] = arr

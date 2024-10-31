@@ -1,0 +1,3 @@
+// Test varargs
+func foo1(*a: Int[]) { }
+func foo2(*arrs: Int[][]) { }

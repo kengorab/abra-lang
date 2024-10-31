@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:2:6
-Type mismatch
-  |  a == 456
-          ^
-Expected: Int?
-but instead found: Int

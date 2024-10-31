@@ -1,4 +1,0 @@
-while true {
-  val x = if true break else 123
-  val y = -123
-}

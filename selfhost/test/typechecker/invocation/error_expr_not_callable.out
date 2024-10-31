@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:3:1
-Cannot invoke target as function
-  |  a()
-     ^
-Type 'Int' is not callable

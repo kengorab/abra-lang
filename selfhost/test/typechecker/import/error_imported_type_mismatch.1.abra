@@ -1,5 +1,0 @@
-import Foo from "./_exports"
-
-enum Color { Purple }
-
-val _ = Foo(color: Color.Purple)

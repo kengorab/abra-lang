@@ -1,2 +1,0 @@
-import a from "./_exports"
-import "./_exports" as a

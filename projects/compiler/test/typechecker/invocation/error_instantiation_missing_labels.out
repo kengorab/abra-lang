@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:3:13
+Invalid instantiation
+  |  val f = Foo(123, "hello")
+                 ^
+Calls of type constructors must include argument labels

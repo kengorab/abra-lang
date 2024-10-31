@@ -1,7 +1,0 @@
-Error at %FILE_NAME%:2:24
-Duplicate name 'a'
-  |  import "./_exports" as a
-                            ^
-This name is also declared at (1:8)
-  |  import a from "./_exports"
-            ^

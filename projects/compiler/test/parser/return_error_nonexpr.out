@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:8
+Unexpected token 'val':
+  |  return val a = 3
+            ^

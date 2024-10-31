@@ -1,7 +1,0 @@
-Error at %FILE_NAME%:2:6
-Duplicate name 'Foo'
-  |  enum Foo { Bar }
-          ^
-This name is also declared at (1:6)
-  |  type Foo { a: Int }
-          ^

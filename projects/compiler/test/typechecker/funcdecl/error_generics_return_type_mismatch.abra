@@ -1,0 +1,2 @@
+// Basic test with type parameters
+func foo<T>(t: T): T = 123

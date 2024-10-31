@@ -1,0 +1,9 @@
+type Foo<T> {
+  t: T
+
+  func foo<U>(self, t: T, u: U): U = u
+}
+
+var f: Foo<Int>
+val str = f.foo(456, "abc")
+val _: String = str

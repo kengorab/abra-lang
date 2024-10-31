@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:4:3
-Unknown field 'str'
-  |  f.str
-       ^
-Type 'Foo' has field 'str', but lhs is of type 'Foo?'
-(You can use the '?.' operator instead of '.')

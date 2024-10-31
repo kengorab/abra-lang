@@ -1,0 +1,35 @@
+{
+  "imports": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Import"
+        }
+      },
+      "moduleName": { "name": "./abc", "position": [1, 8] },
+      "importKind": {
+        "kind": "alias",
+        "alias": { "name": "abc", "position": [1, 19] }
+      }
+    },
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Import"
+        }
+      },
+      "moduleName": { "name": "./abc", "position": [2, 22] },
+      "importKind": {
+        "kind": "list",
+        "names": [
+          { "name": "a", "position": [2, 8] },
+          { "name": "b", "position": [2, 11] },
+          { "name": "c", "position": [2, 14] }
+        ]
+      }
+    }
+  ],
+  "nodes": []
+}

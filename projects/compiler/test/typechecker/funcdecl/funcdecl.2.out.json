@@ -1,0 +1,194 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo", "position": [2, 6] },
+          "scope": {
+            "name": "$root::module_3::foo",
+            "variables": [
+              {
+                "label": { "name": "a", "position": [2, 10] },
+                "mutable": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              },
+              {
+                "label": { "name": "b", "position": [2, 18] },
+                "mutable": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              },
+              {
+                "label": { "name": "x", "position": [3, 7] },
+                "mutable": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              }
+            ],
+            "functions": [],
+            "types": []
+          },
+          "kind": "FunctionKind.Standalone",
+          "typeParameters": [],
+          "parameters": [
+            {
+              "label": { "name": "a", "position": [2, 10] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "defaultValue": null,
+              "isVariadic": false
+            },
+            {
+              "label": { "name": "b", "position": [2, 18] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "defaultValue": {
+                "token": {
+                  "position": [2, 22],
+                  "kind": {
+                    "name": "Minus"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "unary",
+                  "op": "UnaryOp.Minus",
+                  "expr": {
+                    "token": {
+                      "position": [2, 23],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "a"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "a"
+                    }
+                  }
+                }
+              },
+              "isVariadic": false
+            }
+          ],
+          "returnType": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "body": [
+            {
+              "token": {
+                "position": [3, 3],
+                "kind": {
+                  "name": "Val"
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Unit"
+              },
+              "node": {
+                "kind": "bindingDeclaration",
+                "pattern": {
+                  "kind": "variable",
+                  "label": { "name": "x", "position": [3, 7] }
+                },
+                "variables": [
+                  {
+                    "label": { "name": "x", "position": [3, 7] },
+                    "mutable": false,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  }
+                ],
+                "expr": {
+                  "token": {
+                    "position": [3, 11],
+                    "kind": {
+                      "name": "Minus"
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "unary",
+                    "op": "UnaryOp.Minus",
+                    "expr": {
+                      "token": {
+                        "position": [3, 12],
+                        "kind": {
+                          "name": "Ident",
+                          "value": "b"
+                        }
+                      },
+                      "type": {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      },
+                      "node": {
+                        "kind": "identifier",
+                        "name": "b"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "token": {
+                "position": [4, 3],
+                "kind": {
+                  "name": "Ident",
+                  "value": "x"
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "x"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

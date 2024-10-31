@@ -1,1 +1,0 @@
-val t: (Int, String) = (1.2, "three")

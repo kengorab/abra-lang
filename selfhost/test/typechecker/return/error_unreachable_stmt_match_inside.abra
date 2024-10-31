@@ -1,8 +1,0 @@
-func foo(): Int {
-  match 123 {
-    _ => {
-      return 123
-      val x = 123
-    }
-  }
-}

@@ -1,6 +1,0 @@
-// Test variadic arguments
-func foo(a: Int, *b: Int[]) {
-  val _: Int[] = b
-}
-
-foo(a: 1, b: ["a", "b"])

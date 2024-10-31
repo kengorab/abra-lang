@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:1:19
-Type mismatch
-  |  func foo(a: Int = None) {}
-                       ^
-Expected: Int
-but instead found: <unknown>?

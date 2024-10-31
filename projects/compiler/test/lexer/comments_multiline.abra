@@ -1,0 +1,8 @@
+123
+/* this
+should *
+disappear
+*/ /* so should this*/
+/* even if */ 234 /* there's only */
+/* whitespace in between */ /* them */
+456

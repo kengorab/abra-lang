@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:2:3
-Unreachable match case
-  |    None => {}
-       ^
-Match target type 'Int' can never be None

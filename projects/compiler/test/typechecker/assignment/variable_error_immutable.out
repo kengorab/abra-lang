@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:2:1
+Cannot assign to variable 'a'
+  |  a = 2
+     ^
+'a' is declared as immutable

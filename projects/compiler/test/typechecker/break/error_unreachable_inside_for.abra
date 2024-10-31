@@ -1,0 +1,4 @@
+for _ in [1, 2, 3] {
+  if true break else break
+  val y = -123
+}

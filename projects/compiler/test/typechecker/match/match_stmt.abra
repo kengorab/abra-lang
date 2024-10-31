@@ -1,0 +1,12 @@
+match 123 {
+  _ => "asdf"
+}
+
+match 123 {
+  _ => {}
+}
+
+// Verify partial matches allowed in statement
+match 123 {
+  1 => {}
+}

@@ -55,7 +55,7 @@ jobs:
           cd selfhost
           ./gen-pkg/gen.sh ${{ matrix.platform.suffix }} ${{ github.ref_name }}
       - name: Upload to release
-        run: gh release upload ${{ github.ref_name }} selfhost/gen-pkg/abra-${{ matrix.platform.suffix }}.tar.gz
+        run: gh release upload ${{ github.ref_name }} selfhost/scripts/abra-${{ matrix.platform.suffix }}.tar.gz
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   mark-release-as-latest:

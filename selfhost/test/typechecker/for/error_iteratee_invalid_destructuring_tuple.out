@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:1:5
-Invalid destructuring
-  |  for (a, b), x in [123] {
-         ^
-A value of type 'Int' cannot be destructured as a tuple

@@ -1,0 +1,15 @@
+val str = "abcd"
+val s1 = str[0]
+val _: String = s1
+
+val a = 1
+val b = 2
+
+val s2 = str[a:b]
+val _: String = s2
+
+val s3 = str[:b]
+val _: String = s3
+
+val s4 = str[-a:]
+val _: String = s4

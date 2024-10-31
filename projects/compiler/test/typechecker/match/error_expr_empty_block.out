@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:2:3
+Empty block for match case
+  |    _ => {}
+       ^
+Each case in a match expression must result in a value

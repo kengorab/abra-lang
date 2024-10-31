@@ -1,2 +1,0 @@
-// Basic test
-func foo(): Int = 123

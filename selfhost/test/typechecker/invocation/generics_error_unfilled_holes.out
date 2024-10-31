@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:3:12
-Could not determine type for assignment
-  |  val a = foo([], [])
-                ^
-Type '<unknown>[]' has unfilled holes. Please use an explicit type annotation to denote the type

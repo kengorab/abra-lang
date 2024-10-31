@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:4:5
-Type mismatch for parameter 'fn'
-  |  foo(negate)
-         ^
-Expected: (Int) => Int
-but instead found: (Int, Bool) => Int

@@ -1,0 +1,848 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo", "position": [2, 6] },
+          "scope": {
+            "name": "$root::module_3::foo",
+            "variables": [
+              {
+                "label": { "name": "a", "position": [2, 10] },
+                "mutable": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              },
+              {
+                "label": { "name": "b", "position": [2, 18] },
+                "mutable": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                }
+              },
+              {
+                "label": { "name": "c", "position": [2, 27] },
+                "mutable": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Float"
+                }
+              },
+              {
+                "label": { "name": "d", "position": [2, 37] },
+                "mutable": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                }
+              }
+            ],
+            "functions": [],
+            "types": []
+          },
+          "kind": "FunctionKind.Standalone",
+          "typeParameters": [],
+          "parameters": [
+            {
+              "label": { "name": "a", "position": [2, 10] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "defaultValue": null,
+              "isVariadic": false
+            },
+            {
+              "label": { "name": "b", "position": [2, 18] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Bool"
+              },
+              "defaultValue": null,
+              "isVariadic": false
+            },
+            {
+              "label": { "name": "c", "position": [2, 27] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Float"
+              },
+              "defaultValue": {
+                "token": {
+                  "position": [2, 31],
+                  "kind": {
+                    "name": "Float",
+                    "value": 1.23
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Float"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 1.23
+                }
+              },
+              "isVariadic": false
+            },
+            {
+              "label": { "name": "d", "position": [2, 37] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "defaultValue": {
+                "token": {
+                  "position": [2, 41],
+                  "kind": {
+                    "name": "String",
+                    "value": "abc"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": "abc"
+                }
+              },
+              "isVariadic": false
+            }
+          ],
+          "returnType": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "body": [
+            {
+              "token": {
+                "position": [2, 55],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "a"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [5, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [5, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [5, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [5, 17],
+            "kind": {
+              "name": "LParen"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "invocation",
+            "invokee": {
+              "function": "foo",
+              "type": {
+                "kind": "function",
+                "parameters": [
+                  {
+                    "required": true,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  },
+                  {
+                    "required": true,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Bool"
+                    }
+                  },
+                  {
+                    "required": false,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Float"
+                    }
+                  },
+                  {
+                    "required": false,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    }
+                  }
+                ],
+                "returnType": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              }
+            },
+            "arguments": [
+              {
+                "token": {
+                  "position": [5, 18],
+                  "kind": {
+                    "name": "Int",
+                    "value": 123
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 123
+                }
+              },
+              {
+                "token": {
+                  "position": [5, 26],
+                  "kind": {
+                    "name": "Bool",
+                    "value": true
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": true
+                }
+              },
+              null,
+              null
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [8, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [8, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [8, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [8, 17],
+            "kind": {
+              "name": "LParen"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "invocation",
+            "invokee": {
+              "function": "foo",
+              "type": {
+                "kind": "function",
+                "parameters": [
+                  {
+                    "required": true,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  },
+                  {
+                    "required": true,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Bool"
+                    }
+                  },
+                  {
+                    "required": false,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Float"
+                    }
+                  },
+                  {
+                    "required": false,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    }
+                  }
+                ],
+                "returnType": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              }
+            },
+            "arguments": [
+              {
+                "token": {
+                  "position": [8, 18],
+                  "kind": {
+                    "name": "Int",
+                    "value": 123
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 123
+                }
+              },
+              {
+                "token": {
+                  "position": [8, 26],
+                  "kind": {
+                    "name": "Bool",
+                    "value": true
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": true
+                }
+              },
+              {
+                "token": {
+                  "position": [8, 32],
+                  "kind": {
+                    "name": "Float",
+                    "value": 4.56
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Float"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 4.56
+                }
+              },
+              null
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [11, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [11, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [11, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [11, 17],
+            "kind": {
+              "name": "LParen"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "invocation",
+            "invokee": {
+              "function": "foo",
+              "type": {
+                "kind": "function",
+                "parameters": [
+                  {
+                    "required": true,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  },
+                  {
+                    "required": true,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Bool"
+                    }
+                  },
+                  {
+                    "required": false,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Float"
+                    }
+                  },
+                  {
+                    "required": false,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    }
+                  }
+                ],
+                "returnType": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              }
+            },
+            "arguments": [
+              {
+                "token": {
+                  "position": [11, 18],
+                  "kind": {
+                    "name": "Int",
+                    "value": 123
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 123
+                }
+              },
+              {
+                "token": {
+                  "position": [11, 26],
+                  "kind": {
+                    "name": "Bool",
+                    "value": true
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": true
+                }
+              },
+              {
+                "token": {
+                  "position": [11, 35],
+                  "kind": {
+                    "name": "Float",
+                    "value": 4.56
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Float"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 4.56
+                }
+              },
+              null
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [14, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [14, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [14, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [14, 17],
+            "kind": {
+              "name": "LParen"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "invocation",
+            "invokee": {
+              "function": "foo",
+              "type": {
+                "kind": "function",
+                "parameters": [
+                  {
+                    "required": true,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  },
+                  {
+                    "required": true,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Bool"
+                    }
+                  },
+                  {
+                    "required": false,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Float"
+                    }
+                  },
+                  {
+                    "required": false,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    }
+                  }
+                ],
+                "returnType": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              }
+            },
+            "arguments": [
+              {
+                "token": {
+                  "position": [14, 18],
+                  "kind": {
+                    "name": "Int",
+                    "value": 123
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 123
+                }
+              },
+              {
+                "token": {
+                  "position": [14, 26],
+                  "kind": {
+                    "name": "Bool",
+                    "value": true
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": true
+                }
+              },
+              null,
+              {
+                "token": {
+                  "position": [14, 35],
+                  "kind": {
+                    "name": "String",
+                    "value": "foo"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": "foo"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [17, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [17, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [17, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [17, 17],
+            "kind": {
+              "name": "LParen"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "invocation",
+            "invokee": {
+              "function": "foo",
+              "type": {
+                "kind": "function",
+                "parameters": [
+                  {
+                    "required": true,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  },
+                  {
+                    "required": true,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Bool"
+                    }
+                  },
+                  {
+                    "required": false,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Float"
+                    }
+                  },
+                  {
+                    "required": false,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    }
+                  }
+                ],
+                "returnType": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              }
+            },
+            "arguments": [
+              {
+                "token": {
+                  "position": [17, 18],
+                  "kind": {
+                    "name": "Int",
+                    "value": 123
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 123
+                }
+              },
+              {
+                "token": {
+                  "position": [17, 26],
+                  "kind": {
+                    "name": "Bool",
+                    "value": true
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": true
+                }
+              },
+              {
+                "token": {
+                  "position": [17, 45],
+                  "kind": {
+                    "name": "Float",
+                    "value": 4.56
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Float"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 4.56
+                }
+              },
+              {
+                "token": {
+                  "position": [17, 35],
+                  "kind": {
+                    "name": "String",
+                    "value": "foo"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": "foo"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

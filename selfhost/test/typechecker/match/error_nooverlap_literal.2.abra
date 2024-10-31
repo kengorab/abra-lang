@@ -1,5 +1,0 @@
-val arr = ["a", "b"]
-match arr[0] {
-  None => {}
-  1.23 => {}
-}

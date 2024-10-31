@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:1:11
-Invalid location for variadic parameter
-  |  func foo(*a: Int[] = [], b: Int) {}
-               ^
-Variadic parameters must be the last in the parameter list

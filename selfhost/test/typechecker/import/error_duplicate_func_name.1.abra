@@ -1,3 +1,0 @@
-import add from "./_exports"
-
-val add = 123

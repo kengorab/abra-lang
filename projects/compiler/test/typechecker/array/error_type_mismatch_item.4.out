@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:1:6
+Type mismatch
+  |  [[], #{}, [1, 2]]
+          ^
+Expected: Int[]
+but instead found: Set<<unknown>>

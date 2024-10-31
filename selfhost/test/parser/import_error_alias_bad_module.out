@@ -1,4 +1,0 @@
-Error at %FILE_NAME%:1:8
-Unexpected token 'int', expected one of 'string', 'identifier':
-  |  import 123 as abc
-            ^

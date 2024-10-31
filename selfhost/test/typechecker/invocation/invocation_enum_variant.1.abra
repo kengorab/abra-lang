@@ -1,6 +1,0 @@
-enum Foo {
-  Bar
-  Baz(a: Int, b: String)
-}
-
-val f = Foo.Baz(a: 123, b: "abc")

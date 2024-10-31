@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:1:7
-Illegal operator
-  |  "abc" > "def"
-           ^
-No operator '>' exists between types String and String

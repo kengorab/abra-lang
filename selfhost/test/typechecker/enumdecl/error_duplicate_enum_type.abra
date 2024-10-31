@@ -1,2 +1,0 @@
-enum Foo { Bar }
-type Foo { b: String }

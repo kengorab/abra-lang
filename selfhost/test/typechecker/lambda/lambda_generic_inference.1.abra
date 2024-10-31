@@ -1,9 +1,0 @@
-func foo<T>(fn: () => T[]): T[] {
-  val r = fn()
-  return r
-}
-
-func bar(): Int[] = [123]
-
-val v = foo(() => bar())
-val _: Int[] = v

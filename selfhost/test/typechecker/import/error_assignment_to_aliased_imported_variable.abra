@@ -1,3 +1,0 @@
-import "./_exports" as exp
-
-exp.a = 456

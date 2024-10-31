@@ -1,7 +1,0 @@
-Error at %FILE_NAME%:4:3
-Duplicate name 'Bar'
-  |    Bar
-       ^
-This name is also declared at (2:3)
-  |    Bar
-       ^

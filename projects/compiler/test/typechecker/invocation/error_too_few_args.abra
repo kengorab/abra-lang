@@ -1,0 +1,2 @@
+func foo(a: Int, b: Int): Int = 123
+foo()

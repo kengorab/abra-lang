@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:1:18
+Type mismatch
+  |  { a: [1, 2], b: ["3", "4"] }
+                      ^
+Expected: Int
+but instead found: String

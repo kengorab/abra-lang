@@ -1,0 +1,12 @@
+var a = 1
+a -= 2
+
+var b = 1.2
+b -= 2.0
+
+type Foo { a: Int }
+val f = Foo(a: 1)
+f.a -= 3
+
+val t = (1, true, "three")
+t[0] -= 2

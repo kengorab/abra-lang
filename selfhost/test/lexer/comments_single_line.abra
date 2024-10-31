@@ -1,9 +1,0 @@
-123
-456 // this should disappear
-789
-// these consecutive comments should also
-
-// disappear
-// too, even with newlines between
-
-"hello"

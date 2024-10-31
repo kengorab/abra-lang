@@ -1,0 +1,264 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Enum"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "enumDeclaration",
+        "enum": {
+          "moduleId": 3,
+          "name": { "name": "Foo", "position": [1, 6] },
+          "typeParams": [],
+          "variants": [
+            {
+              "label": { "name": "Bar", "position": [2, 3] },
+              "kind": "constant"
+            },
+            {
+              "label": { "name": "Baz", "position": [3, 3] },
+              "kind": "container",
+              "fields": [
+                {
+                  "name": { "name": "a", "position": [3, 7] },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "initializer": null
+                }
+              ]
+            },
+            {
+              "label": { "name": "Qux", "position": [4, 3] },
+              "kind": "container",
+              "fields": [
+                {
+                  "name": { "name": "a", "position": [4, 7] },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "initializer": null
+                },
+                {
+                  "name": { "name": "b", "position": [4, 15] },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  },
+                  "initializer": {
+                    "token": {
+                      "position": [4, 27],
+                      "kind": {
+                        "name": "String",
+                        "value": "abcd"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": "abcd"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "instanceMethods": [
+            {
+              "label": { "name": "toString", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Foo::toString",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "hash", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Foo::hash",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "eq", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Foo::eq",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [
+                {
+                  "label": { "name": "other", "position": [0, 0] },
+                  "type": {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 3, "name": "Foo" },
+                    "typeParams": []
+                  },
+                  "defaultValue": null,
+                  "isVariadic": false
+                }
+              ],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Bool"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "foo", "position": [6, 8] },
+              "scope": {
+                "name": "$root::module_3::Foo::foo",
+                "variables": [
+                  {
+                    "label": { "name": "self", "position": [6, 12] },
+                    "mutable": false,
+                    "type": {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 3, "name": "Foo" },
+                      "typeParams": []
+                    }
+                  }
+                ],
+                "functions": [],
+                "types": []
+              },
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "body": [
+                {
+                  "token": {
+                    "position": [6, 25],
+                    "kind": {
+                      "name": "Int",
+                      "value": 123
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 123
+                  }
+                }
+              ]
+            }
+          ],
+          "staticMethods": [
+            {
+              "label": { "name": "fooStatic", "position": [7, 8] },
+              "scope": {
+                "name": "$root::module_3::Foo::fooStatic",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "kind": "FunctionKind.StaticMethod",
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "body": [
+                {
+                  "token": {
+                    "position": [7, 27],
+                    "kind": {
+                      "name": "Int",
+                      "value": 123
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 123
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [10, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "f", "position": [10, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "f", "position": [10, 5] },
+            "mutable": true,
+            "type": {
+              "kind": "enumInstance",
+              "enum": { "moduleId": 3, "name": "Foo" },
+              "typeParams": []
+            }
+          }
+        ],
+        "expr": null
+      }
+    }
+  ]
+}

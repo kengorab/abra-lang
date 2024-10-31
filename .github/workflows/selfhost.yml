@@ -1,4 +1,4 @@
-name: Test selfhosted
+name: Test
 
 on:
   push:
@@ -6,12 +6,9 @@ on:
       - master
   pull_request:
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout source
       uses: actions/checkout@v2
@@ -34,7 +31,7 @@ jobs:
       run: |
         echo "PATH=$(pwd)/qbe/qbe-1.2:$PATH" >> $GITHUB_ENV
     - name: Install ext dependencies
-      run: ./configure-libgc.sh
+      run: ./projects/compiler/scripts/configure-libgc.sh
     - name: Install abra
       run: |
         mkdir abra-linux
@@ -44,10 +41,10 @@ jobs:
         echo "ABRA_HOME=`realpath $(pwd)/abra-linux/std`" >> $GITHUB_ENV
     - name: Run tests
       run: |
-        cd selfhost
+        cd projects/compiler
         node test/run-tests.js
     - name: Run tests against compiler-next
       run: |
-        cd selfhost
+        cd projects/compiler
         abra build -o compiler_next ./src/compiler.test.abra
         COMPILER_BIN=./._abra/compiler_next node test/run-tests.js

@@ -1,5 +1,0 @@
-// Test that a while loop with a break doesn't make subsequent code unreachable (unlike a return)
-while true {
-  break
-}
-val xyz = "abc"

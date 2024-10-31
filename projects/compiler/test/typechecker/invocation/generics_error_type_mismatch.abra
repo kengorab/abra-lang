@@ -1,0 +1,3 @@
+func foo<T>(t1: T, t2: T): T = t1
+
+val _ = foo(123, "abc")

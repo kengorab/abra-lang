@@ -1,4 +1,0 @@
-type Foo { a: Int }
-
-val f = Foo(a: 123)
-f.a = "abcd"

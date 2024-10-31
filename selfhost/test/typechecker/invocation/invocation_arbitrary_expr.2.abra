@@ -1,5 +1,0 @@
-func foo(a: Int): String = "" + a
-func bar(a: Int, b: String): (Int) => String = foo
-
-val s = bar(1, "two")(3)
-val _: String = s

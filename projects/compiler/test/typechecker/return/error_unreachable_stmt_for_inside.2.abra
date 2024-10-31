@@ -1,0 +1,7 @@
+func foo(): Int {
+  for _ in [1, 2, 3] {
+    if true return 123 else return 456
+    val y = "abcd"
+  }
+  val x = 123
+}

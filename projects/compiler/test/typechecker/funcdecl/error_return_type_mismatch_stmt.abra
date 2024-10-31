@@ -1,0 +1,3 @@
+func foo(a: Int, b: String): Bool {
+  val x = 123
+}

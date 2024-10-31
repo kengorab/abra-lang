@@ -1,0 +1,7 @@
+Error at %FILE_NAME%:3:10
+Unknown exported name for aliased module
+  |  val _: e.Bar[] = []
+              ^
+There's no exported value named 'Bar' in module aliased as 'e' at:
+  |  import "./_exports" as e
+                            ^

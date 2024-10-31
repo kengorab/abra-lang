@@ -1,0 +1,2 @@
+type Foo { a: Int }
+type Foo { b: String }

@@ -1,2 +1,0 @@
-val map: Map<String, Int>? = Some({ a: 2, b: 4 })
-map["c"]

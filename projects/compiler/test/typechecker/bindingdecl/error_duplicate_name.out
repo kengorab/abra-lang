@@ -1,0 +1,7 @@
+Error at %FILE_NAME%:3:5
+Duplicate name 'x'
+  |  val x = 789
+         ^
+This name is also declared at (1:5)
+  |  val x = 123
+         ^

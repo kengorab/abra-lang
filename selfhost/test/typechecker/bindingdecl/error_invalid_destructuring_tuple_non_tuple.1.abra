@@ -1,2 +1,0 @@
-val x = 123
-val (a, b) = x

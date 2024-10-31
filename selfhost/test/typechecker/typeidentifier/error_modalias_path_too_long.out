@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:3:10
-Not yet implemented:
-  |  val _: e.f.G[] = []
-              ^
-Reason: qualified type paths longer than 2

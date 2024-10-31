@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:1:29
-Type mismatch
-  |  val a: Int = if true 1 else None
-                                 ^
-Expected: Int
-but instead found: <unknown>?

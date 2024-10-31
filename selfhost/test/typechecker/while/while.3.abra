@@ -1,4 +1,0 @@
-val x: Int? = None
-while x |x| {
-  val y: Int = -x
-}

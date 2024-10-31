@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:5:5
-Cannot assign to static method 'fooStatic'
-  |  Foo.fooStatic = "abcd"
-         ^
-'fooStatic' is a static method, which cannot be overwritten

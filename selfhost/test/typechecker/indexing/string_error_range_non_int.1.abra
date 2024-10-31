@@ -1,2 +1,0 @@
-val str = "abcd"
-str[1.2:2]

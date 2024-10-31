@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:2:5
-Type mismatch
-  |  a = #{}
-         ^
-Expected: Int[]
-but instead found: Set<<unknown>>

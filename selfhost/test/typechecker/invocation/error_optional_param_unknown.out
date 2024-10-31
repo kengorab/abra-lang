@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:2:8
-Unknown parameter label
-  |  foo(1, x: 123)
-            ^
-This function doesn't have a parameter named 'x'

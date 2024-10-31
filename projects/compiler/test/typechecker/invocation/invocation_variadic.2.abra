@@ -1,0 +1,13 @@
+// Test generic variadic arguments
+func foo<T>(a: T, *b: T[]) {
+  val _: T[] = b
+}
+
+// when calling with labels
+foo(a: 1, b: [2, 3])
+foo(a: 1, b: [])
+
+// when calling without labels
+foo(1)
+foo(1, 2,)
+foo(1, 2, 3)

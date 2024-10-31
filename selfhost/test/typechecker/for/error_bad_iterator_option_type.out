@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:2:10
-Forbidden type for for-loop target
-  |  for _ in arr {
-              ^
-Type String[]? is not iterable

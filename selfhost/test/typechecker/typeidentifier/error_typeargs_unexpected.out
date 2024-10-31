@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:1:8
-Incorrect number of type arguments
-  |  var _: String<Int>
-            ^
-Expected 0, but 1 was passed

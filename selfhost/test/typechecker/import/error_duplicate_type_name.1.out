@@ -1,7 +1,0 @@
-Error at %FILE_NAME%:3:5
-Duplicate name 'Foo'
-  |  val Foo = "foo"
-         ^
-This name is also declared at (1:8)
-  |  import Foo from "./_exports"
-            ^

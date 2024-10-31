@@ -1,0 +1,9 @@
+val fn1: (Int, Int) => Int = (a, b) => a + b
+val fn2 = (a: Int, b: Int) => a + b
+val fn3 = (a: Int) => if true None else Some(a)
+val fn4: (Int) => Int = (a = 4) => a + 1
+val fn5: (Int) => Int = (a, b = 4) => a + b
+
+val fn6: () => Int[] = () => []
+val fn7: () => Int[]? = () => Some([])
+val fn8: () => Int?[] = () => []

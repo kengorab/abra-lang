@@ -1,2 +1,0 @@
-val str: String? = Some("abcd")
-str[0]

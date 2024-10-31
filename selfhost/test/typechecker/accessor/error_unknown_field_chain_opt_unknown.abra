@@ -1,5 +1,0 @@
-type Foo { bar: Bar }
-type Bar { str: String }
-var f: Foo?
-
-val _ = f?.bar.xyz

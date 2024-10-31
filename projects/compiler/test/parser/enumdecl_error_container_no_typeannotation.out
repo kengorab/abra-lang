@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:2:15
+Unexpected token '=', expected ':':
+  |    One(a: A, b = "abc")
+                   ^

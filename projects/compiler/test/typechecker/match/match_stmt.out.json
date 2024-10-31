@@ -1,0 +1,147 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Match"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "match",
+        "isStatement": true,
+        "subject": {
+          "token": {
+            "position": [1, 7],
+            "kind": {
+              "name": "Int",
+              "value": 123
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 123
+          }
+        },
+        "cases": [
+          {
+            "kind": "else",
+            "binding": null,
+            "body": [
+              {
+                "token": {
+                  "position": [2, 8],
+                  "kind": {
+                    "name": "String",
+                    "value": "asdf"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": "asdf"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [5, 1],
+        "kind": {
+          "name": "Match"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "match",
+        "isStatement": true,
+        "subject": {
+          "token": {
+            "position": [5, 7],
+            "kind": {
+              "name": "Int",
+              "value": 123
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 123
+          }
+        },
+        "cases": [
+          {
+            "kind": "else",
+            "binding": null,
+            "body": []
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [10, 1],
+        "kind": {
+          "name": "Match"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "match",
+        "isStatement": true,
+        "subject": {
+          "token": {
+            "position": [10, 7],
+            "kind": {
+              "name": "Int",
+              "value": 123
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 123
+          }
+        },
+        "cases": [
+          {
+            "kind": {
+              "kind": "literal",
+              "value": 1
+            },
+            "binding": null,
+            "body": []
+          }
+        ]
+      }
+    }
+  ]
+}

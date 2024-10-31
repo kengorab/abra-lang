@@ -1,0 +1,578 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "t", "position": [1, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "t", "position": [1, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "tuple",
+              "types": [
+                {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                {
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                {
+                  "kind": "instance",
+                  "struct": { "moduleId": 2, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [1, 9],
+            "kind": {
+              "name": "LParen"
+            }
+          },
+          "type": {
+            "kind": "tuple",
+            "types": [
+              {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              {
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              {
+                "kind": "instance",
+                "struct": { "moduleId": 2, "name": "Array" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
+              }
+            ]
+          },
+          "node": {
+            "kind": "tuple",
+            "items": [
+              {
+                "token": {
+                  "position": [1, 10],
+                  "kind": {
+                    "name": "Int",
+                    "value": 1
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 1
+                }
+              },
+              {
+                "token": {
+                  "position": [1, 13],
+                  "kind": {
+                    "name": "String",
+                    "value": "two"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": "two"
+                }
+              },
+              {
+                "token": {
+                  "position": [1, 20],
+                  "kind": {
+                    "name": "LBrack"
+                  }
+                },
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 2, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                },
+                "node": {
+                  "kind": "array",
+                  "items": [
+                    {
+                      "token": {
+                        "position": [1, 21],
+                        "kind": {
+                          "name": "Int",
+                          "value": 3
+                        }
+                      },
+                      "type": {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      },
+                      "node": {
+                        "kind": "literal",
+                        "value": 3
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [3, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "i", "position": [3, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "i", "position": [3, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [3, 10],
+            "kind": {
+              "name": "LBrack"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "indexing",
+            "node": {
+              "kind": "tuple",
+              "index": 0,
+              "expr": {
+                "token": {
+                  "position": [3, 9],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "t"
+                  }
+                },
+                "type": {
+                  "kind": "tuple",
+                  "types": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    },
+                    {
+                      "kind": "instance",
+                      "struct": { "moduleId": 2, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "t"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [4, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [4, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [4, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [4, 14],
+            "kind": {
+              "name": "Ident",
+              "value": "i"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "i"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [6, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "s", "position": [6, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "s", "position": [6, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "String"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [6, 10],
+            "kind": {
+              "name": "LBrack"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "String"
+          },
+          "node": {
+            "kind": "indexing",
+            "node": {
+              "kind": "tuple",
+              "index": 1,
+              "expr": {
+                "token": {
+                  "position": [6, 9],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "t"
+                  }
+                },
+                "type": {
+                  "kind": "tuple",
+                  "types": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    },
+                    {
+                      "kind": "instance",
+                      "struct": { "moduleId": 2, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "t"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [7, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [7, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [7, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "String"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [7, 17],
+            "kind": {
+              "name": "Ident",
+              "value": "s"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "String"
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "s"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [9, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "a", "position": [9, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "a", "position": [9, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "instance",
+              "struct": { "moduleId": 2, "name": "Array" },
+              "typeParams": [
+                {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [9, 10],
+            "kind": {
+              "name": "LBrack"
+            }
+          },
+          "type": {
+            "kind": "instance",
+            "struct": { "moduleId": 2, "name": "Array" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          },
+          "node": {
+            "kind": "indexing",
+            "node": {
+              "kind": "tuple",
+              "index": 2,
+              "expr": {
+                "token": {
+                  "position": [9, 9],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "t"
+                  }
+                },
+                "type": {
+                  "kind": "tuple",
+                  "types": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    },
+                    {
+                      "kind": "instance",
+                      "struct": { "moduleId": 2, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "t"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [10, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [10, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [10, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "instance",
+              "struct": { "moduleId": 2, "name": "Array" },
+              "typeParams": [
+                {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [10, 16],
+            "kind": {
+              "name": "Ident",
+              "value": "a"
+            }
+          },
+          "type": {
+            "kind": "instance",
+            "struct": { "moduleId": 2, "name": "Array" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "a"
+          }
+        }
+      }
+    }
+  ]
+}

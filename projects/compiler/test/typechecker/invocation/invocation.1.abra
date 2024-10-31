@@ -1,0 +1,3 @@
+func foo(a: Int): Int = a
+
+val _: Int = foo(123)

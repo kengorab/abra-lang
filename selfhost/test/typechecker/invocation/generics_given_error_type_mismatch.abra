@@ -1,3 +1,0 @@
-func foo<T>(t: T): T = t
-
-val _ = foo<Int>("abc")

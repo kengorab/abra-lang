@@ -1,0 +1,19 @@
+#{1, 2, 3}
+#{#{"a", "b"}, #{"c", "d"}}
+
+val a1: Set<Int> = #{}
+val a2: Set<Int> = #{1, 2, 3}
+
+val a3: Set<Int?> = #{Some(1), None, Some(3)}
+val a4: Set<Int?> = #{None, Some(2), Some(3)}
+
+#{#{1, 2}, #{}, #{3, 4}}
+#{Some(1), Some(2), None, Some(4)}
+#{Some(#{1, 2}), Some(#{3, 4}), None, Some(#{5, 6})}
+
+val s5: Set<String?>? = Some(#{None})
+
+#{[], [1, 2], [3, 4]}
+#{#{}, #{1, 2}, #{3, 4}}
+#{Some(#{}), None, Some(#{1, 2})}
+#{Some(#{}), Some(#{1, 2})}

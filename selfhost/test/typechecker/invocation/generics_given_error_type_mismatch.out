@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:3:18
-Type mismatch for parameter 't'
-  |  val _ = foo<Int>("abc")
-                      ^
-Expected: Int
-but instead found: String

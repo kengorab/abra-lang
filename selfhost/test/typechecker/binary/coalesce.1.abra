@@ -1,3 +1,0 @@
-val a: Int? = Some(123)
-val b = a ?: 456
-val _: Int = b

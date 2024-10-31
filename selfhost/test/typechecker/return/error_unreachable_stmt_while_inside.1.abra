@@ -1,7 +1,0 @@
-func foo(): Int {
-  while true {
-    return 123
-    val y = "abcd"
-  }
-  val x = 123
-}

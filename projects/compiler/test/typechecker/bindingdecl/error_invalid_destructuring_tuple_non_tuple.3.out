@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:1:5
+Invalid destructuring
+  |  var (a, b): String
+         ^
+A value of type 'String' cannot be destructured as a tuple

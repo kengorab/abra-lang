@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:19
+Unexpected token 'int', expected 'identifier':
+  |  import "./abc" as 123
+                       ^

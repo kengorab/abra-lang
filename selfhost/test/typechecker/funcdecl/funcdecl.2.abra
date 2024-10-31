@@ -1,5 +1,0 @@
-// Test parameters with default values, and also a function body
-func foo(a: Int, b = -a): Int {
-  val x = -b
-  x
-}

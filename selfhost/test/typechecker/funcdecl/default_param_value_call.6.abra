@@ -1,3 +1,0 @@
-// Invocation of `bar` in subexpression
-func foo(a: Int, b = -bar(123)): Int = 1
-func bar(i: Int): Int = i

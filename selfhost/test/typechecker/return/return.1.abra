@@ -1,4 +1,0 @@
-func foo(): String {
-  val s = "string"
-  return s
-}

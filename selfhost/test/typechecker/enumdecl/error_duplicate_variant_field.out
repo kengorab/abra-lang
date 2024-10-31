@@ -1,7 +1,0 @@
-Error at %FILE_NAME%:2:26
-Duplicate name 'b'
-  |    Bar(a: Int, b: String, b: Int)
-                              ^
-This name is also declared at (2:15)
-  |    Bar(a: Int, b: String, b: Int)
-                   ^

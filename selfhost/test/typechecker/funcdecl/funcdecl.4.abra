@@ -1,5 +1,0 @@
-// Test referencing parameters and having inner expressions
-val x = 24
-func foo(x: Bool) {
-  val y = !x
-}

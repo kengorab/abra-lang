@@ -1,0 +1,15 @@
+val arr = [1, 2, 3]
+val i1 = arr[0]
+val _: Int? = i1
+
+val a = 1
+val b = 2
+
+val i2 = arr[a:b]
+val _: Int[] = i2
+
+val i3 = arr[:b]
+val _: Int[] = i3
+
+val i4 = arr[-a:]
+val _: Int[] = i4

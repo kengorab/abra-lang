@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:1:5
-Illegal operator
-  |  1.2 << 123
-         ^
-No operator '<<' exists between types Float and Int

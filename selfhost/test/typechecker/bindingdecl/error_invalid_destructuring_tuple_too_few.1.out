@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:2:6
-Incorrect number of destructuring arguments for tuple
-  |  val ((a, b), c) = x
-          ^
-Expected 3, but 2 were provided
-(You can use '_' to denote positions that you wish to discard)

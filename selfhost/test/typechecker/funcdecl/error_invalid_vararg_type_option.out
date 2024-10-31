@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:1:11
-Invalid type for vararg parameter
-  |  func foo(*a: Int[]?) {}
-               ^
-Vararg parameters must be a non-Option Array type, but got Int[]?

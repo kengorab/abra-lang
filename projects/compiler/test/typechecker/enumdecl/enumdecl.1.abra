@@ -1,0 +1,10 @@
+enum Foo {
+  Bar
+  Baz(a: Int)
+  Qux(a: Int, b: String = "abcd")
+
+  func foo(self): Int = 123
+  func fooStatic(): Int = 123
+}
+
+var f: Foo

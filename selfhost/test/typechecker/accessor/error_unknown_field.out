@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:2:3
-Unknown field 'foobar'
-  |  s.foobar
-       ^
-No field 'foobar' found on type String

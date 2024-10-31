@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:1:9
-Incomplete if-expression
-  |  val a = if true { } else 456
-             ^
-The if-block must contain a value

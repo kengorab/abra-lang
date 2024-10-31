@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:3:10
-Incorrect number of type arguments
-  |  val _: e.Foo<Int>[] = []
-              ^
-Expected 0, but 1 was passed

@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:9:12
+Type mismatch for parameter
+  |  val _ = fn("foo")
+                ^
+Expected: Int
+but instead found: String

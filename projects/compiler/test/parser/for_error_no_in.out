@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:7
+Unexpected token '[', expected 'in':
+  |  for s ["a", "b"] { }
+           ^

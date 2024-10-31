@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:1:20
-Type mismatch for parameter 'value'
-  |  val a: Int? = Some("abc")
-                        ^
-Expected: Int
-but instead found: String

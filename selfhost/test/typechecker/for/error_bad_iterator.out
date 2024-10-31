@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:1:10
-Forbidden type for for-loop target
-  |  for x in 123 {
-              ^
-Type Int is not iterable

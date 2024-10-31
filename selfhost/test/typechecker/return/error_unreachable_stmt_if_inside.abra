@@ -1,8 +1,0 @@
-func foo(): Int {
-  if true {
-    return 123
-    val x = 123
-  } else {
-    return 456
-  }
-}

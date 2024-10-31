@@ -1,3 +1,0 @@
-type FooBar123 {
-  export func foo(self, b: String) {}
-}

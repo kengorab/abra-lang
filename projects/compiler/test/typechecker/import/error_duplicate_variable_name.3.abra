@@ -1,0 +1,3 @@
+import a from "./_exports"
+
+type a {}

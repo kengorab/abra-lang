@@ -1,0 +1,195 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "f", "position": [2, 6] },
+          "scope": {
+            "name": "$root::module_3::f",
+            "variables": [
+              {
+                "label": { "name": "a", "position": [2, 8] },
+                "mutable": false,
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 2, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                }
+              },
+              {
+                "label": { "name": "fn", "position": [3, 7] },
+                "mutable": false,
+                "type": {
+                  "kind": "function",
+                  "parameters": [
+                    {
+                      "required": true,
+                      "type": {
+                        "kind": "instance",
+                        "struct": { "moduleId": 2, "name": "Array" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "returnType": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                }
+              }
+            ],
+            "functions": [],
+            "types": []
+          },
+          "kind": "FunctionKind.Standalone",
+          "typeParameters": [],
+          "parameters": [
+            {
+              "label": { "name": "a", "position": [2, 8] },
+              "type": {
+                "kind": "instance",
+                "struct": { "moduleId": 2, "name": "Array" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
+              },
+              "defaultValue": null,
+              "isVariadic": false
+            }
+          ],
+          "returnType": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "body": [
+            {
+              "token": {
+                "position": [3, 3],
+                "kind": {
+                  "name": "Val"
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Unit"
+              },
+              "node": {
+                "kind": "bindingDeclaration",
+                "pattern": {
+                  "kind": "variable",
+                  "label": { "name": "fn", "position": [3, 7] }
+                },
+                "variables": [
+                  {
+                    "label": { "name": "fn", "position": [3, 7] },
+                    "mutable": false,
+                    "type": {
+                      "kind": "function",
+                      "parameters": [
+                        {
+                          "required": true,
+                          "type": {
+                            "kind": "instance",
+                            "struct": { "moduleId": 2, "name": "Array" },
+                            "typeParams": [
+                              {
+                                "kind": "primitive",
+                                "primitive": "Int"
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "returnType": {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    }
+                  }
+                ],
+                "expr": {
+                  "token": {
+                    "position": [3, 12],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "f"
+                    }
+                  },
+                  "type": {
+                    "kind": "function",
+                    "parameters": [
+                      {
+                        "required": true,
+                        "type": {
+                          "kind": "instance",
+                          "struct": { "moduleId": 2, "name": "Array" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "returnType": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  },
+                  "node": {
+                    "kind": "identifier",
+                    "name": "f"
+                  }
+                }
+              }
+            },
+            {
+              "token": {
+                "position": [4, 3],
+                "kind": {
+                  "name": "Int",
+                  "value": 123
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 123
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

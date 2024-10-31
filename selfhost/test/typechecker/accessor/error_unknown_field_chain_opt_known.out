@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:5:16
-Unknown field 'str'
-  |  val _ = f?.bar.str
-                    ^
-Type 'Bar' has field 'str', but lhs here is of type 'Bar?' due to prior '?.'
-(You can use the '?.' operator instead of '.')

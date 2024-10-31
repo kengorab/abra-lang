@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:6:22
-Too many arguments for invocation
-  |  foo(a: 1, b: [2, 3], c: "a")
-                          ^
-Expected no more than 2 arguments, but 3 were passed

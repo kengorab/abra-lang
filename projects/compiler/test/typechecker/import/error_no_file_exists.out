@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:1:17
+Could not import module
+  |  import foo from "./huh"
+                     ^
+No file exists at path '%TEST_DIR%/typechecker/import/huh.abra'

@@ -1,6 +1,0 @@
-val x: Int? = None
-while x {
-  if true continue
-
-  val y = 1
-}

@@ -1,4 +1,0 @@
-type Foo {
-  a: Int[] = []
-  b: Bool = 123
-}

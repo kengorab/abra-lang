@@ -1,2 +1,0 @@
-#!/bin/bash
-exec ../../target/release/abra run $(dirname $0)/main.abra -- "${@}"

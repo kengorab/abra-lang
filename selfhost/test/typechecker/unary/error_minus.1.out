@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:1:2
-Type mismatch
-  |  -"hello"
-      ^
-Expected one of: Int, Float
-but instead found: String

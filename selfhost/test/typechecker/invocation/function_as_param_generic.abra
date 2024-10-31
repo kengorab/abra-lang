@@ -1,9 +1,0 @@
-func foo<T, U>(fn: (T) => U, t: T): U = fn(t)
-
-func negativeOne(): Int = -1
-val r1 = foo(negativeOne, 1)
-val _: Int = r1
-
-func bar(s: String): Bool = true
-val r2 = foo(bar, "")
-val _: Bool = r2

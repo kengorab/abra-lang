@@ -1,0 +1,4 @@
+val pairs = [1, 2, 3]
+while pairs[0] |(k, v)| {
+
+}

@@ -1,0 +1,944 @@
+{
+  "imports": [],
+  "nodes": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "StringInterpolation",
+          "chunks": [
+            {
+              "position": [1, 1],
+              "kind": {
+                "name": "String",
+                "value": "before "
+              }
+            },
+            [
+              {
+                "position": [1, 10],
+                "kind": {
+                  "name": "Ident",
+                  "value": "hello"
+                }
+              }
+            ],
+            {
+              "position": [1, 15],
+              "kind": {
+                "name": "String",
+                "value": " after"
+              }
+            }
+          ]
+        }
+      },
+      "kind": {
+        "name": "stringInterpolation",
+        "exprs": [
+          {
+            "token": {
+              "position": [1, 1],
+              "kind": {
+                "name": "String",
+                "value": "before "
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "string",
+              "value": "before "
+            }
+          },
+          {
+            "token": {
+              "position": [1, 10],
+              "kind": {
+                "name": "Ident",
+                "value": "hello"
+              }
+            },
+            "kind": {
+              "name": "identifier",
+              "ident": "hello"
+            }
+          },
+          {
+            "token": {
+              "position": [1, 15],
+              "kind": {
+                "name": "String",
+                "value": " after"
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "string",
+              "value": " after"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "StringInterpolation",
+          "chunks": [
+            {
+              "position": [2, 1],
+              "kind": {
+                "name": "String",
+                "value": ""
+              }
+            },
+            [
+              {
+                "position": [2, 3],
+                "kind": {
+                  "name": "Ident",
+                  "value": "hello"
+                }
+              }
+            ],
+            {
+              "position": [2, 8],
+              "kind": {
+                "name": "String",
+                "value": " after"
+              }
+            }
+          ]
+        }
+      },
+      "kind": {
+        "name": "stringInterpolation",
+        "exprs": [
+          {
+            "token": {
+              "position": [2, 3],
+              "kind": {
+                "name": "Ident",
+                "value": "hello"
+              }
+            },
+            "kind": {
+              "name": "identifier",
+              "ident": "hello"
+            }
+          },
+          {
+            "token": {
+              "position": [2, 8],
+              "kind": {
+                "name": "String",
+                "value": " after"
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "string",
+              "value": " after"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [3, 1],
+        "kind": {
+          "name": "StringInterpolation",
+          "chunks": [
+            {
+              "position": [3, 1],
+              "kind": {
+                "name": "String",
+                "value": "before"
+              }
+            },
+            [
+              {
+                "position": [3, 9],
+                "kind": {
+                  "name": "Ident",
+                  "value": "hello"
+                }
+              }
+            ],
+            {
+              "position": [3, 14],
+              "kind": {
+                "name": "String",
+                "value": ""
+              }
+            }
+          ]
+        }
+      },
+      "kind": {
+        "name": "stringInterpolation",
+        "exprs": [
+          {
+            "token": {
+              "position": [3, 1],
+              "kind": {
+                "name": "String",
+                "value": "before"
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "string",
+              "value": "before"
+            }
+          },
+          {
+            "token": {
+              "position": [3, 9],
+              "kind": {
+                "name": "Ident",
+                "value": "hello"
+              }
+            },
+            "kind": {
+              "name": "identifier",
+              "ident": "hello"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [4, 1],
+        "kind": {
+          "name": "StringInterpolation",
+          "chunks": [
+            {
+              "position": [4, 1],
+              "kind": {
+                "name": "String",
+                "value": ""
+              }
+            },
+            [
+              {
+                "position": [4, 3],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              }
+            ],
+            {
+              "position": [4, 4],
+              "kind": {
+                "name": "String",
+                "value": ""
+              }
+            },
+            [
+              {
+                "position": [4, 5],
+                "kind": {
+                  "name": "Ident",
+                  "value": "b"
+                }
+              }
+            ],
+            {
+              "position": [4, 6],
+              "kind": {
+                "name": "String",
+                "value": ""
+              }
+            }
+          ]
+        }
+      },
+      "kind": {
+        "name": "stringInterpolation",
+        "exprs": [
+          {
+            "token": {
+              "position": [4, 3],
+              "kind": {
+                "name": "Ident",
+                "value": "a"
+              }
+            },
+            "kind": {
+              "name": "identifier",
+              "ident": "a"
+            }
+          },
+          {
+            "token": {
+              "position": [4, 5],
+              "kind": {
+                "name": "Ident",
+                "value": "b"
+              }
+            },
+            "kind": {
+              "name": "identifier",
+              "ident": "b"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [5, 1],
+        "kind": {
+          "name": "StringInterpolation",
+          "chunks": [
+            {
+              "position": [5, 1],
+              "kind": {
+                "name": "String",
+                "value": "before"
+              }
+            },
+            [
+              {
+                "position": [5, 10],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              {
+                "position": [5, 12],
+                "kind": {
+                  "name": "Plus"
+                }
+              },
+              {
+                "position": [5, 14],
+                "kind": {
+                  "name": "Ident",
+                  "value": "b"
+                }
+              }
+            ],
+            {
+              "position": [5, 16],
+              "kind": {
+                "name": "String",
+                "value": "after"
+              }
+            }
+          ]
+        }
+      },
+      "kind": {
+        "name": "stringInterpolation",
+        "exprs": [
+          {
+            "token": {
+              "position": [5, 1],
+              "kind": {
+                "name": "String",
+                "value": "before"
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "string",
+              "value": "before"
+            }
+          },
+          {
+            "token": {
+              "position": [5, 12],
+              "kind": {
+                "name": "Plus"
+              }
+            },
+            "kind": {
+              "name": "binary",
+              "op": "BinaryOp.Add",
+              "left": {
+                "token": {
+                  "position": [5, 10],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "a"
+                  }
+                },
+                "kind": {
+                  "name": "identifier",
+                  "ident": "a"
+                }
+              },
+              "right": {
+                "token": {
+                  "position": [5, 14],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "b"
+                  }
+                },
+                "kind": {
+                  "name": "identifier",
+                  "ident": "b"
+                }
+              }
+            }
+          },
+          {
+            "token": {
+              "position": [5, 16],
+              "kind": {
+                "name": "String",
+                "value": "after"
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "string",
+              "value": "after"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [6, 1],
+        "kind": {
+          "name": "StringInterpolation",
+          "chunks": [
+            {
+              "position": [6, 1],
+              "kind": {
+                "name": "String",
+                "value": ""
+              }
+            },
+            [
+              {
+                "position": [6, 4],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              {
+                "position": [6, 6],
+                "kind": {
+                  "name": "Plus"
+                }
+              },
+              {
+                "position": [6, 8],
+                "kind": {
+                  "name": "Ident",
+                  "value": "b"
+                }
+              }
+            ],
+            {
+              "position": [6, 10],
+              "kind": {
+                "name": "String",
+                "value": "after"
+              }
+            }
+          ]
+        }
+      },
+      "kind": {
+        "name": "stringInterpolation",
+        "exprs": [
+          {
+            "token": {
+              "position": [6, 6],
+              "kind": {
+                "name": "Plus"
+              }
+            },
+            "kind": {
+              "name": "binary",
+              "op": "BinaryOp.Add",
+              "left": {
+                "token": {
+                  "position": [6, 4],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "a"
+                  }
+                },
+                "kind": {
+                  "name": "identifier",
+                  "ident": "a"
+                }
+              },
+              "right": {
+                "token": {
+                  "position": [6, 8],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "b"
+                  }
+                },
+                "kind": {
+                  "name": "identifier",
+                  "ident": "b"
+                }
+              }
+            }
+          },
+          {
+            "token": {
+              "position": [6, 10],
+              "kind": {
+                "name": "String",
+                "value": "after"
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "string",
+              "value": "after"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [7, 1],
+        "kind": {
+          "name": "StringInterpolation",
+          "chunks": [
+            {
+              "position": [7, 1],
+              "kind": {
+                "name": "String",
+                "value": "before"
+              }
+            },
+            [
+              {
+                "position": [7, 10],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              {
+                "position": [7, 12],
+                "kind": {
+                  "name": "Plus"
+                }
+              },
+              {
+                "position": [7, 14],
+                "kind": {
+                  "name": "Ident",
+                  "value": "b"
+                }
+              }
+            ],
+            {
+              "position": [7, 16],
+              "kind": {
+                "name": "String",
+                "value": ""
+              }
+            }
+          ]
+        }
+      },
+      "kind": {
+        "name": "stringInterpolation",
+        "exprs": [
+          {
+            "token": {
+              "position": [7, 1],
+              "kind": {
+                "name": "String",
+                "value": "before"
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "string",
+              "value": "before"
+            }
+          },
+          {
+            "token": {
+              "position": [7, 12],
+              "kind": {
+                "name": "Plus"
+              }
+            },
+            "kind": {
+              "name": "binary",
+              "op": "BinaryOp.Add",
+              "left": {
+                "token": {
+                  "position": [7, 10],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "a"
+                  }
+                },
+                "kind": {
+                  "name": "identifier",
+                  "ident": "a"
+                }
+              },
+              "right": {
+                "token": {
+                  "position": [7, 14],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "b"
+                  }
+                },
+                "kind": {
+                  "name": "identifier",
+                  "ident": "b"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [8, 1],
+        "kind": {
+          "name": "StringInterpolation",
+          "chunks": [
+            {
+              "position": [8, 1],
+              "kind": {
+                "name": "String",
+                "value": ""
+              }
+            },
+            [
+              {
+                "position": [8, 4],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              {
+                "position": [8, 6],
+                "kind": {
+                  "name": "Plus"
+                }
+              },
+              {
+                "position": [8, 8],
+                "kind": {
+                  "name": "Ident",
+                  "value": "b"
+                }
+              }
+            ],
+            {
+              "position": [8, 10],
+              "kind": {
+                "name": "String",
+                "value": ""
+              }
+            }
+          ]
+        }
+      },
+      "kind": {
+        "name": "stringInterpolation",
+        "exprs": [
+          {
+            "token": {
+              "position": [8, 6],
+              "kind": {
+                "name": "Plus"
+              }
+            },
+            "kind": {
+              "name": "binary",
+              "op": "BinaryOp.Add",
+              "left": {
+                "token": {
+                  "position": [8, 4],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "a"
+                  }
+                },
+                "kind": {
+                  "name": "identifier",
+                  "ident": "a"
+                }
+              },
+              "right": {
+                "token": {
+                  "position": [8, 8],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "b"
+                  }
+                },
+                "kind": {
+                  "name": "identifier",
+                  "ident": "b"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [10, 1],
+        "kind": {
+          "name": "StringInterpolation",
+          "chunks": [
+            {
+              "position": [10, 1],
+              "kind": {
+                "name": "String",
+                "value": "hello "
+              }
+            },
+            [
+              {
+                "position": [10, 10],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              {
+                "position": [10, 12],
+                "kind": {
+                  "name": "Plus"
+                }
+              },
+              {
+                "position": [10, 14],
+                "kind": {
+                  "name": "StringInterpolation",
+                  "chunks": [
+                    {
+                      "position": [10, 14],
+                      "kind": {
+                        "name": "String",
+                        "value": ""
+                      }
+                    },
+                    [
+                      {
+                        "position": [10, 16],
+                        "kind": {
+                          "name": "Ident",
+                          "value": "b"
+                        }
+                      }
+                    ],
+                    {
+                      "position": [10, 17],
+                      "kind": {
+                        "name": "String",
+                        "value": " - "
+                      }
+                    },
+                    [
+                      {
+                        "position": [10, 21],
+                        "kind": {
+                          "name": "Ident",
+                          "value": "c"
+                        }
+                      }
+                    ],
+                    {
+                      "position": [10, 22],
+                      "kind": {
+                        "name": "String",
+                        "value": ""
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            {
+              "position": [10, 24],
+              "kind": {
+                "name": "String",
+                "value": "!"
+              }
+            }
+          ]
+        }
+      },
+      "kind": {
+        "name": "stringInterpolation",
+        "exprs": [
+          {
+            "token": {
+              "position": [10, 1],
+              "kind": {
+                "name": "String",
+                "value": "hello "
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "string",
+              "value": "hello "
+            }
+          },
+          {
+            "token": {
+              "position": [10, 12],
+              "kind": {
+                "name": "Plus"
+              }
+            },
+            "kind": {
+              "name": "binary",
+              "op": "BinaryOp.Add",
+              "left": {
+                "token": {
+                  "position": [10, 10],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "a"
+                  }
+                },
+                "kind": {
+                  "name": "identifier",
+                  "ident": "a"
+                }
+              },
+              "right": {
+                "token": {
+                  "position": [10, 14],
+                  "kind": {
+                    "name": "StringInterpolation",
+                    "chunks": [
+                      {
+                        "position": [10, 14],
+                        "kind": {
+                          "name": "String",
+                          "value": ""
+                        }
+                      },
+                      [
+                        {
+                          "position": [10, 16],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "b"
+                          }
+                        }
+                      ],
+                      {
+                        "position": [10, 17],
+                        "kind": {
+                          "name": "String",
+                          "value": " - "
+                        }
+                      },
+                      [
+                        {
+                          "position": [10, 21],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "c"
+                          }
+                        }
+                      ],
+                      {
+                        "position": [10, 22],
+                        "kind": {
+                          "name": "String",
+                          "value": ""
+                        }
+                      }
+                    ]
+                  }
+                },
+                "kind": {
+                  "name": "stringInterpolation",
+                  "exprs": [
+                    {
+                      "token": {
+                        "position": [10, 16],
+                        "kind": {
+                          "name": "Ident",
+                          "value": "b"
+                        }
+                      },
+                      "kind": {
+                        "name": "identifier",
+                        "ident": "b"
+                      }
+                    },
+                    {
+                      "token": {
+                        "position": [10, 17],
+                        "kind": {
+                          "name": "String",
+                          "value": " - "
+                        }
+                      },
+                      "kind": {
+                        "name": "literal",
+                        "type": "string",
+                        "value": " - "
+                      }
+                    },
+                    {
+                      "token": {
+                        "position": [10, 21],
+                        "kind": {
+                          "name": "Ident",
+                          "value": "c"
+                        }
+                      },
+                      "kind": {
+                        "name": "identifier",
+                        "ident": "c"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "token": {
+              "position": [10, 24],
+              "kind": {
+                "name": "String",
+                "value": "!"
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "string",
+              "value": "!"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
