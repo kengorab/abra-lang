@@ -1,3 +1,0 @@
-enum Foo {
-  func eq(self, other: String): Bool {}
-}

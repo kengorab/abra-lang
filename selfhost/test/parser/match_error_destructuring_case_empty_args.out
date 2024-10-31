@@ -1,4 +1,0 @@
-Error at %FILE_NAME%:2:14
-Unexpected token ')', expected 'identifier':
-  |    Color.Blue() => 0x0000FF
-                  ^

@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:2:9
-Invalid destructuring
-  |  val (a, (b, c)) = x
-             ^
-A value of type 'Int' cannot be destructured as a tuple

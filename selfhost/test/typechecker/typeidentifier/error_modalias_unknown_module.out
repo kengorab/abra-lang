@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:3:8
-Unknown module 'ex'
-  |  val _: ex.Bar[] = []
-            ^
-No module with that name is visible in current scope

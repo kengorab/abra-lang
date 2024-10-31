@@ -1,6 +1,0 @@
-type Foo {
-  int: Int
-}
-
-var f: Foo
-f.int(1)

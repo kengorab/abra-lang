@@ -1,4 +1,0 @@
-func foo(a: Int, b: String): String = a + b
-
-val s = (foo)(1, "two")
-val _: String = s

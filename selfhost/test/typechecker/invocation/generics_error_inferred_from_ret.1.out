@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:3:21
-Type mismatch
-  |  val a: Int[] = foo(["a"])
-                         ^
-Expected: Int
-but instead found: String

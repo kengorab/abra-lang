@@ -1,3 +1,0 @@
-val arr = [1, 2, 3]
-val a: Int? = Some(1)
-arr[1:a]

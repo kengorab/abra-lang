@@ -1,2 +1,0 @@
-func foo(): Int = 123
-foo(1, 2)

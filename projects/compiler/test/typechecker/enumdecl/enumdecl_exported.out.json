@@ -1,0 +1,106 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "exports": [
+    {
+      "kind": "type",
+      "name": "Foo"
+    }
+  ],
+  "code": [
+    {
+      "token": {
+        "position": [1, 8],
+        "kind": {
+          "name": "Enum"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "enumDeclaration",
+        "enum": {
+          "moduleId": 3,
+          "name": { "name": "Foo", "position": [1, 13] },
+          "typeParams": [],
+          "variants": [
+            {
+              "label": { "name": "Bar", "position": [2, 3] },
+              "kind": "constant"
+            }
+          ],
+          "instanceMethods": [
+            {
+              "label": { "name": "toString", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Foo::toString",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "hash", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Foo::hash",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "eq", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Foo::eq",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [
+                {
+                  "label": { "name": "other", "position": [0, 0] },
+                  "type": {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 3, "name": "Foo" },
+                    "typeParams": []
+                  },
+                  "defaultValue": null,
+                  "isVariadic": false
+                }
+              ],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Bool"
+              },
+              "body": []
+            }
+          ],
+          "staticMethods": []
+        }
+      }
+    }
+  ]
+}

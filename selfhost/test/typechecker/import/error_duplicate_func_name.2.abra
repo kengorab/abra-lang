@@ -1,3 +1,0 @@
-import add from "./_exports"
-
-func add() {}

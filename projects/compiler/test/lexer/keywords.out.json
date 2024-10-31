@@ -1,0 +1,136 @@
+[
+  {
+    "position": [1, 1],
+    "kind": {
+      "name": "Bool",
+      "value": true
+    }
+  },
+  {
+    "position": [1, 6],
+    "kind": {
+      "name": "Bool",
+      "value": false
+    }
+  },
+  {
+    "position": [1, 12],
+    "kind": {
+      "name": "Val"
+    }
+  },
+  {
+    "position": [1, 16],
+    "kind": {
+      "name": "Var"
+    }
+  },
+  {
+    "position": [1, 20],
+    "kind": {
+      "name": "If"
+    }
+  },
+  {
+    "position": [1, 23],
+    "kind": {
+      "name": "Else"
+    }
+  },
+  {
+    "position": [1, 28],
+    "kind": {
+      "name": "Func"
+    }
+  },
+  {
+    "position": [1, 33],
+    "kind": {
+      "name": "While"
+    }
+  },
+  {
+    "position": [1, 39],
+    "kind": {
+      "name": "Break"
+    }
+  },
+  {
+    "position": [1, 45],
+    "kind": {
+      "name": "For"
+    }
+  },
+  {
+    "position": [1, 49],
+    "kind": {
+      "name": "In"
+    }
+  },
+  {
+    "position": [1, 52],
+    "kind": {
+      "name": "Type"
+    }
+  },
+  {
+    "position": [1, 57],
+    "kind": {
+      "name": "Enum"
+    }
+  },
+  {
+    "position": [1, 62],
+    "kind": {
+      "name": "Self"
+    }
+  },
+  {
+    "position": [1, 67],
+    "kind": {
+      "name": "Match"
+    }
+  },
+  {
+    "position": [1, 73],
+    "kind": {
+      "name": "Readonly"
+    }
+  },
+  {
+    "position": [1, 82],
+    "kind": {
+      "name": "Import"
+    }
+  },
+  {
+    "position": [1, 89],
+    "kind": {
+      "name": "Export"
+    }
+  },
+  {
+    "position": [1, 96],
+    "kind": {
+      "name": "From"
+    }
+  },
+  {
+    "position": [1, 101],
+    "kind": {
+      "name": "As"
+    }
+  },
+  {
+    "position": [1, 104],
+    "kind": {
+      "name": "Try"
+    }
+  },
+  {
+    "position": [1, 108],
+    "kind": {
+      "name": "Continue"
+    }
+  }
+]

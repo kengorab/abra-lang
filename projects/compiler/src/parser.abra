@@ -1,0 +1,1882 @@
+import Token, TokenKind, Position, StringInterpolationChunk from "./lexer"
+
+export type ParsedModule {
+  imports: ImportNode[]
+  nodes: AstNode[]
+}
+
+export enum ImportKind {
+  List(imports: Label[])
+  Alias(alias: Label)
+}
+
+export type ImportNode {
+  token: Token
+  kind: ImportKind
+  moduleName: Label
+}
+
+export type AstNode {
+  token: Token
+  kind: AstNodeKind
+}
+
+export enum LiteralAstNode {
+  Int(value: Int)
+  Float(value: Float)
+  Bool(value: Bool)
+  String(value: String)
+}
+
+export enum UnaryOp { Minus, Negate }
+
+export type UnaryAstNode {
+  op: UnaryOp
+  expr: AstNode
+}
+
+export enum BinaryOp {
+  Add
+  Sub
+  Mul
+  Div
+  Mod
+  Pow
+  And
+  Or
+  Xor
+  Coalesce
+  Eq
+  Neq
+  LT
+  LTE
+  Shl
+  GT
+  GTE
+  Shr
+
+  func repr(self): String = match self {
+    BinaryOp.Add => "+"
+    BinaryOp.Sub => "-"
+    BinaryOp.Mul => "*"
+    BinaryOp.Div => "/"
+    BinaryOp.Mod => "%"
+    BinaryOp.Pow => "**"
+    BinaryOp.And => "&&"
+    BinaryOp.Or => "||"
+    BinaryOp.Xor => "^"
+    BinaryOp.Coalesce => "?:"
+    BinaryOp.Eq => "=="
+    BinaryOp.Neq => "!="
+    BinaryOp.LT => "<"
+    BinaryOp.LTE => "<="
+    BinaryOp.Shl => "<<"
+    BinaryOp.GT => ">"
+    BinaryOp.GTE => ">="
+    BinaryOp.Shr => ">>"
+  }
+}
+
+export enum AssignOp {
+  Assign
+  AddEq
+  SubEq
+  MulEq
+  DivEq
+  ModEq
+  AndEq
+  OrEq
+  CoalesceEq
+
+  func repr(self): String = match self {
+    AssignOp.Assign => "="
+    AssignOp.AddEq => "+="
+    AssignOp.SubEq => "-="
+    AssignOp.MulEq => "*="
+    AssignOp.DivEq => "/="
+    AssignOp.ModEq => "%="
+    AssignOp.AndEq => "&&="
+    AssignOp.OrEq => "||="
+    AssignOp.CoalesceEq => "?:="
+  }
+}
+
+export type BinaryAstNode {
+  left: AstNode
+  op: BinaryOp
+  right: AstNode
+}
+
+export enum IdentifierKind {
+  Named(name: String)
+  Self
+  None_
+  Discard
+}
+
+export type Label {
+  name: String
+  position: Position
+}
+
+export type AccessorAstNode {
+  root: AstNode
+  path: (Token, Label)[]
+}
+
+export type InvocationArgument {
+  label: Label?
+  value: AstNode
+
+  func position(self): Position = self.label?.position ?: self.value.token.position
+}
+
+export type InvocationAstNode {
+  invokee: AstNode
+  typeArguments: TypeIdentifier[]
+  arguments: InvocationArgument[]
+}
+
+export enum IndexingMode<N> {
+  Single(expr: N)
+  Range(start: N?, end: N?)
+}
+
+export enum AssignmentMode {
+  Variable(name: String, token: Token)
+  Indexing(expr: AstNode, indexExpr: AstNode)
+  Accessor(node: AccessorAstNode)
+}
+
+export enum MatchCaseKind {
+  None_
+  Literal(value: LiteralAstNode)
+  Type(path: Label[], last: Label, args: Label[])
+  Else
+}
+
+export type MatchCase {
+  kind: MatchCaseKind
+  position: Position
+  binding: Label?
+  body: AstNode[]
+}
+
+export enum TypeIdentifier {
+  Normal(name: Label, typeArguments: TypeIdentifier[], path: Label[])
+  Array(inner: TypeIdentifier)
+  Option(inner: TypeIdentifier)
+  Tuple(types: TypeIdentifier[])
+  Function(args: TypeIdentifier[], ret: TypeIdentifier)
+}
+
+export enum BindingPattern {
+  Variable(label: Label)
+  Tuple(lParenTok: Token, patterns: BindingPattern[])
+
+  func position(self): Position {
+    match self {
+      BindingPattern.Variable(label) => label.position
+      BindingPattern.Tuple(lParenTok, _) => lParenTok.position
+    }
+  }
+}
+
+export type BindingDeclarationNode {
+  decorators: DecoratorNode[]
+  exportToken: Token?
+  bindingPattern: BindingPattern
+  typeAnnotation: TypeIdentifier?
+  expr: AstNode?
+}
+
+export type FunctionParam {
+  label: Label
+  isVariadic: Bool = false
+  typeAnnotation: TypeIdentifier? = None
+  defaultValue: AstNode? = None
+}
+
+export type LambdaNode {
+  params: FunctionParam[]
+  body: AstNode[]
+}
+
+export type FunctionDeclarationNode {
+  decorators: DecoratorNode[]
+  exportToken: Token?
+  name: Label
+  typeParams: Label[]
+  params: FunctionParam[]
+  returnTypeAnnotation: TypeIdentifier?
+  body: AstNode[]
+}
+
+type TypeField {
+  name: Label
+  typeAnnotation: TypeIdentifier
+  initializer: AstNode?
+}
+
+export type TypeDeclarationNode {
+  decorators: DecoratorNode[]
+  exportToken: Token?
+  name: Label
+  typeParams: Label[]
+  fields: TypeField[]
+  methods: FunctionDeclarationNode[]
+  types: TypeDeclarationNode[]
+  enums: EnumDeclarationNode[]
+}
+
+export enum EnumVariant {
+  Constant(label: Label)
+  Container(label: Label, fields: TypeField[])
+}
+
+export type EnumDeclarationNode {
+  decorators: DecoratorNode[]
+  exportToken: Token?
+  name: Label
+  typeParams: Label[]
+  variants: EnumVariant[]
+  methods: FunctionDeclarationNode[]
+  types: TypeDeclarationNode[]
+  enums: EnumDeclarationNode[]
+}
+
+export type DecoratorNode {
+  name: Label
+  arguments: InvocationArgument[]
+}
+
+export enum AstNodeKind {
+  Literal(value: LiteralAstNode)
+  StringInterpolation(chunks: AstNode[])
+  Unary(value: UnaryAstNode)
+  Binary(value: BinaryAstNode)
+  Grouped(inner: AstNode)
+  Identifier(kind: IdentifierKind)
+  Accessor(value: AccessorAstNode)
+  Invocation(value: InvocationAstNode)
+  Array(items: AstNode[])
+  Set(items: AstNode[])
+  Map(items: (AstNode, AstNode)[])
+  Tuple(items: AstNode[])
+  Indexing(expr: AstNode, index: IndexingMode<AstNode>)
+  Lambda(value: LambdaNode)
+  Assignment(expr: AstNode, op: AssignOp, mode: AssignmentMode)
+  If(condition: AstNode, conditionBinding: BindingPattern?, ifBlock: AstNode[], elseBlock: AstNode[]?)
+  Match(expr: AstNode, cases: MatchCase[])
+  While(condition: AstNode, conditionBinding: BindingPattern?, block: AstNode[])
+  For(itemPattern: BindingPattern, indexPattern: BindingPattern?, iterator: AstNode, block: AstNode[])
+  BindingDeclaration(value: BindingDeclarationNode)
+  FunctionDeclaration(value: FunctionDeclarationNode)
+  TypeDeclaration(value: TypeDeclarationNode)
+  EnumDeclaration(value: EnumDeclarationNode)
+  Break
+  Continue
+  Return(expr: AstNode?)
+
+  func isAssignmentExpression(self): Bool {
+    match self {
+      AstNodeKind.Grouped(inner) => inner.kind.isAssignmentExpression()
+      AstNodeKind.Assignment => true
+      _ => false
+    }
+  }
+}
+
+enum ParseErrorKind {
+  UnexpectedToken(token: Token)
+  ExpectedToken(expected: TokenKind[], received: TokenKind)
+  UnexpectedEof
+  NotYetImplemented
+  Unreachable
+}
+
+export type ParseError {
+  position: Position
+  kind: ParseErrorKind
+
+  func getMessage(self, filePath: String, contents: String): String {
+    val lines = ["Error at $filePath:${self.position.line}:${self.position.col}"]
+
+    match self.kind {
+      ParseErrorKind.UnexpectedToken(token) => {
+        lines.push("Unexpected token '${token.kind.repr()}':")
+        lines.push(self._getCursorLine(self.position, contents))
+      }
+      ParseErrorKind.ExpectedToken(expected, received) => {
+
+        if expected.length == 1 {
+          val repr = expected[0]?.repr() ?: ""
+          lines.push("Unexpected token '${received.repr()}', expected '$repr':")
+        } else {
+          val reprs = expected.map(kind => "'${kind.repr()}'").join(", ")
+          lines.push("Unexpected token '${received.repr()}', expected one of $reprs:")
+        }
+        lines.push(self._getCursorLine(self.position, contents))
+      }
+      ParseErrorKind.UnexpectedEof => {
+        lines.push("Unexpected end of file:")
+        lines.push(self._getCursorLine(self.position, contents))
+      }
+      ParseErrorKind.NotYetImplemented => {
+        lines.push("Not yet implemented:")
+        lines.push(self._getCursorLine(self.position, contents))
+      }
+      ParseErrorKind.Unreachable => {
+        lines.push("Critical error: reached unreachable location in code!")
+      }
+    }
+
+    lines.join("\n")
+  }
+
+  // TODO: This is duplicated from Lexer, pull this out
+  func _getCursorLine(self, position: Position, contents: String, cursorLength = 1): String {
+    if contents.lines()[position.line - 1] |line| {
+      val len = position.col - 1 + cursorLength
+      val cursor = Array.fill(len, " ")
+      for i in range(len - cursorLength, len) {
+        cursor[i] = "^"
+      }
+      "  |  $line\n     ${cursor.join()}"
+    } else {
+      "unreachable"
+    }
+  }
+}
+
+export type Parser {
+  _tokens: Token[]
+  _cursor: Int = 0
+  _seenDecorators: DecoratorNode[] = []
+  _exportToken: Token? = None
+
+  func parse(tokens: Token[]): Result<ParsedModule, ParseError> {
+    val parser = Parser(_tokens: tokens)
+
+    val imports: ImportNode[] = []
+    val nodes: AstNode[] = []
+
+    var importsAllowed = true
+    while parser._peek() |token| {
+      if token.kind == TokenKind.Import {
+        if !importsAllowed {
+          return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+        }
+
+        val importNode = match parser._parseImport() { Ok(v) => v, Err(e) => return Err(e) }
+        imports.push(importNode)
+        continue
+      }
+      importsAllowed = false
+
+      match parser._parseStatement() {
+        Ok(node) => nodes.push(node)
+        Err(e) => return Err(e)
+      }
+    }
+
+    Ok(ParsedModule(imports: imports, nodes: nodes))
+  }
+
+  func _peek(self, ahead = 0): Token? = self._tokens[self._cursor + ahead]
+
+  func _expectPeek(self, ahead = 0): Result<Token, ParseError> {
+    if self._peek(ahead) |token| {
+      Ok(token)
+    } else {
+      val position = if self._tokens[self._cursor - 1] |lastToken| {
+        lastToken.position
+      } else {
+        Position(line: 1, col: 0)
+      }
+      // TODO: This isn't exactly correct (it should point just past the end of the token, and this would only work if
+      // the token was of length 1), but it's close enough for now
+      position.col += 1
+      Err(ParseError(position: position, kind: ParseErrorKind.UnexpectedEof))
+    }
+  }
+
+  func _advance(self) {
+    self._cursor += 1
+  }
+
+  func _expectNext(self): Result<Token, ParseError> {
+    val tokenRes = self._expectPeek()
+    self._advance()
+    tokenRes
+  }
+
+  func _expectNextLabel(self): Result<Label, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    match token.kind {
+      TokenKind.Ident(name) => Ok(Label(name: name, position: token.position))
+      _ => Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
+    }
+  }
+
+  func _expectNextTokenKind(self, kind: TokenKind): Result<Token, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+
+    val nextTokenMatches = match kind {
+      TokenKind.Int => match token.kind { TokenKind.Int => true, _ => false }
+      TokenKind.Float => match token.kind { TokenKind.Float => true, _ => false }
+      TokenKind.Bool => match token.kind { TokenKind.Bool => true, _ => false }
+      TokenKind.String => match token.kind {
+        TokenKind.String => true
+        TokenKind.StringInterpolation => true
+        _ => false
+      }
+      TokenKind.StringInterpolation => return unreachable() // no reason to ever explicitly expect a StringInterpolation token
+      TokenKind.Ident => match token.kind { TokenKind.Ident => true, _ => false }
+      TokenKind.LParen => match token.kind { TokenKind.LParen => true, _ => false }
+      TokenKind.LBrack=> match token.kind { TokenKind.LBrack => true, _ => false }
+      _ => token.kind == kind
+    }
+
+    if nextTokenMatches {
+      Ok(token)
+    } else {
+      Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([kind], token.kind)))
+    }
+  }
+
+  func _parseImport(self): Result<ImportNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+
+    val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    val importNode = match nextToken.kind {
+      TokenKind.String(string) => {
+        val moduleName = Label(name: string, position: nextToken.position)
+        self._advance() // consume string token
+
+        val nextToken = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+        if nextToken.kind != TokenKind.As {
+          return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.As], nextToken.kind)))
+        }
+
+        val aliasName = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
+        val kind = ImportKind.Alias(aliasName)
+
+        ImportNode(token: token, kind: kind, moduleName: moduleName)
+      }
+      TokenKind.Ident => {
+        val importsRes = self._commaSeparated(end: TokenKind.From, consumeFinal: true, fn: () => {
+          val label = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
+          if label.name == "_" {
+            val tok = Token(position: label.position, kind: TokenKind.Ident(label.name))
+            Err(ParseError(position: label.position, kind: ParseErrorKind.UnexpectedToken(tok)))
+          } else {
+            Ok(label)
+          }
+        })
+        val imports = match importsRes { Ok(v) => v, Err(e) => return Err(e) }
+        val kind = ImportKind.List(imports)
+
+        val nextToken = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+        val moduleName = match nextToken.kind {
+          TokenKind.String(name) => Label(name: name, position: nextToken.position)
+          _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String("")], nextToken.kind)))
+        }
+
+        ImportNode(token: token, kind: kind, moduleName: moduleName)
+      }
+      _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String(""), TokenKind.Ident("")], nextToken.kind)))
+    }
+
+    Ok(importNode)
+  }
+
+  func _parseStatement(self): Result<AstNode, ParseError> {
+    val token = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    match token.kind {
+      TokenKind.At => {
+        match self._parseDecorator() { Ok(v) => v, Err(e) => return Err(e) }
+
+        val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.At, TokenKind.Export]
+        if !expected.contains(nextToken.kind) {
+          return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
+        }
+
+        self._parseStatement()
+      }
+      TokenKind.Export => {
+        self._exportToken = Some(token)
+        self._advance() // consume 'export' token
+
+        val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum]
+        if !expected.contains(nextToken.kind) {
+          return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
+        }
+
+        self._parseStatement()
+      }
+      TokenKind.Val => self._parseBindingDeclaration(mutable: false)
+      TokenKind.Var => self._parseBindingDeclaration(mutable: true)
+      TokenKind.Func => self._parseFunctionDeclaration()
+      TokenKind.Type => self._parseTypeDeclaration()
+      TokenKind.Enum => self._parseEnumDeclaration()
+      TokenKind.While => self._parseWhileLoop()
+      TokenKind.For => self._parseForLoop()
+      TokenKind.Break => self._parseBreak()
+      TokenKind.Continue => self._parseContinue()
+      TokenKind.Return(hasNewline) => self._parseReturn(hasNewline)
+      _ => self._parseExpressionStatement()
+    }
+  }
+
+  func _parseDecorator(self): Result<Int, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+
+    val decoratorName = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
+
+    val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    val arguments = match nextToken.kind {
+      TokenKind.LParen => {
+        self._advance() // consume '(' token
+        val arguments = match self._parseInvocationArguments() { Ok(v) => v, Err(e) => return Err(e) }
+        arguments
+      }
+      _ => []
+    }
+
+    for arg in arguments {
+      match arg.value.kind {
+        AstNodeKind.Literal => {}
+        _ => {
+          val expected = [TokenKind.Int(0), TokenKind.Float(0.0), TokenKind.Bool(true), TokenKind.String("")]
+          return Err(ParseError(position: arg.value.token.position, kind: ParseErrorKind.ExpectedToken(expected, arg.value.token.kind)))
+        }
+      }
+    }
+
+    val dec = DecoratorNode(name: decoratorName, arguments: arguments)
+    self._seenDecorators.push(dec)
+
+    Ok(0) // <- unneeded, but I can't construct a Unit type, so...
+  }
+
+  func _parseBindingPattern(self): Result<BindingPattern, ParseError> {
+    val token = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    val pat = match token.kind {
+      TokenKind.Ident => {
+        val label = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
+        BindingPattern.Variable(label)
+      }
+      TokenKind.LParen => {
+        val lParenTok = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+        val itemsRes = self._commaSeparated(end: TokenKind.RParen, consumeFinal: false, fn: () => self._parseBindingPattern())
+        val items = match itemsRes { Ok(v) => v, Err(e) => return Err(e) }
+        val rParenTok = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+        if items.isEmpty() {
+          return Err(ParseError(position: rParenTok.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident(""), TokenKind.LParen(true)], token.kind)))
+        }
+
+        BindingPattern.Tuple(lParenTok, items)
+      }
+      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
+    }
+
+    Ok(pat)
+  }
+
+  func _parseBindingDeclaration(self, mutable: Bool): Result<AstNode, ParseError> {
+    val decorators = self._seenDecorators
+    self._seenDecorators = []
+
+    val exportToken = self._exportToken
+    self._exportToken = None
+
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val pat = match self._parseBindingPattern() { Ok(v) => v, Err(e) => return Err(e) }
+
+    if self._cursor >= self._tokens.length {
+      val node = BindingDeclarationNode(
+        decorators: decorators,
+        exportToken: exportToken,
+        bindingPattern: pat,
+        typeAnnotation: None,
+        expr: None,
+      )
+      return Ok(AstNode(token: token, kind: AstNodeKind.BindingDeclaration(node)))
+    }
+
+    var colonToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    val typeAnnotation = if colonToken.kind == TokenKind.Colon {
+      self._advance() // consume ':' token
+      val a = match self._parseTypeIdentifier() { Ok(v) => v, Err(e) => return Err(e) }
+      Some(a)
+    } else {
+      None
+    }
+
+    if self._cursor >= self._tokens.length {
+      val node = BindingDeclarationNode(
+        decorators: decorators,
+        exportToken: exportToken,
+        bindingPattern: pat,
+        typeAnnotation: typeAnnotation,
+        expr: None,
+      )
+      return Ok(AstNode(token: token, kind: AstNodeKind.BindingDeclaration(node)))
+    }
+
+    val eqToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    val expr = if eqToken.kind == TokenKind.Eq {
+      self._advance() // consume '=' token
+      val e = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+      Some(e)
+    } else {
+      None
+    }
+
+    val node = BindingDeclarationNode(
+      decorators: decorators,
+      exportToken: exportToken,
+      bindingPattern: pat,
+      typeAnnotation: typeAnnotation,
+      expr: expr,
+    )
+    Ok(AstNode(token: token, kind: AstNodeKind.BindingDeclaration(node)))
+  }
+
+  func _parseFunctionDeclaration(self): Result<AstNode, ParseError> {
+    val decorators = self._seenDecorators
+    self._seenDecorators = []
+
+    val exportToken = self._exportToken
+    self._exportToken = None
+
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val label = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
+    var nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    val typeParams = match nextToken.kind {
+      TokenKind.LT => {
+        self._advance() // consume '<' token
+        val labels = match self._parseTypeParameters() { Ok(v) => v, Err(e) => return Err(e) }
+        labels
+      }
+      TokenKind.LParen => []
+      _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
+    }
+
+    // The `true` in LParen is disregarded within _expectNextTokenKind
+    match self._expectNextTokenKind(TokenKind.LParen(true)) { Ok(v) => v, Err(e) => return Err(e) }
+
+    val params = match self._parseFunctionParameters(allowSelf: true) { Ok(v) => v, Err(e) => return Err(e) }
+
+    nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    val returnTypeAnnotation = if nextToken.kind == TokenKind.Colon {
+      self._advance() // consume ':' token
+
+      val ann = match self._parseTypeIdentifier() { Ok(v) => v, Err(e) => return Err(e) }
+      Some(ann)
+    } else {
+      None
+    }
+
+    val isStub = decorators.find(dec => {
+      val decName = dec.name.name
+      decName == "Stub" || decName == "Intrinsic" || decName == "CBinding"
+    })
+
+    val body: AstNode[] = if isStub {
+      []
+    } else {
+      val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+      if nextToken.kind == TokenKind.Eq {
+        self._advance() // consume '=' token
+        val expr = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+        [expr]
+      } else {
+        match self._parseBlockOrSingleExpression() { Ok(v) => v, Err(e) => return Err(e) }
+      }
+    }
+
+    val node = FunctionDeclarationNode(
+      decorators: decorators,
+      exportToken: exportToken,
+      name: label,
+      typeParams: typeParams,
+      params: params,
+      returnTypeAnnotation: returnTypeAnnotation,
+      body: body,
+    )
+    Ok(AstNode(token: token, kind: AstNodeKind.FunctionDeclaration(node)))
+  }
+
+  func _parseTypeDeclaration(self): Result<AstNode, ParseError> {
+    val decorators = self._seenDecorators
+    self._seenDecorators = []
+
+    val exportToken = self._exportToken
+    self._exportToken = None
+
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val typeName = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
+
+    var nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    val typeParams = match nextToken.kind {
+      TokenKind.LT => {
+        self._advance() // consume '<' token
+        val labels = match self._parseTypeParameters() { Ok(v) => v, Err(e) => return Err(e) }
+        labels
+      }
+      TokenKind.LBrace => []
+      _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
+    }
+
+    match self._expectNextTokenKind(TokenKind.LBrace) { Ok(v) => v, Err(e) => return Err(e) }
+
+    val fields: TypeField[] = []
+    while self._peek() |nextToken| {
+      match nextToken.kind {
+        TokenKind.Ident => {
+          val field = match self._parseField() { Ok(v) => v, Err(e) => return Err(e) }
+
+          val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+          if nextToken.kind == TokenKind.Comma {
+            self._advance() // consume ',' token
+          }
+
+          fields.push(field)
+        }
+        _ => break
+      }
+    }
+
+    val (methods, types, enums) = match self._parseBodyForTypeOrEnum() { Ok(v) => v, Err(e) => return Err(e) }
+
+    match self._expectNextTokenKind(TokenKind.RBrace) { Ok(v) => v, Err(e) => return Err(e) }
+
+    val node = TypeDeclarationNode(
+      decorators: decorators,
+      exportToken: exportToken,
+      name: typeName,
+      typeParams: typeParams,
+      fields: fields,
+      methods: methods,
+      types: types,
+      enums: enums,
+    )
+    Ok(AstNode(token: token, kind: AstNodeKind.TypeDeclaration(node)))
+  }
+
+  func _parseEnumDeclaration(self): Result<AstNode, ParseError> {
+    val decorators = self._seenDecorators
+    self._seenDecorators = []
+
+    val exportToken = self._exportToken
+    self._exportToken = None
+
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val enumName = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
+
+    var nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    val typeParams = match nextToken.kind {
+      TokenKind.LT => {
+        self._advance() // consume '<' token
+        val labels = match self._parseTypeParameters() { Ok(v) => v, Err(e) => return Err(e) }
+        labels
+      }
+      TokenKind.LBrace => []
+      _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
+    }
+
+    match self._expectNextTokenKind(TokenKind.LBrace) { Ok(v) => v, Err(e) => return Err(e) }
+
+    val variants: EnumVariant[] = []
+    while self._peek() |identTok| {
+      val name = match identTok.kind {
+        TokenKind.Ident => {
+          val name = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
+          name
+        }
+        TokenKind.None_ => {
+          self._advance() // consume 'None' token
+          Label(name: "None", position: identTok.position)
+        }
+        _ => break
+      }
+
+      var nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+      val variant = match nextToken.kind {
+        TokenKind.LParen => {
+          self._advance() // consume '(' token
+
+          val paramsRes = self._commaSeparated(end: TokenKind.RParen, consumeFinal: false, fn: () => self._parseField())
+          val params = match paramsRes { Ok(v) => v, Err(e) => return Err(e) }
+          val rParen = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+          if params.isEmpty() {
+            return Err(ParseError(position: rParen.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], rParen.kind)))
+          }
+          EnumVariant.Container(name, params)
+        }
+        _ => EnumVariant.Constant(name)
+      }
+
+      nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+      if nextToken.kind == TokenKind.Comma {
+        self._advance() // consume ',' token
+      }
+      variants.push(variant)
+    }
+
+    val (methods, types, enums) = match self._parseBodyForTypeOrEnum() { Ok(v) => v, Err(e) => return Err(e) }
+
+    match self._expectNextTokenKind(TokenKind.RBrace) { Ok(v) => v, Err(e) => return Err(e) }
+
+    val node = EnumDeclarationNode(
+      decorators: decorators,
+      exportToken: exportToken,
+      name: enumName,
+      typeParams: typeParams,
+      variants: variants,
+      methods: methods,
+      types: types,
+      enums: enums,
+    )
+    Ok(AstNode(token: token, kind: AstNodeKind.EnumDeclaration(node)))
+  }
+
+  func _parseField(self): Result<TypeField, ParseError> {
+    val name = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
+    match self._expectNextTokenKind(TokenKind.Colon) { Ok(v) => v, Err(e) => return Err(e) }
+    val typeAnnotation = match self._parseTypeIdentifier() { Ok(v) => v, Err(e) => return Err(e) }
+
+    var nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    val initializer = if nextToken.kind == TokenKind.Eq {
+      self._advance() // consume '=' token
+      val expr = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+      Some(expr)
+    } else {
+      None
+    }
+
+    Ok(TypeField(name: name, typeAnnotation: typeAnnotation, initializer: initializer))
+  }
+
+  func _parseBodyForTypeOrEnum(self): Result<(FunctionDeclarationNode[], TypeDeclarationNode[], EnumDeclarationNode[]), ParseError> {
+    val methods: FunctionDeclarationNode[] = []
+    val types: TypeDeclarationNode[] = []
+    val enums: EnumDeclarationNode[] = []
+    while self._peek() |nextToken| {
+      if nextToken.kind == TokenKind.RBrace break
+      val nodeRes = match nextToken.kind {
+        TokenKind.RBrace => break
+        TokenKind.At => self._parseStatement()
+        TokenKind.Func => self._parseStatement()
+        TokenKind.Type => self._parseStatement()
+        TokenKind.Enum => self._parseStatement()
+        _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.UnexpectedToken(nextToken)))
+      }
+
+      val node = match nodeRes { Ok(v) => v, Err(e) => return Err(e) }
+      match node.kind {
+        AstNodeKind.FunctionDeclaration(node) => methods.push(node)
+        AstNodeKind.TypeDeclaration(node) => types.push(node)
+        AstNodeKind.EnumDeclaration(node) => enums.push(node)
+        _ => return unreachable()
+      }
+    }
+
+    Ok((methods, types, enums))
+  }
+
+  func _parseTypeIdentifier(self): Result<TypeIdentifier, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    var typeIdent =  match token.kind {
+      TokenKind.Ident(name) => {
+        var label = Label(name: name, position: token.position)
+        val path: Label[] = []
+
+        var typeArguments: TypeIdentifier[] = []
+        while self._peek() |nextToken| {
+          match nextToken.kind {
+            TokenKind.LT => {
+              self._advance() // consume '<' token
+
+              val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+              if nextToken.kind == TokenKind.GT {
+                return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], nextToken.kind)))
+              }
+              typeArguments = match self._commaSeparated(end: TokenKind.GT, consumeFinal: true, fn: () => self._parseTypeIdentifier()) { Ok(v) => v, Err(e) => return Err(e) }
+              break
+            }
+            TokenKind.Dot => {
+              self._advance() // consume '.' token
+              val nextToken = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+              match nextToken.kind {
+                TokenKind.Ident(name) => {
+                  path.push(label)
+                  label = Label(name: name, position: nextToken.position)
+                }
+                _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], nextToken.kind)))
+              }
+            }
+            _ => break
+          }
+        }
+
+        TypeIdentifier.Normal(name: label, typeArguments: typeArguments, path: path)
+      }
+      TokenKind.LParen => {
+        val a = self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: () => self._parseTypeIdentifier())
+        val args = match a { Ok(v) => v, Err(e) => return Err(e) }
+
+        val nextTokenIsArrow = if self._peek()?.kind |kind| kind == TokenKind.Arrow else false
+        if nextTokenIsArrow {
+          self._advance() // consume '=>' token
+          val retType = match self._parseTypeIdentifier() { Ok(v) => v, Err(e) => return Err(e) }
+          TypeIdentifier.Function(args, retType)
+        } else if args[0] |first| {
+          // TODO: There should be a more ergonomic way of writing this... maybe like
+          // `if args.length == 1 && args[0] |first| { ... }` ?
+          if args.length == 1 {
+            first
+          } else {
+            TypeIdentifier.Tuple(args)
+          }
+        } else {
+          val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+          return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Arrow], nextToken.kind)))
+        }
+      }
+      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
+    }
+
+    while self._peek() |nextToken| {
+      match nextToken.kind {
+        TokenKind.LBrack(preceedingNewline) => if preceedingNewline {
+          break
+        } else {
+          self._advance() // consume '[' token
+          match self._expectNextTokenKind(TokenKind.RBrack) { Ok(v) => v, Err(e) => return Err(e) }
+
+          typeIdent = TypeIdentifier.Array(inner: typeIdent)
+        }
+        TokenKind.Question => {
+          self._advance() // consume '?' token
+          typeIdent = TypeIdentifier.Option(inner: typeIdent)
+        }
+        _ => break
+      }
+    }
+
+    Ok(typeIdent)
+  }
+
+  func _parseFunctionParameters(self, allowSelf: Bool): Result<FunctionParam[], ParseError> {
+    self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: paramIdx => {
+      var token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+      var starToken: Token? = None
+      val isVariadic = if token.kind == TokenKind.Star {
+        starToken = Some(token)
+        token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+        true
+      } else {
+        false
+      }
+
+      val label = match token.kind {
+        TokenKind.Ident(name) => Label(name: name, position: token.position)
+        TokenKind.Self => if allowSelf && paramIdx == 0 {
+          if starToken |token| return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+
+          Label(name: "self", position: token.position)
+        } else {
+          return Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
+        }
+        _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
+      }
+
+      if label.name == "self" {
+        return Ok(FunctionParam(label: label, isVariadic: false, typeAnnotation: None, defaultValue: None))
+      }
+
+      var nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+      val typeAnnotation = if nextToken.kind == TokenKind.Colon {
+        self._advance() // consume ':' token
+        val ann = match self._parseTypeIdentifier() { Ok(v) => v, Err(e) => return Err(e) }
+        Some(ann)
+      } else {
+        None
+      }
+
+      nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+      val defaultValue = if nextToken.kind == TokenKind.Eq {
+        self._advance() // consume '=' token
+        val e = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+        Some(e)
+      } else {
+        None
+      }
+
+      val param = FunctionParam(label: label, isVariadic: isVariadic, typeAnnotation: typeAnnotation, defaultValue: defaultValue)
+      Ok(param)
+    })
+  }
+
+  func _parseTypeParameters(self): Result<Label[], ParseError> {
+    val labels = match self._commaSeparated(end: TokenKind.GT, consumeFinal: false, fn: () => self._expectNextLabel()) { Ok(v) => v, Err(e) => return Err(e) }
+    if labels.isEmpty() {
+      val token = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+      Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
+    } else {
+      self._advance() // consume '>' token
+      Ok(labels)
+    }
+  }
+
+  func _parseBlockOrSingleExpression(self, allowTerminators = false): Result<AstNode[], ParseError> {
+    val token = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    val nodes = match token.kind {
+      TokenKind.LBrace => {
+        self._advance() // consume '{' token
+        val nodes: AstNode[] = []
+        while true {
+          val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+          if nextToken.kind == TokenKind.RBrace {
+            self._advance() // consume '}' token
+            break
+          }
+
+          val node = match self._parseStatement() { Ok(v) => v, Err(e) => return Err(e) }
+          nodes.push(node)
+        }
+        nodes
+      }
+      TokenKind.Break => if allowTerminators {
+        val node = match self._parseStatement() { Ok(v) => v, Err(e) => return Err(e) }
+        [node]
+      } else {
+        return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      }
+      TokenKind.Continue => if allowTerminators {
+        val node = match self._parseStatement() { Ok(v) => v, Err(e) => return Err(e) }
+        [node]
+      } else {
+        return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      }
+      TokenKind.Return => if allowTerminators {
+        val node = match self._parseStatement() { Ok(v) => v, Err(e) => return Err(e) }
+        [node]
+      } else {
+        return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      }
+      _ => {
+        val node = match self._parsePrecedence(prec: 0) { Ok(v) => v, Err(e) => return Err(e) }
+        [node]
+      }
+    }
+
+    Ok(nodes)
+  }
+
+  func _parseExpressionStatement(self): Result<AstNode, ParseError> = self._parsePrecedence(prec: 0)
+
+  func _parseExpression(self): Result<AstNode, ParseError> {
+    val node = match self._parsePrecedence(prec: 0) { Ok(v) => v, Err(e) => return Err(e) }
+    if node.kind.isAssignmentExpression() {
+      return Err(ParseError(position: node.token.position, kind: ParseErrorKind.UnexpectedToken(node.token)))
+    }
+    Ok(node)
+  }
+
+  func _parsePrecedence(self, prec: Int): Result<AstNode, ParseError> {
+    val prefixToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    var leftNode = match self._prefixRule(prefixToken) { Ok(v) => v, Err(e) => return Err(e) }
+
+    while self._peek() |nextToken| {
+      val nextPrec = Precedence.forToken(nextToken)
+      if prec < nextPrec {
+        leftNode = match self._infixRule(leftNode) { Ok(v) => v, Err(e) => return Err(e) }
+      } else {
+        break
+      }
+    }
+
+    Ok(leftNode)
+  }
+
+  func _prefixRule(self, token: Token): Result<AstNode, ParseError> {
+    match token.kind {
+      TokenKind.Int => self._parseLiteral()
+      TokenKind.Float => self._parseLiteral()
+      TokenKind.Bool => self._parseLiteral()
+      TokenKind.String => self._parseLiteral()
+      TokenKind.StringInterpolation => self._parseStringInterpolation()
+      TokenKind.LParen => self._parseGroupedOrTupleOrLambda()
+      TokenKind.Minus => self._parseUnary()
+      TokenKind.Bang => self._parseUnary()
+      TokenKind.Ident(name) => self._parseIdentifier(kind: if name == "_" IdentifierKind.Discard else IdentifierKind.Named(name))
+      TokenKind.None_ => self._parseIdentifier(kind: IdentifierKind.None_)
+      TokenKind.Self => self._parseIdentifier(kind: IdentifierKind.Self)
+      TokenKind.LBrack => self._parseArray()
+      TokenKind.HashBrace => self._parseSet()
+      TokenKind.LBrace => self._parseMap()
+      TokenKind.If => self._parseIf()
+      TokenKind.Match => self._parseMatch()
+      _ => Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+    }
+  }
+
+  func _infixRule(self, left: AstNode): Result<AstNode, ParseError> {
+    val infixToken = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    match infixToken.kind {
+      TokenKind.Dot => self._parseAccessor(infixToken, left)
+      TokenKind.QuestionDot => self._parseAccessor(infixToken, left)
+      TokenKind.LParen => self._parseInvocation(infixToken, left)
+      TokenKind.LBrack => self._parseIndexing(infixToken, left)
+      TokenKind.Arrow => self._parseLambda(infixToken, left)
+      TokenKind.Eq => self._parseAssignment(infixToken, left)
+      _ => self._parseBinary(infixToken, left)
+    }
+  }
+
+  func _parseLiteral(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val literal = match token.kind {
+      TokenKind.Int(value) => LiteralAstNode.Int(value)
+      TokenKind.Float(value) => LiteralAstNode.Float(value)
+      TokenKind.Bool(value) => LiteralAstNode.Bool(value)
+      TokenKind.String(value) => LiteralAstNode.String(value)
+      TokenKind.StringInterpolation => {
+        return Err(ParseError(position: token.position, kind: ParseErrorKind.NotYetImplemented))
+      }
+      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+    }
+
+    Ok(AstNode(token: token, kind: AstNodeKind.Literal(literal)))
+  }
+
+  func _parseStringInterpolation(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val chunks = match token.kind {
+      TokenKind.StringInterpolation(chunks) => chunks
+      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+    }
+
+    val nodes: AstNode[] = []
+    for chunk in chunks {
+      match chunk {
+        StringInterpolationChunk.String(pos, str) => {
+          if str.isEmpty() continue
+          nodes.push(AstNode(token: Token(position: pos, kind: TokenKind.String(str)), kind: AstNodeKind.Literal(LiteralAstNode.String(str))))
+        }
+        StringInterpolationChunk.Interpolation(tokens) => {
+          val subParser = Parser(_tokens: tokens)
+          val node = match subParser._parseExpression() {
+            Ok(v) => v
+            Err(e) => {
+              // If the subparser encounters an unexpected end of input (eg. when parsing the interpolation "${-}"), it'll ordinarily return an UnexpectedEof
+              // error. Return a different error in this case, to more accurately communicate the error.
+              val err = match e.kind {
+                ParseErrorKind.UnexpectedEof => ParseError(position: e.position, kind: ParseErrorKind.UnexpectedToken(Token(position: e.position, kind: TokenKind.RBrace)))
+                _ => e
+              }
+              return Err(err)
+            }
+          }
+          if subParser._peek() |token| {
+            return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+          }
+          nodes.push(node)
+        }
+      }
+    }
+
+    Ok(AstNode(token: token, kind: AstNodeKind.StringInterpolation(nodes)))
+  }
+
+  func _parseUnary(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val op = match token.kind {
+      TokenKind.Minus => UnaryOp.Minus
+      TokenKind.Bang => UnaryOp.Negate
+      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.NotYetImplemented))
+    }
+
+    val expr = match self._parsePrecedence(prec: Precedence.unary()) { Ok(v) => v, Err(e) => return Err(e) }
+    Ok(AstNode(token: token, kind: AstNodeKind.Unary(UnaryAstNode(op: op, expr: expr))))
+  }
+
+  func _parseGroupedOrTupleOrLambda(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+
+    val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    // If the next token is ')' then we must be parsing a no-args lambda
+    match nextToken.kind {
+      TokenKind.RParen => {
+        self._advance() // consume ')' token
+        val arrowToken = match self._expectNextTokenKind(TokenKind.Arrow) { Ok(v) => v, Err(e) => return Err(e) }
+        val body = match self._parseBlockOrSingleExpression() { Ok(v) => v, Err(e) => return Err(e) }
+
+        return Ok(AstNode(token: arrowToken, kind: AstNodeKind.Lambda(LambdaNode(params: [], body: body))))
+      }
+      TokenKind.Ident => {
+        // A lambda expression can be of the form `(a, b) => c`, but it can also look like `(a, b = 4) => a + b`. At this point, it's impossible
+        // to know whether we're parsing a lambda or a tuple until we encounter the `=>` token, so we attempt to parse function parameters as if
+        // we're parsing a lambda expression. If this fails (say the code is `(a, 123)`) or we fail to find an `=>` token, then it must be the
+        // case that we were supposed to be have been parsing a tuple; we revert the cursor back to its initial position before trying to parse
+        // parameters, and continue onward to parse a tuple expression. This is admittedly a bit wasteful, since the tuple could be `(a, b)` which
+        // we would have already traversed, but such a minute optimization probably isn't worth it.
+        val cursor = self._cursor
+        match self._parseFunctionParameters(allowSelf: false) {
+          Ok(params) => {
+            match self._expectNextTokenKind(TokenKind.Arrow) {
+              Ok(arrowToken) => {
+                val body = match self._parseBlockOrSingleExpression() { Ok(v) => v, Err(e) => return Err(e) }
+
+                return Ok(AstNode(token: arrowToken, kind: AstNodeKind.Lambda(LambdaNode(params: params, body: body))))
+              }
+              Err => { self._cursor = cursor }
+            }
+          }
+          Err => { self._cursor = cursor }
+        }
+      }
+      TokenKind.Star => { // a variadic parameter could be first
+        val params = match self._parseFunctionParameters(allowSelf: false) { Ok(v) => v, Err(e) => return Err(e) }
+        val arrowToken = match self._expectNextTokenKind(TokenKind.Arrow) { Ok(v) => v, Err(e) => return Err(e) }
+        val body = match self._parseBlockOrSingleExpression() { Ok(v) => v, Err(e) => return Err(e) }
+
+        return Ok(AstNode(token: arrowToken, kind: AstNodeKind.Lambda(LambdaNode(params: params, body: body))))
+      }
+      _ => {}
+    }
+
+    val exprs = match self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: () => self._parseExpression()) { Ok(v) => v, Err(e) => return Err(e) }
+    val nodeKind = if exprs.length == 1 {
+      // TODO: Again, there needs to be a more ergonomic way of doing this. `if exprs.length == 1 && exprs[0] |inner| { ... }` maybe? or even just `exprs[0].!` to force-unwrap
+      if exprs[0] |inner| {
+        AstNodeKind.Grouped(inner: inner)
+      } else {
+        return unreachable()
+      }
+    } else {
+      AstNodeKind.Tuple(items: exprs)
+    }
+    Ok(AstNode(token: token, kind: nodeKind))
+  }
+
+  func _tryParseInvocationWithTypeArgs(self, invokee: AstNode): Result<AstNode?, ParseError> {
+    if self._peek() |nextToken| {
+      if nextToken.kind == TokenKind.LT {
+        val savedCursor = self._cursor
+        self._advance() // consume '<' token (cursor may be rewound later)
+
+        match self._commaSeparated(end: TokenKind.GT, consumeFinal: true, fn: () => self._parseTypeIdentifier()) {
+          Ok(typeArgs) => {
+            if typeArgs.isEmpty() {
+              self._cursor = savedCursor
+            } else {
+              val nextToken = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+              if nextToken.kind != TokenKind.LParen(false) {
+                return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(false)], nextToken.kind)))
+              }
+
+              val arguments = match self._parseInvocationArguments() { Ok(v) => v, Err(e) => return Err(e) }
+              val invocationNode = InvocationAstNode(invokee: invokee, typeArguments: typeArgs, arguments: arguments)
+              return Ok(Some(AstNode(token: nextToken, kind: AstNodeKind.Invocation(invocationNode))))
+            }
+          }
+          Err => {
+            // Restore saved cursor; the failed attempt to parse the subsequent tokens as type identifiers indicates that it should be parsed in some
+            // other way. Fallthrough and return a None value. This indicates to the caller that no invocation with type arguments was processed, and
+            // that the tokens should instead be parsed as normal.
+            self._cursor = savedCursor
+          }
+        }
+      }
+    }
+
+    Ok(None)
+  }
+
+  func _parseIdentifier(self, kind: IdentifierKind): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val identNode = AstNode(token: token, kind: AstNodeKind.Identifier(kind))
+
+    val res = match self._tryParseInvocationWithTypeArgs(invokee: identNode) { Ok(v) => v, Err(e) => return Err(e) }
+    if res |invocationNode| return Ok(invocationNode)
+
+    Ok(identNode)
+  }
+
+  func _parseArray(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val itemsRes = self._commaSeparated(end: TokenKind.RBrack, consumeFinal: true, fn: () => self._parseExpression())
+    val items = match itemsRes { Ok(v) => v, Err(e) => return Err(e) }
+
+    Ok(AstNode(token: token, kind: AstNodeKind.Array(items)))
+  }
+
+  func _parseSet(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val itemsRes = self._commaSeparated(end: TokenKind.RBrace, consumeFinal: true, fn: () => self._parseExpression())
+    val items = match itemsRes { Ok(v) => v, Err(e) => return Err(e) }
+
+    Ok(AstNode(token: token, kind: AstNodeKind.Set(items)))
+  }
+
+  func _parseMap(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val itemsRes = self._commaSeparated(end: TokenKind.RBrace, consumeFinal: true, fn: () => {
+      val keyToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+      val keyRes = match keyToken.kind {
+        TokenKind.String => self._parseExpression()
+        TokenKind.Ident => self._parseExpression()
+        TokenKind.LParen => {
+          self._advance() // consume '(' token
+          val key = self._parseExpression()
+          match self._expectNextTokenKind(TokenKind.RParen) { Ok(v) => v, Err(e) => return Err(e) }
+          key
+        }
+        _ => {
+          return Err(ParseError(position: keyToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String(""), TokenKind.Ident(""), TokenKind.LParen(false)], keyToken.kind)))
+        }
+      }
+      val key = match keyRes { Ok(v) => v, Err(e) => return Err(e) }
+
+      match self._expectNextTokenKind(TokenKind.Colon) { Ok(v) => v, Err(e) => return Err(e) }
+
+      val value = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+
+      Ok((key, value))
+    })
+    val items = match itemsRes { Ok(v) => v, Err(e) => return Err(e) }
+
+    Ok(AstNode(token: token, kind: AstNodeKind.Map(items)))
+  }
+
+  func _parseIf(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val condition = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+
+    val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    val conditionBinding = if nextToken.kind == TokenKind.Pipe {
+      self._advance() // consume opening '|' token
+      val pat = match self._parseBindingPattern() { Ok(v) => v, Err(e) => return Err(e) }
+      match self._expectNextTokenKind(TokenKind.Pipe) { Ok(v) => v, Err(e) => return Err(e) }
+      Some(pat)
+    } else {
+      None
+    }
+
+    val ifBlock = match self._parseBlockOrSingleExpression(allowTerminators: true) { Ok(v) => v, Err(e) => return Err(e) }
+    val elseBlock = if self._peek() |nextToken| {
+      if nextToken.kind == TokenKind.Else {
+        self._advance() // consume 'else' token
+        val elseBlock = match self._parseBlockOrSingleExpression(allowTerminators: true) { Ok(v) => v, Err(e) => return Err(e) }
+        Some(elseBlock)
+      } else {
+        None
+      }
+    } else {
+      None
+    }
+
+    Ok(AstNode(token: token, kind: AstNodeKind.If(condition, conditionBinding, ifBlock, elseBlock)))
+  }
+
+  func _parseMatch(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val expr = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+
+    match self._expectNextTokenKind(TokenKind.LBrace) { Ok(v) => v, Err(e) => return Err(e) }
+
+    val cases: MatchCase[] = []
+    while self._peek() |next| {
+      val casePos = next.position
+      val caseKind = match next.kind {
+        TokenKind.RBrace => break
+        TokenKind.None_ => {
+          self._advance() // consume 'None' token
+          MatchCaseKind.None_
+        }
+        TokenKind.Int(value) => {
+          self._advance() // consume int token
+          MatchCaseKind.Literal(LiteralAstNode.Int(value))
+        }
+        TokenKind.Float(value) => {
+          self._advance() // consume float token
+          MatchCaseKind.Literal(LiteralAstNode.Float(value))
+        }
+        TokenKind.Bool(value) => {
+          self._advance() // consume bool token
+          MatchCaseKind.Literal(LiteralAstNode.Bool(value))
+        }
+        TokenKind.String(value) => {
+          self._advance() // consume string token
+          MatchCaseKind.Literal(LiteralAstNode.String(value))
+        }
+        TokenKind.Ident(name) => {
+          if name == "_" {
+            self._advance() // consume '_' token
+            MatchCaseKind.Else
+          } else {
+            val label = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
+            var last = label
+            val path: Label[] = []
+            while self._peek() |nextToken| {
+              if nextToken.kind != TokenKind.Dot break
+              self._advance() // consume '.' token
+              val label = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
+              path.push(last)
+              last = label
+            }
+
+            val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+            val args = match nextToken.kind {
+              TokenKind.LParen => {
+                self._advance() // consume '(' token
+
+                val next = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+                if next.kind == TokenKind.RParen {
+                  return Err(ParseError(position: next.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], next.kind)))
+                }
+
+                val argsRes = self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: () => {
+                  val label = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
+                  Ok(label)
+                })
+                val args = match argsRes { Ok(v) => v, Err(e) => return Err(e) }
+                args
+              }
+              _ => []
+            }
+
+            if path.isEmpty() && (last.name == "Ok" || last.name == "Err") {
+              MatchCaseKind.Type([Label(name: "Result", position: last.position)], last, args)
+            } else {
+              MatchCaseKind.Type(path, last, args)
+            }
+          }
+        }
+        TokenKind.Else => {
+          self._advance() // consume 'else' token
+          MatchCaseKind.Else
+        }
+        _ => {
+          val expected = [TokenKind.RBrace, TokenKind.Int(0), TokenKind.Float(0.0), TokenKind.Bool(true), TokenKind.String(""), TokenKind.Ident(""), TokenKind.Else]
+          return Err(ParseError(position: next.position, kind: ParseErrorKind.ExpectedToken(expected, next.kind)))
+        }
+      }
+
+      var nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+      val binding = match nextToken.kind {
+        TokenKind.Ident => {
+          val label = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
+          Some(label)
+        }
+        _ => None
+      }
+
+      nextToken = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+      if nextToken.kind != TokenKind.Arrow {
+        val expected = if binding { [TokenKind.Arrow] } else [TokenKind.Ident(""), TokenKind.Arrow]
+        return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
+      }
+
+      val body = match self._parseBlockOrSingleExpression(allowTerminators: true) { Ok(v) => v, Err(e) => return Err(e) }
+      nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+      if nextToken.kind == TokenKind.Comma {
+        self._advance() // consume ',' token
+      }
+
+      cases.push(MatchCase(kind: caseKind, position: casePos, binding: binding, body: body))
+    }
+    self._advance() // consume '}' token
+
+    Ok(AstNode(token: token, kind: AstNodeKind.Match(expr, cases)))
+  }
+
+  func _parseWhileLoop(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val condition = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+
+    val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    val conditionBinding = if nextToken.kind == TokenKind.Pipe {
+      self._advance() // consume opening '|' token
+      val pat = match self._parseBindingPattern() { Ok(v) => v, Err(e) => return Err(e) }
+      match self._expectNextTokenKind(TokenKind.Pipe) { Ok(v) => v, Err(e) => return Err(e) }
+      Some(pat)
+    } else {
+      None
+    }
+
+    val block = match self._parseBlockOrSingleExpression(allowTerminators: true) { Ok(v) => v, Err(e) => return Err(e) }
+
+    Ok(AstNode(token: token, kind: AstNodeKind.While(condition, conditionBinding, block)))
+  }
+
+  func _parseForLoop(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val itemPattern = match self._parseBindingPattern() { Ok(v) => v, Err(e) => return Err(e) }
+
+    var nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    val indexPattern = if nextToken.kind == TokenKind.Comma {
+      self._advance() // consume ',' token
+      val pat = match self._parseBindingPattern() { Ok(v) => v, Err(e) => return Err(e) }
+      Some(pat)
+    } else {
+      None
+    }
+
+    match self._expectNextTokenKind(TokenKind.In) { Ok(v) => v, Err(e) => return Err(e) }
+
+    val iterator = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+
+    val block = match self._parseBlockOrSingleExpression(allowTerminators: true) { Ok(v) => v, Err(e) => return Err(e) }
+
+    Ok(AstNode(token: token, kind: AstNodeKind.For(itemPattern, indexPattern, iterator, block)))
+  }
+
+  func _parseBreak(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+
+    Ok(AstNode(token: token, kind: AstNodeKind.Break))
+  }
+
+  func _parseContinue(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+
+    Ok(AstNode(token: token, kind: AstNodeKind.Continue))
+  }
+
+  func _parseReturn(self, hasNewline: Bool): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val expr = if hasNewline {
+      None
+    } else {
+      val expr = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+      Some(expr)
+    }
+    Ok(AstNode(token: token, kind: AstNodeKind.Return(expr)))
+  }
+
+  func _parseBinary(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
+    val prec = Precedence.forToken(token)
+    val op = match token.kind {
+      TokenKind.Plus => BinaryOp.Add
+      TokenKind.PlusEq => return self._parseAssignment(token, left, AssignOp.AddEq)
+      TokenKind.Minus => BinaryOp.Sub
+      TokenKind.MinusEq => return self._parseAssignment(token, left, AssignOp.SubEq)
+      TokenKind.Star => BinaryOp.Mul
+      TokenKind.StarEq => return self._parseAssignment(token, left, AssignOp.MulEq)
+      TokenKind.Slash => BinaryOp.Div
+      TokenKind.SlashEq => return self._parseAssignment(token, left, AssignOp.DivEq)
+      TokenKind.Percent => BinaryOp.Mod
+      TokenKind.PercentEq => return self._parseAssignment(token, left, AssignOp.ModEq)
+      TokenKind.StarStar => BinaryOp.Pow
+      TokenKind.And => BinaryOp.And
+      TokenKind.AndEq => return self._parseAssignment(token, left, AssignOp.AndEq)
+      TokenKind.Or => BinaryOp.Or
+      TokenKind.OrEq => return self._parseAssignment(token, left, AssignOp.OrEq)
+      TokenKind.Caret => BinaryOp.Xor
+      TokenKind.Elvis => BinaryOp.Coalesce
+      TokenKind.ElvisEq => return self._parseAssignment(token, left, AssignOp.CoalesceEq)
+      TokenKind.EqEq => BinaryOp.Eq
+      TokenKind.Neq => BinaryOp.Neq
+      TokenKind.LT => {
+        val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+        if nextToken.kind == TokenKind.LT {
+          self._advance() // consume '<' token
+          BinaryOp.Shl
+        } else {
+          BinaryOp.LT
+        }
+      }
+      TokenKind.LTE => BinaryOp.LTE
+      TokenKind.GT => {
+        val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+        if nextToken.kind == TokenKind.GT {
+          self._advance() // consume '>' token
+          BinaryOp.Shr
+        } else {
+          BinaryOp.GT
+        }
+      }
+      TokenKind.GTE => BinaryOp.GTE
+      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+    }
+
+    val right = match self._parsePrecedence(prec: prec) { Ok(v) => v, Err(e) => return Err(e) }
+    Ok(AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: op, right: right))))
+  }
+
+  func _parseAccessor(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
+    val label = match self._expectNextLabel() { Ok(v) => v, Err(e) => return Err(e) }
+
+    val accessorNode = match left.kind {
+      AstNodeKind.Accessor(accessorNode) => accessorNode
+      _ => AccessorAstNode(root: left, path: [])
+    }
+    accessorNode.path.push((token, label))
+
+    val node = AstNode(token: token, kind: AstNodeKind.Accessor(accessorNode))
+
+    val res = match self._tryParseInvocationWithTypeArgs(invokee: node) { Ok(v) => v, Err(e) => return Err(e) }
+    if res |invocationNode| return Ok(invocationNode)
+
+    Ok(node)
+  }
+
+  func _commaSeparated<T>(self, end: TokenKind, consumeFinal: Bool, fn: (Int) => Result<T, ParseError>): Result<T[], ParseError> {
+    val items: T[] = []
+
+    var endExpected = false
+    var idx = 0
+    while true {
+      val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+      if nextToken.kind == end {
+        if consumeFinal self._advance() // consume end token before exiting
+        break
+      } else if endExpected {
+        val kind = ParseErrorKind.ExpectedToken(expected: [TokenKind.Comma, end], received: nextToken.kind)
+        return Err(ParseError(position: nextToken.position, kind: kind))
+      }
+
+      val item = match fn(idx) { Ok(v) => v, Err(e) => return Err(e) }
+      items.push(item)
+
+      val peekToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+      if peekToken.kind == TokenKind.Comma {
+        self._advance() // consume ',' token
+      } else {
+        endExpected = true
+      }
+
+      idx += 1
+    }
+
+    Ok(items)
+  }
+
+  func _parseInvocationArguments(self): Result<InvocationArgument[], ParseError> {
+    val argsRes = self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: () => {
+      val expr = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+      val arg = match expr.kind {
+        AstNodeKind.Identifier(identifierKind) => {
+          val peekToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+          val arg = if peekToken.kind == TokenKind.Colon {
+            self._advance() // consume ':' token
+
+            val label = match identifierKind {
+              IdentifierKind.Named(name) => Label(name: name, position: expr.token.position)
+              _ => {
+                val kind = ParseErrorKind.ExpectedToken(expected: [TokenKind.Ident("")], received: expr.token.kind)
+                return Err(ParseError(position: expr.token.position, kind: kind))
+              }
+            }
+            val value = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+
+            InvocationArgument(label: Some(label), value: value)
+          } else {
+            InvocationArgument(label: None, value: expr)
+          }
+          arg
+        }
+        _ => InvocationArgument(label: None, value: expr)
+      }
+
+      Ok(arg)
+    })
+    val arguments = match argsRes { Ok(v) => v, Err(e) => return Err(e) }
+
+    Ok(arguments)
+  }
+
+  func _parseInvocation(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
+    val arguments = match self._parseInvocationArguments() { Ok(v) => v, Err(e) => return Err(e) }
+
+    val isSome = match left.kind {
+      AstNodeKind.Identifier(identKind) => match identKind {
+        IdentifierKind.Named(name) => name == "Some"
+        _ => false
+      }
+      _ => false
+    }
+    val invokee = if isSome {
+      AstNode(
+        token: token,
+        kind: AstNodeKind.Accessor(AccessorAstNode(
+          root: AstNode(token: Token(position: token.position, kind: TokenKind.Ident("Option")), kind: AstNodeKind.Identifier(IdentifierKind.Named("Option"))),
+          path: [(Token(position: token.position, kind: TokenKind.Dot), Label(name: "Some", position: token.position))]
+        ))
+      )
+    } else {
+      left
+    }
+
+    // TODO: Explicit type arguments
+    Ok(AstNode(token: token, kind: AstNodeKind.Invocation(InvocationAstNode(invokee: invokee, typeArguments: [], arguments: arguments))))
+  }
+
+  func _parseIndexing(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
+    val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+    val index = if nextToken.kind == TokenKind.Colon {
+      self._advance() // consume ':' token
+      val rangeEnd = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+      IndexingMode.Range(start: None, end: Some(rangeEnd))
+    } else {
+      val expr = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+      val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+      if nextToken.kind == TokenKind.RBrack {
+        IndexingMode.Single(expr)
+      } else if nextToken.kind == TokenKind.Colon {
+        self._advance() // consume ':' token
+        val nextToken = match self._expectPeek() { Ok(v) => v, Err(e) => return Err(e) }
+        if nextToken.kind == TokenKind.RBrack {
+          IndexingMode.Range(start: Some(expr), end: None)
+        } else {
+          val rangeEnd = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+          IndexingMode.Range(start: Some(expr), end: Some(rangeEnd))
+        }
+      } else {
+        return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Colon, TokenKind.RBrack], nextToken.kind)))
+      }
+    }
+
+    val lastToken = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    if lastToken.kind != TokenKind.RBrack {
+      return Err(ParseError(position: lastToken.position, kind: ParseErrorKind.UnexpectedToken(lastToken)))
+    }
+
+    Ok(AstNode(token: token, kind: AstNodeKind.Indexing(expr: left, index: index)))
+  }
+
+  func _parseLambda(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
+    val params = match left.kind {
+      AstNodeKind.Identifier(identifier) => match identifier {
+        IdentifierKind.Named(name) => [FunctionParam(label: Label(name: name, position: left.token.position))]
+        _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      }
+      AstNodeKind.Grouped(inner) => {
+        match inner.kind {
+          AstNodeKind.Identifier(identifier) => match identifier {
+            IdentifierKind.Named(name) => [FunctionParam(label: Label(name: name, position: inner.token.position))]
+            _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+          }
+          _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+        }
+      }
+      AstNodeKind.Tuple(items) => {
+        val params: FunctionParam[] = Array.withCapacity(items.length)
+        for item in items {
+          match item.kind {
+            AstNodeKind.Identifier(identifier) => match identifier {
+              IdentifierKind.Named(name) => {
+                params.push(FunctionParam(label: Label(name: name, position: item.token.position)))
+                0 // <- awkward; this is needed because of an outstanding bug with Unit-returning `match`es (even though this is a statement so it shouldn't matter)
+              }
+              _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+            }
+            _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+          }
+        }
+        params
+      }
+      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+    }
+
+    val body = match self._parseBlockOrSingleExpression() { Ok(v) => v, Err(e) => return Err(e) }
+
+    Ok(AstNode(token: token, kind: AstNodeKind.Lambda(LambdaNode(params: params, body: body))))
+  }
+
+  func _parseAssignment(self, token: Token, left: AstNode, assignOp: AssignOp = AssignOp.Assign): Result<AstNode, ParseError> {
+    val mode = match left.kind {
+      AstNodeKind.Identifier(identKind) => match identKind {
+        IdentifierKind.Named(name) => AssignmentMode.Variable(name, left.token)
+        _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      }
+      AstNodeKind.Accessor(node) => AssignmentMode.Accessor(node)
+      AstNodeKind.Indexing(expr, indexMode) => match indexMode {
+        IndexingMode.Single(indexExpr) => AssignmentMode.Indexing(expr, indexExpr)
+        _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      }
+      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+    }
+
+    val rhs = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+
+    val expr = match assignOp {
+      AssignOp.Assign => rhs
+      AssignOp.AddEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Add, right: rhs)))
+      AssignOp.SubEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Sub, right: rhs)))
+      AssignOp.MulEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Mul, right: rhs)))
+      AssignOp.DivEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Div, right: rhs)))
+      AssignOp.ModEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Mod, right: rhs)))
+      AssignOp.AndEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.And, right: rhs)))
+      AssignOp.OrEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Or, right: rhs)))
+      AssignOp.CoalesceEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Coalesce, right: rhs)))
+    }
+
+    Ok(AstNode(token: token, kind: AstNodeKind.Assignment(expr: expr, op: assignOp, mode: mode)))
+  }
+}
+
+func unreachable<V>(): Result<V, ParseError> {
+  Err(ParseError(position: Position(line: 0, col: 0), kind: ParseErrorKind.Unreachable))
+}
+
+type Precedence {
+  // TODO: These are static functions because static constants don't yet exist
+  func none(): Int = 0
+  func coalesce(): Int = 1
+  func orAndAssign(): Int = 2
+  func or(): Int = 3
+  func and(): Int = 4
+  func equality(): Int = 5
+  func comparison(): Int = 6
+  func addMulAssign(): Int = 7
+  func addition(): Int = 8
+  func multiplication(): Int = 9
+  func unary(): Int = 11
+  func call(): Int = 12
+  func assignment(): Int = 13
+
+  func forToken(token: Token): Int {
+    match token.kind {
+      TokenKind.Or => Precedence.or()
+      TokenKind.Caret => Precedence.or()
+      TokenKind.And => Precedence.and()
+      TokenKind.EqEq => Precedence.equality()
+      TokenKind.Neq => Precedence.equality()
+      TokenKind.LT => Precedence.comparison()
+      TokenKind.LTE => Precedence.comparison()
+      TokenKind.GT => Precedence.comparison()
+      TokenKind.GTE => Precedence.comparison()
+      TokenKind.Plus => Precedence.addition()
+      TokenKind.Minus => Precedence.addition()
+      TokenKind.Star => Precedence.multiplication()
+      TokenKind.Slash => Precedence.multiplication()
+      TokenKind.Percent => Precedence.multiplication()
+      TokenKind.Dot => Precedence.call()
+      TokenKind.QuestionDot => Precedence.call()
+      TokenKind.Arrow => Precedence.call()
+      TokenKind.LParen(sawNewline) => if sawNewline Precedence.none() else Precedence.call()
+      TokenKind.LBrack(sawNewline) => if sawNewline Precedence.none() else Precedence.call()
+      TokenKind.PlusEq => Precedence.addMulAssign()
+      TokenKind.MinusEq => Precedence.addMulAssign()
+      TokenKind.StarEq => Precedence.addMulAssign()
+      TokenKind.SlashEq => Precedence.addMulAssign()
+      TokenKind.PercentEq => Precedence.addMulAssign()
+      TokenKind.OrEq => Precedence.orAndAssign()
+      TokenKind.AndEq => Precedence.orAndAssign()
+      TokenKind.Eq => Precedence.assignment()
+      TokenKind.Elvis => Precedence.coalesce()
+      TokenKind.ElvisEq => Precedence.coalesce()
+      TokenKind.StarStar => Precedence.multiplication()
+      _ => Precedence.none()
+    }
+  }
+}

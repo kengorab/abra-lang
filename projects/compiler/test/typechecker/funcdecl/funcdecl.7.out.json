@@ -1,0 +1,147 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo", "position": [2, 6] },
+          "scope": {
+            "name": "$root::module_3::foo",
+            "variables": [
+              {
+                "label": { "name": "a", "position": [2, 10] },
+                "mutable": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              },
+              {
+                "label": { "name": "x", "position": [3, 7] },
+                "mutable": false,
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 2, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                }
+              }
+            ],
+            "functions": [],
+            "types": []
+          },
+          "kind": "FunctionKind.Standalone",
+          "typeParameters": [],
+          "parameters": [
+            {
+              "label": { "name": "a", "position": [2, 10] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "defaultValue": null,
+              "isVariadic": false
+            }
+          ],
+          "returnType": {
+            "kind": "primitive",
+            "primitive": "Unit"
+          },
+          "body": [
+            {
+              "token": {
+                "position": [3, 3],
+                "kind": {
+                  "name": "Val"
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Unit"
+              },
+              "node": {
+                "kind": "bindingDeclaration",
+                "pattern": {
+                  "kind": "variable",
+                  "label": { "name": "x", "position": [3, 7] }
+                },
+                "variables": [
+                  {
+                    "label": { "name": "x", "position": [3, 7] },
+                    "mutable": false,
+                    "type": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 2, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "expr": {
+                  "token": {
+                    "position": [3, 11],
+                    "kind": {
+                      "name": "LBrack"
+                    }
+                  },
+                  "type": {
+                    "kind": "instance",
+                    "struct": { "moduleId": 2, "name": "Array" },
+                    "typeParams": [
+                      {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    ]
+                  },
+                  "node": {
+                    "kind": "array",
+                    "items": [
+                      {
+                        "token": {
+                          "position": [3, 12],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "a"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

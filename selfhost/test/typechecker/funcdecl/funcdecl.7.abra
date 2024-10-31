@@ -1,4 +1,0 @@
-// Test unit type
-func foo(a: Int) {
-  val x = [a]
-}

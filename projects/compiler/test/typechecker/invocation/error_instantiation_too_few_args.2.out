@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:3:12
+Invalid instantiation
+  |  val f = Foo(a: 123)
+                ^
+The following required fields are missing: 'b', 'd', 'e', and 2 more

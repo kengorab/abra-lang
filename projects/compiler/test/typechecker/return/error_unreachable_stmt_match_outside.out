@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:7:3
+Return type mismatch for function 'foo'
+  |    val x = 123
+       ^
+Expected Int
+but instead found Unit

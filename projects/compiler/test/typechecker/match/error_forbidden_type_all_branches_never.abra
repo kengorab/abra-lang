@@ -1,0 +1,7 @@
+func foo(): Int {
+  val x = match 123 {
+    _ => return 0
+  }
+
+  0
+}

@@ -1,3 +1,0 @@
-import "./_exports" as e
-
-val _: e.Color<Int, Int, Int, Int>[] = []

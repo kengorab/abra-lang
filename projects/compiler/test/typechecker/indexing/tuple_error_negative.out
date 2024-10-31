@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:3:2
+Unsupported tuple indexing operation
+  |  t[-2]
+      ^
+Cannot use this expression as index value. Tuple index values must always be Int literals

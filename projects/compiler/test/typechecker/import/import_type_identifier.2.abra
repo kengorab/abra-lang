@@ -1,0 +1,4 @@
+import "./_exports" as e
+
+val _: e.Foo? = None
+val _: e.Color[] = []

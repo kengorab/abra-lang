@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:1:8
+Invalid import
+  |  import b from "./_exports"
+            ^
+There's no exported value named 'b' in module './_exports'

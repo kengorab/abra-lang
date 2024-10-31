@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:8
+Unexpected token 'as', expected one of 'string', 'identifier':
+  |  import as abc
+            ^

@@ -1,4 +1,0 @@
-enum Foo<A> {
-  One(a: A, b = "abc")
-  Two
-}

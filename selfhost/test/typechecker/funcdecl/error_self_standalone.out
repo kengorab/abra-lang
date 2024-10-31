@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:1:10
-Invalid usage of `self` parameter
-  |  func foo(self, a: Int): Int = a
-              ^
-`self` can only appear within methods on types

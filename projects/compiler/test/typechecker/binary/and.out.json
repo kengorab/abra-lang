@@ -1,0 +1,106 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 6],
+        "kind": {
+          "name": "And"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Bool"
+      },
+      "node": {
+        "kind": "binary",
+        "op": "BinaryOp.And",
+        "left": {
+          "token": {
+            "position": [1, 1],
+            "kind": {
+              "name": "Bool",
+              "value": true
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Bool"
+          },
+          "node": {
+            "kind": "literal",
+            "value": true
+          }
+        },
+        "right": {
+          "token": {
+            "position": [1, 9],
+            "kind": {
+              "name": "Bool",
+              "value": false
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Bool"
+          },
+          "node": {
+            "kind": "literal",
+            "value": false
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [2, 4],
+        "kind": {
+          "name": "And"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Int"
+      },
+      "node": {
+        "kind": "binary",
+        "op": "BinaryOp.And",
+        "left": {
+          "token": {
+            "position": [2, 1],
+            "kind": {
+              "name": "Int",
+              "value": 12
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 12
+          }
+        },
+        "right": {
+          "token": {
+            "position": [2, 7],
+            "kind": {
+              "name": "Int",
+              "value": 3
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 3
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:6:15
+Type mismatch
+  |  foo(a: 1, b: ["a", "b"])
+                   ^
+Expected: Int
+but instead found: String

@@ -1,3 +1,0 @@
-type Foo {
-  export func foo(self) {}
-}

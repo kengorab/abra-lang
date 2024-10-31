@@ -1,0 +1,435 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo", "position": [2, 6] },
+          "scope": {
+            "name": "$root::module_3::foo",
+            "variables": [
+              {
+                "label": { "name": "a", "position": [2, 10] },
+                "mutable": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              },
+              {
+                "label": { "name": "b", "position": [2, 18] },
+                "mutable": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              }
+            ],
+            "functions": [],
+            "types": []
+          },
+          "kind": "FunctionKind.Standalone",
+          "typeParameters": [],
+          "parameters": [
+            {
+              "label": { "name": "a", "position": [2, 10] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "defaultValue": null,
+              "isVariadic": false
+            },
+            {
+              "label": { "name": "b", "position": [2, 18] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "defaultValue": {
+                "token": {
+                  "position": [2, 25],
+                  "kind": {
+                    "name": "LParen"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "invocation",
+                  "invokee": {
+                    "function": "foo",
+                    "type": {
+                      "kind": "function",
+                      "parameters": [
+                        {
+                          "required": true,
+                          "type": {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        },
+                        {
+                          "required": false,
+                          "type": {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        }
+                      ],
+                      "returnType": {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    }
+                  },
+                  "arguments": [
+                    {
+                      "token": {
+                        "position": [2, 26],
+                        "kind": {
+                          "name": "Int",
+                          "value": 1
+                        }
+                      },
+                      "type": {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      },
+                      "node": {
+                        "kind": "literal",
+                        "value": 1
+                      }
+                    },
+                    null
+                  ]
+                }
+              },
+              "isVariadic": false
+            }
+          ],
+          "returnType": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "body": [
+            {
+              "token": {
+                "position": [2, 37],
+                "kind": {
+                  "name": "Minus"
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "unary",
+                "op": "UnaryOp.Minus",
+                "expr": {
+                  "token": {
+                    "position": [2, 38],
+                    "kind": {
+                      "name": "Int",
+                      "value": 1
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 1
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [5, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "baz", "position": [5, 6] },
+          "scope": {
+            "name": "$root::module_3::baz",
+            "variables": [
+              {
+                "label": { "name": "a", "position": [5, 10] },
+                "mutable": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              },
+              {
+                "label": { "name": "b", "position": [5, 18] },
+                "mutable": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              }
+            ],
+            "functions": [],
+            "types": []
+          },
+          "kind": "FunctionKind.Standalone",
+          "typeParameters": [],
+          "parameters": [
+            {
+              "label": { "name": "a", "position": [5, 10] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "defaultValue": null,
+              "isVariadic": false
+            },
+            {
+              "label": { "name": "b", "position": [5, 18] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "defaultValue": {
+                "token": {
+                  "position": [5, 25],
+                  "kind": {
+                    "name": "LParen"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "invocation",
+                  "invokee": {
+                    "function": "bar",
+                    "type": {
+                      "kind": "function",
+                      "parameters": [
+                        {
+                          "required": false,
+                          "type": {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        }
+                      ],
+                      "returnType": {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    }
+                  },
+                  "arguments": [
+                    null
+                  ]
+                }
+              },
+              "isVariadic": false
+            }
+          ],
+          "returnType": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "body": [
+            {
+              "token": {
+                "position": [5, 36],
+                "kind": {
+                  "name": "Minus"
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "unary",
+                "op": "UnaryOp.Minus",
+                "expr": {
+                  "token": {
+                    "position": [5, 37],
+                    "kind": {
+                      "name": "Int",
+                      "value": 1
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 1
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [6, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "bar", "position": [6, 6] },
+          "scope": {
+            "name": "$root::module_3::bar",
+            "variables": [
+              {
+                "label": { "name": "a", "position": [6, 10] },
+                "mutable": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              }
+            ],
+            "functions": [],
+            "types": []
+          },
+          "kind": "FunctionKind.Standalone",
+          "typeParameters": [],
+          "parameters": [
+            {
+              "label": { "name": "a", "position": [6, 10] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "defaultValue": {
+                "token": {
+                  "position": [6, 17],
+                  "kind": {
+                    "name": "LParen"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "invocation",
+                  "invokee": {
+                    "function": "baz",
+                    "type": {
+                      "kind": "function",
+                      "parameters": [
+                        {
+                          "required": true,
+                          "type": {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        },
+                        {
+                          "required": false,
+                          "type": {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        }
+                      ],
+                      "returnType": {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    }
+                  },
+                  "arguments": [
+                    {
+                      "token": {
+                        "position": [6, 18],
+                        "kind": {
+                          "name": "Int",
+                          "value": 1
+                        }
+                      },
+                      "type": {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      },
+                      "node": {
+                        "kind": "literal",
+                        "value": 1
+                      }
+                    },
+                    null
+                  ]
+                }
+              },
+              "isVariadic": false
+            }
+          ],
+          "returnType": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "body": [
+            {
+              "token": {
+                "position": [6, 29],
+                "kind": {
+                  "name": "Int",
+                  "value": 1
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 1
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

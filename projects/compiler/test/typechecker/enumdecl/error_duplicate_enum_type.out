@@ -1,0 +1,7 @@
+Error at %FILE_NAME%:1:6
+Duplicate name 'Foo'
+  |  enum Foo { Bar }
+          ^
+This name is also declared at (2:6)
+  |  type Foo { b: String }
+          ^

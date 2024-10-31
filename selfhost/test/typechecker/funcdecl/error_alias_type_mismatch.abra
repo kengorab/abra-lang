@@ -1,3 +1,0 @@
-func foo(a: Int, b: String): Bool = true
-
-val f: (Int, String) => Float = foo

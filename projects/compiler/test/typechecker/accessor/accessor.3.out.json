@@ -1,0 +1,797 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Type"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "typeDeclaration",
+        "struct": {
+          "moduleId": 3,
+          "name": { "name": "Foo", "position": [1, 6] },
+          "typeParams": [],
+          "fields": [
+            {
+              "name": { "name": "str", "position": [2, 3] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "initializer": null
+            }
+          ],
+          "instanceMethods": [
+            {
+              "label": { "name": "toString", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Foo::toString",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "hash", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Foo::hash",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "eq", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Foo::eq",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [
+                {
+                  "label": { "name": "other", "position": [0, 0] },
+                  "type": {
+                    "kind": "instance",
+                    "struct": { "moduleId": 3, "name": "Foo" },
+                    "typeParams": []
+                  },
+                  "defaultValue": null,
+                  "isVariadic": false
+                }
+              ],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Bool"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "foo", "position": [4, 8] },
+              "scope": {
+                "name": "$root::module_3::Foo::foo",
+                "variables": [
+                  {
+                    "label": { "name": "self", "position": [4, 12] },
+                    "mutable": false,
+                    "type": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 3, "name": "Foo" },
+                      "typeParams": []
+                    }
+                  },
+                  {
+                    "label": { "name": "s", "position": [4, 18] },
+                    "mutable": false,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    }
+                  }
+                ],
+                "functions": [],
+                "types": []
+              },
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [
+                {
+                  "label": { "name": "s", "position": [4, 18] },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  },
+                  "defaultValue": {
+                    "token": {
+                      "position": [4, 26],
+                      "kind": {
+                        "name": "Dot"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    },
+                    "node": {
+                      "kind": "accessor",
+                      "head": {
+                        "token": {
+                          "position": [4, 22],
+                          "kind": {
+                            "name": "Self"
+                          }
+                        },
+                        "type": {
+                          "kind": "instance",
+                          "struct": { "moduleId": 3, "name": "Foo" },
+                          "typeParams": []
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "self"
+                        }
+                      },
+                      "middle": [],
+                      "tail": {
+                        "kind": "field",
+                        "name": "str",
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "String"
+                        }
+                      }
+                    }
+                  },
+                  "isVariadic": false
+                }
+              ],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "body": [
+                {
+                  "token": {
+                    "position": [4, 51],
+                    "kind": {
+                      "name": "Plus"
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  },
+                  "node": {
+                    "kind": "binary",
+                    "op": "BinaryOp.Add",
+                    "left": {
+                      "token": {
+                        "position": [4, 46],
+                        "kind": {
+                          "name": "Dot"
+                        }
+                      },
+                      "type": {
+                        "kind": "primitive",
+                        "primitive": "String"
+                      },
+                      "node": {
+                        "kind": "accessor",
+                        "head": {
+                          "token": {
+                            "position": [4, 42],
+                            "kind": {
+                              "name": "Self"
+                            }
+                          },
+                          "type": {
+                            "kind": "instance",
+                            "struct": { "moduleId": 3, "name": "Foo" },
+                            "typeParams": []
+                          },
+                          "node": {
+                            "kind": "identifier",
+                            "name": "self"
+                          }
+                        },
+                        "middle": [],
+                        "tail": {
+                          "kind": "field",
+                          "name": "str",
+                          "type": {
+                            "kind": "primitive",
+                            "primitive": "String"
+                          }
+                        }
+                      }
+                    },
+                    "right": {
+                      "token": {
+                        "position": [4, 53],
+                        "kind": {
+                          "name": "Ident",
+                          "value": "s"
+                        }
+                      },
+                      "type": {
+                        "kind": "primitive",
+                        "primitive": "String"
+                      },
+                      "node": {
+                        "kind": "identifier",
+                        "name": "s"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "staticMethods": [
+            {
+              "label": { "name": "fooStatic", "position": [5, 8] },
+              "scope": {
+                "name": "$root::module_3::Foo::fooStatic",
+                "variables": [
+                  {
+                    "label": { "name": "f", "position": [5, 18] },
+                    "mutable": false,
+                    "type": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 3, "name": "Foo" },
+                      "typeParams": []
+                    }
+                  },
+                  {
+                    "label": { "name": "s", "position": [5, 26] },
+                    "mutable": false,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    }
+                  }
+                ],
+                "functions": [],
+                "types": []
+              },
+              "kind": "FunctionKind.StaticMethod",
+              "typeParameters": [],
+              "parameters": [
+                {
+                  "label": { "name": "f", "position": [5, 18] },
+                  "type": {
+                    "kind": "instance",
+                    "struct": { "moduleId": 3, "name": "Foo" },
+                    "typeParams": []
+                  },
+                  "defaultValue": null,
+                  "isVariadic": false
+                },
+                {
+                  "label": { "name": "s", "position": [5, 26] },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  },
+                  "defaultValue": {
+                    "token": {
+                      "position": [5, 31],
+                      "kind": {
+                        "name": "Dot"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    },
+                    "node": {
+                      "kind": "accessor",
+                      "head": {
+                        "token": {
+                          "position": [5, 30],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "f"
+                          }
+                        },
+                        "type": {
+                          "kind": "instance",
+                          "struct": { "moduleId": 3, "name": "Foo" },
+                          "typeParams": []
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "f"
+                        }
+                      },
+                      "middle": [],
+                      "tail": {
+                        "kind": "field",
+                        "name": "str",
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "String"
+                        }
+                      }
+                    }
+                  },
+                  "isVariadic": false
+                }
+              ],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "body": [
+                {
+                  "token": {
+                    "position": [5, 53],
+                    "kind": {
+                      "name": "Plus"
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  },
+                  "node": {
+                    "kind": "binary",
+                    "op": "BinaryOp.Add",
+                    "left": {
+                      "token": {
+                        "position": [5, 48],
+                        "kind": {
+                          "name": "Dot"
+                        }
+                      },
+                      "type": {
+                        "kind": "primitive",
+                        "primitive": "String"
+                      },
+                      "node": {
+                        "kind": "accessor",
+                        "head": {
+                          "token": {
+                            "position": [5, 47],
+                            "kind": {
+                              "name": "Ident",
+                              "value": "f"
+                            }
+                          },
+                          "type": {
+                            "kind": "instance",
+                            "struct": { "moduleId": 3, "name": "Foo" },
+                            "typeParams": []
+                          },
+                          "node": {
+                            "kind": "identifier",
+                            "name": "f"
+                          }
+                        },
+                        "middle": [],
+                        "tail": {
+                          "kind": "field",
+                          "name": "str",
+                          "type": {
+                            "kind": "primitive",
+                            "primitive": "String"
+                          }
+                        }
+                      }
+                    },
+                    "right": {
+                      "token": {
+                        "position": [5, 55],
+                        "kind": {
+                          "name": "Ident",
+                          "value": "s"
+                        }
+                      },
+                      "type": {
+                        "kind": "primitive",
+                        "primitive": "String"
+                      },
+                      "node": {
+                        "kind": "identifier",
+                        "name": "s"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [7, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "f", "position": [7, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "f", "position": [7, 5] },
+            "mutable": true,
+            "type": {
+              "kind": "instance",
+              "struct": { "moduleId": 3, "name": "Foo" },
+              "typeParams": []
+            }
+          }
+        ],
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [9, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "fn1", "position": [9, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "fn1", "position": [9, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "function",
+              "parameters": [
+                {
+                  "required": false,
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  }
+                }
+              ],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [9, 12],
+            "kind": {
+              "name": "Dot"
+            }
+          },
+          "type": {
+            "kind": "function",
+            "parameters": [
+              {
+                "required": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                }
+              }
+            ],
+            "returnType": {
+              "kind": "primitive",
+              "primitive": "String"
+            }
+          },
+          "node": {
+            "kind": "accessor",
+            "head": {
+              "token": {
+                "position": [9, 11],
+                "kind": {
+                  "name": "Ident",
+                  "value": "f"
+                }
+              },
+              "type": {
+                "kind": "instance",
+                "struct": { "moduleId": 3, "name": "Foo" },
+                "typeParams": []
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "f"
+              }
+            },
+            "middle": [],
+            "tail": {
+              "kind": "method",
+              "name": "foo"
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [10, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [10, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [10, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "function",
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [10, 23],
+            "kind": {
+              "name": "Ident",
+              "value": "fn1"
+            }
+          },
+          "type": {
+            "kind": "function",
+            "parameters": [
+              {
+                "required": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                }
+              }
+            ],
+            "returnType": {
+              "kind": "primitive",
+              "primitive": "String"
+            }
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "fn1"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [12, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "fn2", "position": [12, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "fn2", "position": [12, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "function",
+              "parameters": [
+                {
+                  "required": true,
+                  "type": {
+                    "kind": "instance",
+                    "struct": { "moduleId": 3, "name": "Foo" },
+                    "typeParams": []
+                  }
+                },
+                {
+                  "required": false,
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "String"
+                  }
+                }
+              ],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [12, 14],
+            "kind": {
+              "name": "Dot"
+            }
+          },
+          "type": {
+            "kind": "function",
+            "parameters": [
+              {
+                "required": true,
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 3, "name": "Foo" },
+                  "typeParams": []
+                }
+              },
+              {
+                "required": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                }
+              }
+            ],
+            "returnType": {
+              "kind": "primitive",
+              "primitive": "String"
+            }
+          },
+          "node": {
+            "kind": "accessor",
+            "head": {
+              "token": {
+                "position": [12, 11],
+                "kind": {
+                  "name": "Ident",
+                  "value": "Foo"
+                }
+              },
+              "type": {
+                "kind": "struct",
+                "struct": { "moduleId": 3, "name": "Foo" }
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "Foo"
+              }
+            },
+            "middle": [],
+            "tail": {
+              "kind": "method",
+              "name": "fooStatic"
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [13, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [13, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [13, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "function",
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [13, 23],
+            "kind": {
+              "name": "Ident",
+              "value": "fn2"
+            }
+          },
+          "type": {
+            "kind": "function",
+            "parameters": [
+              {
+                "required": true,
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 3, "name": "Foo" },
+                  "typeParams": []
+                }
+              },
+              {
+                "required": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                }
+              }
+            ],
+            "returnType": {
+              "kind": "primitive",
+              "primitive": "String"
+            }
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "fn2"
+          }
+        }
+      }
+    }
+  ]
+}

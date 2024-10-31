@@ -1,6 +1,0 @@
-val b = true
-val x = match b {
-  true => 1
-  false => 2
-  _ => 3
-}

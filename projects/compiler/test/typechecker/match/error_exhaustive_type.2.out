@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:5:3
+Unreachable match case
+  |    _ => 4
+       ^
+The previous case(s) cover all possibilities for match target type 'Int?'

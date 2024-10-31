@@ -1,4 +1,0 @@
-val x = match 123 {
-  _ => "abcd"
-  _ => "efgh"
-}

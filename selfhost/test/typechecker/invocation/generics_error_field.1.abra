@@ -1,6 +1,0 @@
-type Foo<T> { fn: (T) => T }
-
-func identity(i: Int): Int = i
-
-val f = Foo(fn: identity)
-val _ = f.fn("abc")

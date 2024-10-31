@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:3:3
-Unreachable match case
-  |    _ => "efgh"
-       ^
-The previous case(s) cover all possibilities for match target type 'Int'

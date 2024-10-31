@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:10
+Unexpected token '=':
+  |  arr[1:4] = "123"
+              ^

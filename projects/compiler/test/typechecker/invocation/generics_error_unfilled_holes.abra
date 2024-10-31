@@ -1,0 +1,3 @@
+func foo<T>(arr1: T[], arr2: T[]): T[] = arr1
+
+val a = foo([], [])

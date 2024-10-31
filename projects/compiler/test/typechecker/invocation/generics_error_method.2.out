@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:8:15
+Type mismatch for parameter 't'
+  |  val _ = f.foo("foo")
+                   ^
+Expected: Int
+but instead found: String

@@ -1,0 +1,2430 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "wildcard", "position": [1, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "wildcard", "position": [1, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "String"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [1, 16],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "String"
+          },
+          "node": {
+            "kind": "match",
+            "isStatement": false,
+            "subject": {
+              "token": {
+                "position": [1, 22],
+                "kind": {
+                  "name": "Int",
+                  "value": 123
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 123
+              }
+            },
+            "cases": [
+              {
+                "kind": "else",
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [2, 8],
+                      "kind": {
+                        "name": "String",
+                        "value": "abcd"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": "abcd"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [4, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [4, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [4, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "String"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [4, 17],
+            "kind": {
+              "name": "Ident",
+              "value": "wildcard"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "String"
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "wildcard"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [6, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "arr", "position": [6, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "arr", "position": [6, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "instance",
+              "struct": { "moduleId": 2, "name": "Array" },
+              "typeParams": [
+                {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [6, 11],
+            "kind": {
+              "name": "LBrack"
+            }
+          },
+          "type": {
+            "kind": "instance",
+            "struct": { "moduleId": 2, "name": "Array" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          },
+          "node": {
+            "kind": "array",
+            "items": [
+              {
+                "token": {
+                  "position": [6, 12],
+                  "kind": {
+                    "name": "Int",
+                    "value": 1
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 1
+                }
+              },
+              {
+                "token": {
+                  "position": [6, 15],
+                  "kind": {
+                    "name": "Int",
+                    "value": 2
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 2
+                }
+              },
+              {
+                "token": {
+                  "position": [6, 18],
+                  "kind": {
+                    "name": "Int",
+                    "value": 3
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 3
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [7, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "item", "position": [7, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "item", "position": [7, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "enumInstance",
+              "enum": { "moduleId": 2, "name": "Option" },
+              "typeParams": [
+                {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [7, 15],
+            "kind": {
+              "name": "LBrack"
+            }
+          },
+          "type": {
+            "kind": "enumInstance",
+            "enum": { "moduleId": 2, "name": "Option" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          },
+          "node": {
+            "kind": "indexing",
+            "node": {
+              "kind": "arraylike",
+              "expr": {
+                "token": {
+                  "position": [7, 12],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "arr"
+                  }
+                },
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 2, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "arr"
+                }
+              },
+              "index": {
+                "token": {
+                  "position": [7, 16],
+                  "kind": {
+                    "name": "Int",
+                    "value": 0
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [9, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "res1", "position": [9, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "res1", "position": [9, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [9, 12],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "match",
+            "isStatement": false,
+            "subject": {
+              "token": {
+                "position": [9, 18],
+                "kind": {
+                  "name": "Ident",
+                  "value": "item"
+                }
+              },
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 2, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "item"
+              }
+            },
+            "cases": [
+              {
+                "kind": "None",
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [10, 11],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": "else",
+                "binding": {
+                  "label": { "name": "s", "position": [11, 5] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                },
+                "body": [
+                  {
+                    "token": {
+                      "position": [11, 12],
+                      "kind": {
+                        "name": "Plus"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "binary",
+                      "op": "BinaryOp.Add",
+                      "left": {
+                        "token": {
+                          "position": [11, 10],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "s"
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "s"
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [11, 14],
+                          "kind": {
+                            "name": "Int",
+                            "value": 1
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [13, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [13, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [13, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [13, 14],
+            "kind": {
+              "name": "Ident",
+              "value": "res1"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "res1"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [15, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "res2", "position": [15, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "res2", "position": [15, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [15, 12],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "match",
+            "isStatement": false,
+            "subject": {
+              "token": {
+                "position": [15, 18],
+                "kind": {
+                  "name": "Ident",
+                  "value": "item"
+                }
+              },
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 2, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "item"
+              }
+            },
+            "cases": [
+              {
+                "kind": "None",
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [16, 11],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "literal",
+                  "value": 1
+                },
+                "binding": {
+                  "label": { "name": "a", "position": [17, 5] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                },
+                "body": [
+                  {
+                    "token": {
+                      "position": [17, 12],
+                      "kind": {
+                        "name": "Plus"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "binary",
+                      "op": "BinaryOp.Add",
+                      "left": {
+                        "token": {
+                          "position": [17, 10],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "a"
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [17, 14],
+                          "kind": {
+                            "name": "Int",
+                            "value": 1
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": "else",
+                "binding": {
+                  "label": { "name": "s", "position": [18, 5] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                },
+                "body": [
+                  {
+                    "token": {
+                      "position": [18, 12],
+                      "kind": {
+                        "name": "Plus"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "binary",
+                      "op": "BinaryOp.Add",
+                      "left": {
+                        "token": {
+                          "position": [18, 10],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "s"
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "s"
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [18, 14],
+                          "kind": {
+                            "name": "Int",
+                            "value": 1
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [20, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [20, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [20, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [20, 14],
+            "kind": {
+              "name": "Ident",
+              "value": "res2"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "res2"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [22, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "res3", "position": [22, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "res3", "position": [22, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [22, 12],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "match",
+            "isStatement": false,
+            "subject": {
+              "token": {
+                "position": [22, 18],
+                "kind": {
+                  "name": "Ident",
+                  "value": "item"
+                }
+              },
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 2, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "item"
+              }
+            },
+            "cases": [
+              {
+                "kind": {
+                  "kind": "literal",
+                  "value": 1
+                },
+                "binding": {
+                  "label": { "name": "a", "position": [23, 5] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                },
+                "body": [
+                  {
+                    "token": {
+                      "position": [23, 12],
+                      "kind": {
+                        "name": "Plus"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "binary",
+                      "op": "BinaryOp.Add",
+                      "left": {
+                        "token": {
+                          "position": [23, 10],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "a"
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [23, 14],
+                          "kind": {
+                            "name": "Int",
+                            "value": 1
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": "else",
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [24, 8],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [26, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [26, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [26, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [26, 14],
+            "kind": {
+              "name": "Ident",
+              "value": "res3"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "res3"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [28, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "res4", "position": [28, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "res4", "position": [28, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [28, 12],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "match",
+            "isStatement": false,
+            "subject": {
+              "token": {
+                "position": [28, 18],
+                "kind": {
+                  "name": "Ident",
+                  "value": "item"
+                }
+              },
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 2, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "item"
+              }
+            },
+            "cases": [
+              {
+                "kind": {
+                  "kind": "type",
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                },
+                "binding": {
+                  "label": { "name": "a", "position": [29, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                },
+                "body": [
+                  {
+                    "token": {
+                      "position": [29, 14],
+                      "kind": {
+                        "name": "Plus"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "binary",
+                      "op": "BinaryOp.Add",
+                      "left": {
+                        "token": {
+                          "position": [29, 12],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "a"
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [29, 16],
+                          "kind": {
+                            "name": "Int",
+                            "value": 1
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": "else",
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [30, 8],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [32, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [32, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [32, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [32, 14],
+            "kind": {
+              "name": "Ident",
+              "value": "res4"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "res4"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [34, 1],
+        "kind": {
+          "name": "Enum"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "enumDeclaration",
+        "enum": {
+          "moduleId": 3,
+          "name": { "name": "Color", "position": [34, 6] },
+          "typeParams": [],
+          "variants": [
+            {
+              "label": { "name": "Red", "position": [34, 14] },
+              "kind": "constant"
+            },
+            {
+              "label": { "name": "Green", "position": [34, 19] },
+              "kind": "constant"
+            },
+            {
+              "label": { "name": "Blue", "position": [34, 26] },
+              "kind": "constant"
+            }
+          ],
+          "instanceMethods": [
+            {
+              "label": { "name": "toString", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Color::toString",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "hash", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Color::hash",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "eq", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Color::eq",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [
+                {
+                  "label": { "name": "other", "position": [0, 0] },
+                  "type": {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 3, "name": "Color" },
+                    "typeParams": []
+                  },
+                  "defaultValue": null,
+                  "isVariadic": false
+                }
+              ],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Bool"
+              },
+              "body": []
+            }
+          ],
+          "staticMethods": []
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [35, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "colors", "position": [35, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "colors", "position": [35, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "instance",
+              "struct": { "moduleId": 2, "name": "Array" },
+              "typeParams": [
+                {
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 3, "name": "Color" },
+                  "typeParams": []
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [35, 14],
+            "kind": {
+              "name": "LBrack"
+            }
+          },
+          "type": {
+            "kind": "instance",
+            "struct": { "moduleId": 2, "name": "Array" },
+            "typeParams": [
+              {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 3, "name": "Color" },
+                "typeParams": []
+              }
+            ]
+          },
+          "node": {
+            "kind": "array",
+            "items": [
+              {
+                "token": {
+                  "position": [35, 20],
+                  "kind": {
+                    "name": "Dot"
+                  }
+                },
+                "type": {
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 3, "name": "Color" },
+                  "typeParams": []
+                },
+                "node": {
+                  "kind": "accessor",
+                  "head": {
+                    "token": {
+                      "position": [35, 15],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "Color"
+                      }
+                    },
+                    "type": {
+                      "kind": "enum",
+                      "enum": { "moduleId": 3, "name": "Color" }
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "Color"
+                    }
+                  },
+                  "middle": [],
+                  "tail": {
+                    "kind": "enumVariant",
+                    "name": "Color.Red"
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [35, 31],
+                  "kind": {
+                    "name": "Dot"
+                  }
+                },
+                "type": {
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 3, "name": "Color" },
+                  "typeParams": []
+                },
+                "node": {
+                  "kind": "accessor",
+                  "head": {
+                    "token": {
+                      "position": [35, 26],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "Color"
+                      }
+                    },
+                    "type": {
+                      "kind": "enum",
+                      "enum": { "moduleId": 3, "name": "Color" }
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "Color"
+                    }
+                  },
+                  "middle": [],
+                  "tail": {
+                    "kind": "enumVariant",
+                    "name": "Color.Green"
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [35, 44],
+                  "kind": {
+                    "name": "Dot"
+                  }
+                },
+                "type": {
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 3, "name": "Color" },
+                  "typeParams": []
+                },
+                "node": {
+                  "kind": "accessor",
+                  "head": {
+                    "token": {
+                      "position": [35, 39],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "Color"
+                      }
+                    },
+                    "type": {
+                      "kind": "enum",
+                      "enum": { "moduleId": 3, "name": "Color" }
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "Color"
+                    }
+                  },
+                  "middle": [],
+                  "tail": {
+                    "kind": "enumVariant",
+                    "name": "Color.Blue"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [36, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "col", "position": [36, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "col", "position": [36, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "enumInstance",
+              "enum": { "moduleId": 2, "name": "Option" },
+              "typeParams": [
+                {
+                  "kind": "enumInstance",
+                  "enum": { "moduleId": 3, "name": "Color" },
+                  "typeParams": []
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [36, 17],
+            "kind": {
+              "name": "LBrack"
+            }
+          },
+          "type": {
+            "kind": "enumInstance",
+            "enum": { "moduleId": 2, "name": "Option" },
+            "typeParams": [
+              {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 3, "name": "Color" },
+                "typeParams": []
+              }
+            ]
+          },
+          "node": {
+            "kind": "indexing",
+            "node": {
+              "kind": "arraylike",
+              "expr": {
+                "token": {
+                  "position": [36, 11],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "colors"
+                  }
+                },
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 2, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 3, "name": "Color" },
+                      "typeParams": []
+                    }
+                  ]
+                },
+                "node": {
+                  "kind": "identifier",
+                  "name": "colors"
+                }
+              },
+              "index": {
+                "token": {
+                  "position": [36, 18],
+                  "kind": {
+                    "name": "Int",
+                    "value": 0
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [38, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "res5", "position": [38, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "res5", "position": [38, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "enumInstance",
+              "enum": { "moduleId": 3, "name": "Color" },
+              "typeParams": []
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [38, 12],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "type": {
+            "kind": "enumInstance",
+            "enum": { "moduleId": 3, "name": "Color" },
+            "typeParams": []
+          },
+          "node": {
+            "kind": "match",
+            "isStatement": false,
+            "subject": {
+              "token": {
+                "position": [38, 18],
+                "kind": {
+                  "name": "Ident",
+                  "value": "col"
+                }
+              },
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 2, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 3, "name": "Color" },
+                    "typeParams": []
+                  }
+                ]
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "col"
+              }
+            },
+            "cases": [
+              {
+                "kind": {
+                  "kind": "enumVariant",
+                  "variantIdx": 0,
+                  "enum": { "moduleId": 3, "name": "Color" },
+                  "destructuredVariables": []
+                },
+                "binding": {
+                  "label": { "name": "c", "position": [39, 13] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 3, "name": "Color" },
+                    "typeParams": []
+                  }
+                },
+                "body": [
+                  {
+                    "token": {
+                      "position": [39, 18],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "c"
+                      }
+                    },
+                    "type": {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 3, "name": "Color" },
+                      "typeParams": []
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "c"
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "enumVariant",
+                  "variantIdx": 1,
+                  "enum": { "moduleId": 3, "name": "Color" },
+                  "destructuredVariables": []
+                },
+                "binding": {
+                  "label": { "name": "c", "position": [40, 15] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 3, "name": "Color" },
+                    "typeParams": []
+                  }
+                },
+                "body": [
+                  {
+                    "token": {
+                      "position": [40, 20],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "c"
+                      }
+                    },
+                    "type": {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 3, "name": "Color" },
+                      "typeParams": []
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "c"
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": "else",
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [41, 13],
+                      "kind": {
+                        "name": "Dot"
+                      }
+                    },
+                    "type": {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 3, "name": "Color" },
+                      "typeParams": []
+                    },
+                    "node": {
+                      "kind": "accessor",
+                      "head": {
+                        "token": {
+                          "position": [41, 8],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "Color"
+                          }
+                        },
+                        "type": {
+                          "kind": "enum",
+                          "enum": { "moduleId": 3, "name": "Color" }
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "Color"
+                        }
+                      },
+                      "middle": [],
+                      "tail": {
+                        "kind": "enumVariant",
+                        "name": "Color.Blue"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [43, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [43, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [43, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "enumInstance",
+              "enum": { "moduleId": 3, "name": "Color" },
+              "typeParams": []
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [43, 16],
+            "kind": {
+              "name": "Ident",
+              "value": "res5"
+            }
+          },
+          "type": {
+            "kind": "enumInstance",
+            "enum": { "moduleId": 3, "name": "Color" },
+            "typeParams": []
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "res5"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [45, 1],
+        "kind": {
+          "name": "Enum"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "enumDeclaration",
+        "enum": {
+          "moduleId": 3,
+          "name": { "name": "Color2", "position": [45, 6] },
+          "typeParams": [],
+          "variants": [
+            {
+              "label": { "name": "RGB", "position": [45, 15] },
+              "kind": "container",
+              "fields": [
+                {
+                  "name": { "name": "r", "position": [45, 19] },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "initializer": null
+                },
+                {
+                  "name": { "name": "g", "position": [45, 27] },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "initializer": null
+                },
+                {
+                  "name": { "name": "b", "position": [45, 35] },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "initializer": null
+                }
+              ]
+            }
+          ],
+          "instanceMethods": [
+            {
+              "label": { "name": "toString", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Color2::toString",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "hash", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Color2::hash",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "eq", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Color2::eq",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [
+                {
+                  "label": { "name": "other", "position": [0, 0] },
+                  "type": {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 3, "name": "Color2" },
+                    "typeParams": []
+                  },
+                  "defaultValue": null,
+                  "isVariadic": false
+                }
+              ],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Bool"
+              },
+              "body": []
+            }
+          ],
+          "staticMethods": []
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [46, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "col2", "position": [46, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "col2", "position": [46, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "enumInstance",
+              "enum": { "moduleId": 3, "name": "Color2" },
+              "typeParams": []
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [46, 22],
+            "kind": {
+              "name": "LParen"
+            }
+          },
+          "type": {
+            "kind": "enumInstance",
+            "enum": { "moduleId": 3, "name": "Color2" },
+            "typeParams": []
+          },
+          "node": {
+            "kind": "invocation",
+            "invokee": "Color2.RGB",
+            "arguments": [
+              {
+                "token": {
+                  "position": [46, 26],
+                  "kind": {
+                    "name": "Int",
+                    "value": 0
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 0
+                }
+              },
+              {
+                "token": {
+                  "position": [46, 32],
+                  "kind": {
+                    "name": "Int",
+                    "value": 0
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 0
+                }
+              },
+              {
+                "token": {
+                  "position": [46, 38],
+                  "kind": {
+                    "name": "Int",
+                    "value": 0
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 0
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [47, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "res6", "position": [47, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "res6", "position": [47, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [47, 12],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "match",
+            "isStatement": false,
+            "subject": {
+              "token": {
+                "position": [47, 18],
+                "kind": {
+                  "name": "Ident",
+                  "value": "col2"
+                }
+              },
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 3, "name": "Color2" },
+                "typeParams": []
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "col2"
+              }
+            },
+            "cases": [
+              {
+                "kind": {
+                  "kind": "enumVariant",
+                  "variantIdx": 0,
+                  "enum": { "moduleId": 3, "name": "Color2" },
+                  "destructuredVariables": [
+                    {
+                      "label": { "name": "r", "position": [48, 14] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    },
+                    {
+                      "label": { "name": "g", "position": [48, 17] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    },
+                    {
+                      "label": { "name": "b", "position": [48, 20] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [48, 32],
+                      "kind": {
+                        "name": "Plus"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "binary",
+                      "op": "BinaryOp.Add",
+                      "left": {
+                        "token": {
+                          "position": [48, 28],
+                          "kind": {
+                            "name": "Plus"
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "binary",
+                          "op": "BinaryOp.Add",
+                          "left": {
+                            "token": {
+                              "position": [48, 26],
+                              "kind": {
+                                "name": "Ident",
+                                "value": "r"
+                              }
+                            },
+                            "type": {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            },
+                            "node": {
+                              "kind": "identifier",
+                              "name": "r"
+                            }
+                          },
+                          "right": {
+                            "token": {
+                              "position": [48, 30],
+                              "kind": {
+                                "name": "Ident",
+                                "value": "g"
+                              }
+                            },
+                            "type": {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            },
+                            "node": {
+                              "kind": "identifier",
+                              "name": "g"
+                            }
+                          }
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [48, 34],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "b"
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "b"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [50, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [50, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [50, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [50, 14],
+            "kind": {
+              "name": "Ident",
+              "value": "res6"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "res6"
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [53, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "wildcard2", "position": [53, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "wildcard2", "position": [53, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "String"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [53, 17],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "String"
+          },
+          "node": {
+            "kind": "match",
+            "isStatement": false,
+            "subject": {
+              "token": {
+                "position": [53, 23],
+                "kind": {
+                  "name": "Int",
+                  "value": 123
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 123
+              }
+            },
+            "cases": [
+              {
+                "kind": "else",
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [54, 11],
+                      "kind": {
+                        "name": "String",
+                        "value": "abcd"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": "abcd"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [56, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [56, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [56, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "String"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [56, 17],
+            "kind": {
+              "name": "Ident",
+              "value": "wildcard2"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "String"
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "wildcard2"
+          }
+        }
+      }
+    }
+  ]
+}

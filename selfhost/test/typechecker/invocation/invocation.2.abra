@@ -1,4 +1,0 @@
-// Test calling function with optional labels for positional arguments
-func foo(a: Int, b: Bool, c: Float): Int = a
-
-val _: Int = foo(123, b: true, 1.23)

@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:12:13
-Unknown field 'fooStatic'
-  |  val fn2 = f.fooStatic
-                 ^
-No field 'fooStatic' found on instance of type Foo
-'fooStatic' is a static member of Foo, did you mean to write Foo.fooStatic?

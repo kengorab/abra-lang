@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:5:3
-Incorrect number of destructuring arguments
-  |    Color.RGB(r, g, ) => r + g
-       ^
-Expected 3, but 2 were passed
-(You can use '_' to denote positions that you wish to discard)

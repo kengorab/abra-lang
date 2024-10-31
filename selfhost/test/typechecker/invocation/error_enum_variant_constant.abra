@@ -1,5 +1,0 @@
-enum Foo {
-  Bar
-}
-
-val f = Foo.Bar()

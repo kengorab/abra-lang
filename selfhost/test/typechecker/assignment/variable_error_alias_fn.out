@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:3:1
-Cannot assign to variable 'foo'
-  |  foo = 123
-     ^
-'foo' is a function, which cannot be overwritten

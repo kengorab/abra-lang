@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:1:12
+Type mismatch
+  |  { a: 123, (456): 789 }
+                ^
+Expected: String
+but instead found: Int

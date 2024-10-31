@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:2:5
-Incorrect label for parameter
-  |  foo(abc: 123)
-         ^
-The parameter's name is 'a', but instead found 'abc'

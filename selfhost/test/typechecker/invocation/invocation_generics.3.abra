@@ -1,4 +1,0 @@
-func foo<T>(arr: T[], t: T): T[] = arr
-
-val a = foo([], 1)
-val _: Int[] = a

@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:1:11
+Invalid type for vararg parameter
+  |  func foo(*a = 123) {}
+               ^
+Vararg parameters must be an Array type, but got Int

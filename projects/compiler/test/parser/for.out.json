@@ -1,0 +1,211 @@
+{
+  "imports": [],
+  "nodes": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "For"
+        }
+      },
+      "kind": {
+        "name": "for",
+        "itemPattern": {
+          "kind": "variable",
+          "label": { "name": "s", "position": [1, 5] }
+        },
+        "indexPattern": null,
+        "iterator": {
+          "token": {
+            "position": [1, 10],
+            "kind": {
+              "name": "LBrack"
+            }
+          },
+          "kind": {
+            "name": "array",
+            "items": [
+              {
+                "token": {
+                  "position": [1, 11],
+                  "kind": {
+                    "name": "String",
+                    "value": "a"
+                  }
+                },
+                "kind": {
+                  "name": "literal",
+                  "type": "string",
+                  "value": "a"
+                }
+              },
+              {
+                "token": {
+                  "position": [1, 16],
+                  "kind": {
+                    "name": "String",
+                    "value": "b"
+                  }
+                },
+                "kind": {
+                  "name": "literal",
+                  "type": "string",
+                  "value": "b"
+                }
+              }
+            ]
+          }
+        },
+        "block": [
+          {
+            "token": {
+              "position": [2, 3],
+              "kind": {
+                "name": "Val"
+              }
+            },
+            "kind": {
+              "name": "bindingDecl",
+              "decorators": [],
+              "exportToken": null,
+              "bindingPattern": {
+                "kind": "variable",
+                "label": { "name": "x", "position": [2, 7] }
+              },
+              "typeAnnotation": null,
+              "expr": {
+                "token": {
+                  "position": [2, 13],
+                  "kind": {
+                    "name": "Plus"
+                  }
+                },
+                "kind": {
+                  "name": "binary",
+                  "op": "BinaryOp.Add",
+                  "left": {
+                    "token": {
+                      "position": [2, 11],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "s"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "s"
+                    }
+                  },
+                  "right": {
+                    "token": {
+                      "position": [2, 15],
+                      "kind": {
+                        "name": "Int",
+                        "value": 1
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [5, 1],
+        "kind": {
+          "name": "For"
+        }
+      },
+      "kind": {
+        "name": "for",
+        "itemPattern": {
+          "kind": "variable",
+          "label": { "name": "s", "position": [5, 5] }
+        },
+        "indexPattern": {
+          "kind": "variable",
+          "label": { "name": "idx", "position": [5, 8] }
+        },
+        "iterator": {
+          "token": {
+            "position": [5, 15],
+            "kind": {
+              "name": "Ident",
+              "value": "arr"
+            }
+          },
+          "kind": {
+            "name": "identifier",
+            "ident": "arr"
+          }
+        },
+        "block": [
+          {
+            "token": {
+              "position": [6, 3],
+              "kind": {
+                "name": "Val"
+              }
+            },
+            "kind": {
+              "name": "bindingDecl",
+              "decorators": [],
+              "exportToken": null,
+              "bindingPattern": {
+                "kind": "variable",
+                "label": { "name": "x", "position": [6, 7] }
+              },
+              "typeAnnotation": null,
+              "expr": {
+                "token": {
+                  "position": [6, 13],
+                  "kind": {
+                    "name": "Plus"
+                  }
+                },
+                "kind": {
+                  "name": "binary",
+                  "op": "BinaryOp.Add",
+                  "left": {
+                    "token": {
+                      "position": [6, 11],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "s"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "s"
+                    }
+                  },
+                  "right": {
+                    "token": {
+                      "position": [6, 15],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "idx"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "idx"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

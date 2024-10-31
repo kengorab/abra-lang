@@ -1,0 +1,6 @@
+enum Foo<T> {
+  Bar(a: T?)
+}
+
+val f = Foo.Bar(a: Some(123))
+val _: Foo<Int> = f

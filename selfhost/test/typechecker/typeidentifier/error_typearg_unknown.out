@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:1:17
-Unknown type 'Foobar'
-  |  var _: Map<Int, Foobar>
-                     ^
-No type with that name is visible in current scope

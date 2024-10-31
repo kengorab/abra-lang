@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:3:7
-Type mismatch
-  |  arr[1:a]
-           ^
-Expected: Int
-but instead found: Int?

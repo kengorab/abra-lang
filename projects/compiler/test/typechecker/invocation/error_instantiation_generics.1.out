@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:3:29
+Type mismatch for parameter 't'
+  |  var _: Foo<String> = Foo(t: 123)
+                                 ^
+Expected: String
+but instead found: Int

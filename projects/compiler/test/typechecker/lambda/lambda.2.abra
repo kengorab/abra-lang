@@ -1,0 +1,14 @@
+// Test passing lambda as argument
+val arr1 = [1, 2, 3]
+val _: Int[] = arr1
+val arr2 = arr1.map((x) => x + 0.1)
+val _: Float[] = arr2
+
+// Test lambdas whose parameter is generic
+func forEach<T>(set: Set<T>, fn: (T) => Unit) {
+  set._map.forEach(key => fn(key))
+}
+func map<T, U>(arr: T[], fn: (T) => U): U[] {
+  val mapped = arr.map(v => fn(v))
+  mapped
+}

@@ -1,6 +1,0 @@
-type Foo<T, U> {
-  t: T
-  u: U? = None
-}
-
-func foo(): Foo<Int, String> = Foo(t: 123)

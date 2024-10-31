@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:3:13
+Type mismatch
+  |    b: Bool = 123
+                 ^
+Expected: Bool
+but instead found: Int

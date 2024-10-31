@@ -1,6 +1,0 @@
-// `bar` has a required argument, and is declared after the `foo` functions
-
-func foo1(a: Int, b = bar(123)): Int = -1
-func foo2(a: Int, b = bar(i: a)): Int = -1 // Referencing prior arg in default value's expression
-
-func bar(i: Int): Int = i

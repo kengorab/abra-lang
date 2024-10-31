@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:3:10
-Type mismatch
-  |  val b = !a
-              ^
-Expected: Bool
-but instead found: Int

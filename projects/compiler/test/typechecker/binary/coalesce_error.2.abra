@@ -1,0 +1,3 @@
+val a: Int? = Some(123)
+val b: Int? = None
+a ?: b

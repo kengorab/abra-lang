@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:1:24
-Type mismatch
-  |  val f: (Int) => Int = (a: Float) => 123
-                            ^
-Expected: Int
-but instead found: Float

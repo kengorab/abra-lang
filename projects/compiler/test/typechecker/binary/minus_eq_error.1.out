@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:2:3
+Illegal operator
+  |  a -= true
+       ^
+No operator '-' exists between types Int and Bool

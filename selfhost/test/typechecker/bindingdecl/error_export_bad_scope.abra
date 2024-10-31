@@ -1,3 +1,0 @@
-if true {
-  export val a = 1
-}

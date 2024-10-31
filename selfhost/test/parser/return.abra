@@ -1,6 +1,0 @@
-if true return
-123
-
-if true return 123
-
-return if true 123 else 456

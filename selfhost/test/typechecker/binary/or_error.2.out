@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:1:4
-Illegal operator
-  |  12 || true
-        ^
-No operator '||' exists between types Int and Bool

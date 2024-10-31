@@ -1,0 +1,14 @@
+// This file is run with arguments passed to it, and environment variables present
+
+val args = Process.args()
+
+/// Expect: [-f, bar, --baz, qux]
+println(args[1:])
+
+val bogusEnvVar = Process.getEnvVar("BOGUS")
+/// Expect: Option.None
+println(bogusEnvVar)
+
+val fooEnvVar = Process.getEnvVar("FOO")
+/// Expect: Option.Some(value: "bar")
+println(fooEnvVar)

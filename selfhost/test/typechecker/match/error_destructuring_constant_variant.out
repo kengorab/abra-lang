@@ -1,4 +1,0 @@
-Error at %FILE_NAME%:5:13
-This variant is a constant enum variant, which cannot be destructured
-  |    Color.Red(r) => 1
-                 ^

@@ -1,4 +1,0 @@
-type Foo<T> { t: T }
-
-val intFoo = Foo(t: 123)
-var _: Foo<String> = intFoo

@@ -1,5 +1,0 @@
-type Foo { str: String }
-var f: Foo
-
-val s = f.str
-val _: String = s

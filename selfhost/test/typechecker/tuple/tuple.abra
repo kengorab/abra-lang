@@ -1,2 +1,0 @@
-val t1 = (1, true, "three")
-val t2: (Int?, String) = (None, "foo")

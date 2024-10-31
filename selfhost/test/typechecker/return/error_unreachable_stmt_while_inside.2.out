@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:4:5
-Unreachable code
-  |      val y = "abcd"
-         ^
-Control flow exits before this code is reached

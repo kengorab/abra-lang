@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:11
+Unexpected token '_':
+  |  import a, _ from "./abc"
+               ^

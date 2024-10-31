@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:1:33
-Type mismatch
-  |  val a: Int = if true "123" else 456
-                                     ^
-Expected: String
-but instead found: Int

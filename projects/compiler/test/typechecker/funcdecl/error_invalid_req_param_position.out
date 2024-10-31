@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:1:17
+Invalid location for required parameter
+  |  func foo(a = 1, b: Bool) {}
+                     ^
+Required parameters must all be listed before any optional parameters

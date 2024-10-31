@@ -1,0 +1,174 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "x", "position": [2, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "x", "position": [2, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [2, 9],
+            "kind": {
+              "name": "Int",
+              "value": 24
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 24
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [3, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "foo", "position": [3, 6] },
+          "scope": {
+            "name": "$root::module_3::foo",
+            "variables": [
+              {
+                "label": { "name": "x", "position": [3, 10] },
+                "mutable": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                }
+              },
+              {
+                "label": { "name": "y", "position": [4, 7] },
+                "mutable": false,
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                }
+              }
+            ],
+            "functions": [],
+            "types": []
+          },
+          "kind": "FunctionKind.Standalone",
+          "typeParameters": [],
+          "parameters": [
+            {
+              "label": { "name": "x", "position": [3, 10] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Bool"
+              },
+              "defaultValue": null,
+              "isVariadic": false
+            }
+          ],
+          "returnType": {
+            "kind": "primitive",
+            "primitive": "Unit"
+          },
+          "body": [
+            {
+              "token": {
+                "position": [4, 3],
+                "kind": {
+                  "name": "Val"
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Unit"
+              },
+              "node": {
+                "kind": "bindingDeclaration",
+                "pattern": {
+                  "kind": "variable",
+                  "label": { "name": "y", "position": [4, 7] }
+                },
+                "variables": [
+                  {
+                    "label": { "name": "y", "position": [4, 7] },
+                    "mutable": false,
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Bool"
+                    }
+                  }
+                ],
+                "expr": {
+                  "token": {
+                    "position": [4, 11],
+                    "kind": {
+                      "name": "Bang"
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Bool"
+                  },
+                  "node": {
+                    "kind": "unary",
+                    "op": "UnaryOp.Negate",
+                    "expr": {
+                      "token": {
+                        "position": [4, 12],
+                        "kind": {
+                          "name": "Ident",
+                          "value": "x"
+                        }
+                      },
+                      "type": {
+                        "kind": "primitive",
+                        "primitive": "Bool"
+                      },
+                      "node": {
+                        "kind": "identifier",
+                        "name": "x"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

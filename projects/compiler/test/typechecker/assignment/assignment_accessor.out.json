@@ -1,0 +1,395 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Type"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "typeDeclaration",
+        "struct": {
+          "moduleId": 3,
+          "name": { "name": "Foo", "position": [1, 6] },
+          "typeParams": [],
+          "fields": [
+            {
+              "name": { "name": "a", "position": [1, 12] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "initializer": null
+            },
+            {
+              "name": { "name": "b", "position": [1, 20] },
+              "type": {
+                "kind": "instance",
+                "struct": { "moduleId": 2, "name": "Array" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
+              },
+              "initializer": null
+            }
+          ],
+          "instanceMethods": [
+            {
+              "label": { "name": "toString", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Foo::toString",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "hash", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Foo::hash",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "eq", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_3::Foo::eq",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "typeParameters": [],
+              "parameters": [
+                {
+                  "label": { "name": "other", "position": [0, 0] },
+                  "type": {
+                    "kind": "instance",
+                    "struct": { "moduleId": 3, "name": "Foo" },
+                    "typeParams": []
+                  },
+                  "defaultValue": null,
+                  "isVariadic": false
+                }
+              ],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Bool"
+              },
+              "body": []
+            }
+          ],
+          "staticMethods": []
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [3, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "f", "position": [3, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "f", "position": [3, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "instance",
+              "struct": { "moduleId": 3, "name": "Foo" },
+              "typeParams": []
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [3, 12],
+            "kind": {
+              "name": "LParen"
+            }
+          },
+          "type": {
+            "kind": "instance",
+            "struct": { "moduleId": 3, "name": "Foo" },
+            "typeParams": []
+          },
+          "node": {
+            "kind": "invocation",
+            "invokee": { "moduleId": 3, "name": "Foo" },
+            "arguments": [
+              {
+                "token": {
+                  "position": [3, 16],
+                  "kind": {
+                    "name": "Int",
+                    "value": 1
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": 1
+                }
+              },
+              {
+                "token": {
+                  "position": [3, 22],
+                  "kind": {
+                    "name": "LBrack"
+                  }
+                },
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 2, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                },
+                "node": {
+                  "kind": "array",
+                  "items": [
+                    {
+                      "token": {
+                        "position": [3, 23],
+                        "kind": {
+                          "name": "Int",
+                          "value": 1
+                        }
+                      },
+                      "type": {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      },
+                      "node": {
+                        "kind": "literal",
+                        "value": 1
+                      }
+                    },
+                    {
+                      "token": {
+                        "position": [3, 26],
+                        "kind": {
+                          "name": "Int",
+                          "value": 2
+                        }
+                      },
+                      "type": {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      },
+                      "node": {
+                        "kind": "literal",
+                        "value": 2
+                      }
+                    },
+                    {
+                      "token": {
+                        "position": [3, 29],
+                        "kind": {
+                          "name": "Int",
+                          "value": 3
+                        }
+                      },
+                      "type": {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      },
+                      "node": {
+                        "kind": "literal",
+                        "value": 3
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [5, 5],
+        "kind": {
+          "name": "Assign"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "assignment",
+        "expr": {
+          "token": {
+            "position": [5, 7],
+            "kind": {
+              "name": "Int",
+              "value": 2
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 2
+          }
+        },
+        "op": "AssignOp.Assign",
+        "mode": {
+          "kind": "accessor",
+          "head": {
+            "token": {
+              "position": [5, 1],
+              "kind": {
+                "name": "Ident",
+                "value": "f"
+              }
+            },
+            "type": {
+              "kind": "instance",
+              "struct": { "moduleId": 3, "name": "Foo" },
+              "typeParams": []
+            },
+            "node": {
+              "kind": "identifier",
+              "name": "f"
+            }
+          },
+          "middle": [],
+          "tail": {
+            "kind": "field",
+            "name": "a",
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [6, 5],
+        "kind": {
+          "name": "Assign"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "assignment",
+        "expr": {
+          "token": {
+            "position": [6, 7],
+            "kind": {
+              "name": "LBrack"
+            }
+          },
+          "type": {
+            "kind": "instance",
+            "struct": { "moduleId": 2, "name": "Array" },
+            "typeParams": [
+              {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            ]
+          },
+          "node": {
+            "kind": "array",
+            "items": []
+          }
+        },
+        "op": "AssignOp.Assign",
+        "mode": {
+          "kind": "accessor",
+          "head": {
+            "token": {
+              "position": [6, 1],
+              "kind": {
+                "name": "Ident",
+                "value": "f"
+              }
+            },
+            "type": {
+              "kind": "instance",
+              "struct": { "moduleId": 3, "name": "Foo" },
+              "typeParams": []
+            },
+            "node": {
+              "kind": "identifier",
+              "name": "f"
+            }
+          },
+          "middle": [],
+          "tail": {
+            "kind": "field",
+            "name": "b",
+            "type": {
+              "kind": "instance",
+              "struct": { "moduleId": 2, "name": "Array" },
+              "typeParams": [
+                {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

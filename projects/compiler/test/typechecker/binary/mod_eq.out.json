@@ -1,0 +1,406 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "a", "position": [1, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "a", "position": [1, 5] },
+            "mutable": true,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Float"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [1, 9],
+            "kind": {
+              "name": "Float",
+              "value": 1
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Float"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 1
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [2, 3],
+        "kind": {
+          "name": "PercentEq"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "assignment",
+        "expr": {
+          "token": {
+            "position": [2, 3],
+            "kind": {
+              "name": "PercentEq"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Float"
+          },
+          "node": {
+            "kind": "binary",
+            "op": "BinaryOp.Mod",
+            "left": {
+              "token": {
+                "position": [2, 1],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Float"
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "a"
+              }
+            },
+            "right": {
+              "token": {
+                "position": [2, 6],
+                "kind": {
+                  "name": "Float",
+                  "value": 12.3
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Float"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 12.3
+              }
+            }
+          }
+        },
+        "op": "AssignOp.ModEq",
+        "mode": {
+          "kind": "variable",
+          "variable": {
+            "label": { "name": "a", "position": [1, 5] },
+            "mutable": true,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Float"
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [3, 3],
+        "kind": {
+          "name": "PercentEq"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "assignment",
+        "expr": {
+          "token": {
+            "position": [3, 3],
+            "kind": {
+              "name": "PercentEq"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Float"
+          },
+          "node": {
+            "kind": "binary",
+            "op": "BinaryOp.Mod",
+            "left": {
+              "token": {
+                "position": [3, 1],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Float"
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "a"
+              }
+            },
+            "right": {
+              "token": {
+                "position": [3, 6],
+                "kind": {
+                  "name": "Int",
+                  "value": 123
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 123
+              }
+            }
+          }
+        },
+        "op": "AssignOp.ModEq",
+        "mode": {
+          "kind": "variable",
+          "variable": {
+            "label": { "name": "a", "position": [1, 5] },
+            "mutable": true,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Float"
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [5, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "b", "position": [5, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "b", "position": [5, 5] },
+            "mutable": true,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [5, 9],
+            "kind": {
+              "name": "Int",
+              "value": 1
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "literal",
+            "value": 1
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [6, 3],
+        "kind": {
+          "name": "PercentEq"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "assignment",
+        "expr": {
+          "token": {
+            "position": [6, 3],
+            "kind": {
+              "name": "PercentEq"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Float"
+          },
+          "node": {
+            "kind": "binary",
+            "op": "BinaryOp.Mod",
+            "left": {
+              "token": {
+                "position": [6, 1],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Float"
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "a"
+              }
+            },
+            "right": {
+              "token": {
+                "position": [6, 6],
+                "kind": {
+                  "name": "Float",
+                  "value": 12.3
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Float"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 12.3
+              }
+            }
+          }
+        },
+        "op": "AssignOp.ModEq",
+        "mode": {
+          "kind": "variable",
+          "variable": {
+            "label": { "name": "a", "position": [1, 5] },
+            "mutable": true,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Float"
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [7, 3],
+        "kind": {
+          "name": "PercentEq"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "assignment",
+        "expr": {
+          "token": {
+            "position": [7, 3],
+            "kind": {
+              "name": "PercentEq"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Float"
+          },
+          "node": {
+            "kind": "binary",
+            "op": "BinaryOp.Mod",
+            "left": {
+              "token": {
+                "position": [7, 1],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Float"
+              },
+              "node": {
+                "kind": "identifier",
+                "name": "a"
+              }
+            },
+            "right": {
+              "token": {
+                "position": [7, 6],
+                "kind": {
+                  "name": "Int",
+                  "value": 123
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 123
+              }
+            }
+          }
+        },
+        "op": "AssignOp.ModEq",
+        "mode": {
+          "kind": "variable",
+          "variable": {
+            "label": { "name": "a", "position": [1, 5] },
+            "mutable": true,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Float"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

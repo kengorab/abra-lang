@@ -1,4 +1,0 @@
-func addOne(res: Result<Int, String>): Result<Int, String> {
-  val v = match res { Ok(v) => v Err(e) => return Err(e) }
-  Ok(v + 1)
-}

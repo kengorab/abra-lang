@@ -1,7 +1,0 @@
-Error at %FILE_NAME%:1:8
-Duplicate name 'x'
-  |  for x, x in [123] {
-            ^
-This name is also declared at (1:5)
-  |  for x, x in [123] {
-         ^

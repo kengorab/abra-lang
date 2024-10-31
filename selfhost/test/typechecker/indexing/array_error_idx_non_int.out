@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:2:5
-Type mismatch
-  |  arr[1.2]
-         ^
-Expected: Int
-but instead found: Float

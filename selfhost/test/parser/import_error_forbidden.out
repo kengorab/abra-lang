@@ -1,4 +1,0 @@
-Error at %FILE_NAME%:3:1
-Unexpected token 'import':
-  |  import a, b, c, from "./abc"
-     ^

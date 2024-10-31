@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:1:24
-Type mismatch
-  |  [1, 2, 3].map((x: Int, y: String) => x)
-                            ^
-Expected: Int
-but instead found: String

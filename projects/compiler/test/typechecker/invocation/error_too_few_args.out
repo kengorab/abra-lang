@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:2:4
+Not enough arguments for invocation
+  |  foo()
+        ^
+2 arguments required, but 0 were passed

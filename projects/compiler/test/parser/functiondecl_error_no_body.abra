@@ -1,0 +1,2 @@
+func stubbedFunc1(): String
+func stubbedFunc2(): String

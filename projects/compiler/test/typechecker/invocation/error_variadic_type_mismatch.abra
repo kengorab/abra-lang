@@ -1,0 +1,6 @@
+// Test variadic arguments
+func foo(a: Int, *b: Int[]) {
+  val _: Int[] = b
+}
+
+foo(1, "a", "b")

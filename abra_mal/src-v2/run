@@ -1,2 +1,0 @@
-#!/bin/bash
-exec ../../target/release/abra build -r $(dirname $0)/main.abra -- "${@}"

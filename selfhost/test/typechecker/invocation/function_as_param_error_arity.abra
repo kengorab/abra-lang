@@ -1,4 +1,0 @@
-func foo(fn: (Int) => Int): Int = fn(123)
-
-func negate(i: Int, doIt: Bool): Int = if doIt { -i } else i
-foo(negate)

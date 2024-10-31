@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:1:41
+Too many arguments for invocation
+  |  func foo(fn: (Int) => Int): Int = fn(1, "abc")
+                                             ^
+Expected no more than 1 argument, but 2 were passed

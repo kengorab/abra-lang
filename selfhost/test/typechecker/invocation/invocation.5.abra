@@ -1,4 +1,0 @@
-func foo(a: Int[], b: Bool?) {}
-
-foo(a: [], b: Some(true))
-foo(a: [1, 2], b: None)

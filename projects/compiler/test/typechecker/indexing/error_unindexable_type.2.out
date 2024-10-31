@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:2:1
+Unsupported indexing operation
+  |  s[0]
+     ^
+Type 'Set<Int>' is not indexable

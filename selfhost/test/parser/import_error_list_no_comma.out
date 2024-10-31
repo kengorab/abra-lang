@@ -1,4 +1,0 @@
-Error at %FILE_NAME%:1:10
-Unexpected token 'identifier', expected one of ',', 'from':
-  |  import a b from "./abc"
-              ^

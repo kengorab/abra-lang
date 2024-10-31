@@ -1,7 +1,0 @@
-Error at %FILE_NAME%:2:8
-Duplicate name 'add'
-  |  import add from "./_exports"
-            ^
-This name is also declared at (1:8)
-  |  import add from "./_exports"
-            ^

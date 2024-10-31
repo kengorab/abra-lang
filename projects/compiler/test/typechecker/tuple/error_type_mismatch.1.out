@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:1:25
+Type mismatch
+  |  val t: (Int, String) = (1.2, "three")
+                             ^
+Expected: Int
+but instead found: Float

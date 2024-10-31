@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:2:1
-Unsupported indexing operation
-  |  pair[0]
-     ^
-Type '(Int, String)?' is not indexable

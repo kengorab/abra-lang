@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:9:3
-Unreachable match case
-  |    _ => 5
-       ^
-The previous case(s) cover all possibilities for match target type 'Color?'

@@ -1,0 +1,5 @@
+func foo(a = bar()): Int = -a
+func bar(b = foo(12)): Int {
+  val x = -b
+  x
+}

@@ -1,6 +1,0 @@
-enum Color { Red, Green, Blue }
-
-val a = 123
-val x = match a {
-  Color.Red => 0
-}

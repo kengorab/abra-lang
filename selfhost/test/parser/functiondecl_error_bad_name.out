@@ -1,4 +1,0 @@
-Error at %FILE_NAME%:1:6
-Unexpected token 'int', expected 'identifier':
-  |  func 123() = "abc"
-          ^

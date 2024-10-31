@@ -1,4 +1,0 @@
-Error at %FILE_NAME%:1:9
-Unexpected token 'val':
-  |  var a = val b
-             ^

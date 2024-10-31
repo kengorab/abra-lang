@@ -1,4 +1,0 @@
-val x = match foo() {
-  Color.Blue() => 0x0000FF
-  _ => 0
-}

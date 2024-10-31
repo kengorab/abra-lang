@@ -1,3 +1,0 @@
-type Foo<T> { t: T }
-
-var _: Foo<String> = Foo(t: 123)

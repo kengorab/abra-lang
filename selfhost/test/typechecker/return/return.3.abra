@@ -1,7 +1,0 @@
-func foo(): String {
-  if true {
-    return "early"
-  }
-  val s = "string"
-  s
-}

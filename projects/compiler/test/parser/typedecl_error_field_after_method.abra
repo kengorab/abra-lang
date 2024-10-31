@@ -1,0 +1,5 @@
+type FooBar123 {
+  a: Int
+  func foo(self) {}
+  b: Int
+}

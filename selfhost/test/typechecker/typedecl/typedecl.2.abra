@@ -1,9 +1,0 @@
-type Foo {
-  a: String = string("foo")
-
-  func foo(self, s = string("foo")): Int = 123
-}
-
-func string(s: String): String = s + "!"
-
-var f: Foo

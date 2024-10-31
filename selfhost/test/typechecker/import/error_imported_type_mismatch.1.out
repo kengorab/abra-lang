@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:5:25
-Type mismatch for parameter 'color'
-  |  val _ = Foo(color: Color.Purple)
-                             ^
-Expected: Color
-but instead found: Color

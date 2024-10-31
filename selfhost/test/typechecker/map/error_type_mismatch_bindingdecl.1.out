@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:1:34
-Type mismatch
-  |  val m: Map<String, Int[]> = { a: 123 }
-                                      ^
-Expected: Int[]
-but instead found: Int

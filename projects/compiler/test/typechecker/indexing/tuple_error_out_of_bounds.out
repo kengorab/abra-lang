@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:3:2
+Unsupported tuple indexing operation
+  |  t[4]
+      ^
+No value at index for tuple of type '(Int, String, Int[])'
+(Valid index values are from 0-2, inclusive)

@@ -1,7 +1,0 @@
-Error at %FILE_NAME%:5:22
-Duplicate name 'r'
-  |    Color.RGB(r, g, b) r => r + g
-                          ^
-This name is also declared at (5:13)
-  |    Color.RGB(r, g, b) r => r + g
-                 ^

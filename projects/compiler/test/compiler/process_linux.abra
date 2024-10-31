@@ -1,0 +1,10 @@
+// This file is run on linux only
+// These tests are difficult by nature since there's not many assumptions which will hold 100% of the time.
+// Verify the sysname and machine per-platform should be sufficient to prove that it's working correctly.
+
+val uname = Process.uname()
+
+/// Expect: Linux
+println(uname.sysname)
+/// Expect: x86_64
+println(uname.machine)

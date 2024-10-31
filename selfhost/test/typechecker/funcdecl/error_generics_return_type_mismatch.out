@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:2:24
-Return type mismatch for function 'foo'
-  |  func foo<T>(t: T): T = 123
-                            ^
-Expected T
-but instead found Int

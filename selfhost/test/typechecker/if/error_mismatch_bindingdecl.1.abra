@@ -1,1 +1,0 @@
-val a: Int = if true "123" else 456

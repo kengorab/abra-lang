@@ -1,0 +1,9 @@
+self.b.c
+123.foo 1.2.abc
+1 + 2.foo
+(1 + 2).foo
+
+self.b?.c
+123?.foo 1.2?.abc
+1 + 2?.foo 
+(1 + 2)?.foo

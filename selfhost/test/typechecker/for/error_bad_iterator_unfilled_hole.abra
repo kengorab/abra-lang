@@ -1,3 +1,0 @@
-for x in [] {
-  val _: Int = x
-}

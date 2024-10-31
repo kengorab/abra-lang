@@ -1,7 +1,0 @@
-type Foo {
-  fn: (Int) => Int
-}
-
-var f: Foo
-val i = f.fn(1)
-val _: Int = i

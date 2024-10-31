@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:2:12
+Invalid destructuring
+  |  if arr[0] |(a, b)| {
+                ^
+A value of type 'Int' cannot be destructured as a tuple

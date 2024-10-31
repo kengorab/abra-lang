@@ -1,0 +1,220 @@
+{
+  "imports": [],
+  "nodes": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "a", "position": [1, 5] }
+        },
+        "typeAnnotation": null,
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "b", "position": [2, 5] }
+        },
+        "typeAnnotation": null,
+        "expr": null
+      }
+    },
+    {
+      "token": {
+        "position": [3, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "a", "position": [3, 5] }
+        },
+        "typeAnnotation": null,
+        "expr": {
+          "token": {
+            "position": [3, 9],
+            "kind": {
+              "name": "LBrack"
+            }
+          },
+          "kind": {
+            "name": "array",
+            "items": [
+              {
+                "token": {
+                  "position": [3, 10],
+                  "kind": {
+                    "name": "Int",
+                    "value": 123
+                  }
+                },
+                "kind": {
+                  "name": "literal",
+                  "type": "int",
+                  "value": 123
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [4, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "c", "position": [4, 5] }
+        },
+        "typeAnnotation": null,
+        "expr": {
+          "token": {
+            "position": [4, 11],
+            "kind": {
+              "name": "Plus"
+            }
+          },
+          "kind": {
+            "name": "binary",
+            "op": "BinaryOp.Add",
+            "left": {
+              "token": {
+                "position": [4, 9],
+                "kind": {
+                  "name": "Ident",
+                  "value": "a"
+                }
+              },
+              "kind": {
+                "name": "identifier",
+                "ident": "a"
+              }
+            },
+            "right": {
+              "token": {
+                "position": [4, 13],
+                "kind": {
+                  "name": "Ident",
+                  "value": "b"
+                }
+              },
+              "kind": {
+                "name": "identifier",
+                "ident": "b"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [6, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "c", "position": [6, 5] }
+        },
+        "typeAnnotation": {
+          "kind": "normal",
+          "label": { "name": "Int", "position": [6, 8] },
+          "typeArguments": []
+        },
+        "expr": {
+          "token": {
+            "position": [6, 14],
+            "kind": {
+              "name": "Int",
+              "value": 1
+            }
+          },
+          "kind": {
+            "name": "literal",
+            "type": "int",
+            "value": 1
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [7, 1],
+        "kind": {
+          "name": "Var"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "d", "position": [7, 5] }
+        },
+        "typeAnnotation": {
+          "kind": "option",
+          "inner": {
+            "kind": "array",
+            "inner": {
+              "kind": "normal",
+              "label": { "name": "Int", "position": [7, 8] },
+              "typeArguments": []
+            }
+          }
+        },
+        "expr": {
+          "token": {
+            "position": [7, 17],
+            "kind": {
+              "name": "LBrack"
+            }
+          },
+          "kind": {
+            "name": "array",
+            "items": []
+          }
+        }
+      }
+    }
+  ]
+}

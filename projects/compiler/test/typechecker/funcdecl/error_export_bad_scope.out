@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:2:3
+Unexpected token 'export':
+  |    export func foo(self) {}
+       ^

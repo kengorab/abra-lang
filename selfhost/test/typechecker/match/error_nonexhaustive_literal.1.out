@@ -1,6 +1,0 @@
-Error at %FILE_NAME%:1:9
-Non-exhaustive match expression
-  |  val x = match 123 {
-             ^
-Match target type 'Int' is not covered by all cases
-(You can use a wildcard to capture remaining cases)

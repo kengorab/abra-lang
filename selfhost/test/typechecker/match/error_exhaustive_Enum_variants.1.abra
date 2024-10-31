@@ -1,9 +1,0 @@
-enum Color { Red, Green, Blue }
-
-val c = Color.Green
-val x = match c {
-  Color.Red => 1
-  Color.Green => 2
-  Color.Blue => 3
-  _ => 4
-}

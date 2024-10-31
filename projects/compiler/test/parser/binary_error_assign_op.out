@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:7
+Unexpected token '+=':
+  |  a * a += 1 + 2
+           ^

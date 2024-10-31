@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:6:3
+Cannot assign to method 'foo'
+  |  f.foo = "abcd"
+       ^
+'foo' is a method, which cannot be overwritten

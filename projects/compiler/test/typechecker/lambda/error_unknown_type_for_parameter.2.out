@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:1:10
+Could not determine type for parameter 'b'
+  |  (a: Int, b) => 123
+              ^
+Consider adding a type annotation

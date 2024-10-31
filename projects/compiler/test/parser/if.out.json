@@ -1,0 +1,797 @@
+{
+  "imports": [],
+  "nodes": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "If"
+        }
+      },
+      "kind": {
+        "name": "if",
+        "condition": {
+          "token": {
+            "position": [1, 8],
+            "kind": {
+              "name": "And"
+            }
+          },
+          "kind": {
+            "name": "binary",
+            "op": "BinaryOp.And",
+            "left": {
+              "token": {
+                "position": [1, 4],
+                "kind": {
+                  "name": "Ident",
+                  "value": "foo"
+                }
+              },
+              "kind": {
+                "name": "identifier",
+                "ident": "foo"
+              }
+            },
+            "right": {
+              "token": {
+                "position": [1, 11],
+                "kind": {
+                  "name": "Ident",
+                  "value": "bar"
+                }
+              },
+              "kind": {
+                "name": "identifier",
+                "ident": "bar"
+              }
+            }
+          }
+        },
+        "conditionBinding": null,
+        "ifBlock": [
+          {
+            "token": {
+              "position": [2, 3],
+              "kind": {
+                "name": "Val"
+              }
+            },
+            "kind": {
+              "name": "bindingDecl",
+              "decorators": [],
+              "exportToken": null,
+              "bindingPattern": {
+                "kind": "variable",
+                "label": { "name": "x", "position": [2, 7] }
+              },
+              "typeAnnotation": null,
+              "expr": {
+                "token": {
+                  "position": [2, 11],
+                  "kind": {
+                    "name": "Int",
+                    "value": 1
+                  }
+                },
+                "kind": {
+                  "name": "literal",
+                  "type": "int",
+                  "value": 1
+                }
+              }
+            }
+          },
+          {
+            "token": {
+              "position": [3, 3],
+              "kind": {
+                "name": "Int",
+                "value": 2
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "int",
+              "value": 2
+            }
+          }
+        ],
+        "elseBlock": null
+      }
+    },
+    {
+      "token": {
+        "position": [6, 1],
+        "kind": {
+          "name": "If"
+        }
+      },
+      "kind": {
+        "name": "if",
+        "condition": {
+          "token": {
+            "position": [6, 4],
+            "kind": {
+              "name": "Ident",
+              "value": "foo"
+            }
+          },
+          "kind": {
+            "name": "identifier",
+            "ident": "foo"
+          }
+        },
+        "conditionBinding": {
+          "kind": "variable",
+          "label": { "name": "a", "position": [6, 9] }
+        },
+        "ifBlock": [
+          {
+            "token": {
+              "position": [7, 3],
+              "kind": {
+                "name": "Int",
+                "value": 2
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "int",
+              "value": 2
+            }
+          }
+        ],
+        "elseBlock": [
+          {
+            "token": {
+              "position": [9, 3],
+              "kind": {
+                "name": "Int",
+                "value": 3
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "int",
+              "value": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [12, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "x", "position": [12, 5] }
+        },
+        "typeAnnotation": null,
+        "expr": {
+          "token": {
+            "position": [12, 9],
+            "kind": {
+              "name": "If"
+            }
+          },
+          "kind": {
+            "name": "if",
+            "condition": {
+              "token": {
+                "position": [12, 12],
+                "kind": {
+                  "name": "Ident",
+                  "value": "foo"
+                }
+              },
+              "kind": {
+                "name": "identifier",
+                "ident": "foo"
+              }
+            },
+            "conditionBinding": {
+              "kind": "variable",
+              "label": { "name": "a", "position": [12, 17] }
+            },
+            "ifBlock": [
+              {
+                "token": {
+                  "position": [12, 22],
+                  "kind": {
+                    "name": "Plus"
+                  }
+                },
+                "kind": {
+                  "name": "binary",
+                  "op": "BinaryOp.Add",
+                  "left": {
+                    "token": {
+                      "position": [12, 20],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "a"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "a"
+                    }
+                  },
+                  "right": {
+                    "token": {
+                      "position": [12, 24],
+                      "kind": {
+                        "name": "Int",
+                        "value": 2
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 2
+                    }
+                  }
+                }
+              }
+            ],
+            "elseBlock": []
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [13, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "y", "position": [13, 5] }
+        },
+        "typeAnnotation": null,
+        "expr": {
+          "token": {
+            "position": [13, 9],
+            "kind": {
+              "name": "If"
+            }
+          },
+          "kind": {
+            "name": "if",
+            "condition": {
+              "token": {
+                "position": [13, 12],
+                "kind": {
+                  "name": "Ident",
+                  "value": "foo"
+                }
+              },
+              "kind": {
+                "name": "identifier",
+                "ident": "foo"
+              }
+            },
+            "conditionBinding": null,
+            "ifBlock": [
+              {
+                "token": {
+                  "position": [13, 18],
+                  "kind": {
+                    "name": "Plus"
+                  }
+                },
+                "kind": {
+                  "name": "binary",
+                  "op": "BinaryOp.Add",
+                  "left": {
+                    "token": {
+                      "position": [13, 16],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "a"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "a"
+                    }
+                  },
+                  "right": {
+                    "token": {
+                      "position": [13, 20],
+                      "kind": {
+                        "name": "Int",
+                        "value": 2
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 2
+                    }
+                  }
+                }
+              }
+            ],
+            "elseBlock": null
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [14, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "y", "position": [14, 5] }
+        },
+        "typeAnnotation": null,
+        "expr": {
+          "token": {
+            "position": [14, 9],
+            "kind": {
+              "name": "If"
+            }
+          },
+          "kind": {
+            "name": "if",
+            "condition": {
+              "token": {
+                "position": [14, 12],
+                "kind": {
+                  "name": "Ident",
+                  "value": "foo"
+                }
+              },
+              "kind": {
+                "name": "identifier",
+                "ident": "foo"
+              }
+            },
+            "conditionBinding": null,
+            "ifBlock": [],
+            "elseBlock": [
+              {
+                "token": {
+                  "position": [14, 26],
+                  "kind": {
+                    "name": "Plus"
+                  }
+                },
+                "kind": {
+                  "name": "binary",
+                  "op": "BinaryOp.Add",
+                  "left": {
+                    "token": {
+                      "position": [14, 24],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "a"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "a"
+                    }
+                  },
+                  "right": {
+                    "token": {
+                      "position": [14, 28],
+                      "kind": {
+                        "name": "Int",
+                        "value": 1
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [16, 1],
+        "kind": {
+          "name": "If"
+        }
+      },
+      "kind": {
+        "name": "if",
+        "condition": {
+          "token": {
+            "position": [16, 4],
+            "kind": {
+              "name": "If"
+            }
+          },
+          "kind": {
+            "name": "if",
+            "condition": {
+              "token": {
+                "position": [16, 7],
+                "kind": {
+                  "name": "Int",
+                  "value": 1
+                }
+              },
+              "kind": {
+                "name": "literal",
+                "type": "int",
+                "value": 1
+              }
+            },
+            "conditionBinding": null,
+            "ifBlock": [
+              {
+                "token": {
+                  "position": [16, 9],
+                  "kind": {
+                    "name": "Bool",
+                    "value": true
+                  }
+                },
+                "kind": {
+                  "name": "literal",
+                  "type": "bool",
+                  "value": true
+                }
+              }
+            ],
+            "elseBlock": [
+              {
+                "token": {
+                  "position": [16, 19],
+                  "kind": {
+                    "name": "Bool",
+                    "value": false
+                  }
+                },
+                "kind": {
+                  "name": "literal",
+                  "type": "bool",
+                  "value": false
+                }
+              }
+            ]
+          }
+        },
+        "conditionBinding": null,
+        "ifBlock": [
+          {
+            "token": {
+              "position": [16, 25],
+              "kind": {
+                "name": "String",
+                "value": "then"
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "string",
+              "value": "then"
+            }
+          }
+        ],
+        "elseBlock": [
+          {
+            "token": {
+              "position": [16, 37],
+              "kind": {
+                "name": "String",
+                "value": "else"
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "string",
+              "value": "else"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [18, 1],
+        "kind": {
+          "name": "If"
+        }
+      },
+      "kind": {
+        "name": "if",
+        "condition": {
+          "token": {
+            "position": [18, 13],
+            "kind": {
+              "name": "LParen"
+            }
+          },
+          "kind": {
+            "name": "invocation",
+            "invokee": {
+              "token": {
+                "position": [18, 8],
+                "kind": {
+                  "name": "Dot"
+                }
+              },
+              "kind": {
+                "name": "accessor",
+                "root": {
+                  "token": {
+                    "position": [18, 4],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "some"
+                    }
+                  },
+                  "kind": {
+                    "name": "identifier",
+                    "ident": "some"
+                  }
+                },
+                "path": [
+                  {
+                    "dotToken": {
+                      "position": [18, 8],
+                      "kind": {
+                        "name": "Dot"
+                      }
+                    },
+                    "ident": "cond",
+                    "position": [18, 9]
+                  }
+                ]
+              }
+            },
+            "typeArguments": [],
+            "arguments": []
+          }
+        },
+        "conditionBinding": null,
+        "ifBlock": [
+          {
+            "token": {
+              "position": [18, 16],
+              "kind": {
+                "name": "String",
+                "value": "then"
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "string",
+              "value": "then"
+            }
+          }
+        ],
+        "elseBlock": [
+          {
+            "token": {
+              "position": [18, 28],
+              "kind": {
+                "name": "If"
+              }
+            },
+            "kind": {
+              "name": "if",
+              "condition": {
+                "token": {
+                  "position": [18, 31],
+                  "kind": {
+                    "name": "Bang"
+                  }
+                },
+                "kind": {
+                  "name": "unary",
+                  "op": "UnaryOp.Negate",
+                  "expr": {
+                    "token": {
+                      "position": [18, 36],
+                      "kind": {
+                        "name": "Dot"
+                      }
+                    },
+                    "kind": {
+                      "name": "accessor",
+                      "root": {
+                        "token": {
+                          "position": [18, 32],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "some"
+                          }
+                        },
+                        "kind": {
+                          "name": "identifier",
+                          "ident": "some"
+                        }
+                      },
+                      "path": [
+                        {
+                          "dotToken": {
+                            "position": [18, 36],
+                            "kind": {
+                              "name": "Dot"
+                            }
+                          },
+                          "ident": "cond",
+                          "position": [18, 37]
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "conditionBinding": null,
+              "ifBlock": [
+                {
+                  "token": {
+                    "position": [18, 42],
+                    "kind": {
+                      "name": "String",
+                      "value": "elseif"
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "string",
+                    "value": "elseif"
+                  }
+                }
+              ],
+              "elseBlock": [
+                {
+                  "token": {
+                    "position": [18, 56],
+                    "kind": {
+                      "name": "String",
+                      "value": "else"
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "string",
+                    "value": "else"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [20, 1],
+        "kind": {
+          "name": "If"
+        }
+      },
+      "kind": {
+        "name": "if",
+        "condition": {
+          "token": {
+            "position": [20, 4],
+            "kind": {
+              "name": "Ident",
+              "value": "foo"
+            }
+          },
+          "kind": {
+            "name": "identifier",
+            "ident": "foo"
+          }
+        },
+        "conditionBinding": {
+          "kind": "variable",
+          "label": { "name": "a", "position": [20, 9] }
+        },
+        "ifBlock": [
+          {
+            "token": {
+              "position": [21, 3],
+              "kind": {
+                "name": "If"
+              }
+            },
+            "kind": {
+              "name": "if",
+              "condition": {
+                "token": {
+                  "position": [21, 6],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "something"
+                  }
+                },
+                "kind": {
+                  "name": "identifier",
+                  "ident": "something"
+                }
+              },
+              "conditionBinding": null,
+              "ifBlock": [
+                {
+                  "token": {
+                    "position": [22, 5],
+                    "kind": {
+                      "name": "String",
+                      "value": "foo"
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "string",
+                    "value": "foo"
+                  }
+                }
+              ],
+              "elseBlock": [
+                {
+                  "token": {
+                    "position": [24, 5],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "somethingElse"
+                    }
+                  },
+                  "kind": {
+                    "name": "identifier",
+                    "ident": "somethingElse"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "elseBlock": [
+          {
+            "token": {
+              "position": [27, 3],
+              "kind": {
+                "name": "Int",
+                "value": 3
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "int",
+              "value": 3
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

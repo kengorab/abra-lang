@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:2:10
+Return type mismatch for function 'foo'
+  |    return "abcd"
+              ^
+Expected Unit
+but instead found String

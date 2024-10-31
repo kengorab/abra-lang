@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:1:22
+Type mismatch
+  |  val a: Set<String> = "abcd"
+                          ^
+Expected: Set<String>
+but instead found: String

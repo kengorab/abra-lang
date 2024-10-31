@@ -1,0 +1,56 @@
+type Foo { }
+type Foo<A, B> { }
+type Foo<A> { a: A, b: Bool }
+type Foo {
+  a: Int
+  b: Bool = true
+}
+
+type FooBar123 {
+  func foo(self, b: String) {}
+}
+
+type FooBar123 {
+  a: Int
+
+  func foo(self, b: String): X<Y> = 123
+  func bar(self, b = true) { self.a + b }
+}
+
+type FooBar123 {
+  a: Int
+
+  func foo(self, b: String): X<Y> = 123
+
+  @Foo
+  func bar(self, b = true) { self.a + b }
+}
+
+type Outer {
+  a: Int
+
+  func foo(self, b: String): X<Y> { 123 }
+
+  type InnerType {
+    a: Int
+
+    func bar(self, b = true) { self.a + b }
+  }
+
+  enum InnerEnum {
+    A(a: Int)
+
+    func bar(self, b = true) { self.a + b }
+  }
+}
+
+@Bar("a")
+export type Outer {
+  a: Int
+
+  @Bar("b")
+  func foo(self, b: String): X<Y> { 123 }
+
+  @Bar("c")
+  type Inner { a: Int }
+}

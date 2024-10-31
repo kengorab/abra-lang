@@ -1,0 +1,3 @@
+enum Foo {
+  Bar(a: Int, b: String, b: Int)
+}

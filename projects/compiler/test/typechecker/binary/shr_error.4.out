@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:3:3
+Illegal operator
+  |  a >> 1
+       ^
+No operator '>>' exists between types Int? and Int

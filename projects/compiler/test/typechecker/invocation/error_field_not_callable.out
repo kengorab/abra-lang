@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:6:3
+Cannot invoke target as function
+  |  f.int(1)
+       ^
+Type 'Int' is not callable

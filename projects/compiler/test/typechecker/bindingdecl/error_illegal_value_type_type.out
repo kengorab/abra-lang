@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:3:9
+Forbidden type for value
+  |  val f = Foo
+             ^
+Expression has type <#type Foo>, which cannot be used as a value

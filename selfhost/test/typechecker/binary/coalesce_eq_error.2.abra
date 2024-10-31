@@ -1,3 +1,0 @@
-var a: Int? = 12
-val b: Int? = None
-a ?:= b

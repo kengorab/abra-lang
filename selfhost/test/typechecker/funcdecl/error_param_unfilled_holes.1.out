@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:1:11
-Could not determine type for parameter
-  |  func foo(*a = []) {}
-               ^
-Type '<unknown>' has unfilled holes. Please use an explicit type annotation to denote the type

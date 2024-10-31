@@ -1,2 +1,0 @@
-func foo(a: Int, b = 123, c = true, d = "abcd"): Int = 123
-foo(1, x: 123)

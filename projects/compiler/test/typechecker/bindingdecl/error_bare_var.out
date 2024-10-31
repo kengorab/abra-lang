@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:1:5
+Could not determine type of mutable variable 'a'
+  |  var a
+         ^
+A 'var' must have either an initial value or a type annotation (or both)

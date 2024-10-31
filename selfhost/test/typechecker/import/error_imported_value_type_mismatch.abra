@@ -1,3 +1,0 @@
-import a from "./_exports"
-
-val _: Int[] = a

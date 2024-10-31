@@ -1,6 +1,0 @@
-enum Foo<T> {
-  Bar(a: T)
-}
-
-val f = Foo.Bar(a: 123)
-val _: Foo<Int> = f

@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:3:6
+Unknown field 'foo'
+  |  noop.foo
+          ^
+Functions don't have any fields or methods

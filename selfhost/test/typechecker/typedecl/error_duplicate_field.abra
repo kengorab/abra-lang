@@ -1,5 +1,0 @@
-type Foo {
-  a: Int
-  b: Bool
-  a: String
-}

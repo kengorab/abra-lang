@@ -1,0 +1,4 @@
+while true {
+  val x = if true continue else 123
+  val y = -123
+}

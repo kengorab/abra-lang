@@ -1,0 +1,7 @@
+Error at %FILE_NAME%:3:6
+Duplicate name 'add'
+  |  func add() {}
+          ^
+This name is also declared at (1:8)
+  |  import add from "./_exports"
+            ^

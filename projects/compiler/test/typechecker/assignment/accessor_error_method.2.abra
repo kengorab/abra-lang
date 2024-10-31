@@ -1,0 +1,5 @@
+type Foo {
+  func fooStatic() {}
+}
+
+Foo.fooStatic = "abcd"

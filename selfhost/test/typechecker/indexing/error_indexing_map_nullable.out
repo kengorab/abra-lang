@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:2:1
-Unsupported indexing operation
-  |  map["c"]
-     ^
-Type 'Map<String, Int>?' is not indexable

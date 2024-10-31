@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:2:3
-Illegal operator
-  |  a &&= 15
-       ^
-No operator '&&' exists between types Bool and Int

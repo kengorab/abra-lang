@@ -1,3 +1,0 @@
-type Foo { a: Int, b: String, c: Int = 123, d: String, e: Int, f: Float, g: Bool }
-
-val f = Foo(a: 123)

@@ -1,0 +1,28 @@
+if foo && bar {
+  val x = 1
+  2
+}
+
+if foo |a| {
+  2
+} else {
+  3
+}
+
+val x = if foo |a| a + 2 else { }
+val y = if foo a + 2
+val y = if foo {} else a + 1
+
+if if 1 true else false "then" else "else"
+
+if some.cond() "then" else if !some.cond "elseif" else "else"
+
+if foo |a| {
+  if something {
+    "foo"
+  } else {
+    somethingElse
+  }
+} else {
+  3
+}

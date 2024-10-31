@@ -1,0 +1,86 @@
+[
+  {
+    "position": [1, 1],
+    "kind": {
+      "name": "StringInterpolation",
+      "chunks": [
+        {
+          "position": [1, 1],
+          "kind": {
+            "name": "String",
+            "value": "hello "
+          }
+        },
+        [
+          {
+            "position": [1, 10],
+            "kind": {
+              "name": "Ident",
+              "value": "a"
+            }
+          },
+          {
+            "position": [1, 12],
+            "kind": {
+              "name": "Plus"
+            }
+          },
+          {
+            "position": [1, 14],
+            "kind": {
+              "name": "StringInterpolation",
+              "chunks": [
+                {
+                  "position": [1, 14],
+                  "kind": {
+                    "name": "String",
+                    "value": ""
+                  }
+                },
+                [
+                  {
+                    "position": [1, 16],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "b"
+                    }
+                  }
+                ],
+                {
+                  "position": [1, 17],
+                  "kind": {
+                    "name": "String",
+                    "value": " - "
+                  }
+                },
+                [
+                  {
+                    "position": [1, 21],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "c"
+                    }
+                  }
+                ],
+                {
+                  "position": [1, 22],
+                  "kind": {
+                    "name": "String",
+                    "value": ""
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        {
+          "position": [1, 24],
+          "kind": {
+            "name": "String",
+            "value": "!"
+          }
+        }
+      ]
+    }
+  }
+]

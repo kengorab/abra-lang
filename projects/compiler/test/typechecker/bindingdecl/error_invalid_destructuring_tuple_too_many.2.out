@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:2:12
+Incorrect number of destructuring arguments for tuple
+  |  val (a, b, c) = x
+                ^
+Expected 2, but 3 were provided

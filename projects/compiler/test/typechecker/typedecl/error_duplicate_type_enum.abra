@@ -1,0 +1,2 @@
+type Foo { a: Int }
+enum Foo { Bar }

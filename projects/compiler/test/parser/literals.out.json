@@ -1,0 +1,103 @@
+{
+  "imports": [],
+  "nodes": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Int",
+          "value": 123
+        }
+      },
+      "kind": {
+        "name": "literal",
+        "type": "int",
+        "value": 123
+      }
+    },
+    {
+      "token": {
+        "position": [1, 5],
+        "kind": {
+          "name": "Int",
+          "value": 456
+        }
+      },
+      "kind": {
+        "name": "literal",
+        "type": "int",
+        "value": 456
+      }
+    },
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Float",
+          "value": 1.23
+        }
+      },
+      "kind": {
+        "name": "literal",
+        "type": "float",
+        "value": 1.23
+      }
+    },
+    {
+      "token": {
+        "position": [2, 6],
+        "kind": {
+          "name": "Float",
+          "value": 0.0123
+        }
+      },
+      "kind": {
+        "name": "literal",
+        "type": "float",
+        "value": 0.0123
+      }
+    },
+    {
+      "token": {
+        "position": [3, 1],
+        "kind": {
+          "name": "Bool",
+          "value": true
+        }
+      },
+      "kind": {
+        "name": "literal",
+        "type": "bool",
+        "value": true
+      }
+    },
+    {
+      "token": {
+        "position": [3, 6],
+        "kind": {
+          "name": "Bool",
+          "value": false
+        }
+      },
+      "kind": {
+        "name": "literal",
+        "type": "bool",
+        "value": false
+      }
+    },
+    {
+      "token": {
+        "position": [4, 1],
+        "kind": {
+          "name": "String",
+          "value": "hello world 1234"
+        }
+      },
+      "kind": {
+        "name": "literal",
+        "type": "string",
+        "value": "hello world 1234"
+      }
+    }
+  ]
+}

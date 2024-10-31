@@ -1,3 +1,0 @@
-val str = "abcd"
-val i: Int? = Some(1)
-str[i]

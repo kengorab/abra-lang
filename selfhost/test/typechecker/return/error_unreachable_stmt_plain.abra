@@ -1,4 +1,0 @@
-func foo(): Int {
-  return 123
-  val x = 123
-}

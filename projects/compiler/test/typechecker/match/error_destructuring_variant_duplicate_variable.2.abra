@@ -1,0 +1,6 @@
+enum Color { RGB(r: Int, g: Int, b: Int) }
+
+val c = Color.RGB(r: 0, g: 0, b: 0)
+val x = match c {
+  Color.RGB(r, g, b) r => r + g
+}
