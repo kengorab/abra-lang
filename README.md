@@ -1,9 +1,11 @@
 # Abra
 A small statically-typed compiled programming language.
 
-Originally written in Rust, but recently self-hosted (the compiler is written in itself).
+Originally written in Rust, but now self-hosted (the compiler is written in itself). The original Rust-based implementation
+has been extracted out and can be found [here](https://github.com/kengorab/abra-lang-old) for historical reference.
 
-![Build & Test](https://github.com/kengorab/abra-lang/workflows/Build%20&%20Test/badge.svg)
+![Test](https://github.com/kengorab/abra-lang/workflows/Test/badge.svg)
+![Release](https://github.com/kengorab/abra-lang/workflows/Release/badge.svg)
 
 This project is very much a work in progress: you can check the [documentation site](https://abra.kenrg.co) for more information
 
@@ -26,9 +28,9 @@ It should look familiar, a lot of inspiration was drawn from modern languages li
 
 ```swift
 func fib(n: Int): Int {
-  if (n == 0) {
+  if n == 0 {
     0
-  } else if (n == 1) {
+  } else if n == 1 {
     1
   } else {
     fib(n - 2) + fib(n - 1)

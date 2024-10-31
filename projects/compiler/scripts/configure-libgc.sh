@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 
-set -e # exit on non-zero exit status
-
 # Clone and configure [libgc](https://github.com/ivmai/bdwgc)
-# The end result of this script is to build the gc.a lib file
-# and copy that file along with the include/ directory into
-# projects/compiler/ext.
+
+set -e # exit on non-zero exit status
 
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 
@@ -13,8 +10,6 @@ SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 cd "$SCRIPT_DIR/.."
 
 EXT_DIR="ext"
-#C_TARGET_ROOT="abra_core/src/transpile/target/c"
-#LLVM_TARGET_ROOT="abra_llvm/ext"
 
 echo "Make $EXT_DIR dir"
 echo "============"
@@ -27,9 +22,11 @@ cd "$EXT_DIR"
 
 echo "Cloning bdwgc repo"
 echo "=================="
-git clone https://github.com/ivmai/bdwgc.git
+git clone --depth=1 https://github.com/ivmai/bdwgc.git
+rm -rf bdwgc/.git
 cd bdwgc
-git clone https://github.com/ivmai/libatomic_ops.git
+git clone --depth=1 https://github.com/ivmai/libatomic_ops.git
+rm -rf libatomic_ops/.git
 echo "Configuring bdwgc"
 ls -la
 ./autogen.sh
@@ -39,45 +36,5 @@ make check
 
 echo "Generate gc.a"
 make -f Makefile.direct base_lib
-
-#cd ../..
-#
-#echo "Copying files into place"
-#echo "========================"
-#if [ ! -d "$C_TARGET_ROOT/libgc" ]; then
-#  echo "Creating $C_TARGET_ROOT/libgc directory"
-#  mkdir "$C_TARGET_ROOT/libgc"
-#fi
-#if [ ! -d "$LLVM_TARGET_ROOT" ]; then
-#  mkdir "$LLVM_TARGET_ROOT"
-#fi
-#if [ ! -d "$LLVM_TARGET_ROOT/libgc" ]; then
-#  echo "Creating $LLVM_TARGET_ROOT/libgc directory"
-#  mkdir "$LLVM_TARGET_ROOT/libgc"
-#fi
-#
-#if [ -d "$C_TARGET_ROOT/libgc/include" ]; then
-#  echo "Removing existing $C_TARGET_ROOT/libgc/include directory"
-#  rm -rf "$C_TARGET_ROOT/libgc/include"
-#fi
-#cp -R "$EXT_DIR/bdwgc/include" "$C_TARGET_ROOT/libgc/."
-#if [ -d "$LLVM_TARGET_ROOT/libgc/include" ]; then
-#  echo "Removing existing $LLVM_TARGET_ROOT/libgc/include directory"
-#  rm -rf "$LLVM_TARGET_ROOT/libgc/include"
-#fi
-#cp -R "$EXT_DIR/bdwgc/include" "$LLVM_TARGET_ROOT/libgc/."
-#
-#if [ -d "$C_TARGET_ROOT/libgc/lib" ]; then
-#  echo "Removing existing $C_TARGET_ROOT/libgc/lib directory"
-#  rm -rf "$C_TARGET_ROOT/libgc/lib"
-#fi
-#mkdir "$C_TARGET_ROOT/libgc/lib"
-#cp "$EXT_DIR/bdwgc/libgc.a" "$C_TARGET_ROOT/libgc/lib/."
-#if [ -d "$LLVM_TARGET_ROOT/libgc/lib" ]; then
-#  echo "Removing existing $LLVM_TARGET_ROOT/libgc/lib directory"
-#  rm -rf "$LLVM_TARGET_ROOT/libgc/lib"
-#fi
-#mkdir "$LLVM_TARGET_ROOT/libgc/lib"
-#cp "$EXT_DIR/bdwgc/libgc.a" "$LLVM_TARGET_ROOT/libgc/lib/."
 
 echo "All done!"
