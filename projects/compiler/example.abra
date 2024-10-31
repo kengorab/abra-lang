@@ -1,1 +1,1 @@
-println("Hello world")
+val x = try

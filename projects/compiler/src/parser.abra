@@ -268,6 +268,7 @@ export enum AstNodeKind {
   Assignment(expr: AstNode, op: AssignOp, mode: AssignmentMode)
   If(condition: AstNode, conditionBinding: BindingPattern?, ifBlock: AstNode[], elseBlock: AstNode[]?)
   Match(expr: AstNode, cases: MatchCase[])
+  Try(expr: AstNode)
   While(condition: AstNode, conditionBinding: BindingPattern?, block: AstNode[])
   For(itemPattern: BindingPattern, indexPattern: BindingPattern?, iterator: AstNode, block: AstNode[])
   BindingDeclaration(value: BindingDeclarationNode)
@@ -1123,6 +1124,7 @@ export type Parser {
       TokenKind.LBrace => self._parseMap()
       TokenKind.If => self._parseIf()
       TokenKind.Match => self._parseMatch()
+      TokenKind.Try => self._parseTry()
       _ => Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
     }
   }
@@ -1496,6 +1498,13 @@ export type Parser {
     self._advance() // consume '}' token
 
     Ok(AstNode(token: token, kind: AstNodeKind.Match(expr, cases)))
+  }
+
+  func _parseTry(self): Result<AstNode, ParseError> {
+    val token = match self._expectNext() { Ok(v) => v, Err(e) => return Err(e) }
+    val expr = match self._parseExpression() { Ok(v) => v, Err(e) => return Err(e) }
+
+    Ok(AstNode(token: token, kind: AstNodeKind.Try(expr)))
   }
 
   func _parseWhileLoop(self): Result<AstNode, ParseError> {

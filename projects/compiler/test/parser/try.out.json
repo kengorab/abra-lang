@@ -1,0 +1,138 @@
+{
+  "imports": [],
+  "nodes": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "x", "position": [1, 5] }
+        },
+        "typeAnnotation": null,
+        "expr": {
+          "token": {
+            "position": [1, 9],
+            "kind": {
+              "name": "Try"
+            }
+          },
+          "kind": {
+            "name": "try",
+            "expr": {
+              "token": {
+                "position": [1, 16],
+                "kind": {
+                  "name": "LParen"
+                }
+              },
+              "kind": {
+                "name": "invocation",
+                "invokee": {
+                  "token": {
+                    "position": [1, 13],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "foo"
+                    }
+                  },
+                  "kind": {
+                    "name": "identifier",
+                    "ident": "foo"
+                  }
+                },
+                "typeArguments": [],
+                "arguments": []
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [2, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "y", "position": [2, 5] }
+        },
+        "typeAnnotation": null,
+        "expr": {
+          "token": {
+            "position": [2, 9],
+            "kind": {
+              "name": "Try"
+            }
+          },
+          "kind": {
+            "name": "try",
+            "expr": {
+              "token": {
+                "position": [2, 18],
+                "kind": {
+                  "name": "Dot"
+                }
+              },
+              "kind": {
+                "name": "accessor",
+                "root": {
+                  "token": {
+                    "position": [2, 16],
+                    "kind": {
+                      "name": "LParen"
+                    }
+                  },
+                  "kind": {
+                    "name": "invocation",
+                    "invokee": {
+                      "token": {
+                        "position": [2, 13],
+                        "kind": {
+                          "name": "Ident",
+                          "value": "foo"
+                        }
+                      },
+                      "kind": {
+                        "name": "identifier",
+                        "ident": "foo"
+                      }
+                    },
+                    "typeArguments": [],
+                    "arguments": []
+                  }
+                },
+                "path": [
+                  {
+                    "dotToken": {
+                      "position": [2, 18],
+                      "kind": {
+                        "name": "Dot"
+                      }
+                    },
+                    "ident": "abc",
+                    "position": [2, 19]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

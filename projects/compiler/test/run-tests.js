@@ -105,6 +105,10 @@ const PARSER_TESTS = [
   { test: "parser/indexing.abra", assertions: "parser/indexing.out.json" },
   { test: "parser/indexing_error_eof.abra", assertions: "parser/indexing_error_eof.out" },
   { test: "parser/indexing_error_no_rbrack.abra", assertions: "parser/indexing_error_no_rbrack.out" },
+  // Try
+  { test: "parser/try.abra", assertions: "parser/try.out.json" },
+  { test: "parser/try_error_eof.abra", assertions: "parser/try_error_eof.out" },
+  { test: "parser/try_error_invalid_token.abra", assertions: "parser/try_error_invalid_token.out" },
   // Assignment
   { test: "parser/assignment.abra", assertions: "parser/assignment.out.json" },
   { test: "parser/assignment_error_as_expr.abra", assertions: "parser/assignment_error_as_expr.out" },
