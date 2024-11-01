@@ -673,6 +673,13 @@ export type Jsonifier {
         })
         println()
       }
+      TypedAstNodeKind.Try(expr) => {
+        self.println("\"kind\": \"try\",")
+
+        self.print("\"expr\": ")
+        self.printNode(expr)
+        println()
+      }
 
       // Statements
       TypedAstNodeKind.While(condition, conditionBindingPattern, block, _) => {

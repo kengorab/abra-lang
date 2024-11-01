@@ -1,4 +1,4 @@
-func foo<T>(): Result<T[], T[]> = Ok([])
+func foo<T, U>(): Result<T[], U[]> = Ok([])
 
 func bar(): Result<Int, String[]> {
   val x: Int[] = try foo()

@@ -528,6 +528,15 @@ const TYPECHECKER_TESTS = [
   { test: "typechecker/lambda/error_unknown_type_for_parameter.1.abra", assertions: "typechecker/lambda/error_unknown_type_for_parameter.1.out" },
   { test: "typechecker/lambda/error_unknown_type_for_parameter.2.abra", assertions: "typechecker/lambda/error_unknown_type_for_parameter.2.out" },
   { test: "typechecker/lambda/error_unknown_type_for_parameter.3.abra", assertions: "typechecker/lambda/error_unknown_type_for_parameter.3.out" },
+  // Try
+  { test: "typechecker/try/try.1.abra", assertions: "typechecker/try/try.1.out.json" },
+  { test: "typechecker/try/try.2.abra", assertions: "typechecker/try/try.2.out.json" },
+  { test: "typechecker/try/error_bad_location.1.abra", assertions: "typechecker/try/error_bad_location.1.out" },
+  { test: "typechecker/try/error_bad_location.2.abra", assertions: "typechecker/try/error_bad_location.2.out" },
+  { test: "typechecker/try/error_bad_return_type.abra", assertions: "typechecker/try/error_bad_return_type.out" },
+  { test: "typechecker/try/error_return_type_err_mismatch.abra", assertions: "typechecker/try/error_return_type_err_mismatch.out" },
+  { test: "typechecker/try/error_return_type_err_mismatch_generic.abra", assertions: "typechecker/try/error_return_type_err_mismatch_generic.out" },
+  { test: "typechecker/try/error_untryable_type.abra", assertions: "typechecker/try/error_untryable_type.out" },
 
   // Type identifiers
   { test: "typechecker/typeidentifier/error_typearg_unknown.abra", assertions: "typechecker/typeidentifier/error_typearg_unknown.out" },
