@@ -13,6 +13,7 @@ type CompilationError {
       Ok(v) => v
       Err => return "Could not read file '${self.modulePath}'"
     }
+    println("[getMessage]", self.error.position)
     self.error.getMessage(self.modulePath, contents)
   }
 }
@@ -26,9 +27,11 @@ type CompileError {
 
     match self.kind {
       CompileErrorKind.NotYetImplemented(reason) => {
+        println("hereee")
+        println(reason.length)
         lines.push("Not yet implemented:")
-        lines.push(self._getCursorLine(self.position, contents))
-        lines.push("Reason: $reason")
+        // lines.push(self._getCursorLine(self.position, contents))
+        // lines.push("Reason: $reason")
       }
       CompileErrorKind.Unreachable(message) => {
         lines.push("Unreachable code reached")
@@ -434,7 +437,7 @@ export type Compiler {
               (iter, typedIterator.ty, nextFn, false)
             }
           }
-          StructOrEnum.Enum(_enum) => return todo("enum as for-loop target")
+          StructOrEnum.Enum(_enum) => return todo_("enum as for-loop target")
         }
 
         val nextItemTy = if self._typeIsOption(nextFn.returnType) |innerTy| innerTy else return unreachable("a 'next' method must return an Option type")
@@ -1738,6 +1741,23 @@ export type Compiler {
         val res = match self._compileMatch(node, isStatement, expr, cases) { Ok(v) => v, Err(e) => return Err(e) }
         if res |res| Ok(res) else return unreachable("match expression needs a resulting value", node.token.position)
       }
+      TypedAstNodeKind.Try(expr) => {
+        val exprVal = match self._compileExpression(expr) { Ok(v) => v, Err(e) => return Err(e) }
+        val isErr = match self._emitResultValueIsOkVariant(exprVal, negate: true) { Ok(v) => v, Err(e) => return Err(e) }
+
+        val labelIsErr = self._currentFn.block.addLabel("isErr")
+        val labelCont = self._currentFn.block.addLabel("cont")
+        self._currentFn.block.buildJnz(isErr, labelIsErr, labelCont)
+
+        self._currentFn.block.registerLabel(labelIsErr)
+        self._currentFn.block.buildReturn(Some(exprVal))
+
+        self._currentFn.block.registerLabel(labelCont)
+        val okValTy = match self._getQbeTypeForTypeExpect(node.ty, "unacceptable type", None) { Ok(v) => v, Err(e) => return Err(e) }
+        val okValue = match self._emitResultValueGetValue(okValTy, exprVal) { Ok(v) => v, Err(e) => return Err(e) }
+
+        Ok(okValue)
+      }
       _ => unreachable("node must be a statement", node.token.position)
     }
 
@@ -1889,7 +1909,7 @@ export type Compiler {
           // No nextCaseLabel, since the `else` case will always be the last case if present
           (None, exprVal, exprType)
         }
-        _ => return todo("other match case types", node.token.position)
+        _ => return todo_("other match case types", node.token.position)
       }
 
       if case.binding |v| {
@@ -2409,7 +2429,7 @@ export type Compiler {
       TypeKind.PrimitiveBool => Ok(Some(QbeType.U64))
       TypeKind.PrimitiveString => Ok(Some(QbeType.Pointer))
       TypeKind.Never => Ok(None)
-      TypeKind.Any => todo("TypeKind.Any")
+      TypeKind.Any => todo_("TypeKind.Any")
       TypeKind.Generic(name) => {
         if self._resolvedGenerics.resolveGeneric(name) |ty| self._getQbeTypeForType(ty) else unreachable("unexpected generic '$name' at this point")
       }
@@ -2430,7 +2450,7 @@ export type Compiler {
         Ok(Some(QbeType.Pointer))
       }
       TypeKind.Func(paramTypes, returnType) => Ok(Some(QbeType.Pointer))
-      TypeKind.Type(type_) => todo("TypeKind.Type")
+      TypeKind.Type(type_) => todo_("TypeKind.Type")
       TypeKind.Tuple(_) => Ok(Some(QbeType.Pointer))
       TypeKind.Hole => unreachable("unexpected hole in emitted typed ast")
     }
@@ -2484,7 +2504,7 @@ export type Compiler {
           instTy = StructOrEnum.Enum(enum_)
         }
         AccessorPathSegment.Method(label, fn, isOptSafe, fnAliasTypeHint) => {
-          if isOptSafe return todo("opt-safe method accessor", label.position)
+          if isOptSafe return todo_("opt-safe method accessor", label.position)
 
           val selfInstType = match fn.kind {
             FunctionKind.InstanceMethod => {
@@ -2586,7 +2606,7 @@ export type Compiler {
                 curVal = nextVal
               }
             }
-            StructOrEnum.Enum(_enum) => return todo("enum field accessor")
+            StructOrEnum.Enum(_enum) => return todo_("enum field accessor")
           }
 
           if optSafeCtx |(labelIsNone, noneRes, someVariantFn, labelCont)| {
@@ -3014,7 +3034,7 @@ export type Compiler {
         val errnoFnName = match Process.uname().sysname {
           "Linux" => "__errno_location"
           "Darwin" => "__error"
-          _ sysname => return todo("[errno] unsupported system " + sysname)
+          _ sysname => return todo_("[errno] unsupported system " + sysname)
         }
         val errnoPtr = match self._currentFn.block.buildCallRaw(errnoFnName, QbeType.Pointer, []) { Ok(v) => v, Err(e) => return qbeError(e) }
         val errnoVal = self._currentFn.block.buildLoadW(errnoPtr)
@@ -4025,6 +4045,25 @@ export type Compiler {
     Ok(value)
   }
 
+  func _emitResultValueIsOkVariant(self, exprVal: Value, negate = false): Result<Value, CompileError> {
+    val variantIdx = self._emitGetEnumVariantIdx(exprVal)
+    val resultOkVariantIdx = if self._project.preludeResultEnum.variants.findIndex(v => v.label.name == "Ok") |(_, idx)| idx else return unreachable("Result.Ok must exist")
+    if negate {
+      val res = match self._currentFn.block.buildCompareNeq(variantIdx, Value.Int(resultOkVariantIdx)) { Ok(v) => v, Err(e) => return qbeError(e) }
+      Ok(res)
+    } else {
+      val res = match self._currentFn.block.buildCompareEq(variantIdx, Value.Int(resultOkVariantIdx)) { Ok(v) => v, Err(e) => return qbeError(e) }
+      Ok(res)
+    }
+  }
+
+  func _emitResultValueGetValue(self, ty: QbeType, exprVal: Value): Result<Value, CompileError> {
+    val valueSlot = match self._emitGetEnumVariantValueStart(exprVal) { Ok(v) => v, Err(e) => return Err(e) }
+    val value = self._currentFn.block.buildLoad(ty, valueSlot)
+
+    Ok(value)
+  }
+
   func _addResolvedGenericsLayerForInstanceMethod(self, ty: Type, methodName: String, position: Position, resolvedGenerics: Map<String, Type> = {}): Result<Type, CompileError> {
     val (structOrEnum, typeArgs) = match self._getInstanceTypeForType(ty) { Ok(v) => v, Err(e) => return Err(e) }
     val (template, selfInstanceType) = match structOrEnum {
@@ -4452,5 +4491,5 @@ export type Compiler {
   }
 }
 
-func todo<V>(message: String, position = Position(line: 0, col: 0)): Result<V, CompileError> = Err(CompileError(position: position, kind: CompileErrorKind.NotYetImplemented(message)))
+func todo_<V>(message: String, position = Position(line: 0, col: 0)): Result<V, CompileError> = Err(CompileError(position: position, kind: CompileErrorKind.NotYetImplemented(message)))
 func unreachable<V>(message: String, position = Position(line: 0, col: 0)): Result<V, CompileError> = Err(CompileError(position: position, kind: CompileErrorKind.Unreachable(message)))

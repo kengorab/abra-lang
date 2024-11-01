@@ -781,6 +781,7 @@ const COMPILER_TESTS = [
   { test: "compiler/maps.abra" },
   { test: "compiler/sets.abra" },
   { test: "compiler/match.abra" },
+  { test: "compiler/try.abra" },
   { test: 'compiler/process.abra', args: ['-f', 'bar', '--baz', 'qux'], env: { FOO: 'bar' } }
 ]
 
