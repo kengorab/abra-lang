@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "/Users/kengorab/Desktop/abra-lang/projects/compiler/test/typechecker/try/try.1.abra",
+  "name": "%FILE_NAME%",
   "code": [
     {
       "token": {
