@@ -227,11 +227,11 @@ export type Lexer {
     val tokens: Token[] = []
 
     val lexer = Lexer(_input: contents)
-    var nextToken = match lexer.nextToken() { Ok(v) => v, Err(e) => return Err(e) }
+    var nextToken = try lexer.nextToken()
     while nextToken |tok| {
       tokens.push(tok)
 
-      nextToken = match lexer.nextToken() { Ok(v) => v, Err(e) => return Err(e) }
+      nextToken = try lexer.nextToken()
     }
 
     Ok(tokens)
@@ -247,22 +247,16 @@ export type Lexer {
     val position = self._curPos()
 
     val token = if ch.isDigit() {
-      val tok = match self._tokenizeInteger(startPos: position) { Ok(v) => v Err(e) => return Err(e) }
-      tok
+      try self._tokenizeInteger(startPos: position)
     } else if ch == "\"" {
-      val tok = match self._tokenizeString() { Ok(v) => v Err(e) => return Err(e) }
-      tok
+      try self._tokenizeString()
     } else if ch.isAlpha() || ch == "_" {
       self._tokenizeIdentifier(startPos: position)
     } else if ch == "/" && (peek == "/" || peek == "*") {
       if self._skipComment() |error| return Err(error)
       return self.nextToken()
     } else {
-      val tok = match self._tokenizeSymbol(startPos: position, sawPreceedingNewline: sawNewline) {
-        Ok(v) => v
-        Err(e) => return Err(e)
-      }
-      tok
+      try self._tokenizeSymbol(startPos: position, sawPreceedingNewline: sawNewline)
     }
 
     Ok(Some(token))
@@ -468,7 +462,7 @@ export type Lexer {
           "\'" => "\'",
           "\"" => "\"",
           "$" => "$",
-          "u" => match self._parseUnicodeEscape(pos) { Ok(v) => v, Err(e) => return Err(e) }
+          "u" => try self._parseUnicodeEscape(pos)
           _ => return Err(LexerError(position: pos, kind: LexerErrorKind.UnsupportedEscapeSequence(seq: "\\$ch", isUnicode: false)))
         }
 
@@ -485,12 +479,12 @@ export type Lexer {
         self._advance() // consume '$'
         if self._input[self._cursor] == "{" {
           val initialChunk = StringInterpolationChunk.String(position: startPos, value: str)
-          match self.nextToken() { Ok(v) => v, Err(e) => return Err(e) }
+          try self.nextToken()
 
           val interpolatedTokens: Token[] = []
           var curlyCount = 1
           while curlyCount != 0 {
-            val nextToken = match self.nextToken() { Ok(v) => v, Err(e) => return Err(e) }
+            val nextToken = try self.nextToken()
             if nextToken |tok| {
               if tok.kind == TokenKind.LBrace {
                 curlyCount += 1

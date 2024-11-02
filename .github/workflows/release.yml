@@ -37,7 +37,6 @@ jobs:
           tar -xf qbe-1.2.tar.xz
           cd qbe-1.2
           make
-        if: steps.cache-qbe.outputs.cache-hit != 'true'
       - name: Setup QBE
         run: |
           echo "PATH=$(pwd)/qbe/qbe-1.2:$PATH" >> $GITHUB_ENV
