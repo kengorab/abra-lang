@@ -27,17 +27,15 @@ if [ -d "$pkg_dir" ]; then
 fi
 mkdir "$pkg_dir"
 
-abra build -o compiler ./src/compiler.test.abra
+abra build -o compiler "$script_dir/../src/compiler.test.abra"
 cp ./._abra/compiler "$pkg_dir/compiler"
 
 cp "$script_dir/abraw" "$pkg_dir/abra"
 echo -n "$version" > "$pkg_dir/version"
 
 mkdir "$pkg_dir/include"
-#cp "$script_dir/../../abra_llvm/ext/libgc/lib/libgc.a" "$pkg_dir/include/."
 cp "$script_dir/../ext/bdwgc/libgc.a" "$pkg_dir/include/."
 
-#cp -r "$script_dir/../../abra_core/std" "$pkg_dir/std"
 cp -r "$script_dir/../../std" "$pkg_dir/std"
 
 cd "$pkg_dir"
