@@ -13,7 +13,6 @@ type CompilationError {
       Ok(v) => v
       Err => return "Could not read file '${self.modulePath}'"
     }
-    println("[getMessage]", self.error.position)
     self.error.getMessage(self.modulePath, contents)
   }
 }
@@ -27,11 +26,9 @@ type CompileError {
 
     match self.kind {
       CompileErrorKind.NotYetImplemented(reason) => {
-        println("hereee")
-        println(reason.length)
         lines.push("Not yet implemented:")
-        // lines.push(self._getCursorLine(self.position, contents))
-        // lines.push("Reason: $reason")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("Reason: $reason")
       }
       CompileErrorKind.Unreachable(message) => {
         lines.push("Unreachable code reached")
