@@ -36,7 +36,7 @@ echo -n "$version" > "$pkg_dir/version"
 mkdir "$pkg_dir/include"
 cp "$script_dir/../ext/bdwgc/libgc.a" "$pkg_dir/include/."
 
-cp -r "$script_dir/../../std" "$pkg_dir/std"
+cp -r "$script_dir/../../std/src" "$pkg_dir/std"
 
 cd "$pkg_dir"
 tarfile="abra-$platform.tar.gz"
