@@ -42,7 +42,7 @@ jobs:
         run: |
           echo "PATH=$(pwd)/qbe/qbe-1.2:$PATH" >> $GITHUB_ENV
       - name: Install ext dependencies
-        run: ./configure-libgc.sh
+        run: ./projects/compiler/scripts/configure-libgc.sh
       - name: Install abra
         run: |
           mkdir abra-installation
