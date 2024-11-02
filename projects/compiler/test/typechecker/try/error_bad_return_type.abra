@@ -1,0 +1,6 @@
+func foo(): Result<Int, String> = Ok(123)
+
+func bar(): Int {
+  val x = try foo()
+  x + 1
+}

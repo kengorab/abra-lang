@@ -1,0 +1,9 @@
+Error at %FILE_NAME%:4:11
+Return type mismatch for function containing try expression
+  |    val x = try foo()
+               ^
+The containing function 'bar' returns a Result whose error type is 'Int', which is incompatible with the try expression.
+  |  func bar(): Result<Int, Int> {
+          ^
+To be compatible, the return type of 'bar' must have 'String' as its error type.
+Hint: You can use the 'mapErr' method to transform the try expression's error value into a compatible value

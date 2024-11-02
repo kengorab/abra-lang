@@ -1,0 +1,6 @@
+func foo<T>(): Result<T[], T[]> = Ok([])
+
+func bar(): Result<Int, String[]> {
+  val x: Int[] = try foo()
+  Ok(x.length)
+}

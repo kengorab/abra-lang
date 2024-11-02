@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:2:15
+Invalid subject for try expression
+  |    val x = try 123
+                   ^
+This value has type 'Int', which is not Try-able

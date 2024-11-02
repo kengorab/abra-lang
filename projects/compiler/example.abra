@@ -1,1 +1,11 @@
-println("Hello world")
+func ok(): Result<Int, String> = Ok(123)
+func err(): Result<Int, String> = Err("foo")
+
+func f1(): Result<Int, String> {
+  val x = try ok()
+
+  Ok(x + 1)
+}
+
+/// Expect: Result.Ok(value: 124)
+println(f1())

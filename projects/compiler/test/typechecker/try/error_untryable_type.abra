@@ -1,0 +1,4 @@
+func foo(): Result<Int, Int> {
+  val x = try 123
+  Ok(1)
+}

@@ -269,6 +269,7 @@ export type Project {
   preludeMapStruct: Struct = Struct(moduleId: 0, label: Label(name: "Map", position: Position(line: 0, col: 0)), scope: Scope(name: "Array"), typeParams: ["K", "V"])
   preludeSetStruct: Struct = Struct(moduleId: 0, label: Label(name: "Set", position: Position(line: 0, col: 0)), scope: Scope(name: "Set"), typeParams: ["T"])
   preludeOptionEnum: Enum = Enum(moduleId: 0, label: Label(name: "Option", position: Position(line: 0, col: 0)), scope: Scope(name: "Option"), typeParams: ["T"])
+  preludeResultEnum: Enum = Enum(moduleId: 0, label: Label(name: "Result", position: Position(line: 0, col: 0)), scope: Scope(name: "Result"), typeParams: ["V", "E"])
 
   func typesAreEquivalent(self, ty: Type, other: Type): Bool {
     match ty.kind {
@@ -756,6 +757,7 @@ export enum TypedAstNodeKind {
   Assignment(mode: TypedAssignmentMode, op: AssignOp, expr: TypedAstNode)
   If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], ifBlockTerminator: Terminator?, typedElseBlock: TypedAstNode[], elseBlockTerminator: Terminator?)
   Match(isStatement: Bool, expr: TypedAstNode, cases: TypedMatchCase[])
+  Try(typedExpr: TypedAstNode)
   While(typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, block: TypedAstNode[], terminator: Terminator?)
   For(typedIterator: TypedAstNode, itemBinding: (BindingPattern, Variable[]), indexBinding: Variable?, block: TypedAstNode[])
   BindingDeclaration(node: TypedBindingDeclarationNode)
@@ -1304,6 +1306,34 @@ type TypeError {
           }
         }
       }
+      TypeErrorKind.InvalidTryLocation(reason) => {
+        lines.push("Invalid location for try expression")
+        lines.push(self._getCursorLine(self.position, contents))
+
+        match reason {
+          InvalidTryLocationReason.NotWithinFunction => {
+            lines.push("Try expressions can only be used inside of function bodies")
+          }
+          InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel, tryType, returnType) => {
+            lines.push("The containing function '${fnLabel.name}' has return type '${returnType.repr()}', which is incompatible with the try expression's type '${tryType.repr()}'.")
+            lines.push(self._getCursorLine(fnLabel.position, contents))
+            lines.push("To be compatible, the function must return a Result whose error type matches that of the try expression")
+          }
+        }
+      }
+      TypeErrorKind.InvalidTryTarget(subjectTy) => {
+        lines.push("Invalid subject for try expression")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("This value has type '${subjectTy.repr()}', which is not Try-able")
+      }
+      TypeErrorKind.TryReturnTypeMismatch(fnLabel, tryType, tryErrType, retErrType) => {
+        lines.push("Return type mismatch for function containing try expression")
+        lines.push(self._getCursorLine(self.position, contents))
+        lines.push("The containing function '${fnLabel.name}' returns a Result whose error type is '${retErrType.repr()}', which is incompatible with the try expression.")
+        lines.push(self._getCursorLine(fnLabel.position, contents))
+        lines.push("To be compatible, the return type of '${fnLabel.name}' must have '${tryErrType.repr()}' as its error type.")
+        lines.push("Hint: You can use the 'mapErr' method to transform the try expression's error value into a compatible value")
+      }
     }
 
     lines.join("\n")
@@ -1362,6 +1392,11 @@ enum InvalidDestructuringReason {
   InvalidTupleArity(expected: Int, given: Int)
 }
 
+enum InvalidTryLocationReason {
+  NotWithinFunction
+  InvalidFunctionReturnType(fnLabel: Label, tryType: Type, returnType: Type)
+}
+
 enum TypeErrorKind {
   NotYetImplemented(reason: String)
   Unreachable(message: String)
@@ -1409,6 +1444,9 @@ enum TypeErrorKind {
   NonExhaustiveMatch(subjectTy: Type)
   InvalidMatchCaseDestructuring(reason: InvalidMatchCaseDestructuringReason)
   InvalidDestructuring(reason: InvalidDestructuringReason)
+  InvalidTryLocation(reason: InvalidTryLocationReason)
+  InvalidTryTarget(subjectTy: Type)
+  TryReturnTypeMismatch(fnLabel: Label, tryType: Type, tryErrType: Type, retErrType: Type)
 }
 
 type ParamDefaultValueContext {
@@ -2854,7 +2892,7 @@ export type Typechecker {
       if typecheckingPrelude {
         match enum_.label.name {
           "Option" => self.project.preludeOptionEnum = enum_
-          // "Result" => self.project.preludeResultEnum = enum_
+          "Result" => self.project.preludeResultEnum = enum_
           _ => {}
         }
       }
@@ -3208,6 +3246,31 @@ export type Typechecker {
               Some(innerTy)
             } else {
               __assertUnreachable("Option instance lacks inner type")
+              None
+            }
+          }
+          _ => None
+        }
+      }
+      _ => None
+    }
+  }
+
+  func _typeIsResult(self, ty: Type): (Type, Type)? {
+    match ty.kind {
+      TypeKind.Instance(structOrEnum, generics) => {
+        match structOrEnum {
+          StructOrEnum.Enum(enum_) => {
+            if enum_ != self.project.preludeResultEnum return None
+            if generics[0] |valTy| {
+              if generics[1] |errTy| {
+                Some((valTy, errTy))
+              } else {
+                __assertUnreachable("Result instance lacks error type")
+                None
+              }
+            } else {
+              __assertUnreachable("Result instance lacks value type")
               None
             }
           }
@@ -3734,6 +3797,7 @@ export type Typechecker {
       AstNodeKind.Lambda(value) => self._typecheckLambda(token, value, typeHint)
       AstNodeKind.If(condition, conditionBinding, ifBlock, elseBlock) => self._typecheckIf(token, condition, conditionBinding, ifBlock, elseBlock, typeHint)
       AstNodeKind.Match(subject, cases) => self._typecheckMatch(token, subject, cases, typeHint)
+      AstNodeKind.Try(expr) => self._typecheckTry(token, expr, typeHint)
       _ => unreachable(node.token.position, "all other node types should have already been handled")
     }
 
@@ -4848,6 +4912,33 @@ export type Typechecker {
     val lambdaTy = fn.getType()
 
     Ok(TypedAstNode(token: token, ty: lambdaTy, kind: TypedAstNodeKind.Lambda(fn, typeHint)))
+  }
+
+  func _typecheckTry(self, token: Token, expr: AstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
+    // TODO: support top-level try (the error case would just exit the program)
+    val currentFn = if self.currentFunction |f| f else return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.NotWithinFunction)))
+
+    val (_, retErrType) = if self._typeIsResult(currentFn.returnType) |t| t else {
+      // A bit wasteful perhaps, but attempt to get the type of the try expression's subject without the hint, for a nicer error message
+      val typedExpr = match self._typecheckExpression(expr, None) { Ok(v) => v, Err(e) => return Err(e) }
+      return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel: currentFn.label, tryType: typedExpr.ty, returnType: currentFn.returnType))))
+    }
+
+    val hint = if typeHint |typeHint| {
+      Some(Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeResultEnum), [typeHint, retErrType])))
+    } else {
+      None
+    }
+    val typedExpr = match self._typecheckExpression(expr, hint) { Ok(v) => v, Err(e) => return Err(e) }
+
+    // TODO: other Try-able types
+    val (tryValType, tryErrType) = if self._typeIsResult(typedExpr.ty) |t| t else return Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.InvalidTryTarget(typedExpr.ty)))
+
+    if !self._typeSatisfiesRequired(ty: retErrType, required: tryErrType) {
+      return Err(TypeError(position: token.position, kind: TypeErrorKind.TryReturnTypeMismatch(fnLabel: currentFn.label, tryType: typedExpr.ty, tryErrType: tryErrType, retErrType: retErrType)))
+    }
+
+    Ok(TypedAstNode(token: token, ty: tryValType, kind: TypedAstNodeKind.Try(typedExpr)))
   }
 }
 

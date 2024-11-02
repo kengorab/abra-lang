@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:4:22
+Type mismatch
+  |    val x: Int[] = try foo()
+                          ^
+Expected: Result<Int[], String[]>
+but instead found: Result<Int[], Int[]>

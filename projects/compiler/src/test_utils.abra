@@ -719,6 +719,12 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         println("$fieldsIndent]")
       }
     }
+    AstNodeKind.Try(expr) => {
+      println("$fieldsIndent\"name\": \"try\",")
+      print("$fieldsIndent\"expr\": ")
+      printAstNodeAsJson(expr, 0, currentIndentLevel + 1)
+      println()
+    }
     AstNodeKind.While(condition, conditionBinding, block) => {
       println("$fieldsIndent\"name\": \"while\",")
       print("$fieldsIndent\"condition\": ")

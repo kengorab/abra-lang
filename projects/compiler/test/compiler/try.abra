@@ -1,0 +1,37 @@
+func ok(): Result<Int, String> = Ok(123)
+func err(): Result<Int, String> = Err("foo")
+
+func f1(): Result<Int, String> {
+  val x = try ok()
+  Ok(x + 1)
+}
+/// Expect: Result.Ok(value: 124)
+println(f1())
+
+func f2(): Result<Int, String> {
+  val x = try err()
+  Ok(x + 1)
+}
+/// Expect: Result.Err(error: "foo")
+println(f2())
+
+func f3(): Result<Int[], String> {
+  val arr = [try ok(), (try ok()) + 1, (try ok()) + 2]
+  Ok(arr)
+}
+/// Expect: Result.Ok(value: [123, 124, 125])
+println(f3())
+
+func f4(): Result<Int[], String> {
+  val arr = [try ok(), (try err()) + 1, (try ok()) + 2]
+  Ok(arr)
+}
+/// Expect: Result.Err(error: "foo")
+println(f4())
+
+func f5(): Result<Int, String> {
+  val x = (try f1()) + (try f2()) + (try f3()).length + (try f4()).length
+  Ok(x)
+}
+/// Expect: Result.Err(error: "foo")
+println(f5())

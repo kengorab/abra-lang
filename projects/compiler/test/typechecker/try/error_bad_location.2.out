@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:1:12
+Invalid location for try expression
+  |  func f(x = try 123) {}
+                ^
+Try expressions can only be used inside of function bodies

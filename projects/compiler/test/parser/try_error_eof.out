@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:10
+Unexpected end of file:
+  |  val x = try
+              ^
