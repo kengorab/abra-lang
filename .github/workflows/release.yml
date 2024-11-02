@@ -41,10 +41,11 @@ jobs:
       - name: Setup QBE
         run: |
           echo "PATH=$(pwd)/qbe/qbe-1.2:$PATH" >> $GITHUB_ENV
+      - name: Install libgc dependencies (macos only)
+        if: matrix.platform.suffix == 'darwin-arm64'
+        run: brew install autoconf automake libtool
       - name: Install ext dependencies
-        run: |
-          brew install autoconf automake libtool
-          ./projects/compiler/scripts/configure-libgc.sh
+        run: ./projects/compiler/scripts/configure-libgc.sh
       - name: Install abra
         run: |
           mkdir abra-installation
