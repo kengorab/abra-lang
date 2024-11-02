@@ -54,11 +54,9 @@ jobs:
           echo "PATH=$(pwd)/abra-installation:$PATH" >> $GITHUB_ENV
           echo "ABRA_HOME=`realpath $(pwd)/abra-installation/std`" >> $GITHUB_ENV
       - name: Build package
-        run: |
-          cd selfhost
-          ./gen-pkg/gen.sh ${{ matrix.platform.suffix }} ${{ github.ref_name }}
+        run: ./projects/compiler/scripts/generate-package.sh ${{ matrix.platform.suffix }} ${{ github.ref_name }}
       - name: Upload to release
-        run: gh release upload ${{ github.ref_name }} selfhost/scripts/abra-${{ matrix.platform.suffix }}.tar.gz
+        run: gh release upload ${{ github.ref_name }} ./projects/compiler/scripts/abra-${{ matrix.platform.suffix }}.tar.gz
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   mark-release-as-latest:
