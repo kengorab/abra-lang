@@ -719,10 +719,30 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         println("$fieldsIndent]")
       }
     }
-    AstNodeKind.Try(expr) => {
+    AstNodeKind.Try(expr, elseClause) => {
       println("$fieldsIndent\"name\": \"try\",")
       print("$fieldsIndent\"expr\": ")
       printAstNodeAsJson(expr, 0, currentIndentLevel + 1)
+      if elseClause |(_, bindingPattern, block)| {
+        if bindingPattern |pat| {
+          print(",\n$fieldsIndent\"elseBindingPattern\": ")
+          printBindingPatternAsJson(pat, 0, currentIndentLevel + 1)
+        } else {
+          print(",\n$fieldsIndent\"elseBindingPattern\": null")
+        }
+
+        if block.isEmpty() {
+          println(",\n$fieldsIndent\"elseBlock\": []")
+        } else {
+          println(",\n$fieldsIndent\"elseBlock\": [")
+          for node, idx in block {
+            printAstNodeAsJson(node, currentIndentLevel + 2, currentIndentLevel + 2)
+            val comma = if idx != block.length - 1 "," else ""
+            println("$comma")
+          }
+          print("$fieldsIndent]")
+        }
+      }
       println()
     }
     AstNodeKind.While(condition, conditionBinding, block) => {

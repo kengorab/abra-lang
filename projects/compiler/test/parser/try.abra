@@ -1,2 +1,10 @@
 val x = try foo()
 val y = try foo().abc
+
+val a = try foo() else bar
+val b = try foo() else |e| bar(e)
+val c = try foo() else |e| {
+  val x = e + 1
+  bar(x)
+}
+val d = try foo() else |e| return e

@@ -1,0 +1,21 @@
+func ok(): Result<Int, String> = Ok(123)
+
+func f1(): Result<Int, Int> {
+  var a = 0
+  while true {
+    val x = try ok() else break
+    a += x
+  }
+
+  Ok(a)
+}
+
+func f2(): Result<Int, Int> {
+  var a = 0
+  while true {
+    val x = try ok() else continue
+    a += x
+  }
+
+  Ok(a)
+}

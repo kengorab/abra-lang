@@ -109,6 +109,7 @@ const PARSER_TESTS = [
   { test: "parser/try.abra", assertions: "parser/try.out.json" },
   { test: "parser/try_error_eof.abra", assertions: "parser/try_error_eof.out" },
   { test: "parser/try_error_invalid_token.abra", assertions: "parser/try_error_invalid_token.out" },
+  { test: "parser/try_else_error_eof.abra", assertions: "parser/try_else_error_eof.out" },
   // Assignment
   { test: "parser/assignment.abra", assertions: "parser/assignment.out.json" },
   { test: "parser/assignment_error_as_expr.abra", assertions: "parser/assignment_error_as_expr.out" },
@@ -531,12 +532,19 @@ const TYPECHECKER_TESTS = [
   // Try
   { test: "typechecker/try/try.1.abra", assertions: "typechecker/try/try.1.out.json" },
   { test: "typechecker/try/try.2.abra", assertions: "typechecker/try/try.2.out.json" },
+  { test: "typechecker/try/try.3.abra", assertions: "typechecker/try/try.3.out.json" },
+  { test: "typechecker/try/try.4.abra", assertions: "typechecker/try/try.4.out.json" },
   { test: "typechecker/try/error_bad_location.1.abra", assertions: "typechecker/try/error_bad_location.1.out" },
   { test: "typechecker/try/error_bad_location.2.abra", assertions: "typechecker/try/error_bad_location.2.out" },
   { test: "typechecker/try/error_bad_return_type.abra", assertions: "typechecker/try/error_bad_return_type.out" },
   { test: "typechecker/try/error_return_type_err_mismatch.abra", assertions: "typechecker/try/error_return_type_err_mismatch.out" },
   { test: "typechecker/try/error_return_type_err_mismatch_generic.abra", assertions: "typechecker/try/error_return_type_err_mismatch_generic.out" },
   { test: "typechecker/try/error_untryable_type.abra", assertions: "typechecker/try/error_untryable_type.out" },
+  { test: "typechecker/try/error_else_bad_destructuring.abra", assertions: "typechecker/try/error_else_bad_destructuring.out" },
+  { test: "typechecker/try/error_else_block_empty.abra", assertions: "typechecker/try/error_else_block_empty.out" },
+  { test: "typechecker/try/error_else_return_type_mismatch.1.abra", assertions: "typechecker/try/error_else_return_type_mismatch.1.out" },
+  { test: "typechecker/try/error_else_return_type_mismatch.2.abra", assertions: "typechecker/try/error_else_return_type_mismatch.2.out" },
+  { test: "typechecker/try/error_else_type_mismatch.abra", assertions: "typechecker/try/error_else_type_mismatch.out" },
 
   // Type identifiers
   { test: "typechecker/typeidentifier/error_typearg_unknown.abra", assertions: "typechecker/typeidentifier/error_typearg_unknown.out" },

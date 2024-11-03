@@ -135,6 +135,7 @@ export enum ScopeKind {
   While
   For
   Type
+  Try
 }
 
 export type Scope {
@@ -739,6 +740,13 @@ export type TypedMatchCase {
   terminator: Terminator?
 }
 
+type TypedTryElseClause {
+  pattern: (BindingPattern, Variable[])?
+  errorType: Type
+  block: TypedAstNode[]
+  terminator: Terminator?
+}
+
 export enum TypedAstNodeKind {
   Literal(value: LiteralAstNode)
   StringInterpolation(exprs: TypedAstNode[])
@@ -757,7 +765,7 @@ export enum TypedAstNodeKind {
   Assignment(mode: TypedAssignmentMode, op: AssignOp, expr: TypedAstNode)
   If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], ifBlockTerminator: Terminator?, typedElseBlock: TypedAstNode[], elseBlockTerminator: Terminator?)
   Match(isStatement: Bool, expr: TypedAstNode, cases: TypedMatchCase[])
-  Try(typedExpr: TypedAstNode)
+  Try(typedExpr: TypedAstNode, typedElseClause: TypedTryElseClause?)
   While(typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, block: TypedAstNode[], terminator: Terminator?)
   For(typedIterator: TypedAstNode, itemBinding: (BindingPattern, Variable[]), indexBinding: Variable?, block: TypedAstNode[])
   BindingDeclaration(node: TypedBindingDeclarationNode)
@@ -980,8 +988,8 @@ type TypeError {
           }
         }
       }
-      TypeErrorKind.MissingRequiredIfExprBlock(clause, missing) => {
-        lines.push("Incomplete if-expression")
+      TypeErrorKind.MissingRequiredBlock(exprKind, clause, missing) => {
+        lines.push("Incomplete $exprKind expression")
         lines.push(self._getCursorLine(self.position, contents))
         if missing {
           lines.push("The $clause-block must exist and contain a value")
@@ -1409,7 +1417,7 @@ enum TypeErrorKind {
   IllegalNonConstantEnumVariant
   IllegalValueType(ty: Type, purpose: String)
   IllegalControlFlowType(ty: Type, purpose: String)
-  MissingRequiredIfExprBlock(clause: String, missing: Bool)
+  MissingRequiredBlock(exprKind: String, clause: String, missing: Bool)
   InvalidParamPosition(purpose: String)
   DuplicateParameter(name: String)
   InvalidVarargType(ty: Type)
@@ -3360,6 +3368,10 @@ export type Typechecker {
           scope = sc.parent
           continue
         }
+        ScopeKind.Try => {
+          scope = sc.parent
+          continue
+        }
         ScopeKind.While => true
         ScopeKind.For => true
       }
@@ -3473,7 +3485,7 @@ export type Typechecker {
     self.currentScope.terminator = Terminator.combine(ifBlockTerminator, elseBlockTerminator)
 
     val ty = if !isStatement {
-      val t = if ifType |ifType| {
+      if ifType |ifType| {
         if typedElseBlock[-1] |lastElseNode| {
           val elseType = lastElseNode.ty
 
@@ -3488,15 +3500,13 @@ export type Typechecker {
             return Err(TypeError(position: lastElseNode.token.position, kind: TypeErrorKind.TypeMismatch([ifType], elseType)))
           }
 
-          val t = if ifType.kind == TypeKind.Never { elseType } else { ifType }
-          t
+          if ifType.kind == TypeKind.Never { elseType } else { ifType }
         } else {
-          return Err(TypeError(position: token.position, kind: TypeErrorKind.MissingRequiredIfExprBlock(clause: "else", missing: !hasElseBlock)))
+          return Err(TypeError(position: token.position, kind: TypeErrorKind.MissingRequiredBlock(exprKind: "if-else", clause: "else", missing: !hasElseBlock)))
         }
       } else {
-        return Err(TypeError(position: token.position, kind: TypeErrorKind.MissingRequiredIfExprBlock(clause: "if", missing: false)))
+        return Err(TypeError(position: token.position, kind: TypeErrorKind.MissingRequiredBlock(exprKind: "if-else", clause: "if", missing: false)))
       }
-      t
     } else {
       Type(kind: TypeKind.PrimitiveUnit)
     }
@@ -3789,7 +3799,7 @@ export type Typechecker {
       AstNodeKind.Lambda(value) => self._typecheckLambda(token, value, typeHint)
       AstNodeKind.If(condition, conditionBinding, ifBlock, elseBlock) => self._typecheckIf(token, condition, conditionBinding, ifBlock, elseBlock, typeHint)
       AstNodeKind.Match(subject, cases) => self._typecheckMatch(token, subject, cases, typeHint)
-      AstNodeKind.Try(expr) => self._typecheckTry(token, expr, typeHint)
+      AstNodeKind.Try(expr, elseClause) => self._typecheckTry(token, expr, elseClause, typeHint)
       _ => unreachable(node.token.position, "all other node types should have already been handled")
     }
 
@@ -4881,7 +4891,7 @@ export type Typechecker {
     Ok(TypedAstNode(token: token, ty: lambdaTy, kind: TypedAstNodeKind.Lambda(fn, typeHint)))
   }
 
-  func _typecheckTry(self, token: Token, expr: AstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
+  func _typecheckTry(self, token: Token, expr: AstNode, elseClause: (Token, BindingPattern?, AstNode[])?, typeHint: Type?): Result<TypedAstNode, TypeError> {
     // TODO: support top-level try (the error case would just exit the program)
     val currentFn = if self.currentFunction |f| f else return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.NotWithinFunction)))
 
@@ -4901,11 +4911,59 @@ export type Typechecker {
     // TODO: other Try-able types
     val (tryValType, tryErrType) = if self._typeIsResult(typedExpr.ty) |t| t else return Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.InvalidTryTarget(typedExpr.ty)))
 
-    if !self._typeSatisfiesRequired(ty: retErrType, required: tryErrType) {
+    val typedElseClause = if elseClause |(elseToken, bindingPattern, elseBlock)| {
+      val isStatement = if typeHint |hint| hint.kind == TypeKind.PrimitiveUnit else false
+
+      val prevScope = self.currentScope
+      self.currentScope = self.currentScope.makeChild("try_else", ScopeKind.Try)
+
+      val elseBindingPattern = if bindingPattern |pat| {
+        val variables = try self._typecheckBindingPattern(false, pat, tryErrType)
+        Some((pat, variables))
+      } else {
+        None
+      }
+
+      val typedNodes: TypedAstNode[] = []
+      for node, idx in elseBlock {
+        if self.currentScope.terminator return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+
+        val typedNode = if idx == elseBlock.length - 1 && !isStatement {
+          try self._typecheckExpressionOrTerminator(node, typeHint)
+        } else {
+          try self._typecheckStatement(node, None)
+        }
+        typedNodes.push(typedNode)
+      }
+      val terminator = self.currentScope.terminator
+
+      if typedNodes[-1] |lastElseNode| {
+        val elseType = lastElseNode.ty
+
+        if tryValType.hasUnfilledHoles() {
+          tryValType.tryFillHoles(elseType)
+        }
+        if elseType.hasUnfilledHoles() {
+          elseType.tryFillHoles(tryValType)
+        }
+
+        if !self._typeSatisfiesRequired(ty: elseType, required: tryValType) {
+          return Err(TypeError(position: lastElseNode.token.position, kind: TypeErrorKind.TypeMismatch([tryValType], elseType)))
+        }
+      } else {
+        return Err(TypeError(position: elseToken.position, kind: TypeErrorKind.MissingRequiredBlock(exprKind: "try-else", clause: "else", missing: false)))
+      }
+
+      self.currentScope = prevScope
+
+      Some(TypedTryElseClause(pattern: elseBindingPattern, errorType: tryErrType, block: typedNodes, terminator: terminator))
+    } else if !self._typeSatisfiesRequired(ty: retErrType, required: tryErrType) {
       return Err(TypeError(position: token.position, kind: TypeErrorKind.TryReturnTypeMismatch(fnLabel: currentFn.label, tryType: typedExpr.ty, tryErrType: tryErrType, retErrType: retErrType)))
+    } else {
+      None
     }
 
-    Ok(TypedAstNode(token: token, ty: tryValType, kind: TypedAstNodeKind.Try(typedExpr)))
+    Ok(TypedAstNode(token: token, ty: tryValType, kind: TypedAstNodeKind.Try(typedExpr, typedElseClause)))
   }
 }
 

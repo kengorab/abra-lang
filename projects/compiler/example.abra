@@ -1,10 +1,15 @@
 func ok(): Result<Int, String> = Ok(123)
 func err(): Result<Int, String> = Err("foo")
 
-func f1(): Result<Int, String> {
-  val x = try ok()
+func f1(): Result<Int, Int> {
+  var acc = 0
+  while acc < 10 {
+    val x = try err() else break
+    println(x)
+    acc += x
+  }
 
-  Ok(x + 1)
+  Ok(acc)
 }
 
 /// Expect: Result.Ok(value: 124)
