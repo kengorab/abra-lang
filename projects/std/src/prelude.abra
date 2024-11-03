@@ -32,6 +32,9 @@ func Some<T>(value: T): Option<T> = Option.Some(value)
 export enum Result<V, E> {
   Ok(value: V)
   Err(error: E)
+
+  func map<U>(self, fn: (V) => U): Result<U, E> = match self { Ok(v) => Ok(fn(v)), Err(e) => Err(e) }
+  func mapErr<F>(self, fn: (E) => F): Result<V, F> = match self { Ok(v) => Ok(v), Err(e) => Err(fn(e)) }
 }
 
 func Ok<V, E>(value: V): Result<V, E> = Result.Ok(value)
