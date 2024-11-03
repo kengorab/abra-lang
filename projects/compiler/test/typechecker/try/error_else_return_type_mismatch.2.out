@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:4:34
+Return type mismatch for function 'f1'
+  |    val x = try ok() else return ok()
+                                      ^
+Expected Result<Int, Int>
+but instead found Result<Int, String>

@@ -133,6 +133,427 @@
           }
         }
       }
+    },
+    {
+      "token": {
+        "position": [4, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "a", "position": [4, 5] }
+        },
+        "typeAnnotation": null,
+        "expr": {
+          "token": {
+            "position": [4, 9],
+            "kind": {
+              "name": "Try"
+            }
+          },
+          "kind": {
+            "name": "try",
+            "expr": {
+              "token": {
+                "position": [4, 16],
+                "kind": {
+                  "name": "LParen"
+                }
+              },
+              "kind": {
+                "name": "invocation",
+                "invokee": {
+                  "token": {
+                    "position": [4, 13],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "foo"
+                    }
+                  },
+                  "kind": {
+                    "name": "identifier",
+                    "ident": "foo"
+                  }
+                },
+                "typeArguments": [],
+                "arguments": []
+              }
+            },
+            "elseBindingPattern": null,
+            "elseBlock": [
+              {
+                "token": {
+                  "position": [4, 24],
+                  "kind": {
+                    "name": "Ident",
+                    "value": "bar"
+                  }
+                },
+                "kind": {
+                  "name": "identifier",
+                  "ident": "bar"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [5, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "b", "position": [5, 5] }
+        },
+        "typeAnnotation": null,
+        "expr": {
+          "token": {
+            "position": [5, 9],
+            "kind": {
+              "name": "Try"
+            }
+          },
+          "kind": {
+            "name": "try",
+            "expr": {
+              "token": {
+                "position": [5, 16],
+                "kind": {
+                  "name": "LParen"
+                }
+              },
+              "kind": {
+                "name": "invocation",
+                "invokee": {
+                  "token": {
+                    "position": [5, 13],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "foo"
+                    }
+                  },
+                  "kind": {
+                    "name": "identifier",
+                    "ident": "foo"
+                  }
+                },
+                "typeArguments": [],
+                "arguments": []
+              }
+            },
+            "elseBindingPattern": {
+              "kind": "variable",
+              "label": { "name": "e", "position": [5, 25] }
+            },
+            "elseBlock": [
+              {
+                "token": {
+                  "position": [5, 31],
+                  "kind": {
+                    "name": "LParen"
+                  }
+                },
+                "kind": {
+                  "name": "invocation",
+                  "invokee": {
+                    "token": {
+                      "position": [5, 28],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "bar"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "bar"
+                    }
+                  },
+                  "typeArguments": [],
+                  "arguments": [
+                    {
+                      "label": null,
+                      "value": {
+                        "token": {
+                          "position": [5, 32],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "e"
+                          }
+                        },
+                        "kind": {
+                          "name": "identifier",
+                          "ident": "e"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [6, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "c", "position": [6, 5] }
+        },
+        "typeAnnotation": null,
+        "expr": {
+          "token": {
+            "position": [6, 9],
+            "kind": {
+              "name": "Try"
+            }
+          },
+          "kind": {
+            "name": "try",
+            "expr": {
+              "token": {
+                "position": [6, 16],
+                "kind": {
+                  "name": "LParen"
+                }
+              },
+              "kind": {
+                "name": "invocation",
+                "invokee": {
+                  "token": {
+                    "position": [6, 13],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "foo"
+                    }
+                  },
+                  "kind": {
+                    "name": "identifier",
+                    "ident": "foo"
+                  }
+                },
+                "typeArguments": [],
+                "arguments": []
+              }
+            },
+            "elseBindingPattern": {
+              "kind": "variable",
+              "label": { "name": "e", "position": [6, 25] }
+            },
+            "elseBlock": [
+              {
+                "token": {
+                  "position": [7, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "kind": {
+                  "name": "bindingDecl",
+                  "decorators": [],
+                  "exportToken": null,
+                  "bindingPattern": {
+                    "kind": "variable",
+                    "label": { "name": "x", "position": [7, 7] }
+                  },
+                  "typeAnnotation": null,
+                  "expr": {
+                    "token": {
+                      "position": [7, 13],
+                      "kind": {
+                        "name": "Plus"
+                      }
+                    },
+                    "kind": {
+                      "name": "binary",
+                      "op": "BinaryOp.Add",
+                      "left": {
+                        "token": {
+                          "position": [7, 11],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "e"
+                          }
+                        },
+                        "kind": {
+                          "name": "identifier",
+                          "ident": "e"
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [7, 15],
+                          "kind": {
+                            "name": "Int",
+                            "value": 1
+                          }
+                        },
+                        "kind": {
+                          "name": "literal",
+                          "type": "int",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [8, 6],
+                  "kind": {
+                    "name": "LParen"
+                  }
+                },
+                "kind": {
+                  "name": "invocation",
+                  "invokee": {
+                    "token": {
+                      "position": [8, 3],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "bar"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "bar"
+                    }
+                  },
+                  "typeArguments": [],
+                  "arguments": [
+                    {
+                      "label": null,
+                      "value": {
+                        "token": {
+                          "position": [8, 7],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "x"
+                          }
+                        },
+                        "kind": {
+                          "name": "identifier",
+                          "ident": "x"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [10, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "exportToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "d", "position": [10, 5] }
+        },
+        "typeAnnotation": null,
+        "expr": {
+          "token": {
+            "position": [10, 9],
+            "kind": {
+              "name": "Try"
+            }
+          },
+          "kind": {
+            "name": "try",
+            "expr": {
+              "token": {
+                "position": [10, 16],
+                "kind": {
+                  "name": "LParen"
+                }
+              },
+              "kind": {
+                "name": "invocation",
+                "invokee": {
+                  "token": {
+                    "position": [10, 13],
+                    "kind": {
+                      "name": "Ident",
+                      "value": "foo"
+                    }
+                  },
+                  "kind": {
+                    "name": "identifier",
+                    "ident": "foo"
+                  }
+                },
+                "typeArguments": [],
+                "arguments": []
+              }
+            },
+            "elseBindingPattern": {
+              "kind": "variable",
+              "label": { "name": "e", "position": [10, 25] }
+            },
+            "elseBlock": [
+              {
+                "token": {
+                  "position": [10, 28],
+                  "kind": {
+                    "name": "Return"
+                  }
+                },
+                "kind": {
+                  "name": "return",
+                  "expr": {
+                    "token": {
+                      "position": [10, 35],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "e"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "e"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
     }
   ]
 }

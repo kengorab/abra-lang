@@ -1,5 +1,5 @@
 Error at %FILE_NAME%:1:9
-Incomplete if-expression
+Incomplete if-else expression
   |  val a = if true 123
              ^
 The else-block must exist and contain a value

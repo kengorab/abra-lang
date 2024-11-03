@@ -673,11 +673,36 @@ export type Jsonifier {
         })
         println()
       }
-      TypedAstNodeKind.Try(expr) => {
+      TypedAstNodeKind.Try(expr, elseClause) => {
         self.println("\"kind\": \"try\",")
 
         self.print("\"expr\": ")
         self.printNode(expr)
+        if elseClause |elseClause| {
+          println(",")
+          self.print("\"elseBindingPattern\": ")
+          self.opt(elseClause.pattern, _pair => {
+            val (pat, vars) = _pair
+            println("{")
+            self.indentInc()
+
+            self.print("\"bindingPattern\": ")
+            printBindingPatternAsJson(pat, 0, self.indentLevel)
+            println(",")
+
+            self.print("\"variables\": ")
+            self.array(vars, v => self.printVariable(v))
+            println()
+
+            self.indentDec()
+            self.print("}")
+          })
+
+          println(",")
+
+          self.print("\"elseBlock\": ")
+          self.array(elseClause.block, n => self.printNode(n))
+        }
         println()
       }
 
@@ -690,16 +715,17 @@ export type Jsonifier {
         println(",")
 
         self.print("\"conditionBindingPattern\": ")
-        self.opt(conditionBindingPattern, pair => {
+        self.opt(conditionBindingPattern, _pair => {
+          val (pat, vars) = _pair
           println("{")
           self.indentInc()
 
           self.print("\"bindingPattern\": ")
-          printBindingPatternAsJson(pair[0], 0, self.indentLevel)
+          printBindingPatternAsJson(pat, 0, self.indentLevel)
           println(",")
 
           self.print("\"variables\": ")
-          self.array(pair[1], v => self.printVariable(v))
+          self.array(vars, v => self.printVariable(v))
           println()
 
           self.indentDec()

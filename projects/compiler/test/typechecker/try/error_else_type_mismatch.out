@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:4:38
+Type mismatch
+  |    val x = try ok() else |e| e.isEmpty()
+                                          ^
+Expected: Int
+but instead found: Bool

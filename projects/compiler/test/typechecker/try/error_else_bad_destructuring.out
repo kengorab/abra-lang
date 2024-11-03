@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:4:26
+Invalid destructuring
+  |    val x = try ok() else |(e1, e2)| {}
+                              ^
+A value of type 'String' cannot be destructured as a tuple

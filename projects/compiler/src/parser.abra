@@ -268,7 +268,7 @@ export enum AstNodeKind {
   Assignment(expr: AstNode, op: AssignOp, mode: AssignmentMode)
   If(condition: AstNode, conditionBinding: BindingPattern?, ifBlock: AstNode[], elseBlock: AstNode[]?)
   Match(expr: AstNode, cases: MatchCase[])
-  Try(expr: AstNode)
+  Try(expr: AstNode, elseClause: (Token, BindingPattern?, AstNode[])?)
   While(condition: AstNode, conditionBinding: BindingPattern?, block: AstNode[])
   For(itemPattern: BindingPattern, indexPattern: BindingPattern?, iterator: AstNode, block: AstNode[])
   BindingDeclaration(value: BindingDeclarationNode)
@@ -1476,7 +1476,26 @@ export type Parser {
     val token = try self._expectNext()
     val expr = try self._parseExpression()
 
-    Ok(AstNode(token: token, kind: AstNodeKind.Try(expr)))
+    val elseClause = if self._peek() |token| {
+      if token.kind == TokenKind.Else {
+        val elseToken = try self._expectNextTokenKind(TokenKind.Else)
+        val nextToken = try self._expectPeek()
+        val binding = if nextToken.kind == TokenKind.Pipe {
+          self._advance() // consume opening '|' token
+          val pat = try self._parseBindingPattern()
+          try self._expectNextTokenKind(TokenKind.Pipe)
+          Some(pat)
+        } else {
+          None
+        }
+
+        val elseBlock = try self._parseBlockOrSingleExpression(allowTerminators: true)
+
+        Some((elseToken, binding, elseBlock))
+      } else None
+    } else None
+
+    Ok(AstNode(token: token, kind: AstNodeKind.Try(expr, elseClause)))
   }
 
   func _parseWhileLoop(self): Result<AstNode, ParseError> {

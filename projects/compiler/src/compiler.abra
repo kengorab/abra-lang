@@ -1742,22 +1742,64 @@ export type Compiler {
         val res = try self._compileMatch(node, isStatement, expr, cases)
         if res |res| Ok(res) else return unreachable("match expression needs a resulting value", node.token.position)
       }
-      TypedAstNodeKind.Try(expr) => {
+      TypedAstNodeKind.Try(expr, elseClause) => {
         val exprVal = try self._compileExpression(expr)
         val isErr = try self._emitResultValueIsOkVariant(exprVal, negate: true)
 
         val labelIsErr = self._currentFn.block.addLabel("isErr")
         val labelCont = self._currentFn.block.addLabel("cont")
-        self._currentFn.block.buildJnz(isErr, labelIsErr, labelCont)
 
-        self._currentFn.block.registerLabel(labelIsErr)
-        self._currentFn.block.buildReturn(Some(exprVal))
+        if elseClause |clause| {
+          val phiCases: (Label, Value)[] = []
 
-        self._currentFn.block.registerLabel(labelCont)
-        val okValTy = try self._getQbeTypeForTypeExpect(node.ty, "unacceptable type", None)
-        val okValue = try self._emitResultValueGetValue(okValTy, exprVal)
+          val labelIsOk = self._currentFn.block.addLabel("isOk")
+          self._currentFn.block.buildJnz(isErr, labelIsErr, labelIsOk)
 
-        Ok(okValue)
+          self._currentFn.block.registerLabel(labelIsErr)
+          if clause.pattern |(bindingPattern, vars)| {
+            val variables = vars.keyBy(v => v.label.name)
+
+            val errorQbeType = try self._getQbeTypeForTypeExpect(clause.errorType, "unacceptable type", None)
+            val bindingVal = try self._emitOptValueGetValue(errorQbeType, exprVal)
+            try self._compileBindingPattern(bindingPattern, variables, Some(bindingVal))
+          }
+          for node, idx in clause.block {
+            val res = try self._compileStatement(node)
+            if idx == clause.block.length - 1 {
+              if res |res| {
+                val label = self._currentFn.block.currentLabel
+                phiCases.push((label, res))
+              } else if !clause.terminator {
+                return unreachable("last statement in try-else block has no value and is not a terminator", node.token.position)
+              }
+            }
+          }
+          if !clause.terminator {
+            self._currentFn.block.buildJmp(labelCont)
+          }
+
+          self._currentFn.block.registerLabel(labelIsOk)
+          val okQbeType = try self._getQbeTypeForTypeExpect(node.ty, "unacceptable type", None)
+          val okVal = try self._emitOptValueGetValue(okQbeType, exprVal)
+          val label = self._currentFn.block.currentLabel
+          phiCases.push((label, okVal))
+          self._currentFn.block.buildJmp(labelCont)
+
+          self._currentFn.block.registerLabel(labelCont)
+          val res = match self._currentFn.block.buildPhi(phiCases) { Ok(v) => v, Err(e) => return qbeError(e) }
+          Ok(res)
+        } else {
+          self._currentFn.block.buildJnz(isErr, labelIsErr, labelCont)
+
+          self._currentFn.block.registerLabel(labelIsErr)
+          self._currentFn.block.buildReturn(Some(exprVal))
+
+          self._currentFn.block.registerLabel(labelCont)
+          val okValTy = try self._getQbeTypeForTypeExpect(node.ty, "unacceptable type", None)
+          val okValue = try self._emitResultValueGetValue(okValTy, exprVal)
+
+          Ok(okValue)
+        }
       }
       _ => unreachable("node must be a statement", node.token.position)
     }
@@ -4274,7 +4316,7 @@ export type Compiler {
     // in place of the type. 16 chars seems like a good balance between long enough that there won't be any conflicts, but also
     // short enough that there's enough room for this type to be used as a generic in other types without making that type's or
     // function's identifier too long.
-    if name.length >= 80 {
+    if name.length >= 70 {
       val alias = if self._aliasedTypeNames[name] |alias| alias else {
         val replacement = String.random(16)
         self._aliasedTypeNames[name] = replacement

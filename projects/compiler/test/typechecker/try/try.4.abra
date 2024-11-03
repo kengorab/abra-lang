@@ -1,0 +1,13 @@
+func ok(): Result<Int, String> = Ok(123)
+
+func f1(): Result<Int, Int> {
+  val x = try ok() else return Ok(0)
+
+  Ok(x + 1)
+}
+
+func f2(): Result<Int, Int> {
+  val x = try ok() else return Err(0)
+
+  Ok(x + 1)
+}

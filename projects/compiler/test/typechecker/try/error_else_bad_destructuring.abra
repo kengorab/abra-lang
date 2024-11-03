@@ -1,0 +1,7 @@
+func ok(): Result<Int, String> = Ok(123)
+
+func f1(): Result<Int, Int> {
+  val x = try ok() else |(e1, e2)| {}
+
+  Ok(x + 1)
+}

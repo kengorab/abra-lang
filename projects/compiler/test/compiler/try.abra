@@ -35,3 +35,173 @@ func f5(): Result<Int, String> {
 }
 /// Expect: Result.Err(error: "foo")
 println(f5())
+
+// Testing else-clause with terminators
+
+func f6(): Result<Int, Int> {
+  var acc = 0
+  while acc < 10 {
+    val x = try ok() else {
+      acc = 199
+      continue
+    }
+    acc += x
+  }
+
+  Ok(acc)
+}
+
+/// Expect: Result.Ok(value: 123)
+println(f6())
+
+func f7(): Result<Int, Int> {
+  var acc = 0
+  while acc < 10 {
+    val x = try ok() else break
+    acc += x
+  }
+
+  Ok(acc)
+}
+
+/// Expect: Result.Ok(value: 123)
+println(f7())
+
+
+func f8(): Result<Int, Int> {
+  var acc = 0
+  while acc < 10 {
+    val x = try err() else {
+      acc = 199
+      continue
+    }
+    acc += x
+  }
+
+  Ok(acc)
+}
+
+/// Expect: Result.Ok(value: 199)
+println(f8())
+
+
+func f9(): Result<Int, Int> {
+  var acc = 0
+  while acc < 10 {
+    val x = try err() else break
+    acc += x
+  }
+
+  Ok(acc)
+}
+
+/// Expect: Result.Ok(value: 0)
+println(f9())
+
+func f10(): Result<Int, Int> {
+  var acc = 0
+  while acc < 10 {
+    val x = try ok() else return Ok(12)
+    acc += x
+  }
+
+  Ok(acc)
+}
+
+/// Expect: Result.Ok(value: 123)
+println(f10())
+
+func f11(): Result<Int, Int> {
+  var acc = 0
+  while acc < 10 {
+    val x = try ok() else return Err(12)
+    acc += x
+  }
+
+  Ok(acc)
+}
+
+/// Expect: Result.Ok(value: 123)
+println(f11())
+
+func f12(): Result<Int, Int> {
+  var acc = 0
+  while acc < 10 {
+    val x = try err() else return Ok(12)
+    acc += x
+  }
+
+  Ok(acc)
+}
+
+/// Expect: Result.Ok(value: 12)
+println(f12())
+
+func f13(): Result<Int, Int> {
+  var acc = 0
+  while acc < 10 {
+    val x = try err() else return Err(12)
+    acc += x
+  }
+
+  Ok(acc)
+}
+
+/// Expect: Result.Err(error: 12)
+println(f13())
+
+func f14(): Result<Int, Int> {
+  val x = try ok() else return Ok(12)
+
+  Ok(x)
+}
+
+/// Expect: Result.Ok(value: 123)
+println(f14())
+
+func f15(): Result<Int, Int> {
+  val x = try ok() else return Err(12)
+
+  Ok(x)
+}
+
+/// Expect: Result.Ok(value: 123)
+println(f15())
+
+func f16(): Result<Int, Int> {
+  val x = try err() else return Ok(12)
+
+  Ok(x)
+}
+
+/// Expect: Result.Ok(value: 12)
+println(f16())
+
+func f17(): Result<Int, Int> {
+  val x = try err() else return Err(12)
+
+  Ok(x)
+}
+
+/// Expect: Result.Err(error: 12)
+println(f17())
+
+// Testing else-clause without terminators
+
+func f18(): Result<Int, Int> {
+  val x = try ok() else 7
+
+  Ok(x)
+}
+
+/// Expect: Result.Ok(value: 123)
+println(f18())
+
+func f19(): Result<Int, Int> {
+  val x = try err() else 7
+
+  Ok(x)
+}
+
+/// Expect: Result.Ok(value: 7)
+println(f19())
