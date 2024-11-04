@@ -6,4 +6,4 @@ The containing function 'bar' returns a Result whose error type is 'Int', which 
   |  func bar(): Result<Int, Int> {
           ^
 To be compatible, the return type of 'bar' must have 'String' as its error type.
-Hint: You can use the 'mapErr' method to transform the try expression's error value into a compatible value
+Hint: You can use an else-clause to transform the error value into a compatible value and return it
