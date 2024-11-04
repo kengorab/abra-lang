@@ -1340,7 +1340,7 @@ type TypeError {
         lines.push("The containing function '${fnLabel.name}' returns a Result whose error type is '${retErrType.repr()}', which is incompatible with the try expression.")
         lines.push(self._getCursorLine(fnLabel.position, contents))
         lines.push("To be compatible, the return type of '${fnLabel.name}' must have '${tryErrType.repr()}' as its error type.")
-        lines.push("Hint: You can use the 'mapErr' method to transform the try expression's error value into a compatible value")
+        lines.push("Hint: You can use an else-clause to transform the error value into a compatible value and return it")
       }
     }
 
