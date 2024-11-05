@@ -1429,6 +1429,10 @@ export type Compiler {
           }
         }
 
+        if node.ty.kind == TypeKind.Never {
+          self._currentFn.block.buildHalt()
+        }
+
         Ok(res)
       }
       TypedAstNodeKind.Array(items) => {
@@ -1698,11 +1702,13 @@ export type Compiler {
         for node, idx in ifBlock {
           val res = try self._compileStatement(node)
           if idx == ifBlock.length - 1 {
-            if res |res| {
-              val label = self._currentFn.block.currentLabel
-              phiCases.push((label, res))
-            } else if !ifBlockTerminator {
-              return unreachable("last statement in if-expr block has no value and is not a terminator", node.token.position)
+            if !ifBlockTerminator {
+              if res |res| {
+                val label = self._currentFn.block.currentLabel
+                phiCases.push((label, res))
+              } else {
+                return unreachable("last statement in if-expr block has no value and is not a terminator", node.token.position)
+              }
             }
           }
         }
@@ -1715,11 +1721,13 @@ export type Compiler {
           for node, idx in elseBlock {
             val res = try self._compileStatement(node)
             if idx == elseBlock.length - 1 {
-              if res |res| {
-                val label = self._currentFn.block.currentLabel
-                phiCases.push((label, res))
-              } else if !elseBlockTerminator {
-                return unreachable("last statement in if-expr else block has no value and is not a terminator", node.token.position)
+              if !elseBlockTerminator {
+                if res |res| {
+                  val label = self._currentFn.block.currentLabel
+                  phiCases.push((label, res))
+                } else {
+                  return unreachable("last statement in if-expr else block has no value and is not a terminator", node.token.position)
+                }
               }
             }
           }

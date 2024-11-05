@@ -1,2 +1,2 @@
-Process.exit()
-println("hello")
+val x = if true 123 else Process.exit()
+println("x =", x)
