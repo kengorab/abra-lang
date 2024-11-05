@@ -49,3 +49,6 @@ export func uname(utsnameBuf: Pointer<Byte>): Int
 
 @CBinding("rand")
 export func rand(): Int
+
+@CBinding("exit")
+export func exit(status: Int): Unit
