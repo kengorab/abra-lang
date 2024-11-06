@@ -55,7 +55,7 @@ type CompileError {
       }
       "  |  $line\n     ${cursor.join()}"
     } else {
-      "unreachable"
+      unreachable()
     }
   }
 }
@@ -2501,7 +2501,7 @@ export type Compiler {
 
   func _getQbeTypeForTypeExpect(self, ty: Type, reason: String, position: Position? = None): Result<QbeType, CompileError> {
     val _ty = try self._getQbeTypeForType(ty)
-    if _ty |ty| Ok(ty) else if position |pos| unreachable(reason) else unreachable(reason)
+    if _ty |ty| Ok(ty) else if position |pos| unreachable("($pos) reason") else unreachable(reason)
   }
 
   func _followAccessorPath(self, head: TypedAstNode, middle: AccessorPathSegment[], tail: AccessorPathSegment, loadFinal: Bool, localName: String? = None): Result<Value, CompileError> {
