@@ -938,6 +938,18 @@ type Process {
   func exit(status = 1) = libc.exit(status)
 }
 
+@noreturn
+export func unreachable(message = "") {
+  println("Encountered unreachable code:", message)
+  libc.exit(1)
+}
+
+@noreturn
+export func todo(message = "") {
+  println("Encountered unimplemented code:", message)
+  libc.exit(1)
+}
+
 type SetIterator<T> {
   set: Set<T>
   _mapIterator: MapIterator<T, Bool>? = None

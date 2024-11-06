@@ -293,7 +293,6 @@ enum ParseErrorKind {
   ExpectedToken(expected: TokenKind[], received: TokenKind)
   UnexpectedEof
   NotYetImplemented
-  Unreachable
 }
 
 export type ParseError {
@@ -327,9 +326,6 @@ export type ParseError {
         lines.push("Not yet implemented:")
         lines.push(self._getCursorLine(self.position, contents))
       }
-      ParseErrorKind.Unreachable => {
-        lines.push("Critical error: reached unreachable location in code!")
-      }
     }
 
     lines.join("\n")
@@ -345,7 +341,7 @@ export type ParseError {
       }
       "  |  $line\n     ${cursor.join()}"
     } else {
-      "unreachable"
+      unreachable()
     }
   }
 }
@@ -432,7 +428,7 @@ export type Parser {
         TokenKind.StringInterpolation => true
         _ => false
       }
-      TokenKind.StringInterpolation => return unreachable() // no reason to ever explicitly expect a StringInterpolation token
+      TokenKind.StringInterpolation => unreachable("no reason to ever explicitly expect a StringInterpolation token")
       TokenKind.Ident => match token.kind { TokenKind.Ident => true, _ => false }
       TokenKind.LParen => match token.kind { TokenKind.LParen => true, _ => false }
       TokenKind.LBrack=> match token.kind { TokenKind.LBrack => true, _ => false }
@@ -871,7 +867,7 @@ export type Parser {
         AstNodeKind.FunctionDeclaration(node) => methods.push(node)
         AstNodeKind.TypeDeclaration(node) => types.push(node)
         AstNodeKind.EnumDeclaration(node) => enums.push(node)
-        _ => return unreachable()
+        _ => unreachable()
       }
     }
 
@@ -1246,7 +1242,7 @@ export type Parser {
       if exprs[0] |inner| {
         AstNodeKind.Grouped(inner: inner)
       } else {
-        return unreachable()
+        unreachable()
       }
     } else {
       AstNodeKind.Tuple(items: exprs)
@@ -1813,10 +1809,6 @@ export type Parser {
 
     Ok(AstNode(token: token, kind: AstNodeKind.Assignment(expr: expr, op: assignOp, mode: mode)))
   }
-}
-
-func unreachable<V>(): Result<V, ParseError> {
-  Err(ParseError(position: Position(line: 0, col: 0), kind: ParseErrorKind.Unreachable))
 }
 
 type Precedence {
