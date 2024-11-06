@@ -51,7 +51,8 @@ jobs:
           wget https://github.com/kengorab/abra-lang/releases/latest/download/abra-${{ matrix.platform.suffix }}.tar.gz
           tar -xzf abra-${{ matrix.platform.suffix }}.tar.gz -C abra-installation
           echo "PATH=$(pwd)/abra-installation:$PATH" >> $GITHUB_ENV
-          echo "ABRA_HOME=`realpath $(pwd)/abra-installation/std`" >> $GITHUB_ENV
+          # echo "ABRA_HOME=`realpath $(pwd)/abra-installation/std`" >> $GITHUB_ENV
+          echo "ABRA_HOME=`realpath $(pwd)/projects/std/src`" >> $GITHUB_ENV
       - name: Build package
         run: ./projects/compiler/scripts/generate-package.sh ${{ matrix.platform.suffix }} ${{ github.ref_name }}
       - name: Upload to release
