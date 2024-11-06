@@ -12,7 +12,7 @@ import Jsonifier from "./typechecker_test_utils"
 
 func verifyStdModule(modulesSortedById: TypedModule[], expectedId: Int, name: String): Bool {
   if modulesSortedById[expectedId] |m| {
-    if !m.name.endsWith("std/$name.abra") {
+    if !m.name.endsWith("/$name.abra") {
       println("Error: $name module misconfigured")
       return false
     }

@@ -30,11 +30,6 @@ type CompileError {
         lines.push(self._getCursorLine(self.position, contents))
         lines.push("Reason: $reason")
       }
-      CompileErrorKind.Unreachable(message) => {
-        lines.push("Unreachable code reached")
-        lines.push(self._getCursorLine(self.position, contents))
-        lines.push("Internal error: $message")
-      }
       CompileErrorKind.QbeError(message) => {
         // todo: somehow thread the `node` which generated the error through to the error message
         lines.push("Encountered error while generating qbe code:")
@@ -60,14 +55,13 @@ type CompileError {
       }
       "  |  $line\n     ${cursor.join()}"
     } else {
-      "unreachable"
+      unreachable()
     }
   }
 }
 
 enum CompileErrorKind {
   NotYetImplemented(reason: String)
-  Unreachable(message: String)
   QbeError(message: String)
   ResolvedGenericsError(context: String, message: String)
 }
@@ -371,12 +365,12 @@ export type Compiler {
         val (iterVal, iterTy, nextFn, popAdditionalResolvedGenericsLayer) = match instTy {
           StructOrEnum.Struct(s) => {
             if s == self._project.preludeArrayStruct {
-              val innerTy = if typeArgs[0] |t| t else return unreachable("Array has 1 required type argument")
+              val innerTy = if typeArgs[0] |t| t else unreachable("Array has 1 required type argument")
               match self._resolvedGenerics.addLayer("array literal", { "T": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "array literal", message: e))) }
 
               val arrayVal = try self._compileExpression(typedIterator)
               val instType = try self._addResolvedGenericsLayerForInstanceMethod(typedIterator.ty, "iterator", typedIterator.token.position)
-              val iteratorFn = if s.instanceMethods.find(m => m.label.name == "iterator") |fn| fn else return unreachable("Array#iterator must exist")
+              val iteratorFn = if s.instanceMethods.find(m => m.label.name == "iterator") |fn| fn else unreachable("Array#iterator must exist")
               val iteratorFnVal = try self._getOrCompileMethod(instType, iteratorFn)
               self._resolvedGenerics.popLayer()
 
@@ -387,17 +381,17 @@ export type Compiler {
                 StructOrEnum.Struct(s) => s.instanceMethods
                 StructOrEnum.Enum(e) => e.instanceMethods
               }
-              val nextFn = if instanceMethods.find(m => m.label.name == "next") |fn| fn else return unreachable("a type must have a 'next' method if it's to be iterable")
+              val nextFn = if instanceMethods.find(m => m.label.name == "next") |fn| fn else unreachable("a type must have a 'next' method if it's to be iterable")
 
               val iterTy = Type(kind: TypeKind.Instance(structOrEnum, typeArgs))
               (iter, iterTy, nextFn, true)
             } else if s == self._project.preludeSetStruct {
-              val innerTy = if typeArgs[0] |t| t else return unreachable("Set has 1 required type argument")
+              val innerTy = if typeArgs[0] |t| t else unreachable("Set has 1 required type argument")
               match self._resolvedGenerics.addLayer("set literal", { "T": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "set literal", message: e))) }
 
               val mapVal = try self._compileExpression(typedIterator)
               val instType = try self._addResolvedGenericsLayerForInstanceMethod(typedIterator.ty, "iterator", typedIterator.token.position)
-              val iteratorFn = if s.instanceMethods.find(m => m.label.name == "iterator") |fn| fn else return unreachable("Set#iterator must exist")
+              val iteratorFn = if s.instanceMethods.find(m => m.label.name == "iterator") |fn| fn else unreachable("Set#iterator must exist")
               val iteratorFnVal = try self._getOrCompileMethod(instType, iteratorFn)
               self._resolvedGenerics.popLayer()
 
@@ -408,18 +402,18 @@ export type Compiler {
                 StructOrEnum.Struct(s) => s.instanceMethods
                 StructOrEnum.Enum(e) => e.instanceMethods
               }
-              val nextFn = if instanceMethods.find(m => m.label.name == "next") |fn| fn else return unreachable("a type must have a 'next' method if it's to be iterable")
+              val nextFn = if instanceMethods.find(m => m.label.name == "next") |fn| fn else unreachable("a type must have a 'next' method if it's to be iterable")
 
               val iterTy = Type(kind: TypeKind.Instance(structOrEnum, typeArgs))
               (iter, iterTy, nextFn, true)
             } else if s == self._project.preludeMapStruct {
-              val keyTy = if typeArgs[0] |t| t else return unreachable("Map has 2 required type arguments")
-              val valTy = if typeArgs[1] |t| t else return unreachable("Map has 2 required type arguments")
+              val keyTy = if typeArgs[0] |t| t else unreachable("Map has 2 required type arguments")
+              val valTy = if typeArgs[1] |t| t else unreachable("Map has 2 required type arguments")
               match self._resolvedGenerics.addLayer("map literal", { "K": keyTy, "V": valTy }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "map literal", message: e))) }
 
               val mapVal = try self._compileExpression(typedIterator)
               val instType = try self._addResolvedGenericsLayerForInstanceMethod(typedIterator.ty, "iterator", typedIterator.token.position)
-              val iteratorFn = if s.instanceMethods.find(m => m.label.name == "iterator") |fn| fn else return unreachable("Map#iterator must exist")
+              val iteratorFn = if s.instanceMethods.find(m => m.label.name == "iterator") |fn| fn else unreachable("Map#iterator must exist")
               val iteratorFnVal = try self._getOrCompileMethod(instType, iteratorFn)
               self._resolvedGenerics.popLayer()
 
@@ -430,21 +424,21 @@ export type Compiler {
                 StructOrEnum.Struct(s) => s.instanceMethods
                 StructOrEnum.Enum(e) => e.instanceMethods
               }
-              val nextFn = if instanceMethods.find(m => m.label.name == "next") |fn| fn else return unreachable("a type must have a 'next' method if it's to be iterable")
+              val nextFn = if instanceMethods.find(m => m.label.name == "next") |fn| fn else unreachable("a type must have a 'next' method if it's to be iterable")
 
               val iterTy = Type(kind: TypeKind.Instance(structOrEnum, typeArgs))
               (iter, iterTy, nextFn, true)
             } else {
               val iter = try self._compileExpression(typedIterator)
-              val nextFn = if s.instanceMethods.find(m => m.label.name == "next") |fn| fn else return unreachable("a type must have a 'next' method if it's to be iterable")
+              val nextFn = if s.instanceMethods.find(m => m.label.name == "next") |fn| fn else unreachable("a type must have a 'next' method if it's to be iterable")
 
               (iter, typedIterator.ty, nextFn, false)
             }
           }
-          StructOrEnum.Enum(_enum) => return todo_("enum as for-loop target")
+          StructOrEnum.Enum(_enum) => todo("enum as for-loop target")
         }
 
-        val nextItemTy = if self._typeIsOption(nextFn.returnType) |innerTy| innerTy else return unreachable("a 'next' method must return an Option type")
+        val nextItemTy = if self._typeIsOption(nextFn.returnType) |innerTy| innerTy else unreachable("a 'next' method must return an Option type")
         val iterInstTy = try self._addResolvedGenericsLayerForInstanceMethod(iterTy, "next", node.token.position)
         val nextItemQbeTy = try self._getQbeTypeForTypeExpect(nextItemTy, "unacceptable type for 'next' method return type")
 
@@ -543,7 +537,7 @@ export type Compiler {
 
           Ok(None)
         } else {
-          unreachable("cannot have a break statement outside of a loop", node.token.position)
+          unreachable("cannot have a break statement outside of a loop")
         }
       }
       TypedAstNodeKind.Continue => {
@@ -552,7 +546,7 @@ export type Compiler {
 
           Ok(None)
         } else {
-          unreachable("cannot have a continue statement outside of a loop", node.token.position)
+          unreachable("cannot have a continue statement outside of a loop")
         }
       }
       TypedAstNodeKind.Return(expr) => {
@@ -565,13 +559,13 @@ export type Compiler {
 
         Ok(None)
       }
-      TypedAstNodeKind.Placeholder => unreachable("placeholder ast node emitted from typechecker", node.token.position)
+      TypedAstNodeKind.Placeholder => unreachable("placeholder ast node emitted from typechecker")
       TypedAstNodeKind.Assignment(mode, op, expr) => {
         val res = try self._compileExpression(expr)
 
         match mode {
           TypedAssignmentMode.Variable(variable) => {
-            if variable.isParameter return unreachable("parameters cannot be reassigned to", node.token.position)
+            if variable.isParameter unreachable("parameters cannot be reassigned to")
 
             val varTy = try self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position))
             if variable.isCaptured {
@@ -579,7 +573,7 @@ export type Compiler {
               self._currentFn.block.addComment("overwrite ptr to captured '${variable.label.name}'")
               self._currentFn.block.buildStore(varTy, res, ptr)
             } else {
-              val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'", node.token.position)
+              val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else unreachable("Could not resolve name for variable '${variable.label.name}'")
               val slot = Value.Ident(slotName, QbeType.Pointer)
               self._currentFn.block.buildStore(varTy, res, slot)
             }
@@ -596,17 +590,17 @@ export type Compiler {
                     val (structOrEnum, _) = try self._getInstanceTypeForType(expr.ty)
                     val struct = match structOrEnum {
                       StructOrEnum.Struct(struct) => struct
-                      StructOrEnum.Enum => return unreachable("index-assignment only implemented for arrays")
+                      StructOrEnum.Enum => unreachable("index-assignment only implemented for arrays")
                     }
-                    if struct != self._project.preludeArrayStruct return unreachable("index-assignment only implemented for arrays")
+                    if struct != self._project.preludeArrayStruct unreachable("index-assignment only implemented for arrays")
 
-                    val setFn = if self._project.preludeArrayStruct.instanceMethods.find(m => m.label.name == "set") |fn| fn else return unreachable("Array#set must exist")
+                    val setFn = if self._project.preludeArrayStruct.instanceMethods.find(m => m.label.name == "set") |fn| fn else unreachable("Array#set must exist")
                     val setFnVal = try self._getOrCompileMethod(instType, setFn)
                     self._resolvedGenerics.popLayer()
 
                     try self._currentFn.block.buildCall(Callable.Function(setFnVal), [exprVal, idxExprVal, res]) else |e| return qbeError(e)
                   }
-                  _ => return unreachable("cannot use range index in index-assignment")
+                  _ => unreachable("cannot use range index in index-assignment")
                 }
               }
               TypedIndexingNode.Map(expr, idxExpr) => {
@@ -617,17 +611,17 @@ export type Compiler {
                 val (structOrEnum, _) = try self._getInstanceTypeForType(expr.ty)
                 val struct = match structOrEnum {
                   StructOrEnum.Struct(struct) => struct
-                  StructOrEnum.Enum => return unreachable("index-assignment only implemented for maps")
+                  StructOrEnum.Enum => unreachable("index-assignment only implemented for maps")
                 }
-                if struct != self._project.preludeMapStruct return unreachable("index-assignment only implemented for map")
+                if struct != self._project.preludeMapStruct unreachable("index-assignment only implemented for map")
 
-                val insertFn = if self._project.preludeMapStruct.instanceMethods.find(m => m.label.name == "insert") |fn| fn else return unreachable("Map#insert must exist")
+                val insertFn = if self._project.preludeMapStruct.instanceMethods.find(m => m.label.name == "insert") |fn| fn else unreachable("Map#insert must exist")
                 val insertFnVal = try self._getOrCompileMethod(instType, insertFn)
                 self._resolvedGenerics.popLayer()
 
                 try self._currentFn.block.buildCall(Callable.Function(insertFnVal), [exprVal, idxExprVal, res]) else |e| return qbeError(e)
               }
-              TypedIndexingNode.Tuple(_, _) => return unreachable("tuples are not assignable via index-assignment")
+              TypedIndexingNode.Tuple(_, _) => unreachable("tuples are not assignable via index-assignment")
             }
           }
           TypedAssignmentMode.Accessor(head, middle, tail) => {
@@ -681,7 +675,7 @@ export type Compiler {
           lenVal = try self._currentFn.block.buildAdd(lenVal, stringLength) else |e| return qbeError(e)
         }
 
-        val stringWithLengthFn = if self._project.preludeStringStruct.staticMethods.find(m => m.label.name == "withLength") |fn| fn else return unreachable("String.withLength must exist")
+        val stringWithLengthFn = if self._project.preludeStringStruct.staticMethods.find(m => m.label.name == "withLength") |fn| fn else unreachable("String.withLength must exist")
         val stringWithLengthFnVal = try self._getOrCompileMethod(Type(kind: TypeKind.Type(StructOrEnum.Struct(self._project.preludeStringStruct))), stringWithLengthFn)
         val newString = try self._currentFn.block.buildCall(Callable.Function(stringWithLengthFnVal), [lenVal]) else |e| return qbeError(e)
         var newBuffer = self._currentFn.block.buildLoadL(try self._currentFn.block.buildAdd(Value.Int(8), newString) else |e| return qbeError(e))
@@ -749,7 +743,7 @@ export type Compiler {
                 rightVal = try self._currentFn.block.buildCall(Callable.Function(rightToStringFnVal), [rightVal]) else |e| return qbeError(e)
               }
 
-              val stringWithLengthFn = if self._project.preludeStringStruct.staticMethods.find(m => m.label.name == "withLength") |fn| fn else return unreachable("String.withLength must exist")
+              val stringWithLengthFn = if self._project.preludeStringStruct.staticMethods.find(m => m.label.name == "withLength") |fn| fn else unreachable("String.withLength must exist")
               val stringWithLengthFnVal = try self._getOrCompileMethod(Type(kind: TypeKind.Type(StructOrEnum.Struct(self._project.preludeStringStruct))), stringWithLengthFn)
               val leftLength = self._currentFn.block.buildLoadL(leftVal)
               val rightLength = self._currentFn.block.buildLoadL(rightVal)
@@ -938,7 +932,7 @@ export type Compiler {
             self._currentFn.block.buildJnz(isSome, labelThen, labelElse)
 
             self._currentFn.block.registerLabel(labelThen)
-            val innerTy = if self._typeIsOption(left.ty) |innerTy| innerTy else return unreachable("", node.token.position)
+            val innerTy = if self._typeIsOption(left.ty) |innerTy| innerTy else unreachable()
             val innerQbeType = try self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None)
             val innerVal = try self._emitOptValueGetValue(innerQbeType, leftVal)
             val leftLabel = self._currentFn.block.currentLabel
@@ -1002,11 +996,11 @@ export type Compiler {
         val varTy = try self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position))
         if variable.isParameter {
           if variable.isCaptured {
-            if variable.mutable return unreachable("parameters cannot be mutable", node.token.position)
+            if variable.mutable unreachable("parameters cannot be mutable")
             val value = try self._getCapturedVarPtr(variable)
             Ok(value)
           } else {
-            val varName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'", node.token.position)
+            val varName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else unreachable("Could not resolve name for variable '${variable.label.name}'")
             Ok(Value.Ident(varName, varTy))
           }
         } else {
@@ -1016,7 +1010,7 @@ export type Compiler {
                 val paramTypes = match hint.kind {
                   TypeKind.Func(paramTypes, _) => Some(paramTypes)
                   TypeKind.Any => None // if the function value is being treated as an Any, then no param type info needs to be known later anyway
-                  _ => return unreachable("fnAliasTypeKind must be TypeKind.Func", node.token.position)
+                  _ => unreachable("fnAliasTypeKind must be TypeKind.Func")
                 }
                 paramTypes
               } else {
@@ -1047,7 +1041,7 @@ export type Compiler {
                 }
                 Ok(res)
               } else {
-                val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'")
+                val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else unreachable("Could not resolve name for variable '${variable.label.name}'")
                 val slot = Value.Ident(slotName, QbeType.Pointer)
                 val res = self._currentFn.block.buildLoad(varTy, slot)
                 Ok(res)
@@ -1104,7 +1098,7 @@ export type Compiler {
                 val fnVal = try self._getOrCompileFunction(fn)
                 fnVal
               }
-              FunctionKind.InstanceMethod => return unreachable("instance methods handled elsewhere", node.token.position)
+              FunctionKind.InstanceMethod => unreachable("instance methods handled elsewhere")
             }
 
             self._resolvedGenerics.popLayer()
@@ -1117,7 +1111,7 @@ export type Compiler {
 
             val intrinsicDec = fn.decorators.find(dec => dec.label.name == "Intrinsic")
             if intrinsicDec |dec| {
-              if isOptSafe return unreachable("cannot have opt-safe intrinsic method calls")
+              if isOptSafe unreachable("cannot have opt-safe intrinsic method calls")
               val res = self._invokeIntrinsicFn(dec, fn, [Some(selfExpr)].concat(arguments))
               self._resolvedGenerics.popLayer()
               return res
@@ -1131,7 +1125,7 @@ export type Compiler {
             fnHasOptionalParameters = fn.params.any(p => !!p.defaultValue)
 
             val selfVal = if isOptSafe {
-              val innerTy = if self._typeIsOption(selfInstanceType) |innerTy| innerTy else return unreachable("an opt-safe invocation needs to have an Option type as its lhs")
+              val innerTy = if self._typeIsOption(selfInstanceType) |innerTy| innerTy else unreachable("an opt-safe invocation needs to have an Option type as its lhs")
               selfInstanceType = innerTy
 
               val selfVal = try self._compileExpression(selfExpr)
@@ -1146,7 +1140,7 @@ export type Compiler {
 
               self._currentFn.block.registerLabel(labelIsNone)
               val noneRes = if fn.returnType.kind != TypeKind.PrimitiveUnit {
-                val optNoneVariant = if self._project.preludeOptionEnum.variants.find(v => v.label.name == "None") |v| v else return unreachable("Option.None must exist")
+                val optNoneVariant = if self._project.preludeOptionEnum.variants.find(v => v.label.name == "None") |v| v else unreachable("Option.None must exist")
                 match self._resolvedGenerics.addLayer("Option.None", { "V": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "Option.None", message: e))) }
                 val noneVariantFn = try self._getOrCompileEnumVariantFn(self._project.preludeOptionEnum, optNoneVariant)
                 self._resolvedGenerics.popLayer()
@@ -1156,7 +1150,7 @@ export type Compiler {
               self._currentFn.block.buildJmp(labelCont)
 
               self._currentFn.block.registerLabel(labelIsSome)
-              val optSomeVariant = if self._project.preludeOptionEnum.variants.find(v => v.label.name == "Some") |v| v else return unreachable("Option.Some must exist")
+              val optSomeVariant = if self._project.preludeOptionEnum.variants.find(v => v.label.name == "Some") |v| v else unreachable("Option.Some must exist")
               match self._resolvedGenerics.addLayer("Option.Some", { "V": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "Option.Some", message: e))) }
               val someVariantFn = try self._getOrCompileEnumVariantFn(self._project.preludeOptionEnum, optSomeVariant)
               self._resolvedGenerics.popLayer()
@@ -1245,7 +1239,7 @@ export type Compiler {
             val argQbeType = try self._getQbeTypeForTypeExpect(argTy, "unacceptable type for argument", Some(node.token.position))
             args.push(argQbeType.zeroValue())
           } else {
-            return unreachable("invocation target must be an arbitrary expression, which do not have default-valued arguments", node.token.position)
+            unreachable("invocation target must be an arbitrary expression, which do not have default-valued arguments")
           }
         }
 
@@ -1438,20 +1432,20 @@ export type Compiler {
       TypedAstNodeKind.Array(items) => {
         match node.ty.kind {
           TypeKind.Instance(_, generics) => {
-            val inner = if generics[0] |t| t else return unreachable("Array has 1 required type argument")
+            val inner = if generics[0] |t| t else unreachable("Array has 1 required type argument")
             match self._resolvedGenerics.addLayer("array literal", { "T": inner }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "array literal", message: e))) }
           }
-          _ => return unreachable("we know it's an array instance here")
+          _ => unreachable("we know it's an array instance here")
         }
 
-        val arrayWithCapacityFn = if self._project.preludeArrayStruct.staticMethods.find(m => m.label.name == "withCapacity") |fn| fn else return unreachable("Array.withCapacity must exist")
+        val arrayWithCapacityFn = if self._project.preludeArrayStruct.staticMethods.find(m => m.label.name == "withCapacity") |fn| fn else unreachable("Array.withCapacity must exist")
         val arrayWithCapacityFnVal = try self._getOrCompileMethod(node.ty, arrayWithCapacityFn)
 
         val sizeVal = Value.Int(items.length.nextPowerOf2())
         val arrayInstance = try self._currentFn.block.buildCall(Callable.Function(arrayWithCapacityFnVal), [sizeVal], resultLocalName) else |e| return qbeError(e)
         self._currentFn.block.addCommentBefore("${arrayInstance.repr()}: ${node.ty.repr()}")
 
-        val arrayPushFn = if self._project.preludeArrayStruct.instanceMethods.find(m => m.label.name == "push") |fn| fn else return unreachable("Array#push must exist")
+        val arrayPushFn = if self._project.preludeArrayStruct.instanceMethods.find(m => m.label.name == "push") |fn| fn else unreachable("Array#push must exist")
         val arrayPushFnVal = try self._getOrCompileMethod(node.ty, arrayPushFn)
 
         for item in items {
@@ -1466,19 +1460,19 @@ export type Compiler {
       TypedAstNodeKind.Set(items) => {
         match node.ty.kind {
           TypeKind.Instance(_, generics) => {
-            val inner = if generics[0] |t| t else return unreachable("Set has 1 required type argument")
+            val inner = if generics[0] |t| t else unreachable("Set has 1 required type argument")
             match self._resolvedGenerics.addLayer("set literal", { "T": inner }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "set literal", message: e))) }
           }
-          _ => return unreachable("we know it's a set instance here")
+          _ => unreachable("we know it's a set instance here")
         }
 
-        val setNewFn = if self._project.preludeSetStruct.staticMethods.find(m => m.label.name == "new") |fn| fn else return unreachable("Set.new must exist")
+        val setNewFn = if self._project.preludeSetStruct.staticMethods.find(m => m.label.name == "new") |fn| fn else unreachable("Set.new must exist")
         val setNewFnVal = try self._getOrCompileMethod(node.ty, setNewFn)
 
         val setInstance = try self._currentFn.block.buildCall(Callable.Function(setNewFnVal), [Value.Int(0), Value.Int32(1)], resultLocalName) else |e| return qbeError(e)
         self._currentFn.block.addCommentBefore("${setInstance.repr()}: ${node.ty.repr()}")
 
-        val setInsertFn = if self._project.preludeSetStruct.instanceMethods.find(m => m.label.name == "insert") |fn| fn else return unreachable("Set#insert must exist")
+        val setInsertFn = if self._project.preludeSetStruct.instanceMethods.find(m => m.label.name == "insert") |fn| fn else unreachable("Set#insert must exist")
         val setInsertFnVal = try self._getOrCompileMethod(node.ty, setInsertFn)
 
         for item in items {
@@ -1493,21 +1487,21 @@ export type Compiler {
       TypedAstNodeKind.Map(items) => {
         match node.ty.kind {
           TypeKind.Instance(_, generics) => {
-            val key = if generics[0] |t| t else return unreachable("Map has 2 required type arguments")
-            val value = if generics[1] |t| t else return unreachable("Map has 2 required type arguments")
+            val key = if generics[0] |t| t else unreachable("Map has 2 required type arguments")
+            val value = if generics[1] |t| t else unreachable("Map has 2 required type arguments")
             match self._resolvedGenerics.addLayer("map literal", { "K": key, "V": value }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "map literal", message: e))) }
           }
-          _ => return unreachable("we know it's a map instance here")
+          _ => unreachable("we know it's a map instance here")
         }
 
 
-        val mapNewFn = if self._project.preludeMapStruct.staticMethods.find(m => m.label.name == "new") |fn| fn else return unreachable("Map.new must exist")
+        val mapNewFn = if self._project.preludeMapStruct.staticMethods.find(m => m.label.name == "new") |fn| fn else unreachable("Map.new must exist")
         val mapNewFnVal = try self._getOrCompileMethod(node.ty, mapNewFn)
 
         val mapInstance = try self._currentFn.block.buildCall(Callable.Function(mapNewFnVal), [Value.Int(0), Value.Int32(1)], resultLocalName) else |e| return qbeError(e)
         self._currentFn.block.addCommentBefore("${mapInstance.repr()}: ${node.ty.repr()}")
 
-        val mapInsertFn = if self._project.preludeMapStruct.instanceMethods.find(m => m.label.name == "insert") |fn| fn else return unreachable("Map#insert must exist")
+        val mapInsertFn = if self._project.preludeMapStruct.instanceMethods.find(m => m.label.name == "insert") |fn| fn else unreachable("Map#insert must exist")
         val mapInsertFnVal = try self._getOrCompileMethod(node.ty, mapInsertFn)
 
         for (keyExpr, valExpr) in items {
@@ -1555,8 +1549,8 @@ export type Compiler {
                 val instType = try self._addResolvedGenericsLayerForInstanceMethod(expr.ty, "get", expr.token.position)
                 val (structOrEnum, _) = try self._getInstanceTypeForType(expr.ty)
                 val getFn = match structOrEnum {
-                  StructOrEnum.Struct(struct) => if struct.instanceMethods.find(m => m.label.name == "get") |fn| fn else return unreachable("#get must exist for array-like indexing")
-                  StructOrEnum.Enum => return unreachable("array-like indexing never applies to enum instances")
+                  StructOrEnum.Struct(struct) => if struct.instanceMethods.find(m => m.label.name == "get") |fn| fn else unreachable("#get must exist for array-like indexing")
+                  StructOrEnum.Enum => unreachable("array-like indexing never applies to enum instances")
                 }
                 val getFnVal = try self._getOrCompileMethod(instType, getFn)
                 self._resolvedGenerics.popLayer()
@@ -1582,8 +1576,8 @@ export type Compiler {
                 val instType = try self._addResolvedGenericsLayerForInstanceMethod(expr.ty, "getRange", expr.token.position)
                 val (structOrEnum, _) = try self._getInstanceTypeForType(expr.ty)
                 val getRangeFn = match structOrEnum {
-                  StructOrEnum.Struct(struct) => if struct.instanceMethods.find(m => m.label.name == "getRange") |fn| fn else return unreachable("#getRange must exist for array-like indexing")
-                  StructOrEnum.Enum => return unreachable("array-like indexing never applies to enum instances")
+                  StructOrEnum.Struct(struct) => if struct.instanceMethods.find(m => m.label.name == "getRange") |fn| fn else unreachable("#getRange must exist for array-like indexing")
+                  StructOrEnum.Enum => unreachable("array-like indexing never applies to enum instances")
                 }
                 val getRangeFnVal = try self._getOrCompileMethod(instType, getRangeFn)
                 self._resolvedGenerics.popLayer()
@@ -1601,11 +1595,11 @@ export type Compiler {
             val (structOrEnum, _) = try self._getInstanceTypeForType(expr.ty)
             val struct = match structOrEnum {
               StructOrEnum.Struct(struct) => struct
-              StructOrEnum.Enum => return unreachable("map indexing never applies to enum instances")
+              StructOrEnum.Enum => unreachable("map indexing never applies to enum instances")
             }
-            if struct != self._project.preludeMapStruct return unreachable("map indexing only implemented for map")
+            if struct != self._project.preludeMapStruct unreachable("map indexing only implemented for map")
 
-            val getFn = if self._project.preludeMapStruct.instanceMethods.find(m => m.label.name == "get") |fn| fn else return unreachable("Map#get must exist")
+            val getFn = if self._project.preludeMapStruct.instanceMethods.find(m => m.label.name == "get") |fn| fn else unreachable("Map#get must exist")
             val getFnVal = try self._getOrCompileMethod(instType, getFn)
             self._resolvedGenerics.popLayer()
 
@@ -1618,7 +1612,7 @@ export type Compiler {
             val (structOrEnum, typeArgs) = try self._getInstanceTypeForType(tupleExpr.ty)
             val struct = match structOrEnum {
               StructOrEnum.Struct(struct) => struct
-              StructOrEnum.Enum => return unreachable("tuples are represented as structs")
+              StructOrEnum.Enum => unreachable("tuples are represented as structs")
             }
 
             val selfType = Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), typeArgs))
@@ -1652,7 +1646,7 @@ export type Compiler {
           val paramTypes = match hint.kind {
             TypeKind.Func(paramTypes, _) => Some(paramTypes)
             TypeKind.Any => None // if the function value is being treated as an Any, then no param type info needs to be known later anyway
-            _ => return unreachable("typeKind must be TypeKind.Func", node.token.position)
+            _ => unreachable("typeKind must be TypeKind.Func")
           }
           paramTypes
         } else {
@@ -1668,8 +1662,8 @@ export type Compiler {
         self._compileFunctionValue(node.token.position, fn, fnValBase, targetParamTypes, capturesMem, None)
       }
       TypedAstNodeKind.If(isStatement, cond, conditionBinding, ifBlock, ifBlockTerminator, elseBlock, elseBlockTerminator) => {
-        if isStatement return unreachable("if-statements are handled elsewhere", node.token.position)
-        if elseBlock.isEmpty() return unreachable("if-expressions must not have empty else-blocks", node.token.position)
+        if isStatement unreachable("if-statements are handled elsewhere")
+        if elseBlock.isEmpty() unreachable("if-expressions must not have empty else-blocks")
 
         val labelThen = self._currentFn.block.addLabel("then")
         val labelElse = self._currentFn.block.addLabel("else")
@@ -1707,7 +1701,7 @@ export type Compiler {
                 val label = self._currentFn.block.currentLabel
                 phiCases.push((label, res))
               } else {
-                return unreachable("last statement in if-expr block has no value and is not a terminator", node.token.position)
+                unreachable("last statement in if-expr block has no value and is not a terminator")
               }
             }
           }
@@ -1726,7 +1720,7 @@ export type Compiler {
                   val label = self._currentFn.block.currentLabel
                   phiCases.push((label, res))
                 } else {
-                  return unreachable("last statement in if-expr else block has no value and is not a terminator", node.token.position)
+                  unreachable("last statement in if-expr else block has no value and is not a terminator")
                 }
               }
             }
@@ -1748,7 +1742,7 @@ export type Compiler {
       }
       TypedAstNodeKind.Match(isStatement, expr, cases) => {
         val res = try self._compileMatch(node, isStatement, expr, cases)
-        if res |res| Ok(res) else return unreachable("match expression needs a resulting value", node.token.position)
+        if res |res| Ok(res) else unreachable("match expression needs a resulting value")
       }
       TypedAstNodeKind.Try(expr, elseClause) => {
         val exprVal = try self._compileExpression(expr)
@@ -1778,7 +1772,7 @@ export type Compiler {
                 val label = self._currentFn.block.currentLabel
                 phiCases.push((label, res))
               } else if !clause.terminator {
-                return unreachable("last statement in try-else block has no value and is not a terminator", node.token.position)
+                unreachable("last statement in try-else block has no value and is not a terminator")
               }
             }
           }
@@ -1809,7 +1803,7 @@ export type Compiler {
           Ok(okValue)
         }
       }
-      _ => unreachable("node must be a statement", node.token.position)
+      _ => unreachable("node must be a statement")
     }
 
     self._currentNode = prevNode
@@ -1869,7 +1863,7 @@ export type Compiler {
 
           val (litVal, litType) = try self._compileLiteral(lit)
 
-          if !self._project.typesAreEquivalent(exprType, litType) return unreachable("equality operators require matching types", node.token.position)
+          if !self._project.typesAreEquivalent(exprType, litType) unreachable("equality operators require matching types")
 
           val cond = try self._compileEqLogic(exprVal, litVal, litType, expr.token.position)
           val isEqLabel = self._currentFn.block.addLabel("${matchLabelPrefix}_iseq")
@@ -1921,12 +1915,12 @@ export type Compiler {
             try self._addResolvedGenericsLayerForEnumVariant(exprType, variant.label.name, node.token.position)
             val variantFields = match variant.kind {
               EnumVariantKind.Container(fields) => fields
-              _ => return unreachable("cannot destructure a non-container enum variant", node.token.position)
+              _ => unreachable("cannot destructure a non-container enum variant")
             }
 
             var memCursor = try self._emitGetEnumVariantValueStart(exprVal)
             for v, idx in destructuredVariables {
-              val field = if variantFields[idx] |f| f else return unreachable("this should be caught during typechecking", node.token.position)
+              val field = if variantFields[idx] |f| f else unreachable("this should be caught during typechecking")
               val fieldTy = try self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position))
 
               val fieldVal = self._currentFn.block.buildLoad(fieldTy, memCursor)
@@ -1960,7 +1954,7 @@ export type Compiler {
           // No nextCaseLabel, since the `else` case will always be the last case if present
           (None, exprVal, exprType)
         }
-        _ => return todo_("other match case types", node.token.position)
+        _ => todo("other match case types")
       }
 
       if case.binding |v| {
@@ -2013,7 +2007,7 @@ export type Compiler {
           val tupleItemSlot = try self._currentFn.block.buildAdd(Value.Int(idx * QbeType.Pointer.size()), tuplePtr) else |e| return qbeError(e)
           val tupleItemSlotTy = match pat {
             BindingPattern.Variable(label) => {
-              val variable = if variables[label.name] |v| v else return unreachable("expected binding '${label.name}', but missing from variables")
+              val variable = if variables[label.name] |v| v else unreachable("expected binding '${label.name}', but missing from variables")
               val varTy = try self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position))
               varTy
             }
@@ -2027,7 +2021,7 @@ export type Compiler {
       }
     }
 
-    val variable = if variables[varName] |v| v else return unreachable("expected binding '$varName', but missing from variables")
+    val variable = if variables[varName] |v| v else unreachable("expected binding '$varName', but missing from variables")
     val varTy = try self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position))
     val slotName = self._currentFn.block.addVar(variableToVar(variable))
 
@@ -2080,7 +2074,7 @@ export type Compiler {
     // If the captured variable is a parameter but we're not currently referencing it from a closure, then it can be resolved as any ordinary
     // parameter (simply by name) since it's an immutable variable that has not been moved to the heap.
     if variable.isParameter {
-      val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'")
+      val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else unreachable("Could not resolve name for variable '${variable.label.name}'")
       val varTy = try self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position))
       return Ok(Value.Ident(slotName, varTy))
     }
@@ -2089,7 +2083,7 @@ export type Compiler {
     // we may need to undo the extra layer of pointer indirection which comes as a result of being captured by some other function,
     // if the captured variable is mutable. If it's not mutable then it will not have been moved to the heap, so no additional pointer
     // needs to be dereferenced.
-    val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else return unreachable("Could not resolve name for variable '${variable.label.name}'")
+    val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else unreachable("Could not resolve name for variable '${variable.label.name}'")
     val slot = Value.Ident(slotName, QbeType.Pointer)
     var varTy = if variable.mutable {
       self._currentFn.block.addComment("get ptr to captured mutable '${variable.label.name}'")
@@ -2141,10 +2135,10 @@ export type Compiler {
     }
 
     val res = if !fnInvocationIsAtDeclaredScope {
-      val currentFunc = if self._currentFunction |currentFn| currentFn else return unreachable("we must be within a function to enter this case", fn.label.position)
+      val currentFunc = if self._currentFunction |currentFn| currentFn else unreachable("we must be within a function to enter this case")
 
-      val idx = if currentFunc.capturedClosures.findIndex(f => f.label.name == fn.label.name) |(_, idx)| idx else return unreachable("closure '${fn.label.name}' called within function '${currentFunc.label.name}', but not tracked in its capturedClosures", fn.label.position)
-      val env = if self._currentFn._env |env| env else return unreachable("expected currentFn ('${self._currentFn.name}') to have an `_env`, but it didn't")
+      val idx = if currentFunc.capturedClosures.findIndex(f => f.label.name == fn.label.name) |(_, idx)| idx else unreachable("closure '${fn.label.name}' called within function '${currentFunc.label.name}', but not tracked in its capturedClosures")
+      val env = if self._currentFn._env |env| env else unreachable("expected currentFn ('${self._currentFn.name}') to have an `_env`, but it didn't")
       val offset = QbeType.Pointer.size() * (currentFunc.captures.length + idx)
 
       val ptr = try self._currentFn.block.buildAdd(Value.Int(offset), env) else |e| return qbeError(e)
@@ -2159,7 +2153,7 @@ export type Compiler {
               StructOrEnum.Enum(enum_) => enum_.label.name
             }
             "$typeName.."
-          } else return unreachable("an instance method should have a structOrEnum", fn.label.position)
+          } else unreachable("an instance method should have a structOrEnum")
         }
         FunctionKind.StaticMethod(structOrEnum) => {
           val typeName = match structOrEnum {
@@ -2189,7 +2183,7 @@ export type Compiler {
       } else if rightIsFloat && !leftIsFloat {
         leftVal = self._currentFn.block.buildLToF(leftVal)
       } else {
-        return unreachable("unknown operator '$op' between types '${left.ty.repr()}' and '${right.ty.repr()}'")
+        unreachable("unknown operator '$op' between types '${left.ty.repr()}' and '${right.ty.repr()}'")
       }
     }
 
@@ -2200,7 +2194,7 @@ export type Compiler {
     var leftVal = try self._compileExpression(left)
     var rightVal = try self._compileExpression(right)
 
-    if !self._project.typesAreEquivalent(left.ty, right.ty) return unreachable("equality operators require matching types", right.token.position)
+    if !self._project.typesAreEquivalent(left.ty, right.ty) unreachable("equality operators require matching types")
 
     self._compileEqLogic(leftVal, rightVal, left.ty, left.token.position, localName, negate)
   }
@@ -2279,7 +2273,7 @@ export type Compiler {
         //   func foo(a: Int, b: Int): Int = ...
         //   callFn(foo)
         // In this case, typechecking fails since `callFn` won't provide a value for the parameter `b`.
-        return unreachable("This should have been caught during typechecking", position)
+        unreachable("This should have been caught during typechecking")
       } else {
         // In this case, consider the following example:
         //   func foo(): Int = ...
@@ -2294,7 +2288,7 @@ export type Compiler {
       //   callFn(foo)
       // In this case, typechecking fails since `callFn` won't provide a value for the parameter `b`.
       // This is similar to the case above, except here we have an optional parameter.
-      return unreachable("This should be caught during typechecking", position)
+      unreachable("This should be caught during typechecking")
     } else if fnNumReqParams <= targetArity && targetArity <= numParams {
       // In this case, we need to "artificially (monotonically) shrink" the arity of the underlying function.
       // It's "monotonically" because the arity itself might not actually shrink; consider this example:
@@ -2364,7 +2358,7 @@ export type Compiler {
       // because in order to reach this case, it must be the case that all of the optional parameters are passed a value.
       self._compileParamDiscardingFunctionWrapper(fnValParamTypes, fn, fnValBase, position, true, selfTy)
     } else {
-      return unreachable("All valid cases exhausted above", position)
+      unreachable("All valid cases exhausted above")
     }
     val fnVal = try fnValRes
 
@@ -2463,7 +2457,7 @@ export type Compiler {
 
   func _constructString(self, ptrVal: Value, lenVal: Value, localName: String? = None): Result<Value, CompileError> {
     val fnVal = try self._getOrCompileStructInitializer(self._project.preludeStringStruct)
-    val structTy = if fnVal.returnType |ty| ty else return unreachable("initializer functions must have return types specified")
+    val structTy = if fnVal.returnType |ty| ty else unreachable("initializer functions must have return types specified")
 
     val res = try self._currentFn.block.buildCall(Callable.Function(fnVal), [lenVal, ptrVal, Value.Int32(0)], localName) else |e| return qbeError(e)
     self._currentFn.block.addCommentBefore("${res.repr()}: String")
@@ -2478,7 +2472,7 @@ export type Compiler {
       TypeKind.PrimitiveBool => Ok(Some(QbeType.U64))
       TypeKind.PrimitiveString => Ok(Some(QbeType.Pointer))
       TypeKind.Never => Ok(None)
-      TypeKind.Any => todo_("TypeKind.Any")
+      TypeKind.Any => todo("TypeKind.Any")
       TypeKind.Generic(name) => {
         if self._resolvedGenerics.resolveGeneric(name) |ty| self._getQbeTypeForType(ty) else unreachable("unexpected generic '$name' at this point")
       }
@@ -2499,7 +2493,7 @@ export type Compiler {
         Ok(Some(QbeType.Pointer))
       }
       TypeKind.Func(paramTypes, returnType) => Ok(Some(QbeType.Pointer))
-      TypeKind.Type(type_) => todo_("TypeKind.Type")
+      TypeKind.Type(type_) => todo("TypeKind.Type")
       TypeKind.Tuple(_) => Ok(Some(QbeType.Pointer))
       TypeKind.Hole => unreachable("unexpected hole in emitted typed ast")
     }
@@ -2507,7 +2501,7 @@ export type Compiler {
 
   func _getQbeTypeForTypeExpect(self, ty: Type, reason: String, position: Position? = None): Result<QbeType, CompileError> {
     val _ty = try self._getQbeTypeForType(ty)
-    if _ty |ty| Ok(ty) else if position |pos| unreachable(reason, pos) else unreachable(reason)
+    if _ty |ty| Ok(ty) else if position |pos| unreachable("($pos) reason") else unreachable(reason)
   }
 
   func _followAccessorPath(self, head: TypedAstNode, middle: AccessorPathSegment[], tail: AccessorPathSegment, loadFinal: Bool, localName: String? = None): Result<Value, CompileError> {
@@ -2553,7 +2547,7 @@ export type Compiler {
           instTy = StructOrEnum.Enum(enum_)
         }
         AccessorPathSegment.Method(label, fn, isOptSafe, fnAliasTypeHint) => {
-          if isOptSafe return todo_("opt-safe method accessor", label.position)
+          if isOptSafe todo("opt-safe method accessor")
 
           val selfInstType = match fn.kind {
             FunctionKind.InstanceMethod => {
@@ -2575,7 +2569,7 @@ export type Compiler {
             val paramTypes = match hint.kind {
               TypeKind.Func(paramTypes, _) => Some(paramTypes)
               TypeKind.Any => None // if the function value is being treated as an Any, then no param type info needs to be known later anyway
-              _ => return unreachable("fnAliasTypeKind must be TypeKind.Func", label.position)
+              _ => unreachable("fnAliasTypeKind must be TypeKind.Func")
             }
             paramTypes
           } else {
@@ -2591,8 +2585,8 @@ export type Compiler {
           var optSafeCtx: (Label, Value, QbeFunction, Label)? = None
 
           if isOptSafe {
-            val innerTy = if self._typeIsOption(ty) |innerTy| innerTy else return unreachable("an opt-safe field accessor needs to have an Option type as its lhs")
-            val unwrappedInstType = if self._typeIsOption(instType) |innerTy| innerTy else return unreachable("an opt-safe field accessor needs to have an Option type as its lhs")
+            val innerTy = if self._typeIsOption(ty) |innerTy| innerTy else unreachable("an opt-safe field accessor needs to have an Option type as its lhs")
+            val unwrappedInstType = if self._typeIsOption(instType) |innerTy| innerTy else unreachable("an opt-safe field accessor needs to have an Option type as its lhs")
             instType = unwrappedInstType
             val (_instTy, _) = try self._getInstanceTypeForType(unwrappedInstType)
             instTy = _instTy
@@ -2606,7 +2600,7 @@ export type Compiler {
             self._currentFn.block.buildJnz(variantIsOptionSome, labelIsSome, labelIsNone)
 
             self._currentFn.block.registerLabel(labelIsNone)
-            val optNoneVariant = if self._project.preludeOptionEnum.variants.find(v => v.label.name == "None") |v| v else return unreachable("Option.None must exist")
+            val optNoneVariant = if self._project.preludeOptionEnum.variants.find(v => v.label.name == "None") |v| v else unreachable("Option.None must exist")
             match self._resolvedGenerics.addLayer("Option.None", { "V": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: label.position, kind: CompileErrorKind.ResolvedGenericsError(context: "Option.None", message: e))) }
             val noneVariantFn = try self._getOrCompileEnumVariantFn(self._project.preludeOptionEnum, optNoneVariant)
             self._resolvedGenerics.popLayer()
@@ -2614,7 +2608,7 @@ export type Compiler {
             self._currentFn.block.buildJmp(labelCont)
 
             self._currentFn.block.registerLabel(labelIsSome)
-            val optSomeVariant = if self._project.preludeOptionEnum.variants.find(v => v.label.name == "Some") |v| v else return unreachable("Option.Some must exist")
+            val optSomeVariant = if self._project.preludeOptionEnum.variants.find(v => v.label.name == "Some") |v| v else unreachable("Option.Some must exist")
             match self._resolvedGenerics.addLayer("Option.Some", { "V": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: label.position, kind: CompileErrorKind.ResolvedGenericsError(context: "Option.Some", message: e))) }
             val someVariantFn = try self._getOrCompileEnumVariantFn(self._project.preludeOptionEnum, optSomeVariant)
             self._resolvedGenerics.popLayer()
@@ -2638,7 +2632,7 @@ export type Compiler {
 
                 offset += fieldTy.size()
               }
-              if fieldTyQbe == QbeType.F32 return unreachable("fieldTyQbe == QbeType.F32")
+              if fieldTyQbe == QbeType.F32 unreachable("fieldTyQbe == QbeType.F32")
 
               val ptr = try self._currentFn.block.buildAdd(Value.Int(offset), curVal) else |e| return qbeError(e)
               if idx == segs.length - 1 {
@@ -2655,7 +2649,7 @@ export type Compiler {
                 curVal = nextVal
               }
             }
-            StructOrEnum.Enum(_enum) => return todo_("enum field accessor")
+            StructOrEnum.Enum(_enum) => todo("enum field accessor")
           }
 
           if optSafeCtx |(labelIsNone, noneRes, someVariantFn, labelCont)| {
@@ -2781,7 +2775,7 @@ export type Compiler {
 
     val memLocal = try fn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("enum_variant.mem")) else |e| return qbeError(e)
 
-    val variantIdx = if enum_.variants.findIndex(v => v.label.name == variant.label.name) |(_, idx)| idx else return unreachable("variant '${variant.label.name}' must exist")
+    val variantIdx = if enum_.variants.findIndex(v => v.label.name == variant.label.name) |(_, idx)| idx else unreachable("variant '${variant.label.name}' must exist")
     fn.block.buildStoreW(Value.Int(variantIdx), memLocal) // Store variant idx at designated slot
     var offset = QbeType.U64.size() // begin inserting any fields after that variant idx slot
 
@@ -2815,13 +2809,13 @@ export type Compiler {
       if node |node| {
         val items = match node.kind {
           TypedAstNodeKind.Array(items) => items
-          _ => return unreachable("`$fnName` receives an array of its variadic arguments")
+          _ => unreachable("`$fnName` receives an array of its variadic arguments")
         }
         items
-      } else return unreachable("`$fnName` receives an array of its variadic arguments")
+      } else unreachable("`$fnName` receives an array of its variadic arguments")
     } else []
 
-    val stdoutWriteFn = if self._project.preludeScope.functions.find(fn => fn.label.name == "stdoutWrite") |fn| fn else return unreachable("`stdoutWrite` must exist in prelude")
+    val stdoutWriteFn = if self._project.preludeScope.functions.find(fn => fn.label.name == "stdoutWrite") |fn| fn else unreachable("`stdoutWrite` must exist in prelude")
     val stdoutWriteFnVal = try self._getOrCompileFunction(stdoutWriteFn)
 
     val space = self._builder.buildGlobalString(" ")
@@ -2857,7 +2851,7 @@ export type Compiler {
   func _invokeCBindingFn(self, dec: Decorator, fn: Function, arguments: TypedAstNode?[]): Result<Value, CompileError> {
     val cFnName = match dec.arguments[0] {
       LiteralAstNode.String(value) => value
-      _ => return unreachable("@CBinding decorator requires 1 string argument for the name")
+      _ => unreachable("@CBinding decorator requires 1 string argument for the name")
     }
 
     val args: Value[] = []
@@ -2866,7 +2860,7 @@ export type Compiler {
         val arg = try self._compileExpression(node)
         args.push(arg)
       } else {
-        return unreachable("functions with @CBinding decorator cannot have optional parameters")
+        unreachable("functions with @CBinding decorator cannot have optional parameters")
       }
     }
 
@@ -2884,7 +2878,7 @@ export type Compiler {
   func _pointerSize(self, ty: Type): Result<Int, CompileError> {
     val size = match ty.kind {
       TypeKind.PrimitiveBool => 4
-      TypeKind.Generic(name) => return unreachable("unresolved generic '$name'")
+      TypeKind.Generic(name) => unreachable("unresolved generic '$name'")
       TypeKind.Instance(structOrEnum, generics) => {
         match structOrEnum {
           StructOrEnum.Struct(struct) => {
@@ -2902,7 +2896,7 @@ export type Compiler {
   func _invokeIntrinsicFn(self, dec: Decorator, fn: Function, arguments: TypedAstNode?[]): Result<Value, CompileError> {
     val intrinsicFnName = match dec.arguments[0] {
       LiteralAstNode.String(value) => value
-      _ => return unreachable("@Intrinsic decorator requires 1 string argument for the name")
+      _ => unreachable("@Intrinsic decorator requires 1 string argument for the name")
     }
 
     match intrinsicFnName {
@@ -2918,8 +2912,8 @@ export type Compiler {
       "pointer_is_null" => {
         self._currentFn.block.addComment("begin pointer_is_null...")
 
-        val _ptr = if arguments[0] |arg| arg else return unreachable("'pointer_is_null' has 1 required argument")
-        val ptr = if _ptr |arg| arg else return unreachable("'pointer_is_null' has 1 required argument")
+        val _ptr = if arguments[0] |arg| arg else unreachable("'pointer_is_null' has 1 required argument")
+        val ptr = if _ptr |arg| arg else unreachable("'pointer_is_null' has 1 required argument")
         val ptrVal = try self._compileExpression(ptr)
 
         val labelIsNull = self._currentFn.block.addLabel("ptr_is_null")
@@ -2946,11 +2940,11 @@ export type Compiler {
       "pointer_malloc" => {
         self._currentFn.block.addComment("begin pointer_malloc...")
 
-        val _count = if arguments[0] |arg| arg else return unreachable("'pointer_malloc' has 1 required argument")
-        val count = if _count |arg| arg else return unreachable("'pointer_malloc' has 1 required argument")
+        val _count = if arguments[0] |arg| arg else unreachable("'pointer_malloc' has 1 required argument")
+        val count = if _count |arg| arg else unreachable("'pointer_malloc' has 1 required argument")
         val countVal = try self._compileExpression(count)
 
-        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else return unreachable("(pointer_malloc) could not resolve T for Pointer<T>")
+        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else unreachable("(pointer_malloc) could not resolve T for Pointer<T>")
         val innerTySize = try self._pointerSize(innerTy)
         val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), countVal) else |e| return qbeError(e)
 
@@ -2963,15 +2957,15 @@ export type Compiler {
       "pointer_realloc" => {
         self._currentFn.block.addComment("begin pointer_realloc...")
 
-        val _ptr = if arguments[0] |arg| arg else return unreachable("'pointer_realloc' has 2 required arguments")
-        val ptr = if _ptr |arg| arg else return unreachable("'pointer_realloc' has 2 required arguments")
+        val _ptr = if arguments[0] |arg| arg else unreachable("'pointer_realloc' has 2 required arguments")
+        val ptr = if _ptr |arg| arg else unreachable("'pointer_realloc' has 2 required arguments")
         val ptrVal = try self._compileExpression(ptr)
 
-        val _count = if arguments[1] |arg| arg else return unreachable("'pointer_realloc' has 2 required arguments")
-        val count = if _count |arg| arg else return unreachable("'pointer_realloc' has 2 required arguments")
+        val _count = if arguments[1] |arg| arg else unreachable("'pointer_realloc' has 2 required arguments")
+        val count = if _count |arg| arg else unreachable("'pointer_realloc' has 2 required arguments")
         val countVal = try self._compileExpression(count)
 
-        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else return unreachable("(pointer_realloc) could not resolve T for Pointer<T>")
+        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else unreachable("(pointer_realloc) could not resolve T for Pointer<T>")
         val innerTySize = try self._pointerSize(innerTy)
         val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), countVal) else |e| return qbeError(e)
 
@@ -2984,15 +2978,15 @@ export type Compiler {
       "pointer_store" => {
         self._currentFn.block.addComment("begin pointer_store...")
 
-        val _ptr = if arguments[0] |arg| arg else return unreachable("'pointer_store' has 2 required arguments")
-        val ptr = if _ptr |arg| arg else return unreachable("'pointer_store' has 2 required arguments")
+        val _ptr = if arguments[0] |arg| arg else unreachable("'pointer_store' has 2 required arguments")
+        val ptr = if _ptr |arg| arg else unreachable("'pointer_store' has 2 required arguments")
         val ptrVal = try self._compileExpression(ptr)
 
-        val _value = if arguments[1] |arg| arg else return unreachable("'pointer_store' has 2 required arguments")
-        val value = if _value |arg| arg else return unreachable("'pointer_store' has 2 required arguments")
+        val _value = if arguments[1] |arg| arg else unreachable("'pointer_store' has 2 required arguments")
+        val value = if _value |arg| arg else unreachable("'pointer_store' has 2 required arguments")
         val valueVal = try self._compileExpression(value)
 
-        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else return unreachable("(pointer_store) could not resolve T for Pointer<T>")
+        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else unreachable("(pointer_store) could not resolve T for Pointer<T>")
         val innerTySize = try self._pointerSize(innerTy)
         val innerQbeType = try self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None)
         self._currentFn.block.buildStore(innerQbeType, valueVal, ptrVal)
@@ -3004,15 +2998,15 @@ export type Compiler {
       "pointer_offset" => {
         self._currentFn.block.addComment("begin pointer_offset...")
 
-        val _ptr = if arguments[0] |arg| arg else return unreachable("'pointer_offset' has 2 required arguments")
-        val ptr = if _ptr |arg| arg else return unreachable("'pointer_offset' has 2 required arguments")
+        val _ptr = if arguments[0] |arg| arg else unreachable("'pointer_offset' has 2 required arguments")
+        val ptr = if _ptr |arg| arg else unreachable("'pointer_offset' has 2 required arguments")
         val ptrVal = try self._compileExpression(ptr)
 
-        val _offset = if arguments[1] |arg| arg else return unreachable("'pointer_offset' has 2 required arguments")
-        val offset = if _offset |arg| arg else return unreachable("'pointer_offset' has 2 required arguments")
+        val _offset = if arguments[1] |arg| arg else unreachable("'pointer_offset' has 2 required arguments")
+        val offset = if _offset |arg| arg else unreachable("'pointer_offset' has 2 required arguments")
         val offsetVal = try self._compileExpression(offset)
 
-        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else return unreachable("(pointer_offset) could not resolve T for Pointer<T>")
+        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else unreachable("(pointer_offset) could not resolve T for Pointer<T>")
         val innerTySize = try self._pointerSize(innerTy)
         val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), offsetVal) else |e| return qbeError(e)
 
@@ -3025,11 +3019,11 @@ export type Compiler {
       "pointer_load" => {
         self._currentFn.block.addComment("begin pointer_load...")
 
-        val _ptr = if arguments[0] |arg| arg else return unreachable("'pointer_load' has 1 required argument")
-        val ptr = if _ptr |arg| arg else return unreachable("'pointer_load' has 1 required argument")
+        val _ptr = if arguments[0] |arg| arg else unreachable("'pointer_load' has 1 required argument")
+        val ptr = if _ptr |arg| arg else unreachable("'pointer_load' has 1 required argument")
         val ptrVal = try self._compileExpression(ptr)
 
-        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else return unreachable("(pointer_load) could not resolve T for Pointer<T>")
+        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else unreachable("(pointer_load) could not resolve T for Pointer<T>")
 
         val isByte = match innerTy.kind {
           TypeKind.Instance(structOrEnum, _) => {
@@ -3055,19 +3049,19 @@ export type Compiler {
       "pointer_copy_from" => {
         self._currentFn.block.addComment("begin pointer_copy_from...")
 
-        val _ptr = if arguments[0] |arg| arg else return unreachable("'pointer_copy_from' has 3 required arguments")
-        val ptr = if _ptr |arg| arg else return unreachable("'pointer_copy_from' has 3 required arguments")
+        val _ptr = if arguments[0] |arg| arg else unreachable("'pointer_copy_from' has 3 required arguments")
+        val ptr = if _ptr |arg| arg else unreachable("'pointer_copy_from' has 3 required arguments")
         val ptrVal = try self._compileExpression(ptr)
 
-        val _other = if arguments[1] |arg| arg else return unreachable("'pointer_copy_from' has 3 required arguments")
-        val other = if _other |arg| arg else return unreachable("'pointer_copy_from' has 3 required arguments")
+        val _other = if arguments[1] |arg| arg else unreachable("'pointer_copy_from' has 3 required arguments")
+        val other = if _other |arg| arg else unreachable("'pointer_copy_from' has 3 required arguments")
         val otherVal = try self._compileExpression(other)
 
-        val _size = if arguments[2] |arg| arg else return unreachable("'pointer_copy_from' has 3 required arguments")
-        val size = if _size |arg| arg else return unreachable("'pointer_copy_from' has 3 required arguments")
+        val _size = if arguments[2] |arg| arg else unreachable("'pointer_copy_from' has 3 required arguments")
+        val size = if _size |arg| arg else unreachable("'pointer_copy_from' has 3 required arguments")
         val sizeArg = try self._compileExpression(size)
 
-        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else return unreachable("(pointer_copy_from) could not resolve T for Pointer<T>")
+        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else unreachable("(pointer_copy_from) could not resolve T for Pointer<T>")
         val innerTySize = try self._pointerSize(innerTy)
         val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), sizeArg) else |e| return qbeError(e)
 
@@ -3083,7 +3077,7 @@ export type Compiler {
         val errnoFnName = match Process.uname().sysname {
           "Linux" => "__errno_location"
           "Darwin" => "__error"
-          _ sysname => return todo_("[errno] unsupported system " + sysname)
+          _ sysname => todo("[errno] unsupported system " + sysname)
         }
         val errnoPtr = try self._currentFn.block.buildCallRaw(errnoFnName, QbeType.Pointer, []) else |e| return qbeError(e)
         val errnoVal = self._currentFn.block.buildLoadW(errnoPtr)
@@ -3096,8 +3090,8 @@ export type Compiler {
       "byte_from_int" => {
         self._currentFn.block.addComment("begin byte_from_int...")
 
-        val _arg = if arguments[0] |arg| arg else return unreachable("'byte_from_int' has 1 required argument")
-        val arg = if _arg |arg| arg else return unreachable("'byte_from_int' has 1 required argument")
+        val _arg = if arguments[0] |arg| arg else unreachable("'byte_from_int' has 1 required argument")
+        val arg = if _arg |arg| arg else unreachable("'byte_from_int' has 1 required argument")
         val argVal = try self._compileExpression(arg)
 
         self._currentFn.block.addComment("...byte_from_int end")
@@ -3107,8 +3101,8 @@ export type Compiler {
       "byte_as_int" => {
         self._currentFn.block.addComment("begin byte_as_int...")
 
-        val _arg = if arguments[0] |arg| arg else return unreachable("'byte_as_int' has 1 required argument")
-        val arg = if _arg |arg| arg else return unreachable("'byte_as_int' has 1 required argument")
+        val _arg = if arguments[0] |arg| arg else unreachable("'byte_as_int' has 1 required argument")
+        val arg = if _arg |arg| arg else unreachable("'byte_as_int' has 1 required argument")
         val argVal = try self._compileExpression(arg)
 
         self._currentFn.block.addComment("...byte_as_int end")
@@ -3118,8 +3112,8 @@ export type Compiler {
       "int_as_float" => {
         self._currentFn.block.addComment("begin int_as_float...")
 
-        val _arg = if arguments[0] |arg| arg else return unreachable("'int_as_float' has 1 required argument")
-        val arg = if _arg |arg| arg else return unreachable("'int_as_float' has 1 required argument")
+        val _arg = if arguments[0] |arg| arg else unreachable("'int_as_float' has 1 required argument")
+        val arg = if _arg |arg| arg else unreachable("'int_as_float' has 1 required argument")
         val argVal = try self._compileExpression(arg)
 
         val res = self._currentFn.block.buildLToF(argVal)
@@ -3131,8 +3125,8 @@ export type Compiler {
       "float_as_int" => {
         self._currentFn.block.addComment("begin float_as_int...")
 
-        val _arg = if arguments[0] |arg| arg else return unreachable("'float_as_int' has 1 required argument")
-        val arg = if _arg |arg| arg else return unreachable("'float_as_int' has 1 required argument")
+        val _arg = if arguments[0] |arg| arg else unreachable("'float_as_int' has 1 required argument")
+        val arg = if _arg |arg| arg else unreachable("'float_as_int' has 1 required argument")
         val argVal = try self._compileExpression(arg)
 
         val res = self._currentFn.block.buildFToL(argVal)
@@ -3144,8 +3138,8 @@ export type Compiler {
       "float_floor" => {
         self._currentFn.block.addComment("begin float_floor...")
 
-        val _arg = if arguments[0] |arg| arg else return unreachable("'float_floor' has 1 required argument")
-        val arg = if _arg |arg| arg else return unreachable("'float_floor' has 1 required argument")
+        val _arg = if arguments[0] |arg| arg else unreachable("'float_floor' has 1 required argument")
+        val arg = if _arg |arg| arg else unreachable("'float_floor' has 1 required argument")
         val argVal = try self._compileExpression(arg)
 
         val floorRes = try self._currentFn.block.buildCallRaw("floor", QbeType.F64, [argVal]) else |e| return qbeError(e)
@@ -3158,8 +3152,8 @@ export type Compiler {
       "float_ceil" => {
         self._currentFn.block.addComment("begin float_ceil...")
 
-        val _arg = if arguments[0] |arg| arg else return unreachable("'float_ceil' has 1 required argument")
-        val arg = if _arg |arg| arg else return unreachable("'float_ceil' has 1 required argument")
+        val _arg = if arguments[0] |arg| arg else unreachable("'float_ceil' has 1 required argument")
+        val arg = if _arg |arg| arg else unreachable("'float_ceil' has 1 required argument")
         val argVal = try self._compileExpression(arg)
 
         val ceilRes = try self._currentFn.block.buildCallRaw("ceil", QbeType.F64, [argVal]) else |e| return qbeError(e)
@@ -3172,8 +3166,8 @@ export type Compiler {
       "float_round" => {
         self._currentFn.block.addComment("begin float_round...")
 
-        val _arg = if arguments[0] |arg| arg else return unreachable("'float_round' has 1 required argument")
-        val arg = if _arg |arg| arg else return unreachable("'float_round' has 1 required argument")
+        val _arg = if arguments[0] |arg| arg else unreachable("'float_round' has 1 required argument")
+        val arg = if _arg |arg| arg else unreachable("'float_round' has 1 required argument")
         val argVal = try self._compileExpression(arg)
 
         val roundRes = try self._currentFn.block.buildCallRaw("round", QbeType.F64, [argVal]) else |e| return qbeError(e)
@@ -3197,7 +3191,7 @@ export type Compiler {
 
         Ok(res)
       }
-      _ => unreachable("unsupported intrinsic '$intrinsicFnName'", fn.label.position)
+      _ => unreachable("unsupported intrinsic '$intrinsicFnName'")
     }
   }
 
@@ -3232,7 +3226,7 @@ export type Compiler {
     if isInstanceMethod {
       val selfTyQbe = try self._getQbeTypeForTypeExpect(selfType, "unacceptable type for self")
       fnVal.addParameter("self", selfTyQbe)
-      val selfVariable = if fn.scope.variables.find(v => v.label.name == "self") |selfVariable| selfVariable else return unreachable("Function '${fn.label.name}' is an instance method but does not have a variable 'self' in its scope", fn.label.position)
+      val selfVariable = if fn.scope.variables.find(v => v.label.name == "self") |selfVariable| selfVariable else unreachable("Function '${fn.label.name}' is an instance method but does not have a variable 'self' in its scope")
       fnVal.block.addVar(variableToVar(selfVariable), Some("self"))
     }
     try self._compileFunc(fnVal, fn)
@@ -3319,13 +3313,13 @@ export type Compiler {
         if struct == self._project.preludeBoolStruct return self._getOrCompileBoolToStringMethod()
 
         val _fn = struct.instanceMethods.find(m => m.label.name == "toString")
-        val fn = if _fn |f| f else return unreachable("every struct has a toString method defined")
+        val fn = if _fn |f| f else unreachable("every struct has a toString method defined")
 
         (try self._structMethodFnName(struct, fn), fn)
       }
       StructOrEnum.Enum(enum_) => {
         val _fn = enum_.instanceMethods.find(m => m.label.name == "toString")
-        val fn = if _fn |f| f else return unreachable("every enum has a toString method defined")
+        val fn = if _fn |f| f else unreachable("every enum has a toString method defined")
 
         (try self._enumMethodFnName(enum_, fn), fn)
       }
@@ -3467,7 +3461,7 @@ export type Compiler {
     }
 
     val totalLengthVal = try self._currentFn.block.buildAdd(Value.Int(len), lenVal) else |e| return qbeError(e)
-    val stringWithLengthFn = if self._project.preludeStringStruct.staticMethods.find(m => m.label.name == "withLength") |fn| fn else return unreachable("String.withLength must exist")
+    val stringWithLengthFn = if self._project.preludeStringStruct.staticMethods.find(m => m.label.name == "withLength") |fn| fn else unreachable("String.withLength must exist")
     val stringWithLengthFnVal = try self._getOrCompileMethod(Type(kind: TypeKind.Type(StructOrEnum.Struct(self._project.preludeStringStruct))), stringWithLengthFn)
     val newStr = try self._currentFn.block.buildCall(Callable.Function(stringWithLengthFnVal), [totalLengthVal]) else |e| return qbeError(e)
 
@@ -3719,13 +3713,13 @@ export type Compiler {
         }
 
         val _fn = struct.instanceMethods.find(m => m.label.name == "eq")
-        val fn = if _fn |f| f else return unreachable("every struct has an eq method defined")
+        val fn = if _fn |f| f else unreachable("every struct has an eq method defined")
 
         (try self._structMethodFnName(struct, fn), fn)
       }
       StructOrEnum.Enum(enum_) => {
         val _fn = enum_.instanceMethods.find(m => m.label.name == "eq")
-        val fn = if _fn |f| f else return unreachable("every enum has an eq method defined")
+        val fn = if _fn |f| f else unreachable("every enum has an eq method defined")
 
         (try self._enumMethodFnName(enum_, fn), fn)
       }
@@ -3934,13 +3928,13 @@ export type Compiler {
         }
 
         val _fn = struct.instanceMethods.find(m => m.label.name == "hash")
-        val fn = if _fn |f| f else return unreachable("every struct has a hash method defined")
+        val fn = if _fn |f| f else unreachable("every struct has a hash method defined")
 
         (try self._structMethodFnName(struct, fn), fn)
       }
       StructOrEnum.Enum(enum_) => {
         val _fn = enum_.instanceMethods.find(m => m.label.name == "hash")
-        val fn = if _fn |f| f else return unreachable("every enum has a hash method defined")
+        val fn = if _fn |f| f else unreachable("every enum has a hash method defined")
 
         (try self._enumMethodFnName(enum_, fn), fn)
       }
@@ -4077,7 +4071,7 @@ export type Compiler {
 
   func _emitOptValueIsSomeVariant(self, exprVal: Value, negate = false): Result<Value, CompileError> {
     val variantIdx = self._emitGetEnumVariantIdx(exprVal)
-    val optionSomeVariantIdx = if self._project.preludeOptionEnum.variants.findIndex(v => v.label.name == "Some") |(_, idx)| idx else return unreachable("Option.Some must exist")
+    val optionSomeVariantIdx = if self._project.preludeOptionEnum.variants.findIndex(v => v.label.name == "Some") |(_, idx)| idx else unreachable("Option.Some must exist")
     if negate {
       val res = try self._currentFn.block.buildCompareNeq(variantIdx, Value.Int(optionSomeVariantIdx)) else |e| return qbeError(e)
       Ok(res)
@@ -4096,7 +4090,7 @@ export type Compiler {
 
   func _emitResultValueIsOkVariant(self, exprVal: Value, negate = false): Result<Value, CompileError> {
     val variantIdx = self._emitGetEnumVariantIdx(exprVal)
-    val resultOkVariantIdx = if self._project.preludeResultEnum.variants.findIndex(v => v.label.name == "Ok") |(_, idx)| idx else return unreachable("Result.Ok must exist")
+    val resultOkVariantIdx = if self._project.preludeResultEnum.variants.findIndex(v => v.label.name == "Ok") |(_, idx)| idx else unreachable("Result.Ok must exist")
     if negate {
       val res = try self._currentFn.block.buildCompareNeq(variantIdx, Value.Int(resultOkVariantIdx)) else |e| return qbeError(e)
       Ok(res)
@@ -4313,7 +4307,7 @@ export type Compiler {
         val repr = if self._resolvedGenerics.resolveGeneric(name) |ty| {
           try self._getNameForType(ty)
         } else {
-          return unreachable("could not resolve '$name'")
+          unreachable("could not resolve '$name'")
         }
         parts.push(repr)
       }
@@ -4350,7 +4344,7 @@ export type Compiler {
         val repr = if self._resolvedGenerics.resolveGeneric(name) |ty| {
           try self._getNameForType(ty)
         } else {
-          return unreachable("could not resolve '$name'")
+          unreachable("could not resolve '$name'")
         }
         parts.push(repr)
       }
@@ -4412,7 +4406,7 @@ export type Compiler {
         if !struct.typeParams.isEmpty() {
           parts.push("<")
           for name, idx in struct.typeParams {
-            val resolvedGeneric = if self._resolvedGenerics.resolveGeneric(name) |ty| ty else return unreachable("_fnSignature:struct (${struct.label.name}, ${fn.label.name}), could not resolve generic '$name'")
+            val resolvedGeneric = if self._resolvedGenerics.resolveGeneric(name) |ty| ty else unreachable("_fnSignature:struct (${struct.label.name}, ${fn.label.name}), could not resolve generic '$name'")
             parts.push(resolvedGeneric.repr())
 
             if idx != struct.typeParams.length - 1 { parts.push(", ") }
@@ -4426,7 +4420,7 @@ export type Compiler {
         if !enum_.typeParams.isEmpty() {
           parts.push("<")
           for name, idx in enum_.typeParams {
-            val resolvedGeneric = if self._resolvedGenerics.resolveGeneric(name) |ty| ty else return unreachable("_fnSignature:enum (${enum_.label.name}, ${fn.label.name}), could not resolve generic '$name'")
+            val resolvedGeneric = if self._resolvedGenerics.resolveGeneric(name) |ty| ty else unreachable("_fnSignature:enum (${enum_.label.name}, ${fn.label.name}), could not resolve generic '$name'")
             parts.push(resolvedGeneric.repr())
 
             if idx != enum_.typeParams.length - 1 { parts.push(", ") }
@@ -4442,7 +4436,7 @@ export type Compiler {
       parts.push("<")
       for (_, typeParamLabel), idx in fn.typeParams {
         val name = typeParamLabel.name
-        val resolvedGeneric = if self._resolvedGenerics.resolveGeneric(name) |ty| ty else return unreachable("_fnSignature:fn, could not resolve generic '$name'")
+        val resolvedGeneric = if self._resolvedGenerics.resolveGeneric(name) |ty| ty else unreachable("_fnSignature:fn, could not resolve generic '$name'")
         parts.push(resolvedGeneric.repr())
 
         if idx != fn.typeParams.length - 1 { parts.push(", ") }
@@ -4477,7 +4471,7 @@ export type Compiler {
     if !struct.typeParams.isEmpty() {
       firstLine.push("<")
       for name, idx in struct.typeParams {
-        val resolvedGeneric = if self._resolvedGenerics.resolveGeneric(name) |ty| ty else return unreachable("could not resolve generic '$name'")
+        val resolvedGeneric = if self._resolvedGenerics.resolveGeneric(name) |ty| ty else unreachable("could not resolve generic '$name'")
         firstLine.push("$name = ${resolvedGeneric.repr()}")
 
         if idx != struct.typeParams.length - 1 { firstLine.push(", ") }
@@ -4538,6 +4532,3 @@ export type Compiler {
     }
   }
 }
-
-func todo_<V>(message: String, position = Position(line: 0, col: 0)): Result<V, CompileError> = Err(CompileError(position: position, kind: CompileErrorKind.NotYetImplemented(message)))
-func unreachable<V>(message: String, position = Position(line: 0, col: 0)): Result<V, CompileError> = Err(CompileError(position: position, kind: CompileErrorKind.Unreachable(message)))

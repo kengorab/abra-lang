@@ -212,7 +212,8 @@ export type LexerError {
       }
       "  |  $line\n     ${cursor.join()}"
     } else {
-      "unreachable"
+      // "unreachable"
+      unreachable()
     }
   }
 }
@@ -525,6 +526,7 @@ export type Lexer {
           continue
         } else {
           // should be unreachable
+          unreachable()
         }
       } else if ch == "\"" {
         closed = true
