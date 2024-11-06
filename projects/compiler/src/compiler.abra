@@ -1974,8 +1974,10 @@ export type Compiler {
         val res = try self._compileStatement(node)
         if idx == case.body.length - 1 {
           if resValSlotCtx |(slot, slotTy)| {
-            if res |res| {
-              self._currentFn.block.buildStore(slotTy, res, slot)
+            if !case.terminator {
+              if res |res| {
+                self._currentFn.block.buildStore(slotTy, res, slot)
+              }
             }
           }
         }
