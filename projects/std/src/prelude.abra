@@ -933,6 +933,9 @@ type Process {
 
     Uname(sysname: sysname, nodename: nodename, release: release, version: version, machine: machine)
   }
+
+  @noreturn
+  func exit(status = 1) = libc.exit(status)
 }
 
 type SetIterator<T> {

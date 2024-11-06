@@ -2997,7 +2997,10 @@ export type Typechecker {
           typedNodes.push(typedNode)
           continue
         }
-        _ => try self._typecheckStatement(node: node, typeHint: None)
+        _ => {
+          if self.currentScope.terminator return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+          try self._typecheckStatement(node: node, typeHint: None)
+        }
       }
 
       typedNodes.push(typedNode)
@@ -3231,7 +3234,9 @@ export type Typechecker {
     val terminator = self.currentScope.terminator
 
     self.currentScope = prevScope
-    self.currentScope.terminator = terminator
+    if terminator == Some(Terminator.Returning) {
+      self.currentScope.terminator = terminator
+    }
 
     Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.While(typedCondition, conditionBindingPattern, typedNodes, terminator)))
   }
@@ -3342,7 +3347,9 @@ export type Typechecker {
     val terminator = self.currentScope.terminator
 
     self.currentScope = prevScope
-    self.currentScope.terminator = terminator
+    if terminator == Some(Terminator.Returning) {
+      self.currentScope.terminator = terminator
+    }
 
     val kind = TypedAstNodeKind.For(typedIterator, (itemPattern, variables), indexBinding, typedNodes)
     Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: kind))
@@ -4535,7 +4542,10 @@ export type Typechecker {
       }
     }
 
-    val returnType = if fn.returnType.containsGenerics() {
+    val returnType = if fn.decorators.find(d => d.label.name == "noreturn") {
+      self.currentScope.terminator = Some(Terminator.Returning)
+      Type(kind: TypeKind.Never)
+    } else if fn.returnType.containsGenerics() {
       fn.returnType.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: genericsInScope)
     } else {
       fn.returnType
