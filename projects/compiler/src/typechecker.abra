@@ -1864,11 +1864,7 @@ export type Typechecker {
       if v.label.name == ident {
         if !v.alias && fnBarrierBreached {
           v.isCaptured = true
-          if self.currentFunction |fn| {
-            if !fn.captures.contains(v) {
-              fn.captures.push(v)
-            }
-          }
+          if !v.isGlobal() unreachable("Exported variable 'prelude:${v.label.name}' is not marked as a global")
         }
 
         return Some((v, None))
@@ -1882,11 +1878,7 @@ export type Typechecker {
             TypedImportKind.Variable(v) => {
               if !v.alias && fnBarrierBreached {
                 v.isCaptured = true
-                if self.currentFunction |fn| {
-                  if !fn.captures.contains(v) {
-                    fn.captures.push(v)
-                  }
-                }
+                if !v.isGlobal() unreachable("Exported variable '$name:${v.label.name}' is not marked as a global")
               }
 
               v
