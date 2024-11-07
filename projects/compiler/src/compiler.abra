@@ -568,10 +568,17 @@ export type Compiler {
             if variable.isParameter unreachable("parameters cannot be reassigned to")
 
             val varTy = try self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position))
+            // A top-level variable in a module is only hoisted to global if it's captured; otherwise it's effectively a local within the module wrapper function
             if variable.isCaptured {
-              val ptr = try self._getCapturedVarPtr(variable)
-              self._currentFn.block.addComment("overwrite ptr to captured '${variable.label.name}'")
-              self._currentFn.block.buildStore(varTy, res, ptr)
+              if variable.isGlobal() |modId| {
+                val name = self._globalVarName(modId, variable.label.name)
+                val slot = Value.Global(name, QbeType.Pointer)
+                self._currentFn.block.buildStore(varTy, res, slot)
+              } else {
+                val ptr = try self._getCapturedVarPtr(variable)
+                self._currentFn.block.addComment("overwrite ptr to captured '${variable.label.name}'")
+                self._currentFn.block.buildStore(varTy, res, ptr)
+              }
             } else {
               val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else unreachable("Could not resolve name for variable '${variable.label.name}'")
               val slot = Value.Ident(slotName, QbeType.Pointer)
@@ -1027,18 +1034,26 @@ export type Compiler {
             }
             _ => {
               if varImportModule |mod| {
-                val name = self._exportedVarName(mod.id, name)
+                val name = self._globalVarName(mod.id, name)
                 val slot = Value.Global(name, QbeType.Pointer)
                 val res = self._currentFn.block.buildLoad(varTy, slot)
                 Ok(res)
               } else if variable.isCaptured {
-                val ptr = try self._getCapturedVarPtr(variable)
-                val res = if variable.mutable {
-                  self._currentFn.block.addComment("deref ptr to captured mutable '${variable.label.name}'")
-                  self._currentFn.block.buildLoad(varTy, ptr)
+                // A top-level variable in a module is only hoisted to global if it's captured; otherwise it's effectively a local within the module wrapper function
+                val res = if variable.isGlobal() |modId| {
+                  val name = self._globalVarName(modId, name)
+                  val slot = Value.Global(name, QbeType.Pointer)
+                  self._currentFn.block.buildLoad(varTy, slot)
                 } else {
-                  ptr
+                  val ptr = try self._getCapturedVarPtr(variable)
+                  if variable.mutable {
+                    self._currentFn.block.addComment("deref ptr to captured mutable '${variable.label.name}'")
+                    self._currentFn.block.buildLoad(varTy, ptr)
+                  } else {
+                    ptr
+                  }
                 }
+
                 Ok(res)
               } else {
                 val slotName = if self._currentFn.block.lookupVarName(variableToVar(variable)) |varName| varName else unreachable("Could not resolve name for variable '${variable.label.name}'")
@@ -2023,14 +2038,21 @@ export type Compiler {
 
     val variable = if variables[varName] |v| v else unreachable("expected binding '$varName', but missing from variables")
     val varTy = try self._getQbeTypeForTypeExpect(variable.ty, "unacceptable type for variable", Some(variable.label.position))
-    val slotName = self._currentFn.block.addVar(variableToVar(variable))
 
     val v = if exprVal |v| v else return Ok(0)
-    if variable.isExported {
-      val name = self._exportedVarName(self._currentModule.id, variable.label.name)
+
+    // A top-level variable in a module is only hoisted to global if it's captured; otherwise it's effectively a local within the module wrapper function
+    val isGlobal = !!variable.isGlobal()
+    if variable.isExported || (variable.isCaptured && isGlobal) {
+      val name = self._globalVarName(self._currentModule.id, variable.label.name)
+      self._currentFn.block.addVar(variableToVar(variable))
       val slot = self._builder.addData(QbeData(name: name, kind: QbeDataKind.Constants([(varTy, varTy.zeroValue())])))
       self._currentFn.block.buildStore(varTy, v, slot)
-    } else if variable.isCaptured && variable.mutable {
+      return Ok(0)
+    }
+
+    val slotName = self._currentFn.block.addVar(variableToVar(variable))
+    if variable.isCaptured && variable.mutable && !isGlobal {
       // Only move captured variables to the heap if they're mutable - captured immutable variables can just have their value present in
       // a closure's captures array, but a mutable variable needs an additional layer of indirection to handle possible reassignment.
       self._currentFn.block.addComment("move captured mutable '${variable.label.name}' to heap")
@@ -2049,6 +2071,8 @@ export type Compiler {
   }
 
   func _getCapturedVarPtr(self, variable: Variable): Result<Value, CompileError> {
+    if variable.isGlobal() unreachable("Global variables are never included in a function's captures")
+
     if self._currentFunction |fn| {
       if self._currentFn._env |env| {
         for v, idx in fn.captures {
@@ -4297,7 +4321,7 @@ export type Compiler {
   // thus introduce no conflicts (qbe doesn't care about function name rules).
   func _moduleWrapperFnName(self, module: TypedModule): String = "..module_${module.id}"
 
-  func _exportedVarName(self, modId: Int, name: String): String = "mod${modId}exp_${name}.slot"
+  func _globalVarName(self, modId: Int, name: String): String = "mod${modId}_${name}.slot"
 
   func _structTypeName(self, struct: Struct): Result<String, CompileError> {
     val base = ".${struct.moduleId}.${struct.label.name}"

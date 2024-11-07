@@ -106,6 +106,8 @@ export type Variable {
     val label = Label(name: "_bogus", position: Position(line: 0, col: 0))
     Variable(label: label, scope: Scope.bogus(), mutable: false, ty: Type(kind: TypeKind.Never))
   }
+
+  func isGlobal(self): Int? = match self.scope.kind { ScopeKind.Module(id) => Some(id), _ => None }
 }
 
 export enum Terminator {
@@ -128,7 +130,7 @@ export enum Terminator {
 
 export enum ScopeKind {
   Root
-  Module
+  Module(id: Int)
   Func
   If
   MatchCase
@@ -1839,7 +1841,8 @@ export type Typechecker {
           if !v.alias && fnBarrierBreached {
             v.isCaptured = true
             if self.currentFunction |fn| {
-              if !fn.captures.contains(v) {
+              // Captured top-level variables in a module are marked as captured but are not included in a function's captures
+              if !v.isGlobal() && !fn.captures.contains(v) {
                 fn.captures.push(v)
               }
             }
@@ -2026,10 +2029,9 @@ export type Typechecker {
   }
 
   func _ensureValidExportScope(self, exportToken: Token): Result<Int, TypeError> {
-    if self.currentScope.kind != ScopeKind.Module {
-      Err(TypeError(position: exportToken.position, kind: TypeErrorKind.IllegalExportScope))
-    } else {
-      Ok(0) // <-- unnecessary int
+    match self.currentScope.kind {
+      ScopeKind.Module => Ok(0) // <-- unnecessary int
+      _ => Err(TypeError(position: exportToken.position, kind: TypeErrorKind.IllegalExportScope))
     }
   }
 
@@ -2039,10 +2041,9 @@ export type Typechecker {
     name
   }
 
-
   func _typecheckModule(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
     self.typecheckingBuiltin = if modulePathAbs == self.moduleLoader.stdRoot + "/prelude.abra" {
-      self.project.preludeScope = self.currentScope.makeChild("module_prelude", ScopeKind.Module)
+      self.project.preludeScope = self.currentScope.makeChild("module_prelude", ScopeKind.Module(id: -1))
       Some(BuiltinModule.Prelude)
     } else if modulePathAbs == self.moduleLoader.stdRoot + "/_intrinsics.abra" {
       Some(BuiltinModule.Intrinsics)
@@ -2109,9 +2110,10 @@ export type Typechecker {
     self.currentModuleId = moduleId
 
     val moduleScope = if self.typecheckingBuiltin == Some(BuiltinModule.Prelude) {
+      self.project.preludeScope.kind = ScopeKind.Module(id: moduleId)
       self.project.preludeScope
     } else {
-      self.currentScope.makeChild("module_$moduleId", ScopeKind.Module)
+      self.currentScope.makeChild("module_$moduleId", ScopeKind.Module(id: moduleId))
     }
     val prevScope = self.currentScope
     self.currentScope = moduleScope

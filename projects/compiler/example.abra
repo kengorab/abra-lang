@@ -1,2 +1,18 @@
-val x = if true 123 else Process.exit()
-println("x =", x)
+import foo from "process"
+
+println(foo())
+
+var capturedInt = 11
+type FooWithCaptures {
+  i: Int
+
+  func foo_(self): Int = self.i + capturedInt
+  func foo2(self, a = capturedInt): Int = self.i + a
+  func fooStatic(): Int = capturedInt
+}
+
+val fooWithCaptures = FooWithCaptures(i: 12)
+/// Expect: 23
+println(fooWithCaptures.foo_())
+capturedInt = 17
+println(capturedInt)
