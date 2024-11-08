@@ -5,6 +5,7 @@
 // testing.
 
 import "fs" as fs
+import "process" as process
 import Token, Lexer from "./lexer"
 import printTokenAsJson from "./test_utils"
 
@@ -22,7 +23,7 @@ export func printTokensAsJson(tokens: Token[]) {
   println("]")
 }
 
-if Process.args()[1] |fileName| {
+if process.args()[1] |fileName| {
   match fs.readFile(fileName) {
     Ok(contents) => {
       match Lexer.tokenize(contents) {

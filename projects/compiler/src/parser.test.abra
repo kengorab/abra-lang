@@ -6,11 +6,12 @@
 // testing.
 
 import "fs" as fs
+import "process" as process
 import Lexer from "./lexer"
 import Parser from "./parser"
 import printParsedModuleAsJson from "./test_utils"
 
-if Process.args()[1] |fileName| {
+if process.args()[1] |fileName| {
   match fs.readFile(fileName) {
     Ok(contents) => {
       match Lexer.tokenize(contents) {

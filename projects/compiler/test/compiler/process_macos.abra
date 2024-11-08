@@ -1,8 +1,9 @@
 // This file is run on macos only
 // These tests are difficult by nature since there's not many assumptions which will hold 100% of the time.
 // Verify the sysname and machine per-platform should be sufficient to prove that it's working correctly.
+import "process" as process
 
-val uname = Process.uname()
+val uname = process.uname()
 
 /// Expect: Darwin
 println(uname.sysname)

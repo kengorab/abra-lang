@@ -1,4 +1,5 @@
 import "fs" as fs
+import "process" as process
 import Position from "./lexer"
 import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern, IndexingMode from "./parser"
 import Project, TypedModule, Scope, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCase, TypedMatchCaseKind, BuiltinModule, Variable, Terminator from "./typechecker"
@@ -3098,7 +3099,7 @@ export type Compiler {
       "errno" => {
         self._currentFn.block.addComment("begin errno...")
 
-        val errnoFnName = match Process.uname().sysname {
+        val errnoFnName = match process.uname().sysname {
           "Linux" => "__errno_location"
           "Darwin" => "__error"
           _ sysname => todo("[errno] unsupported system " + sysname)

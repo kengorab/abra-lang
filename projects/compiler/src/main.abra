@@ -1,7 +1,8 @@
 import "fs" as fs
+import "process" as process
 import Lexer from "./lexer"
 
-if Process.args()[1] |fileName| {
+if process.args()[1] |fileName| {
   match fs.readFile(fileName) {
     Ok(contents) => {
       val tokens = Lexer.tokenize(contents)
