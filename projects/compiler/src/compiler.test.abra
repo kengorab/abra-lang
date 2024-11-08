@@ -12,17 +12,18 @@
 // [^1] https://c9x.me/compile
 
 import "fs" as fs
+import "process" as process
 import getAbsolutePath from "./utils"
 import ModuleLoader, Project, Typechecker, TypedModule from "./typechecker"
 import Compiler from "./compiler"
 
 func main() {
-  val abraStdRoot = if Process.getEnvVar("ABRA_HOME") |v| v else {
+  val abraStdRoot = if process.getEnvVar("ABRA_HOME") |v| v else {
     println("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
     return
   }
 
-  val args = Process.args()
+  val args = process.args()
 
   if args[1] |fileName| {
     val absPathSegs = getAbsolutePath(fileName)

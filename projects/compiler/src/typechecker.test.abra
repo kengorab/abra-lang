@@ -6,6 +6,7 @@
 // the actual resulting binary; this results in a separate binary being compiled which is only used for
 // testing.
 
+import "process" as process
 import getAbsolutePath from "./utils"
 import ModuleLoader, Project, Typechecker, TypedModule from "./typechecker"
 import Jsonifier from "./typechecker_test_utils"
@@ -25,12 +26,12 @@ func verifyStdModule(modulesSortedById: TypedModule[], expectedId: Int, name: St
 }
 
 func main() {
-  val abraStdRoot = if Process.getEnvVar("ABRA_HOME") |v| v else {
+  val abraStdRoot = if process.getEnvVar("ABRA_HOME") |v| v else {
     println("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
     return
   }
 
-  if Process.args()[1] |fileName| {
+  if process.args()[1] |fileName| {
     val absPathSegs = getAbsolutePath(fileName)
     val filePathAbs = "/" + absPathSegs.join("/")
 
