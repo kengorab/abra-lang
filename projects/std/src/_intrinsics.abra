@@ -4,6 +4,9 @@ export func argc(): Int
 @Intrinsic("argv")
 export func argv(): Pointer<Pointer<Byte>>
 
+@Intrinsic("u64_to_string")
+export func u64ToString(i: Int): String
+
 @Intrinsic("int_as_float")
 export func intAsFloat(i: Int): Float
 

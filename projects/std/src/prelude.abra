@@ -123,6 +123,8 @@ type Int {
     }
     pow
   }
+
+  func unsignedToString(self): String = intrinsics.u64ToString(self)
 }
 
 type Float {
