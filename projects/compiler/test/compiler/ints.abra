@@ -107,3 +107,18 @@ println(17 >= 15)
 println(17 >= 18.0)
 /// Expect: true
 println(17 >= 15.1)
+
+// Int#unsignedToString
+(() => {
+  val i1 = 118
+  /// Expect: 118 118
+  println(i1.toString(), i1.unsignedToString())
+
+  val i2 = (1 << 63) || (1 << 31)
+  /// Expect: -9223372034707292160 9223372039002259456
+  println(i2.toString(), i2.unsignedToString())
+
+//   val i3 = 0b1000000000000000000000000000000010000000000000000000000000000000
+//   /// Expect: -9223372034707292160 9223372039002259456
+//   println(i3.toString(), i3.unsignedToString())
+})()

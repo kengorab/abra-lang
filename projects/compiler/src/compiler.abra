@@ -3134,6 +3134,24 @@ export type Compiler {
 
         Ok(argVal)
       }
+      "u64_to_string" => {
+        self._currentFn.block.addComment("begin u64_to_string...")
+        val _arg = if arguments[0] |arg| arg else unreachable("'u64_to_string' has 1 required argument")
+        val arg = if _arg |arg| arg else unreachable("'u64_to_string' has 1 required argument")
+        val argVal = try self._compileExpression(arg)
+
+        val intFmtPtr = self._builder.buildGlobalString("%llu")
+        val sizeVal = try self._currentFn.block.buildCall(Callable.Function(self._snprintf), [Value.Int(0), Value.Int(0), intFmtPtr, argVal]) else |e| return qbeError(e)
+        val mallocSizeVal = try self._currentFn.block.buildAdd(Value.Int(1), sizeVal) else |e| return qbeError(e)
+
+        val mem = try self._currentFn.block.buildCall(Callable.Function(self._malloc), [mallocSizeVal]) else |e| return qbeError(e)
+        try self._currentFn.block.buildCall(Callable.Function(self._snprintf), [mem, mallocSizeVal, intFmtPtr, argVal]) else |e| return qbeError(e)
+        val str = try self._constructString(mem, sizeVal)
+
+        self._currentFn.block.addComment("...u64_to_string end")
+
+        Ok(str)
+      }
       "int_as_float" => {
         self._currentFn.block.addComment("begin int_as_float...")
 
@@ -3558,7 +3576,7 @@ export type Compiler {
     fnVal.addComment("Int#toString(self): String")
     val selfParam = fnVal.addParameter("self", intTypeQbe)
 
-    val intFmtPtr = self._builder.buildGlobalString("%d")
+    val intFmtPtr = self._builder.buildGlobalString("%lld")
     val sizeVal = try fnVal.block.buildCall(Callable.Function(self._snprintf), [Value.Int(0), Value.Int(0), intFmtPtr, selfParam]) else |e| return qbeError(e)
     val mallocSizeVal = try fnVal.block.buildAdd(Value.Int(1), sizeVal) else |e| return qbeError(e)
 
