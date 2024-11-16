@@ -1,0 +1,74 @@
+import "process" as process
+
+func foo() {
+  print("hello ")
+  bar()
+}
+
+func bar() {
+  print("world")
+  baz()
+}
+
+func baz() {
+  println("!")
+  println(process.getStackTrace())
+}
+
+val arr = [1].map((i, _) => {
+  foo()
+  i + 1
+})
+
+/// Expect: hello world!
+/// Expect: Stack trace:
+/// Expect:   at getStackTrace (%TEST_DIR%/compiler/process_callstack.abra:15)
+/// Expect:   at baz (%TEST_DIR%/compiler/process_callstack.abra:10)
+/// Expect:   at bar (%TEST_DIR%/compiler/process_callstack.abra:5)
+/// Expect:   at foo (%TEST_DIR%/compiler/process_callstack.abra:19)
+/// Expect:   at <expression> (%STD_DIR%/prelude.abra:592)
+/// Expect:   at Array.map (%TEST_DIR%/compiler/process_callstack.abra:18)
+
+type OneTwoThreeIterator {
+  _count: Int = 1
+
+  func next(self): Int? {
+    val v = self._count
+    if v > 3 {
+      println(process.getStackTrace())
+      None
+    } else {
+      self._count += 1
+      return Some(v)
+    }
+  }
+}
+
+val iter = OneTwoThreeIterator()
+for i in iter {
+  println(i)
+}
+
+/// Expect: 1
+/// Expect: 2
+/// Expect: 3
+/// Expect: Stack trace:
+/// Expect:   at getStackTrace (%TEST_DIR%/compiler/process_callstack.abra:38)
+/// Expect:   at OneTwoThreeIterator.next (%TEST_DIR%/compiler/process_callstack.abra:48)
+
+func returnOneButAlsoPrintStackTraceForSomeReason(): Int {
+  println(process.getStackTrace())
+  1
+}
+
+type TypeWithFieldInitializer {
+  i: Int = returnOneButAlsoPrintStackTraceForSomeReason()
+}
+
+val _ = TypeWithFieldInitializer(i: 14)
+val _ = TypeWithFieldInitializer()
+
+/// Expect: Stack trace:
+/// Expect:   at getStackTrace (%TEST_DIR%/compiler/process_callstack.abra:60)
+/// Expect:   at returnOneButAlsoPrintStackTraceForSomeReason (%TEST_DIR%/compiler/process_callstack.abra:65)
+/// Expect:   at TypeWithFieldInitializer (%TEST_DIR%/compiler/process_callstack.abra:69)

@@ -2,14 +2,6 @@ import "./_intrinsics" as intrinsics
 import Pointer, Byte from "./_intrinsics"
 import "libc" as libc
 
-export type Uname {
-  sysname: String
-  nodename: String
-  release: String
-  version: String
-  machine: String
-}
-
 var _args: String[]? = None
 export func args(): String[] {
   if _args |args| return args
@@ -34,6 +26,14 @@ export func getEnvVar(name: String): String? {
 
   val len = libc.strlen(str)
   Some(String(length: len, _buffer: str))
+}
+
+export type Uname {
+  sysname: String
+  nodename: String
+  release: String
+  version: String
+  machine: String
 }
 
 var _uname: Uname? = None
@@ -87,3 +87,117 @@ export func uname(): Uname {
 
 @noreturn
 export func exit(status = 1) = libc.exit(status)
+
+export func getStackTrace(message = "Stack trace:"): String {
+  val frames = callstack()
+  val lines = [message]
+  // Skip first frame, which will be the call to `callstack()` itself
+  for frame in frames[1:] {
+    lines.push("  at ${frame.callee} (${frame.file}:${frame.line})")
+  }
+  lines.join("\n")
+}
+
+export type StackFrame {
+  callee: String
+  file: String
+  line: Int
+}
+
+export func callstack(): StackFrame[] {
+  val s = intrinsics.callstack()
+  var sp = (intrinsics.callstackPtr() / 8).floor() - 1
+
+  val moduleNames = getModuleNames()
+  val functionNames = getFunctionNames()
+
+  val stack = Array.withCapacity<StackFrame>(sp)
+  while sp >= 0 {
+    val frame = s.offset(sp).load()
+
+    val line = frame && 0xffff
+
+    val modId = (frame >> 16) && 0xff
+    val modName = if modId == 0 {
+      "<builtin>"
+    } else if moduleNames[modId - 1] |name| {
+      name
+    } else {
+      "unknown"
+    }
+
+    val fnId = (frame >> 32) && 0xff
+    val fnName = if fnId == 0 {
+      "<expression>"
+    } else if functionNames[fnId - 1] |name| {
+      name
+    } else {
+      "unknown"
+    }
+
+    stack.push(StackFrame(callee: fnName, file: modName, line: line))
+    sp -= 1
+  }
+
+  stack
+}
+
+var _moduleNames: String[]? = None
+func getModuleNames(): String[] {
+  if _moduleNames |moduleNames| moduleNames
+
+  val moduleNames: String[] = []
+  val buf = intrinsics.moduleNames()
+  var idx = 0
+  var len = 0
+  while true {
+    val byte = buf.offset(idx).load().asInt()
+    if byte == 0 {
+      if len == 0 break
+
+      val str = String.withLength(len)
+      str._buffer.copyFrom(buf.offset(idx - len), len)
+      moduleNames.push(str)
+
+      idx += 1
+      len = 0
+      continue
+    }
+
+    idx += 1
+    len += 1
+  }
+
+  _moduleNames = Some(moduleNames)
+  moduleNames
+}
+
+var _functionNames: String[]? = None
+func getFunctionNames(): String[] {
+  if _functionNames |functionNames| functionNames
+
+  val functionNames: String[] = []
+  val buf = intrinsics.functionNames()
+  var idx = 0
+  var len = 0
+  while true {
+    val byte = buf.offset(idx).load().asInt()
+    if byte == 0 {
+      if len == 0 break
+
+      val str = String.withLength(len)
+      str._buffer.copyFrom(buf.offset(idx - len), len)
+      functionNames.push(str)
+
+      idx += 1
+      len = 0
+      continue
+    }
+
+    idx += 1
+    len += 1
+  }
+
+  _functionNames = Some(functionNames)
+  functionNames
+}

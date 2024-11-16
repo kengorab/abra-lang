@@ -790,7 +790,8 @@ const COMPILER_TESTS = [
   { test: "compiler/sets.abra" },
   { test: "compiler/match.abra" },
   { test: "compiler/try.abra" },
-  { test: 'compiler/process.abra', args: ['-f', 'bar', '--baz', 'qux'], env: { FOO: 'bar' } }
+  { test: "compiler/process.abra", args: ['-f', 'bar', '--baz', 'qux'], env: { FOO: 'bar' } },
+  { test: "compiler/process_callstack.abra" },
 ]
 
 async function main() {
