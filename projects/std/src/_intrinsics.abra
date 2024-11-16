@@ -4,6 +4,18 @@ export func argc(): Int
 @Intrinsic("argv")
 export func argv(): Pointer<Pointer<Byte>>
 
+@Intrinsic("__callstack")
+export func callstack(): Pointer<Int>
+
+@Intrinsic("__callstackp")
+export func callstackPtr(): Int
+
+@Intrinsic("modulenames")
+export func moduleNames(): Pointer<Byte>
+
+@Intrinsic("functionnames")
+export func functionNames(): Pointer<Byte>
+
 @Intrinsic("u64_to_string")
 export func u64ToString(i: Int): String
 

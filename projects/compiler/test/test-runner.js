@@ -71,6 +71,8 @@ class TestRunner {
           if (!match) return null
 
           const expectation = match[1]
+            .replaceAll('%TEST_DIR%', __dirname)
+            .replaceAll('%STD_DIR%', process.env.ABRA_HOME)
           return [idx + 1, expectation]
         })
         .filter(line => !!line)

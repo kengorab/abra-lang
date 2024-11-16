@@ -2,8 +2,8 @@ import "fs" as fs
 import "process" as process
 import Position from "./lexer"
 import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern, IndexingMode from "./parser"
-import Project, TypedModule, Scope, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCase, TypedMatchCaseKind, BuiltinModule, Variable, Terminator from "./typechecker"
-import ModuleBuilder, QbeType, Dest, QbeFunction, Value, Label, Callable, QbeData, QbeDataKind, Var from "./qbe"
+import Project, TypedModule, Scope, ScopeKind, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCase, TypedMatchCaseKind, BuiltinModule, Variable, Terminator from "./typechecker"
+import ModuleBuilder, Block, QbeType, Dest, QbeFunction, Value, Label, Callable, QbeData, QbeDataKind, Var from "./qbe"
 
 type CompilationError {
   modulePath: String
@@ -153,6 +153,11 @@ type ResolvedGenerics {
 
 func variableToVar(v: Variable): Var = Var(name: v.label.name, location: (v.label.position.line, v.label.position.col))
 
+type CallframeContext {
+  position: Position
+  callee: String? // callee is None when the callee is an expression
+}
+
 export type Compiler {
   _project: Project
   _builder: ModuleBuilder
@@ -162,6 +167,10 @@ export type Compiler {
   _currentNode: TypedAstNode?
   _argcPtr: Value
   _argvPtr: Value
+  _callstack: (/* callstack: */ Value, /* ptr */ Value)
+  _moduleNamesPtr: Value
+  _functionNames: Map<String, Int> = {}
+  _fnNamesPtr: Value
   _resolvedGenerics: ResolvedGenerics = ResolvedGenerics()
   _loopStack: (/* loopStart: */ Label, /* loopEnd: */ Label)[] = []
   // cached things
@@ -182,10 +191,18 @@ export type Compiler {
     val argcParam = mainFn.addParameter("argc", QbeType.U64)
     val argvParam = mainFn.addParameter("argv", QbeType.U64)
 
-    val argcPtr = builder.addData(QbeData(name: "__argc", kind: QbeDataKind.Constants([(QbeType.U64, Value.Int(0))])))
+    val (argcPtr, _) = builder.addData(QbeData(name: "__argc", kind: QbeDataKind.Constants([(QbeType.U64, Value.Int(0))])))
     mainFn.block.buildStoreL(argcParam, argcPtr)
-    val argvPtr = builder.addData(QbeData(name: "__argv", kind: QbeDataKind.Constants([(QbeType.U64, Value.Int(0))])))
+    val (argvPtr, _) = builder.addData(QbeData(name: "__argv", kind: QbeDataKind.Constants([(QbeType.U64, Value.Int(0))])))
     mainFn.block.buildStoreL(argvParam, argvPtr)
+
+    val (callstack, _) = builder.addData(QbeData(name: "__callstack", kind: QbeDataKind.Zeros(size: 1024 * 8)))
+    val (callstackPtr, _) = builder.addData(QbeData(name: "__callstackp", kind: QbeDataKind.Constants([(QbeType.U64, Value.Int(0))])))
+
+    val allModules = project.modules.values().sortBy(m => m.id)
+    val (moduleNamesPtr, _) = builder.addData(QbeData(name: "__modnames", kind: QbeDataKind.Strings(allModules.map(m => m.name))))
+
+    val (fnNamesPtr, fnNamesIdx) = builder.addData(QbeData(name: "__fnnames", kind: QbeDataKind.Strings([])))
 
     // Seed the RNG, for any future calls to `libc.rand()`
     val timeVal = match mainFn.block.buildCallRaw("time", QbeType.U64, [Value.Int(0)]) { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: "<entrypoint>", error: CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(e)))) }
@@ -194,9 +211,8 @@ export type Compiler {
     mainFn.block.buildVoidCallRaw("GC_init", [])
 
     val dummyMod = TypedModule(id: -1, name: "dummy", code: [], rootScope: Scope.bogus())
-    val compiler = Compiler(_project: project, _builder: builder, _currentModule: dummyMod, _currentFn: mainFn, _currentFunction: None, _currentNode: None, _argcPtr: argcPtr, _argvPtr: argvPtr)
+    val compiler = Compiler(_project: project, _builder: builder, _currentModule: dummyMod, _currentFn: mainFn, _currentFunction: None, _currentNode: None, _argcPtr: argcPtr, _argvPtr: argvPtr, _callstack: (callstack, callstackPtr), _moduleNamesPtr: moduleNamesPtr, _fnNamesPtr: fnNamesPtr)
 
-    val allModules = project.modules.values().sortBy(m => m.id)
     for mod in allModules {
       val moduleFn = match compiler._compileModule(mod) {
         Ok(v) => v
@@ -219,6 +235,12 @@ export type Compiler {
       Err(e) => return Err(CompilationError(modulePath: "<entrypoint>", error: CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(e))))
     }
 
+    val functionNames = compiler._functionNames.entries().asArray().sortBy(p => p[1])
+    for (_, id), idx in functionNames {
+      if id != idx unreachable("invalid _functionNames: gap at index $idx")
+    }
+    builder.setData(fnNamesIdx, QbeDataKind.Strings(functionNames.map(p => p[0])))
+
     Ok(builder)
   }
 
@@ -240,7 +262,9 @@ export type Compiler {
           val dataPtr = self._builder.buildGlobalString("%s\\n")
           val tostringMethod = try self._getOrCompileToStringMethod(node.ty)
 
-          val tostringRepr = try self._currentFn.block.buildCall(Callable.Function(tostringMethod), [v], Some("_to_string_repr")) else |e| return qbeError(e)
+          val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(node.ty))[0])))
+          val frameCtx = CallframeContext(position: node.token.position, callee: Some(fnName))
+          val tostringRepr = try self._buildCall(Some(frameCtx), Callable.Function(tostringMethod), [v])
           val reprCharsPtr = try self._currentFn.block.buildAdd(Value.Int(8), tostringRepr, Some("_repr_chars_ptr")) else |e| return qbeError(e)
           val reprChars = self._currentFn.block.buildLoadL(reprCharsPtr, Some("_repr_chars"))
           self._currentFn.block.buildVoidCall(Callable.Function(self._printf), [dataPtr, reprChars])
@@ -360,7 +384,6 @@ export type Compiler {
         Ok(None)
       }
       TypedAstNodeKind.For(typedIterator, itemBindingPattern, indexBinding, block) => {
-        val forLabelPrefix = "for_${node.token.position.line}_${node.token.position.col}"
         val (instTy, typeArgs) = try self._getInstanceTypeForType(typedIterator.ty)
 
         val (iterVal, iterTy, nextFn, popAdditionalResolvedGenericsLayer) = match instTy {
@@ -375,7 +398,10 @@ export type Compiler {
               val iteratorFnVal = try self._getOrCompileMethod(instType, iteratorFn)
               self._resolvedGenerics.popLayer()
 
-              val iter = try self._currentFn.block.buildCall(Callable.Function(iteratorFnVal), [arrayVal], Some("${forLabelPrefix}_iterator")) else |e| return qbeError(e)
+              self._currentFn.block.addComment("for-loop (${node.token.position.line}, ${node.token.position.col}) iterator")
+              val fnName = self._functionName(iteratorFn.label.name, iteratorFn.kind)
+              val frameCtx = CallframeContext(position: typedIterator.token.position, callee: Some(fnName))
+              val iter = try self._buildCall(Some(frameCtx), Callable.Function(iteratorFnVal), [arrayVal])
 
               val (structOrEnum, typeArgs) = try self._getInstanceTypeForType(iteratorFn.returnType)
               val instanceMethods = match structOrEnum {
@@ -396,7 +422,10 @@ export type Compiler {
               val iteratorFnVal = try self._getOrCompileMethod(instType, iteratorFn)
               self._resolvedGenerics.popLayer()
 
-              val iter = try self._currentFn.block.buildCall(Callable.Function(iteratorFnVal), [mapVal], Some("${forLabelPrefix}_iterator")) else |e| return qbeError(e)
+              self._currentFn.block.addComment("for-loop (${node.token.position.line}, ${node.token.position.col}) iterator")
+              val fnName = self._functionName(iteratorFn.label.name, iteratorFn.kind)
+              val frameCtx = CallframeContext(position: typedIterator.token.position, callee: Some(fnName))
+              val iter = try self._buildCall(Some(frameCtx), Callable.Function(iteratorFnVal), [mapVal])
 
               val (structOrEnum, typeArgs) = try self._getInstanceTypeForType(iteratorFn.returnType)
               val instanceMethods = match structOrEnum {
@@ -418,7 +447,10 @@ export type Compiler {
               val iteratorFnVal = try self._getOrCompileMethod(instType, iteratorFn)
               self._resolvedGenerics.popLayer()
 
-              val iter = try self._currentFn.block.buildCall(Callable.Function(iteratorFnVal), [mapVal], Some("${forLabelPrefix}_iterator")) else |e| return qbeError(e)
+              self._currentFn.block.addComment("for-loop (${node.token.position.line}, ${node.token.position.col}) iterator")
+              val fnName = self._functionName(iteratorFn.label.name, iteratorFn.kind)
+              val frameCtx = CallframeContext(position: typedIterator.token.position, callee: Some(fnName))
+              val iter = try self._buildCall(Some(frameCtx), Callable.Function(iteratorFnVal), [mapVal])
 
               val (structOrEnum, typeArgs) = try self._getInstanceTypeForType(iteratorFn.returnType)
               val instanceMethods = match structOrEnum {
@@ -430,6 +462,7 @@ export type Compiler {
               val iterTy = Type(kind: TypeKind.Instance(structOrEnum, typeArgs))
               (iter, iterTy, nextFn, true)
             } else {
+              self._currentFn.block.addComment("for-loop (${node.token.position.line}, ${node.token.position.col}) iterator")
               val iter = try self._compileExpression(typedIterator)
               val nextFn = if s.instanceMethods.find(m => m.label.name == "next") |fn| fn else unreachable("a type must have a 'next' method if it's to be iterable")
 
@@ -447,6 +480,7 @@ export type Compiler {
         self._resolvedGenerics.popLayer()
         if popAdditionalResolvedGenericsLayer self._resolvedGenerics.popLayer()
 
+        val forLabelPrefix = "for_${node.token.position.line}_${node.token.position.col}"
         val loopStartLabel = self._currentFn.block.addLabel("${forLabelPrefix}_loop_start")
         val loopBodyLabel = self._currentFn.block.addLabel("${forLabelPrefix}_loop_body")
         val loopEndLabel = self._currentFn.block.addLabel("${forLabelPrefix}_loop_end")
@@ -465,7 +499,10 @@ export type Compiler {
         self._currentFn.block.registerLabel(loopStartLabel)
         val (iterateePattern, iterateeBindingVars) = itemBindingPattern
         val iterateeBindingVariables = iterateeBindingVars.keyBy(v => v.label.name)
-        val nextRet = try self._currentFn.block.buildCall(Callable.Function(nextFnVal), [iterVal], Some("next_ret")) else |e| return qbeError(e)
+        self._currentFn.block.addComment("for-loop (${node.token.position.line}, ${node.token.position.col}) next() ret value")
+        val fnName = self._functionName(nextFn.label.name, nextFn.kind)
+        val frameCtx = CallframeContext(position: node.token.position, callee: Some(fnName))
+        val nextRet = try self._buildCall(Some(frameCtx), Callable.Function(nextFnVal), [iterVal])
 
         val variantIsOptionSome = try self._emitOptValueIsSomeVariant(nextRet)
         self._currentFn.block.buildJnz(variantIsOptionSome, loopBodyLabel, loopEndLabel)
@@ -606,7 +643,8 @@ export type Compiler {
                     val setFnVal = try self._getOrCompileMethod(instType, setFn)
                     self._resolvedGenerics.popLayer()
 
-                    try self._currentFn.block.buildCall(Callable.Function(setFnVal), [exprVal, idxExprVal, res]) else |e| return qbeError(e)
+                    // Do not track Array#set in callframes
+                    try self._buildCall(None, Callable.Function(setFnVal), [exprVal, idxExprVal, res])
                   }
                   _ => unreachable("cannot use range index in index-assignment")
                 }
@@ -627,7 +665,8 @@ export type Compiler {
                 val insertFnVal = try self._getOrCompileMethod(instType, insertFn)
                 self._resolvedGenerics.popLayer()
 
-                try self._currentFn.block.buildCall(Callable.Function(insertFnVal), [exprVal, idxExprVal, res]) else |e| return qbeError(e)
+                // Do not track Map#insert in callframes
+                try self._buildCall(None, Callable.Function(insertFnVal), [exprVal, idxExprVal, res])
               }
               TypedIndexingNode.Tuple(_, _) => unreachable("tuples are not assignable via index-assignment")
             }
@@ -676,7 +715,9 @@ export type Compiler {
           val itemToStringFnVal = try self._getOrCompileToStringMethod(itemInstanceType)
           self._resolvedGenerics.popLayer()
 
-          val toStringVal = try self._currentFn.block.buildCall(Callable.Function(itemToStringFnVal), [itemVal]) else |e| return qbeError(e)
+          val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(item.ty))[0])))
+          val frameCtx = CallframeContext(position: item.token.position, callee: Some(fnName))
+          val toStringVal = try self._buildCall(Some(frameCtx), Callable.Function(itemToStringFnVal), [itemVal])
           strVals.push(toStringVal)
 
           val stringLength = self._currentFn.block.buildLoadL(toStringVal)
@@ -685,7 +726,8 @@ export type Compiler {
 
         val stringWithLengthFn = if self._project.preludeStringStruct.staticMethods.find(m => m.label.name == "withLength") |fn| fn else unreachable("String.withLength must exist")
         val stringWithLengthFnVal = try self._getOrCompileMethod(Type(kind: TypeKind.Type(StructOrEnum.Struct(self._project.preludeStringStruct))), stringWithLengthFn)
-        val newString = try self._currentFn.block.buildCall(Callable.Function(stringWithLengthFnVal), [lenVal]) else |e| return qbeError(e)
+        // Do not track String.withLength in callframes
+        val newString = try self._buildCall(None, Callable.Function(stringWithLengthFnVal), [lenVal])
         var newBuffer = self._currentFn.block.buildLoadL(try self._currentFn.block.buildAdd(Value.Int(8), newString) else |e| return qbeError(e))
 
         for strVal, idx in strVals {
@@ -739,7 +781,9 @@ export type Compiler {
                 val leftToStringFnVal = try self._getOrCompileToStringMethod(leftInstanceType)
                 self._resolvedGenerics.popLayer()
 
-                leftVal = try self._currentFn.block.buildCall(Callable.Function(leftToStringFnVal), [leftVal]) else |e| return qbeError(e)
+                val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(left.ty))[0])))
+                val frameCtx = CallframeContext(position: left.token.position, callee: Some(fnName))
+                leftVal = try self._buildCall(Some(frameCtx), Callable.Function(leftToStringFnVal), [leftVal])
               }
 
               var rightVal = try self._compileExpression(right)
@@ -748,7 +792,9 @@ export type Compiler {
                 val rightToStringFnVal = try self._getOrCompileToStringMethod(rightInstanceType)
                 self._resolvedGenerics.popLayer()
 
-                rightVal = try self._currentFn.block.buildCall(Callable.Function(rightToStringFnVal), [rightVal]) else |e| return qbeError(e)
+                val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(right.ty))[0])))
+                val frameCtx = CallframeContext(position: right.token.position, callee: Some(fnName))
+                rightVal = try self._buildCall(Some(frameCtx), Callable.Function(rightToStringFnVal), [rightVal])
               }
 
               val stringWithLengthFn = if self._project.preludeStringStruct.staticMethods.find(m => m.label.name == "withLength") |fn| fn else unreachable("String.withLength must exist")
@@ -756,7 +802,8 @@ export type Compiler {
               val leftLength = self._currentFn.block.buildLoadL(leftVal)
               val rightLength = self._currentFn.block.buildLoadL(rightVal)
               val totalLength = try self._currentFn.block.buildAdd(leftLength, rightLength) else |e| return qbeError(e)
-              val newString = try self._currentFn.block.buildCall(Callable.Function(stringWithLengthFnVal), [totalLength]) else |e| return qbeError(e)
+              // Do not track String.withLength in callframes
+              val newString = try self._buildCall(None, Callable.Function(stringWithLengthFnVal), [totalLength])
 
               var newBuffer = self._currentFn.block.buildLoadL(try self._currentFn.block.buildAdd(Value.Int(8), newString) else |e| return qbeError(e))
 
@@ -1074,7 +1121,7 @@ export type Compiler {
         var closureEnvCtx: (Value, Bool)? = None
         var closureSelfCtx: Value? = None
 
-        val (fnVal, argMetadata) = match invokee {
+        val (fnVal, argMetadata, frameCtx) = match invokee {
           TypedInvokee.Function(fn) => {
             match self._resolvedGenerics.addLayer(fn.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: fn.label.name, message: e))) }
 
@@ -1120,7 +1167,8 @@ export type Compiler {
             self._resolvedGenerics.popLayer()
 
             val argMetadata = fn.params.map(p => (!!p.defaultValue, p.ty))
-            (Callable.Function(fnVal), argMetadata)
+            val frameCtx = CallframeContext(position: node.token.position, callee: Some(self._functionName(fn.label.name, fn.kind)))
+            (Callable.Function(fnVal), argMetadata, Some(frameCtx))
           }
           TypedInvokee.Method(fn, selfExpr, isOptSafe) => {
             var selfInstanceType = try self._addResolvedGenericsLayerForInstanceMethod(selfExpr.ty, fn.label.name, node.token.position, resolvedGenerics)
@@ -1160,7 +1208,8 @@ export type Compiler {
                 match self._resolvedGenerics.addLayer("Option.None", { "V": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "Option.None", message: e))) }
                 val noneVariantFn = try self._getOrCompileEnumVariantFn(self._project.preludeOptionEnum, optNoneVariant)
                 self._resolvedGenerics.popLayer()
-                val noneRes = try self._currentFn.block.buildCall(Callable.Function(noneVariantFn), []) else |e| return qbeError(e)
+                // Do not track Option.None in callframes
+                val noneRes = try self._buildCall(None, Callable.Function(noneVariantFn), [])
                 Some(noneRes)
               } else None
               self._currentFn.block.buildJmp(labelCont)
@@ -1174,11 +1223,9 @@ export type Compiler {
               optSafeCtx = Some((labelIsNone, noneRes, someVariantFn, labelCont))
 
               val innerQbeType = try self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None)
-              val v = try self._emitOptValueGetValue(innerQbeType, selfVal)
-              v
+              try self._emitOptValueGetValue(innerQbeType, selfVal)
             } else {
-              val v = try self._compileExpression(selfExpr)
-              v
+              try self._compileExpression(selfExpr)
             }
 
             val fnVal = try self._getOrCompileMethod(selfInstanceType, fn)
@@ -1187,7 +1234,8 @@ export type Compiler {
             self._resolvedGenerics.popLayer()
 
             val argMetadata = fn.params.map(p => (!!p.defaultValue, p.ty))
-            (Callable.Function(fnVal), argMetadata)
+            val frameCtx = CallframeContext(position: node.token.position, callee: Some(self._functionName(fn.label.name, fn.kind)))
+            (Callable.Function(fnVal), argMetadata, Some(frameCtx))
           }
           TypedInvokee.Struct(struct) => {
             match self._resolvedGenerics.addLayer(struct.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: struct.label.name, message: e))) }
@@ -1197,7 +1245,13 @@ export type Compiler {
             self._resolvedGenerics.popLayer()
 
             val argMetadata = struct.fields.map(f => (!!f.initializer, f.ty))
-            (Callable.Function(fnVal), argMetadata)
+
+            val frameCtx = if fnHasOptionalParameters {
+              Some(CallframeContext(position: node.token.position, callee: Some(struct.label.name)))
+            } else {
+              None
+            }
+            (Callable.Function(fnVal), argMetadata, frameCtx)
           }
           TypedInvokee.EnumVariant(enum_, variant) => {
             match self._resolvedGenerics.addLayer(variant.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: variant.label.name, message: e))) }
@@ -1205,11 +1259,27 @@ export type Compiler {
 
             self._resolvedGenerics.popLayer()
 
-            val argMetadata = match variant.kind {
-              EnumVariantKind.Container(fields) => fields.map(f => (!!f.initializer, f.ty))
-              _ => []
+            val (argMetadata, frameCtx) = match variant.kind {
+              EnumVariantKind.Container(fields) => {
+                var hasOptionalField = false
+                val argMetadata: (Bool, Type)[] = []
+                for f in fields {
+                  val hasDefaultValue = !!f.initializer
+                  hasOptionalField ||= hasDefaultValue
+                  argMetadata.push((hasDefaultValue, f.ty))
+                }
+
+                val frameCtx = if hasOptionalField {
+                  val fnName = "${enum_.label.name}.${variant.label.name}"
+                  Some(CallframeContext(position: node.token.position, callee: Some(fnName)))
+                } else {
+                  None
+                }
+                (argMetadata, frameCtx)
+              }
+              _ => ([], None)
             }
-            (Callable.Function(enumVariantFn), argMetadata)
+            (Callable.Function(enumVariantFn), argMetadata, frameCtx)
           }
           TypedInvokee.Expr(expr) => {
             val fnObj = try self._compileExpression(expr)
@@ -1229,7 +1299,7 @@ export type Compiler {
               val ty = try self._getQbeTypeForTypeExpect(node.ty, "unacceptable return type", None)
               Some(ty)
             }
-            (Callable.Value(fnValPtr, retTypeQbe), [])
+            (Callable.Value(fnValPtr, retTypeQbe), [], Some(CallframeContext(position: node.token.position, callee: None)))
           }
         }
 
@@ -1282,12 +1352,12 @@ export type Compiler {
                 self._currentFn.block.buildJnz(selfVal, labelCallWithSelf, labelCallWithoutSelf)
 
                 self._currentFn.block.registerLabel(labelCallWithSelf)
-                val resWithSelf = try self._currentFn.block.buildCall(fnVal, [selfVal].concat(args), resultLocalName, Some(closureEnvPtr)) else |e| return qbeError(e)
+                val resWithSelf = try self._buildCall(frameCtx, fnVal, [selfVal].concat(args), resultLocalName, Some(closureEnvPtr))
                 val resWithSelfLabel = self._currentFn.block.currentLabel
                 self._currentFn.block.buildJmp(labelCont)
 
                 self._currentFn.block.registerLabel(labelCallWithoutSelf)
-                val resWithoutSelf = try self._currentFn.block.buildCall(fnVal, args, resultLocalName, Some(closureEnvPtr)) else |e| return qbeError(e)
+                val resWithoutSelf = try self._buildCall(frameCtx, fnVal, args, resultLocalName, Some(closureEnvPtr))
                 val resWithoutSelfLabel = self._currentFn.block.currentLabel
                 self._currentFn.block.buildJmp(labelCont)
 
@@ -1296,7 +1366,7 @@ export type Compiler {
                 val phiCases = [(resWithSelfLabel, resWithSelf), (resWithoutSelfLabel, resWithoutSelf)]
                 try self._currentFn.block.buildPhi(phiCases) else |e| return qbeError(e)
               } else {
-                try self._currentFn.block.buildCall(fnVal, args, resultLocalName, Some(closureEnvPtr)) else |e| return qbeError(e)
+                try self._buildCall(frameCtx, fnVal, args, resultLocalName, Some(closureEnvPtr))
               }
               val resWithEnvLabel = self._currentFn.block.currentLabel
               self._currentFn.block.buildJmp(labelCont)
@@ -1310,12 +1380,12 @@ export type Compiler {
                 self._currentFn.block.buildJnz(selfVal, labelCallWithSelf, labelCallWithoutSelf)
 
                 self._currentFn.block.registerLabel(labelCallWithSelf)
-                val resWithSelf = try self._currentFn.block.buildCall(fnVal, [selfVal].concat(args), resultLocalName) else |e| return qbeError(e)
+                val resWithSelf = try self._buildCall(frameCtx, fnVal, [selfVal].concat(args), resultLocalName)
                 val resWithSelfLabel = self._currentFn.block.currentLabel
                 self._currentFn.block.buildJmp(labelCont)
 
                 self._currentFn.block.registerLabel(labelCallWithoutSelf)
-                val resWithoutSelf = try self._currentFn.block.buildCall(fnVal, args, resultLocalName) else |e| return qbeError(e)
+                val resWithoutSelf = try self._buildCall(frameCtx, fnVal, args, resultLocalName)
                 val resWithoutSelfLabel = self._currentFn.block.currentLabel
                 self._currentFn.block.buildJmp(labelCont)
 
@@ -1324,7 +1394,7 @@ export type Compiler {
                 val phiCases = [(resWithSelfLabel, resWithSelf), (resWithoutSelfLabel, resWithoutSelf)]
                 try self._currentFn.block.buildPhi(phiCases) else |e| return qbeError(e)
               } else {
-                try self._currentFn.block.buildCall(fnVal, args, resultLocalName) else |e| return qbeError(e)
+                try self._buildCall(frameCtx, fnVal, args, resultLocalName)
               }
               val resWithoutEnvLabel = self._currentFn.block.currentLabel
               self._currentFn.block.buildJmp(labelCont)
@@ -1335,10 +1405,10 @@ export type Compiler {
 
               try self._currentFn.block.buildPhi(phiCases) else |e| return qbeError(e)
             } else {
-              try self._currentFn.block.buildCall(fnVal, args, resultLocalName, Some(closureEnvPtr)) else |e| return qbeError(e)
+              try self._buildCall(frameCtx, fnVal, args, resultLocalName, Some(closureEnvPtr))
             }
           } else {
-            try self._currentFn.block.buildCall(fnVal, args, resultLocalName) else |e| return qbeError(e)
+            try self._buildCall(frameCtx, fnVal, args, resultLocalName)
           }
         } else {
           if closureEnvCtx |(closureEnvPtr, needsNullCheck)| {
@@ -1358,16 +1428,16 @@ export type Compiler {
                 self._currentFn.block.buildJnz(selfVal, labelCallWithSelf, labelCallWithoutSelf)
 
                 self._currentFn.block.registerLabel(labelCallWithSelf)
-                self._currentFn.block.buildVoidCall(fnVal, [selfVal].concat(args), Some(closureEnvPtr))
+                try self._buildVoidCall(frameCtx, fnVal, [selfVal].concat(args), Some(closureEnvPtr))
                 self._currentFn.block.buildJmp(labelCont)
 
                 self._currentFn.block.registerLabel(labelCallWithoutSelf)
-                self._currentFn.block.buildVoidCall(fnVal, args, Some(closureEnvPtr))
+                try self._buildVoidCall(frameCtx, fnVal, args, Some(closureEnvPtr))
                 self._currentFn.block.buildJmp(labelCont)
 
                 self._currentFn.block.registerLabel(labelCont)
               } else {
-                self._currentFn.block.buildVoidCall(fnVal, args, Some(closureEnvPtr))
+                try self._buildVoidCall(frameCtx, fnVal, args, Some(closureEnvPtr))
               }
               self._currentFn.block.buildJmp(labelCont)
 
@@ -1380,22 +1450,22 @@ export type Compiler {
                 self._currentFn.block.buildJnz(selfVal, labelCallWithSelf, labelCallWithoutSelf)
 
                 self._currentFn.block.registerLabel(labelCallWithSelf)
-                self._currentFn.block.buildVoidCall(fnVal, [selfVal].concat(args))
+                try self._buildVoidCall(frameCtx, fnVal, [selfVal].concat(args))
                 self._currentFn.block.buildJmp(labelCont)
 
                 self._currentFn.block.registerLabel(labelCallWithoutSelf)
-                self._currentFn.block.buildVoidCall(fnVal, args)
+                try self._buildVoidCall(frameCtx, fnVal, args)
                 self._currentFn.block.buildJmp(labelCont)
 
                 self._currentFn.block.registerLabel(labelCont)
               } else {
-                self._currentFn.block.buildVoidCall(fnVal, args, Some(closureEnvPtr))
+                try self._buildVoidCall(frameCtx, fnVal, args, Some(closureEnvPtr))
               }
               self._currentFn.block.buildJmp(labelCont)
 
               self._currentFn.block.registerLabel(labelCont)
             } else {
-              self._currentFn.block.buildVoidCall(fnVal, args, Some(closureEnvPtr))
+              try self._buildVoidCall(frameCtx, fnVal, args, Some(closureEnvPtr))
             }
           } else {
             if closureSelfCtx |selfVal| {
@@ -1406,16 +1476,16 @@ export type Compiler {
               self._currentFn.block.buildJnz(selfVal, labelCallWithSelf, labelCallWithoutSelf)
 
               self._currentFn.block.registerLabel(labelCallWithSelf)
-              self._currentFn.block.buildVoidCall(fnVal, [selfVal].concat(args))
+              try self._buildVoidCall(frameCtx, fnVal, [selfVal].concat(args))
               self._currentFn.block.buildJmp(labelCont)
 
               self._currentFn.block.registerLabel(labelCallWithoutSelf)
-              self._currentFn.block.buildVoidCall(fnVal, args)
+              try self._buildVoidCall(frameCtx, fnVal, args)
               self._currentFn.block.buildJmp(labelCont)
 
               self._currentFn.block.registerLabel(labelCont)
             } else {
-              self._currentFn.block.buildVoidCall(fnVal, args)
+              try self._buildVoidCall(frameCtx, fnVal, args)
             }
           }
 
@@ -1425,7 +1495,8 @@ export type Compiler {
         if optSafeCtx |(labelIsNone, noneRes, someVariantFn, labelCont)| {
           val labelIsSome = if noneRes |noneRes| {
             val labelIsSome = self._currentFn.block.currentLabel
-            val someRes = try self._currentFn.block.buildCall(Callable.Function(someVariantFn), [res]) else |e| return qbeError(e)
+            // Do not track Option.Some in callframes
+            val someRes = try self._buildCall(None, Callable.Function(someVariantFn), [res])
             Some((labelIsSome, someRes, noneRes))
           } else None
           self._currentFn.block.buildJmp(labelCont)
@@ -1458,7 +1529,8 @@ export type Compiler {
         val arrayWithCapacityFnVal = try self._getOrCompileMethod(node.ty, arrayWithCapacityFn)
 
         val sizeVal = Value.Int(items.length.nextPowerOf2())
-        val arrayInstance = try self._currentFn.block.buildCall(Callable.Function(arrayWithCapacityFnVal), [sizeVal], resultLocalName) else |e| return qbeError(e)
+        // Do not track Array.withCapacity in callframes
+        val arrayInstance = try self._buildCall(None, Callable.Function(arrayWithCapacityFnVal), [sizeVal], resultLocalName)
         self._currentFn.block.addCommentBefore("${arrayInstance.repr()}: ${node.ty.repr()}")
 
         val arrayPushFn = if self._project.preludeArrayStruct.instanceMethods.find(m => m.label.name == "push") |fn| fn else unreachable("Array#push must exist")
@@ -1466,7 +1538,8 @@ export type Compiler {
 
         for item in items {
           val itemVal = try self._compileExpression(item)
-          self._currentFn.block.buildVoidCall(Callable.Function(arrayPushFnVal), [arrayInstance, itemVal])
+          // Do not track Array#push in callframes
+          try self._buildVoidCall(None, Callable.Function(arrayPushFnVal), [arrayInstance, itemVal])
         }
 
         self._resolvedGenerics.popLayer()
@@ -1485,7 +1558,8 @@ export type Compiler {
         val setNewFn = if self._project.preludeSetStruct.staticMethods.find(m => m.label.name == "new") |fn| fn else unreachable("Set.new must exist")
         val setNewFnVal = try self._getOrCompileMethod(node.ty, setNewFn)
 
-        val setInstance = try self._currentFn.block.buildCall(Callable.Function(setNewFnVal), [Value.Int(0), Value.Int32(1)], resultLocalName) else |e| return qbeError(e)
+        // Do not track Set.new in callframes
+        val setInstance = try self._buildCall(None, Callable.Function(setNewFnVal), [Value.Int(0), Value.Int32(1)], resultLocalName)
         self._currentFn.block.addCommentBefore("${setInstance.repr()}: ${node.ty.repr()}")
 
         val setInsertFn = if self._project.preludeSetStruct.instanceMethods.find(m => m.label.name == "insert") |fn| fn else unreachable("Set#insert must exist")
@@ -1493,7 +1567,8 @@ export type Compiler {
 
         for item in items {
           val itemVal = try self._compileExpression(item)
-          self._currentFn.block.buildVoidCall(Callable.Function(setInsertFnVal), [setInstance, itemVal])
+          // Do not track Set#insert in callframes
+          try self._buildVoidCall(None, Callable.Function(setInsertFnVal), [setInstance, itemVal])
         }
 
         self._resolvedGenerics.popLayer()
@@ -1514,7 +1589,9 @@ export type Compiler {
         val mapNewFn = if self._project.preludeMapStruct.staticMethods.find(m => m.label.name == "new") |fn| fn else unreachable("Map.new must exist")
         val mapNewFnVal = try self._getOrCompileMethod(node.ty, mapNewFn)
 
-        val mapInstance = try self._currentFn.block.buildCall(Callable.Function(mapNewFnVal), [Value.Int(0), Value.Int32(1)], resultLocalName) else |e| return qbeError(e)
+        val fnName = self._functionName(mapNewFn.label.name, mapNewFn.kind)
+        // Do not track Map.new in callframes
+        val mapInstance = try self._buildCall(None, Callable.Function(mapNewFnVal), [Value.Int(0), Value.Int32(1)], resultLocalName)
         self._currentFn.block.addCommentBefore("${mapInstance.repr()}: ${node.ty.repr()}")
 
         val mapInsertFn = if self._project.preludeMapStruct.instanceMethods.find(m => m.label.name == "insert") |fn| fn else unreachable("Map#insert must exist")
@@ -1523,7 +1600,8 @@ export type Compiler {
         for (keyExpr, valExpr) in items {
           val keyVal = try self._compileExpression(keyExpr)
           val valueVal = try self._compileExpression(valExpr)
-          try self._currentFn.block.buildCall(Callable.Function(mapInsertFnVal), [mapInstance, keyVal, valueVal]) else |e| return qbeError(e)
+          // Do not track Map#insert in callframes
+          try self._buildCall(None, Callable.Function(mapInsertFnVal), [mapInstance, keyVal, valueVal])
         }
 
         self._resolvedGenerics.popLayer()
@@ -1550,8 +1628,8 @@ export type Compiler {
           itemVals.push(itemVal)
         }
 
-        val tuple = try self._currentFn.block.buildCall(Callable.Function(fnVal), itemVals) else |e| return qbeError(e)
-        Ok(tuple)
+        // Do not track Tuple.init in callframes
+        self._buildCall(None, Callable.Function(fnVal), itemVals)
       }
       TypedAstNodeKind.Indexing(indexingNode) => {
         match indexingNode {
@@ -1571,8 +1649,8 @@ export type Compiler {
                 val getFnVal = try self._getOrCompileMethod(instType, getFn)
                 self._resolvedGenerics.popLayer()
 
-                val res = try self._currentFn.block.buildCall(Callable.Function(getFnVal), [exprVal, idxExprVal]) else |e| return qbeError(e)
-                Ok(res)
+                // Do not track Array#get in callframes
+                self._buildCall(None, Callable.Function(getFnVal), [exprVal, idxExprVal])
               }
               IndexingMode.Range(startExpr, endExpr) => {
                 var maskParam = 0
@@ -1598,8 +1676,8 @@ export type Compiler {
                 val getRangeFnVal = try self._getOrCompileMethod(instType, getRangeFn)
                 self._resolvedGenerics.popLayer()
 
-                val res = try self._currentFn.block.buildCall(Callable.Function(getRangeFnVal), [exprVal, startExprVal, endExprVal, Value.Int32(maskParam)]) else |e| return qbeError(e)
-                Ok(res)
+                // Do not track Array#getRange in callframes
+                self._buildCall(None, Callable.Function(getRangeFnVal), [exprVal, startExprVal, endExprVal, Value.Int32(maskParam)])
               }
             }
           }
@@ -1619,8 +1697,8 @@ export type Compiler {
             val getFnVal = try self._getOrCompileMethod(instType, getFn)
             self._resolvedGenerics.popLayer()
 
-            val res = try self._currentFn.block.buildCall(Callable.Function(getFnVal), [exprVal, idxExprVal]) else |e| return qbeError(e)
-            Ok(res)
+            // Do not track Map#get in callframes
+            self._buildCall(None, Callable.Function(getFnVal), [exprVal, idxExprVal])
           }
           TypedIndexingNode.Tuple(tupleExpr, idx) => {
             val exprVal = try self._compileExpression(tupleExpr)
@@ -2047,7 +2125,7 @@ export type Compiler {
     if variable.isExported || (variable.isCaptured && isGlobal) {
       val name = self._globalVarName(self._currentModule.id, variable.label.name)
       self._currentFn.block.addVar(variableToVar(variable))
-      val slot = self._builder.addData(QbeData(name: name, kind: QbeDataKind.Constants([(varTy, varTy.zeroValue())])))
+      val (slot, _) = self._builder.addData(QbeData(name: name, kind: QbeDataKind.Constants([(varTy, varTy.zeroValue())])))
       self._currentFn.block.buildStore(varTy, v, slot)
       return Ok(0)
     }
@@ -2240,7 +2318,9 @@ export type Compiler {
     val eqFnVal = try self._getOrCompileEqMethod(instType)
     self._resolvedGenerics.popLayer()
 
-    val res = try self._currentFn.block.buildCall(Callable.Function(eqFnVal), [leftVal, rightVal], localName) else |e| return qbeError(e)
+    val fnName = self._functionName("eq", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(ty))[0])))
+    val frameCtx = CallframeContext(position: position, callee: Some(fnName))
+    val res = try self._buildCall(Some(frameCtx), Callable.Function(eqFnVal), [leftVal, rightVal], localName)
     if negate {
       val plusOneVal = try self._currentFn.block.buildAdd(Value.Int(1), res) else |e| return qbeError(e)
       val res = try self._currentFn.block.buildRem(plusOneVal, Value.Int(2)) else |e| return qbeError(e)
@@ -2360,11 +2440,12 @@ export type Compiler {
         }
         args.push(Value.Int32(defaultMaskFlag))
 
+        // Do not track wrapper function in callframes
         val ret = if fn.returnType.kind != TypeKind.PrimitiveUnit {
-          val res = try self._currentFn.block.buildCall(Callable.Function(fnValBase), args) else |e| return qbeError(e)
+          val res = try self._buildCall(None, Callable.Function(fnValBase), args)
           Some(res)
         } else {
-          self._currentFn.block.buildVoidCall(Callable.Function(fnValBase), args)
+          try self._buildVoidCall(None, Callable.Function(fnValBase), args)
           None
         }
         wrapperFnVal.block.buildReturn(ret)
@@ -2402,9 +2483,8 @@ export type Compiler {
 
     self._resolvedGenerics.popLayer()
 
-    val initArgs = [closureEnvPtr, Value.Global(fnVal.name, QbeType.Pointer), selfVal]
-    val res = try self._currentFn.block.buildCall(Callable.Function(initFnVal), initArgs) else |e| return qbeError(e)
-    Ok(res)
+    // Do not track Function.init in callframes
+    self._buildCall(None, Callable.Function(initFnVal), [closureEnvPtr, Value.Global(fnVal.name, QbeType.Pointer), selfVal])
   }
 
   func _compileParamDiscardingFunctionWrapper(
@@ -2465,11 +2545,12 @@ export type Compiler {
     }
     if passDefaultParamMask args.push(Value.Int32(0))
 
+    // Do not track wrapper function in callframes
     val ret = if fn.returnType.kind != TypeKind.PrimitiveUnit {
-      val res = try self._currentFn.block.buildCall(Callable.Function(fnValBase), args) else |e| return qbeError(e)
+      val res = try self._buildCall(None, Callable.Function(fnValBase), args)
       Some(res)
     } else {
-      self._currentFn.block.buildVoidCall(Callable.Function(fnValBase), args)
+      try self._buildVoidCall(None, Callable.Function(fnValBase), args)
       None
     }
     wrapperFnVal.block.buildReturn(ret)
@@ -2484,9 +2565,8 @@ export type Compiler {
     val fnVal = try self._getOrCompileStructInitializer(self._project.preludeStringStruct)
     val structTy = if fnVal.returnType |ty| ty else unreachable("initializer functions must have return types specified")
 
-    val res = try self._currentFn.block.buildCall(Callable.Function(fnVal), [lenVal, ptrVal, Value.Int32(0)], localName) else |e| return qbeError(e)
-    self._currentFn.block.addCommentBefore("${res.repr()}: String")
-    Ok(res)
+    // Do not track String.init in callframes
+    self._buildCall(None, Callable.Function(fnVal), [lenVal, ptrVal, Value.Int32(0)], localName)
   }
 
   func _getQbeTypeForType(self, ty: Type): Result<QbeType?, CompileError> {
@@ -2566,7 +2646,20 @@ export type Compiler {
         AccessorPathSegment.EnumVariant(label, ty, enum_, variant) => {
           try self._addResolvedGenericsLayerForEnumVariant(ty, variant.label.name, label.position)
           val enumVariantFn = try self._getOrCompileEnumVariantFn(enum_, variant)
-          curVal = try self._currentFn.block.buildCall(Callable.Function(enumVariantFn), []) else |e| return qbeError(e)
+
+          val frameCtx = match variant.kind {
+            EnumVariantKind.Container(fields) => {
+              if fields.any(f => !!f.initializer) {
+                val fnName = "${enum_.label.name}.${variant.label.name}"
+                Some(CallframeContext(position: label.position, callee: Some(fnName)))
+              } else {
+                None
+              }
+            }
+            _ => None
+          }
+
+          curVal = try self._buildCall(frameCtx, Callable.Function(enumVariantFn), [])
           self._resolvedGenerics.popLayer()
 
           instTy = StructOrEnum.Enum(enum_)
@@ -2629,7 +2722,8 @@ export type Compiler {
             match self._resolvedGenerics.addLayer("Option.None", { "V": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: label.position, kind: CompileErrorKind.ResolvedGenericsError(context: "Option.None", message: e))) }
             val noneVariantFn = try self._getOrCompileEnumVariantFn(self._project.preludeOptionEnum, optNoneVariant)
             self._resolvedGenerics.popLayer()
-            val noneRes = try self._currentFn.block.buildCall(Callable.Function(noneVariantFn), []) else |e| return qbeError(e)
+            // Do not track Option.None in callframes
+            val noneRes = try self._buildCall(None, Callable.Function(noneVariantFn), [])
             self._currentFn.block.buildJmp(labelCont)
 
             self._currentFn.block.registerLabel(labelIsSome)
@@ -2679,7 +2773,8 @@ export type Compiler {
 
           if optSafeCtx |(labelIsNone, noneRes, someVariantFn, labelCont)| {
             val labelIsSome = self._currentFn.block.currentLabel
-            val someRes = try self._currentFn.block.buildCall(Callable.Function(someVariantFn), [curVal]) else |e| return qbeError(e)
+            // Do not track Option.Some in callframes
+            val someRes = try self._buildCall(None, Callable.Function(someVariantFn), [curVal])
             self._currentFn.block.buildJmp(labelCont)
 
             self._currentFn.block.addComment("...opt-safe field accessor end")
@@ -2853,7 +2948,9 @@ export type Compiler {
       val itemToStringFnVal = try self._getOrCompileToStringMethod(itemInstanceType)
       self._resolvedGenerics.popLayer()
 
-      val toStringVal = try self._currentFn.block.buildCall(Callable.Function(itemToStringFnVal), [itemVal]) else |e| return qbeError(e)
+      val fnName = self._functionName("eq", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(item.ty))[0])))
+      val frameCtx = CallframeContext(position: item.token.position, callee: Some(fnName))
+      val toStringVal = try self._buildCall(Some(frameCtx), Callable.Function(itemToStringFnVal), [itemVal])
 
       self._currentFn.block.buildVoidCall(Callable.Function(stdoutWriteFnVal), [toStringVal])
 
@@ -3234,8 +3331,115 @@ export type Compiler {
 
         Ok(res)
       }
+      "__callstack" => {
+        self._currentFn.block.addComment("begin __callstack...")
+        val res = try self._currentFn.block.buildAdd(Value.Int(0), self._callstack[0]) else |e| return qbeError(e)
+        self._currentFn.block.addComment("...__callstack end")
+
+        Ok(res)
+      }
+      "__callstackp" => {
+        self._currentFn.block.addComment("begin __callstackp...")
+        val res = self._currentFn.block.buildLoadL(self._callstack[1])
+        self._currentFn.block.addComment("...__callstackp end")
+
+        Ok(res)
+      }
+      "modulenames" => {
+        self._currentFn.block.addComment("begin modulenames...")
+        val res = try self._currentFn.block.buildAdd(Value.Int(0), self._moduleNamesPtr) else |e| return qbeError(e)
+        self._currentFn.block.addComment("...modulenames end")
+
+        Ok(res)
+      }
+      "functionnames" => {
+        self._currentFn.block.addComment("begin functionnames...")
+        val res = try self._currentFn.block.buildAdd(Value.Int(0), self._fnNamesPtr) else |e| return qbeError(e)
+        self._currentFn.block.addComment("...functionnames end")
+
+        Ok(res)
+      }
       _ => unreachable("unsupported intrinsic '$intrinsicFnName'")
     }
+  }
+
+  func _buildCall(self, ctx: CallframeContext?, callable: Callable, arguments: Value[], dst: String? = None, envPtr: Value? = None): Result<Value, CompileError> {
+    if ctx |ctx| try self._emitCallstackPush(ctx.callee, ctx.position)
+    val v = try self._currentFn.block.buildCall(callable, arguments, dst, envPtr) else |e| return qbeError(e)
+    if ctx try self._emitCallstackPop()
+
+    Ok(v)
+  }
+
+  func _buildVoidCall(self, ctx: CallframeContext?, callable: Callable, arguments: Value[], envPtr: Value? = None): Result<Int, CompileError> {
+    if ctx |ctx| try self._emitCallstackPush(ctx.callee, ctx.position)
+    self._currentFn.block.buildVoidCall(callable, arguments, envPtr)
+    if ctx try self._emitCallstackPop()
+
+    Ok(0) // <-- unnecessary int
+  }
+
+  func _emitCallstackPush(self, calleeName: String?, position: Position): Result<Int, CompileError> {
+    self._currentFn.block.addComment("begin __callstack push...")
+    val (stack, stackPtr) = self._callstack
+
+    val moduleId = if self._currentFunction |fn| {
+      var modId = 0 // a moduleId of 0 represents <builtin> code
+      var scope = Some(fn.scope)
+      while scope |sc| {
+        match sc.kind {
+          ScopeKind.Module(id) => {
+            modId = id + 1
+            break
+          }
+          _ => {
+            scope = sc.parent
+          }
+        }
+      }
+
+      modId
+    } else {
+      self._currentModule.id + 1
+    }
+
+    // a fnId of 0 represents <expression> callee
+    val fnId = if calleeName |name| {
+      if self._functionNames[name] |fnId| {
+        fnId + 1
+      } else {
+        val fnId = self._functionNames.size
+        self._functionNames[name] = fnId
+        fnId + 1
+      }
+    } else {
+      0
+    }
+
+    var frame = position.line || (moduleId << 16) || (fnId << 32)
+
+    val stackPtrVal = self._currentFn.block.buildLoadL(stackPtr)
+    val ptr = try self._currentFn.block.buildAdd(stackPtrVal, stack) else |e| return qbeError(e)
+    self._currentFn.block.buildStoreL(Value.IntU64(frame), ptr)
+    val ptrInc = try self._currentFn.block.buildAdd(Value.Int(8), stackPtrVal) else |e| return qbeError(e)
+    self._currentFn.block.buildStoreL(ptrInc, stackPtr)
+
+    self._currentFn.block.addComment("...__callstack push end")
+
+    Ok(0) // <-- unnecessary int
+  }
+
+  func _emitCallstackPop(self): Result<Int, CompileError> {
+    self._currentFn.block.addComment("begin __callstack pop...")
+    val (_, stackPtr) = self._callstack
+
+    val stackPtrVal = self._currentFn.block.buildLoadL(stackPtr)
+    val ptrDec = try self._currentFn.block.buildSub(stackPtrVal, Value.Int(8)) else |e| return qbeError(e)
+    self._currentFn.block.buildStoreL(ptrDec, stackPtr)
+
+    self._currentFn.block.addComment("...__callstack pop end")
+
+    Ok(0) // <-- unnecessary int
   }
 
   func _getOrCompileFunction(self, fn: Function): Result<QbeFunction, CompileError> {
@@ -3492,7 +3696,9 @@ export type Compiler {
 
       offset += itemTy.size()
 
-      val itemToStringVal = try self._currentFn.block.buildCall(Callable.Function(itemToStringFnVal), [itemVal]) else |e| return qbeError(e)
+      val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(itemType))[0])))
+      val frameCtx = CallframeContext(position: itemPosition, callee: Some(fnName))
+      val itemToStringVal = try self._buildCall(Some(frameCtx), Callable.Function(itemToStringFnVal), [itemVal])
       val itemToStringLengthVal = self._currentFn.block.buildLoadL(itemToStringVal)
       lenVal = try self._currentFn.block.buildAdd(lenVal, itemToStringLengthVal, Some("length_total")) else |e| return qbeError(e)
       if itemIsString {
@@ -3506,7 +3712,8 @@ export type Compiler {
     val totalLengthVal = try self._currentFn.block.buildAdd(Value.Int(len), lenVal) else |e| return qbeError(e)
     val stringWithLengthFn = if self._project.preludeStringStruct.staticMethods.find(m => m.label.name == "withLength") |fn| fn else unreachable("String.withLength must exist")
     val stringWithLengthFnVal = try self._getOrCompileMethod(Type(kind: TypeKind.Type(StructOrEnum.Struct(self._project.preludeStringStruct))), stringWithLengthFn)
-    val newStr = try self._currentFn.block.buildCall(Callable.Function(stringWithLengthFnVal), [totalLengthVal]) else |e| return qbeError(e)
+    // Do not track String.withLength in callframes
+    val newStr = try self._buildCall(None, Callable.Function(stringWithLengthFnVal), [totalLengthVal])
 
     var newStrBuf = self._currentFn.block.buildLoadL(try self._currentFn.block.buildAdd(Value.Int(8), newStr) else |e| return qbeError(e))
     if !prefix.isEmpty() {
@@ -4082,7 +4289,9 @@ export type Compiler {
       val itemHashFnVal = try self._getOrCompileHashMethod(itemType)
       self._resolvedGenerics.popLayer()
 
-      val itemHashVal = try self._currentFn.block.buildCall(Callable.Function(itemHashFnVal), [itemVal]) else |e| return qbeError(e)
+      val fnName = self._functionName("hash", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(itemType))[0])))
+      val frameCtx = CallframeContext(position: itemPosition, callee: Some(fnName))
+      val itemHashVal = try self._buildCall(Some(frameCtx), Callable.Function(itemHashFnVal), [itemVal])
       val newPart = try self._currentFn.block.buildMul(Value.Int(31), itemHashVal) else |e| return qbeError(e)
       retVal = try self._currentFn.block.buildAdd(retVal, newPart) else |e| return qbeError(e)
 
@@ -4341,6 +4550,21 @@ export type Compiler {
   func _moduleWrapperFnName(self, module: TypedModule): String = "..module_${module.id}"
 
   func _globalVarName(self, modId: Int, name: String): String = "mod${modId}_${name}.slot"
+
+  func _functionName(self, name: String, kind: FunctionKind): String {
+    match kind {
+      FunctionKind.Standalone => name
+      FunctionKind.InstanceMethod(structOrEnumOpt) => match structOrEnumOpt {
+        StructOrEnum.Struct(s) => "${s.label.name}.$name"
+        StructOrEnum.Enum(e) => "${e.label.name}.$name"
+        _ => name
+      }
+      FunctionKind.StaticMethod(structOrEnum) => match structOrEnum {
+        StructOrEnum.Struct(s) => "${s.label.name}#$name"
+        StructOrEnum.Enum(e) => "${e.label.name}#$name"
+      }
+    }
+  }
 
   func _structTypeName(self, struct: Struct): Result<String, CompileError> {
     val base = ".${struct.moduleId}.${struct.label.name}"

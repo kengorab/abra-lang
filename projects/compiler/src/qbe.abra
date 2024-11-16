@@ -37,15 +37,23 @@ export type ModuleBuilder {
 
     val dataName = name ?: "_${self._data.length}"
     val data = QbeData(name: dataName, align: None, kind: QbeDataKind.String(string))
-    val ptr = self.addData(data)
+    val (ptr, _) = self.addData(data)
     self._globalStrs[string] = ptr
 
     ptr
   }
 
-  func addData(self, data: QbeData): Value {
+  func addData(self, data: QbeData): (Value, Int) {
+    val idx = self._data.length
     self._data.push(data)
-    Value.Global(data.name, QbeType.Pointer)
+    val dataGlobal = Value.Global(data.name, QbeType.Pointer)
+    (dataGlobal, idx)
+  }
+
+  func setData(self, idx: Int, newData: QbeDataKind) {
+    if self._data[idx] |data| {
+      data.kind = newData
+    }
   }
 }
 
@@ -72,6 +80,7 @@ export enum QbeDataKind {
   Zeros(size: Int)
   Constants(values: (QbeType, Value)[])
   String(str: String)
+  Strings(strings: String[])
 
   func encode(self, file: File) {
     match self {
@@ -90,6 +99,12 @@ export enum QbeDataKind {
       }
       QbeDataKind.String(str) => {
         file.write("b \"$str\", b 0")
+      }
+      QbeDataKind.Strings(strings) => {
+        for str, idx in strings {
+          file.write("b \"$str\", b 0, ")
+        }
+        file.write("b 0")
       }
     }
   }
@@ -802,6 +817,7 @@ export enum Value {
   Global(name: String, ty: QbeType)
   Int32(value: Int)
   Int(value: Int)
+  IntU64(value: Int)
   Float(value: Float)
 
   func encode(self, file: File) {
@@ -811,6 +827,7 @@ export enum Value {
       Value.Int32(value) => file.write(value.toString())
       Value.Int(value) => file.write(value.toString())
       Value.Float(value) => file.write("d_$value")
+      Value.IntU64(value) => file.write(value.unsignedToString())
     }
   }
 
@@ -819,6 +836,7 @@ export enum Value {
       Value.Global(_, ty) => ty
       Value.Int32 => QbeType.U32
       Value.Int => QbeType.U64
+      Value.IntU64 => QbeType.U64
       Value.Float => QbeType.F64
   }
 
@@ -828,6 +846,7 @@ export enum Value {
       Value.Global(name, _) => "\$$name"
       Value.Int32(v) => v.toString()
       Value.Int(v) => v.toString()
+      Value.IntU64(v) => v.unsignedToString()
       Value.Float(v) => v.toString()
     }
   }
