@@ -89,7 +89,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
   CFLAGS="$CFLAGS -Wl,-w -fcall-saved-x18"
 fi
 
-clang "$dotabradir/$outfile.s" $abra_root/include/libgc.a -o "$dotabradir/$outfile" -lm $CFLAGS
+clang $abra_root/include/libgc.a "$dotabradir/$outfile.s" -o "$dotabradir/$outfile" -lm $CFLAGS
 
 if [[ "$run" == "true" ]]; then
   $(echo "$dotabradir/$outfile $@")
