@@ -83,13 +83,16 @@ $(echo "$compiler_bin $filepath $outfile")
 
 qbe -o "$dotabradir/$outfile.s" "$dotabradir/$outfile.ssa"
 
-CFLAGS="-Wno-override-module"
+CFLAGS_COMMON="-Wno-override-module"
 if [[ "$OSTYPE" == "darwin"* ]]; then
-  # Ignore linker warnings. For some reason libgc.a has warnings on macos
-  CFLAGS="$CFLAGS -Wl,-w -fcall-saved-x18"
+  # There are a few differences in behavior on macos vs linux.
+  #  1. ignore linker warnings. For some reason libgc.a has warnings on macos
+  #  2. fix behavior of platform-specific x18 register to be properly general-purpose
+  #  3. for some reason, libgc.a needs to be first (this is not the case on linux)
+  clang "$abra_root/include/libgc.a" "$dotabradir/$outfile.s" -o "$dotabradir/$outfile" -lm $CFLAGS_COMMON -Wl,-w -fcall-saved-x18
+else
+  clang "$dotabradir/$outfile.s" "$abra_root/include/libgc.a" -o "$dotabradir/$outfile" -lm $CFLAGS_COMMON
 fi
-
-clang $abra_root/include/libgc.a "$dotabradir/$outfile.s" -o "$dotabradir/$outfile" -lm $CFLAGS
 
 if [[ "$run" == "true" ]]; then
   $(echo "$dotabradir/$outfile $@")
