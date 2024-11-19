@@ -2998,19 +2998,17 @@ export type Compiler {
   }
 
   func _pointerSize(self, ty: Type): Result<Int, CompileError> {
-    val size = match ty.kind {
-      TypeKind.PrimitiveBool => 4
+    val isByte = match ty.kind {
       TypeKind.Generic(name) => unreachable("unresolved generic '$name'")
       TypeKind.Instance(structOrEnum, generics) => {
         match structOrEnum {
-          StructOrEnum.Struct(struct) => {
-            if struct.builtin == Some(BuiltinModule.Intrinsics) && struct.label.name == "Byte" 1 else 8
-          }
-          _ => 8
+          StructOrEnum.Struct(struct) => struct.builtin == Some(BuiltinModule.Intrinsics) && struct.label.name == "Byte"
+          _ => false
         }
       }
-      _ => 8
+      _ => false
     }
+    val size = if isByte 1 else 8
 
     Ok(size)
   }
