@@ -26,7 +26,7 @@ export type ModuleBuilder {
 
     val block = Block.new(name: name)
 
-    val fn = QbeFunction(exported: exported, name: name, block: block, returnType: returnType, _parameters: [], variadicIdx: None, _comments: [], _env: None)
+    val fn = QbeFunction(exported: exported, name: name, block: block, returnType: returnType, _parameters: [], variadicIdx: None, isVariadic: false, _comments: [], _env: None)
     self._functions.push(fn)
     self._functionsByName[name] = fn
     fn
@@ -756,11 +756,12 @@ export type QbeFunction {
   returnType: QbeType? = None
   _parameters: (String, QbeType)[] = []
   variadicIdx: Int? = None
+  isVariadic: Bool = false
   _comments: String[] = []
   _env: Value? = None
 
   func spec(name: String, returnType: QbeType? = None, parameters: (String, QbeType)[] = [], variadicIdx: Int? = None): QbeFunction {
-    QbeFunction(name: name, block: Block.new(name), returnType: returnType, _parameters: parameters, variadicIdx: variadicIdx, _env: None)
+    QbeFunction(name: name, block: Block.new(name), returnType: returnType, _parameters: parameters, variadicIdx: variadicIdx)
   }
 
   func encode(self, file: File) {
@@ -780,9 +781,12 @@ export type QbeFunction {
     for (name, ty), idx in self._parameters {
       ty.encode(file)
       file.write(" %$name")
-      if idx != self._parameters.length - 1 {
+      if idx != self._parameters.length - 1 || self.isVariadic {
         file.write(", ")
       }
+    }
+    if self.isVariadic {
+      file.write("...")
     }
     file.write(")")
     file.writeln(" {")
