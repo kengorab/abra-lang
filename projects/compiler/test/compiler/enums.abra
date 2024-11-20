@@ -3,6 +3,7 @@ enum Color {
   Green
   Blue
   RGB(r: Int, g: Int, b: Int)
+  RGB2(r: Int = 0, g: Int = 0, b: Int = 0)
 
   func hex(self): String {
     if self == Color.Red {
@@ -21,6 +22,33 @@ val r = Color.Red
 val g = Color.Green
 val b = Color.Blue
 val gray = Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa)
+
+// Testing enum variants with default values
+val black = Color.RGB2()
+val white = Color.RGB2(r: 255, g: 255, b: 255)
+val red = Color.RGB2(r: 255)
+val green = Color.RGB2(g: 255)
+val blue = Color.RGB2(b: 255)
+val pink = Color.RGB2(r: 255, b: 255)
+val cyan = Color.RGB2(g: 255, b: 255)
+val yellow = Color.RGB2(r: 255, g: 255)
+
+/// Expect: Color.RGB2(r: 0, g: 0, b: 0)
+println(black)
+/// Expect: Color.RGB2(r: 255, g: 255, b: 255)
+println(white)
+/// Expect: Color.RGB2(r: 255, g: 0, b: 0)
+println(red)
+/// Expect: Color.RGB2(r: 0, g: 255, b: 0)
+println(green)
+/// Expect: Color.RGB2(r: 0, g: 0, b: 255)
+println(blue)
+/// Expect: Color.RGB2(r: 255, g: 0, b: 255)
+println(pink)
+/// Expect: Color.RGB2(r: 0, g: 255, b: 255)
+println(cyan)
+/// Expect: Color.RGB2(r: 255, g: 255, b: 0)
+println(yellow)
 
 // Test default toString method
 /// Expect: Color.Red

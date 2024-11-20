@@ -1077,8 +1077,7 @@ export type Compiler {
                 Some(mem)
               }
 
-              val fnValBase = try self._getOrCompileFunction(fn)
-              self._compileFunctionValue(node.token.position, fn, fnValBase, targetParamTypes, capturesMem, None)
+              self._compileFunctionValue(node.token.position, fn, targetParamTypes, capturesMem, None)
             }
             _ => {
               if varImportModule |mod| {
@@ -1116,12 +1115,11 @@ export type Compiler {
       TypedAstNodeKind.Accessor(head, middle, tail) => self._followAccessorPath(head: head, middle: middle, tail: tail, loadFinal: true, localName: resultLocalName)
       TypedAstNodeKind.Invocation(invokee, arguments, resolvedGenerics) => {
         val args: Value[] = []
-        var fnHasOptionalParameters = false
         var optSafeCtx: (Label, Value?, QbeFunction, Label)? = None
         var closureEnvCtx: (Value, Bool)? = None
         var closureSelfCtx: Value? = None
 
-        val (fnVal, argMetadata, frameCtx) = match invokee {
+        val (fnVal, frameCtx) = match invokee {
           TypedInvokee.Function(fn) => {
             match self._resolvedGenerics.addLayer(fn.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: fn.label.name, message: e))) }
 
@@ -1150,25 +1148,23 @@ export type Compiler {
               closureEnvCtx = Some((capturesArr, false))
             }
 
-            fnHasOptionalParameters = fn.params.any(p => !!p.defaultValue)
-
+            val paramsNeedingDefaultValue = arguments.map((arg, idx) => {
+              if fn.params[idx] |param| { !!param.defaultValue && !arg } else { false }
+            })
             val fnVal = match fn.kind {
               FunctionKind.StaticMethod(parentTy) => {
-                val fnVal = try self._getOrCompileMethod(Type(kind: TypeKind.Type(parentTy)), fn)
-                fnVal
+                try self._getOrCompileMethod(Type(kind: TypeKind.Type(parentTy)), fn, paramsNeedingDefaultValue)
               }
               FunctionKind.Standalone => {
-                val fnVal = try self._getOrCompileFunction(fn)
-                fnVal
+                try self._getOrCompileFunction(fn, paramsNeedingDefaultValue)
               }
-              FunctionKind.InstanceMethod => unreachable("instance methods handled elsewhere")
+              FunctionKind.InstanceMethod => unreachable("instance methods handled in the following block")
             }
 
             self._resolvedGenerics.popLayer()
 
-            val argMetadata = fn.params.map(p => (!!p.defaultValue, p.ty))
             val frameCtx = CallframeContext(position: node.token.position, callee: Some(self._functionName(fn.label.name, fn.kind)))
-            (Callable.Function(fnVal), argMetadata, Some(frameCtx))
+            (Callable.Function(fnVal), Some(frameCtx))
           }
           TypedInvokee.Method(fn, selfExpr, isOptSafe) => {
             var selfInstanceType = try self._addResolvedGenericsLayerForInstanceMethod(selfExpr.ty, fn.label.name, node.token.position, resolvedGenerics)
@@ -1185,8 +1181,6 @@ export type Compiler {
               val capturesArr = try self._getCapturesArrForClosure(fn)
               closureEnvCtx = Some((capturesArr, false))
             }
-
-            fnHasOptionalParameters = fn.params.any(p => !!p.defaultValue)
 
             val selfVal = if isOptSafe {
               val innerTy = if self._typeIsOption(selfInstanceType) |innerTy| innerTy else unreachable("an opt-safe invocation needs to have an Option type as its lhs")
@@ -1228,58 +1222,61 @@ export type Compiler {
               try self._compileExpression(selfExpr)
             }
 
-            val fnVal = try self._getOrCompileMethod(selfInstanceType, fn)
+            val paramsNeedingDefaultValue = arguments.map((arg, idx) => {
+              if fn.params[idx] |param| { !!param.defaultValue && !arg } else { false }
+            })
+            val fnVal = try self._getOrCompileMethod(selfInstanceType, fn, paramsNeedingDefaultValue)
             args.push(selfVal)
 
             self._resolvedGenerics.popLayer()
 
-            val argMetadata = fn.params.map(p => (!!p.defaultValue, p.ty))
             val frameCtx = CallframeContext(position: node.token.position, callee: Some(self._functionName(fn.label.name, fn.kind)))
-            (Callable.Function(fnVal), argMetadata, Some(frameCtx))
+            (Callable.Function(fnVal), Some(frameCtx))
           }
           TypedInvokee.Struct(struct) => {
             match self._resolvedGenerics.addLayer(struct.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: struct.label.name, message: e))) }
-            fnHasOptionalParameters = struct.fields.any(f => !!f.initializer)
-            val fnVal = try self._getOrCompileStructInitializer(struct)
+
+            val fieldsNeedingDefaultValue = arguments.map((arg, idx) => {
+              if struct.fields[idx] |field| { !!field.initializer && !arg } else { false }
+            })
+            val fnVal = try self._getOrCompileStructInitializer(struct, fieldsNeedingDefaultValue)
 
             self._resolvedGenerics.popLayer()
 
-            val argMetadata = struct.fields.map(f => (!!f.initializer, f.ty))
-
-            val frameCtx = if fnHasOptionalParameters {
+            val hasOptionalField = struct.fields.any(f => !!f.initializer)
+            val frameCtx = if hasOptionalField {
               Some(CallframeContext(position: node.token.position, callee: Some(struct.label.name)))
             } else {
               None
             }
-            (Callable.Function(fnVal), argMetadata, frameCtx)
+            (Callable.Function(fnVal), frameCtx)
           }
           TypedInvokee.EnumVariant(enum_, variant) => {
             match self._resolvedGenerics.addLayer(variant.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: variant.label.name, message: e))) }
-            val enumVariantFn = try self._getOrCompileEnumVariantFn(enum_, variant)
 
-            self._resolvedGenerics.popLayer()
-
-            val (argMetadata, frameCtx) = match variant.kind {
+            match variant.kind {
               EnumVariantKind.Container(fields) => {
-                var hasOptionalField = false
-                val argMetadata: (Bool, Type)[] = []
-                for f in fields {
-                  val hasDefaultValue = !!f.initializer
-                  hasOptionalField ||= hasDefaultValue
-                  argMetadata.push((hasDefaultValue, f.ty))
-                }
+                val fieldsNeedingDefaultValue = arguments.map((arg, idx) => {
+                  if fields[idx] |field| { !!field.initializer && !arg } else { false }
+                })
+                val enumVariantFn = try self._getOrCompileEnumVariantFn(enum_, variant, fieldsNeedingDefaultValue)
+                self._resolvedGenerics.popLayer()
 
+                val hasOptionalField = fields.any(f => !!f.initializer)
                 val frameCtx = if hasOptionalField {
-                  val fnName = "${enum_.label.name}.${variant.label.name}"
-                  Some(CallframeContext(position: node.token.position, callee: Some(fnName)))
+                  Some(CallframeContext(position: node.token.position, callee: Some("${enum_.label.name}.${variant.label.name}")))
                 } else {
                   None
                 }
-                (argMetadata, frameCtx)
+                (Callable.Function(enumVariantFn), frameCtx)
               }
-              _ => ([], None)
+              _ => {
+                val enumVariantFn = try self._getOrCompileEnumVariantFn(enum_, variant)
+                self._resolvedGenerics.popLayer()
+
+                (Callable.Function(enumVariantFn), None)
+              }
             }
-            (Callable.Function(enumVariantFn), argMetadata, frameCtx)
           }
           TypedInvokee.Expr(expr) => {
             val fnObj = try self._compileExpression(expr)
@@ -1299,38 +1296,14 @@ export type Compiler {
               val ty = try self._getQbeTypeForTypeExpect(node.ty, "unacceptable return type", None)
               Some(ty)
             }
-            (Callable.Value(fnValPtr, retTypeQbe), [], Some(CallframeContext(position: node.token.position, callee: None)))
+            (Callable.Value(fnValPtr, retTypeQbe), Some(CallframeContext(position: node.token.position, callee: None)))
           }
         }
 
-        var defaultValueParamIdx = -1
-        var defaultValueFlags = 0
         for arg, idx in arguments {
-          var (argHasDefaultValue, argTy) = if argMetadata[idx] |(argHasDefaultValue, ty)| {
-            (argHasDefaultValue, Some(ty))
-          } else {
-            (false, None)
-          }
-
-          if argHasDefaultValue {
-            defaultValueParamIdx += 1
-          }
-
           if arg |node| {
-            val arg = try self._compileExpression(node)
-            args.push(arg)
-          } else if argTy |argTy| {
-            defaultValueFlags ||= (1 << defaultValueParamIdx)
-
-            val argQbeType = try self._getQbeTypeForTypeExpect(argTy, "unacceptable type for argument", Some(node.token.position))
-            args.push(argQbeType.zeroValue())
-          } else {
-            unreachable("invocation target must be an arbitrary expression, which do not have default-valued arguments")
+            args.push(try self._compileExpression(node))
           }
-        }
-
-        if fnHasOptionalParameters {
-          args.push(Value.Int32(defaultValueFlags))
         }
 
         // TODO: yikes...
@@ -1556,10 +1529,10 @@ export type Compiler {
         }
 
         val setNewFn = if self._project.preludeSetStruct.staticMethods.find(m => m.label.name == "new") |fn| fn else unreachable("Set.new must exist")
-        val setNewFnVal = try self._getOrCompileMethod(node.ty, setNewFn)
+        val setNewFnVal = try self._getOrCompileMethod(node.ty, setNewFn, [true])
 
         // Do not track Set.new in callframes
-        val setInstance = try self._buildCall(None, Callable.Function(setNewFnVal), [Value.Int(0), Value.Int32(1)], resultLocalName)
+        val setInstance = try self._buildCall(None, Callable.Function(setNewFnVal), [], resultLocalName)
         self._currentFn.block.addCommentBefore("${setInstance.repr()}: ${node.ty.repr()}")
 
         val setInsertFn = if self._project.preludeSetStruct.instanceMethods.find(m => m.label.name == "insert") |fn| fn else unreachable("Set#insert must exist")
@@ -1585,13 +1558,12 @@ export type Compiler {
           _ => unreachable("we know it's a map instance here")
         }
 
-
         val mapNewFn = if self._project.preludeMapStruct.staticMethods.find(m => m.label.name == "new") |fn| fn else unreachable("Map.new must exist")
-        val mapNewFnVal = try self._getOrCompileMethod(node.ty, mapNewFn)
+        val mapNewFnVal = try self._getOrCompileMethod(node.ty, mapNewFn, [true])
 
         val fnName = self._functionName(mapNewFn.label.name, mapNewFn.kind)
         // Do not track Map.new in callframes
-        val mapInstance = try self._buildCall(None, Callable.Function(mapNewFnVal), [Value.Int(0), Value.Int32(1)], resultLocalName)
+        val mapInstance = try self._buildCall(None, Callable.Function(mapNewFnVal), [], resultLocalName)
         self._currentFn.block.addCommentBefore("${mapInstance.repr()}: ${node.ty.repr()}")
 
         val mapInsertFn = if self._project.preludeMapStruct.instanceMethods.find(m => m.label.name == "insert") |fn| fn else unreachable("Map#insert must exist")
@@ -1653,18 +1625,19 @@ export type Compiler {
                 self._buildCall(None, Callable.Function(getFnVal), [exprVal, idxExprVal])
               }
               IndexingMode.Range(startExpr, endExpr) => {
-                var maskParam = 0
-                val startExprVal = if startExpr |startExpr| {
-                  try self._compileExpression(startExpr)
+                val params = [exprVal]
+                val paramsNeedingDefaultValue: Bool[] = []
+                if startExpr |startExpr| {
+                  paramsNeedingDefaultValue.push(false)
+                  params.push(try self._compileExpression(startExpr))
                 } else {
-                  maskParam ||= 1
-                  Value.Int(0)
+                  paramsNeedingDefaultValue.push(true)
                 }
-                val endExprVal = if endExpr |endExpr| {
-                  try self._compileExpression(endExpr)
+                if endExpr |endExpr| {
+                  paramsNeedingDefaultValue.push(false)
+                  params.push(try self._compileExpression(endExpr))
                 } else {
-                  maskParam ||= (1 << 1)
-                  Value.Int(0)
+                  paramsNeedingDefaultValue.push(true)
                 }
 
                 val instType = try self._addResolvedGenericsLayerForInstanceMethod(expr.ty, "getRange", expr.token.position)
@@ -1673,11 +1646,11 @@ export type Compiler {
                   StructOrEnum.Struct(struct) => if struct.instanceMethods.find(m => m.label.name == "getRange") |fn| fn else unreachable("#getRange must exist for array-like indexing")
                   StructOrEnum.Enum => unreachable("array-like indexing never applies to enum instances")
                 }
-                val getRangeFnVal = try self._getOrCompileMethod(instType, getRangeFn)
+                val getRangeFnVal = try self._getOrCompileMethod(instType, getRangeFn, paramsNeedingDefaultValue)
                 self._resolvedGenerics.popLayer()
 
                 // Do not track Array#getRange in callframes
-                self._buildCall(None, Callable.Function(getRangeFnVal), [exprVal, startExprVal, endExprVal, Value.Int32(maskParam)])
+                self._buildCall(None, Callable.Function(getRangeFnVal), params)
               }
             }
           }
@@ -1752,8 +1725,7 @@ export type Compiler {
           Some(mem)
         }
 
-        val fnValBase = try self._getOrCompileFunction(fn)
-        self._compileFunctionValue(node.token.position, fn, fnValBase, targetParamTypes, capturesMem, None)
+        self._compileFunctionValue(node.token.position, fn, targetParamTypes, capturesMem, None)
       }
       TypedAstNodeKind.If(isStatement, cond, conditionBinding, ifBlock, ifBlockTerminator, elseBlock, elseBlockTerminator) => {
         if isStatement unreachable("if-statements are handled elsewhere")
@@ -2334,30 +2306,19 @@ export type Compiler {
     self,
     position: Position,
     fn: Function,
-    fnValBase: QbeFunction,
     targetParamTypes: (Type, Bool)[]?,
     capturesPtr: Value?,
     capturedSelf: (Value, Type)?,
   ): Result<Value, CompileError> {
     val closureEnvPtr = capturesPtr ?: Value.Int(0)
 
-    val (selfVal, selfTy) = if capturedSelf |(selfVal, selfType)| {
+    val (selfVal, selfType, selfTy) = if capturedSelf |(selfVal, selfType)| {
       val selfTy = try self._getQbeTypeForTypeExpect(selfType, "unacceptable type for param", Some(position))
-      (selfVal, Some(selfTy))
+      (selfVal, Some(selfType), Some(selfTy))
     } else {
-      (Value.Int(0), None)
+      (Value.Int(0), None, None)
     }
 
-    val numParams = fn.params.length
-    var fnNumReqParams = 0
-    var fnNumOptParams = 0
-    for param in fn.params {
-      if !!param.defaultValue {
-        fnNumOptParams += 1
-      } else {
-        fnNumReqParams += 1
-      }
-    }
     val fnValParamTypes = if targetParamTypes |paramTypes| {
       paramTypes.filter(_p => _p[1]).map(_p => _p[0])
     } else {
@@ -2365,117 +2326,80 @@ export type Compiler {
     }
     val targetArity = fnValParamTypes.length
 
-    // For the cases below, consider the function
-    //   func callFn(fn: (Int) => Int) = ...
-    val fnValRes = if fnNumOptParams == 0 {
-      if targetArity == numParams {
-        // If the referenced function's arity matches the required arity, and it has no optional parameters,
-        // then we don't need to create a wrapper for it.
-        val res: Result<QbeFunction, CompileError> = Ok(fnValBase)
-        res
-      } else if targetArity < numParams {
-        // In this case, consider the following example:
-        //   func foo(a: Int, b: Int): Int = ...
-        //   callFn(foo)
-        // In this case, typechecking fails since `callFn` won't provide a value for the parameter `b`.
-        unreachable("This should have been caught during typechecking")
+    val fnVal = if targetArity == fn.params.length {
+      if selfType |selfType| {
+        try self._getOrCompileMethod(selfType, fn)
       } else {
-        // In this case, consider the following example:
-        //   func foo(): Int = ...
-        //   callFn(foo)
-        // Create a wrapper of higher arity which discards parameters (and which doesn't consider default-valued parameters, since we
-        // know the wrapped function does not have any).
-        self._compileParamDiscardingFunctionWrapper(fnValParamTypes, fn, fnValBase, position, false, selfTy)
+        try self._getOrCompileFunction(fn)
       }
-    } else if targetArity < fnNumReqParams {
-      // In this case, consider the following example:
-      //   func foo(a: Int, b: Int, c = 12): Int = ...
-      //   callFn(foo)
-      // In this case, typechecking fails since `callFn` won't provide a value for the parameter `b`.
-      // This is similar to the case above, except here we have an optional parameter.
-      unreachable("This should be caught during typechecking")
-    } else if fnNumReqParams <= targetArity && targetArity <= numParams {
-      // In this case, we need to "artificially (monotonically) shrink" the arity of the underlying function.
-      // It's "monotonically" because the arity itself might not actually shrink; consider this example:
-      //   func foo(x = 12): Int = ...
-      //   callFn(foo)
-      // In this case, the optional parameter `x` must be treated as if it's a required parameter, and so the
-      // arity of the wrapper function becomes 1.
-      // Nominally though, the arity must be artificially shrunk in these cases:
-      //   func foo1(x: Int, y = 12): Int = ...
-      //   callFn(foo1)
-      //   func foo2(x = 12, y = 16): Int = ...
-      //   callFn(foo2)
-      // In the case of `foo1`, the wrapper function has arity 1 and the parameter `y` will receive its default
-      // value. In the case of `foo2`, the wrapper function still has arity 1 and the parameter `y` will still
-      // receive its default value, but `x` will _not_.
-      val firstOptionalParamIdxBeingGivenDefaultValue = targetArity - fnNumReqParams
-      val numOptionalParamsBeingGivenDefaultValue = fn.params.length - fnNumReqParams - firstOptionalParamIdxBeingGivenDefaultValue
-      val wrapperFnName = self._fnName(fn) + "..wd$numOptionalParamsBeingGivenDefaultValue"
-
-      if self._builder.getFunction(wrapperFnName) |wrapperFnVal| {
-        Ok(wrapperFnVal)
-      } else {
-        val returnTypeQbe = try self._getQbeTypeForType(fn.returnType)
-        val wrapperFnVal = self._builder.buildFunction(name: wrapperFnName, returnType: returnTypeQbe)
-
-        val prevFn = self._currentFn
-        self._currentFn = wrapperFnVal
-
-        val args = if selfTy |selfTy| [wrapperFnVal.addParameter("self", selfTy)] else []
-        for paramType, idx in fnValParamTypes {
-          val paramTy = try self._getQbeTypeForTypeExpect(paramType, "unacceptable type for param", Some(position))
-          if fn.params[idx] |param| {
-            args.push(wrapperFnVal.addParameter(param.label.name, paramTy))
-          } else {
-            wrapperFnVal.addParameter("_$idx", paramTy)
-          }
-        }
-
-        var defaultMaskFlag = 0
-        for paramToDefault, idx in fn.params[targetArity:] {
-          val paramTy = try self._getQbeTypeForTypeExpect(paramToDefault.ty, "unacceptable type for param", Some(position))
-          args.push(paramTy.zeroValue())
-          defaultMaskFlag ||= (1 << (firstOptionalParamIdxBeingGivenDefaultValue + idx))
-        }
-        args.push(Value.Int32(defaultMaskFlag))
-
-        // Do not track wrapper function in callframes
-        val ret = if fn.returnType.kind != TypeKind.PrimitiveUnit {
-          val res = try self._buildCall(None, Callable.Function(fnValBase), args)
-          Some(res)
+    } else if targetArity < fn.params.length {
+      val targetParamTypes = targetParamTypes ?: []
+      val paramsNeedingDefaultValue = fn.params.map((param, idx) => {
+        if targetParamTypes[idx] {
+          false
         } else {
-          try self._buildVoidCall(None, Callable.Function(fnValBase), args)
-          None
+          if !param.defaultValue unreachable("creating fn val for fn '${fn.label}' with arity $targetArity param '${param.label.name}' to be optional (at $position)")
+          true
         }
-        wrapperFnVal.block.buildReturn(ret)
+      })
 
-        self._currentFn = prevFn
-
-        wrapperFnVal.addComment("Wrapper for ${self._fnName(fn)} in which the last $numOptionalParamsBeingGivenDefaultValue default-valued parameters receive their default value")
-        Ok(wrapperFnVal)
+      if selfType |selfType| {
+        try self._getOrCompileMethod(selfType, fn, paramsNeedingDefaultValue)
+      } else {
+        try self._getOrCompileFunction(fn, paramsNeedingDefaultValue)
       }
-    } else if targetArity > numParams {
-      // In this case, consider the following example:
-      //   func callFn2(fn: (Int, Int, Int) => Int) = ...
-      //   func foo(x: Int, y = 12): Int = ...
-      //   callFn2(foo)
-      // Create a wrapper function of higher arity which discards parameters and _also_ passes 0 to the optional params flag; we know we can do this
-      // because in order to reach this case, it must be the case that all of the optional parameters are passed a value.
-      self._compileParamDiscardingFunctionWrapper(fnValParamTypes, fn, fnValBase, position, true, selfTy)
     } else {
-      unreachable("All valid cases exhausted above")
+      val baseFn = if selfType |selfType| {
+        try self._getOrCompileMethod(selfType, fn)
+      } else {
+        try self._getOrCompileFunction(fn)
+      }
+
+      val fnName = self._fnName(fn) + ".discard"
+      val returnTypeQbe = try self._getQbeTypeForType(fn.returnType)
+      val fnVal = self._builder.buildFunction(name: fnName, returnType: returnTypeQbe)
+      if fn.isClosure() fnVal.addEnv()
+
+      val prevFn = self._currentFn
+      self._currentFn = fnVal
+      val prevFunction = self._currentFunction
+      self._currentFunction = Some(fn)
+
+      val argsForUnderlying: Value[] = []
+      for param, idx in fn.params {
+        val paramTy = try self._getQbeTypeForTypeExpect(param.ty, "unacceptable type for param", Some(param.label.position))
+
+        val paramVal = fnVal.addParameter(param.label.name, paramTy)
+        argsForUnderlying.push(paramVal)
+      }
+      fnVal.isVariadic = true
+
+      var retVal = if fn.returnType.kind != TypeKind.PrimitiveUnit {
+        val ret = try self._buildCall(None, Callable.Function(baseFn), argsForUnderlying)
+        Some(ret)
+      } else {
+        try self._buildVoidCall(None, Callable.Function(baseFn), argsForUnderlying)
+        None
+      }
+
+      if fn.scope.terminator != Some(Terminator.Returning) {
+        fnVal.block.buildReturn(retVal)
+      }
+
+      self._currentFn = prevFn
+      self._currentFunction = prevFunction
+
+      fnVal
     }
-    val fnVal = try fnValRes
 
     val hasReturn = fn.returnType.kind != TypeKind.PrimitiveUnit
     val struct = self._functionStruct(targetArity, hasReturn)
     val typeArgs = (if hasReturn { [fn.returnType] } else []).concat(fnValParamTypes)
-    val selfType = Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), typeArgs))
+    val fnStructSelfType = Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), typeArgs))
 
     val resolvedGenerics: Map<String, Type> = {}
     val template = Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), struct.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
-    for (name, ty) in selfType.extractGenerics(template) {
+    for (name, ty) in fnStructSelfType.extractGenerics(template) {
       resolvedGenerics[name] = ty
     }
     match self._resolvedGenerics.addLayer(struct.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: position, kind: CompileErrorKind.ResolvedGenericsError(context: struct.label.name, message: e))) }
@@ -2487,86 +2411,12 @@ export type Compiler {
     self._buildCall(None, Callable.Function(initFnVal), [closureEnvPtr, Value.Global(fnVal.name, QbeType.Pointer), selfVal])
   }
 
-  func _compileParamDiscardingFunctionWrapper(
-    self,
-    fnValParamTypes: Type[],
-    fn: Function,
-    fnValBase: QbeFunction,
-    position: Position,
-    passDefaultParamMask: Bool,
-    selfInstTy: QbeType?,
-  ): Result<QbeFunction, CompileError> {
-    var wrapperSuffix = "..w"
-    val numParams = fn.params.length
-    val discardedParamTypeReprs: String[] = []
-    for paramTy, idx in fnValParamTypes[numParams:] {
-      discardedParamTypeReprs.push(paramTy.repr())
-      val (instTy, typeArgs) = try self._getInstanceTypeForType(paramTy)
-      val instType = Type(kind: TypeKind.Instance(instTy, typeArgs))
-
-      val resolvedGenerics: Map<String, Type> = {}
-      val typeParams = match instTy {
-        StructOrEnum.Struct(s) => s.typeParams
-        StructOrEnum.Enum(e) => e.typeParams
-      }
-      val template = Type(kind: TypeKind.Instance(instTy, typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
-      for (name, ty) in instType.extractGenerics(template) {
-        resolvedGenerics[name] = ty
-      }
-      match self._resolvedGenerics.addLayer("discarded param $idx", resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: position, kind: CompileErrorKind.ResolvedGenericsError(context: "discarded param $idx", message: e))) }
-
-      val paramTypeName = match instTy {
-        StructOrEnum.Struct(s) => try self._structTypeName(s)
-        StructOrEnum.Enum(e) => try self._enumTypeName(e)
-      }
-      self._resolvedGenerics.popLayer()
-
-      wrapperSuffix += "D${idx + 1}$paramTypeName"
-    }
-    // TODO: if `fn` is a method then the wrapper name should include the parent type as well
-    val wrapperFnName = self._fnName(fn) + wrapperSuffix
-
-    if self._builder.getFunction(wrapperFnName) |wrapperFnVal| return Ok(wrapperFnVal)
-
-    val returnTypeQbe = try self._getQbeTypeForType(fn.returnType)
-    val wrapperFnVal = self._builder.buildFunction(name: wrapperFnName, returnType: returnTypeQbe)
-
-    val prevFn = self._currentFn
-    self._currentFn = wrapperFnVal
-
-    val args = if selfInstTy |selfInstTy| [wrapperFnVal.addParameter("self", selfInstTy)] else []
-    for paramType, idx in fnValParamTypes {
-      val paramTy = try self._getQbeTypeForTypeExpect(paramType, "unacceptable type for param", Some(position))
-      if fn.params[idx] |param| {
-        args.push(wrapperFnVal.addParameter(param.label.name, paramTy))
-      } else {
-        wrapperFnVal.addParameter("_$idx", paramTy)
-      }
-    }
-    if passDefaultParamMask args.push(Value.Int32(0))
-
-    // Do not track wrapper function in callframes
-    val ret = if fn.returnType.kind != TypeKind.PrimitiveUnit {
-      val res = try self._buildCall(None, Callable.Function(fnValBase), args)
-      Some(res)
-    } else {
-      try self._buildVoidCall(None, Callable.Function(fnValBase), args)
-      None
-    }
-    wrapperFnVal.block.buildReturn(ret)
-
-    self._currentFn = prevFn
-
-    wrapperFnVal.addComment("Parameter-discarding wrapper for ${self._fnName(fn)}, adding discarded params: ${discardedParamTypeReprs.join(", ")}")
-    Ok(wrapperFnVal)
-  }
-
   func _constructString(self, ptrVal: Value, lenVal: Value, localName: String? = None): Result<Value, CompileError> {
-    val fnVal = try self._getOrCompileStructInitializer(self._project.preludeStringStruct)
+    val fnVal = try self._getOrCompileStructInitializer(self._project.preludeStringStruct, [false, false])
     val structTy = if fnVal.returnType |ty| ty else unreachable("initializer functions must have return types specified")
 
     // Do not track String.init in callframes
-    self._buildCall(None, Callable.Function(fnVal), [lenVal, ptrVal, Value.Int32(0)], localName)
+    self._buildCall(None, Callable.Function(fnVal), [lenVal, ptrVal], localName)
   }
 
   func _getQbeTypeForType(self, ty: Type): Result<QbeType?, CompileError> {
@@ -2644,22 +2494,15 @@ export type Compiler {
     for seg, idx in segs {
       match seg {
         AccessorPathSegment.EnumVariant(label, ty, enum_, variant) => {
+          match variant.kind {
+            EnumVariantKind.Container => unreachable("non-constant enum variant missing instantation")
+            _ => {}
+          }
+
           try self._addResolvedGenericsLayerForEnumVariant(ty, variant.label.name, label.position)
           val enumVariantFn = try self._getOrCompileEnumVariantFn(enum_, variant)
 
-          val frameCtx = match variant.kind {
-            EnumVariantKind.Container(fields) => {
-              if fields.any(f => !!f.initializer) {
-                val fnName = "${enum_.label.name}.${variant.label.name}"
-                Some(CallframeContext(position: label.position, callee: Some(fnName)))
-              } else {
-                None
-              }
-            }
-            _ => None
-          }
-
-          curVal = try self._buildCall(frameCtx, Callable.Function(enumVariantFn), [])
+          curVal = try self._buildCall(None, Callable.Function(enumVariantFn), [])
           self._resolvedGenerics.popLayer()
 
           instTy = StructOrEnum.Enum(enum_)
@@ -2674,7 +2517,6 @@ export type Compiler {
             }
             _ => None
           }
-          val fnBaseVal = try self._getOrCompileMethod(instType, fn)
 
           val capturesMem = if fn.isClosure() {
             val capturesArr = try self._getCapturesArrForClosure(fn)
@@ -2697,7 +2539,7 @@ export type Compiler {
           self._resolvedGenerics.popLayer()
 
           val selfVal = if selfInstType |selfInstType| Some((curVal, selfInstType)) else None
-          curVal = try self._compileFunctionValue(label.position, fn, fnBaseVal, targetParamTypes, capturesMem, selfVal)
+          curVal = try self._compileFunctionValue(label.position, fn, targetParamTypes, capturesMem, selfVal)
         }
         AccessorPathSegment.Field(label, ty, field, isOptSafe) => {
           var optSafeCtx: (Label, Value, QbeFunction, Label)? = None
@@ -2794,74 +2636,59 @@ export type Compiler {
     Ok(curVal)
   }
 
-  func _getOrCompileStructInitializer(self, struct: Struct): Result<QbeFunction, CompileError> {
-    val fnName = try self._structInitializerFnName(struct)
+  func _getOrCompileStructInitializer(self, struct: Struct, fieldsNeedingDefaultValue: Bool[] = []): Result<QbeFunction, CompileError> {
+    val defaultValuesFlag = fieldsNeedingDefaultValue.reduce(0, (acc, f) => (acc << 1) || (if f 1 else 0))
+    var fnName = try self._structInitializerFnName(struct)
+    if defaultValuesFlag != 0 { fnName += ".$defaultValuesFlag" }
     if self._builder.getFunction(fnName) |fn| return Ok(fn)
 
     val fnVal = self._builder.buildFunction(name: fnName, returnType: Some(QbeType.Pointer))
     val prevFn = self._currentFn
     self._currentFn = fnVal
-    fnVal.addCommentMultiline(try self._structSignature(struct))
+    fnVal.addCommentMultiline(try self._structSignature(struct, fieldsNeedingDefaultValue))
 
-    var defaultValueParamIdx = 0
-    var defaultValuesMaskParam: Value? = None
-    var addMaskParam = false
+    val argsForUnderlying: Value[] = []
+    var anyFieldNeedsDefault = false
     var size = 0
-    for field in struct.fields {
+    for field, idx in struct.fields {
       val fieldTy = try self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position))
       size += fieldTy.size()
 
-      if field.initializer |initializerNode| {
-        val paramLocal = fnVal.addParameter("${field.name.name}_", fieldTy)
-        addMaskParam = true
-        val maskParam = Value.Ident("__default_params_mask__", QbeType.U32)
-
-        val defaultValueFlag = 1 << defaultValueParamIdx
-        defaultValueParamIdx += 1
-
-        val labelUseDefaultValue = self._currentFn.block.addLabel("${field.name.name}_use_default")
-        val labelUsePassedValue = self._currentFn.block.addLabel("${field.name.name}_use_passed")
-        val labelCont = self._currentFn.block.addLabel("${field.name.name}_cont")
-
-        val paramMaskVal = try self._currentFn.block.buildAnd(maskParam, Value.Int32(defaultValueFlag)) else |e| return qbeError(e)
-        val paramNeedsDefault = try self._currentFn.block.buildCompareEq(paramMaskVal, Value.Int32(defaultValueFlag)) else |e| return qbeError(e)
-        self._currentFn.block.buildJnz(paramNeedsDefault, labelUseDefaultValue, labelUsePassedValue)
-
-        self._currentFn.block.registerLabel(labelUseDefaultValue)
-        val res = try self._compileExpression(initializerNode)
-        val resLabel = self._currentFn.block.currentLabel
-        self._currentFn.block.buildJmp(labelCont)
-
-        self._currentFn.block.registerLabel(labelUsePassedValue)
-        self._currentFn.block.buildJmp(labelCont)
-
-        self._currentFn.block.registerLabel(labelCont)
-
-        val phiCases = [(resLabel, res), (labelUsePassedValue, paramLocal)]
-        try self._currentFn.block.buildPhi(phiCases, Some(field.name.name)) else |e| return qbeError(e)
+      val fieldVal = if field.initializer |initializerNode| {
+        val fieldNeedsDefault = fieldsNeedingDefaultValue[idx] ?: false
+        if fieldNeedsDefault {
+          anyFieldNeedsDefault = true
+          try self._compileExpression(initializerNode, Some(field.name.name))
+        } else {
+          fnVal.addParameter(field.name.name, fieldTy)
+        }
       } else {
         fnVal.addParameter(field.name.name, fieldTy)
       }
-    }
-    if addMaskParam {
-      fnVal.addParameter("__default_params_mask__", QbeType.U32)
+      argsForUnderlying.push(fieldVal)
     }
 
-    val memLocal = try fnVal.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("struct.mem")) else |e| return qbeError(e)
+    val retVal = if anyFieldNeedsDefault {
+      val baseFn = try self._getOrCompileStructInitializer(struct)
+      try self._buildCall(None, Callable.Function(baseFn), argsForUnderlying)
+    } else {
+      val memLocal = try fnVal.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("struct.mem")) else |e| return qbeError(e)
 
-    var offset = 0
-    for field in struct.fields {
-      val fieldTy = try self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position))
-      val param = Value.Ident(field.name.name, fieldTy)
+      var offset = 0
+      for field in struct.fields {
+        val fieldTy = try self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position))
+        val param = Value.Ident(field.name.name, fieldTy)
 
-      val localName = "mem_offset_${field.name.name}"
-      val memCursorLocal = try fnVal.block.buildAdd(Value.Int(offset), memLocal, Some(localName)) else |e| return qbeError(e)
-      fnVal.block.buildStore(fieldTy, param, memCursorLocal)
+        val localName = "mem_offset_${field.name.name}"
+        val memCursorLocal = try fnVal.block.buildAdd(Value.Int(offset), memLocal, Some(localName)) else |e| return qbeError(e)
+        fnVal.block.buildStore(fieldTy, param, memCursorLocal)
 
-      offset += fieldTy.size()
+        offset += fieldTy.size()
+      }
+
+      memLocal
     }
-
-    fnVal.block.buildReturn(Some(memLocal))
+    fnVal.block.buildReturn(Some(retVal))
 
     try fnVal.block.verify() else |e| return qbeError(e)
 
@@ -2870,52 +2697,76 @@ export type Compiler {
     Ok(fnVal)
   }
 
-  func _getOrCompileEnumVariantFn(self, enum_: Enum, variant: TypedEnumVariant): Result<QbeFunction, CompileError> {
-    val variantFnName = try self._enumVariantFnName(enum_, variant)
+  func _getOrCompileEnumVariantFn(self, enum_: Enum, variant: TypedEnumVariant, fieldsNeedingDefaultValue: Bool[] = []): Result<QbeFunction, CompileError> {
+    val defaultValuesFlag = fieldsNeedingDefaultValue.reduce(0, (acc, f) => (acc << 1) || (if f 1 else 0))
+    var variantFnName = try self._enumVariantFnName(enum_, variant)
+    if defaultValuesFlag != 0 { variantFnName += ".$defaultValuesFlag" }
+
     if self._builder.getFunction(variantFnName) |fn| return Ok(fn)
 
     // TODO: constant variants shouldn't be a function - it should just be a `data` segment with the proper idx set
     val fn = self._builder.buildFunction(name: variantFnName, returnType: Some(QbeType.Pointer))
     val prevFn = self._currentFn
     self._currentFn = fn
-    fn.addComment(try self._enumVariantSignature(enum_, variant))
+    fn.addComment(try self._enumVariantSignature(enum_, variant, fieldsNeedingDefaultValue))
 
+    val argsForUnderlying: Value[] = []
+    var anyFieldNeedsDefault = false
     var size = 0
     size += QbeType.U64.size() // account for space for variant idx slot
     match variant.kind {
       EnumVariantKind.Container(fields) => {
-        for field in fields {
+        for field, idx in fields {
           val fieldTy = try self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position))
           size += fieldTy.size()
-          fn.addParameter(field.name.name, fieldTy)
+
+          val fieldVal = if field.initializer |initializerNode| {
+            val fieldNeedsDefault = fieldsNeedingDefaultValue[idx] ?: false
+            if fieldNeedsDefault {
+              anyFieldNeedsDefault = true
+              try self._compileExpression(initializerNode, Some(field.name.name))
+            } else {
+              fn.addParameter(field.name.name, fieldTy)
+            }
+          } else {
+            fn.addParameter(field.name.name, fieldTy)
+          }
+          argsForUnderlying.push(fieldVal)
         }
       }
       _ => {}
     }
 
-    val memLocal = try fn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("enum_variant.mem")) else |e| return qbeError(e)
+    val retVal = if anyFieldNeedsDefault {
+      val baseFn = try self._getOrCompileEnumVariantFn(enum_, variant)
+      try self._buildCall(None, Callable.Function(baseFn), argsForUnderlying)
+    } else {
+      val memLocal = try fn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("enum_variant.mem")) else |e| return qbeError(e)
 
-    val variantIdx = if enum_.variants.findIndex(v => v.label.name == variant.label.name) |(_, idx)| idx else unreachable("variant '${variant.label.name}' must exist")
-    fn.block.buildStoreW(Value.Int(variantIdx), memLocal) // Store variant idx at designated slot
-    var offset = QbeType.U64.size() // begin inserting any fields after that variant idx slot
+      val variantIdx = if enum_.variants.findIndex(v => v.label.name == variant.label.name) |(_, idx)| idx else unreachable("variant '${variant.label.name}' must exist")
+      fn.block.buildStoreL(Value.Int(variantIdx), memLocal) // Store variant idx at designated slot
+      var offset = QbeType.U64.size() // begin inserting any fields after that variant idx slot
 
-    match variant.kind {
-      EnumVariantKind.Container(fields) => {
-        for field in fields {
-          val fieldTy = try self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position))
-          val param = Value.Ident(field.name.name, fieldTy)
+      match variant.kind {
+        EnumVariantKind.Container(fields) => {
+          for field in fields {
+            val fieldTy = try self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position))
+            val param = Value.Ident(field.name.name, fieldTy)
 
-          val localName = "mem_offset_${field.name.name}"
-          val memCursorLocal = try fn.block.buildAdd(Value.Int(offset), memLocal, Some(localName)) else |e| return qbeError(e)
-          fn.block.buildStore(fieldTy, param, memCursorLocal)
+            val localName = "mem_offset_${field.name.name}"
+            val memCursorLocal = try fn.block.buildAdd(Value.Int(offset), memLocal, Some(localName)) else |e| return qbeError(e)
+            fn.block.buildStore(fieldTy, param, memCursorLocal)
 
-          offset += fieldTy.size()
+            offset += fieldTy.size()
+          }
         }
+        _ => {}
       }
-      _ => {}
+
+      memLocal
     }
 
-    fn.block.buildReturn(Some(memLocal))
+    fn.block.buildReturn(Some(retVal))
 
     self._currentFn = prevFn
 
@@ -3440,101 +3291,102 @@ export type Compiler {
     Ok(0) // <-- unnecessary int
   }
 
-  func _getOrCompileFunction(self, fn: Function): Result<QbeFunction, CompileError> {
-    val fnName = self._fnName(fn)
+  func _getOrCompileFunction(self, fn: Function, paramsNeedingDefaultValue: Bool[] = []): Result<QbeFunction, CompileError> {
+    val defaultValuesFlag = paramsNeedingDefaultValue.reduce(0, (acc, f) => (acc << 1) || (if f 1 else 0))
+    val fnName = if defaultValuesFlag == 0 { self._fnName(fn) } else { self._fnName(fn) + ".$defaultValuesFlag" }
     if self._builder.getFunction(fnName) |fn| return Ok(fn)
 
     val returnTypeQbe = try self._getQbeTypeForType(fn.returnType)
     val fnVal = self._builder.buildFunction(name: fnName, returnType: returnTypeQbe)
     if fn.isClosure() fnVal.addEnv()
 
-    try self._compileFunc(fnVal, fn)
-    fnVal.addComment(try self._fnSignature(None, fn))
+    try self._compileFunc(None, fnVal, fn, paramsNeedingDefaultValue)
+    fnVal.addComment(try self._fnSignature(None, fn, paramsNeedingDefaultValue))
 
     Ok(fnVal)
   }
 
-  func _getOrCompileMethod(self, selfType: Type, fn: Function): Result<QbeFunction, CompileError> {
+  func _getOrCompileMethod(self, selfType: Type, fn: Function, paramsNeedingDefaultValue: Bool[] = []): Result<QbeFunction, CompileError> {
     val isInstanceMethod = match fn.kind { FunctionKind.InstanceMethod => true, _ => false }
     if isInstanceMethod && fn.label.name == "toString" && fn.isGenerated return self._getOrCompileToStringMethod(selfType)
     if isInstanceMethod && fn.label.name == "eq" && fn.isGenerated return self._getOrCompileEqMethod(selfType)
     if isInstanceMethod && fn.label.name == "hash" && fn.isGenerated return self._getOrCompileHashMethod(selfType)
 
     val (selfTy, _) = try self._getInstanceTypeForType(selfType)
-    val methodName = try self._methodFnName(selfTy, fn)
+    val defaultValuesFlag = paramsNeedingDefaultValue.reduce(0, (acc, f) => (acc << 1) || (if f 1 else 0))
+    var methodName = try self._methodFnName(selfTy, fn)
+    if defaultValuesFlag != 0 { methodName += ".$defaultValuesFlag" }
     if self._builder.getFunction(methodName) |fn| return Ok(fn)
 
     val returnTypeQbe = try self._getQbeTypeForType(fn.returnType)
     val fnVal = self._builder.buildFunction(name: methodName, returnType: returnTypeQbe)
     if fn.isClosure() fnVal.addEnv()
 
-    if isInstanceMethod {
+    val selfCtx = if isInstanceMethod {
       val selfTyQbe = try self._getQbeTypeForTypeExpect(selfType, "unacceptable type for self")
-      fnVal.addParameter("self", selfTyQbe)
+      val selfParam = fnVal.addParameter("self", selfTyQbe)
       val selfVariable = if fn.scope.variables.find(v => v.label.name == "self") |selfVariable| selfVariable else unreachable("Function '${fn.label.name}' is an instance method but does not have a variable 'self' in its scope")
       fnVal.block.addVar(variableToVar(selfVariable), Some("self"))
+      (selfType, Some(selfParam))
+    } else {
+      (selfType, None)
     }
-    try self._compileFunc(fnVal, fn)
-    fnVal.addComment(try self._fnSignature(Some(selfTy), fn))
+    try self._compileFunc(Some(selfCtx), fnVal, fn, paramsNeedingDefaultValue)
+    fnVal.addComment(try self._fnSignature(Some(selfTy), fn, paramsNeedingDefaultValue))
 
     Ok(fnVal)
   }
 
-  func _compileFunc(self, fnVal: QbeFunction, fn: Function): Result<Int, CompileError> {
+  func _compileFunc(self, selfCtx: (Type, Value?)?, fnVal: QbeFunction, fn: Function, paramsNeedingDefaultValue: Bool[] = []): Result<Int, CompileError> {
     val prevFn = self._currentFn
     self._currentFn = fnVal
     val prevFunction = self._currentFunction
     self._currentFunction = Some(fn)
 
-    var defaultValueParamIdx = 0
-    var defaultValuesMaskParam: Value? = None
-    var addMaskParam = false
-    for param in fn.params {
+    val argsForUnderlying = if selfCtx |(_, selfParam)| {
+      if selfParam |v| [v] else []
+    } else {
+      []
+    }
+    var anyParamNeedsDefault = false
+    for param, idx in fn.params {
       val paramTy = try self._getQbeTypeForTypeExpect(param.ty, "unacceptable type for param", Some(param.label.position))
+      self._currentFn.block.addVar(variableToVar(param.variable), Some(param.label.name))
 
-      if param.defaultValue |defaultValueNode| {
-        val paramLocal = fnVal.addParameter("${param.label.name}_", paramTy)
-        addMaskParam = true
-        val maskParam = Value.Ident("__default_params_mask__", QbeType.U32)
-
-        val defaultValueFlag = 1 << defaultValueParamIdx
-        defaultValueParamIdx += 1
-
-        val labelUseDefaultValue = self._currentFn.block.addLabel("${param.label.name}_use_default")
-        val labelUsePassedValue = self._currentFn.block.addLabel("${param.label.name}_use_passed")
-        val labelCont = self._currentFn.block.addLabel("${param.label.name}_cont")
-
-        val paramMaskVal = try self._currentFn.block.buildAnd(maskParam, Value.Int32(defaultValueFlag)) else |e| return qbeError(e)
-        val paramNeedsDefault = try self._currentFn.block.buildCompareEq(paramMaskVal, Value.Int32(defaultValueFlag)) else |e| return qbeError(e)
-        self._currentFn.block.buildJnz(paramNeedsDefault, labelUseDefaultValue, labelUsePassedValue)
-
-        self._currentFn.block.registerLabel(labelUseDefaultValue)
-        val res = try self._compileExpression(defaultValueNode)
-        val resLabel = self._currentFn.block.currentLabel
-        self._currentFn.block.buildJmp(labelCont)
-
-        self._currentFn.block.registerLabel(labelUsePassedValue)
-        self._currentFn.block.buildJmp(labelCont)
-
-        self._currentFn.block.registerLabel(labelCont)
-
-        val phiCases = [(resLabel, res), (labelUsePassedValue, paramLocal)]
-        try self._currentFn.block.buildPhi(phiCases, Some(param.label.name)) else |e| return qbeError(e)
+      val paramVal = if param.defaultValue |defaultValueNode| {
+        val paramNeedsDefault = paramsNeedingDefaultValue[idx] ?: false
+        if paramNeedsDefault {
+          anyParamNeedsDefault = true
+          try self._compileExpression(defaultValueNode, Some(param.label.name))
+        } else {
+          fnVal.addParameter(param.label.name, paramTy)
+        }
       } else {
         fnVal.addParameter(param.label.name, paramTy)
       }
-
-      self._currentFn.block.addVar(variableToVar(param.variable), Some(param.label.name))
-    }
-    if addMaskParam {
-      fnVal.addParameter("__default_params_mask__", QbeType.U32)
+      argsForUnderlying.push(paramVal)
     }
 
     var retVal: Value? = None
-    for node, idx in fn.body {
-      val res = try self._compileStatement(node)
-      if idx == fn.body.length - 1 && fn.returnType.kind != TypeKind.PrimitiveUnit {
-        retVal = res
+    if anyParamNeedsDefault {
+      val baseFn = if selfCtx |(selfType, _)| {
+        try self._getOrCompileMethod(selfType, fn)
+      } else {
+        try self._getOrCompileFunction(fn)
+      }
+      retVal = if fn.returnType.kind != TypeKind.PrimitiveUnit {
+        val ret = try self._buildCall(None, Callable.Function(baseFn), argsForUnderlying)
+        Some(ret)
+      } else {
+        try self._buildVoidCall(None, Callable.Function(baseFn), argsForUnderlying)
+        None
+      }
+    } else {
+      for node, idx in fn.body {
+        val res = try self._compileStatement(node)
+        if idx == fn.body.length - 1 && fn.returnType.kind != TypeKind.PrimitiveUnit {
+          retVal = res
+        }
       }
     }
 
@@ -4663,7 +4515,7 @@ export type Compiler {
     }
   }
 
-  func _fnSignature(self, structOrEnum: StructOrEnum?, fn: Function): Result<String, CompileError> {
+  func _fnSignature(self, structOrEnum: StructOrEnum?, fn: Function, paramsNeedingDefaultValue: Bool[] = []): Result<String, CompileError> {
     val parts: String[] = []
     match structOrEnum {
       StructOrEnum.Struct(struct) => {
@@ -4671,7 +4523,7 @@ export type Compiler {
         if !struct.typeParams.isEmpty() {
           parts.push("<")
           for name, idx in struct.typeParams {
-            val resolvedGeneric = if self._resolvedGenerics.resolveGeneric(name) |ty| ty else unreachable("_fnSignature:struct (${struct.label.name}, ${fn.label.name}), could not resolve generic '$name'")
+            val resolvedGeneric = if self._resolvedGenerics.resolveGeneric(name) |ty| ty else unreachable("(${struct.label.name}, ${fn.label.name}), could not resolve generic '$name'")
             parts.push(resolvedGeneric.repr())
 
             if idx != struct.typeParams.length - 1 { parts.push(", ") }
@@ -4685,7 +4537,7 @@ export type Compiler {
         if !enum_.typeParams.isEmpty() {
           parts.push("<")
           for name, idx in enum_.typeParams {
-            val resolvedGeneric = if self._resolvedGenerics.resolveGeneric(name) |ty| ty else unreachable("_fnSignature:enum (${enum_.label.name}, ${fn.label.name}), could not resolve generic '$name'")
+            val resolvedGeneric = if self._resolvedGenerics.resolveGeneric(name) |ty| ty else unreachable("(${enum_.label.name}, ${fn.label.name}), could not resolve generic '$name'")
             parts.push(resolvedGeneric.repr())
 
             if idx != enum_.typeParams.length - 1 { parts.push(", ") }
@@ -4701,7 +4553,7 @@ export type Compiler {
       parts.push("<")
       for (_, typeParamLabel), idx in fn.typeParams {
         val name = typeParamLabel.name
-        val resolvedGeneric = if self._resolvedGenerics.resolveGeneric(name) |ty| ty else unreachable("_fnSignature:fn, could not resolve generic '$name'")
+        val resolvedGeneric = if self._resolvedGenerics.resolveGeneric(name) |ty| ty else unreachable("could not resolve generic '$name'")
         parts.push(resolvedGeneric.repr())
 
         if idx != fn.typeParams.length - 1 { parts.push(", ") }
@@ -4715,10 +4567,11 @@ export type Compiler {
       FunctionKind.InstanceMethod => args.push("self")
       _ => {}
     }
-    for param in fn.params {
+    for param, idx in fn.params {
       val paramTyRepr = try self._getReprForType(param.ty)
-      val defaultExpr = if param.defaultValue " = ..." else ""
-      args.push("${param.label.name}: $paramTyRepr$defaultExpr")
+      val paramGivenDefaultValue = paramsNeedingDefaultValue[idx] ?: false
+      val suffix = if !!param.defaultValue && paramGivenDefaultValue { " = default" } else ""
+      args.push("${param.label.name}: $paramTyRepr$suffix")
     }
     parts.push(args.join(", "))
     parts.push(")")
@@ -4731,7 +4584,7 @@ export type Compiler {
     Ok(parts.join())
   }
 
-  func _structSignature(self, struct: Struct): Result<String[], CompileError> {
+  func _structSignature(self, struct: Struct, fieldsNeedingDefaultValue: Bool[] = []): Result<String[], CompileError> {
     val firstLine = ["type ${struct.label.name}"]
     if !struct.typeParams.isEmpty() {
       firstLine.push("<")
@@ -4744,22 +4597,26 @@ export type Compiler {
       firstLine.push(">")
     }
     val parts = ["${firstLine.join()} {"]
-    for field in struct.fields {
-      parts.push("  ${field.name.name}: ${field.ty.repr()}")
+    for field, idx in struct.fields {
+      val fieldGivenDefaultValue = fieldsNeedingDefaultValue[idx] ?: false
+      val suffix = if !!field.initializer && fieldGivenDefaultValue { " = default" } else ""
+      parts.push("  ${field.name.name}: ${field.ty.repr()}$suffix")
     }
     parts.push("}")
 
     Ok(parts)
   }
 
-  func _enumVariantSignature(self, enum_: Enum, variant: TypedEnumVariant): Result<String, CompileError> {
+  func _enumVariantSignature(self, enum_: Enum, variant: TypedEnumVariant, fieldsNeedingDefaultValue: Bool[] = []): Result<String, CompileError> {
     val parts: String[] = [enum_.label.name, ".", variant.label.name]
     match variant.kind {
       EnumVariantKind.Container(fields) => {
         parts.push("(")
         for field, idx in fields {
           val fieldTyRepr = try self._getReprForType(field.ty)
-          parts.push("${field.name.name}: $fieldTyRepr")
+          val fieldGivenDefaultValue = fieldsNeedingDefaultValue[idx] ?: false
+          val suffix = if !!field.initializer && fieldGivenDefaultValue { " = default" } else ""
+          parts.push("${field.name.name}: $fieldTyRepr$suffix")
           if idx != fields.length - 1 {
             parts.push(", ")
           }

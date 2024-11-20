@@ -153,7 +153,7 @@ type Bool {
 
 type String {
   length: Int
-  _buffer: Pointer<Byte> = Pointer.null()
+  _buffer: Pointer<Byte>
 
   func withLength(length: Int): String {
     // Allocate length + 1 bytes; each String ends in a \0 byte. Even though we know the length, and memory-based
@@ -874,22 +874,12 @@ export func todo(message = "") {
 }
 
 type SetIterator<T> {
-  set: Set<T>
-  _mapIterator: MapIterator<T, Bool>? = None
+  _mapIterator: MapIterator<T, Bool>
 
   func next(self): T? {
-    if !self._mapIterator {
-      self._mapIterator = Some(self.set._map.iterator())
-    }
-
-    if self._mapIterator |iter| {
-      if iter.next() |item| {
-        Some(item[0])
-      } else {
-        None
-      }
+    if self._mapIterator.next() |item| {
+      Some(item[0])
     } else {
-      // unreachable
       None
     }
   }
@@ -923,7 +913,7 @@ type Set<T> {
     self._map.isEmpty()
   }
 
-  func iterator(self): SetIterator<T> = SetIterator(set: self)
+  func iterator(self): SetIterator<T> = SetIterator(_mapIterator: self._map.iterator())
 
   func contains(self, item: T): Bool {
     self._map.containsKey(item)
