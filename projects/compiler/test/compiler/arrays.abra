@@ -295,14 +295,13 @@ func exclaim(i: Int, _: Int, x = "!"): String = i + x //"$i$x"
   println(arr.map((i, _, x = "!") => i + x))
 })()
 
-// TODO: there's something up with printing an array of this particular size
-// // Array#flatMap
-// (() => {
-//   val arr = [1, 2, 3, 4]
+// Array#flatMap
+(() => {
+  val arr = [1, 2, 3, 4]
 
-//   /// Expect: [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
-//   println(arr.flatMap(i => Array.fill(i, i)))
-// })()
+  /// Expect: [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
+  println(arr.flatMap(i => Array.fill(i, i)))
+})()
 
 // Array#filter
 func isEven(i: Int): Bool = i % 2 == 0
