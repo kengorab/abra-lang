@@ -1,79 +1,14 @@
-// // enum Foo {
-// //   Bar(a: Int, b: String = "default")
-// // }
+// val str: String? = None
 
-// // val f = Foo.Bar(a: 123)
-// // println(f)
+// println(str?.isEmpty())
 
-// func foo(a: Int, b = "asdf", c = 123) {
-//   println(a, b, c)
-// }
+// println("a s d f".split(by: " "))
+// println("asdf".split())
 
-// foo(a: 1)
-// foo(a: 1, c: 456)
-// foo(a: 1, b: "456")
-// foo(a: 1, b: "456", c: 456)
+val arr = [1, 2, 3, 4]
 
-// type Foo {
-//   func bar(self, a: Int, b = "asdf", c = 123) {
-//     println(a, b, c)
-//   }
-
-//   func baz(a: Int, b = "asdf", c = 123) {
-//     println(a, b, c)
-//   }
-// }
-
-// // Foo.baz(a: 1)
-// // Foo.baz(a: 1, c: 456)
-// // Foo.baz(a: 1, b: "456")
-// // Foo.baz(a: 1, b: "456", c: 456)
-
-// val f = Foo()
-// // f.bar(a: 1)
-// // f.bar(a: 1, c: 456)
-// // f.bar(a: 1, b: "456")
-// // f.bar(a: 1, b: "456", c: 456)
-
-
-// func callFn2(fn: (Int, String) => Unit) {
-//   fn(24, "foo")
-// }
-
-// func callFn3(fn: (Int, String, Int, String) => Unit) {
-//   fn(24, "foo", 24, "foo")
-// }
-
-// callFn1(foo)
-// callFn2(foo)
-// callFn3(foo)
-
-// callFn1(f.bar)
-// callFn2(f.bar)
-// callFn3(f.bar)
-
-// callFn1(Foo.baz)
-// callFn2(Foo.baz)
-// callFn3(Foo.baz)
-
-enum Color {
-  Red
-  Green
-  Blue
-  RGB(r: Int = 0, g: Int = 0, b: Int = 0)
-}
-
-val black = Color.RGB()
-println(black)
-val white = Color.RGB(r: 255, g: 255, b: 255)
-println(white)
-val red = Color.RGB(r: 255)
-println(red)
-val green = Color.RGB(g: 255)
-println(green)
-val pink = Color.RGB(r: 255, b: 255)
-println(pink)
-val cyan = Color.RGB(g: 255, b: 255)
-println(cyan)
-val yellow = Color.RGB(r: 255, g: 255)
-println(yellow)
+/// Expect: [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
+val arr2 = arr.flatMap(i => Array.fill(i, i))
+println(arr2)
+println(arr2.length)
+println(arr2)

@@ -492,7 +492,8 @@ type Array<T> {
 
     val reprs: String[] = Array.withCapacity(self.length)
     var len = 2 // account for '[' and ']'
-    for i in range(0, self.length) {
+    var i = 0
+    while i < self.length {
       val item = self._buffer.offset(i).load()
       val repr = item.toString()
       reprs.push(repr)
@@ -500,15 +501,16 @@ type Array<T> {
       if i != self.length - 1 {
         len += 2 // account for ", " unless last item
       }
+      i += 1
     }
 
-    // we have an extra 2 bytes for the trailing ", " but we need an extra 1 for the null termination anyway
     val str = String.withLength(len)
     var offset = 0
     str._buffer.offset(offset).store(Byte.fromInt(91)) // '['
     offset += 1
 
-    for i in range(0, self.length) {
+    i = 0
+    while i < self.length {
       val repr = reprs._buffer.offset(i).load()
       str._buffer.offset(offset).copyFrom(repr._buffer, repr.length)
       offset += repr.length
@@ -519,6 +521,8 @@ type Array<T> {
         str._buffer.offset(offset).store(Byte.fromInt(32)) // ' '
         offset += 1
       }
+
+      i += 1
     }
 
     str._buffer.offset(offset).store(Byte.fromInt(93)) // ']'

@@ -1199,11 +1199,7 @@ export type Compiler {
               self._currentFn.block.registerLabel(labelIsNone)
               val noneRes = if fn.returnType.kind != TypeKind.PrimitiveUnit {
                 val optNoneVariant = if self._project.preludeOptionEnum.variants.find(v => v.label.name == "None") |v| v else unreachable("Option.None must exist")
-                match self._resolvedGenerics.addLayer("Option.None", { "V": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "Option.None", message: e))) }
-                val noneVariantFn = try self._getOrCompileEnumVariantFn(self._project.preludeOptionEnum, optNoneVariant)
-                self._resolvedGenerics.popLayer()
-                // Do not track Option.None in callframes
-                val noneRes = try self._buildCall(None, Callable.Function(noneVariantFn), [])
+                val noneRes = try self._getOrCompileEnumVariantConst(self._project.preludeOptionEnum, optNoneVariant)
                 Some(noneRes)
               } else None
               self._currentFn.block.buildJmp(labelCont)
@@ -1270,12 +1266,7 @@ export type Compiler {
                 }
                 (Callable.Function(enumVariantFn), frameCtx)
               }
-              _ => {
-                val enumVariantFn = try self._getOrCompileEnumVariantFn(enum_, variant)
-                self._resolvedGenerics.popLayer()
-
-                (Callable.Function(enumVariantFn), None)
-              }
+              _ => unreachable("cannot invoke constant enum variant ${enum_.label.name}.${variant.label.name}")
             }
           }
           TypedInvokee.Expr(expr) => {
@@ -2108,7 +2099,7 @@ export type Compiler {
       // a closure's captures array, but a mutable variable needs an additional layer of indirection to handle possible reassignment.
       self._currentFn.block.addComment("move captured mutable '${variable.label.name}' to heap")
       val size = varTy.size()
-      val heapMem = try self._currentFn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("${variable.label.name}.mem")) else |e| return qbeError(e)
+      val heapMem = try self._callMalloc(Value.Int(size), Some("${variable.label.name}.mem"))
       self._currentFn.block.buildStore(varTy, v, heapMem)
 
       val slot = self._buildStackAllocForQbeType(QbeType.Pointer, Some(slotName))
@@ -2173,7 +2164,7 @@ export type Compiler {
 
   func _createClosureCaptures(self, fn: Function): Result<Value, CompileError> {
     val size = QbeType.Pointer.size() * (fn.captures.length + fn.capturedClosures.length)
-    val capturesMem = try self._currentFn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("${fn.label.name}_captures.mem")) else |e| return qbeError(e)
+    val capturesMem = try self._callMalloc(Value.Int(size), Some("${fn.label.name}_captures.mem"))
     var cursor = capturesMem
 
     for variable in fn.captures {
@@ -2499,11 +2490,7 @@ export type Compiler {
             _ => {}
           }
 
-          try self._addResolvedGenericsLayerForEnumVariant(ty, variant.label.name, label.position)
-          val enumVariantFn = try self._getOrCompileEnumVariantFn(enum_, variant)
-
-          curVal = try self._buildCall(None, Callable.Function(enumVariantFn), [])
-          self._resolvedGenerics.popLayer()
+          curVal = try self._getOrCompileEnumVariantConst(enum_, variant)
 
           instTy = StructOrEnum.Enum(enum_)
         }
@@ -2561,11 +2548,7 @@ export type Compiler {
 
             self._currentFn.block.registerLabel(labelIsNone)
             val optNoneVariant = if self._project.preludeOptionEnum.variants.find(v => v.label.name == "None") |v| v else unreachable("Option.None must exist")
-            match self._resolvedGenerics.addLayer("Option.None", { "V": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: label.position, kind: CompileErrorKind.ResolvedGenericsError(context: "Option.None", message: e))) }
-            val noneVariantFn = try self._getOrCompileEnumVariantFn(self._project.preludeOptionEnum, optNoneVariant)
-            self._resolvedGenerics.popLayer()
-            // Do not track Option.None in callframes
-            val noneRes = try self._buildCall(None, Callable.Function(noneVariantFn), [])
+            val noneRes = try self._getOrCompileEnumVariantConst(self._project.preludeOptionEnum, optNoneVariant)
             self._currentFn.block.buildJmp(labelCont)
 
             self._currentFn.block.registerLabel(labelIsSome)
@@ -2672,7 +2655,7 @@ export type Compiler {
       val baseFn = try self._getOrCompileStructInitializer(struct)
       try self._buildCall(None, Callable.Function(baseFn), argsForUnderlying)
     } else {
-      val memLocal = try fnVal.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("struct.mem")) else |e| return qbeError(e)
+      val memLocal = try self._callMalloc(Value.Int(size), Some("struct.mem"))
 
       var offset = 0
       for field in struct.fields {
@@ -2697,6 +2680,17 @@ export type Compiler {
     Ok(fnVal)
   }
 
+  func _getOrCompileEnumVariantConst(self, enum_: Enum, variant: TypedEnumVariant): Result<Value, CompileError> {
+    val base = self._enumTypeNameBase(enum_)
+    val variantDataName = "$base.${variant.label.name}"
+    if self._builder.getData(variantDataName) |v| return Ok(v)
+
+    val variantIdx = if enum_.variants.findIndex(v => v.label.name == variant.label.name) |(_, idx)| idx else unreachable("variant '${variant.label.name}' must exist")
+    val (slot, _) = self._builder.addData(QbeData(name: variantDataName, kind: QbeDataKind.Constants([(QbeType.U64, Value.Int(variantIdx))])))
+
+    Ok(slot)
+  }
+
   func _getOrCompileEnumVariantFn(self, enum_: Enum, variant: TypedEnumVariant, fieldsNeedingDefaultValue: Bool[] = []): Result<QbeFunction, CompileError> {
     val defaultValuesFlag = fieldsNeedingDefaultValue.reduce(0, (acc, f) => (acc << 1) || (if f 1 else 0))
     var variantFnName = try self._enumVariantFnName(enum_, variant)
@@ -2710,57 +2704,52 @@ export type Compiler {
     self._currentFn = fn
     fn.addComment(try self._enumVariantSignature(enum_, variant, fieldsNeedingDefaultValue))
 
+    val fields = match variant.kind {
+      EnumVariantKind.Container(fields) => fields
+      _ => unreachable("constant enum variants are not backed by functions, see _getOrCompileEnumVariantConst")
+    }
+
     val argsForUnderlying: Value[] = []
     var anyFieldNeedsDefault = false
     var size = 0
     size += QbeType.U64.size() // account for space for variant idx slot
-    match variant.kind {
-      EnumVariantKind.Container(fields) => {
-        for field, idx in fields {
-          val fieldTy = try self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position))
-          size += fieldTy.size()
+    for field, idx in fields {
+      val fieldTy = try self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position))
+      size += fieldTy.size()
 
-          val fieldVal = if field.initializer |initializerNode| {
-            val fieldNeedsDefault = fieldsNeedingDefaultValue[idx] ?: false
-            if fieldNeedsDefault {
-              anyFieldNeedsDefault = true
-              try self._compileExpression(initializerNode, Some(field.name.name))
-            } else {
-              fn.addParameter(field.name.name, fieldTy)
-            }
-          } else {
-            fn.addParameter(field.name.name, fieldTy)
-          }
-          argsForUnderlying.push(fieldVal)
+      val fieldVal = if field.initializer |initializerNode| {
+        val fieldNeedsDefault = fieldsNeedingDefaultValue[idx] ?: false
+        if fieldNeedsDefault {
+          anyFieldNeedsDefault = true
+          try self._compileExpression(initializerNode, Some(field.name.name))
+        } else {
+          fn.addParameter(field.name.name, fieldTy)
         }
+      } else {
+        fn.addParameter(field.name.name, fieldTy)
       }
-      _ => {}
+      argsForUnderlying.push(fieldVal)
     }
 
     val retVal = if anyFieldNeedsDefault {
       val baseFn = try self._getOrCompileEnumVariantFn(enum_, variant)
       try self._buildCall(None, Callable.Function(baseFn), argsForUnderlying)
     } else {
-      val memLocal = try fn.block.buildCall(Callable.Function(self._malloc), [Value.Int(size)], Some("enum_variant.mem")) else |e| return qbeError(e)
+      val memLocal = try self._callMalloc(Value.Int(size), Some("enum_variant.mem"))
 
       val variantIdx = if enum_.variants.findIndex(v => v.label.name == variant.label.name) |(_, idx)| idx else unreachable("variant '${variant.label.name}' must exist")
       fn.block.buildStoreL(Value.Int(variantIdx), memLocal) // Store variant idx at designated slot
       var offset = QbeType.U64.size() // begin inserting any fields after that variant idx slot
 
-      match variant.kind {
-        EnumVariantKind.Container(fields) => {
-          for field in fields {
-            val fieldTy = try self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position))
-            val param = Value.Ident(field.name.name, fieldTy)
+      for field in fields {
+        val fieldTy = try self._getQbeTypeForTypeExpect(field.ty, "unacceptable type for field", Some(field.name.position))
+        val param = Value.Ident(field.name.name, fieldTy)
 
-            val localName = "mem_offset_${field.name.name}"
-            val memCursorLocal = try fn.block.buildAdd(Value.Int(offset), memLocal, Some(localName)) else |e| return qbeError(e)
-            fn.block.buildStore(fieldTy, param, memCursorLocal)
+        val localName = "mem_offset_${field.name.name}"
+        val memCursorLocal = try fn.block.buildAdd(Value.Int(offset), memLocal, Some(localName)) else |e| return qbeError(e)
+        fn.block.buildStore(fieldTy, param, memCursorLocal)
 
-            offset += fieldTy.size()
-          }
-        }
-        _ => {}
+        offset += fieldTy.size()
       }
 
       memLocal
@@ -2919,7 +2908,7 @@ export type Compiler {
         val innerTySize = try self._pointerSize(innerTy)
         val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), countVal) else |e| return qbeError(e)
 
-        val mem = try self._currentFn.block.buildCall(Callable.Function(self._malloc), [sizeVal], Some("ptr.mem")) else |e| return qbeError(e)
+        val mem = try self._callMalloc(sizeVal, Some("ptr.mem"))
 
         self._currentFn.block.addComment("...pointer_malloc end")
 
@@ -2959,8 +2948,12 @@ export type Compiler {
 
         val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else unreachable("(pointer_store) could not resolve T for Pointer<T>")
         val innerTySize = try self._pointerSize(innerTy)
-        val innerQbeType = try self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None)
-        self._currentFn.block.buildStore(innerQbeType, valueVal, ptrVal)
+        if innerTySize == 1 {
+          self._currentFn.block.buildStoreB(valueVal, ptrVal)
+        } else {
+          val innerQbeType = try self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None)
+          self._currentFn.block.buildStore(innerQbeType, valueVal, ptrVal)
+        }
 
         self._currentFn.block.addComment("...pointer_store end")
 
@@ -2996,20 +2989,8 @@ export type Compiler {
 
         val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else unreachable("(pointer_load) could not resolve T for Pointer<T>")
 
-        val isByte = match innerTy.kind {
-          TypeKind.Instance(structOrEnum, _) => {
-            val r = match structOrEnum {
-              StructOrEnum.Struct(struct) => struct.builtin == Some(BuiltinModule.Intrinsics) && struct.label.name == "Byte"
-              _ => false
-            }
-            r
-          }
-          _ => false
-        }
-        val innerQbeType = if isByte QbeType.U8 else {
-          val res = try self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None)
-          res
-        }
+        val innerTySize = try self._pointerSize(innerTy)
+        val innerQbeType = if innerTySize == 1 QbeType.U8 else try self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None)
 
         val v = self._currentFn.block.buildLoad(innerQbeType, ptrVal)
 
@@ -3090,7 +3071,7 @@ export type Compiler {
         val sizeVal = try self._currentFn.block.buildCall(Callable.Function(self._snprintf), [Value.Int(0), Value.Int(0), intFmtPtr, argVal]) else |e| return qbeError(e)
         val mallocSizeVal = try self._currentFn.block.buildAdd(Value.Int(1), sizeVal) else |e| return qbeError(e)
 
-        val mem = try self._currentFn.block.buildCall(Callable.Function(self._malloc), [mallocSizeVal]) else |e| return qbeError(e)
+        val mem = try self._callMalloc(mallocSizeVal)
         try self._currentFn.block.buildCall(Callable.Function(self._snprintf), [mem, mallocSizeVal, intFmtPtr, argVal]) else |e| return qbeError(e)
         val str = try self._constructString(mem, sizeVal)
 
@@ -3637,7 +3618,7 @@ export type Compiler {
     val sizeVal = try fnVal.block.buildCall(Callable.Function(self._snprintf), [Value.Int(0), Value.Int(0), intFmtPtr, selfParam]) else |e| return qbeError(e)
     val mallocSizeVal = try fnVal.block.buildAdd(Value.Int(1), sizeVal) else |e| return qbeError(e)
 
-    val mem = try fnVal.block.buildCall(Callable.Function(self._malloc), [mallocSizeVal]) else |e| return qbeError(e)
+    val mem = try self._callMalloc(mallocSizeVal)
     try fnVal.block.buildCall(Callable.Function(self._snprintf), [mem, mallocSizeVal, intFmtPtr, selfParam]) else |e| return qbeError(e)
 
     val str = try self._constructString(mem, sizeVal)
@@ -3669,7 +3650,7 @@ export type Compiler {
     val sizeVal = try fnVal.block.buildCall(Callable.Function(self._snprintf), [Value.Int(0), Value.Int(0), floatFmtPtr, selfParam]) else |e| return qbeError(e)
     val mallocSizeVal = try fnVal.block.buildAdd(Value.Int(1), sizeVal) else |e| return qbeError(e)
 
-    val mem = try fnVal.block.buildCall(Callable.Function(self._malloc), [mallocSizeVal]) else |e| return qbeError(e)
+    val mem = try self._callMalloc(mallocSizeVal)
     try fnVal.block.buildCall(Callable.Function(self._snprintf), [mem, mallocSizeVal, floatFmtPtr, selfParam]) else |e| return qbeError(e)
 
     val str = try self._constructString(mem, sizeVal)
@@ -4153,6 +4134,21 @@ export type Compiler {
     Ok(0)
   }
 
+  func _callMalloc(self, sizeVal: Value, localName: String? = None): Result<Value, CompileError> {
+    val mem = try self._currentFn.block.buildCall(Callable.Function(self._malloc), [sizeVal], localName) else |e| return qbeError(e)
+
+    // val labelIsZero = self._currentFn.block.addLabel("malloc_is_zero")
+    // val labelCont = self._currentFn.block.addLabel("malloc_is_nonzero")
+    // self._currentFn.block.buildJnz(mem, labelCont, labelIsZero)
+
+    // self._currentFn.block.registerLabel(labelIsZero)
+    // self._currentFn.block.buildHalt()
+
+    // self._currentFn.block.registerLabel(labelCont)
+
+    Ok(mem)
+  }
+
   func _buildStackAllocForQbeType(self, ty: QbeType, name: String? = None): Value {
     match ty {
       QbeType.U8 => self._currentFn.block.buildAlloc8(1, name)      // 'b'
@@ -4453,8 +4449,9 @@ export type Compiler {
     Ok("$structTypeName.init")
   }
 
+  func _enumTypeNameBase(self, enum_: Enum): String = ".${enum_.moduleId}.${enum_.label.name}"
   func _enumTypeName(self, enum_: Enum): Result<String, CompileError> {
-    val base = ".${enum_.moduleId}.${enum_.label.name}"
+    val base = self._enumTypeNameBase(enum_)
     val name = if !enum_.typeParams.isEmpty() {
       val parts: String[] = []
       for name in enum_.typeParams {

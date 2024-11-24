@@ -2,6 +2,7 @@ import File from "fs"
 
 export type ModuleBuilder {
   _data: QbeData[] = []
+  _dataByName: Map<String, Value> = {}
   _globalStrs: Map<String, Value> = {}
   _functions: QbeFunction[] = []
   _functionsByName: Map<String, QbeFunction> = {}
@@ -43,10 +44,13 @@ export type ModuleBuilder {
     ptr
   }
 
+  func getData(self, name: String): Value? = self._dataByName[name]
+
   func addData(self, data: QbeData): (Value, Int) {
     val idx = self._data.length
     self._data.push(data)
     val dataGlobal = Value.Global(data.name, QbeType.Pointer)
+    self._dataByName[data.name] = dataGlobal
     (dataGlobal, idx)
   }
 
