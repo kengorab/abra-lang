@@ -1,14 +1,1 @@
-// val str: String? = None
-
-// println(str?.isEmpty())
-
-// println("a s d f".split(by: " "))
-// println("asdf".split())
-
-val arr = [1, 2, 3, 4]
-
-/// Expect: [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
-val arr2 = arr.flatMap(i => Array.fill(i, i))
-println(arr2)
-println(arr2.length)
-println(arr2)
+println(1)
