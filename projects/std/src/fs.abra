@@ -9,7 +9,7 @@ export enum FileIOError {
 }
 
 export func readFile(path: String): Result<String, FileIOError> {
-  val fd = libc.open(path._buffer, libc.O_RDONLY)
+  val fd = libc.open(path._buffer, libc.O_RDONLY, 0)
   if fd == -1 {
     val errMsg = _strerror(libc.errno())
     return Err(error: FileIOError.CouldNotOpen(message: errMsg))
@@ -42,6 +42,12 @@ export enum AccessMode {
   ReadOnly
   WriteOnly
   ReadWrite
+
+  func _toUnderlying(self): Int = match self {
+    AccessMode.ReadOnly => libc.O_RDONLY
+    AccessMode.WriteOnly => libc.O_WRONLY
+    AccessMode.ReadWrite => libc.O_RDWR
+  }
 }
 
 export type File {
@@ -69,12 +75,21 @@ export type File {
 }
 
 export func openFile(path: String, accessMode: AccessMode): Result<File, FileIOError> {
-  val oflag = match accessMode {
-    AccessMode.ReadOnly => libc.O_RDONLY
-    AccessMode.WriteOnly => libc.O_WRONLY
-    AccessMode.ReadWrite => libc.O_RDWR
+  val oflag = accessMode._toUnderlying()
+  val fd = libc.open(path._buffer, oflag, 0)
+  if fd == -1 {
+    val errMsg = _strerror(libc.errno())
+    return Err(error: FileIOError.CouldNotOpen(message: errMsg))
   }
-  val fd = libc.open(path._buffer, oflag)
+
+  Ok(File(_fd: fd, accessMode: accessMode))
+}
+
+export func createFile(path: String, accessMode: AccessMode): Result<File, FileIOError> {
+  var oflag = accessMode._toUnderlying() || libc.O_CREAT
+
+  val mode = 420 // 420 is 0644, but octal numbers aren't supported yet...
+  val fd = libc.open(path._buffer, oflag, mode)
   if fd == -1 {
     val errMsg = _strerror(libc.errno())
     return Err(error: FileIOError.CouldNotOpen(message: errMsg))
