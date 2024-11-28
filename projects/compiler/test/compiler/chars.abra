@@ -1,0 +1,14 @@
+val a = 'a'
+val b = 'b'
+
+/// Expect: a b
+println(a, b)
+
+/// Expect: false true
+println(a == b, a == 'a')
+/// Expect: false true
+println(b != b, b != 'a')
+
+val m = { 'a': 1, 'b': 2 }
+/// Expect: { a: 1, b: 2 } Option.None Option.Some(value: 1)
+println(m, m['c'], m['a'])

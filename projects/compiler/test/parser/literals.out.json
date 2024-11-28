@@ -98,6 +98,48 @@
         "type": "string",
         "value": "hello world 1234"
       }
+    },
+    {
+      "token": {
+        "position": [5, 1],
+        "kind": {
+          "name": "Char",
+          "value": "0x61"
+        }
+      },
+      "kind": {
+        "name": "literal",
+        "type": "char",
+        "value": "0x61"
+      }
+    },
+    {
+      "token": {
+        "position": [5, 5],
+        "kind": {
+          "name": "Char",
+          "value": "0x5a"
+        }
+      },
+      "kind": {
+        "name": "literal",
+        "type": "char",
+        "value": "0x5a"
+      }
+    },
+    {
+      "token": {
+        "position": [5, 9],
+        "kind": {
+          "name": "Char",
+          "value": "0x5b"
+        }
+      },
+      "kind": {
+        "name": "literal",
+        "type": "char",
+        "value": "0x5b"
+      }
     }
   ]
 }

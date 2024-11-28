@@ -19,6 +19,9 @@ export func functionNames(): Pointer<Byte>
 @Intrinsic("u64_to_string")
 export func u64ToString(i: Int): String
 
+// @Intrinsic("char_as_int")
+// export func charAsInt(c: Char): Int
+
 @Intrinsic("int_as_float")
 export func intAsFloat(i: Int): Float
 
