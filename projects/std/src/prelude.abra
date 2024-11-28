@@ -152,8 +152,27 @@ type Bool {
 }
 
 type Char {
-  // No methods for Char (yet)
-  // func asInt(self): Int = intrinsics.charAsInt(self)
+  func fromInt(value: Int): Char = intrinsics.intAsChar(value)
+
+  func asInt(self): Int = intrinsics.charAsInt(self)
+}
+
+type CharIterator {
+  _bytes: Pointer<Byte>
+  _numBytes: Int
+  _i: Int = 0
+
+  func next(self): Char? {
+    if self._i >= self._numBytes return None
+
+    val i = self._i
+    self._i += 1
+
+    val b = self._bytes.offset(i).load().asInt()
+    if b < 128 return Some(Char.fromInt(b))
+
+    todo("decoding multibyte utf-8 codepoints")
+  }
 }
 
 type String {
@@ -418,6 +437,8 @@ type String {
 
     newString
   }
+
+  func chars(self): CharIterator = CharIterator(_bytes: self._buffer, _numBytes: self.length)
 
   func get(self, index: Int): String {
     var idx = if index < 0 index + self.length else index

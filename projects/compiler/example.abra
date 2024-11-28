@@ -1,11 +1,5 @@
-val x = 'a'
-println(x)
+val chars = "hello world".chars()
 
-val t = x == 'a'
-val f = x == 'A'
-println(t, f)
-
-val h = 'a'.hash()
-println(h)
-
-println(x.asInt())
+for ch in chars {
+  println(ch)
+}
