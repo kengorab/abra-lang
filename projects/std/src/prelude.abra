@@ -151,6 +151,11 @@ type Bool {
   // No methods for Bool
 }
 
+type Char {
+  // No methods for Char (yet)
+  // func asInt(self): Int = intrinsics.charAsInt(self)
+}
+
 type String {
   length: Int
   _buffer: Pointer<Byte>

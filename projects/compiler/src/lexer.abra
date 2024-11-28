@@ -12,6 +12,7 @@ export enum TokenKind {
   Int(value: Int)
   Float(value: Float)
   Bool(value: Bool)
+  Char(ch: Int)
   String(value: String)
   StringInterpolation(chunks: StringInterpolationChunk[])
 
@@ -89,6 +90,7 @@ export enum TokenKind {
     TokenKind.Bool(value) => value.toString()
     TokenKind.String => "string"
     TokenKind.StringInterpolation => "string"
+    TokenKind.Char => "char"
     TokenKind.Ident(name) => if name == "_" { "_" } else "identifier"
     TokenKind.If => "if"
     TokenKind.Else => "else"
@@ -251,6 +253,8 @@ export type Lexer {
       try self._tokenizeInteger(startPos: position)
     } else if ch == "\"" {
       try self._tokenizeString()
+    } else if ch == "'" {
+      try self._tokenizeChar()
     } else if ch.isAlpha() || ch == "_" {
       self._tokenizeIdentifier(startPos: position)
     } else if ch == "/" && (peek == "/" || peek == "*") {
@@ -433,6 +437,27 @@ export type Lexer {
 
     val float = wholeNumber + (num / (10 ** pow))
     Ok(Token(position: startPos, kind: TokenKind.Float(float)))
+  }
+
+  func _tokenizeChar(self): Result<Token, LexerError> {
+    var startPos = self._curPos()
+    self._advance() // consume "'"
+
+    var ch = self._input[self._cursor]
+    if ch == "'" return Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedChar(ch)))
+    if ch == "\\" todo("character escape sequences")
+
+    // TODO: once characters are supported, there should be no need for low-level byte manipulation like this
+    val intVal = ch._buffer.offset(0).load().asInt()
+    self._advance()
+
+    ch = self._input[self._cursor]
+    if ch != "'" {
+      return Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedChar(ch)))
+    }
+    self._advance() // consume "'"
+
+    Ok(Token(position: startPos, kind: TokenKind.Char(intVal)))
   }
 
   func _tokenizeString(self): Result<Token, LexerError> {

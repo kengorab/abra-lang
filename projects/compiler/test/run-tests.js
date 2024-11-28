@@ -22,6 +22,10 @@ const LEXER_TESTS = [
   { test: "lexer/strings_interpolation.1.abra", assertions: "lexer/strings_interpolation.1.out.json" },
   { test: "lexer/strings_interpolation.2.abra", assertions: "lexer/strings_interpolation.2.out.json" },
   { test: "lexer/strings_interpolation_error_unclosed_brace.abra", assertions: "lexer/strings_interpolation_error_unclosed_brace.out" },
+  // Chars
+  { test: "lexer/chars.abra", assertions: "lexer/chars.out.json" },
+  { test: "lexer/chars_error_empty.abra", assertions: "lexer/chars_error_empty.out" },
+  { test: "lexer/chars_error_too_big.abra", assertions: "lexer/chars_error_too_big.out" },
   // Keywords
   { test: "lexer/keywords.abra", assertions: "lexer/keywords.out.json" },
   // Symbols
@@ -777,6 +781,7 @@ const COMPILER_TESTS = [
   { test: "compiler/ints.abra" },
   { test: "compiler/floats.abra" },
   { test: "compiler/bools.abra" },
+  { test: "compiler/chars.abra" },
   { test: "compiler/strings.abra" },
   { test: "compiler/arrays.abra" },
   { test: "compiler/functions.abra" },

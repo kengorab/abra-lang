@@ -120,6 +120,36 @@
         "kind": "literal",
         "value": "abcd"
       }
+    },
+    {
+      "token": {
+        "position": [5, 1],
+        "kind": {
+          "name": "Char",
+          "value": "0x61"
+        }
+      },
+      "type": {
+      },
+      "node": {
+        "kind": "literal",
+        "value": "0x61"
+      }
+    },
+    {
+      "token": {
+        "position": [5, 5],
+        "kind": {
+          "name": "Char",
+          "value": "0x5a"
+        }
+      },
+      "type": {
+      },
+      "node": {
+        "kind": "literal",
+        "value": "0x5a"
+      }
     }
   ]
 }

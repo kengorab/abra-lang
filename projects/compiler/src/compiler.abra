@@ -1873,6 +1873,7 @@ export type Compiler {
       LiteralAstNode.Int(v) => (Value.Int(v), Type(kind: TypeKind.PrimitiveInt))
       LiteralAstNode.Float(f) => (Value.Float(f), Type(kind: TypeKind.PrimitiveFloat))
       LiteralAstNode.Bool(b) => (Value.Int(if b 1 else 0), Type(kind: TypeKind.PrimitiveBool))
+      LiteralAstNode.Char(c) => (Value.IntU64(c), Type(kind: TypeKind.PrimitiveChar))
       LiteralAstNode.String(s) => {
         val dataPtr = self._builder.buildGlobalString(s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r"))
         val instancePtr = try self._constructString(dataPtr, Value.Int(s.length))
@@ -2266,7 +2267,7 @@ export type Compiler {
   }
 
   func _compileEqLogic(self, leftVal: Value, rightVal: Value, ty: Type, position: Position, localName: String? = None, negate = false): Result<Value, CompileError> {
-    if self._typeIsInt(ty) || self._typeIsFloat(ty) || self._typeIsBool(ty) {
+    if self._typeIsInt(ty) || self._typeIsFloat(ty) || self._typeIsBool(ty) || self._typeIsChar(ty) {
       val res = if negate {
         val res = try self._currentFn.block.buildCompareNeq(leftVal, rightVal, localName) else |e| return qbeError(e)
         self._currentFn.block.buildExt(res, false)
@@ -2416,6 +2417,7 @@ export type Compiler {
       TypeKind.PrimitiveInt => Ok(Some(QbeType.U64))
       TypeKind.PrimitiveFloat => Ok(Some(QbeType.F64))
       TypeKind.PrimitiveBool => Ok(Some(QbeType.U64))
+      TypeKind.PrimitiveChar => Ok(Some(QbeType.U64))
       TypeKind.PrimitiveString => Ok(Some(QbeType.Pointer))
       TypeKind.Never => Ok(None)
       TypeKind.Any => todo("TypeKind.Any")
@@ -3079,6 +3081,17 @@ export type Compiler {
 
         Ok(str)
       }
+      "char_as_int" => {
+        self._currentFn.block.addComment("begin char_as_int...")
+
+        val _arg = if arguments[0] |arg| arg else unreachable("'char_as_int' has 1 required argument")
+        val arg = if _arg |arg| arg else unreachable("'char_as_int' has 1 required argument")
+        val argVal = try self._compileExpression(arg)
+
+        self._currentFn.block.addComment("...char_as_int end")
+
+        Ok(argVal)
+      }
       "int_as_float" => {
         self._currentFn.block.addComment("begin int_as_float...")
 
@@ -3389,6 +3402,7 @@ export type Compiler {
         if struct == self._project.preludeFloatStruct return self._getOrCompileFloatToStringMethod()
         if struct == self._project.preludeStringStruct return self._getOrCompileStringToStringMethod()
         if struct == self._project.preludeBoolStruct return self._getOrCompileBoolToStringMethod()
+        if struct == self._project.preludeCharStruct return self._getOrCompileCharToStringMethod()
 
         val _fn = struct.instanceMethods.find(m => m.label.name == "toString")
         val fn = if _fn |f| f else unreachable("every struct has a toString method defined")
@@ -3699,6 +3713,35 @@ export type Compiler {
     Ok(fnVal)
   }
 
+  func _getOrCompileCharToStringMethod(self): Result<QbeFunction, CompileError> {
+    val charTypeQbe = try self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveChar), "char qbe type should exist")
+    val stringTypeQbe = try self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveString), "string qbe type should exist")
+
+    val typeName = try self._structTypeName(self._project.preludeCharStruct)
+    val methodName = "$typeName..toString"
+    if self._builder.getFunction(methodName) |fn| return Ok(fn)
+
+    val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(stringTypeQbe))
+    val prevFn = self._currentFn
+    self._currentFn = fnVal
+
+    fnVal.addComment("Char#toString(self): String")
+    val selfParam = fnVal.addParameter("self", stringTypeQbe)
+
+    val lowestByteVal = try self._currentFn.block.buildAnd(selfParam, Value.Int(0xff)) else |e| return qbeError(e)
+    val strData = try self._callMalloc(Value.Int(1))
+    self._currentFn.block.buildStoreL(lowestByteVal, strData)
+
+    val strVal = try self._constructString(strData, Value.Int(1))
+    fnVal.block.buildReturn(Some(strVal))
+
+    try fnVal.block.verify() else |e| return qbeError(e)
+
+    self._currentFn = prevFn
+
+    Ok(fnVal)
+  }
+
   func _getOrCompileStringToStringMethod(self): Result<QbeFunction, CompileError> {
     val stringTypeQbe = try self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveString), "string qbe type should exist")
 
@@ -3783,6 +3826,28 @@ export type Compiler {
           fnVal.addComment("Bool#eq(self, other: Bool): Bool")
           val selfParam = fnVal.addParameter("self", boolTypeQbe)
           val otherParam = fnVal.addParameter("other", boolTypeQbe)
+          val res = try self._currentFn.block.buildCompareEq(selfParam, otherParam) else |e| return qbeError(e)
+          fnVal.block.buildReturn(Some(self._currentFn.block.buildExt(res, false)))
+
+          try fnVal.block.verify() else |e| return qbeError(e)
+
+          self._currentFn = prevFn
+
+          return Ok(fnVal)
+        }
+        if struct == self._project.preludeCharStruct {
+          val charTypeQbe = try self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveChar), "char qbe type should exist")
+
+          val methodName = "Char..eq"
+          if self._builder.getFunction(methodName) |fn| return Ok(fn)
+
+          val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(boolTypeQbe))
+          val prevFn = self._currentFn
+          self._currentFn = fnVal
+
+          fnVal.addComment("Char#eq(self, other: Char): Char")
+          val selfParam = fnVal.addParameter("self", charTypeQbe)
+          val otherParam = fnVal.addParameter("other", charTypeQbe)
           val res = try self._currentFn.block.buildCompareEq(selfParam, otherParam) else |e| return qbeError(e)
           fnVal.block.buildReturn(Some(self._currentFn.block.buildExt(res, false)))
 
@@ -4000,6 +4065,26 @@ export type Compiler {
           val selfParam = fnVal.addParameter("self", boolTypeQbe)
           val res = self._currentFn.block.buildExt(value: selfParam, signed: false)
           fnVal.block.buildReturn(Some(res))
+
+          try fnVal.block.verify() else |e| return qbeError(e)
+
+          self._currentFn = prevFn
+
+          return Ok(fnVal)
+        }
+        if struct == self._project.preludeCharStruct {
+          val charTypeQbe = try self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveChar), "char qbe type should exist")
+
+          val methodName = "Char..hash"
+          if self._builder.getFunction(methodName) |fn| return Ok(fn)
+
+          val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(intTypeQbe))
+          val prevFn = self._currentFn
+          self._currentFn = fnVal
+
+          fnVal.addComment("Charhash(self): Int")
+          val selfParam = fnVal.addParameter("self", charTypeQbe)
+          fnVal.block.buildReturn(Some(selfParam))
 
           try fnVal.block.verify() else |e| return qbeError(e)
 
@@ -4296,6 +4381,7 @@ export type Compiler {
       TypeKind.PrimitiveInt => Ok((StructOrEnum.Struct(self._project.preludeIntStruct), []))
       TypeKind.PrimitiveFloat => Ok((StructOrEnum.Struct(self._project.preludeFloatStruct), []))
       TypeKind.PrimitiveBool => Ok((StructOrEnum.Struct(self._project.preludeBoolStruct), []))
+      TypeKind.PrimitiveChar => Ok((StructOrEnum.Struct(self._project.preludeCharStruct), []))
       TypeKind.PrimitiveString => Ok((StructOrEnum.Struct(self._project.preludeStringStruct), []))
       TypeKind.Never => unreachable("getInstanceTypeForType: Never")
       TypeKind.Generic(name) => {
@@ -4629,6 +4715,7 @@ export type Compiler {
   func _typeIsInt(self, ty: Type): Bool = ty.kind == TypeKind.PrimitiveInt || ty.kind == TypeKind.Instance(StructOrEnum.Struct(self._project.preludeIntStruct), [])
   func _typeIsFloat(self, ty: Type): Bool = ty.kind == TypeKind.PrimitiveFloat || ty.kind == TypeKind.Instance(StructOrEnum.Struct(self._project.preludeFloatStruct), [])
   func _typeIsBool(self, ty: Type): Bool = ty.kind == TypeKind.PrimitiveBool || ty.kind == TypeKind.Instance(StructOrEnum.Struct(self._project.preludeBoolStruct), [])
+  func _typeIsChar(self, ty: Type): Bool = ty.kind == TypeKind.PrimitiveChar || ty.kind == TypeKind.Instance(StructOrEnum.Struct(self._project.preludeCharStruct), [])
   func _typeIsString(self, ty: Type): Bool = ty.kind == TypeKind.PrimitiveString || ty.kind == TypeKind.Instance(StructOrEnum.Struct(self._project.preludeStringStruct), [])
 
   // TODO: this is copied from Typechecker

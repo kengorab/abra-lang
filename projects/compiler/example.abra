@@ -1,1 +1,11 @@
-println(1)
+val x = 'a'
+println(x)
+
+val t = x == 'a'
+val f = x == 'A'
+println(t, f)
+
+val h = 'a'.hash()
+println(h)
+
+println(x.asInt())

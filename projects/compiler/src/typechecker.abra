@@ -267,6 +267,7 @@ export type Project {
   preludeIntStruct: Struct = Struct(moduleId: 0, label: Label(name: "Int", position: Position(line: 0, col: 0)), scope: Scope(name: "Int"))
   preludeFloatStruct: Struct = Struct(moduleId: 0, label: Label(name: "Float", position: Position(line: 0, col: 0)), scope: Scope(name: "Float"))
   preludeBoolStruct: Struct = Struct(moduleId: 0, label: Label(name: "Bool", position: Position(line: 0, col: 0)), scope: Scope(name: "Bool"))
+  preludeCharStruct: Struct = Struct(moduleId: 0, label: Label(name: "Char", position: Position(line: 0, col: 0)), scope: Scope(name: "Char"))
   preludeStringStruct: Struct = Struct(moduleId: 0, label: Label(name: "String", position: Position(line: 0, col: 0)), scope: Scope(name: "String"))
   preludeArrayStruct: Struct = Struct(moduleId: 0, label: Label(name: "Array", position: Position(line: 0, col: 0)), scope: Scope(name: "Array"), typeParams: ["T"])
   preludeMapStruct: Struct = Struct(moduleId: 0, label: Label(name: "Map", position: Position(line: 0, col: 0)), scope: Scope(name: "Array"), typeParams: ["K", "V"])
@@ -294,6 +295,11 @@ export type Project {
       TypeKind.PrimitiveBool => match other.kind {
         TypeKind.PrimitiveBool => true
         TypeKind.Instance(structOrEnum, _) => structOrEnum == StructOrEnum.Struct(self.preludeBoolStruct)
+        _ => false
+      }
+      TypeKind.PrimitiveChar => match other.kind {
+        TypeKind.PrimitiveChar => true
+        TypeKind.Instance(structOrEnum, _) => structOrEnum == StructOrEnum.Struct(self.preludeCharStruct)
         _ => false
       }
       TypeKind.PrimitiveString => match other.kind {
@@ -334,6 +340,7 @@ export type Project {
         TypeKind.PrimitiveInt => reqStructOrEnum == StructOrEnum.Struct(self.preludeIntStruct)
         TypeKind.PrimitiveFloat => reqStructOrEnum == StructOrEnum.Struct(self.preludeFloatStruct)
         TypeKind.PrimitiveBool => reqStructOrEnum == StructOrEnum.Struct(self.preludeBoolStruct)
+        TypeKind.PrimitiveChar => reqStructOrEnum == StructOrEnum.Struct(self.preludeCharStruct)
         TypeKind.PrimitiveString => reqStructOrEnum == StructOrEnum.Struct(self.preludeStringStruct)
         _ => false
       }
@@ -364,6 +371,7 @@ export type Type {
       TypeKind.PrimitiveInt => "Int"
       TypeKind.PrimitiveFloat => "Float"
       TypeKind.PrimitiveBool => "Bool"
+      TypeKind.PrimitiveChar => "Char"
       TypeKind.PrimitiveString => "String"
       TypeKind.Never => "Never"
       TypeKind.Generic(name) => name
@@ -415,6 +423,7 @@ export type Type {
     TypeKind.PrimitiveInt => false
     TypeKind.PrimitiveFloat => false
     TypeKind.PrimitiveBool => false
+    TypeKind.PrimitiveChar => false
     TypeKind.PrimitiveString => false
     TypeKind.Never => false
     TypeKind.Generic => false
@@ -569,6 +578,7 @@ export enum TypeKind {
   PrimitiveInt
   PrimitiveFloat
   PrimitiveBool
+  PrimitiveChar
   PrimitiveString
   Never
   Any
@@ -1473,6 +1483,7 @@ export type Typechecker {
       self.project.preludeIntStruct,
       self.project.preludeFloatStruct,
       self.project.preludeBoolStruct,
+      self.project.preludeCharStruct,
       self.project.preludeStringStruct,
       self.project.preludeArrayStruct,
       self.project.preludeMapStruct,
@@ -1651,6 +1662,7 @@ export type Typechecker {
       "Int" => Ok(Type(kind: TypeKind.PrimitiveInt))
       "Float" => Ok(Type(kind: TypeKind.PrimitiveFloat))
       "Bool" => Ok(Type(kind: TypeKind.PrimitiveBool))
+      "Char" => Ok(Type(kind: TypeKind.PrimitiveChar))
       "String" => Ok(Type(kind: TypeKind.PrimitiveString))
       "Map" => Ok(Type(kind: TypeKind.Type(StructOrEnum.Struct(self.project.preludeMapStruct))))
       "Set" => Ok(Type(kind: TypeKind.Type(StructOrEnum.Struct(self.project.preludeSetStruct))))
@@ -1916,6 +1928,11 @@ export type Typechecker {
         TypeKind.Instance(structOrEnum, _) => structOrEnum == StructOrEnum.Struct(self.project.preludeBoolStruct)
         _ => false
       }
+      TypeKind.PrimitiveChar => match ty.kind {
+        TypeKind.PrimitiveChar => true
+        TypeKind.Instance(structOrEnum, _) => structOrEnum == StructOrEnum.Struct(self.project.preludeCharStruct)
+        _ => false
+      }
       TypeKind.PrimitiveString => match ty.kind {
         TypeKind.PrimitiveString => true
         TypeKind.Instance(structOrEnum, _) => structOrEnum == StructOrEnum.Struct(self.project.preludeStringStruct)
@@ -1955,6 +1972,7 @@ export type Typechecker {
         TypeKind.PrimitiveInt => reqStructOrEnum == StructOrEnum.Struct(self.project.preludeIntStruct)
         TypeKind.PrimitiveFloat => reqStructOrEnum == StructOrEnum.Struct(self.project.preludeFloatStruct)
         TypeKind.PrimitiveBool => reqStructOrEnum == StructOrEnum.Struct(self.project.preludeBoolStruct)
+        TypeKind.PrimitiveChar => reqStructOrEnum == StructOrEnum.Struct(self.project.preludeCharStruct)
         TypeKind.PrimitiveString => reqStructOrEnum == StructOrEnum.Struct(self.project.preludeStringStruct)
         _ => false
       }
@@ -2844,6 +2862,7 @@ export type Typechecker {
           "Int" => self.project.preludeIntStruct = struct
           "Float" => self.project.preludeFloatStruct = struct
           "Bool" => self.project.preludeBoolStruct = struct
+          "Char" => self.project.preludeCharStruct = struct
           "String" => self.project.preludeStringStruct = struct
           "Array" => self.project.preludeArrayStruct = struct
           "Set" => self.project.preludeSetStruct = struct
@@ -3629,6 +3648,7 @@ export type Typechecker {
             LiteralAstNode.Int => Type(kind: TypeKind.PrimitiveInt)
             LiteralAstNode.Float => Type(kind: TypeKind.PrimitiveFloat)
             LiteralAstNode.Bool => Type(kind: TypeKind.PrimitiveBool)
+            LiteralAstNode.Char => Type(kind: TypeKind.PrimitiveChar)
             LiteralAstNode.String => Type(kind: TypeKind.PrimitiveString)
           }
 
@@ -3745,6 +3765,7 @@ export type Typechecker {
           LiteralAstNode.Int => TypeKind.PrimitiveInt
           LiteralAstNode.Float => TypeKind.PrimitiveFloat
           LiteralAstNode.Bool => TypeKind.PrimitiveBool
+          LiteralAstNode.Char => TypeKind.PrimitiveChar
           LiteralAstNode.String => TypeKind.PrimitiveString
         }
 
@@ -4000,6 +4021,7 @@ export type Typechecker {
       TypeKind.PrimitiveInt => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeIntStruct), [])), label, None, optSafe)
       TypeKind.PrimitiveFloat => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeFloatStruct), [])), label, None, optSafe)
       TypeKind.PrimitiveBool => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeBoolStruct), [])), label, None, optSafe)
+      TypeKind.PrimitiveChar => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeCharStruct), [])), label, None, optSafe)
       TypeKind.PrimitiveString => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeStringStruct), [])), label, None, optSafe)
       TypeKind.Never => None
       TypeKind.Generic => self._resolveAccessorPathSegmentAny(label, optSafe, typeHint)
