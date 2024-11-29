@@ -12,22 +12,6 @@ export func printTokenAsJson(token: Token, indentLevelStart: Int, currentIndentL
   print("$endIndent}")
 }
 
-export func charToString(charVal: Int): String {
-  // TODO: clean this up
-  val lowestByte = charVal && 0xff
-
-  val higherBytes = [
-    charVal && 0xff00,
-    charVal && 0xff0000,
-    charVal && 0xff000000,
-  ]
-  for b, idx in higherBytes {
-    if b != 0 unreachable("byte $idx of Char($charVal) is not 0")
-  }
-
-  lowestByte.hex()
-}
-
 func printTokenKindAsJson(kind: TokenKind, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
   val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
@@ -48,10 +32,8 @@ func printTokenKindAsJson(kind: TokenKind, indentLevelStart: Int, currentIndentL
       println("$fieldsIndent\"value\": $value")
     }
     TokenKind.Char(intVal) => {
-      val charAsString = charToString(intVal)
-
       println("$fieldsIndent\"name\": \"Char\",")
-      println("$fieldsIndent\"value\": \"$charAsString\"")
+      println("$fieldsIndent\"value\": \"${intVal.hex()}\"")
     }
     TokenKind.String(value) => {
       println("$fieldsIndent\"name\": \"String\",")
@@ -364,9 +346,7 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         LiteralAstNode.Float(value) => ("float", value.toString())
         LiteralAstNode.Bool(value) => ("bool", value.toString())
         LiteralAstNode.Char(value) => {
-          val charAsString = charToString(value)
-
-          ("char", "\"$charAsString\"")
+          ("char", "\"${value.hex()}\"")
         }
         LiteralAstNode.String(value) => ("string", "\"$value\"")
       }
@@ -692,8 +672,7 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
                 LiteralAstNode.Float(value) => ("float", value.toString())
                 LiteralAstNode.Bool(value) => ("bool", value.toString())
                 LiteralAstNode.Char(value) => {
-                  val charAsString = charToString(value)
-                  ("char", "\"$charAsString\"")
+                  ("char", "\"${value.hex()}\"")
                 }
                 LiteralAstNode.String(value) => ("string", "\"$value\"")
               }

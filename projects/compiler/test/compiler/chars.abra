@@ -9,12 +9,16 @@ println(a == b, a == 'a')
 /// Expect: false true
 println(b != b, b != 'a')
 
+// Test escape sequences in char literals
+/// Expect: true
+println('\\' == '\u005C')
+
 val m = { 'a': 1, 'b': 2 }
 /// Expect: { a: 1, b: 2 } Option.None Option.Some(value: 1)
 println(m, m['c'], m['a'])
 
+// Test UTF-8 encoding/decoding
 val chars = "a£￫😀".chars()
-
 /// Expect: a 97 [0b1100001]
 /// Expect: £ 163 [0b11000010, 0b10100011]
 /// Expect: ￫ 65515 [0b11101111, 0b10111111, 0b10101011]

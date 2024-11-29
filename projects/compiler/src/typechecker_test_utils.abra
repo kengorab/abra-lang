@@ -1,6 +1,6 @@
 import LiteralAstNode, IndexingMode from "./parser"
 import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, FunctionKind, Scope, Struct, Enum, StructOrEnum, AccessorPathSegment, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export, TypedMatchCaseKind from "./typechecker"
-import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson, charToString from "./test_utils"
+import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 
 export type Jsonifier {
   indentLevel: Int = 0
@@ -331,7 +331,7 @@ export type Jsonifier {
           LiteralAstNode.Int(value) => self.println("\"value\": $value")
           LiteralAstNode.Float(value) => self.println("\"value\": $value")
           LiteralAstNode.Bool(value) => self.println("\"value\": $value")
-          LiteralAstNode.Char(value) => self.println("\"value\": \"${charToString(value)}\"")
+          LiteralAstNode.Char(value) => self.println("\"value\": \"${value.hex()}\"")
           LiteralAstNode.String(value) => self.println("\"value\": \"$value\"")
         }
       }
