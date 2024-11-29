@@ -102,6 +102,8 @@ type Int {
     Some(str)
   }
 
+  func binary(self): String = "0b" + (self.asBase(2) ?: "")
+
   func hex(self): String = "0x" + (self.asBase(16) ?: "")
 
   func isEven(self): Bool = self % 2 == 0
@@ -154,7 +156,47 @@ type Bool {
 type Char {
   func fromInt(value: Int): Char = intrinsics.intAsChar(value)
 
+  func toString(self): String {
+    val byteVals = self.bytes()
+    if byteVals.isEmpty() return "�"
+
+    val str = String.withLength(byteVals.length)
+
+    for b, idx in byteVals {
+      str._buffer.offset(idx).store(b.asByte())
+    }
+
+    str
+  }
+
   func asInt(self): Int = intrinsics.charAsInt(self)
+
+  func bytes(self): Int[] {
+    val value = self.asInt()
+
+    if !(value.isBetween(0, 0xD7FF, true) || value.isBetween(0xE000, 0x10FFFF, true)) return []
+
+    if value.isBetween(0, 0x007F, true) {
+      [value]
+    } else if value.isBetween(0x0080, 0x07FF, true) {
+      val b1 = 0b11000000 || ((value && 0b11111000000)) >> 6
+      val b2 = 0b10000000 || (value && 0b00000111111)
+      [b1, b2]
+    } else if value.isBetween(0x0800, 0xFFFF, true) {
+      val b1 = 0b11100000 || ((value && 0b1111000000000000) >> 12)
+      val b2 = 0b10000000 || ((value && 0b0000111111000000) >> 6)
+      val b3 = 0b10000000 || (value && 0b0000000000111111)
+      [b1, b2, b3]
+    } else if value.isBetween(0x10000, 0x10FFFF, true) {
+      val b1 = 0b11110000 || ((value && 0b111000000000000000000)) >> 18
+      val b2 = 0b10000000 || ((value && 0b000111111000000000000)) >> 12
+      val b3 = 0b10000000 || ((value && 0b000000000111111000000)) >> 6
+      val b4 = 0b10000000 || (value && 0b000000000000000111111)
+      [b1, b2, b3, b4]
+    } else {
+      []
+    }
+  }
 }
 
 type CharIterator {
@@ -165,13 +207,37 @@ type CharIterator {
   func next(self): Char? {
     if self._i >= self._numBytes return None
 
-    val i = self._i
+    val b1 = self._bytes.offset(self._i).load().asInt()
+    self._i += 1
+    if b1 < 128 return Some(Char.fromInt(b1))
+
+    // Begin multi-byte cases, obtain first continuation byte
+    if self._i >= self._numBytes unreachable("invalid utf-8 encoding: continuation byte expected given first byte ${b1.hex()}")
+    val b2 = self._bytes.offset(self._i).load().asInt()
     self._i += 1
 
-    val b = self._bytes.offset(i).load().asInt()
-    if b < 128 return Some(Char.fromInt(b))
+    // 3-byte case
+    if b1 >= 0b11100000 {
+      if self._i >= self._numBytes unreachable("invalid utf-8 encoding: continuation byte expected given first byte ${b1.hex()}")
+      val b3 = self._bytes.offset(self._i).load().asInt()
+      self._i += 1
 
-    todo("decoding multibyte utf-8 codepoints")
+      // 4-byte case
+      if b1 >= 0b11110000 {
+        if self._i >= self._numBytes unreachable("invalid utf-8 encoding: continuation byte expected given first byte ${b1.hex()}")
+        val b4 = self._bytes.offset(self._i).load().asInt()
+        self._i += 1
+
+        val ch = ((b1 && 0b00000111) << 18) || ((b2 && 0b00111111) << 12) || ((b3 && 0b00111111) << 6) || (b4 && 0b00111111)
+        return Some(Char.fromInt(ch))
+      }
+
+      val ch = ((b1 && 0b00001111) << 12) || ((b2 && 0b00111111) << 6) || (b3 && 0b00111111)
+      return Some(Char.fromInt(ch))
+    }
+
+    val ch = ((b1 && 0b00011111) << 6) || (b2 && 0b00111111)
+    Some(Char.fromInt(ch))
   }
 }
 

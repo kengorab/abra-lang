@@ -610,7 +610,7 @@ export type Lexer {
       s
     } else if value.isBetween(0x0080, 0x07FF, true) {
       val s = String.withLength(2)
-      val b1 = 0b11000000 || (value && 0b11111000000)
+      val b1 = 0b11000000 || ((value && 0b11111000000) >> 6)
       val b2 = 0b10000000 || (value && 0b00000111111)
       s._buffer.offset(0).store(b1.asByte())
       s._buffer.offset(1).store(b2.asByte())
