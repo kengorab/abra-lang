@@ -199,7 +199,7 @@ type Char {
   }
 }
 
-type CharIterator {
+type CharsIterator {
   _bytes: Pointer<Byte>
   _numBytes: Int
   _i: Int = 0
@@ -504,7 +504,7 @@ type String {
     newString
   }
 
-  func chars(self): CharIterator = CharIterator(_bytes: self._buffer, _numBytes: self.length)
+  func chars(self): CharsIterator = CharsIterator(_bytes: self._buffer, _numBytes: self.length)
 
   func get(self, index: Int): String {
     var idx = if index < 0 index + self.length else index
