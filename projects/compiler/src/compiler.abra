@@ -3092,6 +3092,17 @@ export type Compiler {
 
         Ok(argVal)
       }
+      "int_as_char" => {
+        self._currentFn.block.addComment("begin int_as_char...")
+
+        val _arg = if arguments[0] |arg| arg else unreachable("'int_as_char' has 1 required argument")
+        val arg = if _arg |arg| arg else unreachable("'int_as_char' has 1 required argument")
+        val argVal = try self._compileExpression(arg)
+
+        self._currentFn.block.addComment("...int_as_char end")
+
+        Ok(argVal)
+      }
       "int_as_float" => {
         self._currentFn.block.addComment("begin int_as_float...")
 
@@ -3402,7 +3413,6 @@ export type Compiler {
         if struct == self._project.preludeFloatStruct return self._getOrCompileFloatToStringMethod()
         if struct == self._project.preludeStringStruct return self._getOrCompileStringToStringMethod()
         if struct == self._project.preludeBoolStruct return self._getOrCompileBoolToStringMethod()
-        if struct == self._project.preludeCharStruct return self._getOrCompileCharToStringMethod()
 
         val _fn = struct.instanceMethods.find(m => m.label.name == "toString")
         val fn = if _fn |f| f else unreachable("every struct has a toString method defined")
@@ -3705,35 +3715,6 @@ export type Compiler {
     val falseStrData = self._builder.buildGlobalString("false")
     val falseStr = try self._constructString(falseStrData, Value.Int(5))
     fnVal.block.buildReturn(Some(falseStr))
-
-    try fnVal.block.verify() else |e| return qbeError(e)
-
-    self._currentFn = prevFn
-
-    Ok(fnVal)
-  }
-
-  func _getOrCompileCharToStringMethod(self): Result<QbeFunction, CompileError> {
-    val charTypeQbe = try self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveChar), "char qbe type should exist")
-    val stringTypeQbe = try self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveString), "string qbe type should exist")
-
-    val typeName = try self._structTypeName(self._project.preludeCharStruct)
-    val methodName = "$typeName..toString"
-    if self._builder.getFunction(methodName) |fn| return Ok(fn)
-
-    val fnVal = self._builder.buildFunction(name: methodName, returnType: Some(stringTypeQbe))
-    val prevFn = self._currentFn
-    self._currentFn = fnVal
-
-    fnVal.addComment("Char#toString(self): String")
-    val selfParam = fnVal.addParameter("self", stringTypeQbe)
-
-    val lowestByteVal = try self._currentFn.block.buildAnd(selfParam, Value.Int(0xff)) else |e| return qbeError(e)
-    val strData = try self._callMalloc(Value.Int(1))
-    self._currentFn.block.buildStoreL(lowestByteVal, strData)
-
-    val strVal = try self._constructString(strData, Value.Int(1))
-    fnVal.block.buildReturn(Some(strVal))
 
     try fnVal.block.verify() else |e| return qbeError(e)
 

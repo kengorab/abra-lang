@@ -99,6 +99,22 @@ println("hello")
   // println("\"hello\"".replaceAll("\"", "\\\""))
 })()
 
+// String#chars
+(() => {
+  val chars = "hello".chars()
+  /// Expect: h 0
+  /// Expect: e 1
+  /// Expect: l 2
+  /// Expect: l 3
+  /// Expect: o 4
+  for ch, idx in chars {
+    println(ch, idx)
+  }
+
+  /// Expect: done
+  println("done")
+})()
+
 // Indexing (also String#get(index: Int))
 (() => {
   val s1 = "abc"
