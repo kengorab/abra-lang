@@ -1,13 +1,15 @@
-val chars = "a£￫😀".chars()
+// val chars = "a£￫😀".chars()
 
-/// Expect: a 97 [0b1100001]
-/// Expect: £ 163 [0b11000010, 0b10100011]
-/// Expect: ￫ 65515 [0b11101111, 0b10111111, 0b10101011]
-/// Expect: 😀 128512 [0b11110000, 0b10011111, 0b10011000, 0b10000000]
-for ch in chars {
-  println(ch, ch.asInt(), ch.bytes().map(b => b.binary()))
-}
+// /// Expect: a 97 [0b1100001]
+// /// Expect: £ 163 [0b11000010, 0b10100011]
+// /// Expect: ￫ 65515 [0b11101111, 0b10111111, 0b10101011]
+// /// Expect: 😀 128512 [0b11110000, 0b10011111, 0b10011000, 0b10000000]
+// for ch in chars {
+//   println(ch, ch.asInt(), ch.bytes().map(b => b.binary()))
+// }
 
-val ch = Char.fromInt(0xD800)
-/// Expect: �
-println(ch)
+// val ch = Char.fromInt(0xD800)
+// /// Expect: �
+// println(ch)
+
+println(0.hex())

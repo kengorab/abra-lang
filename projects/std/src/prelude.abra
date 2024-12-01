@@ -69,6 +69,8 @@ type Int {
   func abs(self): Int = if self < 0 { -self } else { self }
 
   func asBase(self, base: Int): String? {
+    if self == 0 return Some("0")
+
     if !((2 <= base && base <= 36) || base == 62) return None
 
     // TODO: Extract to constants on String (when static members are a thing)

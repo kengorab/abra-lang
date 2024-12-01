@@ -26,5 +26,33 @@
       "name": "Char",
       "value": "0x5a"
     }
+  },
+  {
+    "position": [6, 1],
+    "kind": {
+      "name": "Char",
+      "value": "0x0"
+    }
+  },
+  {
+    "position": [7, 1],
+    "kind": {
+      "name": "Char",
+      "value": "0xa"
+    }
+  },
+  {
+    "position": [8, 1],
+    "kind": {
+      "name": "Char",
+      "value": "0x5c"
+    }
+  },
+  {
+    "position": [9, 1],
+    "kind": {
+      "name": "Char",
+      "value": "0xe9"
+    }
   }
 ]

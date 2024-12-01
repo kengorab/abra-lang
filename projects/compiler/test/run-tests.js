@@ -26,6 +26,12 @@ const LEXER_TESTS = [
   { test: "lexer/chars.abra", assertions: "lexer/chars.out.json" },
   { test: "lexer/chars_error_empty.abra", assertions: "lexer/chars_error_empty.out" },
   { test: "lexer/chars_error_too_big.abra", assertions: "lexer/chars_error_too_big.out" },
+  { test: "lexer/chars_error_invalid_unicode_seq_char.abra", assertions: "lexer/chars_error_invalid_unicode_seq_char.out" },
+  { test: "lexer/chars_error_invalid_unicode_seq_eof.abra", assertions: "lexer/chars_error_invalid_unicode_seq_eof.out" },
+  { test: "lexer/chars_error_invalid_unicode_seq_length.abra", assertions: "lexer/chars_error_invalid_unicode_seq_length.out" },
+  { test: "lexer/chars_error_unsupported_escape_sequence.abra", assertions: "lexer/chars_error_unsupported_escape_sequence.out" },
+  { test: "lexer/chars_error_unterminated_eof.abra", assertions: "lexer/chars_error_unterminated_eof.out" },
+  { test: "lexer/chars_error_unterminated_newline.abra", assertions: "lexer/chars_error_unterminated_newline.out" },
   // Keywords
   { test: "lexer/keywords.abra", assertions: "lexer/keywords.out.json" },
   // Symbols
