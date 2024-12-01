@@ -12,9 +12,10 @@ export func strerror(errno: Int): Pointer<Byte>
 export val O_RDONLY = 0
 export val O_WRONLY = 1
 export val O_RDWR   = 2
+export val O_CREAT  = 512
 
 @CBinding("open")
-export func open(pathname: Pointer<Byte>, flags: Int): Int
+export func open(pathname: Pointer<Byte>, flags: Int, mode: Int): Int
 
 @CBinding("close")
 export func close(fd: Int): Int
@@ -28,6 +29,9 @@ export func lseek(fd: Int, offset: Int, whence: Int): Int
 
 @CBinding("read")
 export func read(fd: Int, buf: Pointer<Byte>, count: Int): Int
+
+@CBinding("stat")
+export func stat(pathname: Pointer<Byte>, statbuf: Pointer<Byte>): Int
 
 export val STDIN_FILENO  = 0
 export val STDOUT_FILENO = 1

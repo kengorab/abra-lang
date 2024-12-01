@@ -201,3 +201,25 @@ func getFunctionNames(): String[] {
   _functionNames = Some(functionNames)
   functionNames
 }
+
+type Stdin {
+  _buf: Pointer<Byte> = Pointer.malloc(1024)
+
+  func readAsString(self): String? {
+    var nread = libc.read(libc.STDIN_FILENO, self._buf, 1024)
+    if nread == 0 return None
+
+    val str = String.withLength(nread)
+    str._buffer.copyFrom(self._buf, nread)
+    return Some(str)
+  }
+}
+
+var _stdin: Stdin? = None
+export func stdin(): Stdin {
+  if _stdin |stdin| return stdin
+
+  val stdin = Stdin()
+  _stdin = Some(stdin)
+  stdin
+}
