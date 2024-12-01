@@ -26,7 +26,7 @@ val arr = [1].map((i, _) => {
 /// Expect:   at baz (%TEST_DIR%/compiler/process_callstack.abra:10)
 /// Expect:   at bar (%TEST_DIR%/compiler/process_callstack.abra:5)
 /// Expect:   at foo (%TEST_DIR%/compiler/process_callstack.abra:19)
-/// Expect:   at <expression> (%STD_DIR%/prelude.abra:596)
+/// Expect:   at <expression> (%STD_DIR%/prelude.abra:690)
 /// Expect:   at Array.map (%TEST_DIR%/compiler/process_callstack.abra:18)
 
 type OneTwoThreeIterator {

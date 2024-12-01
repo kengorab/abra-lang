@@ -31,6 +31,10 @@ func printTokenKindAsJson(kind: TokenKind, indentLevelStart: Int, currentIndentL
       println("$fieldsIndent\"name\": \"Bool\",")
       println("$fieldsIndent\"value\": $value")
     }
+    TokenKind.Char(intVal) => {
+      println("$fieldsIndent\"name\": \"Char\",")
+      println("$fieldsIndent\"value\": \"${intVal.hex()}\"")
+    }
     TokenKind.String(value) => {
       println("$fieldsIndent\"name\": \"String\",")
       println("$fieldsIndent\"value\": \"$value\"")
@@ -341,6 +345,9 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         LiteralAstNode.Int(value) => ("int", value.toString())
         LiteralAstNode.Float(value) => ("float", value.toString())
         LiteralAstNode.Bool(value) => ("bool", value.toString())
+        LiteralAstNode.Char(value) => {
+          ("char", "\"${value.hex()}\"")
+        }
         LiteralAstNode.String(value) => ("string", "\"$value\"")
       }
 
@@ -664,6 +671,9 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
                 LiteralAstNode.Int(value) => ("int", value.toString())
                 LiteralAstNode.Float(value) => ("float", value.toString())
                 LiteralAstNode.Bool(value) => ("bool", value.toString())
+                LiteralAstNode.Char(value) => {
+                  ("char", "\"${value.hex()}\"")
+                }
                 LiteralAstNode.String(value) => ("string", "\"$value\"")
               }
 

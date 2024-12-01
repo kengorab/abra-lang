@@ -25,6 +25,7 @@ export enum LiteralAstNode {
   Int(value: Int)
   Float(value: Float)
   Bool(value: Bool)
+  Char(value: Int)
   String(value: String)
 }
 
@@ -1092,6 +1093,7 @@ export type Parser {
       TokenKind.Int => self._parseLiteral()
       TokenKind.Float => self._parseLiteral()
       TokenKind.Bool => self._parseLiteral()
+      TokenKind.Char => self._parseLiteral()
       TokenKind.String => self._parseLiteral()
       TokenKind.StringInterpolation => self._parseStringInterpolation()
       TokenKind.LParen => self._parseGroupedOrTupleOrLambda()
@@ -1129,6 +1131,7 @@ export type Parser {
       TokenKind.Int(value) => LiteralAstNode.Int(value)
       TokenKind.Float(value) => LiteralAstNode.Float(value)
       TokenKind.Bool(value) => LiteralAstNode.Bool(value)
+      TokenKind.Char(value) => LiteralAstNode.Char(value)
       TokenKind.String(value) => LiteralAstNode.String(value)
       TokenKind.StringInterpolation => {
         return Err(ParseError(position: token.position, kind: ParseErrorKind.NotYetImplemented))
@@ -1313,6 +1316,7 @@ export type Parser {
     val items = try self._commaSeparated(end: TokenKind.RBrace, consumeFinal: true, fn: () => {
       val keyToken = try self._expectPeek()
       val key = match keyToken.kind {
+        TokenKind.Char => try self._parseExpression()
         TokenKind.String => try self._parseExpression()
         TokenKind.Ident => try self._parseExpression()
         TokenKind.LParen => {
@@ -1390,6 +1394,10 @@ export type Parser {
         TokenKind.Bool(value) => {
           self._advance() // consume bool token
           MatchCaseKind.Literal(LiteralAstNode.Bool(value))
+        }
+        TokenKind.Char(value) => {
+          self._advance() // consume char token
+          MatchCaseKind.Literal(LiteralAstNode.Char(value))
         }
         TokenKind.String(value) => {
           self._advance() // consume string token

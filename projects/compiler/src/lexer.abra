@@ -12,6 +12,7 @@ export enum TokenKind {
   Int(value: Int)
   Float(value: Float)
   Bool(value: Bool)
+  Char(ch: Int)
   String(value: String)
   StringInterpolation(chunks: StringInterpolationChunk[])
 
@@ -89,6 +90,7 @@ export enum TokenKind {
     TokenKind.Bool(value) => value.toString()
     TokenKind.String => "string"
     TokenKind.StringInterpolation => "string"
+    TokenKind.Char => "char"
     TokenKind.Ident(name) => if name == "_" { "_" } else "identifier"
     TokenKind.If => "if"
     TokenKind.Else => "else"
@@ -163,6 +165,7 @@ export enum StringInterpolationChunk {
 
 export enum LexerErrorKind {
   UnexpectedChar(char: String)
+  UnterminatedCharLiteral
   UnterminatedString(start: Position)
   UnsupportedEscapeSequence(seq: String, isUnicode: Bool)
   UnexpectedEof
@@ -178,6 +181,10 @@ export type LexerError {
     match self.kind {
       LexerErrorKind.UnexpectedChar(char) => {
         lines.push("Unexpected character '$char':")
+        lines.push(self._getCursorLine(self.position, contents))
+      }
+      LexerErrorKind.UnterminatedCharLiteral => {
+        lines.push("Unterminated character literal:")
         lines.push(self._getCursorLine(self.position, contents))
       }
       LexerErrorKind.UnterminatedString(start) => {
@@ -251,6 +258,8 @@ export type Lexer {
       try self._tokenizeInteger(startPos: position)
     } else if ch == "\"" {
       try self._tokenizeString()
+    } else if ch == "'" {
+      try self._tokenizeChar()
     } else if ch.isAlpha() || ch == "_" {
       self._tokenizeIdentifier(startPos: position)
     } else if ch == "/" && (peek == "/" || peek == "*") {
@@ -435,6 +444,47 @@ export type Lexer {
     Ok(Token(position: startPos, kind: TokenKind.Float(float)))
   }
 
+  func _tokenizeChar(self): Result<Token, LexerError> {
+    var startPos = self._curPos()
+    self._advance() // consume "'"
+
+    var ch = self._input[self._cursor]
+    if ch == "'" return Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedChar(ch)))
+    val intVal = if ch == "\\" {
+      val pos = self._curPos()
+      self._advance() // consume '\'
+      if self._cursor >= self._input.length return Err(LexerError(position: pos, kind: LexerErrorKind.UnexpectedEof))
+      ch = self._input[self._cursor]
+
+      match ch {
+        "0" => 0
+        "n" => 10
+        "\\" => 92
+        "r" => 13
+        "t" => 9
+        "'" => 39
+        "u" => {
+          val ch = try self._parseUnicodeEscape(pos)
+          ch.asInt()
+        }
+        _ => return Err(LexerError(position: pos, kind: LexerErrorKind.UnsupportedEscapeSequence(seq: "\\$ch", isUnicode: false)))
+      }
+    } else {
+      // TODO: once characters are supported, there should be no need for low-level byte manipulation like this
+      ch._buffer.offset(0).load().asInt()
+    }
+
+    self._advance()
+
+    ch = self._input[self._cursor]
+    if self._cursor >= self._input.length || ch != "'" {
+      return Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnterminatedCharLiteral))
+    }
+    self._advance() // consume "'"
+
+    Ok(Token(position: startPos, kind: TokenKind.Char(intVal)))
+  }
+
   func _tokenizeString(self): Result<Token, LexerError> {
     var startPos = self._curPos()
     val origStartPos = startPos
@@ -457,13 +507,16 @@ export type Lexer {
         val ch = self._input[self._cursor]
         val escapedCh = match ch {
           "n" => "\n"
-          "\\" => "\\",
-          "r" => "\r",
-          "t" => "\t",
-          "\'" => "\'",
-          "\"" => "\"",
-          "$" => "$",
-          "u" => try self._parseUnicodeEscape(pos)
+          "\\" => "\\"
+          "r" => "\r"
+          "t" => "\t"
+          // "\'" => "\'"
+          "\"" => "\""
+          "$" => "$"
+          "u" => {
+            val ch = try self._parseUnicodeEscape(pos)
+            ch.toString()
+          }
           _ => return Err(LexerError(position: pos, kind: LexerErrorKind.UnsupportedEscapeSequence(seq: "\\$ch", isUnicode: false)))
         }
 
@@ -556,7 +609,7 @@ export type Lexer {
     }
   }
 
-  func _parseUnicodeEscape(self, startPos: Position): Result<String, LexerError> {
+  func _parseUnicodeEscape(self, startPos: Position): Result<Char, LexerError> {
     self._advance() // consume 'u'
 
     var value = 0
@@ -576,45 +629,7 @@ export type Lexer {
     self._advance()
     self._advance()
 
-    // TODO: Clean up this unicode->utf-8 conversion and abstract it away into some stdlib method once Chars exist?
-    val str = if !(value.isBetween(0, 0xD7FF, true) || value.isBetween(0xE000, 0x10FFFF, true)) {
-      "�"
-    } else if value.isBetween(0, 0x007F, true) {
-      val s = String.withLength(1)
-      s._buffer.offset(0).store(value.asByte())
-      s
-    } else if value.isBetween(0x0080, 0x07FF, true) {
-      val s = String.withLength(2)
-      val b1 = 0b11000000 || (value && 0b11111000000)
-      val b2 = 0b10000000 || (value && 0b00000111111)
-      s._buffer.offset(0).store(b1.asByte())
-      s._buffer.offset(1).store(b2.asByte())
-      s
-    } else if value.isBetween(0x0800, 0xFFFF, true) {
-      val s = String.withLength(3)
-      val b1 = 0b11100000 || ((value && 0b1111000000000000) >> 12)
-      val b2 = 0b10000000 || ((value && 0b0000111111000000) >> 6)
-      val b3 = 0b10000000 || (value && 0b0000000000111111)
-      s._buffer.offset(0).store(b1.asByte())
-      s._buffer.offset(1).store(b2.asByte())
-      s._buffer.offset(2).store(b3.asByte())
-      s
-    } else if value.isBetween(0x10000, 0x10FFFF, true) {
-      val s = String.withLength(4)
-      val b1 = 0b11110000 || (value && 0b111000000000000000000)
-      val b2 = 0b10000000 || (value && 0b000111111000000000000)
-      val b3 = 0b10000000 || (value && 0b000000000111111000000)
-      val b4 = 0b10000000 || (value && 0b000000000000000111111)
-      s._buffer.offset(0).store(b1.asByte())
-      s._buffer.offset(1).store(b2.asByte())
-      s._buffer.offset(2).store(b3.asByte())
-      s._buffer.offset(3).store(b4.asByte())
-      s
-    } else {
-      "�"
-    }
-
-    Ok(str)
+    Ok(Char.fromInt(value))
   }
 
   func _tokenizeIdentifier(self, startPos: Position): Token {

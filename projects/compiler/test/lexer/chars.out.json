@@ -1,0 +1,58 @@
+[
+  {
+    "position": [1, 1],
+    "kind": {
+      "name": "Char",
+      "value": "0x61"
+    }
+  },
+  {
+    "position": [2, 1],
+    "kind": {
+      "name": "Char",
+      "value": "0x20"
+    }
+  },
+  {
+    "position": [3, 1],
+    "kind": {
+      "name": "Char",
+      "value": "0x7b"
+    }
+  },
+  {
+    "position": [4, 1],
+    "kind": {
+      "name": "Char",
+      "value": "0x5a"
+    }
+  },
+  {
+    "position": [6, 1],
+    "kind": {
+      "name": "Char",
+      "value": "0x0"
+    }
+  },
+  {
+    "position": [7, 1],
+    "kind": {
+      "name": "Char",
+      "value": "0xa"
+    }
+  },
+  {
+    "position": [8, 1],
+    "kind": {
+      "name": "Char",
+      "value": "0x5c"
+    }
+  },
+  {
+    "position": [9, 1],
+    "kind": {
+      "name": "Char",
+      "value": "0xe9"
+    }
+  }
+]

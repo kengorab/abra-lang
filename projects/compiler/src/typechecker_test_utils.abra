@@ -331,6 +331,7 @@ export type Jsonifier {
           LiteralAstNode.Int(value) => self.println("\"value\": $value")
           LiteralAstNode.Float(value) => self.println("\"value\": $value")
           LiteralAstNode.Bool(value) => self.println("\"value\": $value")
+          LiteralAstNode.Char(value) => self.println("\"value\": \"${value.hex()}\"")
           LiteralAstNode.String(value) => self.println("\"value\": \"$value\"")
         }
       }
