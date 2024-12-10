@@ -1,0 +1,18 @@
+import "process" as process
+import "fs" as fs
+
+val cwd = fs.getCurrentWorkingDirectory()
+val logFilePath = "$cwd/log.txt"
+val logFile = match fs.createFile(logFilePath, fs.AccessMode.WriteOnly) {
+  Ok(v) => v
+  Err(e) => {
+    println(e)
+    process.exit(1)
+  }
+}
+
+val stdin = process.stdin()
+
+while stdin.readAsString() |str| {
+  logFile.writeln(str)
+}
