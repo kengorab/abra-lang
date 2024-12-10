@@ -40,6 +40,11 @@ export enum Result<V, E> {
 func Ok<V, E>(value: V): Result<V, E> = Result.Ok(value)
 func Err<V, E>(error: E): Result<V, E> = Result.Err(error)
 
+export enum Either<L, R> {
+  Left(left: L)
+  Right(right: R)
+}
+
 type RangeIterator {
   start: Int
   end: Int
@@ -199,14 +204,81 @@ type Char {
       []
     }
   }
+
+  func isDigit(self): Bool {
+    val ch = self.asInt()
+    48 <= ch && ch <= 57
+  }
+
+  func isAlpha(self): Bool {
+    val ch = self.asInt()
+    (65 <= ch && ch <= 90) || (97 <= ch && ch <= 122)
+  }
+
+  func isAlphanumeric(self): Bool {
+    val ch = self.asInt()
+    (48 <= ch && ch <= 57) || (65 <= ch && ch <= 90) || (97 <= ch && ch <= 122)
+  }
 }
 
 type CharsIterator {
   _bytes: Pointer<Byte>
   _numBytes: Int
   _i: Int = 0
+  _peekChar: Char? = None
+
+  func peek(self): Char? {
+    if self._peekChar return self._peekChar
+
+    val peekChar = self._decodeChar()
+    self._peekChar = peekChar
+    peekChar
+  }
 
   func next(self): Char? {
+    if self._peekChar {
+      val peekChar = self._peekChar
+      self._peekChar = None
+      return peekChar
+    }
+
+    self._decodeChar()
+    // if self._i >= self._numBytes return None
+
+    // val b1 = self._bytes.offset(self._i).load().asInt()
+    // self._i += 1
+    // if b1 < 128 return Some(Char.fromInt(b1))
+
+    // // Begin multi-byte cases, obtain first continuation byte
+    // if self._i >= self._numBytes unreachable("invalid utf-8 encoding: continuation byte expected given first byte ${b1.hex()}")
+    // val b2 = self._bytes.offset(self._i).load().asInt()
+    // self._i += 1
+
+    // // 3-byte case
+    // if b1 >= 0b11100000 {
+    //   if self._i >= self._numBytes unreachable("invalid utf-8 encoding: continuation byte expected given first byte ${b1.hex()}")
+    //   val b3 = self._bytes.offset(self._i).load().asInt()
+    //   self._i += 1
+
+    //   // 4-byte case
+    //   if b1 >= 0b11110000 {
+    //     if self._i >= self._numBytes unreachable("invalid utf-8 encoding: continuation byte expected given first byte ${b1.hex()}")
+    //     val b4 = self._bytes.offset(self._i).load().asInt()
+    //     self._i += 1
+
+    //     val ch = ((b1 && 0b00000111) << 18) || ((b2 && 0b00111111) << 12) || ((b3 && 0b00111111) << 6) || (b4 && 0b00111111)
+    //     return Some(Char.fromInt(ch))
+    //   }
+
+    //   val ch = ((b1 && 0b00001111) << 12) || ((b2 && 0b00111111) << 6) || (b3 && 0b00111111)
+    //   return Some(Char.fromInt(ch))
+    // }
+
+    // val ch = ((b1 && 0b00011111) << 6) || (b2 && 0b00111111)
+    // Some(Char.fromInt(ch))
+  }
+
+  func _decodeChar(self): Char? {
     if self._i >= self._numBytes return None
 
     val b1 = self._bytes.offset(self._i).load().asInt()
@@ -263,6 +335,22 @@ type String {
     for i in range(0, length) {
       val ch = choices._buffer.offset(libc.rand() % choices.length).load()
       str._buffer.offset(i).store(ch)
+    }
+
+    str
+  }
+
+  func fromChars(chars: Char[]): String {
+    val bytes: Int[] = []
+    for ch in chars {
+      for b in ch.bytes() bytes.push(b)
+    }
+
+    if bytes.length != chars.length todo("bytelength field on String")
+
+    val str = String.withLength(bytes.length)
+    for b, idx in bytes {
+      str._buffer.offset(idx).store(b.asByte())
     }
 
     str
@@ -347,7 +435,31 @@ type String {
   }
 
   @Stub func padLeft(self, totalSize: Int, padding = " "): String
-  @Stub func trim(self): String
+
+  func trim(self): String {
+    var i = 0
+    while i < self.length {
+      val char = Char.fromInt(self._buffer.offset(i).load().asInt())
+      if char == ' ' || char == '\n' || char == '\t' || char == '\r' {
+        i += 1
+      } else {
+        break
+      }
+    }
+
+    var j = self.length - 1
+    while j >= 0 {
+      val char = Char.fromInt(self._buffer.offset(j).load().asInt())
+      if char == ' ' || char == '\n' || char == '\t' || char == '\r' {
+        j -= 1
+      } else {
+        break
+      }
+    }
+
+    self.getRange(i, j + 1)
+  }
+
   @Stub func trimStart(self, pattern: String = ""): String
   @Stub func trimEnd(self, pattern: String = ""): String
 
@@ -404,7 +516,20 @@ type String {
 
   func lines(self): String[] = self.split(by: "\n")
 
-  @Stub func parseInt(self, radix = 10): Int?
+  func parseInt(self, radix = 10): Int? {
+    if radix != 10 todo("parsing non-decimal integer")
+
+    var num = 0
+    for ch in self.chars() {
+      if !ch.isDigit() break
+
+      num *= 10
+      num += (ch.asInt() - '0'.asInt())
+    }
+
+    Some(num)
+  }
+
   @Stub func parseFloat(self): Float?
 
   func startsWith(self, prefix: String): Bool {
