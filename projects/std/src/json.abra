@@ -1,0 +1,370 @@
+export enum JsonValue {
+  Null
+  Number(value: Either<Int, Float>)
+  String(value: String)
+  Boolean(value: Bool)
+  Array(items: JsonValue[])
+  Object(obj: JsonObject)
+}
+
+export type JsonObject {
+  map: Map<String, JsonValue> = {}
+}
+
+enum JsonParseError {
+  UnterminatedString
+  InvalidCharacterInString
+  UnexpectedEndOfNumber
+  UnexpectedEof
+  EofExpected
+  CommaExpected
+  CommaOrClosingBracketExpected
+  ColonExpected
+  ObjectPropertyExpected
+  ValueExpected
+}
+
+export type JsonParser {
+  _chars: CharsIterator
+
+  func parseString(string: String): Result<JsonValue, JsonParseError> {
+    val charsIter = string.chars()
+    val parser = JsonParser(_chars: charsIter)
+
+    val jsonValue = try parser._parseJsonValue()
+
+    if charsIter.next() return Err(JsonParseError.EofExpected)
+    return Ok(jsonValue)
+  }
+
+  func _parseJsonValue(self): Result<JsonValue, JsonParseError> {
+    self._skipWhitespace()
+
+    val jsonValue = match self._chars.peek() {
+      None => return Err(JsonParseError.UnexpectedEof)
+      '"' => {
+        val str = try self._parseJsonString()
+        JsonValue.String(str)
+      }
+      '[' => try self._parseJsonArray()
+      '{' => try self._parseJsonObject()
+      _ ch => {
+        if ch == '-' || ch.isDigit() {
+          try self._parseJsonNumber(ch)
+        } else if ch == 'n' {
+          try self._parseJsonNull()
+        } else if ch == 't' {
+          try self._parseJsonTrue()
+        } else if ch == 'f' {
+          try self._parseJsonFalse()
+        } else {
+          return Err(JsonParseError.ValueExpected)
+        }
+      }
+    }
+
+    self._skipWhitespace()
+
+    Ok(jsonValue)
+  }
+
+  func _parseJsonArray(self): Result<JsonValue, JsonParseError> {
+    self._chars.next() // Consume initial '['
+
+    val items: JsonValue[] = []
+    var closed = false
+    var nextValueExpected = false
+
+    while self._chars.peek() |ch| {
+      if ch == ']' {
+        closed = true
+        self._chars.next() // consume ']'
+        break
+      }
+
+      val item = try self._parseJsonValue()
+      items.push(item)
+
+      if self._chars.peek() |peekChar| {
+        if peekChar == ',' {
+          nextValueExpected = true
+          self._chars.next() // consume ','
+        } else if peekChar == ']' {
+          closed = true
+          nextValueExpected = false
+          self._chars.next() // consume ']'
+          break
+        } else {
+          return Err(JsonParseError.CommaExpected)
+        }
+      }
+    }
+
+    if !closed return Err(JsonParseError.CommaOrClosingBracketExpected)
+    if nextValueExpected return Err(JsonParseError.ValueExpected)
+
+    Ok(JsonValue.Array(items))
+  }
+
+  func _parseJsonObject(self): Result<JsonValue, JsonParseError> {
+    self._chars.next() // Consume initial '{'
+
+    val obj = JsonObject()
+    var closed = false
+    var nextValueExpected = false
+
+    while self._chars.peek() {
+      self._skipWhitespace()
+      val key = match self._chars.peek() {
+        '"' => try self._parseJsonString()
+        '}' => {
+          closed = true
+          self._chars.next() // Consume '}'
+          break
+        }
+        _ => return Err(JsonParseError.ObjectPropertyExpected)
+      }
+      self._skipWhitespace()
+
+      match self._chars.peek() {
+        ':' => self._chars.next() // consume ':'
+        _ => return Err(JsonParseError.ColonExpected)
+      }
+
+      val value = try self._parseJsonValue()
+
+      obj.map[key] = value
+
+      if self._chars.peek() |peekChar| {
+        if peekChar == ',' {
+          nextValueExpected = true
+          self._chars.next() // consume ','
+        } else if peekChar == '}' {
+          nextValueExpected = false
+          closed = true
+          self._chars.next() // consume '}'
+          break
+        } else {
+          return Err(JsonParseError.CommaExpected)
+        }
+      }
+    }
+
+    if !closed return Err(JsonParseError.CommaOrClosingBracketExpected)
+    if nextValueExpected return Err(JsonParseError.ObjectPropertyExpected)
+
+    Ok(JsonValue.Object(obj))
+  }
+
+  func _parseJsonString(self): Result<String, JsonParseError> {
+    self._chars.next() // Consume initial '"'
+
+    val chars: Char[] = []
+    var closed = false
+    while self._chars.next() |ch| {
+      if ch == '"' {
+        closed = true
+        break
+      }
+
+      val char = if ch == '\\' {
+        val ch = if self._chars.next() |ch| ch else return Err(JsonParseError.UnterminatedString)
+        match ch {
+          '"' => '"'
+          '\\' => '\\'
+          // TODO: fix when \b and \f are parsed by the abra lexer
+          'b' => Char.fromInt(0x8) // '\b'
+          'f' => Char.fromInt(0xc) // '\f'
+          'n' => '\n'
+          'r' => '\r'
+          't' => '\t'
+          '/' => '/'
+          'u' => {
+            var num = 0
+            // byte 1
+            var ch = if self._chars.next() |ch| ch else return Err(JsonParseError.UnexpectedEof)
+            num *= 16
+            num += (if charAsHexDigit(ch) |v| v else return Err(JsonParseError.InvalidCharacterInString))
+            // byte 2
+            ch = if self._chars.next() |ch| ch else return Err(JsonParseError.UnexpectedEof)
+            num *= 16
+            num += (if charAsHexDigit(ch) |v| v else return Err(JsonParseError.InvalidCharacterInString))
+            // byte 3
+            ch = if self._chars.next() |ch| ch else return Err(JsonParseError.UnexpectedEof)
+            num *= 16
+            num += (if charAsHexDigit(ch) |v| v else return Err(JsonParseError.InvalidCharacterInString))
+            // byte 4
+            ch = if self._chars.next() |ch| ch else return Err(JsonParseError.UnexpectedEof)
+            num *= 16
+            num += (if charAsHexDigit(ch) |v| v else return Err(JsonParseError.InvalidCharacterInString))
+
+            Char.fromInt(num)
+          }
+          _ => return Err(JsonParseError.InvalidCharacterInString)
+        }
+      } else if 0x20 <= ch.asInt() && ch.asInt() <= 0x10ffff {
+        ch
+      } else {
+        return Err(JsonParseError.InvalidCharacterInString)
+      }
+      chars.push(char)
+    }
+
+    if !closed return Err(JsonParseError.UnterminatedString)
+    Ok(String.fromChars(chars))
+  }
+
+  func _parseIntegerPart(self, ch: Char): Result<Int, JsonParseError> {
+    if !ch.isDigit() return Err(JsonParseError.UnexpectedEndOfNumber)
+
+    val integer = if ch == '0' {
+      0
+    } else {
+      var num = ch.asInt() - '0'.asInt()
+      while self._chars.peek() |next| {
+        if !next.isDigit() break
+        self._chars.next() // consume digit
+
+        num *= 10
+        num += (next.asInt() - '0'.asInt())
+      }
+      num
+    }
+
+    Ok(integer)
+  }
+
+  func _parseFracPart(self): Result<Float, JsonParseError> {
+    val initial = if self._chars.next() |ch| ch else return Err(JsonParseError.UnexpectedEndOfNumber)
+    if !initial.isDigit() return Err(JsonParseError.UnexpectedEndOfNumber)
+
+    var frac = initial.asInt() - '0'.asInt()
+    var pow = 1
+    while self._chars.peek() |next| {
+      if !next.isDigit() break
+      self._chars.next() // consume digit
+
+      pow += 1
+      frac *= 10
+      frac += (next.asInt() - '0'.asInt())
+    }
+
+    // FIXME(#516)
+    Result.Ok(frac / (10**pow))
+  }
+
+  func _parseExpPart(self): Result<Int, JsonParseError> {
+    var ch = if self._chars.next() |ch| ch else return Err(JsonParseError.UnexpectedEndOfNumber)
+    val expSign = if ch == '-' { -1 } else { 1 }
+    if ch == '-' || ch == '+' {
+      ch = if self._chars.next() |ch| ch else return Err(JsonParseError.UnexpectedEndOfNumber)
+    }
+
+    if !ch.isDigit() return Err(JsonParseError.UnexpectedEndOfNumber)
+
+    var exp = ch.asInt() - '0'.asInt()
+    while self._chars.peek() |next| {
+      if !next.isDigit() break
+      self._chars.next() // consume digit
+
+      exp *= 10
+      exp += (next.asInt() - '0'.asInt())
+    }
+
+    Ok(expSign * exp)
+  }
+
+  func _parseJsonNumber(self, initial: Char): Result<JsonValue, JsonParseError> {
+    self._chars.next() // Consume initial char (provided as a parameter)
+
+    val sign = if initial == '-' { -1 } else { 1 }
+    val ch = if initial == '-' {
+      if self._chars.next() |ch| ch else return Err(JsonParseError.UnexpectedEof)
+    } else {
+      initial
+    }
+
+    val integerPart = try self._parseIntegerPart(ch)
+
+    val float = match self._chars.peek() {
+      '.' => {
+        self._chars.next() // consume '.'
+        val fracPart = try self._parseFracPart()
+        integerPart + fracPart
+      }
+      'e' => integerPart.asFloat()
+      'E' => integerPart.asFloat()
+      _ => return Ok(JsonValue.Number(Either.Left(sign * integerPart)))
+    }
+
+    val res = match self._chars.peek() {
+      'e' => {
+        self._chars.next() // consume 'e'
+        val exp = try self._parseExpPart()
+        sign * float * (10**exp)
+      }
+      'E' => {
+        self._chars.next() // consume 'E'
+        val exp = try self._parseExpPart()
+        sign * float * (10**exp)
+      }
+      _ => sign * float
+    }
+
+    Ok(JsonValue.Number(Either.Right(res)))
+  }
+
+  func _parseIdent(self, ident: String): Bool {
+    self._chars.next() // consume first char
+
+    val expectedChars = ident.chars()
+    expectedChars.next() // skip first char, since we know it's correct
+
+    for ch in expectedChars {
+      if self._chars.peek() |peek| {
+        if peek != ch {
+          return false
+        }
+
+        self._chars.next() // consume next char
+      } else {
+        return false
+      }
+    }
+
+    self._skipWhitespace()
+
+    if self._chars.peek() |ch| {
+      if !(ch == ']' || ch == '}' || ch == ',') return false
+    }
+
+    true
+  }
+
+  func _parseJsonNull(self): Result<JsonValue, JsonParseError> =
+    if self._parseIdent("null") Ok(JsonValue.Null) else Err(JsonParseError.ValueExpected)
+
+  func _parseJsonTrue(self): Result<JsonValue, JsonParseError> =
+    if self._parseIdent("true") Ok(JsonValue.Boolean(true)) else Err(JsonParseError.ValueExpected)
+
+  func _parseJsonFalse(self): Result<JsonValue, JsonParseError> =
+    if self._parseIdent("false") Ok(JsonValue.Boolean(false)) else Err(JsonParseError.ValueExpected)
+
+  func _skipWhitespace(self) {
+    while self._chars.peek() |ch| {
+      if ch == ' ' || ch == '\n' || ch == '\r' || ch == '\t' {
+        self._chars.next() // consume ws
+      } else {
+        break
+      }
+    }
+  }
+}
+
+func charAsHexDigit(ch: Char): Int? {
+  if '0'.asInt() <= ch.asInt() && ch.asInt() <= '9'.asInt() return Some(ch.asInt() - '0'.asInt())
+  if 'a'.asInt() <= ch.asInt() && ch.asInt() <= 'f'.asInt() return Some(ch.asInt() - 'a'.asInt() + 10)
+  if 'A'.asInt() <= ch.asInt() && ch.asInt() <= 'F'.asInt() return Some(ch.asInt() - 'A'.asInt() + 10)
+
+  None
+}

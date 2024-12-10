@@ -803,6 +803,7 @@ const COMPILER_TESTS = [
   { test: "compiler/try.abra" },
   { test: "compiler/process.abra", args: ['-f', 'bar', '--baz', 'qux'], env: { FOO: 'bar' } },
   { test: "compiler/process_callstack.abra" },
+  { test: "compiler/json.abra" },
 ]
 
 async function main() {
