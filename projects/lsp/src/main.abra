@@ -1,18 +1,89 @@
 import "process" as process
-import "fs" as fs
+import log from "./log"
+import JsonParser from "json"
+import RequestMessage, NotificationMessage, ResponseMessage, ResponseError, ResponseErrorCode from "./lsp_spec"
+import "./handlers" as handlers
 
-val cwd = fs.getCurrentWorkingDirectory()
-val logFilePath = "$cwd/log.txt"
-val logFile = match fs.createFile(logFilePath, fs.AccessMode.WriteOnly) {
-  Ok(v) => v
-  Err(e) => {
-    println(e)
-    process.exit(1)
+val contentLengthHeader = "Content-Length: "
+val bogusMessageId = -999
+
+func processMessage(message: String): Result<ResponseMessage?, ResponseError> {
+  log.writeln("received message:")
+  log.writeln(message)
+
+  val msgJson = try JsonParser.parseString(message) else |e| return Err(ResponseError(code: ResponseErrorCode.ParseError, message: e.toString()))
+  val obj = try msgJson.asObject() else |e| return Err(ResponseError(code: ResponseErrorCode.ParseError, message: e.toString()))
+  val res = if obj.getNumber("id") {
+    val req = try RequestMessage.fromJson(msgJson) else |e| return Err(ResponseError(code: ResponseErrorCode.ParseError, message: e.toString()))
+    Some(handlers.handleRequest(req))
+  } else {
+    val notif = try NotificationMessage.fromJson(msgJson) else |e| return Err(ResponseError(code: ResponseErrorCode.ParseError, message: e.toString()))
+    handlers.handleNotification(notif)
+    None
+  }
+
+  Ok(res)
+}
+
+func sendResponse(res: ResponseMessage) {
+  val resJson = res.toJson()
+  val resJsonStr = resJson.encode()
+  val resLen = resJsonStr.length
+
+  val resMsg = "$contentLengthHeader$resLen\r\n\r\n$resJsonStr"
+
+  log.writeln("responded with:")
+  log.writeln(resMsg)
+  stdoutWrite(resMsg)
+}
+
+func main() {
+  val stdin = process.stdin()
+
+  var contentLength = 0
+  var seenLen = 0
+  var buf: String[] = []
+  while stdin.readAsString() |chunk| {
+    val input = if chunk.startsWith(contentLengthHeader) {
+      val chars = chunk.chars()
+      // skip content-length header
+      for _ in range(0, contentLengthHeader.length) chars.next()
+      var offset = contentLengthHeader.length
+
+      // parse content-length as integer (can assume ascii encoding)
+      contentLength = 0
+      while chars.next() |ch| {
+        if ch.isDigit() {
+          offset += 1
+          contentLength *= 10
+          contentLength += (ch.asInt() - '0'.asInt())
+        } else {
+          break
+        }
+      }
+      offset += 4 // skip over \r\n\r\n
+
+      chunk[offset:]
+    } else {
+      chunk
+    }
+
+    seenLen += input.length
+    buf.push(input)
+    if seenLen >= contentLength {
+      val message = buf.join()
+      contentLength = 0
+      seenLen = 0
+      buf = []
+      match processMessage(message) {
+        Ok(res) => if res |res| sendResponse(res)
+        Err(err) => {
+          log.writeln("sending error for bogus id: $err")
+          sendResponse(ResponseMessage.Error(id: bogusMessageId, error: err))
+        }
+      }
+    }
   }
 }
 
-val stdin = process.stdin()
-
-while stdin.readAsString() |str| {
-  logFile.writeln(str)
-}
+main()

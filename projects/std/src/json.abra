@@ -5,13 +5,142 @@ export enum JsonValue {
   Boolean(value: Bool)
   Array(items: JsonValue[])
   Object(obj: JsonObject)
+
+  func encode(self): String {
+    match self {
+      JsonValue.Null => "null"
+      JsonValue.Number(value) => match value {
+        Either.Left(int) => int.toString()
+        Either.Right(float) => float.toString()
+      }
+      JsonValue.String(value) => "\"$value\""
+      JsonValue.Boolean(value) => value.toString()
+      JsonValue.Array(items) => {
+        val itemStrs: String[] = Array.withCapacity(items.length)
+        for item in items {
+          itemStrs.push(item.encode())
+        }
+        "[${itemStrs.join(",")}]"
+      }
+      JsonValue.Object(obj) => {
+        val itemStrs: String[] = Array.withCapacity(obj._map.size)
+        for (k, v) in obj._map {
+          itemStrs.push("\"$k\": ${v.encode()}")
+        }
+        "{${itemStrs.join(",")}}"
+      }
+    }
+  }
+
+  func kind(self): JsonValueKind = match self {
+    JsonValue.Null => JsonValueKind.Null
+    JsonValue.Number => JsonValueKind.Number
+    JsonValue.String => JsonValueKind.String
+    JsonValue.Boolean => JsonValueKind.Boolean
+    JsonValue.Array => JsonValueKind.Array
+    JsonValue.Object => JsonValueKind.Object
+  }
+
+  func asNumber(self): Result<Either<Int, Float>, JsonError> = match self {
+    JsonValue.Number(v) => Ok(v)
+    else => Err(JsonError.TypeMismatch(expected: JsonValueKind.Number, actual: self.kind()))
+  }
+
+  func asString(self): Result<String, JsonError> = match self {
+    JsonValue.String(v) => Ok(v)
+    else => Err(JsonError.TypeMismatch(expected: JsonValueKind.String, actual: self.kind()))
+  }
+
+  func asBoolean(self): Result<Bool, JsonError> = match self {
+    JsonValue.Boolean(v) => Ok(v)
+    else => Err(JsonError.TypeMismatch(expected: JsonValueKind.Boolean, actual: self.kind()))
+  }
+
+  func asArray(self): Result<JsonValue[], JsonError> = match self {
+    JsonValue.Array(v) => Ok(v)
+    else => Err(JsonError.TypeMismatch(expected: JsonValueKind.Array, actual: self.kind()))
+  }
+
+  func asObject(self): Result<JsonObject, JsonError> = match self {
+    JsonValue.Object(v) => Ok(v)
+    else => Err(JsonError.TypeMismatch(expected: JsonValueKind.Object, actual: self.kind()))
+  }
+}
+
+export enum JsonError {
+  TypeMismatch(expected: JsonValueKind, actual: JsonValueKind)
+  NoSuchKey(key: String)
 }
 
 export type JsonObject {
-  map: Map<String, JsonValue> = {}
+  _map: Map<String, JsonValue> = {}
+
+  func set(self, key: String, value: JsonValue) {
+    self._map[key] = value
+  }
+
+  func getValue(self, key: String): JsonValue? = self._map[key]
+
+  func getNumberRequired(self, key: String): Result<Either<Int, Float>, JsonError> {
+    match self._map[key] {
+      None => Err(JsonError.NoSuchKey(key))
+      JsonValue.Number(v) => Ok(v)
+      else v => Err(JsonError.TypeMismatch(expected: JsonValueKind.Number, actual: v.kind()))
+    }
+  }
+
+  func getNumber(self, key: String): Either<Int, Float>? =
+    match self.getNumberRequired(key) { Ok(v) => Some(v), Err => None }
+
+  func getStringRequired(self, key: String): Result<String, JsonError> {
+    match self._map[key] {
+      None => Err(JsonError.NoSuchKey(key))
+      JsonValue.String(v) => Ok(v)
+      else v => Err(JsonError.TypeMismatch(expected: JsonValueKind.String, actual: v.kind()))
+    }
+  }
+
+  func getString(self, key: String): String? =
+    match self.getStringRequired(key) { Ok(v) => Some(v), Err => None }
+
+  func getBooleanRequired(self, key: String): Result<Bool, JsonError> {
+    match self._map[key] {
+      None => Err(JsonError.NoSuchKey(key))
+      JsonValue.Boolean(v) => Ok(v)
+      else v => Err(JsonError.TypeMismatch(expected: JsonValueKind.Boolean, actual: v.kind()))
+    }
+  }
+
+  func getArrayRequired(self, key: String): Result<JsonValue[], JsonError> {
+    match self._map[key] {
+      None => Err(JsonError.NoSuchKey(key))
+      JsonValue.Array(v) => Ok(v)
+      else v => Err(JsonError.TypeMismatch(expected: JsonValueKind.Array, actual: v.kind()))
+    }
+  }
+
+  func getObjectRequired(self, key: String): Result<JsonObject, JsonError> {
+    match self._map[key] {
+      None => Err(JsonError.NoSuchKey(key))
+      JsonValue.Object(v) => Ok(v)
+      else v => Err(JsonError.TypeMismatch(expected: JsonValueKind.Object, actual: v.kind()))
+    }
+  }
+
+  func getObject(self, key: String): JsonObject? =
+    match self.getObjectRequired(key) { Ok(v) => Some(v), Err => None }
 }
 
-enum JsonParseError {
+export enum JsonValueKind {
+  Null
+  Number
+  String
+  Boolean
+  Array
+  Object
+}
+
+export enum JsonParseError {
   UnterminatedString
   InvalidCharacterInString
   UnexpectedEndOfNumber
@@ -133,7 +262,7 @@ export type JsonParser {
 
       val value = try self._parseJsonValue()
 
-      obj.map[key] = value
+      obj._map[key] = value
 
       if self._chars.peek() |peekChar| {
         if peekChar == ',' {

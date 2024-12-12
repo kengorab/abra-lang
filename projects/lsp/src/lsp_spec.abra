@@ -1,0 +1,164 @@
+import log from "./log"
+import JsonValue, JsonError, JsonObject from "json"
+
+export enum RequestMessage {
+  Initialize(id: Int, processId: Int?, rootPath: String?)
+
+  func fromJson(json: JsonValue): Result<RequestMessage, JsonError> {
+    val obj = try json.asObject()
+    val id = match try obj.getNumberRequired("id") {
+      Either.Left(int) => int
+      Either.Right(float) => float.asInt()
+    }
+    val method = try obj.getStringRequired("method")
+    val params = obj.getObject("params")
+
+    match method {
+      "initialize" => {
+        val params = try obj.getObjectRequired("params")
+        val processId = match params.getNumber("processId") {
+          None => None
+          Either.Left(int) => Some(int)
+          Either.Right(float) => Some(float.asInt())
+        }
+        val rootPath = params.getString("rootPath")
+
+        Ok(RequestMessage.Initialize(id: id, processId: processId, rootPath: rootPath))
+      }
+      else => {
+        log.writeln("Error: Unimplemented RequestMessage method '$method'")
+        todo("[RequestMessage.fromJson]: method='$method'")
+      }
+    }
+  }
+}
+
+export enum NotificationMessage {
+  Initialized
+
+  func fromJson(json: JsonValue): Result<NotificationMessage, JsonError> {
+    val obj = try json.asObject()
+    val method = try obj.getStringRequired("method")
+
+    match method {
+      "initialized" => Ok(NotificationMessage.Initialized)
+      else => {
+        log.writeln("Error: Unimplemented NotificationMessage method '$method'")
+        todo("[NotificationMessage.fromJson]: method='$method'")
+      }
+    }
+  }
+}
+
+export enum ResponseMessage {
+  Success(id: Int, result: ResponseResult?)
+  Error(id: Int, error: ResponseError)
+
+  func toJson(self): JsonValue {
+    val obj = JsonObject()
+
+    match self {
+      ResponseMessage.Success(id, result) => {
+        obj.set("id", JsonValue.Number(Either.Left(id)))
+        obj.set("result", result?.toJson() ?: JsonValue.Null)
+      }
+      ResponseMessage.Error(id, error) => {
+        obj.set("id", JsonValue.Number(Either.Left(id)))
+      }
+    }
+
+    JsonValue.Object(obj)
+  }
+}
+
+export enum ResponseResult {
+  Initialize(capabilities: ServerCapabilities, serverInfo: ServerInfo)
+
+  func toJson(self): JsonValue {
+    val obj = JsonObject()
+
+    match self {
+      ResponseResult.Initialize(capabilities, serverInfo) => {
+        obj.set("capabilities", capabilities.toJson())
+        obj.set("serverInfo", serverInfo.toJson())
+      }
+    }
+
+    JsonValue.Object(obj)
+  }
+}
+
+export type ResponseError {
+  code: ResponseErrorCode
+  message: String
+}
+
+export enum ResponseErrorCode {
+  ParseError
+  InvalidRequest
+  MethodNotFound
+  InvalidParams
+  InternalError
+  ServerNotInitialized
+  Unknown
+  RequestFailed
+  ServerCancelled
+  ContentModified
+  RequestCancelled
+
+  func intVal(self): Int = match self {
+    ResponseErrorCode.ParseError => -32700
+    ResponseErrorCode.InvalidRequest => -32600
+    ResponseErrorCode.MethodNotFound => -32601
+    ResponseErrorCode.InvalidParams => -32602
+    ResponseErrorCode.InternalError => -32603
+    ResponseErrorCode.ServerNotInitialized => -32002
+    ResponseErrorCode.Unknown => -32001
+    ResponseErrorCode.RequestFailed => -32803
+    ResponseErrorCode.ServerCancelled => -32802
+    ResponseErrorCode.ContentModified => -32801
+    ResponseErrorCode.RequestCancelled => -32800
+  }
+}
+
+export type ServerCapabilities {
+  textDocumentSync: TextDocumentSyncKind? = None
+
+  func toJson(self): JsonValue {
+    val obj = JsonObject()
+
+    if self.textDocumentSync |tds| {
+      obj.set("textDocumentSync", JsonValue.Number(Either.Left(tds.intVal())))
+    }
+
+    JsonValue.Object(obj)
+  }
+}
+
+export enum TextDocumentSyncKind {
+  None_
+  Full
+  Incremental
+
+  func intVal(self): Int = match self {
+    TextDocumentSyncKind.None_ => 0
+    TextDocumentSyncKind.Full => 1
+    TextDocumentSyncKind.Incremental => 2
+  }
+}
+
+export type ServerInfo {
+  name: String
+  version: String? = None
+
+  func toJson(self): JsonValue {
+    val obj = JsonObject()
+
+    obj.set("name", JsonValue.String(self.name))
+    if self.version |version| {
+      obj.set("version", JsonValue.String(version))
+    }
+
+    JsonValue.Object(obj)
+  }
+}

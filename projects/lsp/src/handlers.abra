@@ -1,0 +1,25 @@
+import RequestMessage, NotificationMessage, ResponseMessage, ResponseResult, ServerCapabilities, TextDocumentSyncKind, ServerInfo from "./lsp_spec"
+
+export func handleRequest(req: RequestMessage): ResponseMessage {
+  match req {
+    RequestMessage.Initialize(id, _, _) => {
+      val result = ResponseResult.Initialize(
+        capabilities: ServerCapabilities(
+          textDocumentSync: Some(TextDocumentSyncKind.Full),
+        ),
+        serverInfo: ServerInfo(
+          name: "abra-lsp",
+          version: Some("0.0.1")
+        )
+      )
+
+      ResponseMessage.Success(id: id, result: Some(result))
+    }
+  }
+}
+
+export func handleNotification(req: NotificationMessage) {
+  match req {
+    NotificationMessage.Initialized => {}
+  }
+}
