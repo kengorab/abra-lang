@@ -4,7 +4,7 @@ import JsonValue, JsonError, JsonObject from "json"
 export enum RequestMessage {
   Initialize(id: Int, processId: Int?, rootPath: String?)
 
-  func fromJson(json: JsonValue): Result<RequestMessage, JsonError> {
+  func fromJson(json: JsonValue): Result<RequestMessage?, JsonError> {
     val obj = try json.asObject()
     val id = match try obj.getNumberRequired("id") {
       Either.Left(int) => int
@@ -23,28 +23,76 @@ export enum RequestMessage {
         }
         val rootPath = params.getString("rootPath")
 
-        Ok(RequestMessage.Initialize(id: id, processId: processId, rootPath: rootPath))
+        Ok(Some(RequestMessage.Initialize(id: id, processId: processId, rootPath: rootPath)))
       }
       else => {
         log.writeln("Error: Unimplemented RequestMessage method '$method'")
-        todo("[RequestMessage.fromJson]: method='$method'")
+
+        Ok(None)
       }
     }
   }
 }
 
 export enum NotificationMessage {
+  // Incoming notifications
   Initialized
+  TextDocumentDidOpen(textDocument: TextDocumentItem)
+  // Omitted field `contentChanges`: the first iteration of the LSP will just re-read the changed files
+  // from disk upon change and will not reconstruct the file using deltas; the `textDocumentSyncKind`
+  // is set to Incremental in the server capabilities to reduce jsonrpc message size.
+  TextDocumentDidChange(textDocument: VersionedTextDocumentIdentifier, contentChanges: TextDocumentContentChangeEvent[])
 
-  func fromJson(json: JsonValue): Result<NotificationMessage, JsonError> {
+  // Outgoing notifications
+  TextDocumentPublishDiagnostics(uri: String, diagnostics: Diagnostic[])
+
+  func fromJson(json: JsonValue): Result<NotificationMessage?, JsonError> {
     val obj = try json.asObject()
     val method = try obj.getStringRequired("method")
 
     match method {
-      "initialized" => Ok(NotificationMessage.Initialized)
+      "initialized" => Ok(Some(NotificationMessage.Initialized))
+      "textDocument/didOpen" => {
+        val params = try obj.getObjectRequired("params")
+        val textDocumentObj = try params.getValueRequired("textDocument")
+        val textDocument = try TextDocumentItem.fromJson(textDocumentObj)
+
+        Ok(Some(NotificationMessage.TextDocumentDidOpen(textDocument: textDocument)))
+      }
+      "textDocument/didChange" => {
+        val params = try obj.getObjectRequired("params")
+        val textDocumentObj = try params.getValueRequired("textDocument")
+        val textDocument = try VersionedTextDocumentIdentifier.fromJson(textDocumentObj)
+
+        val contentChanges: TextDocumentContentChangeEvent[] = []
+        val contentChangesArr = try params.getArrayRequired("contentChanges")
+        for item in contentChangesArr {
+          contentChanges.push(try TextDocumentContentChangeEvent.fromJson(item))
+        }
+
+        Ok(Some(NotificationMessage.TextDocumentDidChange(textDocument: textDocument, contentChanges: contentChanges)))
+      }
       else => {
-        log.writeln("Error: Unimplemented NotificationMessage method '$method'")
-        todo("[NotificationMessage.fromJson]: method='$method'")
+        log.writeln("Unimplemented NotificationMessage method '$method'")
+
+        Ok(None)
+      }
+    }
+  }
+
+  func toJson(self): JsonValue {
+    match self {
+      NotificationMessage.Initialized => unreachable("should not be serializing 'initialized' notification")
+      NotificationMessage.TextDocumentDidOpen => unreachable("should not be serializing 'textDocument/didOpen' notification")
+      NotificationMessage.TextDocumentDidChange => unreachable("should not be serializing 'textDocument/didChange' notification")
+      NotificationMessage.TextDocumentPublishDiagnostics(uri, diagnostics) => {
+        JsonValue.Object(JsonObject(_map: {
+          method: JsonValue.String("textDocument/publishDiagnostics"),
+          params: JsonValue.Object(JsonObject(_map: {
+            uri: JsonValue.String(uri),
+            diagnostics: JsonValue.Array(diagnostics.map(d => d.toJson()))
+          }))
+        }))
       }
     }
   }
@@ -64,6 +112,7 @@ export enum ResponseMessage {
       }
       ResponseMessage.Error(id, error) => {
         obj.set("id", JsonValue.Number(Either.Left(id)))
+        obj.set("error", error.toJson())
       }
     }
 
@@ -91,6 +140,15 @@ export enum ResponseResult {
 export type ResponseError {
   code: ResponseErrorCode
   message: String
+
+  func toJson(self): JsonValue {
+    val obj = JsonObject()
+
+    obj.set("code", JsonValue.Number(Either.Left(self.code.intVal())))
+    obj.set("message", JsonValue.String(self.message))
+
+    JsonValue.Object(obj)
+  }
 }
 
 export enum ResponseErrorCode {
@@ -123,12 +181,17 @@ export enum ResponseErrorCode {
 
 export type ServerCapabilities {
   textDocumentSync: TextDocumentSyncKind? = None
+  diagnosticProvider: DiagnosticOptions? = None
 
   func toJson(self): JsonValue {
     val obj = JsonObject()
 
     if self.textDocumentSync |tds| {
       obj.set("textDocumentSync", JsonValue.Number(Either.Left(tds.intVal())))
+    }
+
+    if self.diagnosticProvider |dp| {
+      obj.set("diagnosticProvider", dp.toJson())
     }
 
     JsonValue.Object(obj)
@@ -147,6 +210,16 @@ export enum TextDocumentSyncKind {
   }
 }
 
+export type DiagnosticOptions {
+  interFileDependencies: Bool
+  workspaceDiagnostics: Bool
+
+  func toJson(self): JsonValue = JsonValue.Object(JsonObject(_map: {
+    interFileDependencies: JsonValue.Boolean(self.interFileDependencies),
+    workspaceDiagnostics: JsonValue.Boolean(self.workspaceDiagnostics),
+  }))
+}
+
 export type ServerInfo {
   name: String
   version: String? = None
@@ -160,5 +233,103 @@ export type ServerInfo {
     }
 
     JsonValue.Object(obj)
+  }
+}
+
+export type TextDocumentItem {
+  uri: String
+  languageId: String
+  version: Int
+  text: String
+
+  func fromJson(json: JsonValue): Result<TextDocumentItem, JsonError> {
+    val obj = try json.asObject()
+    val uri = try obj.getStringRequired("uri")
+    val languageId = try obj.getStringRequired("languageId")
+    val version = match try obj.getNumberRequired("version") {
+      Either.Left(int) => int
+      Either.Right(float) => float.asInt()
+    }
+    val text = try obj.getStringRequired("text")
+
+    Ok(TextDocumentItem(uri: uri, languageId: languageId, version: version, text: text))
+  }
+}
+
+export type VersionedTextDocumentIdentifier {
+  uri: String
+  version: Int
+
+  func fromJson(json: JsonValue): Result<VersionedTextDocumentIdentifier, JsonError> {
+    val obj = try json.asObject()
+    val uri = try obj.getStringRequired("uri")
+    val version = match try obj.getNumberRequired("version") {
+      Either.Left(int) => int
+      Either.Right(float) => float.asInt()
+    }
+
+    Ok(VersionedTextDocumentIdentifier(uri: uri, version: version))
+  }
+}
+
+export enum TextDocumentContentChangeEvent {
+  Incremental(
+    range: ((Int, Int), (Int, Int)), // (line: Int, character: Int), zero-based
+    text: String
+  )
+  Full(text: String)
+
+  func fromJson(json: JsonValue): Result<TextDocumentContentChangeEvent, JsonError> {
+    val obj = try json.asObject()
+    if obj.getObject("range") |range| {
+      todo("parsing TextDocumentContentChangeEvent.Incremental")
+    } else {
+      val text = try obj.getStringRequired("text")
+
+      Ok(TextDocumentContentChangeEvent.Full(text: text))
+    }
+  }
+}
+
+export type Diagnostic {
+  range: ((Int, Int), (Int, Int)) // (line: Int, character: Int), zero-based
+  severity: DiagnosticSeverity? = None
+  message: String
+
+  func toJson(self): JsonValue {
+    val obj = JsonObject()
+
+    obj.set("range", JsonValue.Object(JsonObject(_map: {
+      start: JsonValue.Object(JsonObject(_map: {
+        line: JsonValue.Number(Either.Left(self.range[0][0])),
+        character: JsonValue.Number(Either.Left(self.range[0][1])),
+      })),
+      end: JsonValue.Object(JsonObject(_map: {
+        line: JsonValue.Number(Either.Left(self.range[1][0])),
+        character: JsonValue.Number(Either.Left(self.range[1][1])),
+      }))
+    })))
+
+    if self.severity |severity| {
+      obj.set("severity", JsonValue.Number(Either.Left(severity.intVal())))
+    }
+
+    obj.set("message", JsonValue.String(self.message))
+
+    JsonValue.Object(obj)
+  }
+}
+
+export enum DiagnosticSeverity {
+  Error
+  Warning
+  Information
+  Hint
+
+  func intVal(self): Int = match self {
+    DiagnosticSeverity.Error => 1
+    DiagnosticSeverity.Warning => 2
+    DiagnosticSeverity.Information => 3
+    DiagnosticSeverity.Hint => 4
   }
 }

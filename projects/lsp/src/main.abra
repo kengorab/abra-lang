@@ -2,42 +2,39 @@ import "process" as process
 import log from "./log"
 import JsonParser from "json"
 import RequestMessage, NotificationMessage, ResponseMessage, ResponseError, ResponseErrorCode from "./lsp_spec"
-import "./handlers" as handlers
+import AbraLanguageService, contentLengthHeader, bogusMessageId from "./language_service"
 
-val contentLengthHeader = "Content-Length: "
-val bogusMessageId = -999
-
-func processMessage(message: String): Result<ResponseMessage?, ResponseError> {
+func processMessage(lsp: AbraLanguageService, message: String): Result<ResponseMessage?, ResponseError> {
   log.writeln("received message:")
   log.writeln(message)
 
   val msgJson = try JsonParser.parseString(message) else |e| return Err(ResponseError(code: ResponseErrorCode.ParseError, message: e.toString()))
   val obj = try msgJson.asObject() else |e| return Err(ResponseError(code: ResponseErrorCode.ParseError, message: e.toString()))
-  val res = if obj.getNumber("id") {
-    val req = try RequestMessage.fromJson(msgJson) else |e| return Err(ResponseError(code: ResponseErrorCode.ParseError, message: e.toString()))
-    Some(handlers.handleRequest(req))
+  val res = if obj.getNumber("id") |idVal| {
+    val id = match idVal { Either.Left(int) => int, Either.Right(float) => float.asInt() }
+
+    val reqOpt = try RequestMessage.fromJson(msgJson) else |e| return Err(ResponseError(code: ResponseErrorCode.ParseError, message: e.toString()))
+    if reqOpt |req| {
+      Some(lsp.handleRequest(req))
+    } else {
+      val error = ResponseError(code: ResponseErrorCode.MethodNotFound, message: "Request method not implemented")
+      Some(ResponseMessage.Error(id: id, error: error))
+    }
   } else {
-    val notif = try NotificationMessage.fromJson(msgJson) else |e| return Err(ResponseError(code: ResponseErrorCode.ParseError, message: e.toString()))
-    handlers.handleNotification(notif)
+    val notifOpt = try NotificationMessage.fromJson(msgJson) else |e| return Err(ResponseError(code: ResponseErrorCode.ParseError, message: e.toString()))
+    if notifOpt |notif| {
+      lsp.handleNotification(notif)
+    }
+
     None
   }
 
   Ok(res)
 }
 
-func sendResponse(res: ResponseMessage) {
-  val resJson = res.toJson()
-  val resJsonStr = resJson.encode()
-  val resLen = resJsonStr.length
-
-  val resMsg = "$contentLengthHeader$resLen\r\n\r\n$resJsonStr"
-
-  log.writeln("responded with:")
-  log.writeln(resMsg)
-  stdoutWrite(resMsg)
-}
-
 func main() {
+  val lsp = AbraLanguageService()
+
   val stdin = process.stdin()
 
   var contentLength = 0
@@ -75,11 +72,11 @@ func main() {
       contentLength = 0
       seenLen = 0
       buf = []
-      match processMessage(message) {
-        Ok(res) => if res |res| sendResponse(res)
+      match processMessage(lsp, message) {
+        Ok(res) => if res |res| lsp.sendResponse(res)
         Err(err) => {
           log.writeln("sending error for bogus id: $err")
-          sendResponse(ResponseMessage.Error(id: bogusMessageId, error: err))
+          lsp.sendResponse(ResponseMessage.Error(id: bogusMessageId, error: err))
         }
       }
     }

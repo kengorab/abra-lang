@@ -12,6 +12,9 @@ enum TokenizeAndParseError {
 export type ModuleLoader {
   stdRoot: String
   parsedModules: Map<String, ParsedModule> = {}
+  documentStore: Map<String, String> = {}
+  useDocumentStore: Bool = false
+  _invalidated: Map<String, Bool> = {}
 
   func resolvePath(self, modulePath: String, relativeTo: String?): String {
     if relativeTo |relativeTo| {
@@ -24,24 +27,45 @@ export type ModuleLoader {
 
   func hasSeenModule(self, modulePathAbs: String): Bool = self.parsedModules.containsKey(modulePathAbs)
 
-  func tokenizeAndParse(self, modulePath: String): Result<ParsedModule, TokenizeAndParseError> {
-    if self.parsedModules[modulePath] |m| return Ok(m)
+  func invalidateModule(self, modulePathAbs: String) {
+    self._invalidated[modulePathAbs] = true
+  }
 
-    val parsedModule = match fs.readFile(modulePath) {
-      Ok(contents) => {
-        val m = match Lexer.tokenize(contents) {
-          Ok(tokens) => {
-            val m = match Parser.parse(tokens) {
-              Ok(parsedModule) => parsedModule
-              Err(error) => return Err(TokenizeAndParseError.ParseError(error))
-            }
-            m
+  func _loadFileContents(self, modulePathAbs: String): String? {
+    if self.useDocumentStore {
+      val inMemContents = self.documentStore[modulePathAbs]
+      if inMemContents return inMemContents
+    }
+
+    match fs.readFile(modulePathAbs) {
+      Ok(contents) => Some(contents)
+      Err => None
+    }
+  }
+
+  func tokenizeAndParse(self, modulePath: String): Result<ParsedModule, TokenizeAndParseError> {
+    if self.parsedModules[modulePath] |m| {
+      val invalidated = self._invalidated[modulePath] ?: false
+      if !invalidated return Ok(m)
+    }
+
+    val parsedModule = if self._loadFileContents(modulePath) |contents| { //match fs.readFile(modulePath) {
+      // Ok(contents) => {
+      match Lexer.tokenize(contents) {
+        Ok(tokens) => {
+          val module = match Parser.parse(tokens) {
+            Ok(parsedModule) => parsedModule
+            Err(error) => return Err(TokenizeAndParseError.ParseError(error))
           }
-          Err(error) => return Err(TokenizeAndParseError.LexerError(error))
+
+          self._invalidated[modulePath] = false
+
+          module
         }
-        m
+        Err(error) => return Err(TokenizeAndParseError.LexerError(error))
       }
-      Err(e) => return Err(TokenizeAndParseError.ReadFileError(modulePath))
+    } else {
+      return Err(TokenizeAndParseError.ReadFileError(modulePath))
     }
     self.parsedModules[modulePath] = parsedModule
 
@@ -827,7 +851,7 @@ type TypecheckerError {
   }
 }
 
-enum TypecheckerErrorKind {
+export enum TypecheckerErrorKind {
   ReadFileError(path: String)
   LexerError(inner: LexerError)
   ParseError(inner: ParseError)
