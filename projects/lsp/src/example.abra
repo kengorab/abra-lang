@@ -1,0 +1,47 @@
+import "process" as process
+import "fs" as fs
+import "json" as json
+import "./lsp_spec" as lsp
+
+val cwd = fs.getCurrentWorkingDirectory()
+val file = match fs.readFile("$cwd/message.json") {
+  Ok(v) => v
+  Err(e) => {
+    println(e)
+    process.exit(1)
+  }
+}
+
+val jsonValue = match json.JsonParser.parseString(file) {
+  Ok(v) => v
+  Err(e) => {
+    println(e)
+    process.exit(1)
+  }
+}
+
+val message = match lsp.RequestMessage.fromJson(jsonValue) {
+  Ok(v) => v
+  Err(e) => {
+    println(e)
+    process.exit(1)
+  }
+}
+
+println(message)
+
+val msg = lsp.ResponseMessage.Success(
+  id: 0,
+  result: Some(lsp.ResponseResult.Initialize(
+    capabilities: lsp.ServerCapabilities(
+      textDocumentSync: Some(lsp.TextDocumentSyncKind.Full),
+    ),
+    serverInfo: lsp.ServerInfo(
+      name: "abra-lsp",
+      version: Some("0.0.1")
+    )
+  ))
+)
+val msgJson = msg.toJson()
+println(msgJson)
+println(msgJson.encode())

@@ -89,19 +89,19 @@ import JsonParser from "json"
   println(JsonParser.parseString("[ 0 ]"))
   /// Expect: Result.Ok(value: JsonValue.Array(items: [JsonValue.Array(items: [JsonValue.String(value: "hello")])]))
   println(JsonParser.parseString("[[\"hello\"]]"))
-  /// Expect: Result.Ok(value: JsonValue.Array(items: [JsonValue.Object(obj: JsonObject(map: { foo: JsonValue.Number(value: Either.Left(left: 1)) }))]))
+  /// Expect: Result.Ok(value: JsonValue.Array(items: [JsonValue.Object(obj: JsonObject(_map: { foo: JsonValue.Number(value: Either.Left(left: 1)) }))]))
   println(JsonParser.parseString("[{\"foo\": 1}]"))
 })()
 
 // Testing object values
 (() => {
-  /// Expect: Result.Ok(value: JsonValue.Object(obj: JsonObject(map: {})))
+  /// Expect: Result.Ok(value: JsonValue.Object(obj: JsonObject(_map: {})))
   println(JsonParser.parseString("{}"))
-  /// Expect: Result.Ok(value: JsonValue.Object(obj: JsonObject(map: { foo: JsonValue.Number(value: Either.Left(left: 1)) })))
+  /// Expect: Result.Ok(value: JsonValue.Object(obj: JsonObject(_map: { foo: JsonValue.Number(value: Either.Left(left: 1)) })))
   println(JsonParser.parseString("{\"foo\": 1}"))
-  /// Expect: Result.Ok(value: JsonValue.Object(obj: JsonObject(map: { bar: JsonValue.Array(items: [JsonValue.String(value: "baz")]), foo: JsonValue.Number(value: Either.Left(left: 1)) })))
+  /// Expect: Result.Ok(value: JsonValue.Object(obj: JsonObject(_map: { bar: JsonValue.Array(items: [JsonValue.String(value: "baz")]), foo: JsonValue.Number(value: Either.Left(left: 1)) })))
   println(JsonParser.parseString("{ \"foo\" : 1 , \"bar\": [\"baz\"]}"))
-  /// Expect: Result.Ok(value: "JsonValue.Object(obj: JsonObject(map: { fo\no: JsonValue.Number(value: Either.Left(left: 1)) }))")
+  /// Expect: Result.Ok(value: "JsonValue.Object(obj: JsonObject(_map: { fo\no: JsonValue.Number(value: Either.Left(left: 1)) }))")
   println(JsonParser.parseString("{\"fo\\no\": 1}").map(v => v.toString().replaceAll("\n", "\\n")))
 })()
 

@@ -1,0 +1,153 @@
+import "fs" as fs
+import "process" as process
+import JsonValue from "json"
+import log from "./log"
+import ModuleLoader, Project, Typechecker, TypecheckerErrorKind from "../../compiler/src/typechecker"
+import RequestMessage, NotificationMessage, ResponseMessage, ResponseResult, ResponseError, ResponseErrorCode, ServerCapabilities, TextDocumentSyncKind, ServerInfo, TextDocumentItem, VersionedTextDocumentIdentifier, TextDocumentContentChangeEvent, Diagnostic, DiagnosticSeverity from "./lsp_spec"
+
+export val contentLengthHeader = "Content-Length: "
+export val bogusMessageId = -999
+
+val abraStdRoot = if process.getEnvVar("ABRA_HOME") |v| v else {
+  println("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
+  process.exit(1)
+}
+
+val moduleLoader = ModuleLoader(stdRoot: abraStdRoot, useDocumentStore: true)
+val documentStore = moduleLoader.documentStore
+val project = Project()
+val typechecker = Typechecker(moduleLoader: moduleLoader, project: project)
+
+export type AbraLanguageService {
+  initialized: Bool = false
+  root: String = ""
+
+  // Request Message handlers
+
+  func _initialize(self, id: Int, processId: Int?, rootPath: String?): ResponseMessage {
+    self.root = if rootPath |p| p else return internalError(id, "rootPath required")
+    self.initialized = true
+
+    val result = ResponseResult.Initialize(
+      capabilities: ServerCapabilities(textDocumentSync: Some(TextDocumentSyncKind.Full)),
+      serverInfo: ServerInfo(name: "abra-lsp", version: Some("0.0.1"))
+    )
+    ResponseMessage.Success(id: id, result: Some(result))
+  }
+
+  // Notification handlers
+
+  func _textDocumentDidOpen(self, textDocument: TextDocumentItem) {
+    val diagnostics = self._runTypecheckerStartingAtUri(textDocument.uri)
+    if !diagnostics.isEmpty() {
+      val notif = NotificationMessage.TextDocumentPublishDiagnostics(uri: textDocument.uri, diagnostics: diagnostics)
+      self.sendNotification(notif)
+    }
+  }
+
+  func _textDocumentDidChange(self, textDocument: VersionedTextDocumentIdentifier, contentChanges: TextDocumentContentChangeEvent[]) {
+    if contentChanges.isEmpty() return
+
+    val filePath = textDocument.uri.replaceAll("file://", "")
+    for changeEvent in contentChanges {
+      match changeEvent {
+        TextDocumentContentChangeEvent.Incremental => todo("TextDocumentContentChangeEvent.Incremental")
+        TextDocumentContentChangeEvent.Full(text) => {
+          documentStore[filePath] = text
+        }
+      }
+    }
+    moduleLoader.invalidateModule(filePath)
+
+    val diagnostics = self._runTypecheckerStartingAtUri(textDocument.uri)
+    if !diagnostics.isEmpty() {
+      val notif = NotificationMessage.TextDocumentPublishDiagnostics(uri: textDocument.uri, diagnostics: diagnostics)
+      self.sendNotification(notif)
+    }
+  }
+
+  // Compiler bridge
+
+  func _runTypecheckerStartingAtUri(self, uri: String): Diagnostic[] {
+    // todo: what happens if it's not a `file://` uri?
+    val filePath = uri.replaceAll("file://", "")
+
+    match typechecker.typecheckEntrypoint(filePath) {
+      Ok => []
+      Err(e) => {
+        val (position, message) = match e.kind {
+          TypecheckerErrorKind.ReadFileError => unreachable("could not read file '$filePath'")
+          TypecheckerErrorKind.LexerError(inner) => {
+            val contents = match fs.readFile(e.modulePath) {
+              Ok(v) => v
+              Err => unreachable("Could not read file '${e.modulePath}'")
+            }
+            val msg = inner.getMessage(e.modulePath, contents)
+            (inner.position, msg)
+          }
+          TypecheckerErrorKind.ParseError(inner) => {
+            val contents = match fs.readFile(e.modulePath) {
+              Ok(v) => v
+              Err => unreachable("Could not read file '${e.modulePath}'")
+            }
+            val msg = inner.getMessage(e.modulePath, contents)
+            (inner.position, msg)
+          }
+          TypecheckerErrorKind.TypeError(inner) => {
+            val contents = match fs.readFile(e.modulePath) {
+              Ok(v) => v
+              Err => unreachable("Could not read file '${e.modulePath}'")
+            }
+            val msg = inner.getMessage(e.modulePath, contents)
+            (inner.position, msg)
+          }
+        }
+
+        val range = ((position.line - 1, position.col - 1), (position.line - 1, position.col))
+        val diagnostic = Diagnostic(
+          range: range,
+          severity: Some(DiagnosticSeverity.Error),
+          message: message.replaceAll("\n", "\\n").replaceAll("\"", "\\\""),
+        )
+        [diagnostic]
+      }
+    }
+  }
+
+  // Dispatch
+
+  func handleRequest(self, req: RequestMessage): ResponseMessage {
+    match req {
+      RequestMessage.Initialize(id, processId, rootPath) => self._initialize(id, processId, rootPath)
+    }
+  }
+
+  func handleNotification(self, req: NotificationMessage) {
+    match req {
+      NotificationMessage.Initialized => { /* no-op */ }
+      NotificationMessage.TextDocumentDidOpen(textDocument) => self._textDocumentDidOpen(textDocument)
+      NotificationMessage.TextDocumentDidChange(textDocument, contentChanges) => self._textDocumentDidChange(textDocument, contentChanges)
+    }
+  }
+
+  func sendResponse(self, res: ResponseMessage) {
+    self._sendJson(res.toJson())
+  }
+
+  func sendNotification(self, notif: NotificationMessage) {
+    self._sendJson(notif.toJson())
+  }
+
+  func _sendJson(self, jsonValue: JsonValue) {
+    val resJsonStr = jsonValue.encode()
+    val resLen = resJsonStr.length
+
+    val resMsg = "$contentLengthHeader$resLen\r\n\r\n$resJsonStr"
+
+    log.writeln("sent:")
+    log.writeln(resMsg)
+    stdoutWrite(resMsg)
+  }
+}
+
+func internalError(id: Int, message: String): ResponseMessage = ResponseMessage.Error(id: id, error: ResponseError(code: ResponseErrorCode.InternalError, message: message))
