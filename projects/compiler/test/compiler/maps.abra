@@ -1,6 +1,5 @@
 // Test raw construction of map
-// (() => {
-func test_mapRawConstruction() {
+(() => {
   val m0: Map<Int, String> = Map.new()
   /// Expect: {}
   println(m0)
@@ -22,13 +21,10 @@ func test_mapRawConstruction() {
   m3.insert(m3._capacity + 1, "world")
   /// Expect: { 1: hello, 17: world }
   println(m3)
-// })()
-}
-test_mapRawConstruction()
+})()
 
 // Test map literal construction
-// (() => {
-func test_mapLiteralConstruction() {
+(() => {
   val m0: Map<Int, String> = {}
   /// Expect: {}
   println(m0)
@@ -45,13 +41,10 @@ func test_mapLiteralConstruction() {
   val m3 = { (1): "hello", (17): "world" }
   /// Expect: { 1: hello, 17: world }
   println(m3)
-// })()
-}
-test_mapLiteralConstruction()
+})()
 
 // == operator (also Map#eq)
-// (() => {
-func test_mapEq() {
+(() => {
   val map = { a: "abc", b: "def" }
 
   /// Expect: true
@@ -73,26 +66,20 @@ func test_mapEq() {
 //   println(map == #{1, 2, 3})
 //   /// Expect: false
 //   println(map == { (1): "a", (2): "b" })
-// })()
-}
-test_mapEq()
+})()
 
 // Map.fromPairs
-// (() => {
-func test_mapFromPairs() {
+(() => {
   // TODO: The typechecker won't recognize this if it's inlined for some reason
   val pairs = [("a", 1), ("b", 2), ("c", 3)]
   val m = Map.fromPairs(pairs)
 
   /// Expect: { c: 3, b: 2, a: 1 }
   println(m)
-// })()
-}
-test_mapFromPairs()
+})()
 
 // Map#keys
-// (() => {
-func test_mapKeys() {
+(() => {
   val map1 = { a: 1, b: 2 }
   /// Expect: #{b, a}
   println(map1.keys())
@@ -100,13 +87,10 @@ func test_mapKeys() {
   val map2 = { ((1, 1)): true, ((0, 1)): false }
   /// Expect: #{(0, 1), (1, 1)}
   println(map2.keys())
-// })()
-}
-test_mapKeys()
+})()
 
 // Map#values
-// (() => {
-func test_mapValues() {
+(() => {
   val map1 = { a: 1, b: 2 }
   /// Expect: [2, 1]
   println(map1.values())
@@ -114,13 +98,10 @@ func test_mapValues() {
   val map2 = { ((1, 1)): true, ((0, 1)): false }
   /// Expect: [false, true]
   println(map2.values())
-// })()
-}
-test_mapValues()
+})()
 
 // Map#entries
-// (() => {
-func test_mapEntries() {
+(() => {
   val map1 = { a: 1, b: 2 }
   /// Expect: #{("b", 2), ("a", 1)}
   println(map1.entries())
@@ -128,13 +109,10 @@ func test_mapEntries() {
   val map2 = { ((1, 1)): true, ((0, 1)): false }
   /// Expect: #{((1, 1), true), ((0, 1), false)}
   println(map2.entries())
-// })()
-}
-test_mapEntries()
+})()
 
 // Map#iterator
-// (() => {
-func test_mapIterator() {
+(() => {
   val m = { a: 1, b: 2, c: 3 }
   val iter = m.iterator()
 
@@ -148,9 +126,7 @@ func test_mapIterator() {
   println(iter.next())
   /// Expect: Option.None
   println(iter.next())
-// })()
-}
-test_mapIterator()
+})()
 
 // For-loops
 /// Expect: ("c", 3) 0
@@ -159,17 +135,14 @@ test_mapIterator()
 for ch, idx in { a: 1, b: 2, c: 3 } { println(ch, idx) }
 
 // Map#containsKey
-// (() => {
-func test_mapContainsKey() {
+(() => {
   val m = { (1): "a", (2): "b" }
 
   /// Expect: true
   println(m.containsKey(1))
   /// Expect: false
   println(m.containsKey(3))
-// })()
-}
-test_mapContainsKey()
+})()
 
 // Map#mapValues
 (() => {
@@ -185,8 +158,7 @@ test_mapContainsKey()
 })()
 
 // Map#insert (also []= operator)
-// (() => {
-func test_mapInsert() {
+(() => {
   val m = { a: 1, b: 2 }
   m.insert("c", 3)
   m["d"] = 4
@@ -202,13 +174,10 @@ func test_mapInsert() {
   println(m)
   /// Expect: false
   println(m._needsResize())
-// })()
-}
-test_mapInsert()
+})()
 
 // Map#get
-// (() => {
-func test_mapGet() {
+(() => {
   val m = { (1): "a", (2): "b" }
 
   /// Expect: Option.Some(value: "a")
@@ -217,9 +186,7 @@ func test_mapGet() {
   println(m.get(2))
   /// Expect: Option.None
   println(m.get(3))
-// })()
-}
-test_mapGet()
+})()
 
 // Map#getOr
 (() => {
@@ -273,4 +240,63 @@ test_mapGet()
   println(m)
   /// Expect: Option.None
   println(old2)
+})()
+
+// Map#remove
+(() => {
+  val m = {
+    a: 1,
+    b: 2,
+    c: 3,
+    d: 4,
+    s: 5,
+    t: 6
+  }
+  /// Expect: { d: 4, t: 6, c: 3, s: 5, b: 2, a: 1 }
+  println(m)
+
+  /// Expect: Option.None
+  println(m.remove("x"))
+  /// Expect: 6
+  println(m.size)
+
+  /// Expect: Option.Some(value: 2)
+  println(m.remove("b"))
+  /// Expect: { d: 4, t: 6, c: 3, s: 5, a: 1 }
+  println(m)
+  /// Expect: 5
+  println(m.size)
+
+  // Kinda dirty, but needed in order to test removing keys with the same hash
+  /// Expect: true
+  println(m._getKeyHash("c", m._entries._capacity) == m._getKeyHash("s", m._entries._capacity))
+
+  /// Expect: Option.Some(value: 5)
+  println(m.remove("s"))
+  /// Expect: { d: 4, t: 6, c: 3, a: 1 }
+  println(m)
+  /// Expect: 4
+  println(m.size)
+  /// Expect: Option.Some(value: 3)
+  println(m.remove("c"))
+  /// Expect: { d: 4, t: 6, a: 1 }
+  println(m)
+  /// Expect: 3
+  println(m.size)
+
+  /// Expect: true
+  println(m._getKeyHash("d", m._entries._capacity) == m._getKeyHash("t", m._entries._capacity))
+
+  /// Expect: Option.Some(value: 4)
+  println(m.remove("d"))
+  /// Expect: { t: 6, a: 1 }
+  println(m)
+  /// Expect: 2
+  println(m.size)
+  /// Expect: Option.Some(value: 6)
+  println(m.remove("t"))
+  /// Expect: { a: 1 }
+  println(m)
+  /// Expect: 1
+  println(m.size)
 })()
