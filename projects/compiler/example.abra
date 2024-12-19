@@ -4,37 +4,9 @@ val m = {
   c: 3,
   s: 4
 }
+println(m.size)
 println(m)
 
-// println("a", m._getKeyHash("a", m._entries._capacity))
-// println("b", m._getKeyHash("b", m._entries._capacity))
-// println("c", m._getKeyHash("c", m._entries._capacity))
-// println("d", m._getKeyHash("d", m._entries._capacity))
-// println("e", m._getKeyHash("e", m._entries._capacity))
-// println("f", m._getKeyHash("f", m._entries._capacity))
-// println("g", m._getKeyHash("g", m._entries._capacity))
-// println("h", m._getKeyHash("h", m._entries._capacity))
-// println("i", m._getKeyHash("i", m._entries._capacity))
-// println("j", m._getKeyHash("j", m._entries._capacity))
-// println("k", m._getKeyHash("k", m._entries._capacity))
-// println("l", m._getKeyHash("l", m._entries._capacity))
-// println("m", m._getKeyHash("m", m._entries._capacity))
-// println("n", m._getKeyHash("n", m._entries._capacity))
-// println("o", m._getKeyHash("o", m._entries._capacity))
-// println("p", m._getKeyHash("p", m._entries._capacity))
-// println("q", m._getKeyHash("q", m._entries._capacity))
-// println("r", m._getKeyHash("r", m._entries._capacity))
-// println("s", m._getKeyHash("s", m._entries._capacity))
-// println("t", m._getKeyHash("t", m._entries._capacity))
-// println("u", m._getKeyHash("u", m._entries._capacity))
-// println("v", m._getKeyHash("v", m._entries._capacity))
-// println("w", m._getKeyHash("w", m._entries._capacity))
-// println("x", m._getKeyHash("x", m._entries._capacity))
-// println("y", m._getKeyHash("y", m._entries._capacity))
-// println("z", m._getKeyHash("z", m._entries._capacity))
-
-println(m.remove("d"))
-println(m)
-
-println(m.remove("s"))
-println(m)
+for (k, v) in m {
+  println(k, v)
+}
