@@ -64,8 +64,6 @@ type RangeIterator {
 
 func range(start: Int, end: Int, stepBy = 1): RangeIterator = RangeIterator(start: start, end: end, stepBy: stepBy)
 
-func flattenOption<T>(value: T??): T? = if value |v| v else None
-
 type Int {
   func asByte(self): Byte = Byte.fromInt(self)
 
@@ -1181,23 +1179,37 @@ type Set<T> {
   }
 }
 
-// @Intrinsic("uninitialized")
-// func uninitialized<T>(): T
-
 type MapEntry<K, V> {
   key: K
   value: V
   next: MapEntry<K, V>? = None
-  // _empty: Bool = false
+  _empty: Bool = false
 
-  // func empty<K, V>(): MapEntry<K, V> {
-  //   MapEntry(
-  //     key: intrinsics.uninitialized(),
-  //     value: intrinsics.uninitialized(),
-  //     next: None
-  //     _empty: true
-  //   )
-  // }
+  func empty<K, V>(): MapEntry<K, V> {
+    MapEntry(
+      key: intrinsics.uninitialized(),
+      value: intrinsics.uninitialized(),
+      _empty: true,
+    )
+  }
+
+  func toString(self): String {
+    if self._empty return "MapEntry(key: <uninitialized>, value: <uninitialized>, next: ${self.next}, _empty: true)"
+
+    "MapEntry(key: ${self.key}, value: ${self.value}, next: ${self.next}, _empty: false)"
+  }
+
+  func eq(self, other: MapEntry<K, V>): Bool {
+    if self._empty return other._empty
+
+    self.key == other.key && self.value == other.value && self.next == other.next
+  }
+
+  func hash(self): Int {
+    if self._empty return self._empty.hash()
+
+    self.key.hash() + self.value.hash()
+  }
 }
 
 type MapIterator<K, V> {
@@ -1208,7 +1220,11 @@ type MapIterator<K, V> {
   func next(self): (K, V)? {
     while self._i < self.map._entries.length && !self._cursor {
       self._i += 1
-      self._cursor = flattenOption(self.map._entries[self._i])
+      if self.map._entries[self._i] |entry| {
+        if entry._empty continue
+
+        self._cursor = self.map._entries[self._i]
+      }
     }
 
     if self._cursor |cur| {
@@ -1222,7 +1238,7 @@ type MapIterator<K, V> {
 
 type Map<K, V> {
   size: Int
-  _entries: MapEntry<K, V>?[] = []
+  _entries: MapEntry<K, V>[] = []
   _capacity: Int = 16
   _loadFactor: Float = 0.75
 
@@ -1234,7 +1250,11 @@ type Map<K, V> {
       initialCapacity
     }
 
-    val entries: MapEntry<K, V>?[] = Array.fill(capacity, None)
+    val entries: MapEntry<K, V>[] = Array.withCapacity(capacity)
+    for _ in range(0, capacity) {
+      entries.push(MapEntry.empty())
+    }
+
     Map(size: 0, _capacity: capacity, _entries: entries)
   }
 
@@ -1252,7 +1272,9 @@ type Map<K, V> {
     val reprs: String[] = Array.withCapacity(self.size)
     for i in range(0, self._entries.length) {
       if self._entries[i] |bucket| {
-        var cursor: MapEntry<K, V>? = bucket
+        if bucket._empty continue
+
+        var cursor: MapEntry<K, V>? = Some(bucket)
         while cursor |cur| {
           reprs.push("${cur.key}: ${cur.value}")
           cursor = cur.next
@@ -1269,7 +1291,9 @@ type Map<K, V> {
 
     for i in range(0, self._entries.length) {
       if self._entries[i] |bucket| {
-        var cursor: MapEntry<K, V>? = bucket
+        if bucket._empty continue
+
+        var cursor: MapEntry<K, V>? = Some(bucket)
 
         while cursor |cur| {
           if other.get(cur.key) |otherValue| {
@@ -1290,7 +1314,9 @@ type Map<K, V> {
   func forEach(self, fn: (K, V) => Unit) {
     for i in range(0, self._entries.length) {
       if self._entries[i] |bucket| {
-        var cursor: MapEntry<K, V>? = bucket
+        if bucket._empty continue
+
+        var cursor: MapEntry<K, V>? = Some(bucket)
         while cursor |cur| {
           fn(cur.key, cur.value)
           cursor = cur.next
@@ -1338,7 +1364,9 @@ type Map<K, V> {
     val newMap: Map<K, U> = Map.new()
     for i in range(0, self._entries.length) {
       if self._entries[i] |bucket| {
-        var cursor: MapEntry<K, V>? = bucket
+        if bucket._empty continue
+
+        var cursor: MapEntry<K, V>? = Some(bucket)
         while cursor |cur| {
           newMap.insert(cur.key, fn(cur.key, cur.value))
           cursor = cur.next
@@ -1350,20 +1378,28 @@ type Map<K, V> {
   }
 
   func insert(self, key: K, value: V): V? {
-    val res = self._insertInto(key, value, self._entries)
-    if res[1] { self.size += 1 }
+    val (oldValue, valueAdded) = self._insertInto(key, value, self._entries)
+    if valueAdded { self.size += 1 }
 
     if self._needsResize() self._resize()
 
-    res[0]
+    oldValue
   }
 
   func _needsResize(self): Bool = self.size > self._capacity * self._loadFactor
 
-  func _insertInto(self, key: K, value: V, entries: MapEntry<K, V>?[]): (V?, Bool) {
+  func _insertInto(self, key: K, value: V, entries: MapEntry<K, V>[]): (V?, Bool) {
     val hash = self._getKeyHash(key, entries._capacity)
 
-    if flattenOption(entries[hash]) |bucket| {
+    if entries[hash] |bucket| {
+      if bucket._empty {
+        bucket._empty = false
+        bucket.key = key
+        bucket.value = value
+
+        return (None, true)
+      }
+
       var cursor: MapEntry<K, V>? = Some(bucket)
       while cursor |cur| {
         if cur.key == key {
@@ -1381,7 +1417,7 @@ type Map<K, V> {
       // Should be unreachable since loop will always eventually result in a return
       (None, false)
     } else {
-      entries[hash] = Some(MapEntry(key: key, value: value))
+      entries[hash] = MapEntry(key: key, value: value)
       (None, true)
     }
   }
@@ -1389,7 +1425,11 @@ type Map<K, V> {
   func _resize(self) {
     val newCapacity = self._capacity * 2
 
-    val newEntries: MapEntry<K, V>?[] = Array.fill(newCapacity, None)
+    val newEntries: MapEntry<K, V>[] = Array.withCapacity(newCapacity)
+    for _ in range(0, newCapacity) {
+      newEntries.push(MapEntry.empty())
+    }
+
     for entry in self {
       val key = entry[0]
       val value = entry[1]
@@ -1403,7 +1443,9 @@ type Map<K, V> {
   func _getEntry(self, key: K): MapEntry<K, V>? {
     val hash = self._getKeyHash(key, self._entries._capacity)
 
-    val bucketRootEntry = if flattenOption(self._entries[hash]) |b| b else return None
+    val bucketRootEntry = if self._entries[hash] |b| b else return None
+    if bucketRootEntry._empty return None
+
     var cursor = Some(bucketRootEntry)
     while cursor |entry| {
       if entry.key == key {
@@ -1445,9 +1487,11 @@ type Map<K, V> {
   func remove(self, key: K): V? {
     val hash = self._getKeyHash(key, self._entries._capacity)
 
-    val bucketRootEntry = if flattenOption(self._entries[hash]) |e| e else return None
+    val bucketRootEntry = if self._entries[hash] |e| e else return None
+    if bucketRootEntry._empty return None
+
     if bucketRootEntry.key == key {
-      self._entries[hash] = bucketRootEntry.next
+      self._entries[hash] = if bucketRootEntry.next |next| next else MapEntry.empty()
       self.size -= 1
       return Some(bucketRootEntry.value)
     }
