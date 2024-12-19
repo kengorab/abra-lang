@@ -16,6 +16,9 @@ export func moduleNames(): Pointer<Byte>
 @Intrinsic("functionnames")
 export func functionNames(): Pointer<Byte>
 
+@Intrinsic("uninitialized")
+export func uninitialized<T>(): T
+
 @Intrinsic("u64_to_string")
 export func u64ToString(i: Int): String
 
