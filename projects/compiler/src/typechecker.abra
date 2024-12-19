@@ -49,8 +49,7 @@ export type ModuleLoader {
       if !invalidated return Ok(m)
     }
 
-    val parsedModule = if self._loadFileContents(modulePath) |contents| { //match fs.readFile(modulePath) {
-      // Ok(contents) => {
+    val parsedModule = if self._loadFileContents(modulePath) |contents| {
       match Lexer.tokenize(contents) {
         Ok(tokens) => {
           val module = match Parser.parse(tokens) {

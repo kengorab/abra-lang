@@ -1181,10 +1181,23 @@ type Set<T> {
   }
 }
 
+// @Intrinsic("uninitialized")
+// func uninitialized<T>(): T
+
 type MapEntry<K, V> {
   key: K
   value: V
   next: MapEntry<K, V>? = None
+  // _empty: Bool = false
+
+  // func empty<K, V>(): MapEntry<K, V> {
+  //   MapEntry(
+  //     key: intrinsics.uninitialized(),
+  //     value: intrinsics.uninitialized(),
+  //     next: None
+  //     _empty: true
+  //   )
+  // }
 }
 
 type MapIterator<K, V> {
@@ -1390,14 +1403,13 @@ type Map<K, V> {
   func _getEntry(self, key: K): MapEntry<K, V>? {
     val hash = self._getKeyHash(key, self._entries._capacity)
 
-    if flattenOption(self._entries[hash]) |bucket| {
-      var cursor: MapEntry<K, V>? = Some(bucket)
-      while cursor |entry| {
-        if entry.key == key {
-          return Some(entry)
-        } else {
-          cursor = entry.next
-        }
+    val bucketRootEntry = if flattenOption(self._entries[hash]) |b| b else return None
+    var cursor = Some(bucketRootEntry)
+    while cursor |entry| {
+      if entry.key == key {
+        return Some(entry)
+      } else {
+        cursor = entry.next
       }
     }
 
@@ -1430,5 +1442,29 @@ type Map<K, V> {
     }
   }
 
-  @Stub func remove(self, key: K): V?
+  func remove(self, key: K): V? {
+    val hash = self._getKeyHash(key, self._entries._capacity)
+
+    val bucketRootEntry = if flattenOption(self._entries[hash]) |e| e else return None
+    if bucketRootEntry.key == key {
+      self._entries[hash] = bucketRootEntry.next
+      self.size -= 1
+      return Some(bucketRootEntry.value)
+    }
+
+    var prev = bucketRootEntry
+    var cursor = bucketRootEntry.next
+    while cursor |entry| {
+      if entry.key == key {
+        prev.next = entry.next
+        self.size -= 1
+        return Some(entry.value)
+      } else {
+        prev = entry
+        cursor = entry.next
+      }
+    }
+
+    None
+  }
 }
