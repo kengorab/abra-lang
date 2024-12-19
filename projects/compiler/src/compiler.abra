@@ -2531,6 +2531,8 @@ export type Compiler {
           curVal = try self._compileFunctionValue(label.position, fn, targetParamTypes, capturesMem, selfVal)
         }
         AccessorPathSegment.Field(label, ty, field, isOptSafe) => {
+          val selfInstType = try self._addResolvedGenericsLayerForInstanceMethod(instType, field.name.name, label.position)
+
           var optSafeCtx: (Label, Value, QbeFunction, Label)? = None
 
           if isOptSafe {
@@ -2614,6 +2616,8 @@ export type Compiler {
           val (_instTy, typeArgs) = try self._getInstanceTypeForType(ty)
           instTy = _instTy
           instType = Type(kind: TypeKind.Instance(instTy, typeArgs))
+
+          self._resolvedGenerics.popLayer()
         }
       }
     }
@@ -3062,6 +3066,19 @@ export type Compiler {
         self._currentFn.block.addComment("...byte_as_int end")
 
         Ok(argVal)
+      }
+      "uninitialized" => {
+        self._currentFn.block.addComment("begin uninitialized...")
+
+        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else unreachable("(uninitialized) could not resolve T for uninitialized<T>()")
+        val innerTySize = try self._pointerSize(innerTy)
+        if innerTySize != QbeType.U64.size() unreachable("innerTySize != QbeType.U64.size()")
+
+        val res = Value.Int(0)
+
+        self._currentFn.block.addComment("...uninitialized end")
+
+        Ok(res)
       }
       "u64_to_string" => {
         self._currentFn.block.addComment("begin u64_to_string...")
