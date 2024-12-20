@@ -38,10 +38,8 @@ export enum NotificationMessage {
   // Incoming notifications
   Initialized
   TextDocumentDidOpen(textDocument: TextDocumentItem)
-  // Omitted field `contentChanges`: the first iteration of the LSP will just re-read the changed files
-  // from disk upon change and will not reconstruct the file using deltas; the `textDocumentSyncKind`
-  // is set to Incremental in the server capabilities to reduce jsonrpc message size.
   TextDocumentDidChange(textDocument: VersionedTextDocumentIdentifier, contentChanges: TextDocumentContentChangeEvent[])
+  TextDocumentDidSave(textDocument: TextDocumentIdentifier)
 
   // Outgoing notifications
   TextDocumentPublishDiagnostics(uri: String, diagnostics: Diagnostic[])
@@ -72,6 +70,13 @@ export enum NotificationMessage {
 
         Ok(Some(NotificationMessage.TextDocumentDidChange(textDocument: textDocument, contentChanges: contentChanges)))
       }
+      "textDocument/didSave" => {
+        val params = try obj.getObjectRequired("params")
+        val textDocumentObj = try params.getValueRequired("textDocument")
+        val textDocument = try TextDocumentIdentifier.fromJson(textDocumentObj)
+
+        Ok(Some(NotificationMessage.TextDocumentDidSave(textDocument: textDocument)))
+      }
       else => {
         log.writeln("Unimplemented NotificationMessage method '$method'")
 
@@ -85,6 +90,7 @@ export enum NotificationMessage {
       NotificationMessage.Initialized => unreachable("should not be serializing 'initialized' notification")
       NotificationMessage.TextDocumentDidOpen => unreachable("should not be serializing 'textDocument/didOpen' notification")
       NotificationMessage.TextDocumentDidChange => unreachable("should not be serializing 'textDocument/didChange' notification")
+      NotificationMessage.TextDocumentDidSave => unreachable("should not be serializing 'textDocument/didSave' notification")
       NotificationMessage.TextDocumentPublishDiagnostics(uri, diagnostics) => {
         JsonValue.Object(JsonObject(_map: {
           method: JsonValue.String("textDocument/publishDiagnostics"),
@@ -253,6 +259,17 @@ export type TextDocumentItem {
     val text = try obj.getStringRequired("text")
 
     Ok(TextDocumentItem(uri: uri, languageId: languageId, version: version, text: text))
+  }
+}
+
+export type TextDocumentIdentifier {
+  uri: String
+
+  func fromJson(json: JsonValue): Result<TextDocumentIdentifier, JsonError> {
+    val obj = try json.asObject()
+    val uri = try obj.getStringRequired("uri")
+
+    Ok(TextDocumentIdentifier(uri: uri))
   }
 }
 
