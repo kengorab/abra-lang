@@ -57,19 +57,19 @@ export enum NotificationMessage {
 
         Ok(Some(NotificationMessage.TextDocumentDidOpen(textDocument: textDocument)))
       }
-      "textDocument/didChange" => {
-        val params = try obj.getObjectRequired("params")
-        val textDocumentObj = try params.getValueRequired("textDocument")
-        val textDocument = try VersionedTextDocumentIdentifier.fromJson(textDocumentObj)
+      // "textDocument/didChange" => {
+      //   val params = try obj.getObjectRequired("params")
+      //   val textDocumentObj = try params.getValueRequired("textDocument")
+      //   val textDocument = try VersionedTextDocumentIdentifier.fromJson(textDocumentObj)
 
-        val contentChanges: TextDocumentContentChangeEvent[] = []
-        val contentChangesArr = try params.getArrayRequired("contentChanges")
-        for item in contentChangesArr {
-          contentChanges.push(try TextDocumentContentChangeEvent.fromJson(item))
-        }
+      //   val contentChanges: TextDocumentContentChangeEvent[] = []
+      //   val contentChangesArr = try params.getArrayRequired("contentChanges")
+      //   for item in contentChangesArr {
+      //     contentChanges.push(try TextDocumentContentChangeEvent.fromJson(item))
+      //   }
 
-        Ok(Some(NotificationMessage.TextDocumentDidChange(textDocument: textDocument, contentChanges: contentChanges)))
-      }
+      //   Ok(Some(NotificationMessage.TextDocumentDidChange(textDocument: textDocument, contentChanges: contentChanges)))
+      // }
       "textDocument/didSave" => {
         val params = try obj.getObjectRequired("params")
         val textDocumentObj = try params.getValueRequired("textDocument")
@@ -186,18 +186,42 @@ export enum ResponseErrorCode {
 }
 
 export type ServerCapabilities {
-  textDocumentSync: TextDocumentSyncKind? = None
+  textDocumentSync: TextDocumentSyncOptions? = None
   diagnosticProvider: DiagnosticOptions? = None
 
   func toJson(self): JsonValue {
     val obj = JsonObject()
 
     if self.textDocumentSync |tds| {
-      obj.set("textDocumentSync", JsonValue.Number(Either.Left(tds.intVal())))
+      obj.set("textDocumentSync", tds.toJson())
     }
 
     if self.diagnosticProvider |dp| {
       obj.set("diagnosticProvider", dp.toJson())
+    }
+
+    JsonValue.Object(obj)
+  }
+}
+
+export type TextDocumentSyncOptions {
+  openClose: Bool? = None
+  change: TextDocumentSyncKind? = None
+  save: SaveOptions? = None
+
+  func toJson(self): JsonValue {
+    val obj = JsonObject()
+
+    if self.openClose |openClose| {
+      obj.set("openClose", JsonValue.Boolean(openClose))
+    }
+
+    if self.change |change| {
+      obj.set("change", JsonValue.Number(Either.Left(change.intVal())))
+    }
+
+    if self.save |save| {
+      obj.set("save", save.toJson())
     }
 
     JsonValue.Object(obj)
@@ -213,6 +237,20 @@ export enum TextDocumentSyncKind {
     TextDocumentSyncKind.None_ => 0
     TextDocumentSyncKind.Full => 1
     TextDocumentSyncKind.Incremental => 2
+  }
+}
+
+export type SaveOptions {
+  includeText: Bool? = None
+
+  func toJson(self): JsonValue {
+    val obj = JsonObject()
+
+    if self.includeText |includeText| {
+      obj.set("includeText", JsonValue.Boolean(includeText))
+    }
+
+    JsonValue.Object(obj)
   }
 }
 
