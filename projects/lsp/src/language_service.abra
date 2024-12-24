@@ -1,35 +1,54 @@
 import "fs" as fs
-import "process" as process
 import JsonValue from "json"
 import log from "./log"
 import ModuleLoader, Project, Typechecker, TypecheckerErrorKind from "../../compiler/src/typechecker"
-import RequestMessage, NotificationMessage, ResponseMessage, ResponseResult, ResponseError, ResponseErrorCode, ServerCapabilities, TextDocumentSyncKind, ServerInfo, TextDocumentItem, VersionedTextDocumentIdentifier, TextDocumentContentChangeEvent, Diagnostic, DiagnosticSeverity from "./lsp_spec"
+import RequestMessage, NotificationMessage, ResponseMessage, ResponseResult, ResponseError, ResponseErrorCode, ServerCapabilities, TextDocumentSyncOptions, TextDocumentSyncKind, SaveOptions, ServerInfo, TextDocumentItem, TextDocumentIdentifier, VersionedTextDocumentIdentifier, TextDocumentContentChangeEvent, Diagnostic, DiagnosticSeverity from "./lsp_spec"
 
 export val contentLengthHeader = "Content-Length: "
 export val bogusMessageId = -999
 
-val abraStdRoot = if process.getEnvVar("ABRA_HOME") |v| v else {
-  println("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
-  process.exit(1)
-}
-
-val moduleLoader = ModuleLoader(stdRoot: abraStdRoot, useDocumentStore: true)
-val documentStore = moduleLoader.documentStore
-val project = Project()
-val typechecker = Typechecker(moduleLoader: moduleLoader, project: project)
-
 export type AbraLanguageService {
-  initialized: Bool = false
-  root: String = ""
+  // _virtualFileSystem: Map<String, String>
+  _moduleLoader: ModuleLoader
+  _project: Project
+  _initialized: Bool = false
+  _root: String = ""
+
+  func new(abraStdRoot: String): AbraLanguageService {
+    // val virtualFileSystem: Map<String, String> = {}
+    // val moduleLoader = ModuleLoader.usingVirtualFileSystem(stdRoot: abraStdRoot, fileMap: virtualFileSystem)
+    val moduleLoader = ModuleLoader(stdRoot: abraStdRoot)
+    val project = Project()
+
+    AbraLanguageService(
+      // _virtualFileSystem: virtualFileSystem,
+      _moduleLoader: moduleLoader,
+      _project: project,
+    )
+  }
 
   // Request Message handlers
 
   func _initialize(self, id: Int, processId: Int?, rootPath: String?): ResponseMessage {
-    self.root = if rootPath |p| p else return internalError(id, "rootPath required")
-    self.initialized = true
+    self._root = if rootPath |p| p else return internalError(id, "rootPath required")
+    self._initialized = true
 
+    // Instruct the client to not send textDocument/didOpen or textDocument/didClose events,
+    // and to send textDocument/didSave events, but do not include file contents when saved.
+    //
+    // Additionally, for now, instruct the client to NOT send textDocument/didChange events;
+    // sending the full contents each time (replacing the file in the ModuleLoader's vfs) is
+    // pretty wasteful and causes problems with larger files. Eventually, I'll implement a
+    // more performant model using the Incremental updates, but for now the client will only
+    // receive diagnostics from the server when the file is saved (which is file, frankly).
     val result = ResponseResult.Initialize(
-      capabilities: ServerCapabilities(textDocumentSync: Some(TextDocumentSyncKind.Full)),
+      capabilities: ServerCapabilities(
+        textDocumentSync: Some(TextDocumentSyncOptions(
+          openClose: Some(false),
+          change: Some(TextDocumentSyncKind.None_),
+          save: Some(SaveOptions(includeText: Some(false)))
+        ))
+      ),
       serverInfo: ServerInfo(name: "abra-lsp", version: Some("0.0.1"))
     )
     ResponseMessage.Success(id: id, result: Some(result))
@@ -38,14 +57,14 @@ export type AbraLanguageService {
   // Notification handlers
 
   func _textDocumentDidOpen(self, textDocument: TextDocumentItem) {
+    // textDocument/didOpen events are currently not sent by the client (see self._initialize)
     val diagnostics = self._runTypecheckerStartingAtUri(textDocument.uri)
-    if !diagnostics.isEmpty() {
-      val notif = NotificationMessage.TextDocumentPublishDiagnostics(uri: textDocument.uri, diagnostics: diagnostics)
-      self.sendNotification(notif)
-    }
+    val notif = NotificationMessage.TextDocumentPublishDiagnostics(uri: textDocument.uri, diagnostics: diagnostics)
+    self.sendNotification(notif)
   }
 
   func _textDocumentDidChange(self, textDocument: VersionedTextDocumentIdentifier, contentChanges: TextDocumentContentChangeEvent[]) {
+    // textDocument/didChange events are currently not sent by the client (see self._initialize)
     if contentChanges.isEmpty() return
 
     val filePath = textDocument.uri.replaceAll("file://", "")
@@ -53,17 +72,27 @@ export type AbraLanguageService {
       match changeEvent {
         TextDocumentContentChangeEvent.Incremental => todo("TextDocumentContentChangeEvent.Incremental")
         TextDocumentContentChangeEvent.Full(text) => {
-          documentStore[filePath] = text
+          // self._virtualFileSystem[filePath] = text
         }
       }
     }
-    moduleLoader.invalidateModule(filePath)
+    self._moduleLoader.invalidateModule(filePath)
+    self._project.modules.remove(filePath)
 
     val diagnostics = self._runTypecheckerStartingAtUri(textDocument.uri)
-    if !diagnostics.isEmpty() {
-      val notif = NotificationMessage.TextDocumentPublishDiagnostics(uri: textDocument.uri, diagnostics: diagnostics)
-      self.sendNotification(notif)
-    }
+    val notif = NotificationMessage.TextDocumentPublishDiagnostics(uri: textDocument.uri, diagnostics: diagnostics)
+    self.sendNotification(notif)
+  }
+
+  func _textDocumentDidSave(self, textDocument: TextDocumentIdentifier) {
+    val filePath = textDocument.uri.replaceAll("file://", "")
+    self._moduleLoader.invalidateModule(filePath)
+    self._project.modules.remove(filePath)
+    // self._virtualFileSystem.remove(filePath)
+
+    val diagnostics = self._runTypecheckerStartingAtUri(textDocument.uri)
+    val notif = NotificationMessage.TextDocumentPublishDiagnostics(uri: textDocument.uri, diagnostics: diagnostics)
+    self.sendNotification(notif)
   }
 
   // Compiler bridge
@@ -71,6 +100,8 @@ export type AbraLanguageService {
   func _runTypecheckerStartingAtUri(self, uri: String): Diagnostic[] {
     // todo: what happens if it's not a `file://` uri?
     val filePath = uri.replaceAll("file://", "")
+
+    val typechecker = Typechecker(moduleLoader: self._moduleLoader, project: self._project)
 
     match typechecker.typecheckEntrypoint(filePath) {
       Ok => []
@@ -127,6 +158,7 @@ export type AbraLanguageService {
       NotificationMessage.Initialized => { /* no-op */ }
       NotificationMessage.TextDocumentDidOpen(textDocument) => self._textDocumentDidOpen(textDocument)
       NotificationMessage.TextDocumentDidChange(textDocument, contentChanges) => self._textDocumentDidChange(textDocument, contentChanges)
+      NotificationMessage.TextDocumentDidSave(textDocument) => self._textDocumentDidSave(textDocument)
     }
   }
 

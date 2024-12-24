@@ -12,9 +12,10 @@ enum TokenizeAndParseError {
 export type ModuleLoader {
   stdRoot: String
   parsedModules: Map<String, ParsedModule> = {}
-  documentStore: Map<String, String> = {}
-  useDocumentStore: Bool = false
-  _invalidated: Map<String, Bool> = {}
+  _virtualFileSystem: Map<String, String>? = None
+
+  func usingVirtualFileSystem(stdRoot: String, fileMap: Map<String, String>): ModuleLoader =
+    ModuleLoader(stdRoot: stdRoot, _virtualFileSystem: Some(fileMap))
 
   func resolvePath(self, modulePath: String, relativeTo: String?): String {
     if relativeTo |relativeTo| {
@@ -28,12 +29,12 @@ export type ModuleLoader {
   func hasSeenModule(self, modulePathAbs: String): Bool = self.parsedModules.containsKey(modulePathAbs)
 
   func invalidateModule(self, modulePathAbs: String) {
-    self._invalidated[modulePathAbs] = true
+    self.parsedModules.remove(modulePathAbs)
   }
 
   func _loadFileContents(self, modulePathAbs: String): String? {
-    if self.useDocumentStore {
-      val inMemContents = self.documentStore[modulePathAbs]
+    if self._virtualFileSystem |vfs| {
+      val inMemContents = vfs[modulePathAbs]
       if inMemContents return inMemContents
     }
 
@@ -44,22 +45,15 @@ export type ModuleLoader {
   }
 
   func tokenizeAndParse(self, modulePath: String): Result<ParsedModule, TokenizeAndParseError> {
-    if self.parsedModules[modulePath] |m| {
-      val invalidated = self._invalidated[modulePath] ?: false
-      if !invalidated return Ok(m)
-    }
+    if self.parsedModules[modulePath] |m| return Ok(m)
 
     val parsedModule = if self._loadFileContents(modulePath) |contents| {
       match Lexer.tokenize(contents) {
         Ok(tokens) => {
-          val module = match Parser.parse(tokens) {
+          match Parser.parse(tokens) {
             Ok(parsedModule) => parsedModule
             Err(error) => return Err(TokenizeAndParseError.ParseError(error))
           }
-
-          self._invalidated[modulePath] = false
-
-          module
         }
         Err(error) => return Err(TokenizeAndParseError.LexerError(error))
       }
@@ -1495,28 +1489,31 @@ export type Typechecker {
   func typecheckEntrypoint(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
     val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
     val preludeModulePathAbs = "/" + preludeModulePathSegs.join("/")
-    try self._typecheckModule(preludeModulePathAbs)
 
-    val preludeStructs = [
-      self.project.preludeIntStruct,
-      self.project.preludeFloatStruct,
-      self.project.preludeBoolStruct,
-      self.project.preludeCharStruct,
-      self.project.preludeStringStruct,
-      self.project.preludeArrayStruct,
-      self.project.preludeMapStruct,
-      self.project.preludeSetStruct,
-    ]
-    for struct in preludeStructs {
-      if struct.label.position == Position(line: 0, col: 0) unreachable("Improperly initialized prelude struct ${struct.label.name}")
-    }
+    if !self.project.modules[preludeModulePathAbs] {
+      try self._typecheckModule(preludeModulePathAbs)
 
-    val preludeEnums = [
-      self.project.preludeOptionEnum,
-      self.project.preludeResultEnum,
-    ]
-    for enum_ in preludeEnums {
-      if enum_.label.position == Position(line: 0, col: 0) unreachable("Improperly initialized prelude enum ${enum_.label.name}")
+      val preludeStructs = [
+        self.project.preludeIntStruct,
+        self.project.preludeFloatStruct,
+        self.project.preludeBoolStruct,
+        self.project.preludeCharStruct,
+        self.project.preludeStringStruct,
+        self.project.preludeArrayStruct,
+        self.project.preludeMapStruct,
+        self.project.preludeSetStruct,
+      ]
+      for struct in preludeStructs {
+        if struct.label.position == Position(line: 0, col: 0) unreachable("Improperly initialized prelude struct ${struct.label.name}")
+      }
+
+      val preludeEnums = [
+        self.project.preludeOptionEnum,
+        self.project.preludeResultEnum,
+      ]
+      for enum_ in preludeEnums {
+        if enum_.label.position == Position(line: 0, col: 0) unreachable("Improperly initialized prelude enum ${enum_.label.name}")
+      }
     }
 
     self._typecheckModule(modulePathAbs)
@@ -2070,6 +2067,8 @@ export type Typechecker {
   }
 
   func _typecheckModule(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
+    if self.project.modules[modulePathAbs] |mod| return Ok(mod)
+
     self.typecheckingBuiltin = if modulePathAbs == self.moduleLoader.stdRoot + "/prelude.abra" {
       self.project.preludeScope = self.currentScope.makeChild("module_prelude", ScopeKind.Module(id: -1))
       Some(BuiltinModule.Prelude)

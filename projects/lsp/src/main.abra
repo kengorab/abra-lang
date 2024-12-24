@@ -33,7 +33,12 @@ func processMessage(lsp: AbraLanguageService, message: String): Result<ResponseM
 }
 
 func main() {
-  val lsp = AbraLanguageService()
+  val abraStdRoot = if process.getEnvVar("ABRA_HOME") |v| v else {
+    println("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
+    process.exit(1)
+  }
+
+  val lsp = AbraLanguageService.new(abraStdRoot)
 
   val stdin = process.stdin()
 

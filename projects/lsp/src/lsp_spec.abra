@@ -38,10 +38,8 @@ export enum NotificationMessage {
   // Incoming notifications
   Initialized
   TextDocumentDidOpen(textDocument: TextDocumentItem)
-  // Omitted field `contentChanges`: the first iteration of the LSP will just re-read the changed files
-  // from disk upon change and will not reconstruct the file using deltas; the `textDocumentSyncKind`
-  // is set to Incremental in the server capabilities to reduce jsonrpc message size.
   TextDocumentDidChange(textDocument: VersionedTextDocumentIdentifier, contentChanges: TextDocumentContentChangeEvent[])
+  TextDocumentDidSave(textDocument: TextDocumentIdentifier)
 
   // Outgoing notifications
   TextDocumentPublishDiagnostics(uri: String, diagnostics: Diagnostic[])
@@ -59,18 +57,25 @@ export enum NotificationMessage {
 
         Ok(Some(NotificationMessage.TextDocumentDidOpen(textDocument: textDocument)))
       }
-      "textDocument/didChange" => {
+      // "textDocument/didChange" => {
+      //   val params = try obj.getObjectRequired("params")
+      //   val textDocumentObj = try params.getValueRequired("textDocument")
+      //   val textDocument = try VersionedTextDocumentIdentifier.fromJson(textDocumentObj)
+
+      //   val contentChanges: TextDocumentContentChangeEvent[] = []
+      //   val contentChangesArr = try params.getArrayRequired("contentChanges")
+      //   for item in contentChangesArr {
+      //     contentChanges.push(try TextDocumentContentChangeEvent.fromJson(item))
+      //   }
+
+      //   Ok(Some(NotificationMessage.TextDocumentDidChange(textDocument: textDocument, contentChanges: contentChanges)))
+      // }
+      "textDocument/didSave" => {
         val params = try obj.getObjectRequired("params")
         val textDocumentObj = try params.getValueRequired("textDocument")
-        val textDocument = try VersionedTextDocumentIdentifier.fromJson(textDocumentObj)
+        val textDocument = try TextDocumentIdentifier.fromJson(textDocumentObj)
 
-        val contentChanges: TextDocumentContentChangeEvent[] = []
-        val contentChangesArr = try params.getArrayRequired("contentChanges")
-        for item in contentChangesArr {
-          contentChanges.push(try TextDocumentContentChangeEvent.fromJson(item))
-        }
-
-        Ok(Some(NotificationMessage.TextDocumentDidChange(textDocument: textDocument, contentChanges: contentChanges)))
+        Ok(Some(NotificationMessage.TextDocumentDidSave(textDocument: textDocument)))
       }
       else => {
         log.writeln("Unimplemented NotificationMessage method '$method'")
@@ -85,6 +90,7 @@ export enum NotificationMessage {
       NotificationMessage.Initialized => unreachable("should not be serializing 'initialized' notification")
       NotificationMessage.TextDocumentDidOpen => unreachable("should not be serializing 'textDocument/didOpen' notification")
       NotificationMessage.TextDocumentDidChange => unreachable("should not be serializing 'textDocument/didChange' notification")
+      NotificationMessage.TextDocumentDidSave => unreachable("should not be serializing 'textDocument/didSave' notification")
       NotificationMessage.TextDocumentPublishDiagnostics(uri, diagnostics) => {
         JsonValue.Object(JsonObject(_map: {
           method: JsonValue.String("textDocument/publishDiagnostics"),
@@ -180,18 +186,42 @@ export enum ResponseErrorCode {
 }
 
 export type ServerCapabilities {
-  textDocumentSync: TextDocumentSyncKind? = None
+  textDocumentSync: TextDocumentSyncOptions? = None
   diagnosticProvider: DiagnosticOptions? = None
 
   func toJson(self): JsonValue {
     val obj = JsonObject()
 
     if self.textDocumentSync |tds| {
-      obj.set("textDocumentSync", JsonValue.Number(Either.Left(tds.intVal())))
+      obj.set("textDocumentSync", tds.toJson())
     }
 
     if self.diagnosticProvider |dp| {
       obj.set("diagnosticProvider", dp.toJson())
+    }
+
+    JsonValue.Object(obj)
+  }
+}
+
+export type TextDocumentSyncOptions {
+  openClose: Bool? = None
+  change: TextDocumentSyncKind? = None
+  save: SaveOptions? = None
+
+  func toJson(self): JsonValue {
+    val obj = JsonObject()
+
+    if self.openClose |openClose| {
+      obj.set("openClose", JsonValue.Boolean(openClose))
+    }
+
+    if self.change |change| {
+      obj.set("change", JsonValue.Number(Either.Left(change.intVal())))
+    }
+
+    if self.save |save| {
+      obj.set("save", save.toJson())
     }
 
     JsonValue.Object(obj)
@@ -207,6 +237,20 @@ export enum TextDocumentSyncKind {
     TextDocumentSyncKind.None_ => 0
     TextDocumentSyncKind.Full => 1
     TextDocumentSyncKind.Incremental => 2
+  }
+}
+
+export type SaveOptions {
+  includeText: Bool? = None
+
+  func toJson(self): JsonValue {
+    val obj = JsonObject()
+
+    if self.includeText |includeText| {
+      obj.set("includeText", JsonValue.Boolean(includeText))
+    }
+
+    JsonValue.Object(obj)
   }
 }
 
@@ -253,6 +297,17 @@ export type TextDocumentItem {
     val text = try obj.getStringRequired("text")
 
     Ok(TextDocumentItem(uri: uri, languageId: languageId, version: version, text: text))
+  }
+}
+
+export type TextDocumentIdentifier {
+  uri: String
+
+  func fromJson(json: JsonValue): Result<TextDocumentIdentifier, JsonError> {
+    val obj = try json.asObject()
+    val uri = try obj.getStringRequired("uri")
+
+    Ok(TextDocumentIdentifier(uri: uri))
   }
 }
 
