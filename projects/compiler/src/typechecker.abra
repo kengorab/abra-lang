@@ -1,4 +1,5 @@
 import "fs" as fs
+import log from "../../lsp/src/log"
 import getAbsolutePath, resolveRelativePath from "./utils"
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
 import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode, ImportKind, DecoratorNode, LambdaNode, MatchCase, MatchCaseKind from "./parser"
@@ -88,6 +89,18 @@ type ImportedModule {
   imports: Map<String, Import> = {}
 }
 
+export enum IdentifierKindMeta {
+  Variable(mutable: Bool, typeRepr: String)
+  Function(typeParams: String[], params: String[], returnTypeRepr: String)
+  Type(isEnum: Bool, typeParams: String[])
+}
+
+export type IdentifierMeta {
+  name: String
+  kind: IdentifierKindMeta
+  importedFrom: String? = None
+}
+
 export type TypedModule {
   id: Int
   name: String
@@ -96,6 +109,7 @@ export type TypedModule {
   complete: Bool = false
   imports: Map<String, ImportedModule> = {}
   exports: Map<String, Export> = {}
+  identsByLine: Map<Int, (Int, Int, IdentifierMeta)[]> = {}
 }
 
 export enum VariableAlias {
@@ -1485,13 +1499,18 @@ export type Typechecker {
   isEnumContainerValueAllowed: Bool = false
   numLambdas: Int = 0
   typecheckingBuiltin: BuiltinModule? = None
+  trackIdentsForLsp: Bool = false
+  identsByLine: Map<Int, (Int, Int, IdentifierMeta)[]> = {}
 
   func typecheckEntrypoint(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
     val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
     val preludeModulePathAbs = "/" + preludeModulePathSegs.join("/")
 
     if !self.project.modules[preludeModulePathAbs] {
+      val trackIdentsForLsp = self.trackIdentsForLsp
+      self.trackIdentsForLsp = false
       try self._typecheckModule(preludeModulePathAbs)
+      self.trackIdentsForLsp = trackIdentsForLsp
 
       val preludeStructs = [
         self.project.preludeIntStruct,
@@ -2168,6 +2187,8 @@ export type Typechecker {
     self.currentScope = prevScope
 
     mod.complete = true
+
+    mod.identsByLine = self.identsByLine
 
     if self.typecheckingBuiltin {
       self.typecheckingBuiltin = None
@@ -3032,6 +3053,20 @@ export type Typechecker {
       BindingPattern.Variable(label) => {
         val variable = Variable(label: label, scope: self.currentScope, mutable: mutable, ty: ty)
         try self._addVariableToScope(variable)
+
+        if self.trackIdentsForLsp {
+          val ident = IdentifierMeta(
+            name: label.name,
+            kind: IdentifierKindMeta.Variable(mutable: mutable, typeRepr: ty.repr()),
+          )
+
+          val v = (label.position.col - 1, label.position.col + label.name.length - 1, ident)
+          if self.identsByLine[label.position.line - 1] |idents| {
+            idents.push(v)
+          } else {
+            self.identsByLine[label.position.line - 1] = [v]
+          }
+        }
 
         Ok([variable])
       }
@@ -4005,7 +4040,44 @@ export type Typechecker {
           }
           return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName("self", "variable")))
         }
+
         (resolvedIdentifier, "self", None)
+      }
+    }
+
+    if self.trackIdentsForLsp {
+      val kind = match variable.alias {
+        None => IdentifierKindMeta.Variable(variable.mutable, variable.ty.repr())
+        VariableAlias.Function(fn) => {
+          val typeParams: String[] = []
+          for (_, label) in fn.typeParams {
+            typeParams.push(label.name)
+          }
+
+          val params: String[] = []
+          for param in fn.params {
+            params.push("${if param.isVariadic "..." else ""}${param.label.name}${if param.defaultValue "?" else ""}: ${param.ty.repr()}")
+          }
+
+          val returnTypeRepr = fn.returnType.repr()
+
+          IdentifierKindMeta.Function(typeParams, params, returnTypeRepr)
+        }
+        VariableAlias.Struct(struct) => IdentifierKindMeta.Type(isEnum: false, typeParams: struct.typeParams)
+        VariableAlias.Enum(_enum) => IdentifierKindMeta.Type(isEnum: true, typeParams: _enum.typeParams)
+      }
+
+      val ident = IdentifierMeta(
+        name: name,
+        kind: kind,
+        importedFrom: varImportMod?.name,
+      )
+
+      val v = (token.position.col - 1, token.position.col + name.length - 1, ident)
+      if self.identsByLine[token.position.line - 1] |idents| {
+        idents.push(v)
+      } else {
+        self.identsByLine[token.position.line - 1] = [v]
       }
     }
 

@@ -3,6 +3,7 @@ import JsonValue, JsonError, JsonObject from "json"
 
 export enum RequestMessage {
   Initialize(id: Int, processId: Int?, rootPath: String?)
+  Hover(id: Int, textDocument: TextDocumentIdentifier, position: Position)
 
   func fromJson(json: JsonValue): Result<RequestMessage?, JsonError> {
     val obj = try json.asObject()
@@ -24,6 +25,16 @@ export enum RequestMessage {
         val rootPath = params.getString("rootPath")
 
         Ok(Some(RequestMessage.Initialize(id: id, processId: processId, rootPath: rootPath)))
+      }
+      "textDocument/hover" => {
+        val params = try obj.getObjectRequired("params")
+        val textDocumentObj = try params.getValueRequired("textDocument")
+        val textDocument = try TextDocumentIdentifier.fromJson(textDocumentObj)
+
+        val positionObj = try params.getValueRequired("position")
+        val position = try Position.fromJson(positionObj)
+
+        Ok(Some(RequestMessage.Hover(id: id, textDocument: textDocument, position: position)))
       }
       else => {
         log.writeln("Error: Unimplemented RequestMessage method '$method'")
@@ -128,14 +139,26 @@ export enum ResponseMessage {
 
 export enum ResponseResult {
   Initialize(capabilities: ServerCapabilities, serverInfo: ServerInfo)
+  Hover(contents: MarkupContent, range: Range?)
 
   func toJson(self): JsonValue {
-    val obj = JsonObject()
-
-    match self {
+    val obj = match self {
       ResponseResult.Initialize(capabilities, serverInfo) => {
-        obj.set("capabilities", capabilities.toJson())
-        obj.set("serverInfo", serverInfo.toJson())
+        JsonObject(_map: {
+          "capabilities": capabilities.toJson(),
+          "serverInfo": serverInfo.toJson()
+        })
+      }
+      ResponseResult.Hover(contents, range) => {
+        val obj = JsonObject(_map: {
+          contents: contents.toJson()
+        })
+
+        if range |range| {
+          obj.set("range", range.toJson())
+        }
+
+        obj
       }
     }
 
@@ -188,6 +211,7 @@ export enum ResponseErrorCode {
 export type ServerCapabilities {
   textDocumentSync: TextDocumentSyncOptions? = None
   diagnosticProvider: DiagnosticOptions? = None
+  hoverProvider: Bool? = None
 
   func toJson(self): JsonValue {
     val obj = JsonObject()
@@ -198,6 +222,10 @@ export type ServerCapabilities {
 
     if self.diagnosticProvider |dp| {
       obj.set("diagnosticProvider", dp.toJson())
+    }
+
+    if self.hoverProvider |hp| {
+      obj.set("hoverProvider", JsonValue.Boolean(hp))
     }
 
     JsonValue.Object(obj)
@@ -327,6 +355,55 @@ export type VersionedTextDocumentIdentifier {
   }
 }
 
+export type Position {
+  // line and character are both zero-based
+  line: Int
+  character: Int
+
+  func fromJson(json: JsonValue): Result<Position, JsonError> {
+    val obj = try json.asObject()
+    val line = match try obj.getNumberRequired("line") {
+      Either.Left(int) => int
+      Either.Right(float) => float.asInt()
+    }
+    val character = match try obj.getNumberRequired("character") {
+      Either.Left(int) => int
+      Either.Right(float) => float.asInt()
+    }
+
+    Ok(Position(line: line, character: character))
+  }
+
+  func toJson(self): JsonValue {
+    JsonValue.Object(JsonObject(_map: {
+      line: JsonValue.Number(Either.Left(self.line)),
+      character: JsonValue.Number(Either.Left(self.character)),
+    }))
+  }
+}
+
+export type Range {
+  start: Position
+  end: Position // exclusive
+
+  func fromJson(json: JsonValue): Result<Range, JsonError> {
+    val obj = try json.asObject()
+    val startObj = try obj.getValueRequired("start")
+    val start = try Position.fromJson(startObj)
+    val endObj = try obj.getValueRequired("end")
+    val end = try Position.fromJson(endObj)
+
+    Ok(Range(start: start, end: end))
+  }
+
+  func toJson(self): JsonValue {
+    JsonValue.Object(JsonObject(_map: {
+      start: self.start.toJson(),
+      end: self.end.toJson(),
+    }))
+  }
+}
+
 export enum TextDocumentContentChangeEvent {
   Incremental(
     range: ((Int, Int), (Int, Int)), // (line: Int, character: Int), zero-based
@@ -387,4 +464,24 @@ export enum DiagnosticSeverity {
     DiagnosticSeverity.Information => 3
     DiagnosticSeverity.Hint => 4
   }
+}
+
+export type MarkupContent {
+  kind: MarkupKind
+  value: String
+
+  func toJson(self): JsonValue {
+    JsonValue.Object(JsonObject(_map: {
+      kind: JsonValue.String(match self.kind {
+        MarkupKind.PlainText => "plaintext"
+        MarkupKind.Markdown => "markdown"
+      }),
+      value: JsonValue.String(self.value)
+    }))
+  }
+}
+
+export enum MarkupKind {
+  PlainText
+  Markdown
 }
