@@ -95,10 +95,16 @@ export enum IdentifierKindMeta {
   Type(isEnum: Bool, typeParams: String[])
 }
 
+export enum IdentifierMetaImport {
+  Prelude
+  Module(filePath: String)
+}
+
 export type IdentifierMeta {
   name: String
   kind: IdentifierKindMeta
-  importedFrom: String? = None
+  importedFrom: IdentifierMetaImport? = None
+  definitionPosition: Position? = None
 }
 
 export type TypedModule {
@@ -3058,6 +3064,7 @@ export type Typechecker {
           val ident = IdentifierMeta(
             name: label.name,
             kind: IdentifierKindMeta.Variable(mutable: mutable, typeRepr: ty.repr()),
+            definitionPosition: Some(label.position),
           )
 
           val v = (label.position.col - 1, label.position.col + label.name.length - 1, ident)
@@ -4023,10 +4030,11 @@ export type Typechecker {
       }
       IdentifierKind.Discard => return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName("_", "variable")))
       IdentifierKind.None_ => {
+        val bogusPosition = Position(line: 0, col: 0)
         val replacement = AstNode(
           token: token,
           kind: AstNodeKind.Accessor(AccessorAstNode(
-            root: AstNode(token: Token(position: token.position, kind: TokenKind.Ident("Option")), kind: AstNodeKind.Identifier(IdentifierKind.Named("Option"))),
+            root: AstNode(token: Token(position: bogusPosition, kind: TokenKind.Ident("Option")), kind: AstNodeKind.Identifier(IdentifierKind.Named("Option"))),
             path: [(Token(position: token.position, kind: TokenKind.Dot), Label(name: "None", position: token.position))]
           ))
         )
@@ -4067,10 +4075,19 @@ export type Typechecker {
         VariableAlias.Enum(_enum) => IdentifierKindMeta.Type(isEnum: true, typeParams: _enum.typeParams)
       }
 
+      val importedFrom = if varImportMod |mod| {
+        Some(IdentifierMetaImport.Module(mod.name))
+      } else if variable.scope == self.project.preludeScope {
+        Some(IdentifierMetaImport.Prelude)
+      } else {
+        None
+      }
+
       val ident = IdentifierMeta(
         name: name,
         kind: kind,
-        importedFrom: varImportMod?.name,
+        importedFrom: importedFrom,
+        definitionPosition: Some(variable.label.position),
       )
 
       val v = (token.position.col - 1, token.position.col + name.length - 1, ident)
