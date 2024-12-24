@@ -342,7 +342,7 @@
               "kind": "accessor",
               "head": {
                 "token": {
-                  "position": [4, 19],
+                  "position": [0, 0],
                   "kind": {
                     "name": "Ident",
                     "value": "Option"

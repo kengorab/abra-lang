@@ -37,7 +37,7 @@
                 "name": "accessor",
                 "root": {
                   "token": {
-                    "position": [1, 13],
+                    "position": [0, 0],
                     "kind": {
                       "name": "Ident",
                       "value": "Option"
