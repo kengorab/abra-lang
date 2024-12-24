@@ -1,8 +1,8 @@
 import "fs" as fs
 import JsonValue from "json"
 import log from "./log"
-import ModuleLoader, Project, Typechecker, TypecheckerErrorKind from "../../compiler/src/typechecker"
-import RequestMessage, NotificationMessage, ResponseMessage, ResponseResult, ResponseError, ResponseErrorCode, ServerCapabilities, TextDocumentSyncOptions, TextDocumentSyncKind, SaveOptions, ServerInfo, TextDocumentItem, TextDocumentIdentifier, VersionedTextDocumentIdentifier, TextDocumentContentChangeEvent, Diagnostic, DiagnosticSeverity from "./lsp_spec"
+import ModuleLoader, Project, Typechecker, TypecheckerErrorKind, IdentifierKindMeta from "../../compiler/src/typechecker"
+import RequestMessage, NotificationMessage, ResponseMessage, ResponseResult, ResponseError, ResponseErrorCode, ServerCapabilities, TextDocumentSyncOptions, TextDocumentSyncKind, SaveOptions, ServerInfo, TextDocumentItem, TextDocumentIdentifier, VersionedTextDocumentIdentifier, TextDocumentContentChangeEvent, Diagnostic, DiagnosticSeverity, Position, Range, MarkupContent, MarkupKind from "./lsp_spec"
 
 export val contentLengthHeader = "Content-Length: "
 export val bogusMessageId = -999
@@ -47,11 +47,54 @@ export type AbraLanguageService {
           openClose: Some(false),
           change: Some(TextDocumentSyncKind.None_),
           save: Some(SaveOptions(includeText: Some(false)))
-        ))
+        )),
+        hoverProvider: Some(true),
       ),
       serverInfo: ServerInfo(name: "abra-lsp", version: Some("0.0.1"))
     )
     ResponseMessage.Success(id: id, result: Some(result))
+  }
+
+  func _hover(self, id: Int, textDocument: TextDocumentIdentifier, position: Position): ResponseMessage {
+    // todo: what happens if it's not a `file://` uri?
+    val filePath = textDocument.uri.replaceAll("file://", "")
+    val module = if self._project.modules[filePath] |mod| mod else return ResponseMessage.Success(id: id, result: None)
+    val line = position.line
+    val identsByLine = if module.identsByLine[line] |idents| idents else return ResponseMessage.Success(id: id, result: None)
+
+    for (colStart, colEnd, ident) in identsByLine {
+      if colStart <= position.character && position.character <= colEnd {
+        val message = match ident.kind {
+          IdentifierKindMeta.Variable(mutable, typeRepr) => {
+            val prefix = if mutable "var" else "val"
+            "$prefix ${ident.name}: $typeRepr"
+          }
+          IdentifierKindMeta.Function(typeParams, params, returnTypeRepr) => {
+            val generics = if typeParams.isEmpty() "" else "<${typeParams.join(", ")}>"
+            "func ${ident.name}$generics(${params.join(", ")}): $returnTypeRepr"
+          }
+          IdentifierKindMeta.Type(isEnum, typeParams) => {
+            val prefix = if isEnum "enum" else "type"
+            val generics = if typeParams.isEmpty() "" else "<${typeParams.join(", ")}>"
+            "$prefix ${ident.name}$generics"
+          }
+        }
+        val lines = ["```abra", message, "```"]
+
+        if ident.importedFrom |modName| {
+          lines.push("Imported from `$modName`")
+        }
+
+        val value = lines.join("\\n")
+
+        val range = Range(start: Position(line: line, character: colStart), end: Position(line: line, character: colEnd))
+        val contents = MarkupContent(kind: MarkupKind.Markdown, value: value)
+        val result = ResponseResult.Hover(contents: contents, range: Some(range))
+        return ResponseMessage.Success(id: id, result: Some(result))
+      }
+    }
+
+    ResponseMessage.Success(id: id, result: None)
   }
 
   // Notification handlers
@@ -101,7 +144,11 @@ export type AbraLanguageService {
     // todo: what happens if it's not a `file://` uri?
     val filePath = uri.replaceAll("file://", "")
 
-    val typechecker = Typechecker(moduleLoader: self._moduleLoader, project: self._project)
+    val typechecker = Typechecker(
+      moduleLoader: self._moduleLoader,
+      project: self._project,
+      trackIdentsForLsp: true,
+    )
 
     match typechecker.typecheckEntrypoint(filePath) {
       Ok => []
@@ -150,6 +197,7 @@ export type AbraLanguageService {
   func handleRequest(self, req: RequestMessage): ResponseMessage {
     match req {
       RequestMessage.Initialize(id, processId, rootPath) => self._initialize(id, processId, rootPath)
+      RequestMessage.Hover(id, textDocument, position) => self._hover(id, textDocument, position)
     }
   }
 
