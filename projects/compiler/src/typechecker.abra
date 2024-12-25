@@ -135,7 +135,7 @@ export type Variable {
   isCaptured: Bool = false
 
   func bogus(): Variable {
-    val label = Label(name: "_bogus", position: Position(line: 0, col: 0))
+    val label = Label(name: "_bogus", position: Position.bogus())
     Variable(label: label, scope: Scope.bogus(), mutable: false, ty: Type(kind: TypeKind.Never))
   }
 
@@ -232,7 +232,7 @@ export type Struct {
   func hash(self): Int = self.moduleId + self.label.hash() * 17
 
   func makeDummy(moduleId: Int, name: String, typeParams: String[] = [], fields: (String, Type)[] = []): Struct {
-    val bogusPosition = Position(line: 0, col: 0)
+    val bogusPosition = Position.bogus()
     val bogusScope = Scope.bogus(name)
 
     val struct = Struct(
@@ -296,16 +296,16 @@ enum Instantiatable {
 export type Project {
   modules: Map<String, TypedModule> = {}
   preludeScope: Scope = Scope.bogus()
-  preludeIntStruct: Struct = Struct(moduleId: 0, label: Label(name: "Int", position: Position(line: 0, col: 0)), scope: Scope(name: "Int"))
-  preludeFloatStruct: Struct = Struct(moduleId: 0, label: Label(name: "Float", position: Position(line: 0, col: 0)), scope: Scope(name: "Float"))
-  preludeBoolStruct: Struct = Struct(moduleId: 0, label: Label(name: "Bool", position: Position(line: 0, col: 0)), scope: Scope(name: "Bool"))
-  preludeCharStruct: Struct = Struct(moduleId: 0, label: Label(name: "Char", position: Position(line: 0, col: 0)), scope: Scope(name: "Char"))
-  preludeStringStruct: Struct = Struct(moduleId: 0, label: Label(name: "String", position: Position(line: 0, col: 0)), scope: Scope(name: "String"))
-  preludeArrayStruct: Struct = Struct(moduleId: 0, label: Label(name: "Array", position: Position(line: 0, col: 0)), scope: Scope(name: "Array"), typeParams: ["T"])
-  preludeMapStruct: Struct = Struct(moduleId: 0, label: Label(name: "Map", position: Position(line: 0, col: 0)), scope: Scope(name: "Array"), typeParams: ["K", "V"])
-  preludeSetStruct: Struct = Struct(moduleId: 0, label: Label(name: "Set", position: Position(line: 0, col: 0)), scope: Scope(name: "Set"), typeParams: ["T"])
-  preludeOptionEnum: Enum = Enum(moduleId: 0, label: Label(name: "Option", position: Position(line: 0, col: 0)), scope: Scope(name: "Option"), typeParams: ["T"])
-  preludeResultEnum: Enum = Enum(moduleId: 0, label: Label(name: "Result", position: Position(line: 0, col: 0)), scope: Scope(name: "Result"), typeParams: ["V", "E"])
+  preludeIntStruct: Struct = Struct(moduleId: 0, label: Label(name: "Int", position: Position.bogus()), scope: Scope(name: "Int"))
+  preludeFloatStruct: Struct = Struct(moduleId: 0, label: Label(name: "Float", position: Position.bogus()), scope: Scope(name: "Float"))
+  preludeBoolStruct: Struct = Struct(moduleId: 0, label: Label(name: "Bool", position: Position.bogus()), scope: Scope(name: "Bool"))
+  preludeCharStruct: Struct = Struct(moduleId: 0, label: Label(name: "Char", position: Position.bogus()), scope: Scope(name: "Char"))
+  preludeStringStruct: Struct = Struct(moduleId: 0, label: Label(name: "String", position: Position.bogus()), scope: Scope(name: "String"))
+  preludeArrayStruct: Struct = Struct(moduleId: 0, label: Label(name: "Array", position: Position.bogus()), scope: Scope(name: "Array"), typeParams: ["T"])
+  preludeMapStruct: Struct = Struct(moduleId: 0, label: Label(name: "Map", position: Position.bogus()), scope: Scope(name: "Array"), typeParams: ["K", "V"])
+  preludeSetStruct: Struct = Struct(moduleId: 0, label: Label(name: "Set", position: Position.bogus()), scope: Scope(name: "Set"), typeParams: ["T"])
+  preludeOptionEnum: Enum = Enum(moduleId: 0, label: Label(name: "Option", position: Position.bogus()), scope: Scope(name: "Option"), typeParams: ["T"])
+  preludeResultEnum: Enum = Enum(moduleId: 0, label: Label(name: "Result", position: Position.bogus()), scope: Scope(name: "Result"), typeParams: ["V", "E"])
 
   func typesAreEquivalent(self, ty: Type, other: Type): Bool {
     match ty.kind {
@@ -675,7 +675,7 @@ export type Function {
     kind: FunctionKind,
     typeParams: (Type, Label)[] = [],
   ): Function {
-    val bogusPosition = Position(line: 0, col: 0)
+    val bogusPosition = Position.bogus()
 
     val label = Label(name: name, position: bogusPosition)
     val fnScope = scope.makeChild(name, ScopeKind.Func)
@@ -687,7 +687,7 @@ export type Function {
     scope: Scope,
     struct: Struct,
   ): Function {
-    val bogusPosition = Position(line: 0, col: 0)
+    val bogusPosition = Position.bogus()
 
     val fnScope = scope.makeChild(struct.label.name, ScopeKind.Func)
     val structTypeParams = struct.typeParams.map(t => (Type(kind: TypeKind.Generic(t)), Label(name: t, position: bogusPosition)))
@@ -704,7 +704,7 @@ export type Function {
     variantLabel: Label,
     variantFields: Field[],
   ): Function {
-    val bogusPosition = Position(line: 0, col: 0)
+    val bogusPosition = Position.bogus()
 
     val fnScope = scope.makeChild("${enum_.label.name}.${variantLabel.name}", ScopeKind.Func)
     val typeParams = enum_.typeParams.map(t => (Type(kind: TypeKind.Generic(t)), Label(name: t, position: bogusPosition)))
@@ -1529,7 +1529,7 @@ export type Typechecker {
         self.project.preludeSetStruct,
       ]
       for struct in preludeStructs {
-        if struct.label.position == Position(line: 0, col: 0) unreachable("Improperly initialized prelude struct ${struct.label.name}")
+        if struct.label.position == Position.bogus() unreachable("Improperly initialized prelude struct ${struct.label.name}")
       }
 
       val preludeEnums = [
@@ -1537,7 +1537,7 @@ export type Typechecker {
         self.project.preludeResultEnum,
       ]
       for enum_ in preludeEnums {
-        if enum_.label.position == Position(line: 0, col: 0) unreachable("Improperly initialized prelude enum ${enum_.label.name}")
+        if enum_.label.position == Position.bogus() unreachable("Improperly initialized prelude enum ${enum_.label.name}")
       }
     }
 
@@ -4030,11 +4030,10 @@ export type Typechecker {
       }
       IdentifierKind.Discard => return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName("_", "variable")))
       IdentifierKind.None_ => {
-        val bogusPosition = Position(line: 0, col: 0)
         val replacement = AstNode(
           token: token,
           kind: AstNodeKind.Accessor(AccessorAstNode(
-            root: AstNode(token: Token(position: bogusPosition, kind: TokenKind.Ident("Option")), kind: AstNodeKind.Identifier(IdentifierKind.Named("Option"))),
+            root: AstNode(token: Token(position: Position.bogus(), kind: TokenKind.Ident("Option")), kind: AstNodeKind.Identifier(IdentifierKind.Named("Option"))),
             path: [(Token(position: token.position, kind: TokenKind.Dot), Label(name: "None", position: token.position))]
           ))
         )

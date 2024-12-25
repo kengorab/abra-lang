@@ -67,7 +67,7 @@ enum CompileErrorKind {
   ResolvedGenericsError(context: String, message: String)
 }
 
-func qbeError<V>(message: String): Result<V, CompileError> = Err(CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(message)))
+func qbeError<V>(message: String): Result<V, CompileError> = Err(CompileError(position: Position.bogus(), kind: CompileErrorKind.QbeError(message)))
 
 type ResolvedGenerics {
   _layers: (String, Map<String, Type>)[] = []
@@ -205,7 +205,7 @@ export type Compiler {
     val (fnNamesPtr, fnNamesIdx) = builder.addData(QbeData(name: "__fnnames", kind: QbeDataKind.Strings([])))
 
     // Seed the RNG, for any future calls to `libc.rand()`
-    val timeVal = match mainFn.block.buildCallRaw("time", QbeType.U64, [Value.Int(0)]) { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: "<entrypoint>", error: CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(e)))) }
+    val timeVal = match mainFn.block.buildCallRaw("time", QbeType.U64, [Value.Int(0)]) { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: "<entrypoint>", error: CompileError(position: Position.bogus(), kind: CompileErrorKind.QbeError(e)))) }
     mainFn.block.buildVoidCallRaw("srand", [timeVal])
 
     mainFn.block.buildVoidCallRaw("GC_init", [])
@@ -223,7 +223,7 @@ export type Compiler {
       }
       match moduleFn.block.verify() {
         Ok(v) => v
-        Err(e) => return Err(CompilationError(modulePath: mod.name, error: CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(e))))
+        Err(e) => return Err(CompilationError(modulePath: mod.name, error: CompileError(position: Position.bogus(), kind: CompileErrorKind.QbeError(e))))
       }
       mainFn.block.buildVoidCall(Callable.Function(moduleFn), [])
     }
@@ -232,7 +232,7 @@ export type Compiler {
 
     match mainFn.block.verify() {
       Ok(v) => v
-      Err(e) => return Err(CompilationError(modulePath: "<entrypoint>", error: CompileError(position: Position(line: 0, col: 0), kind: CompileErrorKind.QbeError(e))))
+      Err(e) => return Err(CompilationError(modulePath: "<entrypoint>", error: CompileError(position: Position.bogus(), kind: CompileErrorKind.QbeError(e))))
     }
 
     val functionNames = compiler._functionNames.entries().asArray().sortBy(p => p[1])
