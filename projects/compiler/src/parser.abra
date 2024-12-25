@@ -1700,11 +1700,10 @@ export type Parser {
       _ => false
     }
     val invokee = if isSome {
-      val bogusPosition = Position(line: 0, col: 0)
       AstNode(
         token: token,
         kind: AstNodeKind.Accessor(AccessorAstNode(
-          root: AstNode(token: Token(position: bogusPosition, kind: TokenKind.Ident("Option")), kind: AstNodeKind.Identifier(IdentifierKind.Named("Option"))),
+          root: AstNode(token: Token(position: Position.bogus(), kind: TokenKind.Ident("Option")), kind: AstNodeKind.Identifier(IdentifierKind.Named("Option"))),
           path: [(Token(position: token.position, kind: TokenKind.Dot), Label(name: "Some", position: token.position))]
         ))
       )

@@ -1,6 +1,11 @@
 import valueIfValidHexDigit from "./utils"
 
-export type Position { line: Int, col: Int }
+export type Position {
+  line: Int
+  col: Int
+
+  func bogus(): Position = Position(line: 0, col: 0)
+}
 
 export type Token {
   position: Position

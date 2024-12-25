@@ -102,7 +102,6 @@ export type AbraLanguageService {
       val line = pos.line - 1
       val character = pos.col - 1
       val range = Range(start: Position(line: line, character: character), end: Position(line: line, character: character))
-      // val uri = if ident.importedFrom |mod| "file://$mod" else textDocument.uri
       val definitionFilePath = match ident.importedFrom {
         None => filePath
         IdentifierMetaImport.Prelude => self._moduleLoader.stdRoot + "/prelude.abra"
