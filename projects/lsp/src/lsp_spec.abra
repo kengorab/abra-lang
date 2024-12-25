@@ -4,6 +4,7 @@ import JsonValue, JsonError, JsonObject from "json"
 export enum RequestMessage {
   Initialize(id: Int, processId: Int?, rootPath: String?)
   Hover(id: Int, textDocument: TextDocumentIdentifier, position: Position)
+  Definition(id: Int, textDocument: TextDocumentIdentifier, position: Position)
 
   func fromJson(json: JsonValue): Result<RequestMessage?, JsonError> {
     val obj = try json.asObject()
@@ -35,6 +36,16 @@ export enum RequestMessage {
         val position = try Position.fromJson(positionObj)
 
         Ok(Some(RequestMessage.Hover(id: id, textDocument: textDocument, position: position)))
+      }
+      "textDocument/definition" => {
+        val params = try obj.getObjectRequired("params")
+        val textDocumentObj = try params.getValueRequired("textDocument")
+        val textDocument = try TextDocumentIdentifier.fromJson(textDocumentObj)
+
+        val positionObj = try params.getValueRequired("position")
+        val position = try Position.fromJson(positionObj)
+
+        Ok(Some(RequestMessage.Definition(id: id, textDocument: textDocument, position: position)))
       }
       else => {
         log.writeln("Error: Unimplemented RequestMessage method '$method'")
@@ -140,13 +151,16 @@ export enum ResponseMessage {
 export enum ResponseResult {
   Initialize(capabilities: ServerCapabilities, serverInfo: ServerInfo)
   Hover(contents: MarkupContent, range: Range?)
+  // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_definition
+  // Note: the actual response body for textDocument/definition requests is just a `Location` type, which is flattened here
+  Definition(uri: String, range: Range)
 
   func toJson(self): JsonValue {
     val obj = match self {
       ResponseResult.Initialize(capabilities, serverInfo) => {
         JsonObject(_map: {
           "capabilities": capabilities.toJson(),
-          "serverInfo": serverInfo.toJson()
+          "serverInfo": serverInfo.toJson(),
         })
       }
       ResponseResult.Hover(contents, range) => {
@@ -159,6 +173,12 @@ export enum ResponseResult {
         }
 
         obj
+      }
+      ResponseResult.Definition(uri, range) => {
+        JsonObject(_map: {
+          "uri": JsonValue.String(uri),
+          "range": range.toJson(),
+        })
       }
     }
 
@@ -212,6 +232,7 @@ export type ServerCapabilities {
   textDocumentSync: TextDocumentSyncOptions? = None
   diagnosticProvider: DiagnosticOptions? = None
   hoverProvider: Bool? = None
+  definitionProvider: Bool? = None
 
   func toJson(self): JsonValue {
     val obj = JsonObject()
@@ -226,6 +247,10 @@ export type ServerCapabilities {
 
     if self.hoverProvider |hp| {
       obj.set("hoverProvider", JsonValue.Boolean(hp))
+    }
+
+    if self.definitionProvider |dp| {
+      obj.set("definitionProvider", JsonValue.Boolean(dp))
     }
 
     JsonValue.Object(obj)

@@ -750,7 +750,7 @@
                   "kind": "accessor",
                   "head": {
                     "token": {
-                      "position": [21, 3],
+                      "position": [0, 0],
                       "kind": {
                         "name": "Ident",
                         "value": "Option"
@@ -1194,7 +1194,7 @@
                   "kind": "accessor",
                   "head": {
                     "token": {
-                      "position": [32, 3],
+                      "position": [0, 0],
                       "kind": {
                         "name": "Ident",
                         "value": "Option"
@@ -1427,7 +1427,7 @@
                   "kind": "accessor",
                   "head": {
                     "token": {
-                      "position": [36, 38],
+                      "position": [0, 0],
                       "kind": {
                         "name": "Ident",
                         "value": "Option"
@@ -1605,7 +1605,7 @@
                   "kind": "accessor",
                   "head": {
                     "token": {
-                      "position": [39, 19],
+                      "position": [0, 0],
                       "kind": {
                         "name": "Ident",
                         "value": "Option"
@@ -1954,7 +1954,7 @@
                   "kind": "accessor",
                   "head": {
                     "token": {
-                      "position": [45, 3],
+                      "position": [0, 0],
                       "kind": {
                         "name": "Ident",
                         "value": "Option"
@@ -2127,7 +2127,7 @@
                         "kind": "accessor",
                         "head": {
                           "token": {
-                            "position": [49, 16],
+                            "position": [0, 0],
                             "kind": {
                               "name": "Ident",
                               "value": "Option"

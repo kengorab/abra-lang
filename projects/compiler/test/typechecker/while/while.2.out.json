@@ -56,7 +56,7 @@
             "kind": "accessor",
             "head": {
               "token": {
-                "position": [1, 15],
+                "position": [0, 0],
                 "kind": {
                   "name": "Ident",
                   "value": "Option"

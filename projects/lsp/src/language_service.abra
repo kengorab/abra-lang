@@ -1,7 +1,7 @@
 import "fs" as fs
 import JsonValue from "json"
 import log from "./log"
-import ModuleLoader, Project, Typechecker, TypecheckerErrorKind, IdentifierKindMeta from "../../compiler/src/typechecker"
+import ModuleLoader, Project, Typechecker, TypecheckerErrorKind, IdentifierMeta, IdentifierKindMeta, IdentifierMetaImport from "../../compiler/src/typechecker"
 import RequestMessage, NotificationMessage, ResponseMessage, ResponseResult, ResponseError, ResponseErrorCode, ServerCapabilities, TextDocumentSyncOptions, TextDocumentSyncKind, SaveOptions, ServerInfo, TextDocumentItem, TextDocumentIdentifier, VersionedTextDocumentIdentifier, TextDocumentContentChangeEvent, Diagnostic, DiagnosticSeverity, Position, Range, MarkupContent, MarkupKind from "./lsp_spec"
 
 export val contentLengthHeader = "Content-Length: "
@@ -49,6 +49,7 @@ export type AbraLanguageService {
           save: Some(SaveOptions(includeText: Some(false)))
         )),
         hoverProvider: Some(true),
+        definitionProvider: Some(true),
       ),
       serverInfo: ServerInfo(name: "abra-lsp", version: Some("0.0.1"))
     )
@@ -58,43 +59,62 @@ export type AbraLanguageService {
   func _hover(self, id: Int, textDocument: TextDocumentIdentifier, position: Position): ResponseMessage {
     // todo: what happens if it's not a `file://` uri?
     val filePath = textDocument.uri.replaceAll("file://", "")
-    val module = if self._project.modules[filePath] |mod| mod else return ResponseMessage.Success(id: id, result: None)
-    val line = position.line
-    val identsByLine = if module.identsByLine[line] |idents| idents else return ResponseMessage.Success(id: id, result: None)
 
-    for (colStart, colEnd, ident) in identsByLine {
-      if colStart <= position.character && position.character <= colEnd {
-        val message = match ident.kind {
-          IdentifierKindMeta.Variable(mutable, typeRepr) => {
-            val prefix = if mutable "var" else "val"
-            "$prefix ${ident.name}: $typeRepr"
-          }
-          IdentifierKindMeta.Function(typeParams, params, returnTypeRepr) => {
-            val generics = if typeParams.isEmpty() "" else "<${typeParams.join(", ")}>"
-            "func ${ident.name}$generics(${params.join(", ")}): $returnTypeRepr"
-          }
-          IdentifierKindMeta.Type(isEnum, typeParams) => {
-            val prefix = if isEnum "enum" else "type"
-            val generics = if typeParams.isEmpty() "" else "<${typeParams.join(", ")}>"
-            "$prefix ${ident.name}$generics"
-          }
-        }
-        val lines = ["```abra", message, "```"]
-
-        if ident.importedFrom |modName| {
-          lines.push("Imported from `$modName`")
-        }
-
-        val value = lines.join("\\n")
-
-        val range = Range(start: Position(line: line, character: colStart), end: Position(line: line, character: colEnd))
-        val contents = MarkupContent(kind: MarkupKind.Markdown, value: value)
-        val result = ResponseResult.Hover(contents: contents, range: Some(range))
-        return ResponseMessage.Success(id: id, result: Some(result))
-      }
+    val (line, identColStart, identColEnd, ident) = if self._findIdentAtPosition(filePath, position) |ident| ident else {
+      return ResponseMessage.Success(id: id, result: None)
     }
 
-    ResponseMessage.Success(id: id, result: None)
+    val message = match ident.kind {
+      IdentifierKindMeta.Variable(mutable, typeRepr) => {
+        val prefix = if mutable "var" else "val"
+        "$prefix ${ident.name}: $typeRepr"
+      }
+      IdentifierKindMeta.Function(typeParams, params, returnTypeRepr) => {
+        val generics = if typeParams.isEmpty() "" else "<${typeParams.join(", ")}>"
+        "func ${ident.name}$generics(${params.join(", ")}): $returnTypeRepr"
+      }
+      IdentifierKindMeta.Type(isEnum, typeParams) => {
+        val prefix = if isEnum "enum" else "type"
+        val generics = if typeParams.isEmpty() "" else "<${typeParams.join(", ")}>"
+        "$prefix ${ident.name}$generics"
+      }
+    }
+    val lines = ["```abra", message, "```"]
+
+    if ident.importedFrom |modName| {
+      lines.push("Imported from `$modName`")
+    }
+
+    val value = lines.join("\\n")
+
+    val range = Range(start: Position(line: line, character: identColStart), end: Position(line: line, character: identColEnd))
+    val contents = MarkupContent(kind: MarkupKind.Markdown, value: value)
+    val result = ResponseResult.Hover(contents: contents, range: Some(range))
+    ResponseMessage.Success(id: id, result: Some(result))
+  }
+
+  func _goToDefinition(self, id: Int, textDocument: TextDocumentIdentifier, position: Position): ResponseMessage {
+    // todo: what happens if it's not a `file://` uri?
+    val filePath = textDocument.uri.replaceAll("file://", "")
+
+    val ident = if self._findIdentAtPosition(filePath, position) |(_, _, _, ident)| ident else return ResponseMessage.Success(id: id, result: None)
+    val result = if ident.definitionPosition |pos| {
+      val line = pos.line - 1
+      val character = pos.col - 1
+      val range = Range(start: Position(line: line, character: character), end: Position(line: line, character: character))
+      // val uri = if ident.importedFrom |mod| "file://$mod" else textDocument.uri
+      val definitionFilePath = match ident.importedFrom {
+        None => filePath
+        IdentifierMetaImport.Prelude => self._moduleLoader.stdRoot + "/prelude.abra"
+        IdentifierMetaImport.Module(mod) => mod
+      }
+      val uri = "file://$definitionFilePath"
+      Some(ResponseResult.Definition(uri: uri, range: range))
+    } else {
+      None
+    }
+
+    ResponseMessage.Success(id: id, result: result)
   }
 
   // Notification handlers
@@ -192,12 +212,27 @@ export type AbraLanguageService {
     }
   }
 
+  func _findIdentAtPosition(self, filePath: String, position: Position): (Int, Int, Int, IdentifierMeta)? {
+    val module = if self._project.modules[filePath] |mod| mod else return None
+    val line = position.line
+    val identsByLine = if module.identsByLine[line] |idents| idents else return None
+
+    for (colStart, colEnd, ident) in identsByLine {
+      if colStart <= position.character && position.character <= colEnd {
+        return Some((line, colStart, colEnd, ident))
+      }
+    }
+
+    None
+  }
+
   // Dispatch
 
   func handleRequest(self, req: RequestMessage): ResponseMessage {
     match req {
       RequestMessage.Initialize(id, processId, rootPath) => self._initialize(id, processId, rootPath)
       RequestMessage.Hover(id, textDocument, position) => self._hover(id, textDocument, position)
+      RequestMessage.Definition(id, textDocument, position) => self._goToDefinition(id, textDocument, position)
     }
   }
 

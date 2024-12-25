@@ -944,7 +944,7 @@
                     "kind": "accessor",
                     "head": {
                       "token": {
-                        "position": [9, 48],
+                        "position": [0, 0],
                         "kind": {
                           "name": "Ident",
                           "value": "Option"
@@ -1203,7 +1203,7 @@
                     "kind": "accessor",
                     "head": {
                       "token": {
-                        "position": [11, 36],
+                        "position": [0, 0],
                         "kind": {
                           "name": "Ident",
                           "value": "Option"
@@ -1252,7 +1252,7 @@
                     "kind": "accessor",
                     "head": {
                       "token": {
-                        "position": [11, 43],
+                        "position": [0, 0],
                         "kind": {
                           "name": "Ident",
                           "value": "Option"
