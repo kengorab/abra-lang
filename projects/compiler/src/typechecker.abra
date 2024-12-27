@@ -93,6 +93,7 @@ export enum IdentifierKindMeta {
   Variable(mutable: Bool, typeRepr: String)
   Function(typeParams: String[], params: String[], returnTypeRepr: String)
   Type(isEnum: Bool, typeParams: String[])
+  Module(moduleFilePath: String)
 }
 
 export enum IdentifierMetaImport {
@@ -1676,46 +1677,92 @@ export type Typechecker {
     Ok(types)
   }
 
-  func _resolveInstanceTypeIdentifier(self, structOrEnum: StructOrEnum, label: Label, typeArguments: TypeIdentifier[]): Result<Type?, TypeError> {
+  func _resolveInstanceTypeIdentifier(self, importMod: TypedModule?, structOrEnum: StructOrEnum, label: Label, typeArguments: TypeIdentifier[]): Result<Type?, TypeError> {
     match structOrEnum {
       StructOrEnum.Struct(struct) => {
-        if label.name == struct.label.name {
-          val instanceTypeArgs = try self._verifyNumTypeArgs(label.position, typeArguments, struct.typeParams.length)
-          return Ok(Some(Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), instanceTypeArgs))))
+        if self.trackIdentsForLsp {
+          val importedFrom = if importMod |mod| {
+            Some(IdentifierMetaImport.Module(mod.name))
+          } else if struct.scope.parent == Some(self.project.preludeScope) {
+            Some(IdentifierMetaImport.Prelude)
+          } else {
+            None
+          }
+
+          val name = struct.label.name
+          val ident = IdentifierMeta(
+            name: name,
+            kind: IdentifierKindMeta.Type(isEnum: false, typeParams: struct.typeParams),
+            importedFrom: importedFrom,
+            definitionPosition: Some(struct.label.position),
+          )
+
+          val v = (label.position.col - 1, label.position.col + name.length - 1, ident)
+          if self.identsByLine[label.position.line - 1] |idents| {
+            idents.push(v)
+          } else {
+            self.identsByLine[label.position.line - 1] = [v]
+          }
         }
+
+        val instanceTypeArgs = try self._verifyNumTypeArgs(label.position, typeArguments, struct.typeParams.length)
+        return Ok(Some(Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), instanceTypeArgs))))
       }
       StructOrEnum.Enum(enum_) => {
-        if label.name == enum_.label.name {
-          val instanceTypeArgs = try self._verifyNumTypeArgs(label.position, typeArguments, enum_.typeParams.length)
-          return Ok(Some(Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), instanceTypeArgs))))
+        if self.trackIdentsForLsp {
+          val importedFrom = if importMod |mod| {
+            Some(IdentifierMetaImport.Module(mod.name))
+          } else if enum_.scope.parent == Some(self.project.preludeScope) {
+            Some(IdentifierMetaImport.Prelude)
+          } else {
+            None
+          }
+
+          val name = enum_.label.name
+          val ident = IdentifierMeta(
+            name: name,
+            kind: IdentifierKindMeta.Type(isEnum: true, typeParams: enum_.typeParams),
+            importedFrom: importedFrom,
+            definitionPosition: Some(enum_.label.position),
+          )
+
+          val v = (label.position.col - 1, label.position.col + name.length - 1, ident)
+          if self.identsByLine[label.position.line - 1] |idents| {
+            idents.push(v)
+          } else {
+            self.identsByLine[label.position.line - 1] = [v]
+          }
         }
+
+        val instanceTypeArgs = try self._verifyNumTypeArgs(label.position, typeArguments, enum_.typeParams.length)
+        return Ok(Some(Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), instanceTypeArgs))))
       }
     }
 
     Ok(None)
   }
 
-  func _findTypeByNameInScope(self, label: Label, startingScope = self.currentScope): Result<Type, TypeError> {
+  func _findTypeByNameInScope(self, label: Label, startingScope = self.currentScope): Result<(Type, TypedModule?), TypeError> {
     match label.name {
-      "Any" => Ok(Type(kind: TypeKind.Any))
-      "Unit" => Ok(Type(kind: TypeKind.PrimitiveUnit))
-      "Int" => Ok(Type(kind: TypeKind.PrimitiveInt))
-      "Float" => Ok(Type(kind: TypeKind.PrimitiveFloat))
-      "Bool" => Ok(Type(kind: TypeKind.PrimitiveBool))
-      "Char" => Ok(Type(kind: TypeKind.PrimitiveChar))
-      "String" => Ok(Type(kind: TypeKind.PrimitiveString))
-      "Map" => Ok(Type(kind: TypeKind.Type(StructOrEnum.Struct(self.project.preludeMapStruct))))
-      "Set" => Ok(Type(kind: TypeKind.Type(StructOrEnum.Struct(self.project.preludeSetStruct))))
+      "Any" => Ok((Type(kind: TypeKind.Any), None))
+      "Unit" => Ok((Type(kind: TypeKind.PrimitiveUnit), None))
+      "Int" => Ok((Type(kind: TypeKind.PrimitiveInt), None))
+      "Float" => Ok((Type(kind: TypeKind.PrimitiveFloat), None))
+      "Bool" => Ok((Type(kind: TypeKind.PrimitiveBool), None))
+      "Char" => Ok((Type(kind: TypeKind.PrimitiveChar), None))
+      "String" => Ok((Type(kind: TypeKind.PrimitiveString), None))
+      "Map" => Ok((Type(kind: TypeKind.Type(StructOrEnum.Struct(self.project.preludeMapStruct))), None))
+      "Set" => Ok((Type(kind: TypeKind.Type(StructOrEnum.Struct(self.project.preludeSetStruct))), None))
       _ => {
         var scope = Some(self.currentScope)
         while scope |sc| {
           for ty in sc.types {
             match ty.kind {
-              TypeKind.Generic(name) => { if label.name == name return Ok(ty) }
+              TypeKind.Generic(name) => { if label.name == name return Ok((ty, None)) }
               TypeKind.Type(structOrEnum) => {
                 match structOrEnum {
-                  StructOrEnum.Struct(struct) => { if label.name == struct.label.name return Ok(ty) }
-                  StructOrEnum.Enum(enum_) => { if label.name == enum_.label.name return Ok(ty) }
+                  StructOrEnum.Struct(struct) => { if label.name == struct.label.name return Ok((ty, None)) }
+                  StructOrEnum.Enum(enum_) => { if label.name == enum_.label.name return Ok((ty, None)) }
                 }
               }
               _ => continue
@@ -1726,26 +1773,36 @@ export type Typechecker {
 
         for ty in self.project.preludeScope.types {
           match ty.kind {
-            TypeKind.Generic(name) => { if label.name == name return Ok(ty) }
+            TypeKind.Generic(name) => { if label.name == name return Ok((ty, None)) }
             TypeKind.Type(structOrEnum) => {
               match structOrEnum {
-                StructOrEnum.Struct(struct) => { if label.name == struct.label.name return Ok(ty) }
-                StructOrEnum.Enum(enum_) => { if label.name == enum_.label.name return Ok(ty) }
+                StructOrEnum.Struct(struct) => { if label.name == struct.label.name return Ok((ty, None)) }
+                StructOrEnum.Enum(enum_) => { if label.name == enum_.label.name return Ok((ty, None)) }
               }
             }
             _ => continue
           }
         }
 
-        for importedModule in self.currentModuleImports.values() {
-          for (name, imp) in importedModule.imports {
-            if name == label.name {
+        for (moduleName, importedModule) in self.currentModuleImports {
+          for (importName, imp) in importedModule.imports {
+            if importName == label.name {
               match imp.kind {
                 TypedImportKind.Type(structOrEnum, _) => {
                   val ty = Type(kind: TypeKind.Type(structOrEnum))
+
+                  val importMod = self.project.modules[moduleName]
                   match structOrEnum {
-                    StructOrEnum.Struct(struct) => { if label.name == struct.label.name return Ok(ty) }
-                    StructOrEnum.Enum(enum_) => { if label.name == enum_.label.name return Ok(ty) }
+                    StructOrEnum.Struct(struct) => {
+                      if label.name == struct.label.name {
+                        return Ok((ty, importMod))
+                      }
+                    }
+                    StructOrEnum.Enum(enum_) => {
+                      if label.name == enum_.label.name {
+                        return Ok((ty, importMod))
+                      }
+                    }
                   }
                 }
                 _ => continue
@@ -1768,10 +1825,26 @@ export type Typechecker {
 
           if path[1] |seg| return Err(TypeError(position: seg.position, kind: TypeErrorKind.NotYetImplemented("qualified type paths longer than 2")))
 
+          if self.trackIdentsForLsp {
+            val name = aliasLabel.name
+            val ident = IdentifierMeta(
+              name: name,
+              kind: IdentifierKindMeta.Module(mod.name),
+              definitionPosition: Some(aliasLabel.position),
+            )
+
+            val v = (firstSeg.position.col - 1, firstSeg.position.col + name.length - 1, ident)
+            if self.identsByLine[firstSeg.position.line - 1] |idents| {
+              idents.push(v)
+            } else {
+              self.identsByLine[firstSeg.position.line - 1] = [v]
+            }
+          }
+
           val foundTy = match mod.exports[label.name] {
             None => return Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownImportForAlias(label.name, aliasLabel)))
             Export.Type(structOrEnum, _) => {
-              try self._resolveInstanceTypeIdentifier(structOrEnum, label, typeArguments)
+              try self._resolveInstanceTypeIdentifier(Some(mod), structOrEnum, label, typeArguments)
             }
             _ => None
           }
@@ -1784,19 +1857,110 @@ export type Typechecker {
           return res
         }
 
-        val ty = try self._findTypeByNameInScope(label)
+        val (ty, importMod) = try self._findTypeByNameInScope(label)
         match ty.kind {
           TypeKind.Type(structOrEnum) => {
-            match structOrEnum {
-              StructOrEnum.Struct(struct) => {
-                val instanceTypeArgs = try self._verifyNumTypeArgs(label.position, typeArguments, struct.typeParams.length)
-                Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), instanceTypeArgs))
-              }
-              StructOrEnum.Enum(enum_) => {
-                val instanceTypeArgs = try self._verifyNumTypeArgs(label.position, typeArguments, enum_.typeParams.length)
-                Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), instanceTypeArgs))
+            if try self._resolveInstanceTypeIdentifier(importMod, structOrEnum, label, typeArguments) |ty| ty else unreachable()
+          }
+          TypeKind.PrimitiveInt => {
+            if self.trackIdentsForLsp {
+              val name = self.project.preludeIntStruct.label.name
+              val ident = IdentifierMeta(
+                name: name,
+                kind: IdentifierKindMeta.Type(isEnum: false, typeParams: []),
+                importedFrom: Some(IdentifierMetaImport.Prelude),
+                definitionPosition: Some(self.project.preludeIntStruct.label.position),
+              )
+
+              val v = (label.position.col - 1, label.position.col + name.length - 1, ident)
+              if self.identsByLine[label.position.line - 1] |idents| {
+                idents.push(v)
+              } else {
+                self.identsByLine[label.position.line - 1] = [v]
               }
             }
+            try self._verifyNumTypeArgs(label.position, typeArguments, 0)
+            ty
+          }
+          TypeKind.PrimitiveFloat => {
+            if self.trackIdentsForLsp {
+              val name = self.project.preludeFloatStruct.label.name
+              val ident = IdentifierMeta(
+                name: name,
+                kind: IdentifierKindMeta.Type(isEnum: false, typeParams: []),
+                importedFrom: Some(IdentifierMetaImport.Prelude),
+                definitionPosition: Some(self.project.preludeFloatStruct.label.position),
+              )
+
+              val v = (label.position.col - 1, label.position.col + name.length - 1, ident)
+              if self.identsByLine[label.position.line - 1] |idents| {
+                idents.push(v)
+              } else {
+                self.identsByLine[label.position.line - 1] = [v]
+              }
+            }
+            try self._verifyNumTypeArgs(label.position, typeArguments, 0)
+            ty
+          }
+          TypeKind.PrimitiveBool => {
+            if self.trackIdentsForLsp {
+              val name = self.project.preludeBoolStruct.label.name
+              val ident = IdentifierMeta(
+                name: name,
+                kind: IdentifierKindMeta.Type(isEnum: false, typeParams: []),
+                importedFrom: Some(IdentifierMetaImport.Prelude),
+                definitionPosition: Some(self.project.preludeBoolStruct.label.position),
+              )
+
+              val v = (label.position.col - 1, label.position.col + name.length - 1, ident)
+              if self.identsByLine[label.position.line - 1] |idents| {
+                idents.push(v)
+              } else {
+                self.identsByLine[label.position.line - 1] = [v]
+              }
+            }
+            try self._verifyNumTypeArgs(label.position, typeArguments, 0)
+            ty
+          }
+          TypeKind.PrimitiveChar => {
+            if self.trackIdentsForLsp {
+              val name = self.project.preludeCharStruct.label.name
+              val ident = IdentifierMeta(
+                name: name,
+                kind: IdentifierKindMeta.Type(isEnum: false, typeParams: []),
+                importedFrom: Some(IdentifierMetaImport.Prelude),
+                definitionPosition: Some(self.project.preludeCharStruct.label.position),
+              )
+
+              val v = (label.position.col - 1, label.position.col + name.length - 1, ident)
+              if self.identsByLine[label.position.line - 1] |idents| {
+                idents.push(v)
+              } else {
+                self.identsByLine[label.position.line - 1] = [v]
+              }
+            }
+            try self._verifyNumTypeArgs(label.position, typeArguments, 0)
+            ty
+          }
+          TypeKind.PrimitiveString => {
+            if self.trackIdentsForLsp {
+              val name = self.project.preludeStringStruct.label.name
+              val ident = IdentifierMeta(
+                name: name,
+                kind: IdentifierKindMeta.Type(isEnum: false, typeParams: []),
+                importedFrom: Some(IdentifierMetaImport.Prelude),
+                definitionPosition: Some(self.project.preludeStringStruct.label.position),
+              )
+
+              val v = (label.position.col - 1, label.position.col + name.length - 1, ident)
+              if self.identsByLine[label.position.line - 1] |idents| {
+                idents.push(v)
+              } else {
+                self.identsByLine[label.position.line - 1] = [v]
+              }
+            }
+            try self._verifyNumTypeArgs(label.position, typeArguments, 0)
+            ty
           }
           _ => {
             try self._verifyNumTypeArgs(label.position, typeArguments, 0)
@@ -1842,7 +2006,7 @@ export type Typechecker {
   func _resolveTypeOrEnumVariant(self, path: Label[], last: Label): Result<Either<Type, (Enum, TypedEnumVariant, Int)>, TypeError> {
     match path[0] {
       None => {
-        val ty = try self._findTypeByNameInScope(last)
+        val (ty, _importMod) = try self._findTypeByNameInScope(last)
         val t = match ty.kind {
           TypeKind.Type(structOrEnum) => Type(kind: TypeKind.Instance(structOrEnum, []))
           _ => ty
@@ -1853,7 +2017,7 @@ export type Typechecker {
         val mod = try self._findModuleByAlias(first.name)
         match mod {
           None => {
-            val ty = try self._findTypeByNameInScope(first)
+            val (ty, _importMod) = try self._findTypeByNameInScope(first)
             val label = if path[1] |seg| {
               return Err(TypeError(position: seg.position, kind: TypeErrorKind.UnknownName(seg.name, "type")))
             } else {
