@@ -64,25 +64,29 @@ export type AbraLanguageService {
       return ResponseMessage.Success(id: id, result: None)
     }
 
-    val message = match ident.kind {
+    val lines = match ident.kind {
       IdentifierKindMeta.Variable(mutable, typeRepr) => {
         val prefix = if mutable "var" else "val"
-        "$prefix ${ident.name}: $typeRepr"
+        ["```abra", "$prefix ${ident.name}: $typeRepr", "```"]
       }
       IdentifierKindMeta.Function(typeParams, params, returnTypeRepr) => {
         val generics = if typeParams.isEmpty() "" else "<${typeParams.join(", ")}>"
-        "func ${ident.name}$generics(${params.join(", ")}): $returnTypeRepr"
+        ["```abra", "func ${ident.name}$generics(${params.join(", ")}): $returnTypeRepr", "```"]
       }
       IdentifierKindMeta.Type(isEnum, typeParams) => {
         val prefix = if isEnum "enum" else "type"
         val generics = if typeParams.isEmpty() "" else "<${typeParams.join(", ")}>"
-        "$prefix ${ident.name}$generics"
+        ["```abra", "$prefix ${ident.name}$generics", "```"]
+      }
+      IdentifierKindMeta.Module(filePath) => {
+        ["```abra", "(module) ${ident.name}", "```", "Alias for module `$filePath`"]
       }
     }
-    val lines = ["```abra", message, "```"]
 
-    if ident.importedFrom |modName| {
-      lines.push("Imported from `$modName`")
+    match ident.importedFrom {
+      None => {}
+      IdentifierMetaImport.Prelude => lines.push("Imported from prelude")
+      IdentifierMetaImport.Module(mod) => lines.push("Imported from `$mod`")
     }
 
     val value = lines.join("\\n")
