@@ -91,12 +91,14 @@ type ImportedModule {
 
 export enum IdentifierKindMeta {
   Variable(mutable: Bool, typeRepr: String)
-  Function(typeParams: String[], params: String[], returnTypeRepr: String)
+  Function(typeParams: String[], params: String[], returnTypeRepr: String, methodTy: (Bool, String)?)
   Type(isEnum: Bool, typeParams: String[])
   Module(moduleFilePath: String)
+  Field(fieldTy: String, parentTypeRepr: String)
+  EnumVariant(parentRepr: String, fields: String[])
 }
 
-export enum IdentifierMetaImport {
+export enum IdentifierMetaModule {
   Prelude
   Module(filePath: String)
 }
@@ -104,8 +106,7 @@ export enum IdentifierMetaImport {
 export type IdentifierMeta {
   name: String
   kind: IdentifierKindMeta
-  importedFrom: IdentifierMetaImport? = None
-  definitionPosition: Position? = None
+  definitionPosition: (IdentifierMetaModule, Position)? = None
 }
 
 export type TypedModule {
@@ -140,7 +141,7 @@ export type Variable {
     Variable(label: label, scope: Scope.bogus(), mutable: false, ty: Type(kind: TypeKind.Never))
   }
 
-  func isGlobal(self): Int? = match self.scope.kind { ScopeKind.Module(id) => Some(id), _ => None }
+  func isGlobal(self): Int? = match self.scope.kind { ScopeKind.Module(id, _) => Some(id), _ => None }
 }
 
 export enum Terminator {
@@ -163,7 +164,7 @@ export enum Terminator {
 
 export enum ScopeKind {
   Root
-  Module(id: Int)
+  Module(id: Int, name: String)
   Func
   If
   MatchCase
@@ -397,7 +398,7 @@ export type Project {
 export type Type {
   kind: TypeKind
 
-  func repr(self): String {
+  func repr(self, shorthand = true): String {
     match self.kind {
       TypeKind.Any => "Any"
       TypeKind.PrimitiveUnit => "Unit"
@@ -411,7 +412,7 @@ export type Type {
       TypeKind.Instance(structOrEnum, typeParams) => {
         match structOrEnum {
           StructOrEnum.Struct(struct) => {
-            if struct.builtin == Some(BuiltinModule.Prelude) && struct.label.name == "Array" {
+            if shorthand && struct.builtin == Some(BuiltinModule.Prelude) && struct.label.name == "Array" {
               val innerRepr = typeParams[0]?.repr() ?: "<unknown>"
               "$innerRepr[]"
             } else {
@@ -423,7 +424,7 @@ export type Type {
             }
           }
           StructOrEnum.Enum(enum_) => {
-            if enum_.builtin == Some(BuiltinModule.Prelude) && enum_.label.name == "Option" {
+            if shorthand && enum_.builtin == Some(BuiltinModule.Prelude) && enum_.label.name == "Option" {
               val innerRepr = typeParams[0]?.repr() ?: "<unknown>"
               "$innerRepr?"
             } else {
@@ -1496,6 +1497,7 @@ export type Typechecker {
   moduleLoader: ModuleLoader
   project: Project
   currentModuleId: Int = -1
+  currentModuleName: String = ""
   currentModuleExports: Map<String, Export> = {} // TODO: this is a little gross, could we instead track the currentModule?
   currentModuleImports: Map<String, ImportedModule> = {} // TODO: see above todo
   currentScope: Scope = Scope(name: "\$root")
@@ -1681,28 +1683,7 @@ export type Typechecker {
     match structOrEnum {
       StructOrEnum.Struct(struct) => {
         if self.trackIdentsForLsp {
-          val importedFrom = if importMod |mod| {
-            Some(IdentifierMetaImport.Module(mod.name))
-          } else if struct.scope.parent == Some(self.project.preludeScope) {
-            Some(IdentifierMetaImport.Prelude)
-          } else {
-            None
-          }
-
-          val name = struct.label.name
-          val ident = IdentifierMeta(
-            name: name,
-            kind: IdentifierKindMeta.Type(isEnum: false, typeParams: struct.typeParams),
-            importedFrom: importedFrom,
-            definitionPosition: Some(struct.label.position),
-          )
-
-          val v = (label.position.col - 1, label.position.col + name.length - 1, ident)
-          if self.identsByLine[label.position.line - 1] |idents| {
-            idents.push(v)
-          } else {
-            self.identsByLine[label.position.line - 1] = [v]
-          }
+          self._addLSPIdentForStruct(label.position, struct, importMod)
         }
 
         val instanceTypeArgs = try self._verifyNumTypeArgs(label.position, typeArguments, struct.typeParams.length)
@@ -1710,28 +1691,7 @@ export type Typechecker {
       }
       StructOrEnum.Enum(enum_) => {
         if self.trackIdentsForLsp {
-          val importedFrom = if importMod |mod| {
-            Some(IdentifierMetaImport.Module(mod.name))
-          } else if enum_.scope.parent == Some(self.project.preludeScope) {
-            Some(IdentifierMetaImport.Prelude)
-          } else {
-            None
-          }
-
-          val name = enum_.label.name
-          val ident = IdentifierMeta(
-            name: name,
-            kind: IdentifierKindMeta.Type(isEnum: true, typeParams: enum_.typeParams),
-            importedFrom: importedFrom,
-            definitionPosition: Some(enum_.label.position),
-          )
-
-          val v = (label.position.col - 1, label.position.col + name.length - 1, ident)
-          if self.identsByLine[label.position.line - 1] |idents| {
-            idents.push(v)
-          } else {
-            self.identsByLine[label.position.line - 1] = [v]
-          }
+          self._addLSPIdentForEnum(label.position, enum_, importMod)
         }
 
         val instanceTypeArgs = try self._verifyNumTypeArgs(label.position, typeArguments, enum_.typeParams.length)
@@ -1826,19 +1786,12 @@ export type Typechecker {
           if path[1] |seg| return Err(TypeError(position: seg.position, kind: TypeErrorKind.NotYetImplemented("qualified type paths longer than 2")))
 
           if self.trackIdentsForLsp {
-            val name = aliasLabel.name
             val ident = IdentifierMeta(
-              name: name,
+              name: aliasLabel.name,
               kind: IdentifierKindMeta.Module(mod.name),
-              definitionPosition: Some(aliasLabel.position),
+              definitionPosition: Some((IdentifierMetaModule.Module(self.currentModuleName), aliasLabel.position)),
             )
-
-            val v = (firstSeg.position.col - 1, firstSeg.position.col + name.length - 1, ident)
-            if self.identsByLine[firstSeg.position.line - 1] |idents| {
-              idents.push(v)
-            } else {
-              self.identsByLine[firstSeg.position.line - 1] = [v]
-            }
+            self._addLSPIdent(firstSeg.position, ident)
           }
 
           val foundTy = match mod.exports[label.name] {
@@ -1849,12 +1802,7 @@ export type Typechecker {
             _ => None
           }
 
-          // TODO: clean this up, it's not ideal
-          val res: Result<Type, TypeError> = if foundTy |ty|
-            Ok(ty)
-          else
-            Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
-          return res
+          return if foundTy |ty| Ok(ty) else Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
         }
 
         val (ty, importMod) = try self._findTypeByNameInScope(label)
@@ -1863,102 +1811,27 @@ export type Typechecker {
             if try self._resolveInstanceTypeIdentifier(importMod, structOrEnum, label, typeArguments) |ty| ty else unreachable()
           }
           TypeKind.PrimitiveInt => {
-            if self.trackIdentsForLsp {
-              val name = self.project.preludeIntStruct.label.name
-              val ident = IdentifierMeta(
-                name: name,
-                kind: IdentifierKindMeta.Type(isEnum: false, typeParams: []),
-                importedFrom: Some(IdentifierMetaImport.Prelude),
-                definitionPosition: Some(self.project.preludeIntStruct.label.position),
-              )
-
-              val v = (label.position.col - 1, label.position.col + name.length - 1, ident)
-              if self.identsByLine[label.position.line - 1] |idents| {
-                idents.push(v)
-              } else {
-                self.identsByLine[label.position.line - 1] = [v]
-              }
-            }
+            if self.trackIdentsForLsp self._addLSPIdentForStruct(label.position, self.project.preludeIntStruct, None)
             try self._verifyNumTypeArgs(label.position, typeArguments, 0)
             ty
           }
           TypeKind.PrimitiveFloat => {
-            if self.trackIdentsForLsp {
-              val name = self.project.preludeFloatStruct.label.name
-              val ident = IdentifierMeta(
-                name: name,
-                kind: IdentifierKindMeta.Type(isEnum: false, typeParams: []),
-                importedFrom: Some(IdentifierMetaImport.Prelude),
-                definitionPosition: Some(self.project.preludeFloatStruct.label.position),
-              )
-
-              val v = (label.position.col - 1, label.position.col + name.length - 1, ident)
-              if self.identsByLine[label.position.line - 1] |idents| {
-                idents.push(v)
-              } else {
-                self.identsByLine[label.position.line - 1] = [v]
-              }
-            }
+            if self.trackIdentsForLsp self._addLSPIdentForStruct(label.position, self.project.preludeFloatStruct, None)
             try self._verifyNumTypeArgs(label.position, typeArguments, 0)
             ty
           }
           TypeKind.PrimitiveBool => {
-            if self.trackIdentsForLsp {
-              val name = self.project.preludeBoolStruct.label.name
-              val ident = IdentifierMeta(
-                name: name,
-                kind: IdentifierKindMeta.Type(isEnum: false, typeParams: []),
-                importedFrom: Some(IdentifierMetaImport.Prelude),
-                definitionPosition: Some(self.project.preludeBoolStruct.label.position),
-              )
-
-              val v = (label.position.col - 1, label.position.col + name.length - 1, ident)
-              if self.identsByLine[label.position.line - 1] |idents| {
-                idents.push(v)
-              } else {
-                self.identsByLine[label.position.line - 1] = [v]
-              }
-            }
+            if self.trackIdentsForLsp self._addLSPIdentForStruct(label.position, self.project.preludeBoolStruct, None)
             try self._verifyNumTypeArgs(label.position, typeArguments, 0)
             ty
           }
           TypeKind.PrimitiveChar => {
-            if self.trackIdentsForLsp {
-              val name = self.project.preludeCharStruct.label.name
-              val ident = IdentifierMeta(
-                name: name,
-                kind: IdentifierKindMeta.Type(isEnum: false, typeParams: []),
-                importedFrom: Some(IdentifierMetaImport.Prelude),
-                definitionPosition: Some(self.project.preludeCharStruct.label.position),
-              )
-
-              val v = (label.position.col - 1, label.position.col + name.length - 1, ident)
-              if self.identsByLine[label.position.line - 1] |idents| {
-                idents.push(v)
-              } else {
-                self.identsByLine[label.position.line - 1] = [v]
-              }
-            }
+            if self.trackIdentsForLsp self._addLSPIdentForStruct(label.position, self.project.preludeCharStruct, None)
             try self._verifyNumTypeArgs(label.position, typeArguments, 0)
             ty
           }
           TypeKind.PrimitiveString => {
-            if self.trackIdentsForLsp {
-              val name = self.project.preludeStringStruct.label.name
-              val ident = IdentifierMeta(
-                name: name,
-                kind: IdentifierKindMeta.Type(isEnum: false, typeParams: []),
-                importedFrom: Some(IdentifierMetaImport.Prelude),
-                definitionPosition: Some(self.project.preludeStringStruct.label.position),
-              )
-
-              val v = (label.position.col - 1, label.position.col + name.length - 1, ident)
-              if self.identsByLine[label.position.line - 1] |idents| {
-                idents.push(v)
-              } else {
-                self.identsByLine[label.position.line - 1] = [v]
-              }
-            }
+            if self.trackIdentsForLsp self._addLSPIdentForStruct(label.position, self.project.preludeStringStruct, None)
             try self._verifyNumTypeArgs(label.position, typeArguments, 0)
             ty
           }
@@ -2255,11 +2128,102 @@ export type Typechecker {
     name
   }
 
+  // Start LSP helpers
+
+  func _addLSPIdentForStruct(self, position: Position, struct: Struct, importMod: TypedModule?) {
+    val defMod = if struct.scope.parent == Some(self.project.preludeScope) {
+      IdentifierMetaModule.Prelude
+    } else {
+      IdentifierMetaModule.Module(importMod?.name ?: self.currentModuleName)
+    }
+
+    val ident = IdentifierMeta(
+      name: struct.label.name,
+      kind: IdentifierKindMeta.Type(isEnum: false, typeParams: struct.typeParams),
+      definitionPosition: Some((defMod, struct.label.position)),
+    )
+
+    self._addLSPIdent(position, ident)
+  }
+
+  func _addLSPIdentForEnum(self, position: Position, enum_: Enum, importMod: TypedModule?) {
+    val defMod = if enum_.scope.parent == Some(self.project.preludeScope) {
+      IdentifierMetaModule.Prelude
+    } else {
+      IdentifierMetaModule.Module(importMod?.name ?: self.currentModuleName)
+    }
+
+    val ident = IdentifierMeta(
+      name: enum_.label.name,
+      kind: IdentifierKindMeta.Type(isEnum: true, typeParams: enum_.typeParams),
+      definitionPosition: Some((defMod, enum_.label.position)),
+    )
+
+    self._addLSPIdent(position, ident)
+  }
+
+  func _addLSPIdent(self, position: Position, ident: IdentifierMeta) {
+    val v = (position.col - 1, position.col + ident.name.length - 1, ident)
+    if self.identsByLine[position.line - 1] |idents| {
+      idents.push(v)
+    } else {
+      self.identsByLine[position.line - 1] = [v]
+    }
+  }
+
+  func _getLSPTypeData(self, ty: Type): (IdentifierMetaModule, Type)? {
+    val structOrEnum = match ty.kind {
+      TypeKind.PrimitiveInt => StructOrEnum.Struct(self.project.preludeIntStruct)
+      TypeKind.PrimitiveFloat => StructOrEnum.Struct(self.project.preludeFloatStruct)
+      TypeKind.PrimitiveBool => StructOrEnum.Struct(self.project.preludeBoolStruct)
+      TypeKind.PrimitiveChar => StructOrEnum.Struct(self.project.preludeCharStruct)
+      TypeKind.PrimitiveString => StructOrEnum.Struct(self.project.preludeStringStruct)
+      TypeKind.Type(type_) => type_
+      TypeKind.Instance(structOrEnum, _) => structOrEnum
+      else => return None
+    }
+
+    val data = match structOrEnum {
+      StructOrEnum.Struct(struct) => {
+        val mod = if struct.scope.parent == Some(self.project.preludeScope) {
+          IdentifierMetaModule.Prelude
+        } else {
+          match struct.scope.parent?.kind {
+            ScopeKind.Module(_, name) => IdentifierMetaModule.Module(name)
+            _ => unreachable()
+          }
+        }
+
+        val typeArgs = struct.typeParams.map(p => Type(kind: TypeKind.Generic(p)))
+        val structInstanceType = Type(kind: TypeKind.Instance(structOrEnum, typeArgs))
+        (mod, structInstanceType)
+      }
+      StructOrEnum.Enum(enum_) => {
+        val mod = if enum_.scope.parent == Some(self.project.preludeScope) {
+          IdentifierMetaModule.Prelude
+        } else {
+          match enum_.scope.parent?.kind {
+            ScopeKind.Module(_, name) => IdentifierMetaModule.Module(name)
+            _ => unreachable()
+          }
+        }
+
+        val typeArgs = enum_.typeParams.map(p => Type(kind: TypeKind.Generic(p)))
+        val enumInstanceType = Type(kind: TypeKind.Instance(structOrEnum, typeArgs))
+        (mod, enumInstanceType)
+      }
+    }
+
+    Some(data)
+  }
+
+  // End LSP helpers
+
   func _typecheckModule(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
     if self.project.modules[modulePathAbs] |mod| return Ok(mod)
 
     self.typecheckingBuiltin = if modulePathAbs == self.moduleLoader.stdRoot + "/prelude.abra" {
-      self.project.preludeScope = self.currentScope.makeChild("module_prelude", ScopeKind.Module(id: -1))
+      self.project.preludeScope = self.currentScope.makeChild("module_prelude", ScopeKind.Module(id: -1, name: modulePathAbs))
       Some(BuiltinModule.Prelude)
     } else if modulePathAbs == self.moduleLoader.stdRoot + "/_intrinsics.abra" {
       Some(BuiltinModule.Intrinsics)
@@ -2324,12 +2288,13 @@ export type Typechecker {
 
     val moduleId = self.project.modules.values().filter(m => m.id != -1).length
     self.currentModuleId = moduleId
+    self.currentModuleName = modulePathAbs
 
     val moduleScope = if self.typecheckingBuiltin == Some(BuiltinModule.Prelude) {
-      self.project.preludeScope.kind = ScopeKind.Module(id: moduleId)
+      self.project.preludeScope.kind = ScopeKind.Module(id: moduleId, name: modulePathAbs)
       self.project.preludeScope
     } else {
-      self.currentScope.makeChild("module_$moduleId", ScopeKind.Module(id: moduleId))
+      self.currentScope.makeChild("module_$moduleId", ScopeKind.Module(id: moduleId, name: modulePathAbs))
     }
     val prevScope = self.currentScope
     self.currentScope = moduleScope
@@ -3228,15 +3193,9 @@ export type Typechecker {
           val ident = IdentifierMeta(
             name: label.name,
             kind: IdentifierKindMeta.Variable(mutable: mutable, typeRepr: ty.repr()),
-            definitionPosition: Some(label.position),
+            definitionPosition: Some((IdentifierMetaModule.Module(self.currentModuleName), label.position)),
           )
-
-          val v = (label.position.col - 1, label.position.col + label.name.length - 1, ident)
-          if self.identsByLine[label.position.line - 1] |idents| {
-            idents.push(v)
-          } else {
-            self.identsByLine[label.position.line - 1] = [v]
-          }
+          self._addLSPIdent(label.position, ident)
         }
 
         Ok([variable])
@@ -4232,33 +4191,24 @@ export type Typechecker {
 
           val returnTypeRepr = fn.returnType.repr()
 
-          IdentifierKindMeta.Function(typeParams, params, returnTypeRepr)
+          IdentifierKindMeta.Function(typeParams, params, returnTypeRepr, methodTy: None)
         }
         VariableAlias.Struct(struct) => IdentifierKindMeta.Type(isEnum: false, typeParams: struct.typeParams)
         VariableAlias.Enum(_enum) => IdentifierKindMeta.Type(isEnum: true, typeParams: _enum.typeParams)
       }
 
-      val importedFrom = if varImportMod |mod| {
-        Some(IdentifierMetaImport.Module(mod.name))
-      } else if variable.scope == self.project.preludeScope {
-        Some(IdentifierMetaImport.Prelude)
+      val defMod = if variable.scope == self.project.preludeScope {
+        IdentifierMetaModule.Prelude
       } else {
-        None
+        IdentifierMetaModule.Module(varImportMod?.name ?: self.currentModuleName)
       }
 
       val ident = IdentifierMeta(
         name: name,
         kind: kind,
-        importedFrom: importedFrom,
-        definitionPosition: Some(variable.label.position),
+        definitionPosition: Some((defMod, variable.label.position)),
       )
-
-      val v = (token.position.col - 1, token.position.col + name.length - 1, ident)
-      if self.identsByLine[token.position.line - 1] |idents| {
-        idents.push(v)
-      } else {
-        self.identsByLine[token.position.line - 1] = [v]
-      }
+      self._addLSPIdent(token.position, ident)
     }
 
     Ok(TypedAstNode(token: token, ty: variable.ty, kind: TypedAstNodeKind.Identifier(name, variable, fnTypeHint, varImportMod)))
@@ -4466,8 +4416,78 @@ export type Typechecker {
                 }
               }
             }
+
+            if self.trackIdentsForLsp {
+              val typeParams: String[] = []
+              for (_, label) in fn.typeParams {
+                typeParams.push(label.name)
+              }
+
+              val (isInstanceMethod, params) = match fn.kind {
+                FunctionKind.InstanceMethod => (true, ["self"])
+                _ => (false, [])
+              }
+
+              for param in fn.params {
+                params.push("${if param.isVariadic "..." else ""}${param.label.name}${if param.defaultValue "?" else ""}: ${param.ty.repr()}")
+              }
+
+              val returnTypeRepr = fn.returnType.repr()
+
+              if self._getLSPTypeData(subjTy) |(definitionModule, parentTy)| {
+                val kind = IdentifierKindMeta.Function(typeParams, params, returnTypeRepr, methodTy: Some((isInstanceMethod, parentTy.repr(shorthand: false))))
+
+                val ident = IdentifierMeta(
+                  name: label.name,
+                  kind: kind,
+                  definitionPosition: Some((definitionModule, fn.label.position)),
+                )
+                self._addLSPIdent(label.position, ident)
+              }
+            }
           }
-          _ => {}
+          AccessorPathSegment.Field(_, ty, f, _) => {
+            if self.trackIdentsForLsp {
+              if self._getLSPTypeData(subjTy) |(definitionModule, parentTy)| {
+                val kind = IdentifierKindMeta.Field(fieldTy: ty.repr(), parentTypeRepr: parentTy.repr(shorthand: false))
+                val ident = IdentifierMeta(
+                  name: label.name,
+                  kind: kind,
+                  definitionPosition: Some((definitionModule, f.name.position)),
+                )
+                self._addLSPIdent(label.position, ident)
+              }
+            }
+          }
+          AccessorPathSegment.EnumVariant(label, ty, enum_, variant) => {
+            if self.trackIdentsForLsp {
+              val definitionModule = if enum_.scope.parent == Some(self.project.preludeScope) {
+                IdentifierMetaModule.Prelude
+              } else {
+                match enum_.scope.parent?.kind {
+                  ScopeKind.Module(_, name) => IdentifierMetaModule.Module(name)
+                  _ => unreachable()
+                }
+              }
+
+              val typeArgs = enum_.typeParams.map(p => Type(kind: TypeKind.Generic(p)))
+              val enumInstanceType = Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), typeArgs))
+
+              val fields = match variant.kind {
+                EnumVariantKind.Constant => []
+                EnumVariantKind.Container(fields) => {
+                  fields.map(f => "${f.name.name}${if f.initializer "?" else ""}: ${f.ty.repr()}")
+                }
+              }
+
+              val ident = IdentifierMeta(
+                name: variant.label.name,
+                kind: IdentifierKindMeta.EnumVariant(enumInstanceType.repr(), fields),
+                definitionPosition: Some((definitionModule, variant.label.position)),
+              )
+              self._addLSPIdent(label.position, ident)
+            }
+          }
         }
 
         path.push(seg)

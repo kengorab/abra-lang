@@ -3259,7 +3259,7 @@ export type Compiler {
       var scope = Some(fn.scope)
       while scope |sc| {
         match sc.kind {
-          ScopeKind.Module(id) => {
+          ScopeKind.Module(id, _) => {
             modId = id + 1
             break
           }
