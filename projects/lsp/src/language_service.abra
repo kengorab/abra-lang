@@ -1,7 +1,7 @@
 import "fs" as fs
 import JsonValue from "json"
 import log from "./log"
-import ModuleLoader, Project, Typechecker, TypecheckerErrorKind, IdentifierMeta, IdentifierKindMeta, IdentifierMetaImport from "../../compiler/src/typechecker"
+import ModuleLoader, Project, Typechecker, TypecheckerErrorKind, IdentifierMeta, IdentifierKindMeta, IdentifierMetaModule from "../../compiler/src/typechecker"
 import RequestMessage, NotificationMessage, ResponseMessage, ResponseResult, ResponseError, ResponseErrorCode, ServerCapabilities, TextDocumentSyncOptions, TextDocumentSyncKind, SaveOptions, ServerInfo, TextDocumentItem, TextDocumentIdentifier, VersionedTextDocumentIdentifier, TextDocumentContentChangeEvent, Diagnostic, DiagnosticSeverity, Position, Range, MarkupContent, MarkupKind from "./lsp_spec"
 
 export val contentLengthHeader = "Content-Length: "
@@ -67,26 +67,120 @@ export type AbraLanguageService {
     val lines = match ident.kind {
       IdentifierKindMeta.Variable(mutable, typeRepr) => {
         val prefix = if mutable "var" else "val"
-        ["```abra", "$prefix ${ident.name}: $typeRepr", "```"]
+        val lines = ["```abra", "$prefix ${ident.name}: $typeRepr", "```"]
+
+        if ident.definitionPosition |(definitionModule, _)| {
+          val name = match definitionModule {
+            IdentifierMetaModule.Prelude => "prelude"
+            IdentifierMetaModule.Module(mod) => mod
+          }
+          if name != filePath {
+            lines.push("Imported from `$name`")
+          }
+        }
+
+        lines
       }
-      IdentifierKindMeta.Function(typeParams, params, returnTypeRepr) => {
+      IdentifierKindMeta.Function(typeParams, params, returnTypeRepr, methodTy) => {
         val generics = if typeParams.isEmpty() "" else "<${typeParams.join(", ")}>"
-        ["```abra", "func ${ident.name}$generics(${params.join(", ")}): $returnTypeRepr", "```"]
+        val fnSignature = "func ${ident.name}$generics(${params.join(", ")}): $returnTypeRepr"
+
+        if methodTy |(isInstanceMethod, parentTypeRepr)| {
+          val methodKind = if isInstanceMethod "Instance" else "Static"
+          val lines = [
+            "$methodKind method of `$parentTypeRepr`",
+            "```abra",
+            fnSignature,
+            "```"
+          ]
+
+          if ident.definitionPosition |(definitionModule, _)| {
+            val mod = match definitionModule {
+              IdentifierMetaModule.Prelude => "`prelude`"
+              IdentifierMetaModule.Module(mod) => if mod == filePath "current module" else "`$mod`"
+            }
+            lines.push("`$parentTypeRepr` defined in $mod")
+          }
+
+          lines
+        } else {
+          val lines = ["```abra", fnSignature, "```"]
+
+          if ident.definitionPosition |(definitionModule, _)| {
+            val mod = match definitionModule {
+              IdentifierMetaModule.Prelude => "prelude"
+              IdentifierMetaModule.Module(mod) => mod
+            }
+            if mod != filePath {
+              lines.push("Imported from `$mod`")
+            }
+          }
+
+          lines
+        }
       }
       IdentifierKindMeta.Type(isEnum, typeParams) => {
         val prefix = if isEnum "enum" else "type"
         val generics = if typeParams.isEmpty() "" else "<${typeParams.join(", ")}>"
-        ["```abra", "$prefix ${ident.name}$generics", "```"]
+        val lines = ["```abra", "$prefix ${ident.name}$generics", "```"]
+
+        if ident.definitionPosition |(definitionModule, _)| {
+          val mod = match definitionModule {
+            IdentifierMetaModule.Prelude => "prelude"
+            IdentifierMetaModule.Module(mod) => mod
+          }
+          if mod != filePath {
+            lines.push("Imported from `$mod`")
+          }
+        }
+
+        lines
       }
       IdentifierKindMeta.Module(filePath) => {
-        ["```abra", "(module) ${ident.name}", "```", "Alias for module `$filePath`"]
+        [
+          "```abra",
+          "(module) ${ident.name}",
+          "```",
+          "Alias for module `$filePath`"
+        ]
       }
-    }
+      IdentifierKindMeta.Field(fieldTy, parentTypeRepr) => {
+        val lines = [
+          "Field of `$parentTypeRepr`",
+          "```abra",
+          "${ident.name}: $fieldTy",
+          "```"
+        ]
 
-    match ident.importedFrom {
-      None => {}
-      IdentifierMetaImport.Prelude => lines.push("Imported from prelude")
-      IdentifierMetaImport.Module(mod) => lines.push("Imported from `$mod`")
+        if ident.definitionPosition |(definitionModule, _)| {
+          val mod = match definitionModule {
+            IdentifierMetaModule.Prelude => "`prelude`"
+            IdentifierMetaModule.Module(mod) => if mod == filePath "current module" else "`$mod`"
+          }
+          lines.push("`$parentTypeRepr` defined in $mod")
+        }
+
+        lines
+      }
+      IdentifierKindMeta.EnumVariant(parentRepr, fields) => {
+        val fieldsRepr = if !fields.isEmpty() "(${fields.join(", ")})" else ""
+        val lines = [
+          "Variant of enum `$parentRepr`",
+          "```abra",
+          "$parentRepr.${ident.name}$fieldsRepr",
+          "```"
+        ]
+
+        if ident.definitionPosition |(definitionModule, _)| {
+          val mod = match definitionModule {
+            IdentifierMetaModule.Prelude => "prelude"
+            IdentifierMetaModule.Module(mod) => mod
+          }
+          lines.push("`$parentRepr` defined in `$mod`")
+        }
+
+        lines
+      }
     }
 
     val value = lines.join("\\n")
@@ -102,14 +196,13 @@ export type AbraLanguageService {
     val filePath = textDocument.uri.replaceAll("file://", "")
 
     val ident = if self._findIdentAtPosition(filePath, position) |(_, _, _, ident)| ident else return ResponseMessage.Success(id: id, result: None)
-    val result = if ident.definitionPosition |pos| {
+    val result = if ident.definitionPosition |(definitionModule, pos)| {
       val line = pos.line - 1
       val character = pos.col - 1
       val range = Range(start: Position(line: line, character: character), end: Position(line: line, character: character))
-      val definitionFilePath = match ident.importedFrom {
-        None => filePath
-        IdentifierMetaImport.Prelude => self._moduleLoader.stdRoot + "/prelude.abra"
-        IdentifierMetaImport.Module(mod) => mod
+      val definitionFilePath = match definitionModule {
+        IdentifierMetaModule.Prelude => self._moduleLoader.stdRoot + "/prelude.abra"
+        IdentifierMetaModule.Module(mod) => mod
       }
       val uri = "file://$definitionFilePath"
       Some(ResponseResult.Definition(uri: uri, range: range))

@@ -666,7 +666,7 @@
             "caseKind": {
               "kind": "type",
               "path": [
-                { "name": "Result", "position": [27, 3] },
+                { "name": "Result", "position": [0, 0] },
                 { "name": "Ok", "position": [27, 3] }
               ],
               "arguments": [
@@ -694,7 +694,7 @@
             "caseKind": {
               "kind": "type",
               "path": [
-                { "name": "Result", "position": [28, 3] },
+                { "name": "Result", "position": [0, 0] },
                 { "name": "Err", "position": [28, 3] }
               ],
               "arguments": [

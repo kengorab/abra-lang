@@ -1435,7 +1435,7 @@ export type Parser {
             }
 
             if path.isEmpty() && (last.name == "Ok" || last.name == "Err") {
-              MatchCaseKind.Type([Label(name: "Result", position: last.position)], last, args)
+              MatchCaseKind.Type([Label(name: "Result", position: Position.bogus())], last, args)
             } else {
               MatchCaseKind.Type(path, last, args)
             }
