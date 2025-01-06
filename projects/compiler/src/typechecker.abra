@@ -5194,10 +5194,14 @@ export type Typechecker {
     // TODO: support top-level try (the error case would just exit the program)
     val currentFn = if self.currentFunction |f| f else return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.NotWithinFunction)))
 
-    val (_, retErrType) = if self._typeIsResult(currentFn.returnType) |t| t else {
-      // A bit wasteful perhaps, but attempt to get the type of the try expression's subject without the hint, for a nicer error message
-      val typedExpr = try self._typecheckExpression(expr, None)
-      return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel: currentFn.label, tryType: typedExpr.ty, returnType: currentFn.returnType))))
+    val retErrType = if self._typeIsResult(currentFn.returnType) |(_, retErrType)| retErrType else {
+      if elseClause {
+        Type(kind: TypeKind.Hole)
+      } else {
+        // A bit wasteful perhaps, but attempt to get the type of the try expression's subject without the hint, for a nicer error message
+        val typedExpr = try self._typecheckExpression(expr, None)
+        return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel: currentFn.label, tryType: typedExpr.ty, returnType: currentFn.returnType))))
+      }
     }
 
     val hint = if typeHint |typeHint| {

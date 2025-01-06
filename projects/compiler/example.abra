@@ -1,12 +1,9 @@
-val m = {
-  a: 1,
-  b: 2,
-  c: 3,
-  s: 4
-}
-println(m.size)
-println(m)
+// func foo(): Result<Int, String> {
+func foo(): Int {
+  val x = try bar() else []
 
-for (k, v) in m {
-  println(k, v)
+  // Ok(x)
+  x + 1
 }
+
+func bar<T>(): Result<T[], String> = Ok([])
