@@ -5,4 +5,4 @@ Invalid location for try expression
 The containing function 'bar' has return type 'Int', which is incompatible with the try expression's type 'Result<Int, String>'.
   |  func bar(): Int {
           ^
-To be compatible, the function must return a Result whose error type matches that of the try expression
+To be compatible, 'bar' must return a Result whose error type matches that of the try expression

@@ -1803,23 +1803,32 @@ export type Compiler {
       }
       TypedAstNodeKind.Try(expr, elseClause) => {
         val exprVal = try self._compileExpression(expr)
-        val isErr = try self._emitResultValueIsOkVariant(exprVal, negate: true)
+        val isOptionTry = !!self._typeIsOption(expr.ty)
+        val isUnhappyPath = if isOptionTry {
+          try self._emitOptValueIsSomeVariant(exprVal, negate: true)
+        } else {
+          try self._emitResultValueIsOkVariant(exprVal, negate: true)
+        }
 
-        val labelIsErr = self._currentFn.block.addLabel("isErr")
+        val labelIsUnhappyPath = self._currentFn.block.addLabel("isUnhappyPath")
         val labelCont = self._currentFn.block.addLabel("cont")
 
         if elseClause |clause| {
           val phiCases: (Label, Value)[] = []
 
-          val labelIsOk = self._currentFn.block.addLabel("isOk")
-          self._currentFn.block.buildJnz(isErr, labelIsErr, labelIsOk)
+          val labelIsHappyPath = self._currentFn.block.addLabel("isOk")
+          self._currentFn.block.buildJnz(isUnhappyPath, labelIsUnhappyPath, labelIsHappyPath)
 
-          self._currentFn.block.registerLabel(labelIsErr)
+          self._currentFn.block.registerLabel(labelIsUnhappyPath)
           if clause.pattern |(bindingPattern, vars)| {
             val variables = vars.keyBy(v => v.label.name)
 
             val errorQbeType = try self._getQbeTypeForTypeExpect(clause.errorType, "unacceptable type", None)
-            val bindingVal = try self._emitOptValueGetValue(errorQbeType, exprVal)
+            val bindingVal = if isOptionTry {
+              exprVal
+            } else {
+              try self._emitResultValueGetValue(errorQbeType, exprVal)
+            }
             try self._compileBindingPattern(bindingPattern, variables, Some(bindingVal))
           }
           for node, idx in clause.block {
@@ -1837,27 +1846,35 @@ export type Compiler {
             self._currentFn.block.buildJmp(labelCont)
           }
 
-          self._currentFn.block.registerLabel(labelIsOk)
-          val okQbeType = try self._getQbeTypeForTypeExpect(node.ty, "unacceptable type", None)
-          val okVal = try self._emitOptValueGetValue(okQbeType, exprVal)
+          self._currentFn.block.registerLabel(labelIsHappyPath)
+          val happyPathQbeType = try self._getQbeTypeForTypeExpect(node.ty, "unacceptable type", None)
+          val happyPathVal = if isOptionTry {
+            try self._emitOptValueGetValue(happyPathQbeType, exprVal)
+          } else {
+            try self._emitResultValueGetValue(happyPathQbeType, exprVal)
+          }
           val label = self._currentFn.block.currentLabel
-          phiCases.push((label, okVal))
+          phiCases.push((label, happyPathVal))
           self._currentFn.block.buildJmp(labelCont)
 
           self._currentFn.block.registerLabel(labelCont)
           val res = try self._currentFn.block.buildPhi(phiCases) else |e| return qbeError(e)
           Ok(res)
         } else {
-          self._currentFn.block.buildJnz(isErr, labelIsErr, labelCont)
+          self._currentFn.block.buildJnz(isUnhappyPath, labelIsUnhappyPath, labelCont)
 
-          self._currentFn.block.registerLabel(labelIsErr)
+          self._currentFn.block.registerLabel(labelIsUnhappyPath)
           self._currentFn.block.buildReturn(Some(exprVal))
 
           self._currentFn.block.registerLabel(labelCont)
-          val okValTy = try self._getQbeTypeForTypeExpect(node.ty, "unacceptable type", None)
-          val okValue = try self._emitResultValueGetValue(okValTy, exprVal)
+          val happyPathQbeType = try self._getQbeTypeForTypeExpect(node.ty, "unacceptable type", None)
+          val happyPathVal = if isOptionTry {
+            try self._emitOptValueGetValue(happyPathQbeType, exprVal)
+          } else {
+            try self._emitResultValueGetValue(happyPathQbeType, exprVal)
+          }
 
-          Ok(okValue)
+          Ok(happyPathVal)
         }
       }
       _ => unreachable("node must be a statement")

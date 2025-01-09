@@ -1,9 +1,15 @@
-// func foo(): Result<Int, String> {
-func foo(): Int {
-  val x = try bar() else []
+func some(): Int? = Some(123)
+func none(): Int? = None
 
-  // Ok(x)
-  x + 1
+func f12(): Result<Int, Int> {
+  var acc = 0
+  while acc < 10 {
+    val x = try none() else return Some(12)
+    acc += x
+  }
+
+  Some(acc)
 }
 
-func bar<T>(): Result<T[], String> = Ok([])
+/// Expect: Option.Some(value: 12)
+println(f12())
