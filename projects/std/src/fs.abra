@@ -12,27 +12,27 @@ export func readFile(path: String): Result<String, FileIOError> {
   val fd = libc.open(path._buffer, libc.O_RDONLY, 0)
   if fd == -1 {
     val errMsg = _strerror(libc.errno())
-    return Err(error: FileIOError.CouldNotOpen(message: errMsg))
+    return Err(error: FileIOError.CouldNotOpen(message: "Could not open '$path': $errMsg"))
   }
 
   val len = libc.lseek(fd, 0, libc.SEEK_END)
   if len == -1 {
     val errMsg = _strerror(libc.errno())
-    return Err(error: FileIOError.CouldNotSeek(message: errMsg))
+    return Err(error: FileIOError.CouldNotSeek(message: "Could not seek '$path': $errMsg"))
   }
   if libc.lseek(fd, 0, libc.SEEK_SET) == -1 {
     val errMsg = _strerror(libc.errno())
-    return Err(error: FileIOError.CouldNotSeek(message: errMsg))
+    return Err(error: FileIOError.CouldNotSeek(message: "Could not seek '$path': $errMsg"))
   }
 
   val str = String.withLength(len)
   if libc.read(fd, str._buffer, len) == -1 {
     val errMsg = _strerror(libc.errno())
-    return Err(error: FileIOError.CouldNotRead(message: errMsg))
+    return Err(error: FileIOError.CouldNotRead(message: "Could not read '$path': $errMsg"))
   }
   if libc.close(fd) == -1 {
     val errMsg = _strerror(libc.errno())
-    return Err(error: FileIOError.CouldNotClose(message: errMsg))
+    return Err(error: FileIOError.CouldNotClose(message: "Could not close '$path': $errMsg"))
   }
 
   Ok(value: str)
@@ -53,11 +53,12 @@ export enum AccessMode {
 export type File {
   _fd: Int
   accessMode: AccessMode
+  path: String
 
   func close(self): Result<Int, FileIOError> {
     if libc.close(self._fd) == -1 {
       val errMsg = _strerror(libc.errno())
-      return Err(error: FileIOError.CouldNotClose(message: errMsg))
+      return Err(error: FileIOError.CouldNotClose(message: "Could not close '${self.path}': $errMsg"))
     }
 
     Ok(self._fd)
@@ -79,10 +80,10 @@ export func openFile(path: String, accessMode: AccessMode): Result<File, FileIOE
   val fd = libc.open(path._buffer, oflag, 0)
   if fd == -1 {
     val errMsg = _strerror(libc.errno())
-    return Err(error: FileIOError.CouldNotOpen(message: errMsg))
+    return Err(error: FileIOError.CouldNotOpen(message: "Could not open '$path': $errMsg"))
   }
 
-  Ok(File(_fd: fd, accessMode: accessMode))
+  Ok(File(_fd: fd, accessMode: accessMode, path: path))
 }
 
 export func createFile(path: String, accessMode: AccessMode): Result<File, FileIOError> {
@@ -92,10 +93,10 @@ export func createFile(path: String, accessMode: AccessMode): Result<File, FileI
   val fd = libc.open(path._buffer, oflag, mode)
   if fd == -1 {
     val errMsg = _strerror(libc.errno())
-    return Err(error: FileIOError.CouldNotOpen(message: errMsg))
+    return Err(error: FileIOError.CouldNotOpen(message: "Could not open '$path': $errMsg"))
   }
 
-  Ok(File(_fd: fd, accessMode: accessMode))
+  Ok(File(_fd: fd, accessMode: accessMode, path: path))
 }
 
 export func getCurrentWorkingDirectory(): String {
