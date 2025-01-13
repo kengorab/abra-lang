@@ -1834,11 +1834,13 @@ export type Compiler {
           for node, idx in clause.block {
             val res = try self._compileStatement(node)
             if idx == clause.block.length - 1 {
-              if res |res| {
-                val label = self._currentFn.block.currentLabel
-                phiCases.push((label, res))
-              } else if !clause.terminator {
-                unreachable("last statement in try-else block has no value and is not a terminator")
+              if !clause.terminator {
+                if res |res| {
+                  val label = self._currentFn.block.currentLabel
+                  phiCases.push((label, res))
+                } else {
+                  unreachable("last statement in try-expr block has no value and is not a terminator")
+                }
               }
             }
           }
