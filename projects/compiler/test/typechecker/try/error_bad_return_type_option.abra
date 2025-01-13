@@ -1,0 +1,6 @@
+func foo(): Int? = Some(123)
+
+func bar(): Int {
+  val x = try foo()
+  x + 1
+}

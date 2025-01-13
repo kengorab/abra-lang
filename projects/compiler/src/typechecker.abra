@@ -1370,10 +1370,14 @@ type TypeError {
           InvalidTryLocationReason.NotWithinFunction => {
             lines.push("Try expressions can only be used inside of function bodies")
           }
-          InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel, tryType, returnType) => {
+          InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel, tryType, returnType, isResult) => {
             lines.push("The containing function '${fnLabel.name}' has return type '${returnType.repr()}', which is incompatible with the try expression's type '${tryType.repr()}'.")
             lines.push(self._getCursorLine(fnLabel.position, contents))
-            lines.push("To be compatible, the function must return a Result whose error type matches that of the try expression")
+            if isResult {
+              lines.push("To be compatible, '${fnLabel.name}' must return a Result whose error type matches that of the try expression")
+            } else {
+              lines.push("To be compatible, '${fnLabel.name}' must return an Option type")
+            }
           }
         }
       }
@@ -1450,7 +1454,7 @@ enum InvalidDestructuringReason {
 
 enum InvalidTryLocationReason {
   NotWithinFunction
-  InvalidFunctionReturnType(fnLabel: Label, tryType: Type, returnType: Type)
+  InvalidFunctionReturnType(fnLabel: Label, tryType: Type, returnType: Type, isResult: Bool)
 }
 
 enum TypeErrorKind {
@@ -5194,29 +5198,41 @@ export type Typechecker {
     // TODO: support top-level try (the error case would just exit the program)
     val currentFn = if self.currentFunction |f| f else return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.NotWithinFunction)))
 
-    val (_, retErrType) = if self._typeIsResult(currentFn.returnType) |t| t else {
-      // A bit wasteful perhaps, but attempt to get the type of the try expression's subject without the hint, for a nicer error message
+    val (typedExpr, returnTypeResultErr) = if self._typeIsResult(currentFn.returnType) |(_, retErrType)| {
+      val hint = if typeHint |typeHint| { Some(Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeResultEnum), [typeHint, retErrType]))) } else None
+      val typedExpr = try self._typecheckExpression(expr, hint)
+
+      (typedExpr, Some(retErrType))
+    } else if self._typeIsOption(currentFn.returnType) |inner| {
+      val hint = if typeHint |typeHint| { Some(Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeOptionEnum), [typeHint]))) } else None
+      val typedExpr = try self._typecheckExpression(expr, hint)
+
+      (typedExpr, None)
+    } else if elseClause {
       val typedExpr = try self._typecheckExpression(expr, None)
-      return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel: currentFn.label, tryType: typedExpr.ty, returnType: currentFn.returnType))))
-    }
-
-    val hint = if typeHint |typeHint| {
-      Some(Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeResultEnum), [typeHint, retErrType])))
+      (typedExpr, None)
     } else {
-      None
+      val typedExpr = try self._typecheckExpression(expr, None)
+      val isResult = !!self._typeIsResult(typedExpr.ty)
+      return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel: currentFn.label, tryType: typedExpr.ty, returnType: currentFn.returnType, isResult: isResult))))
     }
-    val typedExpr = try self._typecheckExpression(expr, hint)
 
-    // TODO: other Try-able types
-    val (tryValType, tryErrType) = if self._typeIsResult(typedExpr.ty) |t| t else return Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.InvalidTryTarget(typedExpr.ty)))
-
-    val typedElseClause = if elseClause |(elseToken, bindingPattern, elseBlock)| {
+    val (tryValType, typedElseClause) = if elseClause |(elseToken, bindingPattern, elseBlock)| {
       val isStatement = if typeHint |hint| hint.kind == TypeKind.PrimitiveUnit else false
+
+      val (tryValType, tryErrType) = if self._typeIsResult(typedExpr.ty) |t| {
+        t
+      } else if self._typeIsOption(typedExpr.ty) |inner| {
+        (inner, typedExpr.ty)
+      } else {
+        return Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.InvalidTryTarget(typedExpr.ty)))
+      }
 
       val prevScope = self.currentScope
       self.currentScope = self.currentScope.makeChild("try_else", ScopeKind.Try)
 
       val elseBindingPattern = if bindingPattern |pat| {
+        // TODO: Emit warning if expression is an Option type, since the binding would always equal `None`
         val variables = try self._typecheckBindingPattern(false, pat, tryErrType)
         Some((pat, variables))
       } else {
@@ -5255,11 +5271,30 @@ export type Typechecker {
 
       self.currentScope = prevScope
 
-      Some(TypedTryElseClause(pattern: elseBindingPattern, errorType: tryErrType, block: typedNodes, terminator: terminator))
-    } else if !self._typeSatisfiesRequired(ty: retErrType, required: tryErrType) {
-      return Err(TypeError(position: token.position, kind: TypeErrorKind.TryReturnTypeMismatch(fnLabel: currentFn.label, tryType: typedExpr.ty, tryErrType: tryErrType, retErrType: retErrType)))
+      val elseClause = TypedTryElseClause(pattern: elseBindingPattern, errorType: tryErrType, block: typedNodes, terminator: terminator)
+      (tryValType, Some(elseClause))
     } else {
-      None
+      val tryValType = if self._typeIsResult(typedExpr.ty) |(exprOkType, exprErrType)| {
+        if returnTypeResultErr |retErrType| {
+          if !self._typeSatisfiesRequired(ty: retErrType, required: exprErrType) {
+            return Err(TypeError(position: token.position, kind: TypeErrorKind.TryReturnTypeMismatch(fnLabel: currentFn.label, tryType: typedExpr.ty, tryErrType: exprErrType, retErrType: retErrType)))
+          } else {
+            exprOkType
+          }
+        } else {
+          return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel: currentFn.label, tryType: typedExpr.ty, returnType: currentFn.returnType, isResult: true))))
+        }
+      } else if self._typeIsOption(typedExpr.ty) |inner| {
+        if returnTypeResultErr {
+          return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel: currentFn.label, tryType: typedExpr.ty, returnType: currentFn.returnType, isResult: false))))
+        } else {
+          inner
+        }
+      } else {
+        return Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.InvalidTryTarget(typedExpr.ty)))
+      }
+
+      (tryValType, None)
     }
 
     Ok(TypedAstNode(token: token, ty: tryValType, kind: TypedAstNodeKind.Try(typedExpr, typedElseClause)))

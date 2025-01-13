@@ -1,0 +1,8 @@
+Error at %FILE_NAME%:4:11
+Invalid location for try expression
+  |    val x = try foo()
+               ^
+The containing function 'bar' has return type 'Int', which is incompatible with the try expression's type 'Int?'.
+  |  func bar(): Int {
+          ^
+To be compatible, 'bar' must return an Option type

@@ -1,0 +1,7 @@
+func some(): Result<Int, Int> = Ok(123)
+
+func f1(): Int? {
+  val x = try some() else return some()
+
+  Some(x + 1)
+}

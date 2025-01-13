@@ -1,12 +1,15 @@
-val m = {
-  a: 1,
-  b: 2,
-  c: 3,
-  s: 4
-}
-println(m.size)
-println(m)
+func some(): Int? = Some(123)
+func none(): Int? = None
 
-for (k, v) in m {
-  println(k, v)
+func f12(): Result<Int, Int> {
+  var acc = 0
+  while acc < 10 {
+    val x = try none() else return Some(12)
+    acc += x
+  }
+
+  Some(acc)
 }
+
+/// Expect: Option.Some(value: 12)
+println(f12())

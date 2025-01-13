@@ -1,0 +1,223 @@
+func some(): Int? = Some(123)
+func none(): Int? = None
+
+func f1(): Int? {
+  val x = try some()
+  Some(x + 1)
+}
+/// Expect: Option.Some(value: 124)
+println(f1())
+
+func f2(): Int? {
+  val x = try none()
+  Some(x + 1)
+}
+/// Expect: Option.None
+println(f2())
+
+func f3(): Int[]? {
+  val arr = [try some(), (try some()) + 1, (try some()) + 2]
+  Some(arr)
+}
+/// Expect: Option.Some(value: [123, 124, 125])
+println(f3())
+
+func f4(): Int[]? {
+  val arr = [try some(), (try none()) + 1, (try some()) + 2]
+  Some(arr)
+}
+/// Expect: Option.None
+println(f4())
+
+func f5(): Int? {
+  val x = (try f1()) + (try f2()) + (try f3()).length + (try f4()).length
+  Some(x)
+}
+/// Expect: Option.None
+println(f5())
+
+// Testing else-clause with terminators
+
+func f6(): Int? {
+  var acc = 0
+  while acc < 10 {
+    val x = try some() else {
+      acc = 199
+      continue
+    }
+    acc += x
+  }
+
+  Some(acc)
+}
+
+/// Expect: Option.Some(value: 123)
+println(f6())
+
+func f7(): Int? {
+  var acc = 0
+  while acc < 10 {
+    val x = try some() else break
+    acc += x
+  }
+
+  Some(acc)
+}
+
+/// Expect: Option.Some(value: 123)
+println(f7())
+
+func f8(): Int? {
+  var acc = 0
+  while acc < 10 {
+    val x = try none() else {
+      acc = 199
+      continue
+    }
+    acc += x
+  }
+
+  Some(acc)
+}
+
+/// Expect: Option.Some(value: 199)
+println(f8())
+
+func f9(): Int? {
+  var acc = 0
+  while acc < 10 {
+    val x = try none() else break
+    acc += x
+  }
+
+  Some(acc)
+}
+
+/// Expect: Option.Some(value: 0)
+println(f9())
+
+func f10(): Int? {
+  var acc = 0
+  while acc < 10 {
+    val x = try some() else return Some(12)
+    acc += x
+  }
+
+  Some(acc)
+}
+
+/// Expect: Option.Some(value: 123)
+println(f10())
+
+func f11(): Int? {
+  var acc = 0
+  while acc < 10 {
+    val x = try some() else return None
+    acc += x
+  }
+
+  Some(acc)
+}
+
+/// Expect: Option.Some(value: 123)
+println(f11())
+
+func f12(): Int? {
+  var acc = 0
+  while acc < 10 {
+    val x = try none() else return Some(12)
+    acc += x
+  }
+
+  Some(acc)
+}
+
+/// Expect: Option.Some(value: 12)
+println(f12())
+
+func f13(): Int? {
+  var acc = 0
+  while acc < 10 {
+    val x = try none() else return None
+    acc += x
+  }
+
+  Some(acc)
+}
+
+/// Expect: Option.None
+println(f13())
+
+func f14(): Int? {
+  val x = try some() else return Some(12)
+
+  Some(x)
+}
+
+/// Expect: Option.Some(value: 123)
+println(f14())
+
+func f15(): Int? {
+  val x = try some() else return None
+
+  Some(x)
+}
+
+/// Expect: Option.Some(value: 123)
+println(f15())
+
+func f16(): Int? {
+  val x = try none() else return Some(12)
+
+  Some(x)
+}
+
+/// Expect: Option.Some(value: 12)
+println(f16())
+
+func f17(): Int? {
+  val x = try none() else return None
+
+  Some(x)
+}
+
+/// Expect: Option.None
+println(f17())
+
+// Testing else-clause without terminators
+
+func f18(): Int? {
+  val x = try some() else 7
+
+  Some(x)
+}
+
+/// Expect: Option.Some(value: 123)
+println(f18())
+
+func f19(): Int {
+  val x = try some() else 7
+
+  x + 1
+}
+
+/// Expect: 124
+println(f19())
+
+func f20(): Int? {
+  val x = try none() else 7
+
+  Some(x)
+}
+
+/// Expect: Option.Some(value: 7)
+println(f20())
+
+func f21(): Int {
+  val x = try none() else 7
+
+  x + 1
+}
+
+/// Expect: 8
+println(f21())

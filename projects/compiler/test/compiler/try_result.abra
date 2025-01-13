@@ -67,7 +67,6 @@ func f7(): Result<Int, Int> {
 /// Expect: Result.Ok(value: 123)
 println(f7())
 
-
 func f8(): Result<Int, Int> {
   var acc = 0
   while acc < 10 {
@@ -83,7 +82,6 @@ func f8(): Result<Int, Int> {
 
 /// Expect: Result.Ok(value: 199)
 println(f8())
-
 
 func f9(): Result<Int, Int> {
   var acc = 0
@@ -197,11 +195,29 @@ func f18(): Result<Int, Int> {
 /// Expect: Result.Ok(value: 123)
 println(f18())
 
-func f19(): Result<Int, Int> {
+func f19(): Int {
+  val x = try ok() else 7
+
+  x + 1
+}
+
+/// Expect: 124
+println(f19())
+
+func f20(): Result<Int, Int> {
   val x = try err() else 7
 
   Ok(x)
 }
 
 /// Expect: Result.Ok(value: 7)
-println(f19())
+println(f20())
+
+func f21(): Int {
+  val x = try err() else 7
+
+  x + 1
+}
+
+/// Expect: 8
+println(f21())

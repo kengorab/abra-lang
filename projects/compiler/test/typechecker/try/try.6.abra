@@ -1,0 +1,13 @@
+func ok(): Int? = Some(123)
+
+func f1(): Int? {
+  val x = try ok()
+
+  Some(x + 1)
+}
+
+func f2(): Int {
+  val x = try ok() else 123
+
+  x + 1
+}
