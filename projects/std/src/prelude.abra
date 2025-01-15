@@ -1443,7 +1443,7 @@ type Map<K, V> {
   func _getEntry(self, key: K): MapEntry<K, V>? {
     val hash = self._getKeyHash(key, self._entries._capacity)
 
-    val bucketRootEntry = if self._entries[hash] |b| b else return None
+    val bucketRootEntry = try self._entries[hash]
     if bucketRootEntry._empty return None
 
     var cursor = Some(bucketRootEntry)
@@ -1487,11 +1487,11 @@ type Map<K, V> {
   func remove(self, key: K): V? {
     val hash = self._getKeyHash(key, self._entries._capacity)
 
-    val bucketRootEntry = if self._entries[hash] |e| e else return None
+    val bucketRootEntry = try self._entries[hash]
     if bucketRootEntry._empty return None
 
     if bucketRootEntry.key == key {
-      self._entries[hash] = if bucketRootEntry.next |next| next else MapEntry.empty()
+      self._entries[hash] = bucketRootEntry.next ?: MapEntry.empty()
       self.size -= 1
       return Some(bucketRootEntry.value)
     }

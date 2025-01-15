@@ -217,7 +217,7 @@ export type Block {
   }
 
   func addVar(self, v: Var, name: String? = None): String {
-    val varsForName = if self.variables[v.name] |vars| vars else {
+    val varsForName = try self.variables[v.name] else {
       val vars: Map<Var, String> = {}
       self.variables[v.name] = vars
       vars
@@ -606,7 +606,7 @@ export type Block {
   func buildCall(self, callable: Callable, arguments: Value[], dst: String? = None, envPtr: Value? = None): Result<Value, String> {
     val dest = dst ?: self._nextLocal()
 
-    val fnReturnType = if callable.returnType() |ty| ty else return Err("function value ($callable) has no return type; cannot store result into destination '%$dest'")
+    val fnReturnType = try callable.returnType() else return Err("function value ($callable) has no return type; cannot store result into destination '%$dest'")
 
     val local = Value.Ident(dest, fnReturnType)
 

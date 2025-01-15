@@ -30,7 +30,7 @@ export type AbraLanguageService {
   // Request Message handlers
 
   func _initialize(self, id: Int, processId: Int?, rootPath: String?): ResponseMessage {
-    self._root = if rootPath |p| p else return internalError(id, "rootPath required")
+    self._root = try rootPath else return internalError(id, "rootPath required")
     self._initialized = true
 
     // Instruct the client to not send textDocument/didOpen or textDocument/didClose events,
@@ -60,7 +60,7 @@ export type AbraLanguageService {
     // todo: what happens if it's not a `file://` uri?
     val filePath = textDocument.uri.replaceAll("file://", "")
 
-    val (line, identColStart, identColEnd, ident) = if self._findIdentAtPosition(filePath, position) |ident| ident else {
+    val (line, identColStart, identColEnd, ident) = try self._findIdentAtPosition(filePath, position) else {
       return ResponseMessage.Success(id: id, result: None)
     }
 
@@ -309,9 +309,9 @@ export type AbraLanguageService {
   }
 
   func _findIdentAtPosition(self, filePath: String, position: Position): (Int, Int, Int, IdentifierMeta)? {
-    val module = if self._project.modules[filePath] |mod| mod else return None
+    val module = try self._project.modules[filePath]
     val line = position.line
-    val identsByLine = if module.identsByLine[line] |idents| idents else return None
+    val identsByLine = try module.identsByLine[line]
 
     for (colStart, colEnd, ident) in identsByLine {
       if colStart <= position.character && position.character <= colEnd {
