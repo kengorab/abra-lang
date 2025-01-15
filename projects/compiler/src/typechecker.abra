@@ -148,16 +148,13 @@ export enum Terminator {
   NonReturning
 
   func combine(t1: Terminator?, t2: Terminator?): Terminator? {
-    val t1Returns = if t1 |t1| t1 == Terminator.Returning else false
-    val t1NonReturns = if t1 |t1| t1 == Terminator.NonReturning else false
-    val t2Returns = if t2 |t2| t2 == Terminator.Returning else false
-    val t2NonReturns = if t2 |t2| t2 == Terminator.NonReturning else false
-
-    if t1Returns && t2Returns return Some(Terminator.Returning)
-
-    if (t1NonReturns && !!t2) || (t2NonReturns && !!t1) return Some(Terminator.NonReturning)
-
-    None
+    if t1 == Some(Terminator.Returning) && t2 == Some(Terminator.Returning) {
+      Some(Terminator.Returning)
+    } else if (t1 == Some(Terminator.NonReturning) && !!t2) || (t2 == Some(Terminator.NonReturning) && !!t1) {
+      Some(Terminator.NonReturning)
+    } else {
+      None
+    }
   }
 }
 
@@ -354,14 +351,14 @@ export type Project {
           if !self.typesAreEquivalent(ty: retType, other: reqRetType) return false
 
           var idx = 0
-          for reqParamType, i in reqParamTypes {
-            val paramType = if paramTypes[i] |t| t[0] else { return true }
-            if !self.typesAreEquivalent(ty: paramType, other: reqParamType[0]) return false
+          for (reqParamType, _), i in reqParamTypes {
+            val (paramType, _) = try paramTypes[i] else return true
+            if !self.typesAreEquivalent(ty: paramType, other: reqParamType) return false
 
             idx = i
           }
-          if paramTypes[idx + 1] |nextParam| {
-            if nextParam[1] return false
+          if paramTypes[idx + 1] |(_, isRequired)| {
+            if isRequired return false
           }
 
           true
@@ -373,7 +370,7 @@ export type Project {
           if reqStructOrEnum != structOrEnum return false
           if reqTypeArgs.length != typeArgs.length return false
           for reqTypeArg, i in reqTypeArgs {
-            val typeArg = if typeArgs[i] |t| t else { return true }
+            val typeArg = try typeArgs[i] else return true
             if !self.typesAreEquivalent(ty: typeArg, other: reqTypeArg) return false
           }
 
@@ -390,7 +387,7 @@ export type Project {
         TypeKind.Tuple(types) => {
           if reqTypes.length != types.length return false
           for reqTy, i in reqTypes {
-            val ty = if types[i] |t| t else { /* unreachable, length verified above to be equal */ return false }
+            val ty = try types[i] else unreachable("length verified above to be equal")
             if !self.typesAreEquivalent(ty: ty, other: reqTy) return false
           }
 
@@ -568,7 +565,7 @@ export type Type {
           TypeKind.Instance(_, sourceTypeArgs) => {
             if templateTypeArgs.length != sourceTypeArgs.length unreachable("templateTypeArgs.length != sourceTypeArgs.length")
             for tplTypeArg, idx in templateTypeArgs {
-              val srcTypeArg = if sourceTypeArgs[idx] |t| t else unreachable("templateTypeArgs.length != sourceTypeArgs.length")
+              val srcTypeArg = try sourceTypeArgs[idx] else unreachable("templateTypeArgs.length != sourceTypeArgs.length")
               srcTypeArg._extractGenerics(template: tplTypeArg, extracted: extracted)
             }
           }
@@ -579,7 +576,7 @@ export type Type {
         match self.kind {
           TypeKind.Tuple(sourceTypes) => {
             for tplType, idx in templateTypes {
-              val srcType = if sourceTypes[idx] |t| t else break
+              val srcType = try sourceTypes[idx] else break
               srcType._extractGenerics(template: tplType, extracted: extracted)
             }
           }
@@ -591,9 +588,9 @@ export type Type {
           TypeKind.Func(sourceParamTypes, sourceReturnType) => {
             sourceReturnType._extractGenerics(template: templateReturnType, extracted: extracted)
 
-            for tplParamType, idx in templateParamTypes {
-              val srcParamType = if sourceParamTypes[idx] |t| t else break
-              srcParamType[0]._extractGenerics(template: tplParamType[0], extracted: extracted)
+            for (tplParamType, _), idx in templateParamTypes {
+              val (srcParamType, _) = try sourceParamTypes[idx] else break
+              srcParamType._extractGenerics(template: tplParamType, extracted: extracted)
             }
           }
           _ => {}
@@ -953,7 +950,7 @@ type TypeError {
           _ => {
             match specialCase {
               UnknownFieldSpecialCase.ExistsButTypeIsNullable(isViaOptChaining) => {
-                val nonOptVersion = if self._typeIsOption(ty) |ty| ty else unreachable("ty should be Option<?> here")
+                val nonOptVersion = try self._typeIsOption(ty) else unreachable("ty should be Option<?> here")
 
                 if isViaOptChaining {
                   lines.push("Type '${nonOptVersion.repr()}' has field '$name', but lhs here is of type '${ty.repr()}' due to prior '?.'")
@@ -1675,7 +1672,7 @@ export type Typechecker {
   func _findModuleByAlias(self, name: String): Result<(TypedModule, Label)?, TypeError> {
     for (importModulePath, importedModule) in self.currentModuleImports {
       if importedModule.aliases.find(a => a.name == name) |alias| {
-        val mod = if self.project.modules[importModulePath] |m| m else unreachable("unknown module '$importModulePath'")
+        val mod = try self.project.modules[importModulePath] else unreachable("unknown module '$importModulePath'")
         return Ok(Some((mod, alias)))
       }
     }
@@ -1690,7 +1687,7 @@ export type Typechecker {
 
     val types: Type[] = []
     for i in range(0, num) {
-      val typeIdent = if typeArguments.get(i) |typeIdent| typeIdent else unreachable("verified above that typeArguments.length == num")
+      val typeIdent = try typeArguments.get(i) else unreachable("verified above that typeArguments.length == num")
       val ty = try self._resolveTypeIdentifier(typeIdent)
       types.push(ty)
     }
@@ -1800,7 +1797,7 @@ export type Typechecker {
       TypeIdentifier.Normal(label, typeArguments, path) => {
         if path[0] |firstSeg| {
           val _mod = try self._findModuleByAlias(firstSeg.name)
-          val (mod, aliasLabel) = if _mod |mod| mod else return Err(TypeError(position: firstSeg.position, kind: TypeErrorKind.UnknownName(firstSeg.name, "module")))
+          val (mod, aliasLabel) = try _mod else return Err(TypeError(position: firstSeg.position, kind: TypeErrorKind.UnknownName(firstSeg.name, "module")))
 
           if path[1] |seg| return Err(TypeError(position: seg.position, kind: TypeErrorKind.NotYetImplemented("qualified type paths longer than 2")))
 
@@ -1827,7 +1824,8 @@ export type Typechecker {
         val (ty, importMod) = try self._findTypeByNameInScope(label)
         match ty.kind {
           TypeKind.Type(structOrEnum) => {
-            if try self._resolveInstanceTypeIdentifier(importMod, structOrEnum, label, typeArguments) |ty| ty else unreachable()
+            val ty = try self._resolveInstanceTypeIdentifier(importMod, structOrEnum, label, typeArguments)
+            try ty else unreachable()
           }
           TypeKind.PrimitiveInt => {
             if self.trackIdentsForLsp self._addLSPIdentForStruct(label.position, self.project.preludeIntStruct, None)
@@ -2054,14 +2052,14 @@ export type Typechecker {
           if !self._typeSatisfiesRequired(ty: retType, required: reqRetType) return false
 
           var idx = 0
-          for reqParamType, i in reqParamTypes {
-            val paramType = if paramTypes[i] |t| t[0] else { return true }
-            if !self._typeSatisfiesRequired(ty: paramType, required: reqParamType[0]) return false
+          for (reqParamType, _), i in reqParamTypes {
+            val (paramType, _) = try paramTypes[i] else return true
+            if !self._typeSatisfiesRequired(ty: paramType, required: reqParamType) return false
 
             idx = i
           }
-          if paramTypes[idx + 1] |nextParam| {
-            if nextParam[1] return false
+          if paramTypes[idx + 1] |(_, isRequired)| {
+            if isRequired return false
           }
 
           true
@@ -2074,7 +2072,7 @@ export type Typechecker {
 
           if reqTypeArgs.length != typeArgs.length return false
           for reqTypeArg, i in reqTypeArgs {
-            val typeArg = if typeArgs[i] |t| t else { return true }
+            val typeArg = try typeArgs[i] else return true
             if !self._typeSatisfiesRequired(ty: typeArg, required: reqTypeArg) return false
           }
 
@@ -2091,7 +2089,7 @@ export type Typechecker {
         TypeKind.Tuple(types) => {
           if reqTypes.length != types.length return false
           for reqTy, i in reqTypes {
-            val ty = if types[i] |t| t else unreachable("length verified above to be equal")
+            val ty = try types[i] else unreachable("length verified above to be equal")
             if !self._typeSatisfiesRequired(ty: ty, required: reqTy) return false
           }
 
@@ -2421,13 +2419,12 @@ export type Typechecker {
 
     self.currentScope = prevScope
 
-    val hasSelf = if node.params[0] |param| param.label.name == "self" else false
-    val fnKind = if hasSelf {
+    val selfParam = if node.params[0] |param| { if param.label.name == "self" Some(param) else None } else None
+    val fnKind = if selfParam |selfParam| {
       if self.currentTypeDecl |selfType| {
         FunctionKind.InstanceMethod(Some(selfType))
       } else {
-        val param = if node.params[0] |p| p else unreachable("expected a first parameter to be present")
-        return Err(TypeError(position: param.label.position, kind: TypeErrorKind.InvalidParamPosition(purpose: "self")))
+        return Err(TypeError(position: selfParam.label.position, kind: TypeErrorKind.InvalidParamPosition(purpose: "self")))
       }
     } else if self.currentTypeDecl |parentType| {
       FunctionKind.StaticMethod(parentType)
@@ -2594,8 +2591,8 @@ export type Typechecker {
 
       // Since `self` is not included in the fn.params array, but it is in the untyped AST, when referring to the untyped AST, we need to adjust
       val origNodeParamIdx = match fn.kind { FunctionKind.InstanceMethod => idx + 1, _ => idx }
-      val paramNode = if params[origNodeParamIdx] |p| p else unreachable("there should be as many parameter nodes as typed parameters")
-      val defaultValueNode = if paramNode.defaultValue |n| n else unreachable("the only way a parameter needs revisiting is if it has a default value")
+      val paramNode = try params[origNodeParamIdx] else unreachable("there should be as many parameter nodes as typed parameters")
+      val defaultValueNode = try paramNode.defaultValue else unreachable("the only way a parameter needs revisiting is if it has a default value")
 
       val hint = paramHints[idx]
       val (typedParam, needsRevisit) = try self._typecheckFunctionParam(param: paramNode, typeHint: hint, allowSelf: allowSelf, isRevisit: true)
@@ -2816,8 +2813,8 @@ export type Typechecker {
     self.currentTypeDecl = Some(StructOrEnum.Struct(struct))
 
     for field, idx in node.fields {
-      val initializer = if field.initializer |v| v else continue
-      val structField = if struct.fields[idx] |f| f else unreachable()
+      val initializer = try field.initializer else continue
+      val structField = try struct.fields[idx] else unreachable()
 
       val typedInitializer = try self._typecheckExpression(initializer, Some(structField.ty))
       if !self._typeSatisfiesRequired(ty: typedInitializer.ty, required: structField.ty) {
@@ -2838,7 +2835,7 @@ export type Typechecker {
         unreachable("method not visited in prior pass")
       }
 
-      val toRevisit = if paramsNeedingRevisit[fnLabel] |paramIds| paramIds else unreachable("params improperly visited in prior pass")
+      val toRevisit = try paramsNeedingRevisit[fnLabel] else unreachable("params improperly visited in prior pass")
       try self._typecheckFunctionPass3(fn: fn, allowSelf: true, params: funcDeclNode.params, body: funcDeclNode.body, paramsNeedingRevisit: toRevisit)
     }
 
@@ -2952,7 +2949,7 @@ export type Typechecker {
           }
 
           for typedField, idx in typedFields {
-            val field = if fields[idx] |f| f else unreachable("the untyped field must exist at index")
+            val field = try fields[idx] else unreachable("the untyped field must exist at index")
             if field.initializer |initializer| {
               val typedInitializer = try self._typecheckExpression(initializer, Some(typedField.ty))
               if !self._typeSatisfiesRequired(ty: typedInitializer.ty, required: typedField.ty) {
@@ -2994,7 +2991,7 @@ export type Typechecker {
         unreachable("method not visited in prior pass")
       }
 
-      val toRevisit = if paramsNeedingRevisit[fnLabel] |paramIds| paramIds else unreachable("params improperly visited in prior pass")
+      val toRevisit = try paramsNeedingRevisit[fnLabel] else unreachable("params improperly visited in prior pass")
       try self._typecheckFunctionPass3(fn: fn, allowSelf: true, params: funcDeclNode.params, body: funcDeclNode.body, paramsNeedingRevisit: toRevisit)
     }
 
@@ -3006,7 +3003,7 @@ export type Typechecker {
 
   func _typecheckImport(self, mod: TypedModule, node: ImportNode): Result<Int, TypeError> {
     // TODO: better API for this (Map#getOrInsert?)
-    val importedModule = if self.currentModuleImports[mod.name] |importedModule| importedModule else {
+    val importedModule = try self.currentModuleImports[mod.name] else {
       val importedModule = ImportedModule()
       self.currentModuleImports[mod.name] = importedModule
       importedModule
@@ -3245,13 +3242,15 @@ export type Typechecker {
 
         val variables: Variable[] = []
         for innerType, idx in innerTypes {
-          val pat = if patterns[idx] |pat| pat else {
+          val pat = try patterns[idx] else {
             val kind = TypeErrorKind.InvalidDestructuring(InvalidDestructuringReason.InvalidTupleArity(expected: innerTypes.length, given: patterns.length))
             return Err(TypeError(position: lParenTok.position, kind: kind))
           }
 
           val foundVars = try self._typecheckBindingPattern(mutable, pat, innerType)
-          for v in foundVars variables.push(v)
+          for v in foundVars {
+            variables.push(v)
+          }
         }
 
         Ok(variables)
@@ -3354,7 +3353,7 @@ export type Typechecker {
           TypedAstNodeKind.Indexing(node) => node
           _ => unreachable("_typecheckIndexing returned unexpected TypedAstNodeKind")
         }
-        val assignmentTy = if self._typeIsOption(typedLhs.ty) |inner| inner else typedLhs.ty
+        val assignmentTy = self._typeIsOption(typedLhs.ty) ?: typedLhs.ty
 
         val typedExpr = try self._typecheckExpression(expr, Some(assignmentTy))
         if !self._typeSatisfiesRequired(ty: typedExpr.ty, required: assignmentTy) {
@@ -3516,7 +3515,7 @@ export type Typechecker {
 
   func _typecheckFor(self, token: Token, itemPattern: BindingPattern, indexPattern: BindingPattern?, iterator: AstNode, block: AstNode[]): Result<TypedAstNode, TypeError> {
     val typedIterator = try self._typecheckExpression(iterator, None)
-    val itemType = if self._typeIsIterable(typedIterator.ty) |innerTy| innerTy else {
+    val itemType = try self._typeIsIterable(typedIterator.ty) else {
       return Err(TypeError(position: typedIterator.token.position, kind: TypeErrorKind.IllegalControlFlowType(ty: typedIterator.ty, purpose: "for")))
     }
     if itemType.kind == TypeKind.Hole {
@@ -3589,9 +3588,7 @@ export type Typechecker {
   }
 
   func _typecheckReturn(self, token: Token, expr: AstNode?): Result<TypedAstNode, TypeError> {
-    val fn = if self.currentFunction |fn| fn else {
-      return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTerminatorPosition("return")))
-    }
+    val fn = try self.currentFunction else return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTerminatorPosition("return")))
 
     val typedExpr = if expr |expr| {
       val typedExpr = try self._typecheckExpression(expr, Some(fn.returnType))
@@ -3778,7 +3775,7 @@ export type Typechecker {
                 return Err(TypeError(position: firstArg.position, kind: TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.NonEnum)))
               }
 
-              val subjectTy = if self._typeIsOption(subjectTy) |innerTy| innerTy else subjectTy
+              val subjectTy = self._typeIsOption(subjectTy) ?: subjectTy
               if !self._typeSatisfiesRequired(ty: caseTy, required: subjectTy) {
                 return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: Some(caseTy)), typedExpr.ty)))
               }
@@ -3801,7 +3798,7 @@ export type Typechecker {
                 seenEnumVariants[enum_] = #{variantIdx}
               }
 
-              val subjectTy = if self._typeIsOption(subjectTy) |innerTy| innerTy else subjectTy
+              val subjectTy = self._typeIsOption(subjectTy) ?: subjectTy
               val template = Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
               val extractedGenerics = subjectTy.extractGenerics(template: template)
               val resolvedGenerics: Map<String, Type> = {}
@@ -3827,7 +3824,7 @@ export type Typechecker {
                     }
 
                     for field, idx in fields {
-                      val arg = if args[idx] |arg| arg else {
+                      val arg = try args[idx] else {
                         val kind = TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.InvalidArity(expected: fields.length, given: args.length))
                         return Err(TypeError(position: case.position, kind: kind))
                       }
@@ -3880,7 +3877,7 @@ export type Typechecker {
             caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: literalTy))
           }
 
-          val subjectTy = if self._typeIsOption(subjectTy) |innerTy| innerTy else subjectTy
+          val subjectTy = self._typeIsOption(subjectTy) ?: subjectTy
           if !self._typeSatisfiesRequired(ty: literalTy, required: subjectTy) {
             return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: Some(literalTy)), typedExpr.ty)))
           }
@@ -3898,9 +3895,7 @@ export type Typechecker {
             caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: subjectTy))
           }
 
-          if self._typeIsOption(subjectTy) |ty| {
-            subjectTy = ty
-          } else {
+          subjectTy = try self._typeIsOption(subjectTy) else {
             return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: None), typedExpr.ty)))
           }
 
@@ -3935,9 +3930,7 @@ export type Typechecker {
       }
 
       if !isStatement {
-        val lastBodyNode = if typedBody[-1] |node| node else {
-          return Err(TypeError(position: case.position, kind: TypeErrorKind.EmptyMatchBlock))
-        }
+        val lastBodyNode = try typedBody[-1] else return Err(TypeError(position: case.position, kind: TypeErrorKind.EmptyMatchBlock))
         val bodyTy = lastBodyNode.ty
 
         if resultTy |resTy| {
@@ -3969,7 +3962,7 @@ export type Typechecker {
       return Err(TypeError(position: token.position, kind: TypeErrorKind.NonExhaustiveMatch(typedExpr.ty)))
     }
 
-    val ty = if resultTy |ty| ty else {
+    val ty = try resultTy else {
       if !isStatement unreachable("match expression without result type")
       Type(kind: TypeKind.PrimitiveUnit)
     }
@@ -4168,7 +4161,7 @@ export type Typechecker {
   func _typecheckIdentifier(self, token: Token, kind: IdentifierKind, typeHint: Type?): Result<TypedAstNode, TypeError> {
     val ((variable, varImportMod), name, fnTypeHint) = match kind {
       IdentifierKind.Named(name) => {
-        val resolvedIdentifier = if self._resolveIdentifier(name) |_v| _v else {
+        val resolvedIdentifier = try self._resolveIdentifier(name) else {
           if self.paramDefaultValueContext |ctx| {
             ctx.exprContainsVariableRef = true
           }
@@ -4205,7 +4198,7 @@ export type Typechecker {
         return self._typecheckExpression(replacement, typeHint)
       }
       IdentifierKind.Self => {
-        val resolvedIdentifier = if self._resolveIdentifier("self") |_v| _v else {
+        val resolvedIdentifier = try self._resolveIdentifier("self") else {
           if self.paramDefaultValueContext |ctx| {
             ctx.exprContainsVariableRef = true
           }
@@ -4292,7 +4285,7 @@ export type Typechecker {
               if field.name.name == label.name {
                 val resolvedGenerics: Map<String, Type> = {}
                 for name, idx in struct.typeParams {
-                  resolvedGenerics[name] = if generics[idx] |g| g else unreachable("typeParams.length != generics.length")
+                  resolvedGenerics[name] = try generics[idx] else unreachable("typeParams.length != generics.length")
                 }
                 var ty = field.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
                 if optSafe {
@@ -4311,7 +4304,7 @@ export type Typechecker {
           if fn.label.name == label.name {
             val resolvedGenerics: Map<String, Type> = {}
             for name, idx in typeParams {
-              resolvedGenerics[name] = if generics[idx] |g| g else unreachable("typeParams.length != generics.length")
+              resolvedGenerics[name] = try generics[idx] else unreachable("typeParams.length != generics.length")
             }
             val method = if resolvedGenerics.isEmpty() fn else fn.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: true, genericsInScope: #{})
             return Ok(Some(AccessorPathSegment.Method(label, method, optSafe, typeHint)))
@@ -4412,7 +4405,7 @@ export type Typechecker {
   func _typecheckAccessor(self, token: Token, node: AccessorAstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
     var accessorPath = node.path
 
-    val firstSeg = if accessorPath[0] |p| p else unreachable("path should have at least 1 segment")
+    val firstSeg = try accessorPath[0] else unreachable("path should have at least 1 segment")
     val maybeModuleAccessor = try self._resolveModuleAliasAccessor(node.root, firstSeg)
     val typedRoot = if maybeModuleAccessor |n| {
       if accessorPath.length == 1 return Ok(n)
@@ -4545,7 +4538,7 @@ export type Typechecker {
       }
     }
 
-    val finalField = if path.pop() |f| f else unreachable("the accessor path should not be empty")
+    val finalField = try path.pop() else unreachable("the accessor path should not be empty")
 
     Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Accessor(typedRoot, path, finalField)))
   }
@@ -4625,7 +4618,7 @@ export type Typechecker {
         return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalParameterLabel))
       }
 
-      var paramType = if paramTypes[idx] |t| t else {
+      var paramType = try paramTypes[idx] else {
         return Err(TypeError(position: arg.position(), kind: TypeErrorKind.WrongInvocationArity(expected: paramTypes.length, given: invocationNode.arguments.length)))
       }
 
@@ -4663,7 +4656,7 @@ export type Typechecker {
 
     if !invocationNode.typeArguments.isEmpty() {
       for (_, typeParamLabel), idx in fn.typeParams {
-        val typeArg = if invocationNode.typeArguments[idx] |typeArg| typeArg else {
+        val typeArg = try invocationNode.typeArguments[idx] else {
           return Err(TypeError(position: invokee.token.position, kind: TypeErrorKind.WrongTypeArgumentArity(expected: fn.typeParams.length, given: invocationNode.typeArguments.length)))
         }
         val typeArgTy = try self._resolveTypeIdentifier(typeArg)
@@ -4711,7 +4704,7 @@ export type Typechecker {
     for (arg, argIdx, numAttempts) in argumentsQueue {
       val idx = if variadicParam |(_, idx)| idx else argIdx
 
-      var param = if fn.params[idx] |param| param else {
+      var param = try fn.params[idx] else {
         return Err(TypeError(position: arg.position(), kind: TypeErrorKind.WrongInvocationArity(expected: fn.params.length, given: invocationNode.arguments.length)))
       }
       if (!!param.defaultValue) || param.isVariadic { hasBegunOptionalParams = true }
@@ -4723,7 +4716,7 @@ export type Typechecker {
             return Err(TypeError(position: label.position, kind: TypeErrorKind.ParameterLabelMismatch(expected: param.label.name, given: label.name)))
           }
 
-          param = if paramsByName[label.name] |p| p else {
+          param = try paramsByName[label.name] else {
             return Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownParameterName(label.name)))
           }
           paramTy = param.ty
@@ -5195,7 +5188,7 @@ export type Typechecker {
 
   func _typecheckTry(self, token: Token, expr: AstNode, elseClause: (Token, BindingPattern?, AstNode[])?, typeHint: Type?): Result<TypedAstNode, TypeError> {
     // TODO: support top-level try (the error case would just exit the program)
-    val currentFn = if self.currentFunction |f| f else return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.NotWithinFunction)))
+    val currentFn = try self.currentFunction else return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.NotWithinFunction)))
 
     val (typedExpr, returnTypeResultErr) = if self._typeIsResult(currentFn.returnType) |(_, retErrType)| {
       val hint = if typeHint |typeHint| { Some(Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeResultEnum), [typeHint, retErrType]))) } else None
