@@ -356,7 +356,7 @@ export type Lexer {
         var num = 0
         while self._cursor < self._input.length {
           val ch = self._input._buffer.offset(self._cursor).load().asInt()
-          val v = if valueIfValidHexDigit(ch) |v| v else break
+          val v = try valueIfValidHexDigit(ch) else break
 
           num = (num << 4) + v
           isFirstChar = false
@@ -624,7 +624,7 @@ export type Lexer {
         return Err(LexerError(position: startPos, kind: LexerErrorKind.UnsupportedEscapeSequence(seq: escSeq, isUnicode: true)))
       }
       val ch = self._input._buffer.offset(self._cursor + i).load().asInt()
-      val v = if valueIfValidHexDigit(ch) |v| v else {
+      val v = try valueIfValidHexDigit(ch) else {
         val escSeq = "\\u${self._input[self._cursor:self._cursor + i]}"
         return Err(LexerError(position: startPos, kind: LexerErrorKind.UnsupportedEscapeSequence(seq: escSeq, isUnicode: true)))
       }

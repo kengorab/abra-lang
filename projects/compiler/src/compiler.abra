@@ -2942,7 +2942,7 @@ export type Compiler {
         val ptrVal = try self._compileExpression(ptr)
         val countVal = try self._compileExpression(count)
 
-        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else unreachable("(pointer_realloc) could not resolve T for Pointer<T>")
+        val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_realloc) could not resolve T for Pointer<T>")
         val innerTySize = try self._pointerSize(innerTy)
         val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), countVal) else |e| return qbeError(e)
 
@@ -2953,7 +2953,7 @@ export type Compiler {
         val ptrVal = try self._compileExpression(ptr)
         val valueVal = try self._compileExpression(value)
 
-        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else unreachable("(pointer_store) could not resolve T for Pointer<T>")
+        val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_store) could not resolve T for Pointer<T>")
         val innerTySize = try self._pointerSize(innerTy)
         if innerTySize == 1 {
           self._currentFn.block.buildStoreB(valueVal, ptrVal)
@@ -2969,7 +2969,7 @@ export type Compiler {
         val ptrVal = try self._compileExpression(ptr)
         val offsetVal = try self._compileExpression(offset)
 
-        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else unreachable("(pointer_offset) could not resolve T for Pointer<T>")
+        val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_offset) could not resolve T for Pointer<T>")
         val innerTySize = try self._pointerSize(innerTy)
         val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), offsetVal) else |e| return qbeError(e)
 
@@ -2979,7 +2979,7 @@ export type Compiler {
         val ptr = self._intrinsicArgs1(intrinsicFnName, arguments)
         val ptrVal = try self._compileExpression(ptr)
 
-        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else unreachable("(pointer_load) could not resolve T for Pointer<T>")
+        val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_load) could not resolve T for Pointer<T>")
 
         val innerTySize = try self._pointerSize(innerTy)
         val innerQbeType = if innerTySize == 1 QbeType.U8 else try self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None)
@@ -2992,7 +2992,7 @@ export type Compiler {
         val otherVal = try self._compileExpression(other)
         val sizeArg = try self._compileExpression(size)
 
-        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else unreachable("(pointer_copy_from) could not resolve T for Pointer<T>")
+        val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_copy_from) could not resolve T for Pointer<T>")
         val innerTySize = try self._pointerSize(innerTy)
         val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), sizeArg) else |e| return qbeError(e)
 
@@ -3019,7 +3019,7 @@ export type Compiler {
         try self._compileExpression(arg)
       }
       "uninitialized" => {
-        val innerTy = if self._resolvedGenerics.resolveGeneric("T") |ty| ty else unreachable("(uninitialized) could not resolve T for uninitialized<T>()")
+        val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(uninitialized) could not resolve T for uninitialized<T>()")
         val innerTySize = try self._pointerSize(innerTy)
         if innerTySize != QbeType.U64.size() unreachable("innerTySize != QbeType.U64.size()")
 
@@ -4203,7 +4203,7 @@ export type Compiler {
   func _functionStruct(self, arity: Int, hasReturnType: Bool): Struct {
     val name = if hasReturnType "Function$arity" else "UnitFunction$arity"
 
-    if self._functionStructs[name] |struct| struct else {
+    try self._functionStructs[name] else {
       val dummyModuleId = 0
       val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
       val typeParams = (if hasReturnType { ["_R"] } else []).concat(alphabet[:arity].split(""))
@@ -4221,7 +4221,7 @@ export type Compiler {
   func _tupleStruct(self, arity: Int): Struct {
     val name = "Tuple$arity"
 
-    if self._tupleStructs[name] |struct| struct else {
+    try self._tupleStructs[name] else {
       val dummyModuleId = 0
       val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
       val typeParams = alphabet[:arity].split("")
@@ -4382,7 +4382,7 @@ export type Compiler {
     // short enough that there's enough room for this type to be used as a generic in other types without making that type's or
     // function's identifier too long.
     if name.length >= 70 {
-      val alias = if self._aliasedTypeNames[name] |alias| alias else {
+      val alias = try self._aliasedTypeNames[name] else {
         val replacement = String.random(16)
         self._aliasedTypeNames[name] = replacement
         replacement
@@ -4420,7 +4420,7 @@ export type Compiler {
     // short enough that there's enough room for this type to be used as a generic in other types without making that type's or
     // function's identifier too long.
     if name.length >= 80 {
-      val alias = if self._aliasedTypeNames[name] |alias| alias else {
+      val alias = try self._aliasedTypeNames[name] else {
         val replacement = String.random(40)
         self._aliasedTypeNames[name] = replacement
         replacement
@@ -4582,16 +4582,12 @@ export type Compiler {
 
     try methods.find(m => m.label.name == name) else {
       val sep = if staticMethod "." else "#"
-      val descriptor = "$parentName$sep$name"
-      unreachable("$descriptor must exist")
+      unreachable("$parentName$sep$name must exist")
     }
   }
 
   func _getEnumVariantByName(self, enum_: Enum, name: String): (TypedEnumVariant, Int) {
-    if enum_.variants.findIndex(v => v.label.name == name) |v| v else {
-      val descriptor = "${enum_.label.name}.$name"
-      unreachable("$descriptor must exist")
-    }
+    try enum_.variants.findIndex(v => v.label.name == name) else unreachable("${enum_.label.name}.$name must exist")
   }
 
   func _typeIsInt(self, ty: Type): Bool = ty.kind == TypeKind.PrimitiveInt || ty.kind == TypeKind.Instance(StructOrEnum.Struct(self._project.preludeIntStruct), [])

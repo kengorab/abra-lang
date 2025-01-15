@@ -144,7 +144,7 @@ export func callstack(): StackFrame[] {
 
 var _moduleNames: String[]? = None
 func getModuleNames(): String[] {
-  if _moduleNames |moduleNames| moduleNames
+  if _moduleNames |moduleNames| return moduleNames
 
   val moduleNames: String[] = []
   val buf = intrinsics.moduleNames()
@@ -174,7 +174,7 @@ func getModuleNames(): String[] {
 
 var _functionNames: String[]? = None
 func getFunctionNames(): String[] {
-  if _functionNames |functionNames| functionNames
+  if _functionNames |functionNames| return functionNames
 
   val functionNames: String[] = []
   val buf = intrinsics.functionNames()

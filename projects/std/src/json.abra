@@ -299,7 +299,7 @@ export type JsonParser {
       }
 
       val char = if ch == '\\' {
-        val ch = if self._chars.next() |ch| ch else return Err(JsonParseError.UnterminatedString)
+        val ch = try self._chars.next() else return Err(JsonParseError.UnterminatedString)
         match ch {
           '"' => '"'
           '\\' => '\\'
@@ -313,21 +313,21 @@ export type JsonParser {
           'u' => {
             var num = 0
             // byte 1
-            var ch = if self._chars.next() |ch| ch else return Err(JsonParseError.UnexpectedEof)
+            var ch = try self._chars.next() else return Err(JsonParseError.UnexpectedEof)
             num *= 16
-            num += (if charAsHexDigit(ch) |v| v else return Err(JsonParseError.InvalidCharacterInString))
+            num += (try charAsHexDigit(ch) else return Err(JsonParseError.InvalidCharacterInString))
             // byte 2
-            ch = if self._chars.next() |ch| ch else return Err(JsonParseError.UnexpectedEof)
+            ch = try self._chars.next() else return Err(JsonParseError.UnexpectedEof)
             num *= 16
-            num += (if charAsHexDigit(ch) |v| v else return Err(JsonParseError.InvalidCharacterInString))
+            num += (try charAsHexDigit(ch) else return Err(JsonParseError.InvalidCharacterInString))
             // byte 3
-            ch = if self._chars.next() |ch| ch else return Err(JsonParseError.UnexpectedEof)
+            ch = try self._chars.next() else return Err(JsonParseError.UnexpectedEof)
             num *= 16
-            num += (if charAsHexDigit(ch) |v| v else return Err(JsonParseError.InvalidCharacterInString))
+            num += (try charAsHexDigit(ch) else return Err(JsonParseError.InvalidCharacterInString))
             // byte 4
-            ch = if self._chars.next() |ch| ch else return Err(JsonParseError.UnexpectedEof)
+            ch = try self._chars.next() else return Err(JsonParseError.UnexpectedEof)
             num *= 16
-            num += (if charAsHexDigit(ch) |v| v else return Err(JsonParseError.InvalidCharacterInString))
+            num += (try charAsHexDigit(ch) else return Err(JsonParseError.InvalidCharacterInString))
 
             Char.fromInt(num)
           }
@@ -366,7 +366,7 @@ export type JsonParser {
   }
 
   func _parseFracPart(self): Result<Float, JsonParseError> {
-    val initial = if self._chars.next() |ch| ch else return Err(JsonParseError.UnexpectedEndOfNumber)
+    val initial = try self._chars.next() else return Err(JsonParseError.UnexpectedEndOfNumber)
     if !initial.isDigit() return Err(JsonParseError.UnexpectedEndOfNumber)
 
     var frac = initial.asInt() - '0'.asInt()
@@ -385,10 +385,10 @@ export type JsonParser {
   }
 
   func _parseExpPart(self): Result<Int, JsonParseError> {
-    var ch = if self._chars.next() |ch| ch else return Err(JsonParseError.UnexpectedEndOfNumber)
+    var ch = try self._chars.next() else return Err(JsonParseError.UnexpectedEndOfNumber)
     val expSign = if ch == '-' { -1 } else { 1 }
     if ch == '-' || ch == '+' {
-      ch = if self._chars.next() |ch| ch else return Err(JsonParseError.UnexpectedEndOfNumber)
+      ch = try self._chars.next() else return Err(JsonParseError.UnexpectedEndOfNumber)
     }
 
     if !ch.isDigit() return Err(JsonParseError.UnexpectedEndOfNumber)
@@ -410,7 +410,7 @@ export type JsonParser {
 
     val sign = if initial == '-' { -1 } else { 1 }
     val ch = if initial == '-' {
-      if self._chars.next() |ch| ch else return Err(JsonParseError.UnexpectedEof)
+      try self._chars.next() else return Err(JsonParseError.UnexpectedEof)
     } else {
       initial
     }

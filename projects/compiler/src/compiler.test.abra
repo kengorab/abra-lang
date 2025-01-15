@@ -18,7 +18,7 @@ import ModuleLoader, Project, Typechecker, TypedModule from "./typechecker"
 import Compiler from "./compiler"
 
 func main() {
-  val abraStdRoot = if process.getEnvVar("ABRA_HOME") |v| v else {
+  val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {
     println("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
     return
   }

@@ -154,32 +154,32 @@ println([1].length, [[1, 2], [3, 4]].length)
   println(refs)
 })()
 
-// // Array.fillBy
-// (() => {
-//   val zero = 0
-//   val zeroes = Array.fillBy(5, () => zero)
-//   /// Expect: [0, 0, 0, 0, 0]
-//   println(zeroes)
+// Array.fillBy
+(() => {
+  val zero = 0
+  val zeroes = Array.fillBy(5, () => zero)
+  /// Expect: [0, 0, 0, 0, 0]
+  println(zeroes)
 
-//   val nums = Array.fillBy(5, i => i + 1)
-//   /// Expect: [1, 2, 3, 4, 5]
-//   println(nums)
+  val nums = Array.fillBy(5, i => i + 1)
+  /// Expect: [1, 2, 3, 4, 5]
+  println(nums)
 
-//   val arr = [1, 2]
-//   val sharedRefs = Array.fillBy(3, () => arr)
-//   /// Expect: [[1, 2], [1, 2], [1, 2]]
-//   println(sharedRefs)
-//   arr.push(3)
-//   /// Expect: [[1, 2, 3], [1, 2, 3], [1, 2, 3]]
-//   println(sharedRefs)
+  val arr = [1, 2]
+  val sharedRefs = Array.fillBy(3, () => arr)
+  /// Expect: [[1, 2], [1, 2], [1, 2]]
+  println(sharedRefs)
+  arr.push(3)
+  /// Expect: [[1, 2, 3], [1, 2, 3], [1, 2, 3]]
+  println(sharedRefs)
 
-//   val uniqueRefs = Array.fillBy(3, () => [1, 2])
-//   /// Expect: [[1, 2], [1, 2], [1, 2]]
-//   println(uniqueRefs)
-//   if uniqueRefs[0] |arr| arr[1] = 0
-//   /// Expect: [[1, 0], [1, 2], [1, 2]]
-//   println(uniqueRefs)
-// })()
+  val uniqueRefs = Array.fillBy(3, () => [1, 2])
+  /// Expect: [[1, 2], [1, 2], [1, 2]]
+  println(uniqueRefs)
+  if uniqueRefs[0] |arr| arr[1] = 0
+  /// Expect: [[1, 0], [1, 2], [1, 2]]
+  println(uniqueRefs)
+})()
 
 // Array#hash
 (() => {
