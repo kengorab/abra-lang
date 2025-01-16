@@ -3002,12 +3002,7 @@ export type Typechecker {
   }
 
   func _typecheckImport(self, mod: TypedModule, node: ImportNode): Result<Int, TypeError> {
-    // TODO: better API for this (Map#getOrInsert?)
-    val importedModule = try self.currentModuleImports[mod.name] else {
-      val importedModule = ImportedModule()
-      self.currentModuleImports[mod.name] = importedModule
-      importedModule
-    }
+    val importedModule = self.currentModuleImports.getOrInsert(mod.name, () => ImportedModule())
 
     match node.kind {
       ImportKind.List(importNames) => {

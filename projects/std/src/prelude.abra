@@ -1474,6 +1474,14 @@ type Map<K, V> {
     self.get(key) ?: getDefault()
   }
 
+  func getOrInsert(self, key: K, getDefault: () => V): V {
+    try self.get(key) else {
+      val default = getDefault()
+      self.insert(key, default)
+      default
+    }
+  }
+
   func update(self, key: K, updater: (V) => V): V? {
     if self._getEntry(key) |entry| {
       val oldVal = entry.value

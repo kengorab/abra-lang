@@ -4203,17 +4203,13 @@ export type Compiler {
   func _functionStruct(self, arity: Int, hasReturnType: Bool): Struct {
     val name = if hasReturnType "Function$arity" else "UnitFunction$arity"
 
-    try self._functionStructs[name] else {
+    self._functionStructs.getOrInsert(name, () => {
       val dummyModuleId = 0
       val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
       val typeParams = (if hasReturnType { ["_R"] } else []).concat(alphabet[:arity].split(""))
       val fields = [("_env", Type(kind: TypeKind.PrimitiveInt)), ("_ptr", Type(kind: TypeKind.PrimitiveInt)), ("_self", Type(kind: TypeKind.PrimitiveInt))]
-      val struct = Struct.makeDummy(moduleId: dummyModuleId, name: name, typeParams: typeParams, fields: fields)
-
-      self._functionStructs[name] = struct
-
-      struct
-    }
+      Struct.makeDummy(moduleId: dummyModuleId, name: name, typeParams: typeParams, fields: fields)
+    })
   }
 
   func _isFunctionStruct(self, struct: Struct): Bool = if self._functionStructs[struct.label.name] |s| s == struct else false
@@ -4221,17 +4217,13 @@ export type Compiler {
   func _tupleStruct(self, arity: Int): Struct {
     val name = "Tuple$arity"
 
-    try self._tupleStructs[name] else {
+    self._tupleStructs.getOrInsert(name, () => {
       val dummyModuleId = 0
       val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
       val typeParams = alphabet[:arity].split("")
       val fields = typeParams.map((p, idx) => ("_$idx", Type(kind: TypeKind.Generic(name: p))))
-      val struct = Struct.makeDummy(moduleId: dummyModuleId, name: name, typeParams: typeParams, fields: fields)
-
-      self._tupleStructs[name] = struct
-
-      struct
-    }
+      Struct.makeDummy(moduleId: dummyModuleId, name: name, typeParams: typeParams, fields: fields)
+    })
   }
 
   func _isTupleStruct(self, struct: Struct): Bool = if self._tupleStructs[struct.label.name] |s| s == struct else false
@@ -4382,11 +4374,7 @@ export type Compiler {
     // short enough that there's enough room for this type to be used as a generic in other types without making that type's or
     // function's identifier too long.
     if name.length >= 70 {
-      val alias = try self._aliasedTypeNames[name] else {
-        val replacement = String.random(16)
-        self._aliasedTypeNames[name] = replacement
-        replacement
-      }
+      val alias = self._aliasedTypeNames.getOrInsert(name, () => String.random(16))
       Ok(alias)
     } else {
       Ok(name)
@@ -4420,11 +4408,7 @@ export type Compiler {
     // short enough that there's enough room for this type to be used as a generic in other types without making that type's or
     // function's identifier too long.
     if name.length >= 80 {
-      val alias = try self._aliasedTypeNames[name] else {
-        val replacement = String.random(40)
-        self._aliasedTypeNames[name] = replacement
-        replacement
-      }
+      val alias = self._aliasedTypeNames.getOrInsert(name, () => String.random(40))
       Ok(alias)
     } else {
       Ok(name)
