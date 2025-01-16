@@ -184,8 +184,8 @@ export type Block {
   }
 
   func _addComment(self, comment: String, line = self.body.length) {
-    if self.comments[line] |comments| comments.insert(comment)
-    else self.comments[line] = #{comment}
+    val comments = self.comments.getOrInsert(line, () => #{})
+    comments.insert(comment)
   }
 
   func addComment(self, comment: String) = self._addComment(comment)
@@ -195,9 +195,8 @@ export type Block {
 
   func addLabel(self, name: String): Label {
     if self._labelNames[name] |count| {
-      val l = Label(name: "${name}_$count")
       self._labelNames[name] = count + 1
-      l
+      Label(name: "${name}_$count")
     } else {
       self._labelNames[name] = 1
       Label(name: name)
@@ -209,7 +208,8 @@ export type Block {
 
     val offset = self.body.length
     label.offset = Some(offset)
-    if self.labelsByLine[offset] |labels| labels.push(label) else self.labelsByLine[offset] = [label]
+    val labels = self.labelsByLine.getOrInsert(offset, () => [])
+    labels.push(label)
 
     self.currentLabel = label
 
@@ -217,11 +217,7 @@ export type Block {
   }
 
   func addVar(self, v: Var, name: String? = None): String {
-    val varsForName = try self.variables[v.name] else {
-      val vars: Map<Var, String> = {}
-      self.variables[v.name] = vars
-      vars
-    }
+    val varsForName = self.variables.getOrInsert(v.name, () => ({}))
 
     val varName = name ?: "${v.name}.${varsForName.size}.slot"
     varsForName[v] = varName
