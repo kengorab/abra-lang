@@ -602,7 +602,11 @@ export type Block {
   func buildCall(self, callable: Callable, arguments: Value[], dst: String? = None, envPtr: Value? = None): Result<Value, String> {
     val dest = dst ?: self._nextLocal()
 
-    val fnReturnType = try callable.returnType() else return Err("function value ($callable) has no return type; cannot store result into destination '%$dest'")
+    val returnType = match callable {
+      Callable.Function(fn) => fn.returnType
+      Callable.Value(_, returnType) => returnType
+    }
+    val fnReturnType = try returnType else return Err("function value ($callable) has no return type; cannot store result into destination '%$dest'")
 
     val local = Value.Ident(dest, fnReturnType)
 
@@ -692,11 +696,6 @@ export type Block {
 export enum Callable {
   Function(fn: QbeFunction)
   Value(v: Value, returnType: QbeType?)
-
-  func returnType(self): QbeType? = match self {
-    Callable.Function(fn) => fn.returnType
-    Callable.Value(_, returnType) => returnType
-  }
 }
 
 export enum QbeType {
