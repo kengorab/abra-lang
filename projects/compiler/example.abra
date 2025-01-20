@@ -1,15 +1,4 @@
-func some(): Int? = Some(123)
-func none(): Int? = None
-
-func f12(): Int? {
-  var acc = 0
-  while acc < 10 {
-    val x = try none() else return Some(12)
-    acc += x
-  }
-
-  Some(acc)
-}
+func f12(): Int? = Ok(1)
 
 /// Expect: Option.Some(value: 12)
 println(f12())

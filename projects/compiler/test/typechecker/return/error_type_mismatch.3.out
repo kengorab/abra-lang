@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:1:25
+Illegal operator
+  |  func foo(): Int? = Ok(1 + [])
+                             ^
+No operator '+' exists between types Int and <unknown>[]

@@ -555,21 +555,22 @@ export type Type {
     }
   }
 
-  func _extractGenerics(self, template: Type, extracted: (String, Type)[]) {
+  func _extractGenerics(self, template: Type, extracted: (String, Type)[]): Bool {
     match template.kind {
       TypeKind.Generic(name) => {
         extracted.push((name, self))
       }
-      TypeKind.Instance(_, templateTypeArgs) => {
+      TypeKind.Instance(templateStructOrEnum, templateTypeArgs) => {
         match self.kind {
-          TypeKind.Instance(_, sourceTypeArgs) => {
-            if templateTypeArgs.length != sourceTypeArgs.length unreachable("templateTypeArgs.length != sourceTypeArgs.length")
+          TypeKind.Instance(sourceStructOrEnum, sourceTypeArgs) => {
+            if templateStructOrEnum != sourceStructOrEnum return false
+
             for tplTypeArg, idx in templateTypeArgs {
               val srcTypeArg = try sourceTypeArgs[idx] else unreachable("templateTypeArgs.length != sourceTypeArgs.length")
-              srcTypeArg._extractGenerics(template: tplTypeArg, extracted: extracted)
+              if !srcTypeArg._extractGenerics(template: tplTypeArg, extracted: extracted) return false
             }
           }
-          _ => {}
+          else => return false
         }
       }
       TypeKind.Tuple(templateTypes) => {
@@ -577,32 +578,35 @@ export type Type {
           TypeKind.Tuple(sourceTypes) => {
             for tplType, idx in templateTypes {
               val srcType = try sourceTypes[idx] else break
-              srcType._extractGenerics(template: tplType, extracted: extracted)
+              if !srcType._extractGenerics(template: tplType, extracted: extracted) return false
             }
           }
-          _ => {}
+          else => return false
         }
       }
       TypeKind.Func(templateParamTypes, templateReturnType) => {
         match self.kind {
           TypeKind.Func(sourceParamTypes, sourceReturnType) => {
-            sourceReturnType._extractGenerics(template: templateReturnType, extracted: extracted)
+            if !sourceReturnType._extractGenerics(template: templateReturnType, extracted: extracted) return false
 
             for (tplParamType, _), idx in templateParamTypes {
               val (srcParamType, _) = try sourceParamTypes[idx] else break
-              srcParamType._extractGenerics(template: tplParamType, extracted: extracted)
+              if !srcParamType._extractGenerics(template: tplParamType, extracted: extracted) return false
             }
           }
-          _ => {}
+          else => return false
         }
       }
-      _ => {}
+      else => {}
     }
+
+    true
   }
 
   func extractGenerics(self, template: Type): (String, Type)[] {
     val extracted: (String, Type)[] = []
-    self._extractGenerics(template, extracted)
+    if !self._extractGenerics(template, extracted) return []
+
     extracted
   }
 }
@@ -3795,7 +3799,7 @@ export type Typechecker {
 
               val subjectTy = self._typeIsOption(subjectTy) ?: subjectTy
               val template = Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
-              val extractedGenerics = subjectTy.extractGenerics(template: template)
+              val extractedGenerics = subjectTy.extractGenerics(template)
               val resolvedGenerics: Map<String, Type> = {}
               for (name, ty) in extractedGenerics {
                 resolvedGenerics[name] = ty
@@ -4321,7 +4325,7 @@ export type Typechecker {
                 val typeArgs = enum_.typeParams.map(p => Type(kind: TypeKind.Generic(p)))
                 val ty = if typeHint |hint| {
                   val template = Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), typeArgs))
-                  val extractedGenerics = hint.extractGenerics(template: template)
+                  val extractedGenerics = hint.extractGenerics(template)
                   val resolvedGenerics: Map<String, Type> = {}
                   for (name, ty) in extractedGenerics {
                     resolvedGenerics[name] = ty
