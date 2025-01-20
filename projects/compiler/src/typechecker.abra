@@ -560,10 +560,10 @@ export type Type {
       TypeKind.Generic(name) => {
         extracted.push((name, self))
       }
-      TypeKind.Instance(templateStruct, templateTypeArgs) => {
+      TypeKind.Instance(templateStructOrEnum, templateTypeArgs) => {
         match self.kind {
-          TypeKind.Instance(sourceStruct, sourceTypeArgs) => {
-            if templateStruct != sourceStruct return false
+          TypeKind.Instance(sourceStructOrEnum, sourceTypeArgs) => {
+            if templateStructOrEnum != sourceStructOrEnum return false
 
             for tplTypeArg, idx in templateTypeArgs {
               val srcTypeArg = try sourceTypeArgs[idx] else unreachable("templateTypeArgs.length != sourceTypeArgs.length")
