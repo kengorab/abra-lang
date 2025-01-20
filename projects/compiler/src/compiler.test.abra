@@ -20,7 +20,7 @@ import Compiler from "./compiler"
 func main() {
   val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {
     println("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
-    return
+    process.exit(1)
   }
 
   val args = process.args()
@@ -36,7 +36,7 @@ func main() {
     match typechecker.typecheckEntrypoint(filePathAbs) {
       Err(e) => {
         println(e.getMessage())
-        return
+        process.exit(1)
       }
       Ok(_) => {}
     }
@@ -45,7 +45,7 @@ func main() {
       Ok(v) => v
       Err(e) => {
         println(e.getMessage())
-        return
+        process.exit(1)
       }
     }
 
@@ -58,12 +58,13 @@ func main() {
       Ok(v) => v
       Err(e) => {
         println(e)
-        return
+        process.exit(1)
       }
     }
     builder.writeToFile(ssaOutFile)
   } else {
     println("Missing required argument <file-name>")
+    process.exit(1)
   }
 }
 
