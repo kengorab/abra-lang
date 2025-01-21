@@ -1,0 +1,1 @@
+pub func foo(): Int = 123

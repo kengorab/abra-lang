@@ -185,7 +185,7 @@ export enum BindingPattern {
 
 export type BindingDeclarationNode {
   decorators: DecoratorNode[]
-  exportToken: Token?
+  pubToken: Token?
   bindingPattern: BindingPattern
   typeAnnotation: TypeIdentifier?
   expr: AstNode?
@@ -205,7 +205,7 @@ export type LambdaNode {
 
 export type FunctionDeclarationNode {
   decorators: DecoratorNode[]
-  exportToken: Token?
+  pubToken: Token?
   name: Label
   typeParams: Label[]
   params: FunctionParam[]
@@ -221,7 +221,7 @@ type TypeField {
 
 export type TypeDeclarationNode {
   decorators: DecoratorNode[]
-  exportToken: Token?
+  pubToken: Token?
   name: Label
   typeParams: Label[]
   fields: TypeField[]
@@ -237,7 +237,7 @@ export enum EnumVariant {
 
 export type EnumDeclarationNode {
   decorators: DecoratorNode[]
-  exportToken: Token?
+  pubToken: Token?
   name: Label
   typeParams: Label[]
   variants: EnumVariant[]
@@ -351,7 +351,7 @@ export type Parser {
   _tokens: Token[]
   _cursor: Int = 0
   _seenDecorators: DecoratorNode[] = []
-  _exportToken: Token? = None
+  _pubToken: Token? = None
 
   func parse(tokens: Token[]): Result<ParsedModule, ParseError> {
     val parser = Parser(_tokens: tokens)
@@ -495,7 +495,7 @@ export type Parser {
         try self._parseDecorator()
 
         val nextToken = try self._expectPeek()
-        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.At, TokenKind.Export]
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.At, TokenKind.Export, TokenKind.Pub]
         if !expected.contains(nextToken.kind) {
           return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
         }
@@ -503,8 +503,20 @@ export type Parser {
         self._parseStatement()
       }
       TokenKind.Export => {
-        self._exportToken = Some(token)
+        self._pubToken = Some(token)
         self._advance() // consume 'export' token
+
+        val nextToken = try self._expectPeek()
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum]
+        if !expected.contains(nextToken.kind) {
+          return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
+        }
+
+        self._parseStatement()
+      }
+      TokenKind.Pub => {
+        self._pubToken = Some(token)
+        self._advance() // consume 'pub' token
 
         val nextToken = try self._expectPeek()
         val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum]
@@ -585,8 +597,8 @@ export type Parser {
     val decorators = self._seenDecorators
     self._seenDecorators = []
 
-    val exportToken = self._exportToken
-    self._exportToken = None
+    val pubToken = self._pubToken
+    self._pubToken = None
 
     val token = try self._expectNext()
     val pat = try self._parseBindingPattern()
@@ -594,7 +606,7 @@ export type Parser {
     if self._cursor >= self._tokens.length {
       val node = BindingDeclarationNode(
         decorators: decorators,
-        exportToken: exportToken,
+        pubToken: pubToken,
         bindingPattern: pat,
         typeAnnotation: None,
         expr: None,
@@ -613,7 +625,7 @@ export type Parser {
     if self._cursor >= self._tokens.length {
       val node = BindingDeclarationNode(
         decorators: decorators,
-        exportToken: exportToken,
+        pubToken: pubToken,
         bindingPattern: pat,
         typeAnnotation: typeAnnotation,
         expr: None,
@@ -631,7 +643,7 @@ export type Parser {
 
     val node = BindingDeclarationNode(
       decorators: decorators,
-      exportToken: exportToken,
+      pubToken: pubToken,
       bindingPattern: pat,
       typeAnnotation: typeAnnotation,
       expr: expr,
@@ -643,8 +655,8 @@ export type Parser {
     val decorators = self._seenDecorators
     self._seenDecorators = []
 
-    val exportToken = self._exportToken
-    self._exportToken = None
+    val pubToken = self._pubToken
+    self._pubToken = None
 
     val token = try self._expectNext()
     val label = try self._expectNextLabel()
@@ -692,7 +704,7 @@ export type Parser {
 
     val node = FunctionDeclarationNode(
       decorators: decorators,
-      exportToken: exportToken,
+      pubToken: pubToken,
       name: label,
       typeParams: typeParams,
       params: params,
@@ -706,8 +718,8 @@ export type Parser {
     val decorators = self._seenDecorators
     self._seenDecorators = []
 
-    val exportToken = self._exportToken
-    self._exportToken = None
+    val pubToken = self._pubToken
+    self._pubToken = None
 
     val token = try self._expectNext()
     val typeName = try self._expectNextLabel()
@@ -747,7 +759,7 @@ export type Parser {
 
     val node = TypeDeclarationNode(
       decorators: decorators,
-      exportToken: exportToken,
+      pubToken: pubToken,
       name: typeName,
       typeParams: typeParams,
       fields: fields,
@@ -762,8 +774,8 @@ export type Parser {
     val decorators = self._seenDecorators
     self._seenDecorators = []
 
-    val exportToken = self._exportToken
-    self._exportToken = None
+    val pubToken = self._pubToken
+    self._pubToken = None
 
     val token = try self._expectNext()
     val enumName = try self._expectNextLabel()
@@ -822,7 +834,7 @@ export type Parser {
 
     val node = EnumDeclarationNode(
       decorators: decorators,
-      exportToken: exportToken,
+      pubToken: pubToken,
       name: enumName,
       typeParams: typeParams,
       variants: variants,

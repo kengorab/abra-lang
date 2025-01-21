@@ -54,3 +54,7 @@ export type Outer {
   @Bar("c")
   type Inner { a: Int }
 }
+
+pub type Outer2 {
+
+}

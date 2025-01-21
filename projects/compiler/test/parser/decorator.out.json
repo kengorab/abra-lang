@@ -16,7 +16,7 @@
             "arguments": []
           }
         ],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "a", "position": [2, 5] }
@@ -71,7 +71,7 @@
             ]
           }
         ],
-        "exportToken": {
+        "pubToken": {
           "position": [4, 1],
           "kind": {
             "name": "Export"
@@ -113,7 +113,7 @@
             "arguments": []
           }
         ],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "b", "position": [7, 5] }
@@ -168,7 +168,7 @@
             ]
           }
         ],
-        "exportToken": {
+        "pubToken": {
           "position": [9, 1],
           "kind": {
             "name": "Export"
@@ -210,7 +210,7 @@
             "arguments": []
           }
         ],
-        "exportToken": {
+        "pubToken": {
           "position": [12, 1],
           "kind": {
             "name": "Export"
@@ -379,8 +379,35 @@
             ]
           }
         ],
-        "exportToken": null,
+        "pubToken": null,
         "ident": { "name": "foo", "position": [16, 6] },
+        "typeParams": [],
+        "params": [],
+        "body": []
+      }
+    },
+    {
+      "token": {
+        "position": [19, 5],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "kind": {
+        "name": "function",
+        "decorators": [
+          {
+            "name": { "name": "Foo", "position": [18, 2] },
+            "arguments": []
+          }
+        ],
+        "pubToken": {
+          "position": [19, 1],
+          "kind": {
+            "name": "Pub"
+          }
+        },
+        "ident": { "name": "foo", "position": [19, 10] },
         "typeParams": [],
         "params": [],
         "body": []

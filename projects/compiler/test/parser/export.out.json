@@ -11,7 +11,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": {
+        "pubToken": {
           "position": [1, 1],
           "kind": {
             "name": "Export"
@@ -48,7 +48,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": {
+        "pubToken": {
           "position": [2, 1],
           "kind": {
             "name": "Export"
@@ -85,13 +85,35 @@
       "kind": {
         "name": "function",
         "decorators": [],
-        "exportToken": {
+        "pubToken": {
           "position": [4, 1],
           "kind": {
             "name": "Export"
           }
         },
         "ident": { "name": "foo", "position": [4, 13] },
+        "typeParams": [],
+        "params": [],
+        "body": []
+      }
+    },
+    {
+      "token": {
+        "position": [6, 5],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "kind": {
+        "name": "function",
+        "decorators": [],
+        "pubToken": {
+          "position": [6, 1],
+          "kind": {
+            "name": "Pub"
+          }
+        },
+        "ident": { "name": "foo", "position": [6, 10] },
         "typeParams": [],
         "params": [],
         "body": []

@@ -89,6 +89,7 @@ func printTokenKindAsJson(kind: TokenKind, indentLevelStart: Int, currentIndentL
     TokenKind.As => println("$fieldsIndent\"name\": \"As\"")
     TokenKind.Try => println("$fieldsIndent\"name\": \"Try\"")
     TokenKind.None_ => println("$fieldsIndent\"name\": \"None\"")
+    TokenKind.Pub => println("$fieldsIndent\"name\": \"Pub\"")
     TokenKind.Plus => println("$fieldsIndent\"name\": \"Plus\"")
     TokenKind.PlusEq => println("$fieldsIndent\"name\": \"PlusEq\"")
     TokenKind.Minus => println("$fieldsIndent\"name\": \"Minus\"")
@@ -814,12 +815,12 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         }
         println("$fieldsIndent],")
       }
-      if value.exportToken |token| {
-        print("$fieldsIndent\"exportToken\": ")
+      if value.pubToken |token| {
+        print("$fieldsIndent\"pubToken\": ")
         printTokenAsJson(token, 0, currentIndentLevel + 1)
         println(",")
       } else {
-        println("$fieldsIndent\"exportToken\": null,")
+        println("$fieldsIndent\"pubToken\": null,")
       }
       print("$fieldsIndent\"bindingPattern\": ")
       printBindingPatternAsJson(value.bindingPattern, 0, currentIndentLevel + 1)
@@ -851,12 +852,12 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         }
         println("$fieldsIndent],")
       }
-      if node.exportToken |token| {
-        print("$fieldsIndent\"exportToken\": ")
+      if node.pubToken |token| {
+        print("$fieldsIndent\"pubToken\": ")
         printTokenAsJson(token, 0, currentIndentLevel + 1)
         println(",")
       } else {
-        println("$fieldsIndent\"exportToken\": null,")
+        println("$fieldsIndent\"pubToken\": null,")
       }
       print("$fieldsIndent\"ident\": ")
       printLabelAsJson(node.name)
@@ -923,12 +924,12 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         }
         println("$fieldsIndent],")
       }
-      if node.exportToken |token| {
-        print("$fieldsIndent\"exportToken\": ")
+      if node.pubToken |token| {
+        print("$fieldsIndent\"pubToken\": ")
         printTokenAsJson(token, 0, currentIndentLevel + 1)
         println(",")
       } else {
-        println("$fieldsIndent\"exportToken\": null,")
+        println("$fieldsIndent\"pubToken\": null,")
       }
       print("$fieldsIndent\"typeName\": ")
       printLabelAsJson(node.name)
@@ -1017,12 +1018,12 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         }
         println("$fieldsIndent],")
       }
-      if node.exportToken |token| {
-        print("$fieldsIndent\"exportToken\": ")
+      if node.pubToken |token| {
+        print("$fieldsIndent\"pubToken\": ")
         printTokenAsJson(token, 0, currentIndentLevel + 1)
         println(",")
       } else {
-        println("$fieldsIndent\"exportToken\": null,")
+        println("$fieldsIndent\"pubToken\": null,")
       }
       print("$fieldsIndent\"typeName\": ")
       printLabelAsJson(node.name)

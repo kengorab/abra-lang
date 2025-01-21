@@ -2151,10 +2151,10 @@ export type Typechecker {
     }
   }
 
-  func _ensureValidExportScope(self, exportToken: Token): Result<Int, TypeError> {
+  func _ensureValidExportScope(self, pubToken: Token): Result<Int, TypeError> {
     match self.currentScope.kind {
       ScopeKind.Module => Ok(0) // <-- unnecessary int
-      _ => Err(TypeError(position: exportToken.position, kind: TypeErrorKind.IllegalExportScope))
+      _ => Err(TypeError(position: pubToken.position, kind: TypeErrorKind.IllegalExportScope))
     }
   }
 
@@ -2655,8 +2655,8 @@ export type Typechecker {
   }
 
   func _typecheckStructPass1(self, node: TypeDeclarationNode): Result<Struct, TypeError> {
-    val isExported = if node.exportToken |exportToken| {
-      try self._ensureValidExportScope(exportToken)
+    val isPublic = if node.pubToken |pubToken| {
+      try self._ensureValidExportScope(pubToken)
       true
     } else {
       false
@@ -2682,7 +2682,7 @@ export type Typechecker {
     self.currentScope = prevScope
 
     val struct = Struct(moduleId: self.currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, builtin: self.typecheckingBuiltin)
-    try self._addStructToScope(struct, isExported)
+    try self._addStructToScope(struct, isPublic)
 
     Ok(struct)
   }
@@ -2850,8 +2850,8 @@ export type Typechecker {
   }
 
   func _typecheckEnumPass1(self, node: EnumDeclarationNode): Result<Enum, TypeError> {
-    val isExported = if node.exportToken |exportToken| {
-      try self._ensureValidExportScope(exportToken)
+    val isPublic = if node.pubToken |pubToken| {
+      try self._ensureValidExportScope(pubToken)
       true
     } else {
       false
@@ -2877,7 +2877,7 @@ export type Typechecker {
     self.currentScope = prevScope
 
     val enum_ = Enum(moduleId: self.currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, builtin: self.typecheckingBuiltin)
-    try self._addEnumToScope(enum_, isExported)
+    try self._addEnumToScope(enum_, isPublic)
 
     Ok(enum_)
   }
@@ -3089,8 +3089,8 @@ export type Typechecker {
 
     val functionsPass1: (Function, Variable, FunctionDeclarationNode)[] = []
     for node in funcDecls {
-      val isExported = if node.exportToken |exportToken| {
-        try self._ensureValidExportScope(exportToken)
+      val isPublic = if node.pubToken |pubToken| {
+        try self._ensureValidExportScope(pubToken)
         true
       } else {
         false
@@ -3100,7 +3100,7 @@ export type Typechecker {
       val aliasVar = Variable(label: fn.label, scope: self.currentScope, mutable: false, ty: fn.getType(), alias: Some(VariableAlias.Function(fn)))
       self.currentScope.variables.push(aliasVar)
       functionsPass1.push((fn, aliasVar, node))
-      if isExported {
+      if isPublic {
         aliasVar.isExported = true
         self.currentModuleExports[fn.label.name] = Export.Function(aliasVar)
       }
@@ -3259,8 +3259,8 @@ export type Typechecker {
 
   func _typecheckBindingDeclaration(self, token: Token, node: BindingDeclarationNode): Result<TypedAstNode, TypeError> {
     val isMutable = token.kind == TokenKind.Var
-    val isExported = if node.exportToken |exportToken| {
-      try self._ensureValidExportScope(exportToken)
+    val isPublic = if node.pubToken |pubToken| {
+      try self._ensureValidExportScope(pubToken)
       true
     } else {
       false
@@ -3308,7 +3308,7 @@ export type Typechecker {
 
     val variables = try self._typecheckBindingPattern(isMutable, node.bindingPattern, ty)
     for v in variables {
-      if isExported {
+      if isPublic {
         v.isExported = true
         self.currentModuleExports[v.label.name] = Export.Variable(v)
       }

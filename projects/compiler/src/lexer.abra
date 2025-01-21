@@ -45,6 +45,7 @@ export enum TokenKind {
   As
   Try
   None_
+  Pub
 
   // Symbols
   Plus
@@ -119,6 +120,7 @@ export enum TokenKind {
     TokenKind.As => "as"
     TokenKind.Try => "try"
     TokenKind.None_ => "None"
+    TokenKind.Pub => "pub"
     TokenKind.Plus => "+"
     TokenKind.PlusEq => "+="
     TokenKind.Minus => "-"
@@ -675,6 +677,7 @@ export type Lexer {
       "as" => TokenKind.As
       "try" => TokenKind.Try
       "None" => TokenKind.None_
+      "pub" => TokenKind.Pub
       _ => TokenKind.Ident(ident)
     }
     Token(position: startPos, kind: tokenKind)
