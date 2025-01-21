@@ -689,7 +689,7 @@ export type Parser {
       decName == "Stub" || decName == "Intrinsic" || decName == "CBinding"
     })
 
-    val body: AstNode[] = if isStub {
+    val body = if isStub {
       []
     } else {
       val nextToken = try self._expectPeek()

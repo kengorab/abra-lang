@@ -1,5 +1,5 @@
 Error at %FILE_NAME%:3:3
-Unknown exported name for aliased module
+Unknown member 'bogus'
   |  a.bogus()
        ^
 There's no exported value named 'bogus' in module aliased as 'a' at:

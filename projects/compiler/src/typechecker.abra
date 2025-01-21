@@ -117,6 +117,8 @@ export type TypedModule {
   imports: Map<String, ImportedModule> = {}
   exports: Map<String, Export> = {}
   identsByLine: Map<Int, (Int, Int, IdentifierMeta)[]> = {}
+
+  func bogus(): TypedModule = TypedModule(id: -1, name: "bogus", code: [], rootScope: Scope.bogus())
 }
 
 export enum VariableAlias {
@@ -1271,7 +1273,7 @@ type TypeError {
         lines.push("The current module is imported by the imported module (or one of its imports), resulting in a cycle")
       }
       TypeErrorKind.IllegalExportScope => {
-        lines.push("Invalid export modifier")
+        lines.push("Invalid visibility modifier")
         lines.push(self._getCursorLine(self.position, contents))
         lines.push("Exported values may only appear at the top level scope in a module")
       }
@@ -1281,7 +1283,7 @@ type TypeError {
         lines.push("There's no exported value named '$importName' in module '$moduleName'")
       }
       TypeErrorKind.UnknownImportForAlias(importName, alias) => {
-        lines.push("Unknown exported name for aliased module")
+        lines.push("Unknown member '$importName'")
         lines.push(self._getCursorLine(self.position, contents))
         lines.push("There's no exported value named '$importName' in module aliased as '${alias.name}' at:")
         lines.push(self._getCursorLine(alias.position, contents))
@@ -1516,10 +1518,7 @@ type ParamDefaultValueContext {
 export type Typechecker {
   moduleLoader: ModuleLoader
   project: Project
-  currentModuleId: Int = -1
-  currentModuleName: String = ""
-  currentModuleExports: Map<String, Export> = {} // TODO: this is a little gross, could we instead track the currentModule?
-  currentModuleImports: Map<String, ImportedModule> = {} // TODO: see above todo
+  currentModule: TypedModule = TypedModule.bogus()
   currentScope: Scope = Scope(name: "\$root")
   currentTypeDecl: StructOrEnum? = None
   currentFunction: Function? = None
@@ -1583,7 +1582,7 @@ export type Typechecker {
   }
 
   func _verifyNameUniqueInScope(self, label: Label, scope: Scope): TypeError? {
-    for importedModule in self.currentModuleImports.values() {
+    for (_, importedModule) in self.currentModule.imports {
       for alias in importedModule.aliases {
         if alias.name == label.name {
           return Some(TypeError(position: label.position, kind: TypeErrorKind.DuplicateName(original: alias)))
@@ -1644,7 +1643,7 @@ export type Typechecker {
 
     if isExported {
       variable.isExported = true
-      self.currentModuleExports[struct.label.name] = Export.Type(StructOrEnum.Struct(struct), variable)
+      self.currentModule.exports[struct.label.name] = Export.Type(StructOrEnum.Struct(struct), variable)
     }
 
     Ok(0) // <- unnecessary 0
@@ -1661,7 +1660,7 @@ export type Typechecker {
 
     if isExported {
       variable.isExported = true
-      self.currentModuleExports[enum_.label.name] = Export.Type(StructOrEnum.Enum(enum_), variable)
+      self.currentModule.exports[enum_.label.name] = Export.Type(StructOrEnum.Enum(enum_), variable)
     }
 
     Ok(0) // <- unnecessary 0
@@ -1674,7 +1673,7 @@ export type Typechecker {
   }
 
   func _findModuleByAlias(self, name: String): Result<(TypedModule, Label)?, TypeError> {
-    for (importModulePath, importedModule) in self.currentModuleImports {
+    for (importModulePath, importedModule) in self.currentModule.imports {
       if importedModule.aliases.find(a => a.name == name) |alias| {
         val mod = try self.project.modules[importModulePath] else unreachable("unknown module '$importModulePath'")
         return Ok(Some((mod, alias)))
@@ -1764,7 +1763,7 @@ export type Typechecker {
           }
         }
 
-        for (moduleName, importedModule) in self.currentModuleImports {
+        for (moduleName, importedModule) in self.currentModule.imports {
           for (importName, imp) in importedModule.imports {
             if importName == label.name {
               match imp.kind {
@@ -1809,7 +1808,7 @@ export type Typechecker {
             val ident = IdentifierMeta(
               name: aliasLabel.name,
               kind: IdentifierKindMeta.Module(mod.name),
-              definitionPosition: Some((IdentifierMetaModule.Module(self.currentModuleName), aliasLabel.position)),
+              definitionPosition: Some((IdentifierMetaModule.Module(self.currentModule.name), aliasLabel.position)),
             )
             self._addLSPIdent(firstSeg.position, ident)
           }
@@ -1996,7 +1995,7 @@ export type Typechecker {
       }
     }
 
-    for (name, importedModule) in self.currentModuleImports {
+    for (name, importedModule) in self.currentModule.imports {
       for (importedName, importedValue) in importedModule.imports {
         if importedName == ident {
           val v = match importedValue.kind {
@@ -2159,7 +2158,7 @@ export type Typechecker {
   }
 
   func _nextLambdaName(self): String {
-    val name = "lambda_${self.currentModuleId}_${self.numLambdas}"
+    val name = "lambda_${self.currentModule.id}_${self.numLambdas}"
     self.numLambdas += 1
     name
   }
@@ -2170,7 +2169,7 @@ export type Typechecker {
     val defMod = if struct.scope.parent == Some(self.project.preludeScope) {
       IdentifierMetaModule.Prelude
     } else {
-      IdentifierMetaModule.Module(importMod?.name ?: self.currentModuleName)
+      IdentifierMetaModule.Module(importMod?.name ?: self.currentModule.name)
     }
 
     val ident = IdentifierMeta(
@@ -2186,7 +2185,7 @@ export type Typechecker {
     val defMod = if enum_.scope.parent == Some(self.project.preludeScope) {
       IdentifierMetaModule.Prelude
     } else {
-      IdentifierMetaModule.Module(importMod?.name ?: self.currentModuleName)
+      IdentifierMetaModule.Module(importMod?.name ?: self.currentModule.name)
     }
 
     val ident = IdentifierMeta(
@@ -2281,6 +2280,7 @@ export type Typechecker {
     // this module's imports; this ensures that sorting the final list of modules by id results in a resolved
     // dependency graph.
     val mod = TypedModule(id: -1, name: modulePathAbs, code: [], rootScope: Scope.bogus())
+    self.currentModule = mod
     self.project.modules[modulePathAbs] = mod
 
     val parsedModule = try self._tokenizeAndParse(modulePathAbs)
@@ -2333,9 +2333,6 @@ export type Typechecker {
     }
 
     val moduleId = self.project.modules.values().filter(m => m.id != -1).length
-    self.currentModuleId = moduleId
-    self.currentModuleName = modulePathAbs
-
     val moduleScope = if self.typecheckingBuiltin == Some(BuiltinModule.Prelude) {
       self.project.preludeScope.kind = ScopeKind.Module(id: moduleId, name: modulePathAbs)
       self.project.preludeScope
@@ -2358,12 +2355,6 @@ export type Typechecker {
       Ok(v) => v
       Err(e) => return Err(TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(e)))
     }
-
-    mod.imports = self.currentModuleImports
-    self.currentModuleImports = {} // is this necessary?
-
-    mod.exports = self.currentModuleExports
-    self.currentModuleExports = {} // is this necessary?
 
     self.currentScope = prevScope
 
@@ -2681,7 +2672,8 @@ export type Typechecker {
 
     self.currentScope = prevScope
 
-    val struct = Struct(moduleId: self.currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, builtin: self.typecheckingBuiltin)
+    val currentModuleId = self.currentModule.id
+    val struct = Struct(moduleId: currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, builtin: self.typecheckingBuiltin)
     try self._addStructToScope(struct, isPublic)
 
     Ok(struct)
@@ -2876,7 +2868,8 @@ export type Typechecker {
 
     self.currentScope = prevScope
 
-    val enum_ = Enum(moduleId: self.currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, builtin: self.typecheckingBuiltin)
+    val currentModuleId = self.currentModule.id
+    val enum_ = Enum(moduleId: currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, builtin: self.typecheckingBuiltin)
     try self._addEnumToScope(enum_, isPublic)
 
     Ok(enum_)
@@ -3006,12 +2999,12 @@ export type Typechecker {
   }
 
   func _typecheckImport(self, mod: TypedModule, node: ImportNode): Result<Int, TypeError> {
-    val importedModule = self.currentModuleImports.getOrInsert(mod.name, () => ImportedModule())
+    val importedModule = self.currentModule.imports.getOrInsert(mod.name, () => ImportedModule())
 
     match node.kind {
       ImportKind.List(importNames) => {
         for imp in importNames {
-          for importedModule in self.currentModuleImports.values() {
+          for (_, importedModule) in self.currentModule.imports {
             for (importedName, importedValue) in importedModule.imports {
               if importedName == imp.name {
                 return Err(TypeError(position: imp.position, kind: TypeErrorKind.DuplicateName(original: importedValue.label)))
@@ -3102,7 +3095,7 @@ export type Typechecker {
       functionsPass1.push((fn, aliasVar, node))
       if isPublic {
         aliasVar.isExported = true
-        self.currentModuleExports[fn.label.name] = Export.Function(aliasVar)
+        self.currentModule.exports[fn.label.name] = Export.Function(aliasVar)
       }
     }
 
@@ -3221,7 +3214,7 @@ export type Typechecker {
           val ident = IdentifierMeta(
             name: label.name,
             kind: IdentifierKindMeta.Variable(mutable: mutable, typeRepr: ty.repr()),
-            definitionPosition: Some((IdentifierMetaModule.Module(self.currentModuleName), label.position)),
+            definitionPosition: Some((IdentifierMetaModule.Module(self.currentModule.name), label.position)),
           )
           self._addLSPIdent(label.position, ident)
         }
@@ -3310,7 +3303,7 @@ export type Typechecker {
     for v in variables {
       if isPublic {
         v.isExported = true
-        self.currentModuleExports[v.label.name] = Export.Variable(v)
+        self.currentModule.exports[v.label.name] = Export.Variable(v)
       }
     }
 
@@ -3840,7 +3833,7 @@ export type Typechecker {
                         val ident = IdentifierMeta(
                           name: arg.name,
                           kind: IdentifierKindMeta.Variable(mutable: false, typeRepr: variableTy.repr()),
-                          definitionPosition: Some((IdentifierMetaModule.Module(self.currentModuleName), arg.position)),
+                          definitionPosition: Some((IdentifierMetaModule.Module(self.currentModule.name), arg.position)),
                         )
                         self._addLSPIdent(arg.position, ident)
                       }
@@ -4233,7 +4226,7 @@ export type Typechecker {
       val defMod = if variable.scope == self.project.preludeScope {
         IdentifierMetaModule.Prelude
       } else {
-        IdentifierMetaModule.Module(varImportMod?.name ?: self.currentModuleName)
+        IdentifierMetaModule.Module(varImportMod?.name ?: self.currentModule.name)
       }
 
       val ident = IdentifierMeta(

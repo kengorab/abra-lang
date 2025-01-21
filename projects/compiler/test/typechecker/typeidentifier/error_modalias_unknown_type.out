@@ -1,5 +1,5 @@
 Error at %FILE_NAME%:3:10
-Unknown exported name for aliased module
+Unknown member 'Bar'
   |  val _: e.Bar[] = []
               ^
 There's no exported value named 'Bar' in module aliased as 'e' at:
