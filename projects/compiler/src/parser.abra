@@ -217,6 +217,7 @@ type TypeField {
   name: Label
   typeAnnotation: TypeIdentifier
   initializer: AstNode?
+  pubToken: Token?
 }
 
 export type TypeDeclarationNode {
@@ -737,10 +738,11 @@ export type Parser {
     try self._expectNextTokenKind(TokenKind.LBrace)
 
     val fields: TypeField[] = []
+    var fieldPubToken: Token? = None
     while self._peek() |nextToken| {
       match nextToken.kind {
         TokenKind.Ident => {
-          val field = try self._parseField()
+          val field = try self._parseField(fieldPubToken)
 
           val nextToken = try self._expectPeek()
           if nextToken.kind == TokenKind.Comma {
@@ -748,6 +750,14 @@ export type Parser {
           }
 
           fields.push(field)
+          fieldPubToken = None
+        }
+        TokenKind.Pub => {
+          if fieldPubToken |token| {
+            return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], nextToken.kind)))
+          }
+          self._advance() // consume 'pub' token
+          fieldPubToken = Some(nextToken)
         }
         _ => break
       }
@@ -845,7 +855,7 @@ export type Parser {
     Ok(AstNode(token: token, kind: AstNodeKind.EnumDeclaration(node)))
   }
 
-  func _parseField(self): Result<TypeField, ParseError> {
+  func _parseField(self, pubToken: Token? = None): Result<TypeField, ParseError> {
     val name = try self._expectNextLabel()
     try self._expectNextTokenKind(TokenKind.Colon)
     val typeAnnotation = try self._parseTypeIdentifier()
@@ -858,7 +868,7 @@ export type Parser {
       None
     }
 
-    Ok(TypeField(name: name, typeAnnotation: typeAnnotation, initializer: initializer))
+    Ok(TypeField(name: name, typeAnnotation: typeAnnotation, initializer: initializer, pubToken: pubToken))
   }
 
   func _parseBodyForTypeOrEnum(self): Result<(FunctionDeclarationNode[], TypeDeclarationNode[], EnumDeclarationNode[]), ParseError> {
@@ -870,6 +880,7 @@ export type Parser {
       val node = match nextToken.kind {
         TokenKind.RBrace => break
         TokenKind.At => try self._parseStatement()
+        TokenKind.Pub => try self._parseStatement()
         TokenKind.Func => try self._parseStatement()
         TokenKind.Type => try self._parseStatement()
         TokenKind.Enum => try self._parseStatement()

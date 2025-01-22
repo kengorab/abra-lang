@@ -1018,7 +1018,23 @@
         },
         "typeName": { "name": "Outer2", "position": [58, 10] },
         "typeParams": [],
-        "fields": [],
+        "fields": [
+          {
+            "label": { "name": "a", "position": [59, 7] },
+            "pubToken": {
+              "position": [59, 3],
+              "kind": {
+                "name": "Pub"
+              }
+            },
+            "typeAnnotation": {
+              "kind": "normal",
+              "label": { "name": "Int", "position": [59, 10] },
+              "typeArguments": []
+            },
+            "initializer": null
+          }
+        ],
         "methods": [],
         "nestedTypes": [],
         "nestedEnums": []

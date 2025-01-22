@@ -56,5 +56,5 @@ export type Outer {
 }
 
 pub type Outer2 {
-
+  pub a: Int
 }

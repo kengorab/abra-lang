@@ -955,6 +955,10 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
           println("$fieldsIndent  {")
           print("$fieldsIndent    \"label\": ")
           printLabelAsJson(f.name)
+          if f.pubToken |token| {
+            print(",\n$fieldsIndent    \"pubToken\": ")
+            printTokenAsJson(token, 0, currentIndentLevel + 3)
+          }
           print(",\n$fieldsIndent    \"typeAnnotation\": ")
           printTypeIdentifierAsJson(f.typeAnnotation, 0, currentIndentLevel + 3)
           print(",\n$fieldsIndent    \"initializer\": ")

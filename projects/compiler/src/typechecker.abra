@@ -213,6 +213,7 @@ export type Field {
   name: Label
   ty: Type
   initializer: TypedAstNode?
+  isPublic: Bool
 }
 
 export type Struct {
@@ -245,7 +246,7 @@ export type Struct {
       label: Label(name: name, position: bogusPosition),
       scope: bogusScope,
       typeParams: typeParams,
-      fields: fields.map(_f => Field(name: Label(name: _f[0], position: bogusPosition), ty: _f[1], initializer: None)),
+      fields: fields.map(_f => Field(name: Label(name: _f[0], position: bogusPosition), ty: _f[1], initializer: None, isPublic: false)),
       instanceMethods: [],
       staticMethods: [],
     )
@@ -253,9 +254,9 @@ export type Struct {
     val structOrEnum = StructOrEnum.Struct(struct)
     val selfInstanceType = struct.asInstanceType()
 
-    struct.instanceMethods.push(Function.generated(bogusScope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(Some(structOrEnum))))
-    struct.instanceMethods.push(Function.generated(bogusScope, "hash", [], Type(kind: TypeKind.PrimitiveInt), FunctionKind.InstanceMethod(Some(structOrEnum))))
-    struct.instanceMethods.push(Function.generated(bogusScope, "eq", [("other", selfInstanceType)], Type(kind: TypeKind.PrimitiveBool), FunctionKind.InstanceMethod(Some(structOrEnum))))
+    struct.instanceMethods.push(Function.generated(bogusScope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(Some(structOrEnum), true)))
+    struct.instanceMethods.push(Function.generated(bogusScope, "hash", [], Type(kind: TypeKind.PrimitiveInt), FunctionKind.InstanceMethod(Some(structOrEnum), true)))
+    struct.instanceMethods.push(Function.generated(bogusScope, "eq", [("other", selfInstanceType)], Type(kind: TypeKind.PrimitiveBool), FunctionKind.InstanceMethod(Some(structOrEnum), true)))
 
     struct
   }
@@ -669,8 +670,8 @@ type TypedFunctionParam {
 
 export enum FunctionKind {
   Standalone
-  InstanceMethod(structOrEnum: StructOrEnum?)
-  StaticMethod(structOrEnum: StructOrEnum)
+  InstanceMethod(structOrEnum: StructOrEnum?, isPublic: Bool)
+  StaticMethod(structOrEnum: StructOrEnum, isPublic: Bool)
 }
 
 export type Function {
@@ -2117,7 +2118,7 @@ export type Typechecker {
       }
 
       match fn.kind {
-        FunctionKind.InstanceMethod(typeDecl) => {
+        FunctionKind.InstanceMethod(typeDecl, _) => {
           val genericNames = match typeDecl {
             StructOrEnum.Struct(struct) => struct.typeParams,
             StructOrEnum.Enum(enum_) => enum_.typeParams,
@@ -2417,12 +2418,12 @@ export type Typechecker {
     val selfParam = if node.params[0] |param| { if param.label.name == "self" Some(param) else None } else None
     val fnKind = if selfParam |selfParam| {
       if self.currentTypeDecl |selfType| {
-        FunctionKind.InstanceMethod(Some(selfType))
+        FunctionKind.InstanceMethod(Some(selfType), !!node.pubToken)
       } else {
         return Err(TypeError(position: selfParam.label.position, kind: TypeErrorKind.InvalidParamPosition(purpose: "self")))
       }
     } else if self.currentTypeDecl |parentType| {
-      FunctionKind.StaticMethod(parentType)
+      FunctionKind.StaticMethod(parentType, !!node.pubToken)
     } else {
       FunctionKind.Standalone
     }
@@ -2693,7 +2694,7 @@ export type Typechecker {
       seenFields[field.name.name] = field.name
 
       val ty = try self._resolveTypeIdentifier(field.typeAnnotation)
-      struct.fields.push(Field(name: field.name, ty: ty, initializer: None))
+      struct.fields.push(Field(name: field.name, ty: ty, initializer: None, isPublic: !!field.pubToken))
     }
 
     for funcDeclNode in node.methods {
@@ -2771,9 +2772,9 @@ export type Typechecker {
 
     // Ensure toString/hash/eq methods exist (include generated stubs if not), and sure the proper order
     val reorderedInstanceMethods = [
-      toStringFn ?: Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(Some(structOrEnum))),
-      hashFn ?: Function.generated(scope, "hash", [], Type(kind: TypeKind.PrimitiveInt), FunctionKind.InstanceMethod(Some(structOrEnum))),
-      eqFn ?: Function.generated(scope, "eq", [("other", selfInstanceType)], Type(kind: TypeKind.PrimitiveBool), FunctionKind.InstanceMethod(Some(structOrEnum))),
+      toStringFn ?: Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(Some(structOrEnum), true)),
+      hashFn ?: Function.generated(scope, "hash", [], Type(kind: TypeKind.PrimitiveInt), FunctionKind.InstanceMethod(Some(structOrEnum), true)),
+      eqFn ?: Function.generated(scope, "eq", [("other", selfInstanceType)], Type(kind: TypeKind.PrimitiveBool), FunctionKind.InstanceMethod(Some(structOrEnum), true)),
     ]
     for m in instanceMethods {
       if m.label.name == "toString" || m.label.name == "hash" || m.label.name == "eq" continue
@@ -2907,7 +2908,7 @@ export type Typechecker {
 
             val ty = try self._resolveTypeIdentifier(field.typeAnnotation)
             // The initializer (if present) will be filled in during the next pass
-            typedFields.push(Field(name: field.name, ty: ty, initializer: None))
+            typedFields.push(Field(name: field.name, ty: ty, initializer: None, isPublic: true))
           }
 
           enum_.variants.push(TypedEnumVariant(label: label, kind: EnumVariantKind.Container(typedFields)))
@@ -4243,11 +4244,11 @@ export type Typechecker {
   func _resolveAccessorPathSegmentAny(self, label: Label, optSafe: Bool, typeHint: Type?): AccessorPathSegment? {
     val scope = self.project.preludeScope.makeChild("Any", ScopeKind.Type)
     val method: Function? = if label.name == "toString" {
-      Some(Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(None)))
+      Some(Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(None, true)))
     } else if label.name == "hash" {
-      Some(Function.generated(scope, "hash", [], Type(kind: TypeKind.PrimitiveInt), FunctionKind.InstanceMethod(None)))
+      Some(Function.generated(scope, "hash", [], Type(kind: TypeKind.PrimitiveInt), FunctionKind.InstanceMethod(None, true)))
     } else if label.name == "eq" {
-      Some(Function.generated(scope, "eq", [("other", Type(kind: TypeKind.Any))], Type(kind: TypeKind.PrimitiveBool), FunctionKind.InstanceMethod(None)))
+      Some(Function.generated(scope, "eq", [("other", Type(kind: TypeKind.Any))], Type(kind: TypeKind.PrimitiveBool), FunctionKind.InstanceMethod(None, true)))
     } else {
       None
     }

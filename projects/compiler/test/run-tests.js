@@ -700,6 +700,7 @@ const TYPECHECKER_TESTS = [
   { test: "typechecker/typedecl/typedecl_exported.abra", assertions: "typechecker/typedecl/typedecl_exported.out.json" },
   { test: "typechecker/typedecl/typedecl.1.abra", assertions: "typechecker/typedecl/typedecl.1.out.json" },
   { test: "typechecker/typedecl/typedecl.2.abra", assertions: "typechecker/typedecl/typedecl.2.out.json" },
+  { test: "typechecker/typedecl/typedecl.3.abra", assertions: "typechecker/typedecl/typedecl.3.out.json" },
   { test: "typechecker/typedecl/error_duplicate_field.abra", assertions: "typechecker/typedecl/error_duplicate_field.out" },
   { test: "typechecker/typedecl/error_method_bad_self_position.abra", assertions: "typechecker/typedecl/error_method_bad_self_position.out" },
   { test: "typechecker/typedecl/error_field_initializer_type_mismatch.abra", assertions: "typechecker/typedecl/error_field_initializer_type_mismatch.out" },

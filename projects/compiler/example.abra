@@ -1,3 +1,8 @@
-import foo from "./example2"
+// type Foo {
+//   a: Int
+// }
 
-println(foo())
+// val f = Foo(a: 123)
+val a = [1, 2, 3]
+
+println(a.length)

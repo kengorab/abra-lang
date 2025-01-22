@@ -108,10 +108,10 @@ class TestRunner {
         case 'fail': {
           numFail += 1
           console.log(magenta(`  [FAIL] ${result.testFile}`))
-          console.log('EXPECTED')
-          console.log(result.expected)
-          console.log('ACTUAL')
-          console.log(result.actual)
+          // console.log('EXPECTED')
+          // console.log(result.expected)
+          // console.log('ACTUAL')
+          // console.log(result.actual)
           break
         }
         case 'error': {

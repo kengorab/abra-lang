@@ -42,6 +42,7 @@
               },
               "isGenerated": true,
               "kind": "FunctionKind.InstanceMethod",
+              "isPublic": true,
               "typeParameters": [],
               "parameters": [],
               "returnType": {
@@ -60,6 +61,7 @@
               },
               "isGenerated": true,
               "kind": "FunctionKind.InstanceMethod",
+              "isPublic": true,
               "typeParameters": [],
               "parameters": [],
               "returnType": {
@@ -78,6 +80,7 @@
               },
               "isGenerated": true,
               "kind": "FunctionKind.InstanceMethod",
+              "isPublic": true,
               "typeParameters": [],
               "parameters": [
                 {
@@ -147,6 +150,7 @@
                 ]
               },
               "kind": "FunctionKind.InstanceMethod",
+              "isPublic": false,
               "typeParameters": [
                 {
                   "label": { "name": "U", "position": [4, 12] },
