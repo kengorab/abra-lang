@@ -11,7 +11,7 @@
       "kind": {
         "name": "typeDeclaration",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "typeName": { "name": "Foo", "position": [1, 6] },
         "typeParams": [],
         "fields": [],
@@ -30,7 +30,7 @@
       "kind": {
         "name": "typeDeclaration",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "typeName": { "name": "Foo", "position": [2, 6] },
         "typeParams": [
           { "name": "A", "position": [2, 10] },
@@ -52,7 +52,7 @@
       "kind": {
         "name": "typeDeclaration",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "typeName": { "name": "Foo", "position": [3, 6] },
         "typeParams": [
           { "name": "A", "position": [3, 10] }
@@ -92,7 +92,7 @@
       "kind": {
         "name": "typeDeclaration",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "typeName": { "name": "Foo", "position": [4, 6] },
         "typeParams": [],
         "fields": [
@@ -143,7 +143,7 @@
       "kind": {
         "name": "typeDeclaration",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "typeName": { "name": "FooBar123", "position": [9, 6] },
         "typeParams": [],
         "fields": [],
@@ -151,7 +151,7 @@
           {
             "name": "function",
             "decorators": [],
-            "exportToken": null,
+            "pubToken": null,
             "ident": { "name": "foo", "position": [10, 8] },
             "typeParams": [],
             "params": [
@@ -189,7 +189,7 @@
       "kind": {
         "name": "typeDeclaration",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "typeName": { "name": "FooBar123", "position": [13, 6] },
         "typeParams": [],
         "fields": [
@@ -207,7 +207,7 @@
           {
             "name": "function",
             "decorators": [],
-            "exportToken": null,
+            "pubToken": null,
             "ident": { "name": "foo", "position": [16, 8] },
             "typeParams": [],
             "params": [
@@ -248,7 +248,7 @@
           {
             "name": "function",
             "decorators": [],
-            "exportToken": null,
+            "pubToken": null,
             "ident": { "name": "bar", "position": [17, 8] },
             "typeParams": [],
             "params": [
@@ -356,7 +356,7 @@
       "kind": {
         "name": "typeDeclaration",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "typeName": { "name": "FooBar123", "position": [20, 6] },
         "typeParams": [],
         "fields": [
@@ -374,7 +374,7 @@
           {
             "name": "function",
             "decorators": [],
-            "exportToken": null,
+            "pubToken": null,
             "ident": { "name": "foo", "position": [23, 8] },
             "typeParams": [],
             "params": [
@@ -420,7 +420,7 @@
                 "arguments": []
               }
             ],
-            "exportToken": null,
+            "pubToken": null,
             "ident": { "name": "bar", "position": [26, 8] },
             "typeParams": [],
             "params": [
@@ -528,7 +528,7 @@
       "kind": {
         "name": "typeDeclaration",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "typeName": { "name": "Outer", "position": [29, 6] },
         "typeParams": [],
         "fields": [
@@ -546,7 +546,7 @@
           {
             "name": "function",
             "decorators": [],
-            "exportToken": null,
+            "pubToken": null,
             "ident": { "name": "foo", "position": [32, 8] },
             "typeParams": [],
             "params": [
@@ -589,7 +589,7 @@
           {
             "name": "typeDeclaration",
             "decorators": [],
-            "exportToken": null,
+            "pubToken": null,
             "typeName": { "name": "InnerType", "position": [34, 8] },
             "typeParams": [],
             "fields": [
@@ -607,7 +607,7 @@
               {
                 "name": "function",
                 "decorators": [],
-                "exportToken": null,
+                "pubToken": null,
                 "ident": { "name": "bar", "position": [37, 10] },
                 "typeParams": [],
                 "params": [
@@ -709,7 +709,7 @@
           {
             "name": "enumDeclaration",
             "decorators": [],
-            "exportToken": null,
+            "pubToken": null,
             "typeName": { "name": "InnerEnum", "position": [40, 8] },
             "typeParams": [],
             "variants": [
@@ -733,7 +733,7 @@
               {
                 "name": "function",
                 "decorators": [],
-                "exportToken": null,
+                "pubToken": null,
                 "ident": { "name": "bar", "position": [43, 10] },
                 "typeParams": [],
                 "params": [
@@ -866,7 +866,7 @@
             ]
           }
         ],
-        "exportToken": {
+        "pubToken": {
           "position": [48, 1],
           "kind": {
             "name": "Export"
@@ -912,7 +912,7 @@
                 ]
               }
             ],
-            "exportToken": null,
+            "pubToken": null,
             "ident": { "name": "foo", "position": [52, 8] },
             "typeParams": [],
             "params": [
@@ -978,7 +978,7 @@
                 ]
               }
             ],
-            "exportToken": null,
+            "pubToken": null,
             "typeName": { "name": "Inner", "position": [55, 8] },
             "typeParams": [],
             "fields": [
@@ -997,6 +997,46 @@
             "nestedEnums": []
           }
         ],
+        "nestedEnums": []
+      }
+    },
+    {
+      "token": {
+        "position": [58, 5],
+        "kind": {
+          "name": "Type"
+        }
+      },
+      "kind": {
+        "name": "typeDeclaration",
+        "decorators": [],
+        "pubToken": {
+          "position": [58, 1],
+          "kind": {
+            "name": "Pub"
+          }
+        },
+        "typeName": { "name": "Outer2", "position": [58, 10] },
+        "typeParams": [],
+        "fields": [
+          {
+            "label": { "name": "a", "position": [59, 7] },
+            "pubToken": {
+              "position": [59, 3],
+              "kind": {
+                "name": "Pub"
+              }
+            },
+            "typeAnnotation": {
+              "kind": "normal",
+              "label": { "name": "Int", "position": [59, 10] },
+              "typeArguments": []
+            },
+            "initializer": null
+          }
+        ],
+        "methods": [],
+        "nestedTypes": [],
         "nestedEnums": []
       }
     }

@@ -191,7 +191,7 @@
                 "kind": {
                   "name": "bindingDecl",
                   "decorators": [],
-                  "exportToken": null,
+                  "pubToken": null,
                   "bindingPattern": {
                     "kind": "variable",
                     "label": { "name": "a", "position": [7, 9] }
@@ -317,7 +317,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "x", "position": [15, 5] }

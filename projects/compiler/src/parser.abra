@@ -185,7 +185,7 @@ export enum BindingPattern {
 
 export type BindingDeclarationNode {
   decorators: DecoratorNode[]
-  exportToken: Token?
+  pubToken: Token?
   bindingPattern: BindingPattern
   typeAnnotation: TypeIdentifier?
   expr: AstNode?
@@ -205,7 +205,7 @@ export type LambdaNode {
 
 export type FunctionDeclarationNode {
   decorators: DecoratorNode[]
-  exportToken: Token?
+  pubToken: Token?
   name: Label
   typeParams: Label[]
   params: FunctionParam[]
@@ -217,11 +217,12 @@ type TypeField {
   name: Label
   typeAnnotation: TypeIdentifier
   initializer: AstNode?
+  pubToken: Token?
 }
 
 export type TypeDeclarationNode {
   decorators: DecoratorNode[]
-  exportToken: Token?
+  pubToken: Token?
   name: Label
   typeParams: Label[]
   fields: TypeField[]
@@ -237,7 +238,7 @@ export enum EnumVariant {
 
 export type EnumDeclarationNode {
   decorators: DecoratorNode[]
-  exportToken: Token?
+  pubToken: Token?
   name: Label
   typeParams: Label[]
   variants: EnumVariant[]
@@ -351,7 +352,7 @@ export type Parser {
   _tokens: Token[]
   _cursor: Int = 0
   _seenDecorators: DecoratorNode[] = []
-  _exportToken: Token? = None
+  _pubToken: Token? = None
 
   func parse(tokens: Token[]): Result<ParsedModule, ParseError> {
     val parser = Parser(_tokens: tokens)
@@ -495,7 +496,7 @@ export type Parser {
         try self._parseDecorator()
 
         val nextToken = try self._expectPeek()
-        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.At, TokenKind.Export]
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.At, TokenKind.Export, TokenKind.Pub]
         if !expected.contains(nextToken.kind) {
           return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
         }
@@ -503,8 +504,20 @@ export type Parser {
         self._parseStatement()
       }
       TokenKind.Export => {
-        self._exportToken = Some(token)
+        self._pubToken = Some(token)
         self._advance() // consume 'export' token
+
+        val nextToken = try self._expectPeek()
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum]
+        if !expected.contains(nextToken.kind) {
+          return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
+        }
+
+        self._parseStatement()
+      }
+      TokenKind.Pub => {
+        self._pubToken = Some(token)
+        self._advance() // consume 'pub' token
 
         val nextToken = try self._expectPeek()
         val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum]
@@ -585,8 +598,8 @@ export type Parser {
     val decorators = self._seenDecorators
     self._seenDecorators = []
 
-    val exportToken = self._exportToken
-    self._exportToken = None
+    val pubToken = self._pubToken
+    self._pubToken = None
 
     val token = try self._expectNext()
     val pat = try self._parseBindingPattern()
@@ -594,7 +607,7 @@ export type Parser {
     if self._cursor >= self._tokens.length {
       val node = BindingDeclarationNode(
         decorators: decorators,
-        exportToken: exportToken,
+        pubToken: pubToken,
         bindingPattern: pat,
         typeAnnotation: None,
         expr: None,
@@ -613,7 +626,7 @@ export type Parser {
     if self._cursor >= self._tokens.length {
       val node = BindingDeclarationNode(
         decorators: decorators,
-        exportToken: exportToken,
+        pubToken: pubToken,
         bindingPattern: pat,
         typeAnnotation: typeAnnotation,
         expr: None,
@@ -631,7 +644,7 @@ export type Parser {
 
     val node = BindingDeclarationNode(
       decorators: decorators,
-      exportToken: exportToken,
+      pubToken: pubToken,
       bindingPattern: pat,
       typeAnnotation: typeAnnotation,
       expr: expr,
@@ -643,8 +656,8 @@ export type Parser {
     val decorators = self._seenDecorators
     self._seenDecorators = []
 
-    val exportToken = self._exportToken
-    self._exportToken = None
+    val pubToken = self._pubToken
+    self._pubToken = None
 
     val token = try self._expectNext()
     val label = try self._expectNextLabel()
@@ -677,7 +690,7 @@ export type Parser {
       decName == "Stub" || decName == "Intrinsic" || decName == "CBinding"
     })
 
-    val body: AstNode[] = if isStub {
+    val body = if isStub {
       []
     } else {
       val nextToken = try self._expectPeek()
@@ -692,7 +705,7 @@ export type Parser {
 
     val node = FunctionDeclarationNode(
       decorators: decorators,
-      exportToken: exportToken,
+      pubToken: pubToken,
       name: label,
       typeParams: typeParams,
       params: params,
@@ -706,8 +719,8 @@ export type Parser {
     val decorators = self._seenDecorators
     self._seenDecorators = []
 
-    val exportToken = self._exportToken
-    self._exportToken = None
+    val pubToken = self._pubToken
+    self._pubToken = None
 
     val token = try self._expectNext()
     val typeName = try self._expectNextLabel()
@@ -725,10 +738,11 @@ export type Parser {
     try self._expectNextTokenKind(TokenKind.LBrace)
 
     val fields: TypeField[] = []
+    var fieldPubToken: Token? = None
     while self._peek() |nextToken| {
       match nextToken.kind {
         TokenKind.Ident => {
-          val field = try self._parseField()
+          val field = try self._parseField(fieldPubToken)
 
           val nextToken = try self._expectPeek()
           if nextToken.kind == TokenKind.Comma {
@@ -736,6 +750,14 @@ export type Parser {
           }
 
           fields.push(field)
+          fieldPubToken = None
+        }
+        TokenKind.Pub => {
+          if fieldPubToken |token| {
+            return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], nextToken.kind)))
+          }
+          self._advance() // consume 'pub' token
+          fieldPubToken = Some(nextToken)
         }
         _ => break
       }
@@ -747,7 +769,7 @@ export type Parser {
 
     val node = TypeDeclarationNode(
       decorators: decorators,
-      exportToken: exportToken,
+      pubToken: pubToken,
       name: typeName,
       typeParams: typeParams,
       fields: fields,
@@ -762,8 +784,8 @@ export type Parser {
     val decorators = self._seenDecorators
     self._seenDecorators = []
 
-    val exportToken = self._exportToken
-    self._exportToken = None
+    val pubToken = self._pubToken
+    self._pubToken = None
 
     val token = try self._expectNext()
     val enumName = try self._expectNextLabel()
@@ -822,7 +844,7 @@ export type Parser {
 
     val node = EnumDeclarationNode(
       decorators: decorators,
-      exportToken: exportToken,
+      pubToken: pubToken,
       name: enumName,
       typeParams: typeParams,
       variants: variants,
@@ -833,7 +855,7 @@ export type Parser {
     Ok(AstNode(token: token, kind: AstNodeKind.EnumDeclaration(node)))
   }
 
-  func _parseField(self): Result<TypeField, ParseError> {
+  func _parseField(self, pubToken: Token? = None): Result<TypeField, ParseError> {
     val name = try self._expectNextLabel()
     try self._expectNextTokenKind(TokenKind.Colon)
     val typeAnnotation = try self._parseTypeIdentifier()
@@ -846,7 +868,7 @@ export type Parser {
       None
     }
 
-    Ok(TypeField(name: name, typeAnnotation: typeAnnotation, initializer: initializer))
+    Ok(TypeField(name: name, typeAnnotation: typeAnnotation, initializer: initializer, pubToken: pubToken))
   }
 
   func _parseBodyForTypeOrEnum(self): Result<(FunctionDeclarationNode[], TypeDeclarationNode[], EnumDeclarationNode[]), ParseError> {
@@ -858,6 +880,7 @@ export type Parser {
       val node = match nextToken.kind {
         TokenKind.RBrace => break
         TokenKind.At => try self._parseStatement()
+        TokenKind.Pub => try self._parseStatement()
         TokenKind.Func => try self._parseStatement()
         TokenKind.Type => try self._parseStatement()
         TokenKind.Enum => try self._parseStatement()

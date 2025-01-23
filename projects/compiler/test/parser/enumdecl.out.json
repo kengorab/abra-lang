@@ -11,7 +11,7 @@
       "kind": {
         "name": "enumDeclaration",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "typeName": { "name": "Foo", "position": [1, 6] },
         "typeParams": [],
         "variants": [],
@@ -30,7 +30,7 @@
       "kind": {
         "name": "enumDeclaration",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "typeName": { "name": "Foo", "position": [2, 6] },
         "typeParams": [
           { "name": "A", "position": [2, 10] },
@@ -52,7 +52,7 @@
       "kind": {
         "name": "enumDeclaration",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "typeName": { "name": "Foo", "position": [3, 6] },
         "typeParams": [
           { "name": "A", "position": [3, 10] }
@@ -82,7 +82,7 @@
       "kind": {
         "name": "enumDeclaration",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "typeName": { "name": "Foo", "position": [4, 6] },
         "typeParams": [
           { "name": "A", "position": [4, 10] }
@@ -145,7 +145,7 @@
       "kind": {
         "name": "enumDeclaration",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "typeName": { "name": "FooBar123", "position": [9, 6] },
         "typeParams": [],
         "variants": [],
@@ -153,7 +153,7 @@
           {
             "name": "function",
             "decorators": [],
-            "exportToken": null,
+            "pubToken": null,
             "ident": { "name": "foo", "position": [10, 8] },
             "typeParams": [],
             "params": [
@@ -196,7 +196,7 @@
             "arguments": []
           }
         ],
-        "exportToken": null,
+        "pubToken": null,
         "typeName": { "name": "Outer", "position": [14, 6] },
         "typeParams": [],
         "variants": [
@@ -218,7 +218,7 @@
                 "arguments": []
               }
             ],
-            "exportToken": null,
+            "pubToken": null,
             "ident": { "name": "foo", "position": [19, 8] },
             "typeParams": [],
             "params": [
@@ -251,7 +251,7 @@
                 "arguments": []
               }
             ],
-            "exportToken": null,
+            "pubToken": null,
             "typeName": { "name": "InnerType", "position": [25, 8] },
             "typeParams": [],
             "fields": [
@@ -288,7 +288,7 @@
                 "arguments": []
               }
             ],
-            "exportToken": null,
+            "pubToken": null,
             "typeName": { "name": "InnerEnum", "position": [22, 8] },
             "typeParams": [],
             "variants": [

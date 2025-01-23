@@ -1,0 +1,11 @@
+type Foo {
+  pub a: Int
+  b: String = "abcd"
+
+  func foo(self): Int = 123
+  pub func fooPub(self): Int = 123
+  func fooStatic(): Int = 123
+  pub func fooStaticPub(): Int = 123
+}
+
+var f: Foo

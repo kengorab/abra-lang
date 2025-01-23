@@ -262,7 +262,7 @@ export type Compiler {
           val dataPtr = self._builder.buildGlobalString("%s\\n")
           val tostringMethod = try self._getOrCompileToStringMethod(node.ty)
 
-          val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(node.ty))[0])))
+          val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(node.ty))[0]), true))
           val frameCtx = CallframeContext(position: node.token.position, callee: Some(fnName))
           val tostringRepr = try self._buildCall(Some(frameCtx), Callable.Function(tostringMethod), [v])
           val reprCharsPtr = try self._currentFn.block.buildAdd(Value.Int(8), tostringRepr, Some("_repr_chars_ptr")) else |e| return qbeError(e)
@@ -701,7 +701,7 @@ export type Compiler {
           val itemToStringFnVal = try self._getOrCompileToStringMethod(itemInstanceType)
           self._resolvedGenerics.popLayer()
 
-          val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(item.ty))[0])))
+          val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(item.ty))[0]), true))
           val frameCtx = CallframeContext(position: item.token.position, callee: Some(fnName))
           val toStringVal = try self._buildCall(Some(frameCtx), Callable.Function(itemToStringFnVal), [itemVal])
           strVals.push(toStringVal)
@@ -767,7 +767,7 @@ export type Compiler {
                 val leftToStringFnVal = try self._getOrCompileToStringMethod(leftInstanceType)
                 self._resolvedGenerics.popLayer()
 
-                val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(left.ty))[0])))
+                val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(left.ty))[0]), true))
                 val frameCtx = CallframeContext(position: left.token.position, callee: Some(fnName))
                 leftVal = try self._buildCall(Some(frameCtx), Callable.Function(leftToStringFnVal), [leftVal])
               }
@@ -778,7 +778,7 @@ export type Compiler {
                 val rightToStringFnVal = try self._getOrCompileToStringMethod(rightInstanceType)
                 self._resolvedGenerics.popLayer()
 
-                val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(right.ty))[0])))
+                val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(right.ty))[0]), true))
                 val frameCtx = CallframeContext(position: right.token.position, callee: Some(fnName))
                 rightVal = try self._buildCall(Some(frameCtx), Callable.Function(rightToStringFnVal), [rightVal])
               }
@@ -1133,7 +1133,7 @@ export type Compiler {
               if fn.params[idx] |param| { !!param.defaultValue && !arg } else { false }
             })
             val fnVal = match fn.kind {
-              FunctionKind.StaticMethod(parentTy) => {
+              FunctionKind.StaticMethod(parentTy, _) => {
                 try self._getOrCompileMethod(Type(kind: TypeKind.Type(parentTy)), fn, paramsNeedingDefaultValue)
               }
               FunctionKind.Standalone => {
@@ -2057,7 +2057,7 @@ export type Compiler {
     } else {
       // If the closure is being called in the same scope in which it was declared, then the `*.captures` value is visible as a stack local.
       val prefix = match fn.kind {
-        FunctionKind.InstanceMethod(structOrEnum) => {
+        FunctionKind.InstanceMethod(structOrEnum, _) => {
           if structOrEnum |structOrEnum| {
             val typeName = match structOrEnum {
               StructOrEnum.Struct(struct) => struct.label.name
@@ -2066,7 +2066,7 @@ export type Compiler {
             "$typeName.."
           } else unreachable("an instance method should have a structOrEnum")
         }
-        FunctionKind.StaticMethod(structOrEnum) => {
+        FunctionKind.StaticMethod(structOrEnum, _) => {
           val typeName = match structOrEnum {
             StructOrEnum.Struct(struct) => struct.label.name
             StructOrEnum.Enum(enum_) => enum_.label.name
@@ -2126,7 +2126,7 @@ export type Compiler {
     val eqFnVal = try self._getOrCompileEqMethod(instType)
     self._resolvedGenerics.popLayer()
 
-    val fnName = self._functionName("eq", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(ty))[0])))
+    val fnName = self._functionName("eq", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(ty))[0]), true))
     val frameCtx = CallframeContext(position: position, callee: Some(fnName))
     val res = try self._buildCall(Some(frameCtx), Callable.Function(eqFnVal), [leftVal, rightVal], localName)
     if negate {
@@ -2638,7 +2638,7 @@ export type Compiler {
       val itemToStringFnVal = try self._getOrCompileToStringMethod(itemInstanceType)
       self._resolvedGenerics.popLayer()
 
-      val fnName = self._functionName("eq", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(item.ty))[0])))
+      val fnName = self._functionName("eq", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(item.ty))[0]), true))
       val frameCtx = CallframeContext(position: item.token.position, callee: Some(fnName))
       val toStringVal = try self._buildCall(Some(frameCtx), Callable.Function(itemToStringFnVal), [itemVal])
 
@@ -3438,7 +3438,7 @@ export type Compiler {
 
       offset += itemTy.size()
 
-      val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(itemType))[0])))
+      val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(itemType))[0]), true))
       val frameCtx = CallframeContext(position: itemPosition, callee: Some(fnName))
       val itemToStringVal = try self._buildCall(Some(frameCtx), Callable.Function(itemToStringFnVal), [itemVal])
       val itemToStringLengthVal = self._currentFn.block.buildLoadL(itemToStringVal)
@@ -4069,7 +4069,7 @@ export type Compiler {
       val itemHashFnVal = try self._getOrCompileHashMethod(itemType)
       self._resolvedGenerics.popLayer()
 
-      val fnName = self._functionName("hash", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(itemType))[0])))
+      val fnName = self._functionName("hash", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(itemType))[0]), true))
       val frameCtx = CallframeContext(position: itemPosition, callee: Some(fnName))
       val itemHashVal = try self._buildCall(Some(frameCtx), Callable.Function(itemHashFnVal), [itemVal])
       val newPart = try self._currentFn.block.buildMul(Value.Int(31), itemHashVal) else |e| return qbeError(e)
@@ -4224,7 +4224,7 @@ export type Compiler {
         name: "call",
         params: params,
         returnType: returnType,
-        kind: FunctionKind.InstanceMethod(Some(StructOrEnum.Struct(struct))),
+        kind: FunctionKind.InstanceMethod(Some(StructOrEnum.Struct(struct)), false),
       )
 
       (struct, callMethod)
@@ -4363,12 +4363,12 @@ export type Compiler {
   func _functionName(self, name: String, kind: FunctionKind): String {
     match kind {
       FunctionKind.Standalone => name
-      FunctionKind.InstanceMethod(structOrEnumOpt) => match structOrEnumOpt {
+      FunctionKind.InstanceMethod(structOrEnumOpt, _) => match structOrEnumOpt {
         StructOrEnum.Struct(s) => "${s.label.name}.$name"
         StructOrEnum.Enum(e) => "${e.label.name}.$name"
         _ => name
       }
-      FunctionKind.StaticMethod(structOrEnum) => match structOrEnum {
+      FunctionKind.StaticMethod(structOrEnum, _) => match structOrEnum {
         StructOrEnum.Struct(s) => "${s.label.name}#$name"
         StructOrEnum.Enum(e) => "${e.label.name}#$name"
       }

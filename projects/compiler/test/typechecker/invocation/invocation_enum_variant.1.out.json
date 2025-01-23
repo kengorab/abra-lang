@@ -34,7 +34,8 @@
                     "kind": "primitive",
                     "primitive": "Int"
                   },
-                  "initializer": null
+                  "initializer": null,
+                  "isPublic": true
                 },
                 {
                   "name": { "name": "b", "position": [3, 15] },
@@ -42,7 +43,8 @@
                     "kind": "primitive",
                     "primitive": "String"
                   },
-                  "initializer": null
+                  "initializer": null,
+                  "isPublic": true
                 }
               ]
             }
@@ -58,6 +60,7 @@
               },
               "isGenerated": true,
               "kind": "FunctionKind.InstanceMethod",
+              "isPublic": true,
               "typeParameters": [],
               "parameters": [],
               "returnType": {
@@ -76,6 +79,7 @@
               },
               "isGenerated": true,
               "kind": "FunctionKind.InstanceMethod",
+              "isPublic": true,
               "typeParameters": [],
               "parameters": [],
               "returnType": {
@@ -94,6 +98,7 @@
               },
               "isGenerated": true,
               "kind": "FunctionKind.InstanceMethod",
+              "isPublic": true,
               "typeParameters": [],
               "parameters": [
                 {

@@ -1,4 +1,8 @@
-func f12(): Int? = Ok(1)
+// type Foo {
+//   a: Int
+// }
 
-/// Expect: Option.Some(value: 12)
-println(f12())
+// val f = Foo(a: 123)
+val a = [1, 2, 3]
+
+println(a.length)

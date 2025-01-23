@@ -11,7 +11,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [1, 5] }
@@ -46,7 +46,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [4, 5] }
@@ -75,7 +75,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [5, 5] }
@@ -101,7 +101,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [6, 5] }
@@ -130,7 +130,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [7, 5] }
@@ -159,7 +159,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [8, 5] }
@@ -191,7 +191,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [10, 5] }
@@ -220,7 +220,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [11, 5] }
@@ -254,7 +254,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [12, 5] }
@@ -291,7 +291,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [13, 5] }
@@ -342,7 +342,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [15, 5] }
@@ -407,7 +407,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [17, 5] }
@@ -433,7 +433,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [18, 5] }
@@ -456,7 +456,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [19, 5] }
@@ -521,7 +521,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [21, 5] }
@@ -554,7 +554,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [22, 5] }
@@ -598,7 +598,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [23, 5] }
@@ -649,7 +649,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [24, 5] }
@@ -676,7 +676,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [25, 5] }
@@ -713,7 +713,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [26, 5] }
@@ -760,7 +760,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [27, 5] }
@@ -790,7 +790,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [28, 5] }
@@ -820,7 +820,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [29, 5] }
@@ -850,7 +850,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [30, 5] }
@@ -880,7 +880,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [32, 5] }
@@ -906,7 +906,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [33, 5] }
@@ -935,7 +935,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [34, 5] }
@@ -964,7 +964,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [35, 5] }
@@ -996,7 +996,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [36, 5] }
@@ -1028,7 +1028,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [37, 5] }
@@ -1071,7 +1071,7 @@
       "kind": {
         "name": "bindingDecl",
         "decorators": [],
-        "exportToken": null,
+        "pubToken": null,
         "bindingPattern": {
           "kind": "variable",
           "label": { "name": "_", "position": [39, 5] }

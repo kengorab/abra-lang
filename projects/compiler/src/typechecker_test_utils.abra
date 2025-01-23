@@ -237,6 +237,11 @@ export type Jsonifier {
 
     self.print("\"initializer\": ")
     self.opt(field.initializer, n => self.printNode(n))
+
+    if field.isPublic {
+      println(",")
+      self.print("\"isPublic\": true")
+    }
     println()
 
     self.indentDec()
@@ -859,8 +864,16 @@ export type Jsonifier {
     self.print("\"kind\": ")
     match function.kind {
       FunctionKind.Standalone => print("\"FunctionKind.Standalone\"")
-      FunctionKind.InstanceMethod => print("\"FunctionKind.InstanceMethod\"")
-      FunctionKind.StaticMethod => print("\"FunctionKind.StaticMethod\"")
+      FunctionKind.InstanceMethod(_, isPublic) => {
+        print("\"FunctionKind.InstanceMethod\"")
+        println(",")
+        self.print("\"isPublic\": $isPublic")
+      }
+      FunctionKind.StaticMethod(_, isPublic) => {
+        print("\"FunctionKind.StaticMethod\"")
+        println(",")
+        self.print("\"isPublic\": $isPublic")
+      }
     }
     println(",")
 

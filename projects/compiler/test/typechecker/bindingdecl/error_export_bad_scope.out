@@ -1,5 +1,5 @@
 Error at %FILE_NAME%:2:3
-Invalid export modifier
+Invalid visibility modifier
   |    export val a = 1
        ^
 Exported values may only appear at the top level scope in a module

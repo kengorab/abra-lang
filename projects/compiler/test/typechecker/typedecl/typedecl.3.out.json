@@ -6,7 +6,7 @@
       "token": {
         "position": [1, 1],
         "kind": {
-          "name": "Enum"
+          "name": "Type"
         }
       },
       "type": {
@@ -14,70 +14,44 @@
         "primitive": "Unit"
       },
       "node": {
-        "kind": "enumDeclaration",
-        "enum": {
+        "kind": "typeDeclaration",
+        "struct": {
           "moduleId": 3,
           "name": { "name": "Foo", "position": [1, 6] },
           "typeParams": [],
-          "variants": [
+          "fields": [
             {
-              "label": { "name": "Bar", "position": [2, 3] },
-              "kind": "constant"
+              "name": { "name": "a", "position": [2, 7] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "initializer": null,
+              "isPublic": true
             },
             {
-              "label": { "name": "Baz", "position": [3, 3] },
-              "kind": "container",
-              "fields": [
-                {
-                  "name": { "name": "a", "position": [3, 7] },
-                  "type": {
-                    "kind": "primitive",
-                    "primitive": "Int"
-                  },
-                  "initializer": null,
-                  "isPublic": true
-                }
-              ]
-            },
-            {
-              "label": { "name": "Qux", "position": [4, 3] },
-              "kind": "container",
-              "fields": [
-                {
-                  "name": { "name": "a", "position": [4, 7] },
-                  "type": {
-                    "kind": "primitive",
-                    "primitive": "Int"
-                  },
-                  "initializer": null,
-                  "isPublic": true
+              "name": { "name": "b", "position": [3, 3] },
+              "type": {
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "initializer": {
+                "token": {
+                  "position": [3, 15],
+                  "kind": {
+                    "name": "String",
+                    "value": "abcd"
+                  }
                 },
-                {
-                  "name": { "name": "b", "position": [4, 15] },
-                  "type": {
-                    "kind": "primitive",
-                    "primitive": "String"
-                  },
-                  "initializer": {
-                    "token": {
-                      "position": [4, 27],
-                      "kind": {
-                        "name": "String",
-                        "value": "abcd"
-                      }
-                    },
-                    "type": {
-                      "kind": "primitive",
-                      "primitive": "String"
-                    },
-                    "node": {
-                      "kind": "literal",
-                      "value": "abcd"
-                    }
-                  },
-                  "isPublic": true
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "node": {
+                  "kind": "literal",
+                  "value": "abcd"
                 }
-              ]
+              }
             }
           ],
           "instanceMethods": [
@@ -135,8 +109,8 @@
                 {
                   "label": { "name": "other", "position": [0, 0] },
                   "type": {
-                    "kind": "enumInstance",
-                    "enum": { "moduleId": 3, "name": "Foo" },
+                    "kind": "instance",
+                    "struct": { "moduleId": 3, "name": "Foo" },
                     "typeParams": []
                   },
                   "defaultValue": null,
@@ -150,16 +124,16 @@
               "body": []
             },
             {
-              "label": { "name": "foo", "position": [6, 8] },
+              "label": { "name": "foo", "position": [5, 8] },
               "scope": {
                 "name": "$root::module_3::Foo::foo",
                 "variables": [
                   {
-                    "label": { "name": "self", "position": [6, 12] },
+                    "label": { "name": "self", "position": [5, 12] },
                     "mutable": false,
                     "type": {
-                      "kind": "enumInstance",
-                      "enum": { "moduleId": 3, "name": "Foo" },
+                      "kind": "instance",
+                      "struct": { "moduleId": 3, "name": "Foo" },
                       "typeParams": []
                     }
                   }
@@ -178,7 +152,53 @@
               "body": [
                 {
                   "token": {
-                    "position": [6, 25],
+                    "position": [5, 25],
+                    "kind": {
+                      "name": "Int",
+                      "value": 123
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 123
+                  }
+                }
+              ]
+            },
+            {
+              "label": { "name": "fooPub", "position": [6, 12] },
+              "scope": {
+                "name": "$root::module_3::Foo::fooPub",
+                "variables": [
+                  {
+                    "label": { "name": "self", "position": [6, 19] },
+                    "mutable": false,
+                    "type": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 3, "name": "Foo" },
+                      "typeParams": []
+                    }
+                  }
+                ],
+                "functions": [],
+                "types": []
+              },
+              "kind": "FunctionKind.InstanceMethod",
+              "isPublic": true,
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "body": [
+                {
+                  "token": {
+                    "position": [6, 32],
                     "kind": {
                       "name": "Int",
                       "value": 123
@@ -232,6 +252,42 @@
                   }
                 }
               ]
+            },
+            {
+              "label": { "name": "fooStaticPub", "position": [8, 12] },
+              "scope": {
+                "name": "$root::module_3::Foo::fooStaticPub",
+                "variables": [],
+                "functions": [],
+                "types": []
+              },
+              "kind": "FunctionKind.StaticMethod",
+              "isPublic": true,
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "body": [
+                {
+                  "token": {
+                    "position": [8, 34],
+                    "kind": {
+                      "name": "Int",
+                      "value": 123
+                    }
+                  },
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "node": {
+                    "kind": "literal",
+                    "value": 123
+                  }
+                }
+              ]
             }
           ]
         }
@@ -239,7 +295,7 @@
     },
     {
       "token": {
-        "position": [10, 1],
+        "position": [11, 1],
         "kind": {
           "name": "Var"
         }
@@ -252,15 +308,15 @@
         "kind": "bindingDeclaration",
         "pattern": {
           "kind": "variable",
-          "label": { "name": "f", "position": [10, 5] }
+          "label": { "name": "f", "position": [11, 5] }
         },
         "variables": [
           {
-            "label": { "name": "f", "position": [10, 5] },
+            "label": { "name": "f", "position": [11, 5] },
             "mutable": true,
             "type": {
-              "kind": "enumInstance",
-              "enum": { "moduleId": 3, "name": "Foo" },
+              "kind": "instance",
+              "struct": { "moduleId": 3, "name": "Foo" },
               "typeParams": []
             }
           }
