@@ -1,14 +1,14 @@
 import Pointer, Byte from "./_intrinsics"
 import "libc" as libc
 
-export enum FileIOError {
+pub enum FileIOError {
   CouldNotOpen(message: String)
   CouldNotClose(message: String)
   CouldNotSeek(message: String)
   CouldNotRead(message: String)
 }
 
-export func readFile(path: String): Result<String, FileIOError> {
+pub func readFile(path: String): Result<String, FileIOError> {
   val fd = libc.open(path._buffer, libc.O_RDONLY, 0)
   if fd == -1 {
     val errMsg = _strerror(libc.errno())
@@ -38,7 +38,7 @@ export func readFile(path: String): Result<String, FileIOError> {
   Ok(value: str)
 }
 
-export enum AccessMode {
+pub enum AccessMode {
   ReadOnly
   WriteOnly
   ReadWrite
@@ -50,7 +50,7 @@ export enum AccessMode {
   }
 }
 
-export type File {
+pub type File {
   _fd: Int
   accessMode: AccessMode
   path: String
@@ -75,7 +75,7 @@ export type File {
   }
 }
 
-export func openFile(path: String, accessMode: AccessMode): Result<File, FileIOError> {
+pub func openFile(path: String, accessMode: AccessMode): Result<File, FileIOError> {
   val oflag = accessMode._toUnderlying()
   val fd = libc.open(path._buffer, oflag, 0)
   if fd == -1 {
@@ -86,7 +86,7 @@ export func openFile(path: String, accessMode: AccessMode): Result<File, FileIOE
   Ok(File(_fd: fd, accessMode: accessMode, path: path))
 }
 
-export func createFile(path: String, accessMode: AccessMode): Result<File, FileIOError> {
+pub func createFile(path: String, accessMode: AccessMode): Result<File, FileIOError> {
   var oflag = accessMode._toUnderlying() || libc.O_CREAT
 
   val mode = 420 // 420 is 0644, but octal numbers aren't supported yet...
@@ -99,7 +99,7 @@ export func createFile(path: String, accessMode: AccessMode): Result<File, FileI
   Ok(File(_fd: fd, accessMode: accessMode, path: path))
 }
 
-export func getCurrentWorkingDirectory(): String {
+pub func getCurrentWorkingDirectory(): String {
   val buf = Pointer.malloc<Byte>(libc.PATH_MAX)
 
   libc.getcwd(buf, libc.PATH_MAX)

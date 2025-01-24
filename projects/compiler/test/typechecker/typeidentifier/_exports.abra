@@ -1,3 +1,3 @@
-export val A = 123
-export type Foo { a: Int }
-export enum Color<R, G, B> { Red, Green, Blue, RGB(r: R, g: G, b: B) }
+pub val A = 123
+pub type Foo { a: Int }
+pub enum Color<R, G, B> { Red, Green, Blue, RGB(r: R, g: G, b: B) }

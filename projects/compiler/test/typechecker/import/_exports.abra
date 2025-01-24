@@ -1,15 +1,15 @@
-export val a = 123
+pub val a = 123
 
-export func add(a: Int, b: Int): Int = a + b
+pub func add(a: Int, b: Int): Int = a + b
 
-export type Foo {
+pub type Foo {
   color: Color
 
   func foo(self): Int = 123
 }
-export val foo = Foo(color: Color.Green)
+pub val foo = Foo(color: Color.Green)
 
-export enum Color {
+pub enum Color {
   Red
   Green
   Blue

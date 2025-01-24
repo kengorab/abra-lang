@@ -1,3 +1,3 @@
 if true {
-  export val a = 1
+  pub val a = 1
 }

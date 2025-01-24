@@ -835,7 +835,7 @@
     },
     {
       "token": {
-        "position": [48, 8],
+        "position": [48, 5],
         "kind": {
           "name": "Type"
         }
@@ -869,10 +869,10 @@
         "pubToken": {
           "position": [48, 1],
           "kind": {
-            "name": "Export"
+            "name": "Pub"
           }
         },
-        "typeName": { "name": "Outer", "position": [48, 13] },
+        "typeName": { "name": "Outer", "position": [48, 10] },
         "typeParams": [],
         "fields": [
           {

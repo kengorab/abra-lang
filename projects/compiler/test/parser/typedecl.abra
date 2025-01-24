@@ -45,7 +45,7 @@ type Outer {
 }
 
 @Bar("a")
-export type Outer {
+pub type Outer {
   a: Int
 
   @Bar("b")

@@ -1,4 +1,4 @@
-export enum JsonValue {
+pub enum JsonValue {
   Null
   Number(value: Either<Int, Float>)
   String(value: String)
@@ -67,12 +67,12 @@ export enum JsonValue {
   }
 }
 
-export enum JsonError {
+pub enum JsonError {
   TypeMismatch(expected: JsonValueKind, actual: JsonValueKind)
   NoSuchKey(key: String)
 }
 
-export type JsonObject {
+pub type JsonObject {
   _map: Map<String, JsonValue> = {}
 
   func set(self, key: String, value: JsonValue) {
@@ -133,7 +133,7 @@ export type JsonObject {
     match self.getObjectRequired(key) { Ok(v) => Some(v), Err => None }
 }
 
-export enum JsonValueKind {
+pub enum JsonValueKind {
   Null
   Number
   String
@@ -142,7 +142,7 @@ export enum JsonValueKind {
   Object
 }
 
-export enum JsonParseError {
+pub enum JsonParseError {
   UnterminatedString
   InvalidCharacterInString
   UnexpectedEndOfNumber
@@ -155,7 +155,7 @@ export enum JsonParseError {
   ValueExpected
 }
 
-export type JsonParser {
+pub type JsonParser {
   _chars: CharsIterator
 
   func parseString(string: String): Result<JsonValue, JsonParseError> {

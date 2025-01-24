@@ -22,14 +22,14 @@ func println(*items: Any[]) {
   stdoutWrite("\n")
 }
 
-export enum Option<V> {
+pub enum Option<V> {
   Some(value: V)
   None
 }
 
 func Some<T>(value: T): Option<T> = Option.Some(value)
 
-export enum Result<V, E> {
+pub enum Result<V, E> {
   Ok(value: V)
   Err(error: E)
 
@@ -40,7 +40,7 @@ export enum Result<V, E> {
 func Ok<V, E>(value: V): Result<V, E> = Result.Ok(value)
 func Err<V, E>(error: E): Result<V, E> = Result.Err(error)
 
-export enum Either<L, R> {
+pub enum Either<L, R> {
   Left(left: L)
   Right(right: R)
 }
@@ -1050,13 +1050,13 @@ type Array<T> {
 }
 
 @noreturn
-export func unreachable(message = "") {
+pub func unreachable(message = "") {
   println("Encountered unreachable code:", message)
   libc.exit(1)
 }
 
 @noreturn
-export func todo(message = "") {
+pub func todo(message = "") {
   println("Encountered unimplemented code:", message)
   libc.exit(1)
 }

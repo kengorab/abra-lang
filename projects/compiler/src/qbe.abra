@@ -1,6 +1,6 @@
 import File from "fs"
 
-export type ModuleBuilder {
+pub type ModuleBuilder {
   _data: QbeData[] = []
   _dataByName: Map<String, Value> = {}
   _globalStrs: Map<String, Value> = {}
@@ -61,7 +61,7 @@ export type ModuleBuilder {
   }
 }
 
-export type QbeData {
+pub type QbeData {
   name: String
   align: Int? = None
   kind: QbeDataKind
@@ -80,7 +80,7 @@ export type QbeData {
   }
 }
 
-export enum QbeDataKind {
+pub enum QbeDataKind {
   Zeros(size: Int)
   Constants(values: (QbeType, Value)[])
   String(str: String)
@@ -114,17 +114,17 @@ export enum QbeDataKind {
   }
 }
 
-export type Label {
+pub type Label {
   name: String
   offset: Int? = None
 }
 
-export type Var {
+pub type Var {
   name: String
   location: (Int, Int)
 }
 
-export type Block {
+pub type Block {
   name: String
   currentLabel: Label
   body: Instruction[] = []
@@ -693,12 +693,12 @@ export type Block {
   }
 }
 
-export enum Callable {
+pub enum Callable {
   Function(fn: QbeFunction)
   Value(v: Value, returnType: QbeType?)
 }
 
-export enum QbeType {
+pub enum QbeType {
   U8      // 'b'
   U16     // 'h'
   U32     // 'w'
@@ -748,7 +748,7 @@ export enum QbeType {
   }
 }
 
-export type QbeFunction {
+pub type QbeFunction {
   exported: Bool = false
   name: String
   block: Block,
@@ -815,7 +815,7 @@ export type QbeFunction {
   }
 }
 
-export enum Value {
+pub enum Value {
   Ident(name: String, ty: QbeType)
   Global(name: String, ty: QbeType)
   Int32(value: Int)
@@ -855,7 +855,7 @@ export enum Value {
   }
 }
 
-export type Dest {
+pub type Dest {
   name: String
   ty: QbeType
 

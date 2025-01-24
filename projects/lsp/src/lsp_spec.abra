@@ -1,7 +1,7 @@
 import log from "./log"
 import JsonValue, JsonError, JsonObject from "json"
 
-export enum RequestMessage {
+pub enum RequestMessage {
   Initialize(id: Int, processId: Int?, rootPath: String?)
   Hover(id: Int, textDocument: TextDocumentIdentifier, position: Position)
   Definition(id: Int, textDocument: TextDocumentIdentifier, position: Position)
@@ -56,7 +56,7 @@ export enum RequestMessage {
   }
 }
 
-export enum NotificationMessage {
+pub enum NotificationMessage {
   // Incoming notifications
   Initialized
   TextDocumentDidOpen(textDocument: TextDocumentItem)
@@ -126,7 +126,7 @@ export enum NotificationMessage {
   }
 }
 
-export enum ResponseMessage {
+pub enum ResponseMessage {
   Success(id: Int, result: ResponseResult?)
   Error(id: Int, error: ResponseError)
 
@@ -148,7 +148,7 @@ export enum ResponseMessage {
   }
 }
 
-export enum ResponseResult {
+pub enum ResponseResult {
   Initialize(capabilities: ServerCapabilities, serverInfo: ServerInfo)
   Hover(contents: MarkupContent, range: Range?)
   // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_definition
@@ -186,7 +186,7 @@ export enum ResponseResult {
   }
 }
 
-export type ResponseError {
+pub type ResponseError {
   code: ResponseErrorCode
   message: String
 
@@ -200,7 +200,7 @@ export type ResponseError {
   }
 }
 
-export enum ResponseErrorCode {
+pub enum ResponseErrorCode {
   ParseError
   InvalidRequest
   MethodNotFound
@@ -228,7 +228,7 @@ export enum ResponseErrorCode {
   }
 }
 
-export type ServerCapabilities {
+pub type ServerCapabilities {
   textDocumentSync: TextDocumentSyncOptions? = None
   diagnosticProvider: DiagnosticOptions? = None
   hoverProvider: Bool? = None
@@ -257,7 +257,7 @@ export type ServerCapabilities {
   }
 }
 
-export type TextDocumentSyncOptions {
+pub type TextDocumentSyncOptions {
   openClose: Bool? = None
   change: TextDocumentSyncKind? = None
   save: SaveOptions? = None
@@ -281,7 +281,7 @@ export type TextDocumentSyncOptions {
   }
 }
 
-export enum TextDocumentSyncKind {
+pub enum TextDocumentSyncKind {
   None_
   Full
   Incremental
@@ -293,7 +293,7 @@ export enum TextDocumentSyncKind {
   }
 }
 
-export type SaveOptions {
+pub type SaveOptions {
   includeText: Bool? = None
 
   func toJson(self): JsonValue {
@@ -307,7 +307,7 @@ export type SaveOptions {
   }
 }
 
-export type DiagnosticOptions {
+pub type DiagnosticOptions {
   interFileDependencies: Bool
   workspaceDiagnostics: Bool
 
@@ -317,7 +317,7 @@ export type DiagnosticOptions {
   }))
 }
 
-export type ServerInfo {
+pub type ServerInfo {
   name: String
   version: String? = None
 
@@ -333,7 +333,7 @@ export type ServerInfo {
   }
 }
 
-export type TextDocumentItem {
+pub type TextDocumentItem {
   uri: String
   languageId: String
   version: Int
@@ -353,7 +353,7 @@ export type TextDocumentItem {
   }
 }
 
-export type TextDocumentIdentifier {
+pub type TextDocumentIdentifier {
   uri: String
 
   func fromJson(json: JsonValue): Result<TextDocumentIdentifier, JsonError> {
@@ -364,7 +364,7 @@ export type TextDocumentIdentifier {
   }
 }
 
-export type VersionedTextDocumentIdentifier {
+pub type VersionedTextDocumentIdentifier {
   uri: String
   version: Int
 
@@ -380,7 +380,7 @@ export type VersionedTextDocumentIdentifier {
   }
 }
 
-export type Position {
+pub type Position {
   // line and character are both zero-based
   line: Int
   character: Int
@@ -407,7 +407,7 @@ export type Position {
   }
 }
 
-export type Range {
+pub type Range {
   start: Position
   end: Position // exclusive
 
@@ -429,7 +429,7 @@ export type Range {
   }
 }
 
-export enum TextDocumentContentChangeEvent {
+pub enum TextDocumentContentChangeEvent {
   Incremental(
     range: ((Int, Int), (Int, Int)), // (line: Int, character: Int), zero-based
     text: String
@@ -448,7 +448,7 @@ export enum TextDocumentContentChangeEvent {
   }
 }
 
-export type Diagnostic {
+pub type Diagnostic {
   range: ((Int, Int), (Int, Int)) // (line: Int, character: Int), zero-based
   severity: DiagnosticSeverity? = None
   message: String
@@ -477,7 +477,7 @@ export type Diagnostic {
   }
 }
 
-export enum DiagnosticSeverity {
+pub enum DiagnosticSeverity {
   Error
   Warning
   Information
@@ -491,7 +491,7 @@ export enum DiagnosticSeverity {
   }
 }
 
-export type MarkupContent {
+pub type MarkupContent {
   kind: MarkupKind
   value: String
 
@@ -506,7 +506,7 @@ export type MarkupContent {
   }
 }
 
-export enum MarkupKind {
+pub enum MarkupKind {
   PlainText
   Markdown
 }

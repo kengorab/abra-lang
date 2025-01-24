@@ -4,10 +4,10 @@ import log from "./log"
 import ModuleLoader, Project, Typechecker, TypecheckerErrorKind, IdentifierMeta, IdentifierKindMeta, IdentifierMetaModule from "../../compiler/src/typechecker"
 import RequestMessage, NotificationMessage, ResponseMessage, ResponseResult, ResponseError, ResponseErrorCode, ServerCapabilities, TextDocumentSyncOptions, TextDocumentSyncKind, SaveOptions, ServerInfo, TextDocumentItem, TextDocumentIdentifier, VersionedTextDocumentIdentifier, TextDocumentContentChangeEvent, Diagnostic, DiagnosticSeverity, Position, Range, MarkupContent, MarkupKind from "./lsp_spec"
 
-export val contentLengthHeader = "Content-Length: "
-export val bogusMessageId = -999
+pub val contentLengthHeader = "Content-Length: "
+pub val bogusMessageId = -999
 
-export type AbraLanguageService {
+pub type AbraLanguageService {
   // _virtualFileSystem: Map<String, String>
   _moduleLoader: ModuleLoader
   _project: Project

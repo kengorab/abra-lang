@@ -1,18 +1,18 @@
 import valueIfValidHexDigit from "./utils"
 
-export type Position {
+pub type Position {
   line: Int
   col: Int
 
   func bogus(): Position = Position(line: 0, col: 0)
 }
 
-export type Token {
+pub type Token {
   position: Position
   kind: TokenKind
 }
 
-export enum TokenKind {
+pub enum TokenKind {
   // Literals
   Int(value: Int)
   Float(value: Float)
@@ -40,7 +40,6 @@ export enum TokenKind {
   Return(subsequentNewline: Bool)
   Readonly
   Import
-  Export
   From
   As
   Try
@@ -115,7 +114,6 @@ export enum TokenKind {
     TokenKind.Return => "return"
     TokenKind.Readonly => "readonly"
     TokenKind.Import => "import"
-    TokenKind.Export => "export"
     TokenKind.From => "from"
     TokenKind.As => "as"
     TokenKind.Try => "try"
@@ -165,12 +163,12 @@ export enum TokenKind {
   }
 }
 
-export enum StringInterpolationChunk {
+pub enum StringInterpolationChunk {
   String(position: Position, value: String)
   Interpolation(tokens: Token[])
 }
 
-export enum LexerErrorKind {
+pub enum LexerErrorKind {
   UnexpectedChar(char: String)
   UnterminatedCharLiteral
   UnterminatedString(start: Position)
@@ -178,7 +176,7 @@ export enum LexerErrorKind {
   UnexpectedEof
 }
 
-export type LexerError {
+pub type LexerError {
   position: Position
   kind: LexerErrorKind
 
@@ -232,7 +230,7 @@ export type LexerError {
   }
 }
 
-export type Lexer {
+pub type Lexer {
   _input: String
   _cursor: Int = 0
   _line: Int = 1
@@ -672,7 +670,6 @@ export type Lexer {
       }
       "readonly" => TokenKind.Readonly
       "import" => TokenKind.Import
-      "export" => TokenKind.Export
       "from" => TokenKind.From
       "as" => TokenKind.As
       "try" => TokenKind.Try

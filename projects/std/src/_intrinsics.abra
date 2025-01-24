@@ -1,81 +1,81 @@
 @Intrinsic("argc")
-export func argc(): Int
+pub func argc(): Int
 
 @Intrinsic("argv")
-export func argv(): Pointer<Pointer<Byte>>
+pub func argv(): Pointer<Pointer<Byte>>
 
 @Intrinsic("__callstack")
-export func callstack(): Pointer<Int>
+pub func callstack(): Pointer<Int>
 
 @Intrinsic("__callstackp")
-export func callstackPtr(): Int
+pub func callstackPtr(): Int
 
 @Intrinsic("modulenames")
-export func moduleNames(): Pointer<Byte>
+pub func moduleNames(): Pointer<Byte>
 
 @Intrinsic("functionnames")
-export func functionNames(): Pointer<Byte>
+pub func functionNames(): Pointer<Byte>
 
 @Intrinsic("uninitialized")
-export func uninitialized<T>(): T
+pub func uninitialized<T>(): T
 
 @Intrinsic("u64_to_string")
-export func u64ToString(i: Int): String
+pub func u64ToString(i: Int): String
 
 @Intrinsic("int_as_char")
-export func intAsChar(i: Int): Char
+pub func intAsChar(i: Int): Char
 
 @Intrinsic("char_as_int")
-export func charAsInt(c: Char): Int
+pub func charAsInt(c: Char): Int
 
 @Intrinsic("int_as_float")
-export func intAsFloat(i: Int): Float
+pub func intAsFloat(i: Int): Float
 
 @Intrinsic("float_as_int")
-export func floatAsInt(f: Float): Int
+pub func floatAsInt(f: Float): Int
 
 @Intrinsic("float_floor")
-export func floor(f: Float): Int
+pub func floor(f: Float): Int
 
 @Intrinsic("float_ceil")
-export func ceil(f: Float): Int
+pub func ceil(f: Float): Int
 
 @Intrinsic("float_round")
-export func round(f: Float): Int
+pub func round(f: Float): Int
 
-export type Byte {
+pub type Byte {
   @Intrinsic("byte_from_int")
-  func fromInt(value: Int): Byte
+  pub func fromInt(value: Int): Byte
 
   @Intrinsic("byte_as_int")
-  func asInt(self): Int
+  pub func asInt(self): Int
 }
 
-export type Pointer<T> {
+pub type Pointer<T> {
   @Intrinsic("pointer_null")
-  func null<T>(): Pointer<T>
+  pub func null<T>(): Pointer<T>
 
   @Intrinsic("pointer_is_null")
-  func isNullPtr(self): Bool
+  pub func isNullPtr(self): Bool
 
   @Intrinsic("pointer_malloc")
-  func malloc<T>(count = 1): Pointer<T>
+  pub func malloc<T>(count = 1): Pointer<T>
 
   @Intrinsic("pointer_realloc")
-  func realloc<T>(ptr: Pointer<T>, count: Int): Pointer<T>
+  pub func realloc<T>(ptr: Pointer<T>, count: Int): Pointer<T>
 
   @Intrinsic("pointer_address")
-  func address(self): Int
+  pub func address(self): Int
 
   @Intrinsic("pointer_store")
-  func store(self, value: T)
+  pub func store(self, value: T)
 
   @Intrinsic("pointer_load")
-  func load(self): T
+  pub func load(self): T
 
   @Intrinsic("pointer_offset")
-  func offset(self, offset: Int): Pointer<T>
+  pub func offset(self, offset: Int): Pointer<T>
 
   @Intrinsic("pointer_copy_from")
-  func copyFrom(self, other: Pointer<T>, size: Int)
+  pub func copyFrom(self, other: Pointer<T>, size: Int)
 }

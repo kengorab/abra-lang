@@ -2,7 +2,7 @@ import LiteralAstNode, IndexingMode from "./parser"
 import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, FunctionKind, Scope, Struct, Enum, StructOrEnum, AccessorPathSegment, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export, TypedMatchCaseKind from "./typechecker"
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 
-export type Jsonifier {
+pub type Jsonifier {
   indentLevel: Int = 0
 
   func printModules(self, modules: TypedModule[]) {

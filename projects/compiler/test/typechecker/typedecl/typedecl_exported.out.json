@@ -10,7 +10,7 @@
   "code": [
     {
       "token": {
-        "position": [1, 8],
+        "position": [1, 5],
         "kind": {
           "name": "Type"
         }
@@ -23,7 +23,7 @@
         "kind": "typeDeclaration",
         "struct": {
           "moduleId": 3,
-          "name": { "name": "Foo", "position": [1, 13] },
+          "name": { "name": "Foo", "position": [1, 10] },
           "typeParams": [],
           "fields": [
             {

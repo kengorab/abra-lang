@@ -200,7 +200,6 @@ const PARSER_TESTS = [
   { test: "parser/functiondecl_error_self_variadic.abra", assertions: "parser/functiondecl_error_self_variadic.out" },
   // Type declaration
   { test: "parser/typedecl.abra", assertions: "parser/typedecl.out.json" },
-  { test: "parser/typedecl_error_exporting_method.abra", assertions: "parser/typedecl_error_exporting_method.out" },
   { test: "parser/typedecl_error_field_after_method.abra", assertions: "parser/typedecl_error_field_after_method.out" },
   { test: "parser/typedecl_error_illegal_body_part.abra", assertions: "parser/typedecl_error_illegal_body_part.out" },
   // Enum declaration
@@ -694,7 +693,6 @@ const TYPECHECKER_TESTS = [
   { test: "typechecker/funcdecl/error_self_standalone.abra", assertions: "typechecker/funcdecl/error_self_standalone.out" },
   { test: "typechecker/funcdecl/error_generics_param_type_mismatch.abra", assertions: "typechecker/funcdecl/error_generics_param_type_mismatch.out" },
   { test: "typechecker/funcdecl/error_generics_return_type_mismatch.abra", assertions: "typechecker/funcdecl/error_generics_return_type_mismatch.out" },
-  { test: "typechecker/funcdecl/error_export_bad_scope.abra", assertions: "typechecker/funcdecl/error_export_bad_scope.out" },
 
   // Type declaration
   { test: "typechecker/typedecl/typedecl_exported.abra", assertions: "typechecker/typedecl/typedecl_exported.out.json" },

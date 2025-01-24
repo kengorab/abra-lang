@@ -1,6 +1,6 @@
-export val a = 123
-export var a = 123
+pub val a = 123
+pub var a = 123
 
-export func foo() {}
+pub func foo() {}
 
 pub func foo() {}

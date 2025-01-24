@@ -3,7 +3,7 @@ import Pointer, Byte from "./_intrinsics"
 import "libc" as libc
 
 var _args: String[]? = None
-export func args(): String[] {
+pub func args(): String[] {
   if _args |args| return args
 
   val argc = intrinsics.argc()
@@ -20,7 +20,7 @@ export func args(): String[] {
   args
 }
 
-export func getEnvVar(name: String): String? {
+pub func getEnvVar(name: String): String? {
   val str = libc.getenv(name._buffer)
   if str.isNullPtr() return None
 
@@ -28,7 +28,7 @@ export func getEnvVar(name: String): String? {
   Some(String(length: len, _buffer: str))
 }
 
-export type Uname {
+pub type Uname {
   sysname: String
   nodename: String
   release: String
@@ -37,7 +37,7 @@ export type Uname {
 }
 
 var _uname: Uname? = None
-export func uname(): Uname {
+pub func uname(): Uname {
   if _uname |uname| return uname
 
   // On macOS, each field in the utsname struct is a char[256]; on other platforms it's different, so
@@ -86,9 +86,9 @@ export func uname(): Uname {
 }
 
 @noreturn
-export func exit(status = 1) = libc.exit(status)
+pub func exit(status = 1) = libc.exit(status)
 
-export func getStackTrace(message = "Stack trace:"): String {
+pub func getStackTrace(message = "Stack trace:"): String {
   val frames = callstack()
   val lines = [message]
   // Skip first frame, which will be the call to `callstack()` itself
@@ -98,13 +98,13 @@ export func getStackTrace(message = "Stack trace:"): String {
   lines.join("\n")
 }
 
-export type StackFrame {
+pub type StackFrame {
   callee: String
   file: String
   line: Int
 }
 
-export func callstack(): StackFrame[] {
+pub func callstack(): StackFrame[] {
   val s = intrinsics.callstack()
   var sp = (intrinsics.callstackPtr() / 8).floor() - 1
 
@@ -216,7 +216,7 @@ type Stdin {
 }
 
 var _stdin: Stdin? = None
-export func stdin(): Stdin {
+pub func stdin(): Stdin {
   if _stdin |stdin| return stdin
 
   val stdin = Stdin()

@@ -9,7 +9,7 @@ enum TokenizeAndParseError {
   ParseError(inner: ParseError)
 }
 
-export type ModuleLoader {
+pub type ModuleLoader {
   stdRoot: String
   parsedModules: Map<String, ParsedModule> = {}
   _virtualFileSystem: Map<String, String>? = None
@@ -66,13 +66,13 @@ export type ModuleLoader {
   }
 }
 
-export enum Export {
+pub enum Export {
   Variable(variable: Variable)
   Function(aliasVar: Variable)
   Type(structOrEnum: StructOrEnum, aliasVar: Variable)
 }
 
-export type Import {
+pub type Import {
   label: Label
   kind: TypedImportKind
 }
@@ -88,7 +88,7 @@ type ImportedModule {
   imports: Map<String, Import> = {}
 }
 
-export enum IdentifierKindMeta {
+pub enum IdentifierKindMeta {
   Variable(mutable: Bool, typeRepr: String)
   Function(typeParams: String[], params: String[], returnTypeRepr: String, methodTy: (Bool, String)?)
   Type(isEnum: Bool, typeParams: String[])
@@ -97,18 +97,18 @@ export enum IdentifierKindMeta {
   EnumVariant(parentRepr: String, fields: String[])
 }
 
-export enum IdentifierMetaModule {
+pub enum IdentifierMetaModule {
   Prelude
   Module(filePath: String)
 }
 
-export type IdentifierMeta {
+pub type IdentifierMeta {
   name: String
   kind: IdentifierKindMeta
   definitionPosition: (IdentifierMetaModule, Position)? = None
 }
 
-export type TypedModule {
+pub type TypedModule {
   id: Int
   name: String
   code: TypedAstNode[]
@@ -121,13 +121,13 @@ export type TypedModule {
   func bogus(): TypedModule = TypedModule(id: -1, name: "bogus", code: [], rootScope: Scope.bogus())
 }
 
-export enum VariableAlias {
+pub enum VariableAlias {
   Function(fn: Function)
   Struct(struct: Struct)
   Enum(enum_: Enum)
 }
 
-export type Variable {
+pub type Variable {
   label: Label
   scope: Scope
   mutable: Bool
@@ -145,7 +145,7 @@ export type Variable {
   func isGlobal(self): Int? = match self.scope.kind { ScopeKind.Module(id, _) => Some(id), _ => None }
 }
 
-export enum Terminator {
+pub enum Terminator {
   Returning
   NonReturning
 
@@ -160,7 +160,7 @@ export enum Terminator {
   }
 }
 
-export enum ScopeKind {
+pub enum ScopeKind {
   Root
   Module(id: Int, name: String)
   Func
@@ -172,7 +172,7 @@ export enum ScopeKind {
   Try
 }
 
-export type Scope {
+pub type Scope {
   name: String
   variables: Variable[] = []
   functions: Function[] = []
@@ -204,19 +204,19 @@ export type Scope {
   }
 }
 
-export enum BuiltinModule {
+pub enum BuiltinModule {
   Prelude
   Intrinsics
 }
 
-export type Field {
+pub type Field {
   name: Label
   ty: Type
   initializer: TypedAstNode?
   isPublic: Bool
 }
 
-export type Struct {
+pub type Struct {
   moduleId: Int
   label: Label
   scope: Scope
@@ -262,17 +262,17 @@ export type Struct {
   }
 }
 
-export type TypedEnumVariant {
+pub type TypedEnumVariant {
   label: Label
   kind: EnumVariantKind
 }
 
-export enum EnumVariantKind {
+pub enum EnumVariantKind {
   Constant
   Container(fields: Field[])
 }
 
-export type Enum {
+pub type Enum {
   moduleId: Int
   label: Label
   scope: Scope
@@ -303,7 +303,7 @@ enum Instantiatable {
 }
 
 
-export type Project {
+pub type Project {
   modules: Map<String, TypedModule> = {}
   preludeScope: Scope = Scope.bogus()
   preludeIntStruct: Struct = Struct(moduleId: 0, label: Label(name: "Int", position: Position.bogus()), scope: Scope(name: "Int"))
@@ -403,7 +403,7 @@ export type Project {
   }
 }
 
-export type Type {
+pub type Type {
   kind: TypeKind
 
   func repr(self, shorthand = true): String {
@@ -614,7 +614,7 @@ export type Type {
   }
 }
 
-export enum StructOrEnum {
+pub enum StructOrEnum {
   Struct(struct: Struct)
   Enum(enum_: Enum)
 
@@ -626,7 +626,7 @@ export enum StructOrEnum {
   }
 }
 
-export enum TypeKind {
+pub enum TypeKind {
   PrimitiveUnit
   PrimitiveInt
   PrimitiveFloat
@@ -643,13 +643,13 @@ export enum TypeKind {
   Hole
 }
 
-export type TypedAstNode {
+pub type TypedAstNode {
   token: Token
   ty: Type
   kind: TypedAstNodeKind
 }
 
-export type Decorator {
+pub type Decorator {
   label: Label
   arguments: LiteralAstNode[]
 }
@@ -668,13 +668,13 @@ type TypedFunctionParam {
   variable: Variable
 }
 
-export enum FunctionKind {
+pub enum FunctionKind {
   Standalone
   InstanceMethod(structOrEnum: StructOrEnum?, isPublic: Bool)
   StaticMethod(structOrEnum: StructOrEnum, isPublic: Bool)
 }
 
-export type Function {
+pub type Function {
   label: Label
   scope: Scope
   kind: FunctionKind
@@ -764,7 +764,7 @@ export type Function {
   func isClosure(self): Bool = !self.captures.isEmpty() || !self.capturedClosures.isEmpty()
 }
 
-export enum TypedInvokee {
+pub enum TypedInvokee {
   Method(fn: Function, selfVal: TypedAstNode, isOptSafe: Bool)
   Function(fn: Function)
   Struct(struct: Struct)
@@ -772,19 +772,19 @@ export enum TypedInvokee {
   EnumVariant(enum_: Enum, variant: TypedEnumVariant)
 }
 
-export enum TypedIndexingNode {
+pub enum TypedIndexingNode {
   ArrayLike(expr: TypedAstNode, indexingMode: IndexingMode<TypedAstNode>)
   Map(expr: TypedAstNode, idx: TypedAstNode)
   Tuple(tupleExpr: TypedAstNode, idx: Int)
 }
 
-export enum TypedAssignmentMode {
+pub enum TypedAssignmentMode {
   Variable(variable: Variable)
   Indexing(node: TypedIndexingNode)
   Accessor(head: TypedAstNode, middle: AccessorPathSegment[], tail: AccessorPathSegment)
 }
 
-export enum TypedMatchCaseKind {
+pub enum TypedMatchCaseKind {
   Literal(value: LiteralAstNode)
   Type(ty: Type)
   EnumVariant(enum_: Enum, variant: TypedEnumVariant, variantIdx: Int, destructuredVariables: Variable[])
@@ -792,7 +792,7 @@ export enum TypedMatchCaseKind {
   Else
 }
 
-export type TypedMatchCase {
+pub type TypedMatchCase {
   kind: TypedMatchCaseKind
   binding: Variable?
   body: TypedAstNode[]
@@ -806,7 +806,7 @@ type TypedTryElseClause {
   terminator: Terminator?
 }
 
-export enum TypedAstNodeKind {
+pub enum TypedAstNodeKind {
   Literal(value: LiteralAstNode)
   StringInterpolation(exprs: TypedAstNode[])
   Unary(op: UnaryOp, expr: TypedAstNode)
@@ -838,7 +838,7 @@ export enum TypedAstNodeKind {
   Placeholder
 }
 
-export enum AccessorPathSegment {
+pub enum AccessorPathSegment {
   EnumVariant(label: Label, ty: Type, enum_: Enum, variant: TypedEnumVariant)
   Method(label: Label, fn: Function, optSafe: Bool, typeHint: Type?)
   Field(label: Label, ty: Type, f: Field, optSafe: Bool)
@@ -885,7 +885,7 @@ type TypecheckerError {
   }
 }
 
-export enum TypecheckerErrorKind {
+pub enum TypecheckerErrorKind {
   ReadFileError(path: String)
   LexerError(inner: LexerError)
   ParseError(inner: ParseError)
@@ -1516,7 +1516,7 @@ type ParamDefaultValueContext {
   exprContainsVariableRef: Bool = false
 }
 
-export type Typechecker {
+pub type Typechecker {
   moduleLoader: ModuleLoader
   project: Project
   currentModule: TypedModule = TypedModule.bogus()
