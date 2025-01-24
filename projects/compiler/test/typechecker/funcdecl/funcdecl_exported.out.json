@@ -10,7 +10,7 @@
   "code": [
     {
       "token": {
-        "position": [1, 8],
+        "position": [1, 5],
         "kind": {
           "name": "Func"
         }
@@ -22,7 +22,7 @@
       "node": {
         "kind": "functionDeclaration",
         "function": {
-          "label": { "name": "foo", "position": [1, 13] },
+          "label": { "name": "foo", "position": [1, 10] },
           "scope": {
             "name": "$root::module_3::foo",
             "variables": [],

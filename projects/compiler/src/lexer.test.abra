@@ -9,7 +9,7 @@ import "process" as process
 import Token, Lexer from "./lexer"
 import printTokenAsJson from "./test_utils"
 
-export func printTokensAsJson(tokens: Token[]) {
+pub func printTokensAsJson(tokens: Token[]) {
   println("[")
 
   val indent = "  "

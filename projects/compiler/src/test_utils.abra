@@ -1,7 +1,7 @@
 import Token, TokenKind, StringInterpolationChunk from "./lexer"
 import Label, ImportKind, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode, BindingPattern, MatchCaseKind, DecoratorNode, EnumVariant from "./parser"
 
-export func printTokenAsJson(token: Token, indentLevelStart: Int, currentIndentLevel: Int) {
+pub func printTokenAsJson(token: Token, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
   val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
   val endIndent = "  ".repeat(currentIndentLevel)
@@ -84,7 +84,6 @@ func printTokenKindAsJson(kind: TokenKind, indentLevelStart: Int, currentIndentL
     TokenKind.Return => println("$fieldsIndent\"name\": \"Return\"")
     TokenKind.Readonly => println("$fieldsIndent\"name\": \"Readonly\"")
     TokenKind.Import => println("$fieldsIndent\"name\": \"Import\"")
-    TokenKind.Export => println("$fieldsIndent\"name\": \"Export\"")
     TokenKind.From => println("$fieldsIndent\"name\": \"From\"")
     TokenKind.As => println("$fieldsIndent\"name\": \"As\"")
     TokenKind.Try => println("$fieldsIndent\"name\": \"Try\"")
@@ -135,7 +134,7 @@ func printTokenKindAsJson(kind: TokenKind, indentLevelStart: Int, currentIndentL
   println("$endIndent}")
 }
 
-export func printParsedModuleAsJson(module: ParsedModule) {
+pub func printParsedModuleAsJson(module: ParsedModule) {
   println("{")
   if module.imports.isEmpty() {
     println("  \"imports\": [],")
@@ -187,7 +186,7 @@ export func printParsedModuleAsJson(module: ParsedModule) {
   println("}")
 }
 
-export func printLabelAsJson(label: Label) {
+pub func printLabelAsJson(label: Label) {
   print("{ \"name\": \"${label.name}\", \"position\": [${label.position.line}, ${label.position.col}] }")
 }
 
@@ -297,7 +296,7 @@ func printDecoratorNodeAsJson(decorator: DecoratorNode, indentLevelStart: Int, c
   print("$endIndent}")
 }
 
-export func printBindingPatternAsJson(bindingPattern: BindingPattern, indentLevelStart: Int, currentIndentLevel: Int) {
+pub func printBindingPatternAsJson(bindingPattern: BindingPattern, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
   val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
   val endIndent = "  ".repeat(currentIndentLevel)

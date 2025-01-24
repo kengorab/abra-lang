@@ -106,35 +106,29 @@
   {
     "position": [1, 89],
     "kind": {
-      "name": "Export"
-    }
-  },
-  {
-    "position": [1, 96],
-    "kind": {
       "name": "From"
     }
   },
   {
-    "position": [1, 101],
+    "position": [1, 94],
     "kind": {
       "name": "As"
     }
   },
   {
-    "position": [1, 104],
+    "position": [1, 97],
     "kind": {
       "name": "Try"
     }
   },
   {
-    "position": [1, 108],
+    "position": [1, 101],
     "kind": {
       "name": "Continue"
     }
   },
   {
-    "position": [1, 117],
+    "position": [1, 110],
     "kind": {
       "name": "Pub"
     }

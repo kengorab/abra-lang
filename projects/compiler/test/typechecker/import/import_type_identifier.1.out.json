@@ -27,7 +27,7 @@
     "code": [
       {
         "token": {
-          "position": [1, 8],
+          "position": [1, 5],
           "kind": {
             "name": "Val"
           }
@@ -40,11 +40,11 @@
           "kind": "bindingDeclaration",
           "pattern": {
             "kind": "variable",
-            "label": { "name": "a", "position": [1, 12] }
+            "label": { "name": "a", "position": [1, 9] }
           },
           "variables": [
             {
-              "label": { "name": "a", "position": [1, 12] },
+              "label": { "name": "a", "position": [1, 9] },
               "mutable": false,
               "type": {
                 "kind": "primitive",
@@ -54,7 +54,7 @@
           ],
           "expr": {
             "token": {
-              "position": [1, 16],
+              "position": [1, 13],
               "kind": {
                 "name": "Int",
                 "value": 123
@@ -73,7 +73,7 @@
       },
       {
         "token": {
-          "position": [3, 8],
+          "position": [3, 5],
           "kind": {
             "name": "Func"
           }
@@ -85,12 +85,12 @@
         "node": {
           "kind": "functionDeclaration",
           "function": {
-            "label": { "name": "add", "position": [3, 13] },
+            "label": { "name": "add", "position": [3, 10] },
             "scope": {
               "name": "$root::module_3::add",
               "variables": [
                 {
-                  "label": { "name": "a", "position": [3, 17] },
+                  "label": { "name": "a", "position": [3, 14] },
                   "mutable": false,
                   "type": {
                     "kind": "primitive",
@@ -98,7 +98,7 @@
                   }
                 },
                 {
-                  "label": { "name": "b", "position": [3, 25] },
+                  "label": { "name": "b", "position": [3, 22] },
                   "mutable": false,
                   "type": {
                     "kind": "primitive",
@@ -113,7 +113,7 @@
             "typeParameters": [],
             "parameters": [
               {
-                "label": { "name": "a", "position": [3, 17] },
+                "label": { "name": "a", "position": [3, 14] },
                 "type": {
                   "kind": "primitive",
                   "primitive": "Int"
@@ -122,7 +122,7 @@
                 "isVariadic": false
               },
               {
-                "label": { "name": "b", "position": [3, 25] },
+                "label": { "name": "b", "position": [3, 22] },
                 "type": {
                   "kind": "primitive",
                   "primitive": "Int"
@@ -138,7 +138,7 @@
             "body": [
               {
                 "token": {
-                  "position": [3, 42],
+                  "position": [3, 39],
                   "kind": {
                     "name": "Plus"
                   }
@@ -152,7 +152,7 @@
                   "op": "BinaryOp.Add",
                   "left": {
                     "token": {
-                      "position": [3, 40],
+                      "position": [3, 37],
                       "kind": {
                         "name": "Ident",
                         "value": "a"
@@ -169,7 +169,7 @@
                   },
                   "right": {
                     "token": {
-                      "position": [3, 44],
+                      "position": [3, 41],
                       "kind": {
                         "name": "Ident",
                         "value": "b"
@@ -192,7 +192,7 @@
       },
       {
         "token": {
-          "position": [5, 8],
+          "position": [5, 5],
           "kind": {
             "name": "Type"
           }
@@ -205,7 +205,7 @@
           "kind": "typeDeclaration",
           "struct": {
             "moduleId": 3,
-            "name": { "name": "Foo", "position": [5, 13] },
+            "name": { "name": "Foo", "position": [5, 10] },
             "typeParams": [],
             "fields": [
               {
@@ -340,7 +340,7 @@
       },
       {
         "token": {
-          "position": [10, 8],
+          "position": [10, 5],
           "kind": {
             "name": "Val"
           }
@@ -353,11 +353,11 @@
           "kind": "bindingDeclaration",
           "pattern": {
             "kind": "variable",
-            "label": { "name": "foo", "position": [10, 12] }
+            "label": { "name": "foo", "position": [10, 9] }
           },
           "variables": [
             {
-              "label": { "name": "foo", "position": [10, 12] },
+              "label": { "name": "foo", "position": [10, 9] },
               "mutable": false,
               "type": {
                 "kind": "instance",
@@ -368,7 +368,7 @@
           ],
           "expr": {
             "token": {
-              "position": [10, 21],
+              "position": [10, 18],
               "kind": {
                 "name": "LParen"
               }
@@ -384,7 +384,7 @@
               "arguments": [
                 {
                   "token": {
-                    "position": [10, 34],
+                    "position": [10, 31],
                     "kind": {
                       "name": "Dot"
                     }
@@ -398,7 +398,7 @@
                     "kind": "accessor",
                     "head": {
                       "token": {
-                        "position": [10, 29],
+                        "position": [10, 26],
                         "kind": {
                           "name": "Ident",
                           "value": "Color"
@@ -427,7 +427,7 @@
       },
       {
         "token": {
-          "position": [12, 8],
+          "position": [12, 5],
           "kind": {
             "name": "Enum"
           }
@@ -440,7 +440,7 @@
           "kind": "enumDeclaration",
           "enum": {
             "moduleId": 3,
-            "name": { "name": "Color", "position": [12, 13] },
+            "name": { "name": "Color", "position": [12, 10] },
             "typeParams": [],
             "variants": [
               {

@@ -1,6 +1,6 @@
 import "fs" as fs
 
-export func valueIfValidHexDigit(ch: Int): Int? {
+pub func valueIfValidHexDigit(ch: Int): Int? {
   if 48 <= ch && ch <= 57 { // 0-9
     Some(ch - 48)
   } else if 65 <= ch && ch <= 70 { // A-F
@@ -13,7 +13,7 @@ export func valueIfValidHexDigit(ch: Int): Int? {
 }
 
 // TODO: Move this elsewhere, probably into std somewhere
-export func getAbsolutePath(fileName: String): String[] {
+pub func getAbsolutePath(fileName: String): String[] {
   val parts = if fileName[0] == "/" {
     fileName.split("/")
   } else {
@@ -37,7 +37,7 @@ export func getAbsolutePath(fileName: String): String[] {
 }
 
 // TODO: Move this elsewhere, probably into std somewhere
-export func resolveRelativePath(path: String, relativeTo: String): String[] {
+pub func resolveRelativePath(path: String, relativeTo: String): String[] {
   val absParentPath = getAbsolutePath(fileName: relativeTo)
   absParentPath.pop() // remove file part to obtain parent dir
 

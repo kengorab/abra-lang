@@ -40,7 +40,7 @@
     },
     {
       "token": {
-        "position": [4, 8],
+        "position": [4, 5],
         "kind": {
           "name": "Val"
         }
@@ -74,17 +74,17 @@
         "pubToken": {
           "position": [4, 1],
           "kind": {
-            "name": "Export"
+            "name": "Pub"
           }
         },
         "bindingPattern": {
           "kind": "variable",
-          "label": { "name": "a", "position": [4, 12] }
+          "label": { "name": "a", "position": [4, 9] }
         },
         "typeAnnotation": null,
         "expr": {
           "token": {
-            "position": [4, 16],
+            "position": [4, 13],
             "kind": {
               "name": "Int",
               "value": 123
@@ -137,7 +137,7 @@
     },
     {
       "token": {
-        "position": [9, 8],
+        "position": [9, 5],
         "kind": {
           "name": "Var"
         }
@@ -171,17 +171,17 @@
         "pubToken": {
           "position": [9, 1],
           "kind": {
-            "name": "Export"
+            "name": "Pub"
           }
         },
         "bindingPattern": {
           "kind": "variable",
-          "label": { "name": "b", "position": [9, 12] }
+          "label": { "name": "b", "position": [9, 9] }
         },
         "typeAnnotation": null,
         "expr": {
           "token": {
-            "position": [9, 16],
+            "position": [9, 13],
             "kind": {
               "name": "String",
               "value": "456"
@@ -197,7 +197,7 @@
     },
     {
       "token": {
-        "position": [12, 8],
+        "position": [12, 5],
         "kind": {
           "name": "Func"
         }
@@ -213,10 +213,10 @@
         "pubToken": {
           "position": [12, 1],
           "kind": {
-            "name": "Export"
+            "name": "Pub"
           }
         },
-        "ident": { "name": "foo", "position": [12, 13] },
+        "ident": { "name": "foo", "position": [12, 10] },
         "typeParams": [],
         "params": [],
         "body": []

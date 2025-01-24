@@ -158,7 +158,7 @@ type CallframeContext {
   callee: String? // callee is None when the callee is an expression
 }
 
-export type Compiler {
+pub type Compiler {
   _project: Project
   _builder: ModuleBuilder
   _currentModule: TypedModule

@@ -26,7 +26,7 @@
   "code": [
     {
       "token": {
-        "position": [1, 8],
+        "position": [1, 5],
         "kind": {
           "name": "Val"
         }
@@ -39,11 +39,11 @@
         "kind": "bindingDeclaration",
         "pattern": {
           "kind": "variable",
-          "label": { "name": "a", "position": [1, 12] }
+          "label": { "name": "a", "position": [1, 9] }
         },
         "variables": [
           {
-            "label": { "name": "a", "position": [1, 12] },
+            "label": { "name": "a", "position": [1, 9] },
             "mutable": false,
             "type": {
               "kind": "primitive",
@@ -53,7 +53,7 @@
         ],
         "expr": {
           "token": {
-            "position": [1, 16],
+            "position": [1, 13],
             "kind": {
               "name": "Int",
               "value": 123
@@ -325,7 +325,7 @@
     },
     {
       "token": {
-        "position": [4, 8],
+        "position": [4, 5],
         "kind": {
           "name": "Val"
         }
@@ -341,30 +341,30 @@
           "patterns": [
             {
               "kind": "variable",
-              "label": { "name": "tA", "position": [4, 13] }
+              "label": { "name": "tA", "position": [4, 10] }
             },
             {
               "kind": "tuple",
               "patterns": [
                 {
                   "kind": "variable",
-                  "label": { "name": "tTrue", "position": [4, 18] }
+                  "label": { "name": "tTrue", "position": [4, 15] }
                 },
                 {
                   "kind": "variable",
-                  "label": { "name": "tFalse", "position": [4, 25] }
+                  "label": { "name": "tFalse", "position": [4, 22] }
                 }
               ]
             },
             {
               "kind": "variable",
-              "label": { "name": "tArray", "position": [4, 34] }
+              "label": { "name": "tArray", "position": [4, 31] }
             }
           ]
         },
         "variables": [
           {
-            "label": { "name": "tA", "position": [4, 13] },
+            "label": { "name": "tA", "position": [4, 10] },
             "mutable": false,
             "type": {
               "kind": "primitive",
@@ -372,7 +372,7 @@
             }
           },
           {
-            "label": { "name": "tTrue", "position": [4, 18] },
+            "label": { "name": "tTrue", "position": [4, 15] },
             "mutable": false,
             "type": {
               "kind": "primitive",
@@ -380,7 +380,7 @@
             }
           },
           {
-            "label": { "name": "tFalse", "position": [4, 25] },
+            "label": { "name": "tFalse", "position": [4, 22] },
             "mutable": false,
             "type": {
               "kind": "primitive",
@@ -388,7 +388,7 @@
             }
           },
           {
-            "label": { "name": "tArray", "position": [4, 34] },
+            "label": { "name": "tArray", "position": [4, 31] },
             "mutable": false,
             "type": {
               "kind": "instance",
@@ -404,7 +404,7 @@
         ],
         "expr": {
           "token": {
-            "position": [4, 44],
+            "position": [4, 41],
             "kind": {
               "name": "Ident",
               "value": "tuple"

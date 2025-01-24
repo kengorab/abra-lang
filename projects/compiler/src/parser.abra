@@ -1,27 +1,27 @@
 import Token, TokenKind, Position, StringInterpolationChunk from "./lexer"
 
-export type ParsedModule {
+pub type ParsedModule {
   imports: ImportNode[]
   nodes: AstNode[]
 }
 
-export enum ImportKind {
+pub enum ImportKind {
   List(imports: Label[])
   Alias(alias: Label)
 }
 
-export type ImportNode {
+pub type ImportNode {
   token: Token
   kind: ImportKind
   moduleName: Label
 }
 
-export type AstNode {
+pub type AstNode {
   token: Token
   kind: AstNodeKind
 }
 
-export enum LiteralAstNode {
+pub enum LiteralAstNode {
   Int(value: Int)
   Float(value: Float)
   Bool(value: Bool)
@@ -29,14 +29,14 @@ export enum LiteralAstNode {
   String(value: String)
 }
 
-export enum UnaryOp { Minus, Negate }
+pub enum UnaryOp { Minus, Negate }
 
-export type UnaryAstNode {
+pub type UnaryAstNode {
   op: UnaryOp
   expr: AstNode
 }
 
-export enum BinaryOp {
+pub enum BinaryOp {
   Add
   Sub
   Mul
@@ -78,7 +78,7 @@ export enum BinaryOp {
   }
 }
 
-export enum AssignOp {
+pub enum AssignOp {
   Assign
   AddEq
   SubEq
@@ -102,68 +102,68 @@ export enum AssignOp {
   }
 }
 
-export type BinaryAstNode {
+pub type BinaryAstNode {
   left: AstNode
   op: BinaryOp
   right: AstNode
 }
 
-export enum IdentifierKind {
+pub enum IdentifierKind {
   Named(name: String)
   Self
   None_
   Discard
 }
 
-export type Label {
+pub type Label {
   name: String
   position: Position
 }
 
-export type AccessorAstNode {
+pub type AccessorAstNode {
   root: AstNode
   path: (Token, Label)[]
 }
 
-export type InvocationArgument {
+pub type InvocationArgument {
   label: Label?
   value: AstNode
 
   func position(self): Position = self.label?.position ?: self.value.token.position
 }
 
-export type InvocationAstNode {
+pub type InvocationAstNode {
   invokee: AstNode
   typeArguments: TypeIdentifier[]
   arguments: InvocationArgument[]
 }
 
-export enum IndexingMode<N> {
+pub enum IndexingMode<N> {
   Single(expr: N)
   Range(start: N?, end: N?)
 }
 
-export enum AssignmentMode {
+pub enum AssignmentMode {
   Variable(name: String, token: Token)
   Indexing(expr: AstNode, indexExpr: AstNode)
   Accessor(node: AccessorAstNode)
 }
 
-export enum MatchCaseKind {
+pub enum MatchCaseKind {
   None_
   Literal(value: LiteralAstNode)
   Type(path: Label[], last: Label, args: Label[])
   Else
 }
 
-export type MatchCase {
+pub type MatchCase {
   kind: MatchCaseKind
   position: Position
   binding: Label?
   body: AstNode[]
 }
 
-export enum TypeIdentifier {
+pub enum TypeIdentifier {
   Normal(name: Label, typeArguments: TypeIdentifier[], path: Label[])
   Array(inner: TypeIdentifier)
   Option(inner: TypeIdentifier)
@@ -171,7 +171,7 @@ export enum TypeIdentifier {
   Function(args: TypeIdentifier[], ret: TypeIdentifier)
 }
 
-export enum BindingPattern {
+pub enum BindingPattern {
   Variable(label: Label)
   Tuple(lParenTok: Token, patterns: BindingPattern[])
 
@@ -183,7 +183,7 @@ export enum BindingPattern {
   }
 }
 
-export type BindingDeclarationNode {
+pub type BindingDeclarationNode {
   decorators: DecoratorNode[]
   pubToken: Token?
   bindingPattern: BindingPattern
@@ -191,19 +191,19 @@ export type BindingDeclarationNode {
   expr: AstNode?
 }
 
-export type FunctionParam {
+pub type FunctionParam {
   label: Label
   isVariadic: Bool = false
   typeAnnotation: TypeIdentifier? = None
   defaultValue: AstNode? = None
 }
 
-export type LambdaNode {
+pub type LambdaNode {
   params: FunctionParam[]
   body: AstNode[]
 }
 
-export type FunctionDeclarationNode {
+pub type FunctionDeclarationNode {
   decorators: DecoratorNode[]
   pubToken: Token?
   name: Label
@@ -220,7 +220,7 @@ type TypeField {
   pubToken: Token?
 }
 
-export type TypeDeclarationNode {
+pub type TypeDeclarationNode {
   decorators: DecoratorNode[]
   pubToken: Token?
   name: Label
@@ -231,12 +231,12 @@ export type TypeDeclarationNode {
   enums: EnumDeclarationNode[]
 }
 
-export enum EnumVariant {
+pub enum EnumVariant {
   Constant(label: Label)
   Container(label: Label, fields: TypeField[])
 }
 
-export type EnumDeclarationNode {
+pub type EnumDeclarationNode {
   decorators: DecoratorNode[]
   pubToken: Token?
   name: Label
@@ -247,12 +247,12 @@ export type EnumDeclarationNode {
   enums: EnumDeclarationNode[]
 }
 
-export type DecoratorNode {
+pub type DecoratorNode {
   name: Label
   arguments: InvocationArgument[]
 }
 
-export enum AstNodeKind {
+pub enum AstNodeKind {
   Literal(value: LiteralAstNode)
   StringInterpolation(chunks: AstNode[])
   Unary(value: UnaryAstNode)
@@ -297,7 +297,7 @@ enum ParseErrorKind {
   NotYetImplemented
 }
 
-export type ParseError {
+pub type ParseError {
   position: Position
   kind: ParseErrorKind
 
@@ -348,7 +348,7 @@ export type ParseError {
   }
 }
 
-export type Parser {
+pub type Parser {
   _tokens: Token[]
   _cursor: Int = 0
   _seenDecorators: DecoratorNode[] = []
@@ -496,19 +496,7 @@ export type Parser {
         try self._parseDecorator()
 
         val nextToken = try self._expectPeek()
-        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.At, TokenKind.Export, TokenKind.Pub]
-        if !expected.contains(nextToken.kind) {
-          return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
-        }
-
-        self._parseStatement()
-      }
-      TokenKind.Export => {
-        self._pubToken = Some(token)
-        self._advance() // consume 'export' token
-
-        val nextToken = try self._expectPeek()
-        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum]
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.At, TokenKind.Pub]
         if !expected.contains(nextToken.kind) {
           return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
         }
