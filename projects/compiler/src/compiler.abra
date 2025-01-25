@@ -1961,7 +1961,7 @@ pub type Compiler {
     if variable.isGlobal() unreachable("Global variables are never included in a function's captures")
 
     if self._currentFunction |fn| {
-      if self._currentFn._env |env| {
+      if self._currentFn.env |env| {
         for v, idx in fn.captures {
           if v.label.name == variable.label.name {
             // When loading the captured variable from the closure env, if the captured variable is immutable then we
@@ -2049,7 +2049,7 @@ pub type Compiler {
       val currentFunc = try self._currentFunction else unreachable("we must be within a function to enter this case")
 
       val idx = if currentFunc.capturedClosures.findIndex(f => f.label.name == fn.label.name) |(_, idx)| idx else unreachable("closure '${fn.label.name}' called within function '${currentFunc.label.name}', but not tracked in its capturedClosures")
-      val env = try self._currentFn._env else unreachable("expected currentFn ('${self._currentFn.name}') to have an `_env`, but it didn't")
+      val env = try self._currentFn.env else unreachable("expected currentFn ('${self._currentFn.name}') to have an `env`, but it didn't")
       val offset = QbeType.Pointer.size() * (currentFunc.captures.length + idx)
 
       val ptr = try self._currentFn.block.buildAdd(Value.Int(offset), env) else |e| return qbeError(e)

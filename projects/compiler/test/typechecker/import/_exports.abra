@@ -3,7 +3,7 @@ pub val a = 123
 pub func add(a: Int, b: Int): Int = a + b
 
 pub type Foo {
-  color: Color
+  pub color: Color
 
   func foo(self): Int = 123
 }

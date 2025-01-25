@@ -584,7 +584,7 @@
           "body": [
             {
               "token": {
-                "position": [9, 19],
+                "position": [9, 14],
                 "kind": {
                   "name": "LParen"
                 }
@@ -611,13 +611,6 @@
                                 "kind": "generic",
                                 "name": "T"
                               }
-                            },
-                            {
-                              "required": true,
-                              "type": {
-                                "kind": "primitive",
-                                "primitive": "Bool"
-                              }
                             }
                           ],
                           "returnType": {
@@ -635,76 +628,32 @@
                   "isOptSafe": false,
                   "self": {
                     "token": {
-                      "position": [9, 19],
+                      "position": [9, 3],
                       "kind": {
-                        "name": "LParen"
+                        "name": "Ident",
+                        "value": "set"
                       }
                     },
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 2, "name": "Map" },
+                      "struct": { "moduleId": 2, "name": "Set" },
                       "typeParams": [
                         {
                           "kind": "generic",
                           "name": "T"
-                        },
-                        {
-                          "kind": "primitive",
-                          "primitive": "Bool"
                         }
                       ]
                     },
                     "node": {
-                      "kind": "accessor",
-                      "head": {
-                        "token": {
-                          "position": [9, 3],
-                          "kind": {
-                            "name": "Ident",
-                            "value": "set"
-                          }
-                        },
-                        "type": {
-                          "kind": "instance",
-                          "struct": { "moduleId": 2, "name": "Set" },
-                          "typeParams": [
-                            {
-                              "kind": "generic",
-                              "name": "T"
-                            }
-                          ]
-                        },
-                        "node": {
-                          "kind": "identifier",
-                          "name": "set"
-                        }
-                      },
-                      "middle": [],
-                      "tail": {
-                        "kind": "field",
-                        "name": "_map",
-                        "type": {
-                          "kind": "instance",
-                          "struct": { "moduleId": 2, "name": "Map" },
-                          "typeParams": [
-                            {
-                              "kind": "generic",
-                              "name": "T"
-                            },
-                            {
-                              "kind": "primitive",
-                              "primitive": "Bool"
-                            }
-                          ]
-                        }
-                      }
+                      "kind": "identifier",
+                      "name": "set"
                     }
                   }
                 },
                 "arguments": [
                   {
                     "token": {
-                      "position": [9, 24],
+                      "position": [9, 19],
                       "kind": {
                         "name": "Arrow"
                       }
@@ -728,12 +677,12 @@
                     "node": {
                       "kind": "lambda",
                       "function": {
-                        "label": { "name": "lambda_3_2", "position": [9, 24] },
+                        "label": { "name": "lambda_3_2", "position": [9, 19] },
                         "scope": {
                           "name": "$root::module_3::forEach::lambda_3_2",
                           "variables": [
                             {
-                              "label": { "name": "key", "position": [9, 20] },
+                              "label": { "name": "key", "position": [9, 15] },
                               "mutable": false,
                               "type": {
                                 "kind": "generic",
@@ -748,7 +697,7 @@
                         "typeParameters": [],
                         "parameters": [
                           {
-                            "label": { "name": "key", "position": [9, 20] },
+                            "label": { "name": "key", "position": [9, 15] },
                             "type": {
                               "kind": "generic",
                               "name": "T"
@@ -787,7 +736,7 @@
                         "body": [
                           {
                             "token": {
-                              "position": [9, 29],
+                              "position": [9, 24],
                               "kind": {
                                 "name": "LParen"
                               }
@@ -800,7 +749,7 @@
                               "kind": "invocation",
                               "invokee": {
                                 "token": {
-                                  "position": [9, 27],
+                                  "position": [9, 22],
                                   "kind": {
                                     "name": "Ident",
                                     "value": "fn"
@@ -830,7 +779,7 @@
                               "arguments": [
                                 {
                                   "token": {
-                                    "position": [9, 30],
+                                    "position": [9, 25],
                                     "kind": {
                                       "name": "Ident",
                                       "value": "key"

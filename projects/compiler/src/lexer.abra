@@ -1,15 +1,15 @@
 import valueIfValidHexDigit from "./utils"
 
 pub type Position {
-  line: Int
-  col: Int
+  pub line: Int
+  pub col: Int
 
   func bogus(): Position = Position(line: 0, col: 0)
 }
 
 pub type Token {
-  position: Position
-  kind: TokenKind
+  pub position: Position
+  pub kind: TokenKind
 }
 
 pub enum TokenKind {
@@ -177,7 +177,7 @@ pub enum LexerErrorKind {
 }
 
 pub type LexerError {
-  position: Position
+  pub position: Position
   kind: LexerErrorKind
 
   func getMessage(self, filePath: String, contents: String): String {
@@ -355,7 +355,7 @@ pub type Lexer {
         var isFirstChar = true
         var num = 0
         while self._cursor < self._input.length {
-          val ch = self._input._buffer.offset(self._cursor).load().asInt()
+          val ch = self._input.raw().offset(self._cursor).load().asInt()
           val v = try valueIfValidHexDigit(ch) else break
 
           num = (num << 4) + v
@@ -383,7 +383,7 @@ pub type Lexer {
         var isFirstChar = true
         var num = 0
         while self._cursor < self._input.length {
-          val ch = self._input._buffer.offset(self._cursor).load().asInt()
+          val ch = self._input.raw().offset(self._cursor).load().asInt()
           val v = if ch == 48 || ch == 49 { ch - 48 } else break
 
           num = (num << 1) + v
@@ -412,11 +412,11 @@ pub type Lexer {
     }
 
     // ord('0') = 48
-    var num = ch._buffer.load().asInt() - 48
+    var num = ch.raw().load().asInt() - 48
     self._advance()
     while self._input[self._cursor].isDigit() {
       num *= 10
-      num += self._input._buffer.offset(self._cursor).load().asInt() - 48
+      num += self._input.raw().offset(self._cursor).load().asInt() - 48
       self._advance()
     }
 
@@ -431,11 +431,11 @@ pub type Lexer {
     self._advance() // consume '.'
 
     var pow = 1
-    var num = self._input._buffer.offset(self._cursor).load().asInt() - 48
+    var num = self._input.raw().offset(self._cursor).load().asInt() - 48
     self._advance()
     while self._input[self._cursor].isDigit() {
       num *= 10
-      num += self._input._buffer.offset(self._cursor).load().asInt() - 48
+      num += self._input.raw().offset(self._cursor).load().asInt() - 48
       self._advance()
       pow += 1
     }
@@ -476,7 +476,7 @@ pub type Lexer {
       }
     } else {
       // TODO: once characters are supported, there should be no need for low-level byte manipulation like this
-      ch._buffer.offset(0).load().asInt()
+      ch.raw().offset(0).load().asInt()
     }
 
     self._advance()
@@ -623,7 +623,7 @@ pub type Lexer {
         val escSeq = "\\u${self._input[self._cursor:self._cursor + i]}"
         return Err(LexerError(position: startPos, kind: LexerErrorKind.UnsupportedEscapeSequence(seq: escSeq, isUnicode: true)))
       }
-      val ch = self._input._buffer.offset(self._cursor + i).load().asInt()
+      val ch = self._input.raw().offset(self._cursor + i).load().asInt()
       val v = try valueIfValidHexDigit(ch) else {
         val escSeq = "\\u${self._input[self._cursor:self._cursor + i]}"
         return Err(LexerError(position: startPos, kind: LexerErrorKind.UnsupportedEscapeSequence(seq: escSeq, isUnicode: true)))

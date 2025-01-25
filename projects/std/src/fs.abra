@@ -9,7 +9,7 @@ pub enum FileIOError {
 }
 
 pub func readFile(path: String): Result<String, FileIOError> {
-  val fd = libc.open(path._buffer, libc.O_RDONLY, 0)
+  val fd = libc.open(path.raw(), libc.O_RDONLY, 0)
   if fd == -1 {
     val errMsg = _strerror(libc.errno())
     return Err(error: FileIOError.CouldNotOpen(message: "Could not open '$path': $errMsg"))
@@ -26,7 +26,7 @@ pub func readFile(path: String): Result<String, FileIOError> {
   }
 
   val str = String.withLength(len)
-  if libc.read(fd, str._buffer, len) == -1 {
+  if libc.read(fd, str.raw(), len) == -1 {
     val errMsg = _strerror(libc.errno())
     return Err(error: FileIOError.CouldNotRead(message: "Could not read '$path': $errMsg"))
   }
@@ -66,18 +66,18 @@ pub type File {
 
   func write(self, str: String) {
     // TODO: handle error here (and also in prelude:stdoutWrite)
-    libc.write(self._fd, str._buffer, str.length)
+    libc.write(self._fd, str.raw(), str.length)
   }
 
   func writeln(self, str: String = "") {
-    if !str.isEmpty() libc.write(self._fd, str._buffer, str.length)
-    libc.write(self._fd, "\n"._buffer, 1)
+    if !str.isEmpty() libc.write(self._fd, str.raw(), str.length)
+    libc.write(self._fd, "\n".raw(), 1)
   }
 }
 
 pub func openFile(path: String, accessMode: AccessMode): Result<File, FileIOError> {
   val oflag = accessMode._toUnderlying()
-  val fd = libc.open(path._buffer, oflag, 0)
+  val fd = libc.open(path.raw(), oflag, 0)
   if fd == -1 {
     val errMsg = _strerror(libc.errno())
     return Err(error: FileIOError.CouldNotOpen(message: "Could not open '$path': $errMsg"))
@@ -90,7 +90,7 @@ pub func createFile(path: String, accessMode: AccessMode): Result<File, FileIOEr
   var oflag = accessMode._toUnderlying() || libc.O_CREAT
 
   val mode = 420 // 420 is 0644, but octal numbers aren't supported yet...
-  val fd = libc.open(path._buffer, oflag, mode)
+  val fd = libc.open(path.raw(), oflag, mode)
   if fd == -1 {
     val errMsg = _strerror(libc.errno())
     return Err(error: FileIOError.CouldNotOpen(message: "Could not open '$path': $errMsg"))
@@ -106,7 +106,7 @@ pub func getCurrentWorkingDirectory(): String {
   val len = libc.strlen(buf)
 
   val str = String.withLength(len)
-  str._buffer.copyFrom(buf, len)
+  str.raw().copyFrom(buf, len)
   str
 }
 
@@ -114,6 +114,6 @@ func _strerror(errno: Int): String {
   val buf = libc.strerror(errno)
   val len = libc.strlen(buf)
   val str = String.withLength(len)
-  str._buffer.copyFrom(buf, len)
+  str.raw().copyFrom(buf, len)
   str
 }
