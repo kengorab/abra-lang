@@ -342,7 +342,7 @@ type String {
     true
   }
 
-  func raw(self): Pointer<Byte> = self._buffer
+  func byteAt(self, offset: Int): Byte = self._buffer.offset(offset).load()
 
   func isEmpty(self): Bool = self.length == 0
 

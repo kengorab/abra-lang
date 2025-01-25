@@ -4284,8 +4284,12 @@ pub type Typechecker {
           StructOrEnum.Struct(struct) => {
             for field in struct.fields {
               if field.name.name == label.name {
+                // Non-public fields are only allowed to be accessed within the file in which they're defined
                 if !field.isPublic && struct.moduleId != self.currentModule.id {
-                  return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAccess(name: field.name.name, kind: "field", parentTy: ty)))
+                  // For performance reasons, all fields within standard lib modules is visible to each other
+                  if !self.currentModule.name.startsWith(self.moduleLoader.stdRoot) {
+                    return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAccess(name: field.name.name, kind: "field", parentTy: ty)))
+                  }
                 }
 
                 val resolvedGenerics: Map<String, Type> = {}
