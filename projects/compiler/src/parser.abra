@@ -1,8 +1,8 @@
 import Token, TokenKind, Position, StringInterpolationChunk from "./lexer"
 
 pub type ParsedModule {
-  imports: ImportNode[]
-  nodes: AstNode[]
+  pub imports: ImportNode[]
+  pub nodes: AstNode[]
 }
 
 pub enum ImportKind {
@@ -11,14 +11,14 @@ pub enum ImportKind {
 }
 
 pub type ImportNode {
-  token: Token
-  kind: ImportKind
-  moduleName: Label
+  pub token: Token
+  pub kind: ImportKind
+  pub moduleName: Label
 }
 
 pub type AstNode {
-  token: Token
-  kind: AstNodeKind
+  pub token: Token
+  pub kind: AstNodeKind
 }
 
 pub enum LiteralAstNode {
@@ -32,8 +32,8 @@ pub enum LiteralAstNode {
 pub enum UnaryOp { Minus, Negate }
 
 pub type UnaryAstNode {
-  op: UnaryOp
-  expr: AstNode
+  pub op: UnaryOp
+  pub expr: AstNode
 }
 
 pub enum BinaryOp {
@@ -103,9 +103,9 @@ pub enum AssignOp {
 }
 
 pub type BinaryAstNode {
-  left: AstNode
-  op: BinaryOp
-  right: AstNode
+  pub left: AstNode
+  pub op: BinaryOp
+  pub right: AstNode
 }
 
 pub enum IdentifierKind {
@@ -116,26 +116,26 @@ pub enum IdentifierKind {
 }
 
 pub type Label {
-  name: String
-  position: Position
+  pub name: String
+  pub position: Position
 }
 
 pub type AccessorAstNode {
-  root: AstNode
-  path: (Token, Label)[]
+  pub root: AstNode
+  pub path: (Token, Label)[]
 }
 
 pub type InvocationArgument {
-  label: Label?
-  value: AstNode
+  pub label: Label?
+  pub value: AstNode
 
   func position(self): Position = self.label?.position ?: self.value.token.position
 }
 
 pub type InvocationAstNode {
-  invokee: AstNode
-  typeArguments: TypeIdentifier[]
-  arguments: InvocationArgument[]
+  pub invokee: AstNode
+  pub typeArguments: TypeIdentifier[]
+  pub arguments: InvocationArgument[]
 }
 
 pub enum IndexingMode<N> {
@@ -157,10 +157,10 @@ pub enum MatchCaseKind {
 }
 
 pub type MatchCase {
-  kind: MatchCaseKind
-  position: Position
-  binding: Label?
-  body: AstNode[]
+  pub kind: MatchCaseKind
+  pub position: Position
+  pub binding: Label?
+  pub body: AstNode[]
 }
 
 pub enum TypeIdentifier {
@@ -184,51 +184,51 @@ pub enum BindingPattern {
 }
 
 pub type BindingDeclarationNode {
-  decorators: DecoratorNode[]
-  pubToken: Token?
-  bindingPattern: BindingPattern
-  typeAnnotation: TypeIdentifier?
-  expr: AstNode?
+  pub decorators: DecoratorNode[]
+  pub pubToken: Token?
+  pub bindingPattern: BindingPattern
+  pub typeAnnotation: TypeIdentifier?
+  pub expr: AstNode?
 }
 
 pub type FunctionParam {
-  label: Label
-  isVariadic: Bool = false
-  typeAnnotation: TypeIdentifier? = None
-  defaultValue: AstNode? = None
+  pub label: Label
+  pub isVariadic: Bool = false
+  pub typeAnnotation: TypeIdentifier? = None
+  pub defaultValue: AstNode? = None
 }
 
 pub type LambdaNode {
-  params: FunctionParam[]
-  body: AstNode[]
+  pub params: FunctionParam[]
+  pub body: AstNode[]
 }
 
 pub type FunctionDeclarationNode {
-  decorators: DecoratorNode[]
-  pubToken: Token?
-  name: Label
-  typeParams: Label[]
-  params: FunctionParam[]
-  returnTypeAnnotation: TypeIdentifier?
-  body: AstNode[]
+  pub decorators: DecoratorNode[]
+  pub pubToken: Token?
+  pub name: Label
+  pub typeParams: Label[]
+  pub params: FunctionParam[]
+  pub returnTypeAnnotation: TypeIdentifier?
+  pub body: AstNode[]
 }
 
 type TypeField {
-  name: Label
-  typeAnnotation: TypeIdentifier
-  initializer: AstNode?
-  pubToken: Token?
+  pub name: Label
+  pub typeAnnotation: TypeIdentifier
+  pub initializer: AstNode?
+  pub pubToken: Token?
 }
 
 pub type TypeDeclarationNode {
-  decorators: DecoratorNode[]
-  pubToken: Token?
-  name: Label
-  typeParams: Label[]
-  fields: TypeField[]
-  methods: FunctionDeclarationNode[]
-  types: TypeDeclarationNode[]
-  enums: EnumDeclarationNode[]
+  pub decorators: DecoratorNode[]
+  pub pubToken: Token?
+  pub name: Label
+  pub typeParams: Label[]
+  pub fields: TypeField[]
+  pub methods: FunctionDeclarationNode[]
+  pub types: TypeDeclarationNode[]
+  pub enums: EnumDeclarationNode[]
 }
 
 pub enum EnumVariant {
@@ -237,19 +237,19 @@ pub enum EnumVariant {
 }
 
 pub type EnumDeclarationNode {
-  decorators: DecoratorNode[]
-  pubToken: Token?
-  name: Label
-  typeParams: Label[]
-  variants: EnumVariant[]
-  methods: FunctionDeclarationNode[]
-  types: TypeDeclarationNode[]
-  enums: EnumDeclarationNode[]
+  pub decorators: DecoratorNode[]
+  pub pubToken: Token?
+  pub name: Label
+  pub typeParams: Label[]
+  pub variants: EnumVariant[]
+  pub methods: FunctionDeclarationNode[]
+  pub types: TypeDeclarationNode[]
+  pub enums: EnumDeclarationNode[]
 }
 
 pub type DecoratorNode {
-  name: Label
-  arguments: InvocationArgument[]
+  pub name: Label
+  pub arguments: InvocationArgument[]
 }
 
 pub enum AstNodeKind {
@@ -298,7 +298,7 @@ enum ParseErrorKind {
 }
 
 pub type ParseError {
-  position: Position
+  pub position: Position
   kind: ParseErrorKind
 
   func getMessage(self, filePath: String, contents: String): String {

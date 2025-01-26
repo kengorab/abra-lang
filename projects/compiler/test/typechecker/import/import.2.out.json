@@ -209,13 +209,14 @@
             "typeParams": [],
             "fields": [
               {
-                "name": { "name": "color", "position": [6, 3] },
+                "name": { "name": "color", "position": [6, 7] },
                 "type": {
                   "kind": "enumInstance",
                   "enum": { "moduleId": 3, "name": "Color" },
                   "typeParams": []
                 },
-                "initializer": null
+                "initializer": null,
+                "isPublic": true
               }
             ],
             "instanceMethods": [

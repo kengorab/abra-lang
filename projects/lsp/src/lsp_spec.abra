@@ -334,7 +334,7 @@ pub type ServerInfo {
 }
 
 pub type TextDocumentItem {
-  uri: String
+  pub uri: String
   languageId: String
   version: Int
   text: String
@@ -354,7 +354,7 @@ pub type TextDocumentItem {
 }
 
 pub type TextDocumentIdentifier {
-  uri: String
+  pub uri: String
 
   func fromJson(json: JsonValue): Result<TextDocumentIdentifier, JsonError> {
     val obj = try json.asObject()
@@ -365,7 +365,7 @@ pub type TextDocumentIdentifier {
 }
 
 pub type VersionedTextDocumentIdentifier {
-  uri: String
+  pub uri: String
   version: Int
 
   func fromJson(json: JsonValue): Result<VersionedTextDocumentIdentifier, JsonError> {
@@ -382,8 +382,8 @@ pub type VersionedTextDocumentIdentifier {
 
 pub type Position {
   // line and character are both zero-based
-  line: Int
-  character: Int
+  pub line: Int
+  pub character: Int
 
   func fromJson(json: JsonValue): Result<Position, JsonError> {
     val obj = try json.asObject()

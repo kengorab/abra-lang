@@ -10,7 +10,7 @@ enum TokenizeAndParseError {
 }
 
 pub type ModuleLoader {
-  stdRoot: String
+  pub stdRoot: String
   parsedModules: Map<String, ParsedModule> = {}
   _virtualFileSystem: Map<String, String>? = None
 
@@ -103,20 +103,20 @@ pub enum IdentifierMetaModule {
 }
 
 pub type IdentifierMeta {
-  name: String
-  kind: IdentifierKindMeta
-  definitionPosition: (IdentifierMetaModule, Position)? = None
+  pub name: String
+  pub kind: IdentifierKindMeta
+  pub definitionPosition: (IdentifierMetaModule, Position)? = None
 }
 
 pub type TypedModule {
-  id: Int
-  name: String
-  code: TypedAstNode[]
+  pub id: Int
+  pub name: String
+  pub code: TypedAstNode[]
   rootScope: Scope
   complete: Bool = false
   imports: Map<String, ImportedModule> = {}
-  exports: Map<String, Export> = {}
-  identsByLine: Map<Int, (Int, Int, IdentifierMeta)[]> = {}
+  pub exports: Map<String, Export> = {}
+  pub identsByLine: Map<Int, (Int, Int, IdentifierMeta)[]> = {}
 
   func bogus(): TypedModule = TypedModule(id: -1, name: "bogus", code: [], rootScope: Scope.bogus())
 }
@@ -128,14 +128,14 @@ pub enum VariableAlias {
 }
 
 pub type Variable {
-  label: Label
+  pub label: Label
   scope: Scope
-  mutable: Bool
-  ty: Type
-  alias: VariableAlias? = None
-  isExported: Bool = false
-  isParameter: Bool = false
-  isCaptured: Bool = false
+  pub mutable: Bool
+  pub ty: Type
+  pub alias: VariableAlias? = None
+  pub isExported: Bool = false
+  pub isParameter: Bool = false
+  pub isCaptured: Bool = false
 
   func bogus(): Variable {
     val label = Label(name: "_bogus", position: Position.bogus())
@@ -173,15 +173,15 @@ pub enum ScopeKind {
 }
 
 pub type Scope {
-  name: String
-  variables: Variable[] = []
-  functions: Function[] = []
-  types: Type[] = []
+  pub name: String
+  pub variables: Variable[] = []
+  pub functions: Function[] = []
+  pub types: Type[] = []
   structs: Struct[] = []
   enums: Enum[] = []
-  kind: ScopeKind = ScopeKind.Root
-  parent: Scope? = None
-  terminator: Terminator? = None
+  pub kind: ScopeKind = ScopeKind.Root
+  pub parent: Scope? = None
+  pub terminator: Terminator? = None
   numLambdas: Int = 0
 
   func bogus(name = ""): Scope {
@@ -210,21 +210,21 @@ pub enum BuiltinModule {
 }
 
 pub type Field {
-  name: Label
-  ty: Type
-  initializer: TypedAstNode?
-  isPublic: Bool
+  pub name: Label
+  pub ty: Type
+  pub initializer: TypedAstNode?
+  pub isPublic: Bool
 }
 
 pub type Struct {
-  moduleId: Int
-  label: Label
-  scope: Scope
-  typeParams: String[] = []
-  fields: Field[] = []
-  instanceMethods: Function[] = []
-  staticMethods: Function[] = []
-  builtin: BuiltinModule? = None
+  pub moduleId: Int
+  pub label: Label
+  pub scope: Scope
+  pub typeParams: String[] = []
+  pub fields: Field[] = []
+  pub instanceMethods: Function[] = []
+  pub staticMethods: Function[] = []
+  pub builtin: BuiltinModule? = None
 
   // Override eq method since default implementation recurses infinitely (scope -> variables -> TypeKind.Struct)
   func eq(self, other: Struct): Bool = self.moduleId == other.moduleId && self.label == other.label
@@ -263,8 +263,8 @@ pub type Struct {
 }
 
 pub type TypedEnumVariant {
-  label: Label
-  kind: EnumVariantKind
+  pub label: Label
+  pub kind: EnumVariantKind
 }
 
 pub enum EnumVariantKind {
@@ -273,13 +273,13 @@ pub enum EnumVariantKind {
 }
 
 pub type Enum {
-  moduleId: Int
-  label: Label
+  pub moduleId: Int
+  pub label: Label
   scope: Scope
-  typeParams: String[] = []
-  variants: TypedEnumVariant[] = []
-  instanceMethods: Function[] = []
-  staticMethods: Function[] = []
+  pub typeParams: String[] = []
+  pub variants: TypedEnumVariant[] = []
+  pub instanceMethods: Function[] = []
+  pub staticMethods: Function[] = []
   builtin: BuiltinModule? = None
 
   func toString(self): String = "Enum(moduleId: ${self.moduleId}, label: ${self.label})"
@@ -304,18 +304,18 @@ enum Instantiatable {
 
 
 pub type Project {
-  modules: Map<String, TypedModule> = {}
-  preludeScope: Scope = Scope.bogus()
-  preludeIntStruct: Struct = Struct(moduleId: 0, label: Label(name: "Int", position: Position.bogus()), scope: Scope(name: "Int"))
-  preludeFloatStruct: Struct = Struct(moduleId: 0, label: Label(name: "Float", position: Position.bogus()), scope: Scope(name: "Float"))
-  preludeBoolStruct: Struct = Struct(moduleId: 0, label: Label(name: "Bool", position: Position.bogus()), scope: Scope(name: "Bool"))
-  preludeCharStruct: Struct = Struct(moduleId: 0, label: Label(name: "Char", position: Position.bogus()), scope: Scope(name: "Char"))
-  preludeStringStruct: Struct = Struct(moduleId: 0, label: Label(name: "String", position: Position.bogus()), scope: Scope(name: "String"))
-  preludeArrayStruct: Struct = Struct(moduleId: 0, label: Label(name: "Array", position: Position.bogus()), scope: Scope(name: "Array"), typeParams: ["T"])
-  preludeMapStruct: Struct = Struct(moduleId: 0, label: Label(name: "Map", position: Position.bogus()), scope: Scope(name: "Array"), typeParams: ["K", "V"])
-  preludeSetStruct: Struct = Struct(moduleId: 0, label: Label(name: "Set", position: Position.bogus()), scope: Scope(name: "Set"), typeParams: ["T"])
-  preludeOptionEnum: Enum = Enum(moduleId: 0, label: Label(name: "Option", position: Position.bogus()), scope: Scope(name: "Option"), typeParams: ["T"])
-  preludeResultEnum: Enum = Enum(moduleId: 0, label: Label(name: "Result", position: Position.bogus()), scope: Scope(name: "Result"), typeParams: ["V", "E"])
+  pub modules: Map<String, TypedModule> = {}
+  pub preludeScope: Scope = Scope.bogus()
+  pub preludeIntStruct: Struct = Struct(moduleId: 0, label: Label(name: "Int", position: Position.bogus()), scope: Scope(name: "Int"))
+  pub preludeFloatStruct: Struct = Struct(moduleId: 0, label: Label(name: "Float", position: Position.bogus()), scope: Scope(name: "Float"))
+  pub preludeBoolStruct: Struct = Struct(moduleId: 0, label: Label(name: "Bool", position: Position.bogus()), scope: Scope(name: "Bool"))
+  pub preludeCharStruct: Struct = Struct(moduleId: 0, label: Label(name: "Char", position: Position.bogus()), scope: Scope(name: "Char"))
+  pub preludeStringStruct: Struct = Struct(moduleId: 0, label: Label(name: "String", position: Position.bogus()), scope: Scope(name: "String"))
+  pub preludeArrayStruct: Struct = Struct(moduleId: 0, label: Label(name: "Array", position: Position.bogus()), scope: Scope(name: "Array"), typeParams: ["T"])
+  pub preludeMapStruct: Struct = Struct(moduleId: 0, label: Label(name: "Map", position: Position.bogus()), scope: Scope(name: "Array"), typeParams: ["K", "V"])
+  pub preludeSetStruct: Struct = Struct(moduleId: 0, label: Label(name: "Set", position: Position.bogus()), scope: Scope(name: "Set"), typeParams: ["T"])
+  pub preludeOptionEnum: Enum = Enum(moduleId: 0, label: Label(name: "Option", position: Position.bogus()), scope: Scope(name: "Option"), typeParams: ["T"])
+  pub preludeResultEnum: Enum = Enum(moduleId: 0, label: Label(name: "Result", position: Position.bogus()), scope: Scope(name: "Result"), typeParams: ["V", "E"])
 
   func typesAreEquivalent(self, ty: Type, other: Type): Bool {
     match ty.kind {
@@ -404,7 +404,7 @@ pub type Project {
 }
 
 pub type Type {
-  kind: TypeKind
+  pub kind: TypeKind
 
   func repr(self, shorthand = true): String {
     match self.kind {
@@ -644,28 +644,28 @@ pub enum TypeKind {
 }
 
 pub type TypedAstNode {
-  token: Token
-  ty: Type
-  kind: TypedAstNodeKind
+  pub token: Token
+  pub ty: Type
+  pub kind: TypedAstNodeKind
 }
 
 pub type Decorator {
-  label: Label
-  arguments: LiteralAstNode[]
+  pub label: Label
+  pub arguments: LiteralAstNode[]
 }
 
 type TypedBindingDeclarationNode {
-  bindingPattern: BindingPattern
-  variables: Variable[]
-  expr: TypedAstNode?
+  pub bindingPattern: BindingPattern
+  pub variables: Variable[]
+  pub expr: TypedAstNode?
 }
 
 type TypedFunctionParam {
-  label: Label
-  ty: Type
-  defaultValue: TypedAstNode? = None
-  isVariadic: Bool = false
-  variable: Variable
+  pub label: Label
+  pub ty: Type
+  pub defaultValue: TypedAstNode? = None
+  pub isVariadic: Bool = false
+  pub variable: Variable
 }
 
 pub enum FunctionKind {
@@ -675,18 +675,18 @@ pub enum FunctionKind {
 }
 
 pub type Function {
-  label: Label
-  scope: Scope
-  kind: FunctionKind
-  typeParams: (Type, Label)[] = []
-  params: TypedFunctionParam[] = []
-  returnType: Type
-  body: TypedAstNode[] = []
-  isGenerated: Bool = false
+  pub label: Label
+  pub scope: Scope
+  pub kind: FunctionKind
+  pub typeParams: (Type, Label)[] = []
+  pub params: TypedFunctionParam[] = []
+  pub returnType: Type
+  pub body: TypedAstNode[] = []
+  pub isGenerated: Bool = false
   isLambda: Bool = false
-  decorators: Decorator[] = []
-  captures: Variable[] = []
-  capturedClosures: Function[] = []
+  pub decorators: Decorator[] = []
+  pub captures: Variable[] = []
+  pub capturedClosures: Function[] = []
 
   func generated(
     scope: Scope,
@@ -793,17 +793,17 @@ pub enum TypedMatchCaseKind {
 }
 
 pub type TypedMatchCase {
-  kind: TypedMatchCaseKind
-  binding: Variable?
-  body: TypedAstNode[]
-  terminator: Terminator?
+  pub kind: TypedMatchCaseKind
+  pub binding: Variable?
+  pub body: TypedAstNode[]
+  pub terminator: Terminator?
 }
 
 type TypedTryElseClause {
-  pattern: (BindingPattern, Variable[])?
-  errorType: Type
-  block: TypedAstNode[]
-  terminator: Terminator?
+  pub pattern: (BindingPattern, Variable[])?
+  pub errorType: Type
+  pub block: TypedAstNode[]
+  pub terminator: Terminator?
 }
 
 pub enum TypedAstNodeKind {
@@ -853,8 +853,8 @@ pub enum AccessorPathSegment {
 }
 
 type TypecheckerError {
-  modulePath: String
-  kind: TypecheckerErrorKind
+  pub modulePath: String
+  pub kind: TypecheckerErrorKind
 
   func getMessage(self): String {
     match self.kind {
@@ -893,7 +893,7 @@ pub enum TypecheckerErrorKind {
 }
 
 type TypeError {
-  position: Position
+  pub position: Position
   kind: TypeErrorKind
 
   // Note: this is different than `Typechecker#_typeIsOption`, because we don't have access to the Project here to
@@ -976,6 +976,13 @@ type TypeError {
             }
           }
         }
+      }
+      TypeErrorKind.IllegalAccess(name, kind, parentTy) => {
+        lines.push("Illegal access for $kind '$name'")
+        lines.push(self._getCursorLine(self.position, contents))
+
+        val capitalized = kind[0].toUpper() + kind[1:]
+        lines.push("$capitalized '$name' is not marked as 'pub' within type '${parentTy.repr()}'")
       }
       TypeErrorKind.MissingValExpr(name) => {
         if name |name| {
@@ -1466,6 +1473,7 @@ enum TypeErrorKind {
   DuplicateName(original: Label)
   UnknownName(name: String, kind: String)
   UnknownField(ty: Type, name: String, specialCase: UnknownFieldSpecialCase?)
+  IllegalAccess(name: String, kind: String, parentTy: Type)
   MissingValExpr(name: String?)
   MissingVarExprAndTypeAnn(name: String?)
   IllegalNonConstantEnumVariant
@@ -4276,6 +4284,14 @@ pub type Typechecker {
           StructOrEnum.Struct(struct) => {
             for field in struct.fields {
               if field.name.name == label.name {
+                // Non-public fields are only allowed to be accessed within the file in which they're defined
+                if !field.isPublic && struct.moduleId != self.currentModule.id {
+                  // For performance reasons, all fields within standard lib modules is visible to each other
+                  if !self.currentModule.name.startsWith(self.moduleLoader.stdRoot) {
+                    return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAccess(name: field.name.name, kind: "field", parentTy: ty)))
+                  }
+                }
+
                 val resolvedGenerics: Map<String, Type> = {}
                 for name, idx in struct.typeParams {
                   resolvedGenerics[name] = try generics[idx] else unreachable("typeParams.length != generics.length")

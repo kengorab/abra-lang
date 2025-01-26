@@ -18,7 +18,7 @@
   // Forcing a hash-collision
   val m3: Map<Int, String> = Map.new()
   m3.insert(1, "hello")
-  m3.insert(m3._capacity + 1, "world")
+  m3.insert(m3.getCapacity() + 1, "world")
   /// Expect: { 1: hello, 17: world }
   println(m3)
 })()
@@ -269,7 +269,7 @@ for ch, idx in { a: 1, b: 2, c: 3 } { println(ch, idx) }
 
   // Kinda dirty, but needed in order to test removing keys with the same hash
   /// Expect: true
-  println(m._getKeyHash("c", m._entries._capacity) == m._getKeyHash("s", m._entries._capacity))
+  println(m._getKeyHash("c") == m._getKeyHash("s"))
 
   /// Expect: Option.Some(value: 5)
   println(m.remove("s"))
@@ -285,7 +285,7 @@ for ch, idx in { a: 1, b: 2, c: 3 } { println(ch, idx) }
   println(m.size)
 
   /// Expect: true
-  println(m._getKeyHash("d", m._entries._capacity) == m._getKeyHash("t", m._entries._capacity))
+  println(m._getKeyHash("d") == m._getKeyHash("t"))
 
   /// Expect: Option.Some(value: 4)
   println(m.remove("d"))

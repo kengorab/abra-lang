@@ -217,28 +217,28 @@ for ch in ["a", "b", "c"] println(ch)
 (() => {
   val intArr = [1, 2, 3]
   /// Expect: [1, 2, 3] 3 4
-  println(intArr, intArr.length, intArr._capacity)
+  println(intArr, intArr.length, intArr.getCapacity())
   // Pushing beyond the capacity should expand the array
   intArr.push(4)
   intArr.push(5)
   /// Expect: [1, 2, 3, 4, 5] 5 8
-  println(intArr, intArr.length, intArr._capacity)
+  println(intArr, intArr.length, intArr.getCapacity())
 
   // Popping element should leave _capacity
   intArr.pop()
   intArr.pop()
   /// Expect: [1, 2, 3] 3 8
-  println(intArr, intArr.length, intArr._capacity)
+  println(intArr, intArr.length, intArr.getCapacity())
 
   val strArr = ["a", "b", "c"]
   val arrArr = [strArr, strArr]
   /// Expect: [[a, b, c], [a, b, c]] 3 4
-  println(arrArr, strArr.length, strArr._capacity)
+  println(arrArr, strArr.length, strArr.getCapacity())
   // Pushing beyond the capacity should expand the array
   strArr.push("d")
   strArr.push("e")
   /// Expect: [[a, b, c, d, e], [a, b, c, d, e]] 5 8
-  println(arrArr, strArr.length, strArr._capacity)
+  println(arrArr, strArr.length, strArr.getCapacity())
 })()
 
 // Array#pop

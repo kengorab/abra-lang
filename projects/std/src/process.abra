@@ -29,11 +29,11 @@ pub func getEnvVar(name: String): String? {
 }
 
 pub type Uname {
-  sysname: String
-  nodename: String
-  release: String
-  version: String
-  machine: String
+  pub sysname: String
+  pub nodename: String
+  pub release: String
+  pub version: String
+  pub machine: String
 }
 
 var _uname: Uname? = None

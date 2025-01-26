@@ -27,7 +27,7 @@ pub type ModuleBuilder {
 
     val block = Block.new(name: name)
 
-    val fn = QbeFunction(exported: exported, name: name, block: block, returnType: returnType, _parameters: [], variadicIdx: None, isVariadic: false, _comments: [], _env: None)
+    val fn = QbeFunction(exported: exported, name: name, block: block, returnType: returnType, _parameters: [], variadicIdx: None, isVariadic: false, _comments: [], env: None)
     self._functions.push(fn)
     self._functionsByName[name] = fn
     fn
@@ -126,7 +126,7 @@ pub type Var {
 
 pub type Block {
   name: String
-  currentLabel: Label
+  pub currentLabel: Label
   body: Instruction[] = []
   labelsByLine: Map<Int, Label[]> = {}
   _usedLabels: Set<Label> = #{}
@@ -750,14 +750,14 @@ pub enum QbeType {
 
 pub type QbeFunction {
   exported: Bool = false
-  name: String
-  block: Block,
-  returnType: QbeType? = None
+  pub name: String
+  pub block: Block,
+  pub returnType: QbeType? = None
   _parameters: (String, QbeType)[] = []
   variadicIdx: Int? = None
-  isVariadic: Bool = false
+  pub isVariadic: Bool = false
   _comments: String[] = []
-  _env: Value? = None
+  pub env: Value? = None
 
   func spec(name: String, returnType: QbeType? = None, parameters: (String, QbeType)[] = [], variadicIdx: Int? = None): QbeFunction {
     QbeFunction(name: name, block: Block.new(name), returnType: returnType, _parameters: parameters, variadicIdx: variadicIdx)
@@ -772,7 +772,7 @@ pub type QbeFunction {
     self.returnType?.encode(file)
     file.write(" \$${self.name}")
     file.write("(")
-    if self._env |env| {
+    if self.env |env| {
       file.write("env ")
       env.encode(file)
       if !self._parameters.isEmpty() file.write(", ")
@@ -810,7 +810,7 @@ pub type QbeFunction {
 
   func addEnv(self): Value {
     val env = Value.Ident("__env__", QbeType.Pointer)
-    self._env = Some(env)
+    self.env = Some(env)
     env
   }
 }
