@@ -112,7 +112,7 @@ pub type TypedModule {
   pub id: Int
   pub name: String
   pub code: TypedAstNode[]
-  rootScope: Scope
+  pub rootScope: Scope
   complete: Bool = false
   imports: Map<String, ImportedModule> = {}
   pub exports: Map<String, Export> = {}
@@ -1525,8 +1525,8 @@ type ParamDefaultValueContext {
 }
 
 pub type Typechecker {
-  moduleLoader: ModuleLoader
-  project: Project
+  pub moduleLoader: ModuleLoader
+  pub project: Project
   currentModule: TypedModule = TypedModule.bogus()
   currentScope: Scope = Scope(name: "\$root")
   currentTypeDecl: StructOrEnum? = None
@@ -1536,7 +1536,7 @@ pub type Typechecker {
   isEnumContainerValueAllowed: Bool = false
   numLambdas: Int = 0
   typecheckingBuiltin: BuiltinModule? = None
-  trackIdentsForLsp: Bool = false
+  pub lspMode: Bool = false
   identsByLine: Map<Int, (Int, Int, IdentifierMeta)[]> = {}
 
   func typecheckEntrypoint(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
@@ -1544,10 +1544,10 @@ pub type Typechecker {
     val preludeModulePathAbs = "/" + preludeModulePathSegs.join("/")
 
     if !self.project.modules[preludeModulePathAbs] {
-      val trackIdentsForLsp = self.trackIdentsForLsp
-      self.trackIdentsForLsp = false
+      val lspMode = self.lspMode
+      self.lspMode = false
       try self._typecheckModule(preludeModulePathAbs)
-      self.trackIdentsForLsp = trackIdentsForLsp
+      self.lspMode = lspMode
 
       val preludeStructs = [
         self.project.preludeIntStruct,
@@ -1710,7 +1710,7 @@ pub type Typechecker {
   func _resolveInstanceTypeIdentifier(self, importMod: TypedModule?, structOrEnum: StructOrEnum, label: Label, typeArguments: TypeIdentifier[]): Result<Type?, TypeError> {
     match structOrEnum {
       StructOrEnum.Struct(struct) => {
-        if self.trackIdentsForLsp {
+        if self.lspMode {
           self._addLSPIdentForStruct(label.position, struct, importMod)
         }
 
@@ -1718,7 +1718,7 @@ pub type Typechecker {
         return Ok(Some(Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), instanceTypeArgs))))
       }
       StructOrEnum.Enum(enum_) => {
-        if self.trackIdentsForLsp {
+        if self.lspMode {
           self._addLSPIdentForEnum(label.position, enum_, importMod)
         }
 
@@ -1813,7 +1813,7 @@ pub type Typechecker {
 
           if path[1] |seg| return Err(TypeError(position: seg.position, kind: TypeErrorKind.NotYetImplemented("qualified type paths longer than 2")))
 
-          if self.trackIdentsForLsp {
+          if self.lspMode {
             val ident = IdentifierMeta(
               name: aliasLabel.name,
               kind: IdentifierKindMeta.Module(mod.name),
@@ -1840,27 +1840,27 @@ pub type Typechecker {
             try ty else unreachable()
           }
           TypeKind.PrimitiveInt => {
-            if self.trackIdentsForLsp self._addLSPIdentForStruct(label.position, self.project.preludeIntStruct, None)
+            if self.lspMode self._addLSPIdentForStruct(label.position, self.project.preludeIntStruct, None)
             try self._verifyNumTypeArgs(label.position, typeArguments, 0)
             ty
           }
           TypeKind.PrimitiveFloat => {
-            if self.trackIdentsForLsp self._addLSPIdentForStruct(label.position, self.project.preludeFloatStruct, None)
+            if self.lspMode self._addLSPIdentForStruct(label.position, self.project.preludeFloatStruct, None)
             try self._verifyNumTypeArgs(label.position, typeArguments, 0)
             ty
           }
           TypeKind.PrimitiveBool => {
-            if self.trackIdentsForLsp self._addLSPIdentForStruct(label.position, self.project.preludeBoolStruct, None)
+            if self.lspMode self._addLSPIdentForStruct(label.position, self.project.preludeBoolStruct, None)
             try self._verifyNumTypeArgs(label.position, typeArguments, 0)
             ty
           }
           TypeKind.PrimitiveChar => {
-            if self.trackIdentsForLsp self._addLSPIdentForStruct(label.position, self.project.preludeCharStruct, None)
+            if self.lspMode self._addLSPIdentForStruct(label.position, self.project.preludeCharStruct, None)
             try self._verifyNumTypeArgs(label.position, typeArguments, 0)
             ty
           }
           TypeKind.PrimitiveString => {
-            if self.trackIdentsForLsp self._addLSPIdentForStruct(label.position, self.project.preludeStringStruct, None)
+            if self.lspMode self._addLSPIdentForStruct(label.position, self.project.preludeStringStruct, None)
             try self._verifyNumTypeArgs(label.position, typeArguments, 0)
             ty
           }
@@ -1914,7 +1914,7 @@ pub type Typechecker {
           _ => ty
         }
 
-        if self.trackIdentsForLsp {
+        if self.lspMode {
           if self._getLSPTypeData(t) |(definitionModule, structOrEnum)| {
             match structOrEnum {
               StructOrEnum.Struct(struct) => self._addLSPIdentForStruct(last.position, struct, importMod)
@@ -1941,7 +1941,7 @@ pub type Typechecker {
                 match structOrEnum {
                   StructOrEnum.Enum(enum_) => {
                     if enum_.variants.findIndex(v => v.label.name == label.name) |(variant, variantIdx)| {
-                      if self.trackIdentsForLsp {
+                      if self.lspMode {
                         self._addLSPIdentForEnum(first.position, enum_, importMod)
                         self._addLSPIdentForEnumVariant(label.position, enum_, variant)
                       }
@@ -2164,6 +2164,16 @@ pub type Typechecker {
       ScopeKind.Module => Ok(0) // <-- unnecessary int
       _ => Err(TypeError(position: pubToken.position, kind: TypeErrorKind.IllegalExportScope))
     }
+  }
+
+  func _isIllegalAccessForMember(self, memberModuleId: Int): Bool {
+    // Non-public members are only allowed to be accessed within the file in which they're defined
+    if memberModuleId == self.currentModule.id return false
+
+    // For performance reasons, all members within standard lib modules are visible to each other
+    if self.currentModule.name.startsWith(self.moduleLoader.stdRoot) return false
+
+    true
   }
 
   func _nextLambdaName(self): String {
@@ -3219,7 +3229,7 @@ pub type Typechecker {
         val variable = Variable(label: label, scope: self.currentScope, mutable: mutable, ty: ty)
         try self._addVariableToScope(variable)
 
-        if self.trackIdentsForLsp {
+        if self.lspMode {
           val ident = IdentifierMeta(
             name: label.name,
             kind: IdentifierKindMeta.Variable(mutable: mutable, typeRepr: ty.repr()),
@@ -3838,7 +3848,7 @@ pub type Typechecker {
                       try self._addVariableToScope(variable)
                       variables.push(variable)
 
-                      if self.trackIdentsForLsp {
+                      if self.lspMode {
                         val ident = IdentifierMeta(
                           name: arg.name,
                           kind: IdentifierKindMeta.Variable(mutable: false, typeRepr: variableTy.repr()),
@@ -4210,7 +4220,7 @@ pub type Typechecker {
       }
     }
 
-    if self.trackIdentsForLsp {
+    if self.lspMode {
       val kind = match variable.alias {
         None => IdentifierKindMeta.Variable(variable.mutable, variable.ty.repr())
         VariableAlias.Function(fn) => {
@@ -4284,12 +4294,8 @@ pub type Typechecker {
           StructOrEnum.Struct(struct) => {
             for field in struct.fields {
               if field.name.name == label.name {
-                // Non-public fields are only allowed to be accessed within the file in which they're defined
-                if !field.isPublic && struct.moduleId != self.currentModule.id {
-                  // For performance reasons, all fields within standard lib modules is visible to each other
-                  if !self.currentModule.name.startsWith(self.moduleLoader.stdRoot) {
-                    return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAccess(name: field.name.name, kind: "field", parentTy: ty)))
-                  }
+                if !field.isPublic && self._isIllegalAccessForMember(struct.moduleId) {
+                  return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAccess(name: field.name.name, kind: "field", parentTy: ty)))
                 }
 
                 val resolvedGenerics: Map<String, Type> = {}
@@ -4460,7 +4466,7 @@ pub type Typechecker {
               }
             }
 
-            if self.trackIdentsForLsp {
+            if self.lspMode {
               val typeParams: String[] = []
               for (_, label) in fn.typeParams {
                 typeParams.push(label.name)
@@ -4491,7 +4497,7 @@ pub type Typechecker {
             }
           }
           AccessorPathSegment.Field(_, ty, f, _) => {
-            if self.trackIdentsForLsp {
+            if self.lspMode {
               if self._getLSPTypeData(subjTy) |(definitionModule, parentTy)| {
                 val parentTypeRepr = parentTy.asInstanceType().repr(shorthand: false)
                 val kind = IdentifierKindMeta.Field(fieldTy: ty.repr(), parentTypeRepr: parentTypeRepr)
@@ -4505,7 +4511,7 @@ pub type Typechecker {
             }
           }
           AccessorPathSegment.EnumVariant(label, ty, enum_, variant) => {
-            if self.trackIdentsForLsp {
+            if self.lspMode {
               self._addLSPIdentForEnumVariant(label.position, enum_, variant)
             }
           }
@@ -4725,11 +4731,24 @@ pub type Typechecker {
             return Err(TypeError(position: label.position, kind: TypeErrorKind.ParameterLabelMismatch(expected: param.label.name, given: label.name)))
           }
 
-          param = try paramsByName[label.name] else {
-            return Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownParameterName(label.name)))
-          }
+          param = try paramsByName[label.name] else return Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownParameterName(label.name)))
           paramTy = param.ty
         }
+
+        if instantiationOf |instantiatable| {
+          match instantiatable {
+            Instantiatable.Struct(struct) => {
+              for f in struct.fields {
+                if f.name.name != label.name continue
+                if !f.isPublic && self._isIllegalAccessForMember(struct.moduleId) {
+                  return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAccess(name: f.name.name, kind: "field", parentTy: struct.asInstanceType())))
+                }
+              }
+            }
+            _ => {}
+          }
+        }
+
         if hasBegunOptionalParams && !mostRecentLabeledOptionalParam {
           mostRecentLabeledOptionalParam = Some(label)
         }
@@ -4738,7 +4757,7 @@ pub type Typechecker {
         }
       } else if instantiationOf |instantiatable| {
         match instantiatable {
-          Instantiatable.EnumContainerVariant(_, _, _) => {}
+          Instantiatable.EnumContainerVariant => {}
           _ => return Err(TypeError(position: arg.position(), kind: TypeErrorKind.MissingRequiredArgumentLabel))
         }
       } else if mostRecentLabeledOptionalParam |label| {
@@ -4846,11 +4865,10 @@ pub type Typechecker {
     }
 
     val typedInvokee = if instantiationOf |i| {
-      val v = match i {
+      match i {
         Instantiatable.Struct(struct) => TypedInvokee.Struct(struct)
         Instantiatable.EnumContainerVariant(enum_, variant, _) => TypedInvokee.EnumVariant(enum_, variant)
       }
-      v
     } else if selfVal |(selfVal, isOptSafe)| {
       TypedInvokee.Method(fn, selfVal, isOptSafe)
     } else {

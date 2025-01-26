@@ -114,9 +114,9 @@ pub enum NotificationMessage {
       NotificationMessage.TextDocumentDidChange => unreachable("should not be serializing 'textDocument/didChange' notification")
       NotificationMessage.TextDocumentDidSave => unreachable("should not be serializing 'textDocument/didSave' notification")
       NotificationMessage.TextDocumentPublishDiagnostics(uri, diagnostics) => {
-        JsonValue.Object(JsonObject(_map: {
+        JsonValue.Object(JsonObject.of({
           method: JsonValue.String("textDocument/publishDiagnostics"),
-          params: JsonValue.Object(JsonObject(_map: {
+          params: JsonValue.Object(JsonObject.of({
             uri: JsonValue.String(uri),
             diagnostics: JsonValue.Array(diagnostics.map(d => d.toJson()))
           }))
@@ -158,13 +158,13 @@ pub enum ResponseResult {
   func toJson(self): JsonValue {
     val obj = match self {
       ResponseResult.Initialize(capabilities, serverInfo) => {
-        JsonObject(_map: {
+        JsonObject.of({
           "capabilities": capabilities.toJson(),
           "serverInfo": serverInfo.toJson(),
         })
       }
       ResponseResult.Hover(contents, range) => {
-        val obj = JsonObject(_map: {
+        val obj = JsonObject.of({
           contents: contents.toJson()
         })
 
@@ -175,7 +175,7 @@ pub enum ResponseResult {
         obj
       }
       ResponseResult.Definition(uri, range) => {
-        JsonObject(_map: {
+        JsonObject.of({
           "uri": JsonValue.String(uri),
           "range": range.toJson(),
         })
@@ -187,8 +187,8 @@ pub enum ResponseResult {
 }
 
 pub type ResponseError {
-  code: ResponseErrorCode
-  message: String
+  pub code: ResponseErrorCode
+  pub message: String
 
   func toJson(self): JsonValue {
     val obj = JsonObject()
@@ -229,10 +229,10 @@ pub enum ResponseErrorCode {
 }
 
 pub type ServerCapabilities {
-  textDocumentSync: TextDocumentSyncOptions? = None
-  diagnosticProvider: DiagnosticOptions? = None
-  hoverProvider: Bool? = None
-  definitionProvider: Bool? = None
+  pub textDocumentSync: TextDocumentSyncOptions? = None
+  pub diagnosticProvider: DiagnosticOptions? = None
+  pub hoverProvider: Bool? = None
+  pub definitionProvider: Bool? = None
 
   func toJson(self): JsonValue {
     val obj = JsonObject()
@@ -258,9 +258,9 @@ pub type ServerCapabilities {
 }
 
 pub type TextDocumentSyncOptions {
-  openClose: Bool? = None
-  change: TextDocumentSyncKind? = None
-  save: SaveOptions? = None
+  pub openClose: Bool? = None
+  pub change: TextDocumentSyncKind? = None
+  pub save: SaveOptions? = None
 
   func toJson(self): JsonValue {
     val obj = JsonObject()
@@ -294,7 +294,7 @@ pub enum TextDocumentSyncKind {
 }
 
 pub type SaveOptions {
-  includeText: Bool? = None
+  pub includeText: Bool? = None
 
   func toJson(self): JsonValue {
     val obj = JsonObject()
@@ -308,18 +308,18 @@ pub type SaveOptions {
 }
 
 pub type DiagnosticOptions {
-  interFileDependencies: Bool
-  workspaceDiagnostics: Bool
+  pub interFileDependencies: Bool
+  pub workspaceDiagnostics: Bool
 
-  func toJson(self): JsonValue = JsonValue.Object(JsonObject(_map: {
+  func toJson(self): JsonValue = JsonValue.Object(JsonObject.of({
     interFileDependencies: JsonValue.Boolean(self.interFileDependencies),
     workspaceDiagnostics: JsonValue.Boolean(self.workspaceDiagnostics),
   }))
 }
 
 pub type ServerInfo {
-  name: String
-  version: String? = None
+  pub name: String
+  pub version: String? = None
 
   func toJson(self): JsonValue {
     val obj = JsonObject()
@@ -335,9 +335,9 @@ pub type ServerInfo {
 
 pub type TextDocumentItem {
   pub uri: String
-  languageId: String
-  version: Int
-  text: String
+  pub languageId: String
+  pub version: Int
+  pub text: String
 
   func fromJson(json: JsonValue): Result<TextDocumentItem, JsonError> {
     val obj = try json.asObject()
@@ -366,7 +366,7 @@ pub type TextDocumentIdentifier {
 
 pub type VersionedTextDocumentIdentifier {
   pub uri: String
-  version: Int
+  pub version: Int
 
   func fromJson(json: JsonValue): Result<VersionedTextDocumentIdentifier, JsonError> {
     val obj = try json.asObject()
@@ -400,7 +400,7 @@ pub type Position {
   }
 
   func toJson(self): JsonValue {
-    JsonValue.Object(JsonObject(_map: {
+    JsonValue.Object(JsonObject.of({
       line: JsonValue.Number(Either.Left(self.line)),
       character: JsonValue.Number(Either.Left(self.character)),
     }))
@@ -408,8 +408,8 @@ pub type Position {
 }
 
 pub type Range {
-  start: Position
-  end: Position // exclusive
+  pub start: Position
+  pub end: Position // exclusive
 
   func fromJson(json: JsonValue): Result<Range, JsonError> {
     val obj = try json.asObject()
@@ -422,7 +422,7 @@ pub type Range {
   }
 
   func toJson(self): JsonValue {
-    JsonValue.Object(JsonObject(_map: {
+    JsonValue.Object(JsonObject.of({
       start: self.start.toJson(),
       end: self.end.toJson(),
     }))
@@ -449,19 +449,19 @@ pub enum TextDocumentContentChangeEvent {
 }
 
 pub type Diagnostic {
-  range: ((Int, Int), (Int, Int)) // (line: Int, character: Int), zero-based
-  severity: DiagnosticSeverity? = None
-  message: String
+  pub range: ((Int, Int), (Int, Int)) // (line: Int, character: Int), zero-based
+  pub severity: DiagnosticSeverity? = None
+  pub message: String
 
   func toJson(self): JsonValue {
     val obj = JsonObject()
 
-    obj.set("range", JsonValue.Object(JsonObject(_map: {
-      start: JsonValue.Object(JsonObject(_map: {
+    obj.set("range", JsonValue.Object(JsonObject.of({
+      start: JsonValue.Object(JsonObject.of({
         line: JsonValue.Number(Either.Left(self.range[0][0])),
         character: JsonValue.Number(Either.Left(self.range[0][1])),
       })),
-      end: JsonValue.Object(JsonObject(_map: {
+      end: JsonValue.Object(JsonObject.of({
         line: JsonValue.Number(Either.Left(self.range[1][0])),
         character: JsonValue.Number(Either.Left(self.range[1][1])),
       }))
@@ -492,11 +492,11 @@ pub enum DiagnosticSeverity {
 }
 
 pub type MarkupContent {
-  kind: MarkupKind
-  value: String
+  pub kind: MarkupKind
+  pub value: String
 
   func toJson(self): JsonValue {
-    JsonValue.Object(JsonObject(_map: {
+    JsonValue.Object(JsonObject.of({
       kind: JsonValue.String(match self.kind {
         MarkupKind.PlainText => "plaintext"
         MarkupKind.Markdown => "markdown"

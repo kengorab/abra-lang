@@ -263,7 +263,7 @@ pub type AbraLanguageService {
     val typechecker = Typechecker(
       moduleLoader: self._moduleLoader,
       project: self._project,
-      trackIdentsForLsp: true,
+      lspMode: true,
     )
 
     match typechecker.typecheckEntrypoint(filePath) {

@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:4:3
+Illegal access for field 'a'
+  |  f.a
+       ^
+Field 'a' is not marked as 'pub' within type 'Foo'

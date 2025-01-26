@@ -1,0 +1,4 @@
+import Foo from "./_exports"
+
+val f = Foo(b: "asdf")
+f.a

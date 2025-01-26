@@ -1,3 +1,4 @@
-val a = [1, 2, 3]
+import QbeData, QbeDataKind from "./src/qbe"
 
-println(a.length)
+val d = QbeData(name: "__argc", kind: QbeDataKind.Constants([]))
+println(d)
