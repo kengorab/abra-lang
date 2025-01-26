@@ -62,9 +62,9 @@ pub type ModuleBuilder {
 }
 
 pub type QbeData {
-  name: String
+  pub name: String
   align: Int? = None
-  kind: QbeDataKind
+  pub kind: QbeDataKind
 
   func encode(self, file: File) {
     file.write("data $")
@@ -120,8 +120,8 @@ pub type Label {
 }
 
 pub type Var {
-  name: String
-  location: (Int, Int)
+  pub name: String
+  pub location: (Int, Int)
 }
 
 pub type Block {

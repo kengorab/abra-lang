@@ -1,0 +1,4 @@
+pub type Foo {
+  a: Int = 3
+  pub b: String
+}

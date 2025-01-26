@@ -75,6 +75,10 @@ pub enum JsonError {
 pub type JsonObject {
   _map: Map<String, JsonValue> = {}
 
+  func of(items: Map<String, JsonValue>): JsonObject {
+    JsonObject(_map: items)
+  }
+
   func set(self, key: String, value: JsonValue) {
     self._map[key] = value
   }
