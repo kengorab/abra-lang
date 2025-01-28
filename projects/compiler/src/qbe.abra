@@ -7,7 +7,7 @@ pub type ModuleBuilder {
   _functions: QbeFunction[] = []
   _functionsByName: Map<String, QbeFunction> = {}
 
-  func writeToFile(self, file: File) {
+  pub func writeToFile(self, file: File) {
     for data, idx in self._data {
       data.encode(file)
       file.writeln()
@@ -20,9 +20,9 @@ pub type ModuleBuilder {
     }
   }
 
-  func getFunction(self, name: String): QbeFunction? = self._functionsByName[name]
+  pub func getFunction(self, name: String): QbeFunction? = self._functionsByName[name]
 
-  func buildFunction(self, name: String, returnType: QbeType?, exported = false): QbeFunction {
+  pub func buildFunction(self, name: String, returnType: QbeType?, exported = false): QbeFunction {
     if self._functionsByName[name] |fn| return fn
 
     val block = Block.new(name: name)
@@ -33,7 +33,7 @@ pub type ModuleBuilder {
     fn
   }
 
-  func buildGlobalString(self, string: String, name: String? = None): Value {
+  pub func buildGlobalString(self, string: String, name: String? = None): Value {
     if self._globalStrs[string] |ptr| return ptr
 
     val dataName = name ?: "_${self._data.length}"
@@ -44,9 +44,9 @@ pub type ModuleBuilder {
     ptr
   }
 
-  func getData(self, name: String): Value? = self._dataByName[name]
+  pub func getData(self, name: String): Value? = self._dataByName[name]
 
-  func addData(self, data: QbeData): (Value, Int) {
+  pub func addData(self, data: QbeData): (Value, Int) {
     val idx = self._data.length
     self._data.push(data)
     val dataGlobal = Value.Global(data.name, QbeType.Pointer)
@@ -54,7 +54,7 @@ pub type ModuleBuilder {
     (dataGlobal, idx)
   }
 
-  func setData(self, idx: Int, newData: QbeDataKind) {
+  pub func setData(self, idx: Int, newData: QbeDataKind) {
     if self._data[idx] |data| {
       data.kind = newData
     }
@@ -163,7 +163,7 @@ pub type Block {
     self.body.push(instr)
   }
 
-  func verify(self): Result<Int, String> {
+  pub func verify(self): Result<Int, String> {
     val errors: String[] = []
     for label in self._usedLabels {
       if !label.offset {
@@ -188,12 +188,12 @@ pub type Block {
     comments.insert(comment)
   }
 
-  func addComment(self, comment: String) = self._addComment(comment)
+  pub func addComment(self, comment: String) = self._addComment(comment)
 
   // todo: ew
-  func addCommentBefore(self, comment: String, numBack = 1) = self._addComment(comment, if self.body.length - numBack < 0 { 0 } else { self.body.length - numBack })
+  pub func addCommentBefore(self, comment: String, numBack = 1) = self._addComment(comment, if self.body.length - numBack < 0 { 0 } else { self.body.length - numBack })
 
-  func addLabel(self, name: String): Label {
+  pub func addLabel(self, name: String): Label {
     if self._labelNames[name] |count| {
       self._labelNames[name] = count + 1
       Label(name: "${name}_$count")
@@ -203,7 +203,7 @@ pub type Block {
     }
   }
 
-  func registerLabel(self, label: Label): Result<Label, String> {
+  pub func registerLabel(self, label: Label): Result<Label, String> {
     if label.offset |offset| return Err("Label ${label.name} already registered with offset $offset")
 
     val offset = self.body.length
@@ -216,7 +216,7 @@ pub type Block {
     Ok(label)
   }
 
-  func addVar(self, v: Var, name: String? = None): String {
+  pub func addVar(self, v: Var, name: String? = None): String {
     val varsForName = self.variables.getOrInsert(v.name, () => ({}))
 
     val varName = name ?: "${v.name}.${varsForName.size}.slot"
@@ -224,11 +224,11 @@ pub type Block {
     varName
   }
 
-  func lookupVarName(self, v: Var): String? = if self.variables[v.name] |varsForName| varsForName[v] else None
+  pub func lookupVarName(self, v: Var): String? = if self.variables[v.name] |varsForName| varsForName[v] else None
 
   // instruction builders
 
-  func buildAdd(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  pub func buildAdd(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'add' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
@@ -241,7 +241,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildSub(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  pub func buildSub(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'sub' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
@@ -254,7 +254,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildDiv(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  pub func buildDiv(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'div' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
@@ -267,7 +267,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildMul(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  pub func buildMul(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'mul' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
@@ -280,7 +280,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildNeg(self, expr: Value, dst: String? = None): Result<Value, String> {
+  pub func buildNeg(self, expr: Value, dst: String? = None): Result<Value, String> {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, expr.ty())
 
@@ -289,7 +289,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildRem(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  pub func buildRem(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'rem' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
@@ -302,7 +302,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildAnd(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  pub func buildAnd(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'and' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
@@ -315,7 +315,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildOr(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  pub func buildOr(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'or' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
@@ -328,7 +328,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildXor(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  pub func buildXor(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'xor' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
@@ -341,7 +341,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildShl(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  pub func buildShl(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'shl' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
@@ -354,7 +354,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildShr(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  pub func buildShr(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'shr' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else lty
@@ -367,7 +367,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildAlloc4(self, size: Int, dst: String? = None): Value {
+  pub func buildAlloc4(self, size: Int, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, QbeType.Pointer)
 
@@ -376,7 +376,7 @@ pub type Block {
     local
   }
 
-  func buildAlloc8(self, size: Int, dst: String? = None): Value {
+  pub func buildAlloc8(self, size: Int, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, QbeType.Pointer)
 
@@ -385,7 +385,7 @@ pub type Block {
     local
   }
 
-  func buildLToF(self, v: Value, signed = true, dst: String? = None): Value {
+  pub func buildLToF(self, v: Value, signed = true, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, QbeType.F64)
 
@@ -394,7 +394,7 @@ pub type Block {
     local
   }
 
-  func buildCompareEq(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  pub func buildCompareEq(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'ceqw' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else QbeType.U32
@@ -407,7 +407,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildCompareNeq(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  pub func buildCompareNeq(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'cnew' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else QbeType.U32
@@ -420,7 +420,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildCompareLt(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  pub func buildCompareLt(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'lt' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else QbeType.U32
@@ -433,7 +433,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildCompareLte(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  pub func buildCompareLte(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'lte' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else QbeType.U32
@@ -446,7 +446,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildCompareGt(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  pub func buildCompareGt(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'gt' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else QbeType.U32
@@ -459,7 +459,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildCompareGte(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
+  pub func buildCompareGte(self, left: Value, right: Value, dst: String? = None): Result<Value, String> {
     val lty = left.ty()
     val rty = right.ty()
     val resTy = if lty.repr() != rty.repr() return Err("incompatible types for 'gte' instruction: ${lty.repr()}, ${rty.repr()} ($left, $right)") else QbeType.U32
@@ -472,7 +472,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildLoad(self, ty: QbeType, mem: Value, dst: String? = None): Value {
+  pub func buildLoad(self, ty: QbeType, mem: Value, dst: String? = None): Value {
     match ty {
       QbeType.U8 => self.buildLoadB(mem, dst)
       QbeType.U16 => self.buildLoadW(mem, dst)
@@ -491,7 +491,7 @@ pub type Block {
     }
   }
 
-  func buildLoadB(self, mem: Value, dst: String? = None): Value {
+  pub func buildLoadB(self, mem: Value, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, QbeType.U64)
 
@@ -501,7 +501,7 @@ pub type Block {
     local
   }
 
-  func buildLoadW(self, mem: Value, dst: String? = None): Value {
+  pub func buildLoadW(self, mem: Value, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, QbeType.U32)
 
@@ -511,7 +511,7 @@ pub type Block {
     local
   }
 
-  func buildLoadL(self, mem: Value, dst: String? = None): Value {
+  pub func buildLoadL(self, mem: Value, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, QbeType.U64)
 
@@ -520,7 +520,7 @@ pub type Block {
     local
   }
 
-  func buildLoadS(self, mem: Value, dst: String? = None): Value {
+  pub func buildLoadS(self, mem: Value, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, QbeType.F32)
 
@@ -529,7 +529,7 @@ pub type Block {
     local
   }
 
-  func buildLoadD(self, mem: Value, dst: String? = None): Value {
+  pub func buildLoadD(self, mem: Value, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, QbeType.F64)
 
@@ -538,7 +538,7 @@ pub type Block {
     local
   }
 
-  func buildStore(self, ty: QbeType, value: Value, mem: Value) {
+  pub func buildStore(self, ty: QbeType, value: Value, mem: Value) {
     match ty {
       QbeType.U8 => self.buildStoreB(value, mem)
       QbeType.U16 => self.buildStoreW(value, mem)
@@ -550,29 +550,29 @@ pub type Block {
     }
   }
 
-  func buildStoreB(self, value: Value, mem: Value) {
+  pub func buildStoreB(self, value: Value, mem: Value) {
     // TODO: condense these methods into one which automatically switches on the type of `value`
     self.append(Instruction.StoreB(value: value, mem: mem))
   }
 
-  func buildStoreW(self, value: Value, mem: Value) {
+  pub func buildStoreW(self, value: Value, mem: Value) {
     // TODO: condense these methods into one which automatically switches on the type of `value`
     self.append(Instruction.StoreW(value: value, mem: mem))
   }
 
-  func buildStoreL(self, value: Value, mem: Value) {
+  pub func buildStoreL(self, value: Value, mem: Value) {
     self.append(Instruction.StoreL(value: value, mem: mem))
   }
 
-  func buildStoreS(self, value: Value, mem: Value) {
+  pub func buildStoreS(self, value: Value, mem: Value) {
     self.append(Instruction.StoreS(value: value, mem: mem))
   }
 
-  func buildStoreD(self, value: Value, mem: Value) {
+  pub func buildStoreD(self, value: Value, mem: Value) {
     self.append(Instruction.StoreD(value: value, mem: mem))
   }
 
-  func buildExt(self, value: Value, signed = true, dst: String? = None): Value {
+  pub func buildExt(self, value: Value, signed = true, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, QbeType.U64)
 
@@ -581,7 +581,7 @@ pub type Block {
     local
   }
 
-  func buildFToL(self, v: Value, signed = true, dst: String? = None): Value {
+  pub func buildFToL(self, v: Value, signed = true, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, QbeType.U64)
 
@@ -590,7 +590,7 @@ pub type Block {
     local
   }
 
-  func buildCastD(self, value: Value, dst: String? = None): Value {
+  pub func buildCastD(self, value: Value, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, QbeType.U64)
 
@@ -599,7 +599,7 @@ pub type Block {
     local
   }
 
-  func buildCall(self, callable: Callable, arguments: Value[], dst: String? = None, envPtr: Value? = None): Result<Value, String> {
+  pub func buildCall(self, callable: Callable, arguments: Value[], dst: String? = None, envPtr: Value? = None): Result<Value, String> {
     val dest = dst ?: self._nextLocal()
 
     val returnType = match callable {
@@ -628,7 +628,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildCallRaw(self, fnName: String, returnType: QbeType, arguments: Value[], dst: String? = None): Result<Value, String> {
+  pub func buildCallRaw(self, fnName: String, returnType: QbeType, arguments: Value[], dst: String? = None): Result<Value, String> {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, returnType)
 
@@ -637,7 +637,7 @@ pub type Block {
     Ok(local)
   }
 
-  func buildVoidCall(self, callable: Callable, arguments: Value[], envPtr: Value? = None) {
+  pub func buildVoidCall(self, callable: Callable, arguments: Value[], envPtr: Value? = None) {
     match callable {
       Callable.Function(fn) => {
         val fnIdent = Value.Global(fn.name, QbeType.Pointer)
@@ -653,11 +653,11 @@ pub type Block {
     }
   }
 
-  func buildVoidCallRaw(self, fnName: String, arguments: Value[]) {
+  pub func buildVoidCallRaw(self, fnName: String, arguments: Value[]) {
     self.append(Instruction.Call(dst: None, fn: Value.Global(fnName, QbeType.Pointer), args: arguments, env: None))
   }
 
-  func buildPhi(self, cases: (Label, Value)[], dst: String? = None): Result<Value, String> {
+  pub func buildPhi(self, cases: (Label, Value)[], dst: String? = None): Result<Value, String> {
     var ty = if cases[0] |(_, value)| value.ty() else return Err("phi requires at least 1 label")
     for (label, value) in cases {
       if ty != value.ty() return Err("phi case type mismatch: @${label.name} (type: ${value.ty()}) doesn't match previous (type: $ty)")
@@ -673,22 +673,22 @@ pub type Block {
     Ok(local)
   }
 
-  func buildJmp(self, label: Label) {
+  pub func buildJmp(self, label: Label) {
     self._usedLabels.insert(label)
     self.append(Instruction.Jmp(label))
   }
 
-  func buildJnz(self, cond: Value, ifNonZero: Label, ifZero: Label) {
+  pub func buildJnz(self, cond: Value, ifNonZero: Label, ifZero: Label) {
     self._usedLabels.insert(ifNonZero)
     self._usedLabels.insert(ifZero)
     self.append(Instruction.Jnz(cond, ifNonZero, ifZero))
   }
 
-  func buildReturn(self, value: Value? = None) {
+  pub func buildReturn(self, value: Value? = None) {
     self.append(Instruction.Return(value))
   }
 
-  func buildHalt(self) {
+  pub func buildHalt(self) {
     self.append(Instruction.Hlt)
   }
 }
@@ -707,7 +707,7 @@ pub enum QbeType {
   F32     // 's'
   F64     // 'd'
 
-  func size(self): Int {
+  pub func size(self): Int {
     match self {
       QbeType.U8 => 1
       QbeType.U16 => 2
@@ -731,7 +731,7 @@ pub enum QbeType {
     }
   }
 
-  func zeroValue(self): Value {
+  pub func zeroValue(self): Value {
     match self {
       QbeType.U8 => Value.Int32(0)
       QbeType.U16 => Value.Int32(0)
@@ -759,7 +759,7 @@ pub type QbeFunction {
   _comments: String[] = []
   pub env: Value? = None
 
-  func spec(name: String, returnType: QbeType? = None, parameters: (String, QbeType)[] = [], variadicIdx: Int? = None): QbeFunction {
+  pub func spec(name: String, returnType: QbeType? = None, parameters: (String, QbeType)[] = [], variadicIdx: Int? = None): QbeFunction {
     QbeFunction(name: name, block: Block.new(name), returnType: returnType, _parameters: parameters, variadicIdx: variadicIdx)
   }
 
@@ -795,20 +795,20 @@ pub type QbeFunction {
     file.writeln("}")
   }
 
-  func addComment(self, comment: String) {
+  pub func addComment(self, comment: String) {
     self._comments.push(comment)
   }
 
-  func addCommentMultiline(self, comment: String[]) {
+  pub func addCommentMultiline(self, comment: String[]) {
     for line in comment self._comments.push(line)
   }
 
-  func addParameter(self, name: String, ty: QbeType): Value {
+  pub func addParameter(self, name: String, ty: QbeType): Value {
     self._parameters.push((name, ty))
     Value.Ident(name, ty)
   }
 
-  func addEnv(self): Value {
+  pub func addEnv(self): Value {
     val env = Value.Ident("__env__", QbeType.Pointer)
     self.env = Some(env)
     env
@@ -834,7 +834,7 @@ pub enum Value {
     }
   }
 
-  func ty(self): QbeType = match self {
+  pub func ty(self): QbeType = match self {
       Value.Ident(_, ty) => ty
       Value.Global(_, ty) => ty
       Value.Int32 => QbeType.U32
@@ -843,7 +843,7 @@ pub enum Value {
       Value.Float => QbeType.F64
   }
 
-  func repr(self): String {
+  pub func repr(self): String {
     match self {
       Value.Ident(name, _) => "%$name"
       Value.Global(name, _) => "\$$name"

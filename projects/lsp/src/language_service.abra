@@ -14,7 +14,7 @@ pub type AbraLanguageService {
   _initialized: Bool = false
   _root: String = ""
 
-  func new(abraStdRoot: String): AbraLanguageService {
+  pub func new(abraStdRoot: String): AbraLanguageService {
     // val virtualFileSystem: Map<String, String> = {}
     // val moduleLoader = ModuleLoader.usingVirtualFileSystem(stdRoot: abraStdRoot, fileMap: virtualFileSystem)
     val moduleLoader = ModuleLoader(stdRoot: abraStdRoot)
@@ -324,7 +324,7 @@ pub type AbraLanguageService {
 
   // Dispatch
 
-  func handleRequest(self, req: RequestMessage): ResponseMessage {
+  pub func handleRequest(self, req: RequestMessage): ResponseMessage {
     match req {
       RequestMessage.Initialize(id, processId, rootPath) => self._initialize(id, processId, rootPath)
       RequestMessage.Hover(id, textDocument, position) => self._hover(id, textDocument, position)
@@ -332,7 +332,7 @@ pub type AbraLanguageService {
     }
   }
 
-  func handleNotification(self, req: NotificationMessage) {
+  pub func handleNotification(self, req: NotificationMessage) {
     match req {
       NotificationMessage.Initialized => { /* no-op */ }
       NotificationMessage.TextDocumentDidOpen(textDocument) => self._textDocumentDidOpen(textDocument)
@@ -341,7 +341,7 @@ pub type AbraLanguageService {
     }
   }
 
-  func sendResponse(self, res: ResponseMessage) {
+  pub func sendResponse(self, res: ResponseMessage) {
     self._sendJson(res.toJson())
   }
 

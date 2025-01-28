@@ -5,7 +5,7 @@ import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./tes
 pub type Jsonifier {
   indentLevel: Int = 0
 
-  func printModules(self, modules: TypedModule[]) {
+  pub func printModules(self, modules: TypedModule[]) {
     val manyModules = modules.length > 1
 
     if manyModules {

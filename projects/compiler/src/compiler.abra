@@ -9,7 +9,7 @@ type CompilationError {
   modulePath: String
   error: CompileError
 
-  func getMessage(self): String {
+  pub func getMessage(self): String {
     val contents = match fs.readFile(self.modulePath) {
       Ok(v) => v
       Err => return "Could not read file '${self.modulePath}'"
@@ -183,7 +183,7 @@ pub type Compiler {
   _functionStructs: Map<String, (Struct, Function)> = {}
   _aliasedTypeNames: Map<String, String> = {}
 
-  func compile(project: Project): Result<ModuleBuilder, CompilationError> {
+  pub func compile(project: Project): Result<ModuleBuilder, CompilationError> {
     val builder = ModuleBuilder()
 
     val mainFn = builder.buildFunction(name: "main", returnType: Some(QbeType.U32), exported: true)

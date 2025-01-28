@@ -55,7 +55,7 @@ pub type File {
   accessMode: AccessMode
   path: String
 
-  func close(self): Result<Int, FileIOError> {
+  pub func close(self): Result<Int, FileIOError> {
     if libc.close(self._fd) == -1 {
       val errMsg = _strerror(libc.errno())
       return Err(error: FileIOError.CouldNotClose(message: "Could not close '${self.path}': $errMsg"))
@@ -64,12 +64,12 @@ pub type File {
     Ok(self._fd)
   }
 
-  func write(self, str: String) {
+  pub func write(self, str: String) {
     // TODO: handle error here (and also in prelude:stdoutWrite)
     libc.write(self._fd, str._buffer, str.length)
   }
 
-  func writeln(self, str: String = "") {
+  pub func writeln(self, str: String = "") {
     if !str.isEmpty() libc.write(self._fd, str._buffer, str.length)
     libc.write(self._fd, "\n"._buffer, 1)
   }
