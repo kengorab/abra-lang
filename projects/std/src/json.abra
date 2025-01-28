@@ -6,7 +6,7 @@ pub enum JsonValue {
   Array(items: JsonValue[])
   Object(obj: JsonObject)
 
-  func encode(self): String {
+  pub func encode(self): String {
     match self {
       JsonValue.Null => "null"
       JsonValue.Number(value) => match value {
@@ -61,7 +61,7 @@ pub enum JsonValue {
     else => Err(JsonError.TypeMismatch(expected: JsonValueKind.Array, actual: self.kind()))
   }
 
-  func asObject(self): Result<JsonObject, JsonError> = match self {
+  pub func asObject(self): Result<JsonObject, JsonError> = match self {
     JsonValue.Object(v) => Ok(v)
     else => Err(JsonError.TypeMismatch(expected: JsonValueKind.Object, actual: self.kind()))
   }
@@ -75,19 +75,20 @@ pub enum JsonError {
 pub type JsonObject {
   _map: Map<String, JsonValue> = {}
 
-  func of(items: Map<String, JsonValue>): JsonObject {
+  pub func of(items: Map<String, JsonValue>): JsonObject {
     JsonObject(_map: items)
   }
 
-  func set(self, key: String, value: JsonValue) {
+  pub func set(self, key: String, value: JsonValue) {
     self._map[key] = value
   }
 
-  func getValueRequired(self, key: String): Result<JsonValue, JsonError> =
+  pub func getValueRequired(self, key: String): Result<JsonValue, JsonError> =
     if self._map[key] |v| Ok(v) else Err(JsonError.NoSuchKey(key))
-  func getValue(self, key: String): JsonValue? = self._map[key]
 
-  func getNumberRequired(self, key: String): Result<Either<Int, Float>, JsonError> {
+  pub func getValue(self, key: String): JsonValue? = self._map[key]
+
+  pub func getNumberRequired(self, key: String): Result<Either<Int, Float>, JsonError> {
     match self._map[key] {
       None => Err(JsonError.NoSuchKey(key))
       JsonValue.Number(v) => Ok(v)
@@ -95,10 +96,10 @@ pub type JsonObject {
     }
   }
 
-  func getNumber(self, key: String): Either<Int, Float>? =
+  pub func getNumber(self, key: String): Either<Int, Float>? =
     match self.getNumberRequired(key) { Ok(v) => Some(v), Err => None }
 
-  func getStringRequired(self, key: String): Result<String, JsonError> {
+  pub func getStringRequired(self, key: String): Result<String, JsonError> {
     match self._map[key] {
       None => Err(JsonError.NoSuchKey(key))
       JsonValue.String(v) => Ok(v)
@@ -106,10 +107,10 @@ pub type JsonObject {
     }
   }
 
-  func getString(self, key: String): String? =
+  pub func getString(self, key: String): String? =
     match self.getStringRequired(key) { Ok(v) => Some(v), Err => None }
 
-  func getBooleanRequired(self, key: String): Result<Bool, JsonError> {
+  pub func getBooleanRequired(self, key: String): Result<Bool, JsonError> {
     match self._map[key] {
       None => Err(JsonError.NoSuchKey(key))
       JsonValue.Boolean(v) => Ok(v)
@@ -117,7 +118,10 @@ pub type JsonObject {
     }
   }
 
-  func getArrayRequired(self, key: String): Result<JsonValue[], JsonError> {
+  pub func getBoolean(self, key: String): Bool? =
+    match self.getBooleanRequired(key) { Ok(v) => Some(v), Err => None }
+
+  pub func getArrayRequired(self, key: String): Result<JsonValue[], JsonError> {
     match self._map[key] {
       None => Err(JsonError.NoSuchKey(key))
       JsonValue.Array(v) => Ok(v)
@@ -125,7 +129,10 @@ pub type JsonObject {
     }
   }
 
-  func getObjectRequired(self, key: String): Result<JsonObject, JsonError> {
+  pub func getArray(self, key: String): JsonValue[]? =
+    match self.getArrayRequired(key) { Ok(v) => Some(v), Err => None }
+
+  pub func getObjectRequired(self, key: String): Result<JsonObject, JsonError> {
     match self._map[key] {
       None => Err(JsonError.NoSuchKey(key))
       JsonValue.Object(v) => Ok(v)
@@ -133,7 +140,7 @@ pub type JsonObject {
     }
   }
 
-  func getObject(self, key: String): JsonObject? =
+  pub func getObject(self, key: String): JsonObject? =
     match self.getObjectRequired(key) { Ok(v) => Some(v), Err => None }
 }
 
@@ -162,7 +169,7 @@ pub enum JsonParseError {
 pub type JsonParser {
   _chars: CharsIterator
 
-  func parseString(string: String): Result<JsonValue, JsonParseError> {
+  pub func parseString(string: String): Result<JsonValue, JsonParseError> {
     val charsIter = string.chars()
     val parser = JsonParser(_chars: charsIter)
 

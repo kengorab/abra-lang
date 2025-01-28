@@ -56,7 +56,7 @@ pub enum BinaryOp {
   GTE
   Shr
 
-  func repr(self): String = match self {
+  pub func repr(self): String = match self {
     BinaryOp.Add => "+"
     BinaryOp.Sub => "-"
     BinaryOp.Mul => "*"
@@ -129,7 +129,7 @@ pub type InvocationArgument {
   pub label: Label?
   pub value: AstNode
 
-  func position(self): Position = self.label?.position ?: self.value.token.position
+  pub func position(self): Position = self.label?.position ?: self.value.token.position
 }
 
 pub type InvocationAstNode {
@@ -175,7 +175,7 @@ pub enum BindingPattern {
   Variable(label: Label)
   Tuple(lParenTok: Token, patterns: BindingPattern[])
 
-  func position(self): Position {
+  pub func position(self): Position {
     match self {
       BindingPattern.Variable(label) => label.position
       BindingPattern.Tuple(lParenTok, _) => lParenTok.position
@@ -301,7 +301,7 @@ pub type ParseError {
   pub position: Position
   kind: ParseErrorKind
 
-  func getMessage(self, filePath: String, contents: String): String {
+  pub func getMessage(self, filePath: String, contents: String): String {
     val lines = ["Error at $filePath:${self.position.line}:${self.position.col}"]
 
     match self.kind {
@@ -354,7 +354,7 @@ pub type Parser {
   _seenDecorators: DecoratorNode[] = []
   _pubToken: Token? = None
 
-  func parse(tokens: Token[]): Result<ParsedModule, ParseError> {
+  pub func parse(tokens: Token[]): Result<ParsedModule, ParseError> {
     val parser = Parser(_tokens: tokens)
 
     val imports: ImportNode[] = []
@@ -741,10 +741,14 @@ pub type Parser {
           fieldPubToken = None
         }
         TokenKind.Pub => {
-          if fieldPubToken |token| {
-            return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], nextToken.kind)))
+          if fieldPubToken |token| return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], nextToken.kind)))
+
+          // If the token after 'pub' is an identifier, consume 'pub'. Otherwise leave it and it'll be picked up while parsing inner decls
+          match self._peek(ahead: 1)?.kind {
+            TokenKind.Ident => self._advance()
+            else => break
           }
-          self._advance() // consume 'pub' token
+
           fieldPubToken = Some(nextToken)
         }
         _ => break

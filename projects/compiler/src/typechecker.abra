@@ -28,7 +28,7 @@ pub type ModuleLoader {
 
   func hasSeenModule(self, modulePathAbs: String): Bool = self.parsedModules.containsKey(modulePathAbs)
 
-  func invalidateModule(self, modulePathAbs: String) {
+  pub func invalidateModule(self, modulePathAbs: String) {
     self.parsedModules.remove(modulePathAbs)
   }
 
@@ -142,7 +142,7 @@ pub type Variable {
     Variable(label: label, scope: Scope.bogus(), mutable: false, ty: Type(kind: TypeKind.Never))
   }
 
-  func isGlobal(self): Int? = match self.scope.kind { ScopeKind.Module(id, _) => Some(id), _ => None }
+  pub func isGlobal(self): Int? = match self.scope.kind { ScopeKind.Module(id, _) => Some(id), _ => None }
 }
 
 pub enum Terminator {
@@ -184,14 +184,14 @@ pub type Scope {
   pub terminator: Terminator? = None
   numLambdas: Int = 0
 
-  func bogus(name = ""): Scope {
+  pub func bogus(name = ""): Scope {
     val scopeName = if name == "" "bogus" else "bogus($name)"
     Scope(name: scopeName)
   }
 
-  func eq(self, other: Scope): Bool = self.name == other.name
+  pub func eq(self, other: Scope): Bool = self.name == other.name
 
-  func makeChild(self, name: String, kind: ScopeKind): Scope = Scope(name: "${self.name}::$name", kind: kind, parent: Some(self))
+  pub func makeChild(self, name: String, kind: ScopeKind): Scope = Scope(name: "${self.name}::$name", kind: kind, parent: Some(self))
 
   func contains(self, other: Scope): Bool {
     var child = Some(other)
@@ -226,18 +226,7 @@ pub type Struct {
   pub staticMethods: Function[] = []
   pub builtin: BuiltinModule? = None
 
-  // Override eq method since default implementation recurses infinitely (scope -> variables -> TypeKind.Struct)
-  func eq(self, other: Struct): Bool = self.moduleId == other.moduleId && self.label == other.label
-
-  // Override hash method since default implementation recurses infinitely (scope -> variables -> TypeKind.Struct)
-  func hash(self): Int = self.moduleId + self.label.hash() * 17
-
-  func asInstanceType(self): Type {
-    val typeArgs = self.typeParams.map(p => Type(kind: TypeKind.Generic(p)))
-    Type(kind: TypeKind.Instance(StructOrEnum.Struct(self), typeArgs))
-  }
-
-  func makeDummy(moduleId: Int, name: String, typeParams: String[] = [], fields: (String, Type)[] = []): Struct {
+  pub func makeDummy(moduleId: Int, name: String, typeParams: String[] = [], fields: (String, Type)[] = []): Struct {
     val bogusPosition = Position.bogus()
     val bogusScope = Scope.bogus(name)
 
@@ -259,6 +248,17 @@ pub type Struct {
     struct.instanceMethods.push(Function.generated(bogusScope, "eq", [("other", selfInstanceType)], Type(kind: TypeKind.PrimitiveBool), FunctionKind.InstanceMethod(Some(structOrEnum), true)))
 
     struct
+  }
+
+  // Override eq method since default implementation recurses infinitely (scope -> variables -> TypeKind.Struct)
+  pub func eq(self, other: Struct): Bool = self.moduleId == other.moduleId && self.label == other.label
+
+  // Override hash method since default implementation recurses infinitely (scope -> variables -> TypeKind.Struct)
+  pub func hash(self): Int = self.moduleId + self.label.hash() * 17
+
+  func asInstanceType(self): Type {
+    val typeArgs = self.typeParams.map(p => Type(kind: TypeKind.Generic(p)))
+    Type(kind: TypeKind.Instance(StructOrEnum.Struct(self), typeArgs))
   }
 }
 
@@ -317,7 +317,7 @@ pub type Project {
   pub preludeOptionEnum: Enum = Enum(moduleId: 0, label: Label(name: "Option", position: Position.bogus()), scope: Scope(name: "Option"), typeParams: ["T"])
   pub preludeResultEnum: Enum = Enum(moduleId: 0, label: Label(name: "Result", position: Position.bogus()), scope: Scope(name: "Result"), typeParams: ["V", "E"])
 
-  func typesAreEquivalent(self, ty: Type, other: Type): Bool {
+  pub func typesAreEquivalent(self, ty: Type, other: Type): Bool {
     match ty.kind {
       TypeKind.Hole => other.kind == TypeKind.Hole
       TypeKind.Generic(n1) => match other.kind {
@@ -406,7 +406,7 @@ pub type Project {
 pub type Type {
   pub kind: TypeKind
 
-  func repr(self, shorthand = true): String {
+  pub func repr(self, shorthand = true): String {
     match self.kind {
       TypeKind.Any => "Any"
       TypeKind.PrimitiveUnit => "Unit"
@@ -606,7 +606,7 @@ pub type Type {
     true
   }
 
-  func extractGenerics(self, template: Type): (String, Type)[] {
+  pub func extractGenerics(self, template: Type): (String, Type)[] {
     val extracted: (String, Type)[] = []
     if !self._extractGenerics(template, extracted) return []
 
@@ -688,7 +688,7 @@ pub type Function {
   pub captures: Variable[] = []
   pub capturedClosures: Function[] = []
 
-  func generated(
+  pub func generated(
     scope: Scope,
     name: String,
     params: (String, Type)[],
@@ -736,7 +736,7 @@ pub type Function {
     Function(label: variantLabel, scope: fnScope, kind: FunctionKind.Standalone, typeParams: typeParams, params: params, returnType: returnType, body: [], isGenerated: true)
   }
 
-  func getType(self): Type = Type(kind: TypeKind.Func(paramTypes: self.params.map(p => (p.ty, !p.defaultValue)), returnType: self.returnType))
+  pub func getType(self): Type = Type(kind: TypeKind.Func(paramTypes: self.params.map(p => (p.ty, !p.defaultValue)), returnType: self.returnType))
 
   func withSubstitutedGenerics(self, resolvedGenerics: Map<String, Type>, retainUnknown: Bool, genericsInScope: Set<String>): Function {
     val params = self.params.map(p => {
@@ -761,7 +761,7 @@ pub type Function {
     )
   }
 
-  func isClosure(self): Bool = !self.captures.isEmpty() || !self.capturedClosures.isEmpty()
+  pub func isClosure(self): Bool = !self.captures.isEmpty() || !self.capturedClosures.isEmpty()
 }
 
 pub enum TypedInvokee {
@@ -856,7 +856,7 @@ type TypecheckerError {
   pub modulePath: String
   pub kind: TypecheckerErrorKind
 
-  func getMessage(self): String {
+  pub func getMessage(self): String {
     match self.kind {
       // TODO: Better error message, once imports are a thing
       TypecheckerErrorKind.ReadFileError(path) => "Could not read file '$path'"
@@ -913,7 +913,7 @@ type TypeError {
     }
   }
 
-  func getMessage(self, filePath: String, contents: String): String {
+  pub func getMessage(self, filePath: String, contents: String): String {
     val lines = ["Error at $filePath:${self.position.line}:${self.position.col}"]
 
     match self.kind {
@@ -1539,7 +1539,7 @@ pub type Typechecker {
   pub lspMode: Bool = false
   identsByLine: Map<Int, (Int, Int, IdentifierMeta)[]> = {}
 
-  func typecheckEntrypoint(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
+  pub func typecheckEntrypoint(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
     val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
     val preludeModulePathAbs = "/" + preludeModulePathSegs.join("/")
 
@@ -4290,7 +4290,7 @@ pub type Typechecker {
       TypeKind.Never => None
       TypeKind.Generic => self._resolveAccessorPathSegmentAny(label, optSafe, typeHint)
       TypeKind.Instance(structOrEnum, generics) => {
-        val (instanceMethods, typeParams) = match structOrEnum {
+        val (instanceMethods, typeParams, instanceTypeModuleId) = match structOrEnum {
           StructOrEnum.Struct(struct) => {
             for field in struct.fields {
               if field.name.name == label.name {
@@ -4310,13 +4310,21 @@ pub type Typechecker {
               }
             }
 
-            (struct.instanceMethods, struct.typeParams)
+            (struct.instanceMethods, struct.typeParams, struct.moduleId)
           }
-          StructOrEnum.Enum(enum_) => (enum_.instanceMethods, enum_.typeParams)
+          StructOrEnum.Enum(enum_) => (enum_.instanceMethods, enum_.typeParams, enum_.moduleId)
         }
 
         for fn in instanceMethods {
           if fn.label.name == label.name {
+            val isPublic = match fn.kind {
+              FunctionKind.InstanceMethod(_, isPublic) => isPublic
+              else => unreachable("Function '${fn.label.name}' should be an instance method here")
+            }
+            if !isPublic && self._isIllegalAccessForMember(instanceTypeModuleId) {
+              return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAccess(name: fn.label.name, kind: "method", parentTy: ty)))
+            }
+
             val resolvedGenerics: Map<String, Type> = {}
             for name, idx in typeParams {
               resolvedGenerics[name] = try generics[idx] else unreachable("typeParams.length != generics.length")
@@ -4333,8 +4341,8 @@ pub type Typechecker {
       TypeKind.Type(structOrEnum) => {
         // TODO: static fields
 
-        val staticMethods = match structOrEnum {
-          StructOrEnum.Struct(struct) => struct.staticMethods
+        val (staticMethods, typeModuleId) = match structOrEnum {
+          StructOrEnum.Struct(struct) => (struct.staticMethods, struct.moduleId)
           StructOrEnum.Enum(enum_) => {
             for variant in enum_.variants {
               if variant.label.name == label.name {
@@ -4350,15 +4358,12 @@ pub type Typechecker {
                   template.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
                 } else {
                   match variant.kind {
-                    EnumVariantKind.Container => {
-                      Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), typeArgs))
-                    }
-                    EnumVariantKind.Constant => {
-                      Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), enum_.typeParams.map(() => Type(kind: TypeKind.Hole))))
-                    }
+                    EnumVariantKind.Container => Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), typeArgs))
+                    EnumVariantKind.Constant => Type(kind: TypeKind.Instance(StructOrEnum.Enum(enum_), enum_.typeParams.map(() => Type(kind: TypeKind.Hole))))
                   }
                 }
 
+                // TODO: move this above, to bail earlier?
                 match variant.kind {
                   EnumVariantKind.Container => {
                     if !self.isEnumContainerValueAllowed return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalNonConstantEnumVariant))
@@ -4370,12 +4375,22 @@ pub type Typechecker {
               }
             }
 
-            enum_.staticMethods
+            (enum_.staticMethods, enum_.moduleId)
           }
         }
 
         for method in staticMethods {
-          if method.label.name == label.name return Ok(Some(AccessorPathSegment.Method(label, method, optSafe, typeHint)))
+          if method.label.name == label.name {
+            val isPublic = match method.kind {
+              FunctionKind.StaticMethod(_, isPublic) => isPublic
+              else => unreachable("Function '${method.label.name}' should be a static method here")
+            }
+            if !isPublic && self._isIllegalAccessForMember(typeModuleId) {
+              return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAccess(name: method.label.name, kind: "static method", parentTy: ty)))
+            }
+
+            return Ok(Some(AccessorPathSegment.Method(label, method, optSafe, typeHint)))
+          }
         }
 
         None

@@ -205,7 +205,7 @@ func getFunctionNames(): String[] {
 type Stdin {
   _buf: Pointer<Byte> = Pointer.malloc(1024)
 
-  func readAsString(self): String? {
+  pub func readAsString(self): String? {
     var nread = libc.read(libc.STDIN_FILENO, self._buf, 1024)
     if nread == 0 return None
 

@@ -4,7 +4,7 @@ pub type Position {
   pub line: Int
   pub col: Int
 
-  func bogus(): Position = Position(line: 0, col: 0)
+  pub func bogus(): Position = Position(line: 0, col: 0)
 }
 
 pub type Token {
@@ -89,7 +89,7 @@ pub enum TokenKind {
   QuestionDot
   At
 
-  func repr(self): String = match self {
+  pub func repr(self): String = match self {
     TokenKind.Int => "int"
     TokenKind.Float => "float"
     TokenKind.Bool(value) => value.toString()
@@ -180,7 +180,7 @@ pub type LexerError {
   pub position: Position
   kind: LexerErrorKind
 
-  func getMessage(self, filePath: String, contents: String): String {
+  pub func getMessage(self, filePath: String, contents: String): String {
     val lines = ["Error at $filePath:${self.position.line}:${self.position.col}"]
 
     match self.kind {
@@ -236,7 +236,7 @@ pub type Lexer {
   _line: Int = 1
   _col: Int = 1
 
-  func tokenize(contents: String): Result<Token[], LexerError> {
+  pub func tokenize(contents: String): Result<Token[], LexerError> {
     val tokens: Token[] = []
 
     val lexer = Lexer(_input: contents)

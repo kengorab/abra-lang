@@ -6,7 +6,7 @@ pub enum RequestMessage {
   Hover(id: Int, textDocument: TextDocumentIdentifier, position: Position)
   Definition(id: Int, textDocument: TextDocumentIdentifier, position: Position)
 
-  func fromJson(json: JsonValue): Result<RequestMessage?, JsonError> {
+  pub func fromJson(json: JsonValue): Result<RequestMessage?, JsonError> {
     val obj = try json.asObject()
     val id = match try obj.getNumberRequired("id") {
       Either.Left(int) => int
@@ -66,7 +66,7 @@ pub enum NotificationMessage {
   // Outgoing notifications
   TextDocumentPublishDiagnostics(uri: String, diagnostics: Diagnostic[])
 
-  func fromJson(json: JsonValue): Result<NotificationMessage?, JsonError> {
+  pub func fromJson(json: JsonValue): Result<NotificationMessage?, JsonError> {
     val obj = try json.asObject()
     val method = try obj.getStringRequired("method")
 
@@ -107,7 +107,7 @@ pub enum NotificationMessage {
     }
   }
 
-  func toJson(self): JsonValue {
+  pub func toJson(self): JsonValue {
     match self {
       NotificationMessage.Initialized => unreachable("should not be serializing 'initialized' notification")
       NotificationMessage.TextDocumentDidOpen => unreachable("should not be serializing 'textDocument/didOpen' notification")
@@ -130,7 +130,7 @@ pub enum ResponseMessage {
   Success(id: Int, result: ResponseResult?)
   Error(id: Int, error: ResponseError)
 
-  func toJson(self): JsonValue {
+  pub func toJson(self): JsonValue {
     val obj = JsonObject()
 
     match self {
@@ -155,7 +155,7 @@ pub enum ResponseResult {
   // Note: the actual response body for textDocument/definition requests is just a `Location` type, which is flattened here
   Definition(uri: String, range: Range)
 
-  func toJson(self): JsonValue {
+  pub func toJson(self): JsonValue {
     val obj = match self {
       ResponseResult.Initialize(capabilities, serverInfo) => {
         JsonObject.of({
@@ -190,7 +190,7 @@ pub type ResponseError {
   pub code: ResponseErrorCode
   pub message: String
 
-  func toJson(self): JsonValue {
+  pub func toJson(self): JsonValue {
     val obj = JsonObject()
 
     obj.set("code", JsonValue.Number(Either.Left(self.code.intVal())))
@@ -234,7 +234,7 @@ pub type ServerCapabilities {
   pub hoverProvider: Bool? = None
   pub definitionProvider: Bool? = None
 
-  func toJson(self): JsonValue {
+  pub func toJson(self): JsonValue {
     val obj = JsonObject()
 
     if self.textDocumentSync |tds| {
@@ -262,7 +262,7 @@ pub type TextDocumentSyncOptions {
   pub change: TextDocumentSyncKind? = None
   pub save: SaveOptions? = None
 
-  func toJson(self): JsonValue {
+  pub func toJson(self): JsonValue {
     val obj = JsonObject()
 
     if self.openClose |openClose| {
@@ -296,7 +296,7 @@ pub enum TextDocumentSyncKind {
 pub type SaveOptions {
   pub includeText: Bool? = None
 
-  func toJson(self): JsonValue {
+  pub func toJson(self): JsonValue {
     val obj = JsonObject()
 
     if self.includeText |includeText| {
@@ -311,7 +311,7 @@ pub type DiagnosticOptions {
   pub interFileDependencies: Bool
   pub workspaceDiagnostics: Bool
 
-  func toJson(self): JsonValue = JsonValue.Object(JsonObject.of({
+  pub func toJson(self): JsonValue = JsonValue.Object(JsonObject.of({
     interFileDependencies: JsonValue.Boolean(self.interFileDependencies),
     workspaceDiagnostics: JsonValue.Boolean(self.workspaceDiagnostics),
   }))
@@ -321,7 +321,7 @@ pub type ServerInfo {
   pub name: String
   pub version: String? = None
 
-  func toJson(self): JsonValue {
+  pub func toJson(self): JsonValue {
     val obj = JsonObject()
 
     obj.set("name", JsonValue.String(self.name))
@@ -399,7 +399,7 @@ pub type Position {
     Ok(Position(line: line, character: character))
   }
 
-  func toJson(self): JsonValue {
+  pub func toJson(self): JsonValue {
     JsonValue.Object(JsonObject.of({
       line: JsonValue.Number(Either.Left(self.line)),
       character: JsonValue.Number(Either.Left(self.character)),
@@ -421,7 +421,7 @@ pub type Range {
     Ok(Range(start: start, end: end))
   }
 
-  func toJson(self): JsonValue {
+  pub func toJson(self): JsonValue {
     JsonValue.Object(JsonObject.of({
       start: self.start.toJson(),
       end: self.end.toJson(),
@@ -453,7 +453,7 @@ pub type Diagnostic {
   pub severity: DiagnosticSeverity? = None
   pub message: String
 
-  func toJson(self): JsonValue {
+  pub func toJson(self): JsonValue {
     val obj = JsonObject()
 
     obj.set("range", JsonValue.Object(JsonObject.of({
@@ -495,7 +495,7 @@ pub type MarkupContent {
   pub kind: MarkupKind
   pub value: String
 
-  func toJson(self): JsonValue {
+  pub func toJson(self): JsonValue {
     JsonValue.Object(JsonObject.of({
       kind: JsonValue.String(match self.kind {
         MarkupKind.PlainText => "plaintext"
