@@ -1,30 +1,24 @@
 import "fs" as fs
 import JsonValue from "json"
 import log from "./log"
-import ModuleLoader, Project, Typechecker, TypecheckerErrorKind, IdentifierMeta, IdentifierKindMeta, IdentifierMetaModule from "../../compiler/src/typechecker"
-import RequestMessage, NotificationMessage, ResponseMessage, ResponseResult, ResponseError, ResponseErrorCode, ServerCapabilities, TextDocumentSyncOptions, TextDocumentSyncKind, SaveOptions, ServerInfo, TextDocumentItem, TextDocumentIdentifier, VersionedTextDocumentIdentifier, TextDocumentContentChangeEvent, Diagnostic, DiagnosticSeverity, Position, Range, MarkupContent, MarkupKind from "./lsp_spec"
+import Label from "../../compiler/src/parser"
+import TypedModule, ModuleLoader, Project, Typechecker, TypecheckerErrorKind, IdentifierMeta, IdentifierKindMeta, IdentifierMetaModule from "../../compiler/src/typechecker"
+import RequestMessage, NotificationMessage, ResponseMessage, ResponseResult, ResponseError, ResponseErrorCode, ServerCapabilities, TextDocumentSyncOptions, TextDocumentSyncKind, SaveOptions, ServerInfo, TextDocumentItem, TextDocumentIdentifier, VersionedTextDocumentIdentifier, TextDocumentContentChangeEvent, Diagnostic, DiagnosticSeverity, Position, Range, MarkupContent, MarkupKind, DocumentSymbol, SymbolKind from "./lsp_spec"
 
 pub val contentLengthHeader = "Content-Length: "
 pub val bogusMessageId = -999
 
 pub type AbraLanguageService {
-  // _virtualFileSystem: Map<String, String>
   _moduleLoader: ModuleLoader
   _project: Project
   _initialized: Bool = false
   _root: String = ""
 
   pub func new(abraStdRoot: String): AbraLanguageService {
-    // val virtualFileSystem: Map<String, String> = {}
-    // val moduleLoader = ModuleLoader.usingVirtualFileSystem(stdRoot: abraStdRoot, fileMap: virtualFileSystem)
     val moduleLoader = ModuleLoader(stdRoot: abraStdRoot)
     val project = Project()
 
-    AbraLanguageService(
-      // _virtualFileSystem: virtualFileSystem,
-      _moduleLoader: moduleLoader,
-      _project: project,
-    )
+    AbraLanguageService(_moduleLoader: moduleLoader, _project: project)
   }
 
   // Request Message handlers
@@ -50,6 +44,7 @@ pub type AbraLanguageService {
         )),
         hoverProvider: Some(true),
         definitionProvider: Some(true),
+        documentSymbolProvider: Some(true),
       ),
       serverInfo: ServerInfo(name: "abra-lsp", version: Some("0.0.1"))
     )
@@ -60,7 +55,7 @@ pub type AbraLanguageService {
     // todo: what happens if it's not a `file://` uri?
     val filePath = textDocument.uri.replaceAll("file://", "")
 
-    val (line, identColStart, identColEnd, ident) = try self._findIdentAtPosition(filePath, position) else {
+    val (line, identColStart, identColEnd, ident) = try self._findIdentAtPosition(textDocument.uri, position) else {
       return ResponseMessage.Success(id: id, result: None)
     }
 
@@ -195,7 +190,7 @@ pub type AbraLanguageService {
     // todo: what happens if it's not a `file://` uri?
     val filePath = textDocument.uri.replaceAll("file://", "")
 
-    val ident = if self._findIdentAtPosition(filePath, position) |(_, _, _, ident)| ident else return ResponseMessage.Success(id: id, result: None)
+    val ident = if self._findIdentAtPosition(textDocument.uri, position) |(_, _, _, ident)| ident else return ResponseMessage.Success(id: id, result: None)
     val result = if ident.definitionPosition |(definitionModule, pos)| {
       val line = pos.line - 1
       val character = pos.col - 1
@@ -213,50 +208,163 @@ pub type AbraLanguageService {
     ResponseMessage.Success(id: id, result: result)
   }
 
+  func _symbols(self, id: Int, textDocument: TextDocumentIdentifier): ResponseMessage {
+    // todo: what happens if it's not a `file://` uri?
+    val filePath = textDocument.uri.replaceAll("file://", "")
+    val module = try self.getModuleOrTypecheck(textDocument.uri) else return ResponseMessage.Success(id: id, result: Some(ResponseResult.Symbols([])))
+
+    val scope = module.rootScope
+
+    val rangesFromLabel: (Label) => (Range, Range) = label => {
+      val line = label.position.line - 1
+      val col = label.position.col - 1
+      val range = Range(start: Position(line: line, character: 0), end: Position(line: line, character: col + label.name.length))
+      val selectionRange = Range(start: Position(line: line, character: col), end: Position(line: line, character: col + label.name.length - 1))
+
+      (range, selectionRange)
+    }
+
+    val symbols: DocumentSymbol[] = []
+
+    for v in scope.variables {
+      if v.alias continue
+
+      val (range, selectionRange) = rangesFromLabel(v.label)
+      val kind = if v.mutable SymbolKind.Variable else SymbolKind.Constant
+      val sym = DocumentSymbol(name: v.label.name, kind: kind, range: range, selectionRange: selectionRange, children: [])
+      symbols.push(sym)
+    }
+
+    for fn in scope.functions {
+      val (range, selectionRange) = rangesFromLabel(fn.label)
+      val sym = DocumentSymbol(name: fn.label.name, kind: SymbolKind.Function, range: range, selectionRange: selectionRange, children: [])
+      symbols.push(sym)
+    }
+
+    for s in scope.structs {
+      val children: DocumentSymbol[] = []
+
+      for f in s.fields {
+        val (range, selectionRange) = rangesFromLabel(f.name)
+        val sym = DocumentSymbol(name: f.name.name, kind: SymbolKind.Field, range: range, selectionRange: selectionRange, children: [])
+        children.push(sym)
+      }
+
+      for fn in s.instanceMethods {
+        if fn.isGenerated continue
+
+        val (range, selectionRange) = rangesFromLabel(fn.label)
+        val sym = DocumentSymbol(name: fn.label.name, kind: SymbolKind.Method, range: range, selectionRange: selectionRange, children: [])
+        children.push(sym)
+      }
+
+      for fn in s.staticMethods {
+        if fn.isGenerated continue
+
+        val (range, selectionRange) = rangesFromLabel(fn.label)
+        val sym = DocumentSymbol(name: fn.label.name, kind: SymbolKind.Method, range: range, selectionRange: selectionRange, children: [])
+        children.push(sym)
+      }
+
+      val (range, selectionRange) = rangesFromLabel(s.label)
+      val sym = DocumentSymbol(name: s.label.name, kind: SymbolKind.Class, range: range, selectionRange: selectionRange, children: children)
+      symbols.push(sym)
+    }
+
+    for e in scope.enums {
+      val children: DocumentSymbol[] = []
+
+      for v in e.variants {
+        val (range, selectionRange) = rangesFromLabel(v.label)
+        val sym = DocumentSymbol(name: v.label.name, kind: SymbolKind.EnumMember, range: range, selectionRange: selectionRange, children: [])
+        children.push(sym)
+      }
+
+      for fn in e.instanceMethods {
+        if fn.isGenerated continue
+
+        val (range, selectionRange) = rangesFromLabel(fn.label)
+        val sym = DocumentSymbol(name: fn.label.name, kind: SymbolKind.Method, range: range, selectionRange: selectionRange, children: [])
+        children.push(sym)
+      }
+
+      for fn in e.staticMethods {
+        if fn.isGenerated continue
+
+        val (range, selectionRange) = rangesFromLabel(fn.label)
+        val sym = DocumentSymbol(name: fn.label.name, kind: SymbolKind.Method, range: range, selectionRange: selectionRange, children: [])
+        children.push(sym)
+      }
+
+      val (range, selectionRange) = rangesFromLabel(e.label)
+      val sym = DocumentSymbol(name: e.label.name, kind: SymbolKind.Enum, range: range, selectionRange: selectionRange, children: children)
+      symbols.push(sym)
+    }
+
+    val result = ResponseResult.Symbols(symbols)
+    val s  = result.toString()
+    ResponseMessage.Success(id: id, result: Some(result))
+  }
+
   // Notification handlers
 
   func _textDocumentDidOpen(self, textDocument: TextDocumentItem) {
     // textDocument/didOpen events are currently not sent by the client (see self._initialize)
-    val diagnostics = self._runTypecheckerStartingAtUri(textDocument.uri)
+    val diagnostics = self.runTypecheckerStartingAtUri(textDocument.uri)
     val notif = NotificationMessage.TextDocumentPublishDiagnostics(uri: textDocument.uri, diagnostics: diagnostics)
     self.sendNotification(notif)
   }
 
   func _textDocumentDidChange(self, textDocument: VersionedTextDocumentIdentifier, contentChanges: TextDocumentContentChangeEvent[]) {
     // textDocument/didChange events are currently not sent by the client (see self._initialize)
-    if contentChanges.isEmpty() return
+    // if contentChanges.isEmpty() return
 
-    val filePath = textDocument.uri.replaceAll("file://", "")
-    for changeEvent in contentChanges {
-      match changeEvent {
-        TextDocumentContentChangeEvent.Incremental => todo("TextDocumentContentChangeEvent.Incremental")
-        TextDocumentContentChangeEvent.Full(text) => {
-          // self._virtualFileSystem[filePath] = text
-        }
-      }
-    }
-    self._moduleLoader.invalidateModule(filePath)
-    self._project.modules.remove(filePath)
+    // val filePath = textDocument.uri.replaceAll("file://", "")
+    // for changeEvent in contentChanges {
+    //   match changeEvent {
+    //     TextDocumentContentChangeEvent.Incremental => todo("TextDocumentContentChangeEvent.Incremental")
+    //     TextDocumentContentChangeEvent.Full(text) => { }
+    //   }
+    // }
 
-    val diagnostics = self._runTypecheckerStartingAtUri(textDocument.uri)
-    val notif = NotificationMessage.TextDocumentPublishDiagnostics(uri: textDocument.uri, diagnostics: diagnostics)
-    self.sendNotification(notif)
+    // val diagnostics = self.invalidateAndTypecheck(textDocument.uri)
+    // val notif = NotificationMessage.TextDocumentPublishDiagnostics(uri: textDocument.uri, diagnostics: diagnostics)
+    // self.sendNotification(notif)
   }
 
   func _textDocumentDidSave(self, textDocument: TextDocumentIdentifier) {
-    val filePath = textDocument.uri.replaceAll("file://", "")
-    self._moduleLoader.invalidateModule(filePath)
-    self._project.modules.remove(filePath)
-    // self._virtualFileSystem.remove(filePath)
-
-    val diagnostics = self._runTypecheckerStartingAtUri(textDocument.uri)
+    val diagnostics = self.invalidateAndTypecheck(textDocument.uri)
     val notif = NotificationMessage.TextDocumentPublishDiagnostics(uri: textDocument.uri, diagnostics: diagnostics)
     self.sendNotification(notif)
   }
 
   // Compiler bridge
 
-  func _runTypecheckerStartingAtUri(self, uri: String): Diagnostic[] {
+  func getModuleOrTypecheck(self, uri: String): TypedModule? {
+    val filePath = uri.replaceAll("file://", "")
+
+    // TODO: it's not necessarily enough to test the _presence_ of the module, but also potentially if the module was
+    // typechecked with lspMode enabled. For example, if moduleA imports moduleB and moduleA was opened first, then
+    // moduleA will be typechecked with lspMode enabled but moduleB will not be. While moduleB will be _present_ in
+    // the project's module cache, it will not have lsp information (namely idents).
+    val module = try self._project.modules[filePath] else {
+      self.invalidateAndTypecheck(uri)
+
+      return self._project.modules[filePath]
+    }
+
+    Some(module)
+  }
+
+  func invalidateAndTypecheck(self, uri: String): Diagnostic[] {
+    val filePath = uri.replaceAll("file://", "")
+    self._moduleLoader.invalidateModule(filePath)
+    self._project.modules.remove(filePath)
+
+    self.runTypecheckerStartingAtUri(uri)
+  }
+
+  func runTypecheckerStartingAtUri(self, uri: String): Diagnostic[] {
     // todo: what happens if it's not a `file://` uri?
     val filePath = uri.replaceAll("file://", "")
 
@@ -297,19 +405,22 @@ pub type AbraLanguageService {
           }
         }
 
-        val range = ((position.line - 1, position.col - 1), (position.line - 1, position.col))
+        val pos = Position(line: position.line - 1, character: position.col - 1)
         val diagnostic = Diagnostic(
-          range: range,
+          range: Range(start: pos, end: pos),
           severity: Some(DiagnosticSeverity.Error),
-          message: message.replaceAll("\n", "\\n").replaceAll("\"", "\\\""),
+          message: message
+            .replaceAll("\n", "\\n")
+            .replaceAll("\"", "\\\"")
+            .replaceAll("\t", "\\t"),
         )
         [diagnostic]
       }
     }
   }
 
-  func _findIdentAtPosition(self, filePath: String, position: Position): (Int, Int, Int, IdentifierMeta)? {
-    val module = try self._project.modules[filePath]
+  func _findIdentAtPosition(self, uri: String, position: Position): (Int, Int, Int, IdentifierMeta)? {
+    val module = try self.getModuleOrTypecheck(uri)
     val line = position.line
     val identsByLine = try module.identsByLine[line]
 
@@ -329,6 +440,7 @@ pub type AbraLanguageService {
       RequestMessage.Initialize(id, processId, rootPath) => self._initialize(id, processId, rootPath)
       RequestMessage.Hover(id, textDocument, position) => self._hover(id, textDocument, position)
       RequestMessage.Definition(id, textDocument, position) => self._goToDefinition(id, textDocument, position)
+      RequestMessage.Symbols(id, textDocument) => self._symbols(id, textDocument)
     }
   }
 

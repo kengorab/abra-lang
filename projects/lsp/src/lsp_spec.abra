@@ -5,6 +5,7 @@ pub enum RequestMessage {
   Initialize(id: Int, processId: Int?, rootPath: String?)
   Hover(id: Int, textDocument: TextDocumentIdentifier, position: Position)
   Definition(id: Int, textDocument: TextDocumentIdentifier, position: Position)
+  Symbols(id: Int, textDocument: TextDocumentIdentifier)
 
   pub func fromJson(json: JsonValue): Result<RequestMessage?, JsonError> {
     val obj = try json.asObject()
@@ -46,6 +47,13 @@ pub enum RequestMessage {
         val position = try Position.fromJson(positionObj)
 
         Ok(Some(RequestMessage.Definition(id: id, textDocument: textDocument, position: position)))
+      }
+      "textDocument/documentSymbol" => {
+        val params = try obj.getObjectRequired("params")
+        val textDocumentObj = try params.getValueRequired("textDocument")
+        val textDocument = try TextDocumentIdentifier.fromJson(textDocumentObj)
+
+        Ok(Some(RequestMessage.Symbols(id: id, textDocument: textDocument)))
       }
       else => {
         log.writeln("Error: Unimplemented RequestMessage method '$method'")
@@ -154,14 +162,15 @@ pub enum ResponseResult {
   // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_definition
   // Note: the actual response body for textDocument/definition requests is just a `Location` type, which is flattened here
   Definition(uri: String, range: Range)
+  Symbols(symbols: DocumentSymbol[])
 
   pub func toJson(self): JsonValue {
-    val obj = match self {
+    match self {
       ResponseResult.Initialize(capabilities, serverInfo) => {
-        JsonObject.of({
+        JsonValue.Object(JsonObject.of({
           "capabilities": capabilities.toJson(),
           "serverInfo": serverInfo.toJson(),
-        })
+        }))
       }
       ResponseResult.Hover(contents, range) => {
         val obj = JsonObject.of({
@@ -172,17 +181,16 @@ pub enum ResponseResult {
           obj.set("range", range.toJson())
         }
 
-        obj
+        JsonValue.Object(obj)
       }
       ResponseResult.Definition(uri, range) => {
-        JsonObject.of({
+        JsonValue.Object(JsonObject.of({
           "uri": JsonValue.String(uri),
           "range": range.toJson(),
-        })
+        }))
       }
+      ResponseResult.Symbols(symbols) => JsonValue.Array(symbols.map(s => s.toJson()))
     }
-
-    JsonValue.Object(obj)
   }
 }
 
@@ -233,6 +241,7 @@ pub type ServerCapabilities {
   pub diagnosticProvider: DiagnosticOptions? = None
   pub hoverProvider: Bool? = None
   pub definitionProvider: Bool? = None
+  pub documentSymbolProvider: Bool? = None
 
   pub func toJson(self): JsonValue {
     val obj = JsonObject()
@@ -251,6 +260,10 @@ pub type ServerCapabilities {
 
     if self.definitionProvider |dp| {
       obj.set("definitionProvider", JsonValue.Boolean(dp))
+    }
+
+    if self.documentSymbolProvider |dsp| {
+      obj.set("documentSymbolProvider", JsonValue.Boolean(dsp))
     }
 
     JsonValue.Object(obj)
@@ -430,10 +443,7 @@ pub type Range {
 }
 
 pub enum TextDocumentContentChangeEvent {
-  Incremental(
-    range: ((Int, Int), (Int, Int)), // (line: Int, character: Int), zero-based
-    text: String
-  )
+  Incremental(range: Range, text: String)
   Full(text: String)
 
   func fromJson(json: JsonValue): Result<TextDocumentContentChangeEvent, JsonError> {
@@ -449,23 +459,12 @@ pub enum TextDocumentContentChangeEvent {
 }
 
 pub type Diagnostic {
-  pub range: ((Int, Int), (Int, Int)) // (line: Int, character: Int), zero-based
+  pub range: Range
   pub severity: DiagnosticSeverity? = None
   pub message: String
 
   pub func toJson(self): JsonValue {
-    val obj = JsonObject()
-
-    obj.set("range", JsonValue.Object(JsonObject.of({
-      start: JsonValue.Object(JsonObject.of({
-        line: JsonValue.Number(Either.Left(self.range[0][0])),
-        character: JsonValue.Number(Either.Left(self.range[0][1])),
-      })),
-      end: JsonValue.Object(JsonObject.of({
-        line: JsonValue.Number(Either.Left(self.range[1][0])),
-        character: JsonValue.Number(Either.Left(self.range[1][1])),
-      }))
-    })))
+    val obj = JsonObject.of({ range: self.range.toJson() })
 
     if self.severity |severity| {
       obj.set("severity", JsonValue.Number(Either.Left(severity.intVal())))
@@ -509,4 +508,99 @@ pub type MarkupContent {
 pub enum MarkupKind {
   PlainText
   Markdown
+}
+
+pub type DocumentSymbol {
+  pub name: String
+  pub detail: String? = None
+  pub kind: SymbolKind
+
+  // The range enclosing this symbol not including leading/trailing whitespace
+  // but everything else like comments. This information is typically used to
+  // determine if the client's cursor is inside the symbol to reveal in the
+  // symbol in the UI.
+  pub range: Range
+
+  // The range that should be selected and revealed when this symbol is being
+  // picked, e.g. the name of a function. Must be contained by the `range`.
+  pub selectionRange: Range
+
+  pub children: DocumentSymbol[]
+
+  pub func toJson(self): JsonValue {
+    val obj = JsonObject.of({
+      name: JsonValue.String(self.name),
+      kind: JsonValue.Number(Either.Left(self.kind.intVal())),
+      range: self.range.toJson(),
+      selectionRange: self.selectionRange.toJson(),
+    })
+
+    if self.detail |detail| {
+      obj.set("detail", JsonValue.String(detail))
+    }
+
+    if !self.children.isEmpty() {
+      obj.set("children", JsonValue.Array(self.children.map(c => c.toJson())))
+    }
+
+    JsonValue.Object(obj)
+  }
+}
+
+pub enum SymbolKind {
+  File
+  Module
+  Namespace
+  Package
+  Class
+  Method
+  Property
+  Field
+  Constructor
+  Enum
+  Interface
+  Function
+  Variable
+  Constant
+  String
+  Number
+  Boolean
+  Array
+  Object
+  Key
+  Null
+  EnumMember
+  Struct
+  Event
+  Operator
+  TypeParameter
+
+  func intVal(self): Int = match self {
+    SymbolKind.File => 1
+    SymbolKind.Module => 2
+    SymbolKind.Namespace => 3
+    SymbolKind.Package => 4
+    SymbolKind.Class => 5
+    SymbolKind.Method => 6
+    SymbolKind.Property => 7
+    SymbolKind.Field => 8
+    SymbolKind.Constructor => 9
+    SymbolKind.Enum => 10
+    SymbolKind.Interface => 11
+    SymbolKind.Function => 12
+    SymbolKind.Variable => 13
+    SymbolKind.Constant => 14
+    SymbolKind.String => 15
+    SymbolKind.Number => 16
+    SymbolKind.Boolean => 17
+    SymbolKind.Array => 18
+    SymbolKind.Object => 19
+    SymbolKind.Key => 20
+    SymbolKind.Null => 21
+    SymbolKind.EnumMember => 22
+    SymbolKind.Struct => 23
+    SymbolKind.Event => 24
+    SymbolKind.Operator => 25
+    SymbolKind.TypeParameter => 26
+  }
 }
