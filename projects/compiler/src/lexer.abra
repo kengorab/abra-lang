@@ -289,7 +289,7 @@ pub type Lexer {
 
     var sawNewline = false
     var ch = self._input[self._cursor]
-    while ch == " " || ch == "\n" {
+    while ch == " " || ch == "\n" || ch == "\t" {
       self._advance()
       if ch == "\n" {
         self._line += 1

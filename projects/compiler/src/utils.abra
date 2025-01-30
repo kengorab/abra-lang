@@ -47,6 +47,7 @@ pub func resolveRelativePath(path: String, relativeTo: String): String[] {
     if part.isEmpty() || part == "." continue
     if part == ".." {
       absParentPath.pop()
+      continue
     }
 
     absParentPath.push(part)

@@ -177,8 +177,8 @@ pub type Scope {
   pub variables: Variable[] = []
   pub functions: Function[] = []
   pub types: Type[] = []
-  structs: Struct[] = []
-  enums: Enum[] = []
+  pub structs: Struct[] = []
+  pub enums: Enum[] = []
   pub kind: ScopeKind = ScopeKind.Root
   pub parent: Scope? = None
   pub terminator: Terminator? = None
@@ -249,6 +249,9 @@ pub type Struct {
 
     struct
   }
+
+  // Override toString method since default implementation recurses infinitely (scope -> variables -> TypeKind.Struct)
+  pub func toString(self): String = "Struct(moduleId: ${self.moduleId}, label: ${self.label}, ...)"
 
   // Override eq method since default implementation recurses infinitely (scope -> variables -> TypeKind.Struct)
   pub func eq(self, other: Struct): Bool = self.moduleId == other.moduleId && self.label == other.label
