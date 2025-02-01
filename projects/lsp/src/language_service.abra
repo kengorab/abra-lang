@@ -2,7 +2,7 @@ import "fs" as fs
 import JsonValue from "json"
 import log from "./log"
 import Label from "../../compiler/src/parser"
-import TypedModule, ModuleLoader, Project, Typechecker, TypecheckerErrorKind, IdentifierMeta, IdentifierKindMeta, IdentifierMetaModule, LexerOrParseError from "../../compiler/src/typechecker"
+import TypedModule, ModuleLoader, Project, Typechecker, LexerOrParseError, IdentifierMeta, IdentifierKindMeta, IdentifierMetaModule from "../../compiler/src/typechecker"
 import RequestMessage, NotificationMessage, ResponseMessage, ResponseResult, ResponseError, ResponseErrorCode, ServerCapabilities, TextDocumentSyncOptions, TextDocumentSyncKind, SaveOptions, ServerInfo, TextDocumentItem, TextDocumentIdentifier, VersionedTextDocumentIdentifier, TextDocumentContentChangeEvent, Diagnostic, DiagnosticSeverity, Position, Range, MarkupContent, MarkupKind, DocumentSymbol, SymbolKind from "./lsp_spec"
 
 pub val contentLengthHeader = "Content-Length: "

@@ -863,13 +863,6 @@ pub enum AccessorPathSegment {
   }
 }
 
-type TypecheckerError {
-  pub modulePath: String
-  pub kind: TypecheckerErrorKind
-
-  pub func getMessage(self): String = self.kind.getMessage(self.modulePath)
-}
-
 pub enum LexerOrParseError {
   LexerError(inner: LexerError)
   ParseError(inner: ParseError)
@@ -878,41 +871,6 @@ pub enum LexerOrParseError {
     match self {
       LexerOrParseError.LexerError(inner) => inner.getMessage(modulePath, contents)
       LexerOrParseError.ParseError(inner) => inner.getMessage(modulePath, contents)
-    }
-  }
-}
-
-pub enum TypecheckerErrorKind {
-  ReadFileError(path: String)
-  LexerError(inner: LexerError)
-  ParseError(inner: ParseError)
-  TypeError(inner: TypeError)
-
-  pub func getMessage(self, modulePath: String): String {
-    match self {
-      // TODO: Better error message, once imports are a thing
-      TypecheckerErrorKind.ReadFileError(path) => "Could not read file '$path'"
-      TypecheckerErrorKind.LexerError(inner) => {
-        val contents = match fs.readFile(modulePath) {
-          Ok(v) => v
-          Err => return "Could not read file '$modulePath'"
-        }
-        inner.getMessage(modulePath, contents)
-      }
-      TypecheckerErrorKind.ParseError(inner) => {
-        val contents = match fs.readFile(modulePath) {
-          Ok(v) => v
-          Err => return "Could not read file '$modulePath'"
-        }
-        inner.getMessage(modulePath, contents)
-      }
-      TypecheckerErrorKind.TypeError(inner) => {
-        val contents = match fs.readFile(modulePath) {
-          Ok(v) => v
-          Err => return "Could not read file '$modulePath'"
-        }
-        inner.getMessage(modulePath, contents)
-      }
     }
   }
 }
