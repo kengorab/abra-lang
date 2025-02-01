@@ -4396,7 +4396,7 @@ pub type Compiler {
     // in place of the type. 16 chars seems like a good balance between long enough that there won't be any conflicts, but also
     // short enough that there's enough room for this type to be used as a generic in other types without making that type's or
     // function's identifier too long.
-    if name.length >= 70 {
+    if name.length >= 60 {
       val alias = self._aliasedTypeNames.getOrInsert(name, () => String.random(16))
       Ok(alias)
     } else {
@@ -4430,7 +4430,7 @@ pub type Compiler {
     // in place of the type. 16 chars seems like a good balance between long enough that there won't be any conflicts, but also
     // short enough that there's enough room for this type to be used as a generic in other types without making that type's or
     // function's identifier too long.
-    if name.length >= 80 {
+    if name.length >= 60 {
       val alias = self._aliasedTypeNames.getOrInsert(name, () => String.random(40))
       Ok(alias)
     } else {

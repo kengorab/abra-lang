@@ -1,9 +1,11 @@
-import QbeData, QbeDataKind from "./src/qb"
-import QbeData, QbeDataKind, Foo, Bar from "./src/qbe"
-import "./src/qbe" as q
-import "./src/qbe" as q
-import "./src/qbe" as QbeData
-import "./src/qbe" as QbeDataKind
+type Foo {}
+type Foo {}
 
-val d = QbeData(name: "__argc", kind: QbeDataKind.Constants([]))
-println(d)
+func foo() {
+  pub val b = 1
+
+  val c = b + 1
+  println(c)
+}
+
+foo()
