@@ -756,7 +756,6 @@ const TYPECHECKER_TESTS = [
   { test: "typechecker/import/import.2.abra", assertions: "typechecker/import/import.2.out.json" },
   { test: "typechecker/import/error_assignment_to_aliased_imported_variable.abra", assertions: "typechecker/import/error_assignment_to_aliased_imported_variable.out" },
   { test: "typechecker/import/error_assignment_to_imported_variable.abra", assertions: "typechecker/import/error_assignment_to_imported_variable.out" },
-
   { test: "typechecker/import/error_no_file_exists.abra", assertions: "typechecker/import/error_no_file_exists.out" },
   { test: "typechecker/import/error_nonrelative_not_found.abra", assertions: "typechecker/import/error_nonrelative_not_found.out" },
   { test: "typechecker/import/error_circular_dependency.1/mod.1.abra", assertions: "typechecker/import/error_circular_dependency.1/mod.1.out" },
@@ -789,6 +788,9 @@ const TYPECHECKER_TESTS = [
   { test: "typechecker/import/error_alias_duplicate_name.abra", assertions: "typechecker/import/error_alias_duplicate_name.out" },
   { test: "typechecker/import/error_alias_questiondot_access.abra", assertions: "typechecker/import/error_alias_questiondot_access.out" },
   { test: "typechecker/import/error_alias_unknown_import.abra", assertions: "typechecker/import/error_alias_unknown_import.out" },
+
+  // Testing error reporting
+  { test: "typechecker/error_reporting/multiple_errors_imports.abra", assertions: "typechecker/error_reporting/multiple_errors_imports.out" },
 ]
 
 const COMPILER_TESTS = [
