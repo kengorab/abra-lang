@@ -38,21 +38,52 @@ func main() {
     val moduleLoader = ModuleLoader(stdRoot: abraStdRoot)
     val project = Project()
     val typechecker = Typechecker(moduleLoader: moduleLoader, project: project)
+    typechecker.typecheckEntrypoint(filePathAbs)
 
-    match typechecker.typecheckEntrypoint(filePathAbs) {
-      Ok => {
-        val allModules = project.modules.values().sortBy(m => m.id)
-
-        if !verifyStdModule(allModules, 0, "_intrinsics") return
-        if !verifyStdModule(allModules, 1, "libc") return
-        if !verifyStdModule(allModules, 2, "prelude") return
-
-        val userModules = allModules[3:]
-        val json = Jsonifier()
-        json.printModules(userModules)
+    val readFileErrors: String[] = []
+    val errorMessages: String[] = []
+    for mod in project.modules.values().sortBy(m => -m.id) {
+      if mod.readFileError {
+        readFileErrors.push(mod.name)
+        continue
       }
-      Err(e) => println(e.getMessage())
+
+      val contents = try moduleLoader.loadFileContents(mod.name) else {
+        // Any unreadable modules should have had the `readFileError` field set, which is checked above
+        unreachable("Could not read file '${mod.name}'")
+      }
+
+      for err in mod.lexParseErrors {
+        errorMessages.push(err.getMessage(mod.name, contents))
+      }
+
+      for err in mod.typeErrors {
+        errorMessages.push(err.getMessage(mod.name, contents))
+      }
     }
+
+    if !errorMessages.isEmpty() {
+      for msg, idx in errorMessages {
+        println(msg)
+        if idx != errorMessages.length - 1 println() // spacer
+      }
+      return
+    } else if !readFileErrors.isEmpty() {
+      for path, idx in readFileErrors {
+        println("Could not read file '$path'")
+        if idx != readFileErrors.length - 1 println() // spacer
+      }
+      return
+    }
+
+    val allModules = project.modules.values().sortBy(m => m.id)
+
+    if !verifyStdModule(allModules, 0, "_intrinsics") return
+    if !verifyStdModule(allModules, 1, "libc") return
+    if !verifyStdModule(allModules, 2, "prelude") return
+
+    Jsonifier()
+      .printModules(allModules[3:])
   } else {
     println("Missing required argument <file-name>")
   }

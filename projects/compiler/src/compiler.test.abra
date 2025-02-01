@@ -33,12 +33,42 @@ func main() {
     val project = Project()
     val typechecker = Typechecker(moduleLoader: moduleLoader, project: project)
 
-    match typechecker.typecheckEntrypoint(filePathAbs) {
-      Err(e) => {
-        println(e.getMessage())
-        process.exit(1)
+    typechecker.typecheckEntrypoint(filePathAbs)
+
+    val readFileErrors: String[] = []
+    val errorMessages: String[] = []
+    for mod in project.modules.values().sortBy(m => -m.id) {
+      if mod.readFileError {
+        readFileErrors.push(mod.name)
+        continue
       }
-      Ok(_) => {}
+
+      val contents = try moduleLoader.loadFileContents(mod.name) else {
+        // Any unreadable modules should have had the `readFileError` field set, which is checked above
+        unreachable("Could not read file '${mod.name}'")
+      }
+
+      for err in mod.lexParseErrors {
+        errorMessages.push(err.getMessage(mod.name, contents))
+      }
+
+      for err in mod.typeErrors {
+        errorMessages.push(err.getMessage(mod.name, contents))
+      }
+    }
+
+    if !errorMessages.isEmpty() {
+      for msg, idx in errorMessages {
+        println(msg)
+        if idx != errorMessages.length - 1 println() // spacer
+      }
+      process.exit(1)
+    } else if !readFileErrors.isEmpty() {
+      for path, idx in readFileErrors {
+        println("Could not read file '$path'")
+        if idx != readFileErrors.length - 1 println() // spacer
+      }
+      process.exit(1)
     }
 
     val builder = match Compiler.compile(project) {

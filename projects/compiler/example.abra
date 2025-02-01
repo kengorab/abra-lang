@@ -1,4 +1,9 @@
-import QbeData, QbeDataKind from "./src/qbe"
+import QbeData, QbeDataKind from "./src/qb"
+import QbeData, QbeDataKind, Foo, Bar from "./src/qbe"
+import "./src/qbe" as q
+import "./src/qbe" as q
+import "./src/qbe" as QbeData
+import "./src/qbe" as QbeDataKind
 
 val d = QbeData(name: "__argc", kind: QbeDataKind.Constants([]))
 println(d)

@@ -2,7 +2,7 @@ import "fs" as fs
 import JsonValue from "json"
 import log from "./log"
 import Label from "../../compiler/src/parser"
-import TypedModule, ModuleLoader, Project, Typechecker, TypecheckerErrorKind, IdentifierMeta, IdentifierKindMeta, IdentifierMetaModule from "../../compiler/src/typechecker"
+import TypedModule, ModuleLoader, Project, Typechecker, LexerOrParseError, IdentifierMeta, IdentifierKindMeta, IdentifierMetaModule from "../../compiler/src/typechecker"
 import RequestMessage, NotificationMessage, ResponseMessage, ResponseResult, ResponseError, ResponseErrorCode, ServerCapabilities, TextDocumentSyncOptions, TextDocumentSyncKind, SaveOptions, ServerInfo, TextDocumentItem, TextDocumentIdentifier, VersionedTextDocumentIdentifier, TextDocumentContentChangeEvent, Diagnostic, DiagnosticSeverity, Position, Range, MarkupContent, MarkupKind, DocumentSymbol, SymbolKind from "./lsp_spec"
 
 pub val contentLengthHeader = "Content-Length: "
@@ -368,55 +368,47 @@ pub type AbraLanguageService {
     // todo: what happens if it's not a `file://` uri?
     val filePath = uri.replaceAll("file://", "")
 
-    val typechecker = Typechecker(
-      moduleLoader: self._moduleLoader,
-      project: self._project,
-      lspMode: true,
-    )
+    val typechecker = Typechecker(moduleLoader: self._moduleLoader, project: self._project, lspMode: true)
+    typechecker.typecheckEntrypoint(filePath)
 
-    match typechecker.typecheckEntrypoint(filePath) {
-      Ok => []
-      Err(e) => {
-        val (position, message) = match e.kind {
-          TypecheckerErrorKind.ReadFileError => unreachable("could not read file '$filePath'")
-          TypecheckerErrorKind.LexerError(inner) => {
-            val contents = match fs.readFile(e.modulePath) {
-              Ok(v) => v
-              Err => unreachable("Could not read file '${e.modulePath}'")
-            }
-            val msg = inner.getMessage(e.modulePath, contents)
-            (inner.position, msg)
-          }
-          TypecheckerErrorKind.ParseError(inner) => {
-            val contents = match fs.readFile(e.modulePath) {
-              Ok(v) => v
-              Err => unreachable("Could not read file '${e.modulePath}'")
-            }
-            val msg = inner.getMessage(e.modulePath, contents)
-            (inner.position, msg)
-          }
-          TypecheckerErrorKind.TypeError(inner) => {
-            val contents = match fs.readFile(e.modulePath) {
-              Ok(v) => v
-              Err => unreachable("Could not read file '${e.modulePath}'")
-            }
-            val msg = inner.getMessage(e.modulePath, contents)
-            (inner.position, msg)
-          }
-        }
+    val mod = try self._project.modules[filePath] else return []
+    if mod.readFileError return [] // Skip unreadable modules; can't show Diagnostics for them anyway
+    val contents = try self._moduleLoader.loadFileContents(mod.name) else return [] // Skip unreadable modules; can't show Diagnostics for them anyway
 
-        val pos = Position(line: position.line - 1, character: position.col - 1)
-        val diagnostic = Diagnostic(
-          range: Range(start: pos, end: pos),
-          severity: Some(DiagnosticSeverity.Error),
-          message: message
-            .replaceAll("\n", "\\n")
-            .replaceAll("\"", "\\\"")
-            .replaceAll("\t", "\\t"),
-        )
-        [diagnostic]
+    val diagnostics: Diagnostic[] = []
+
+    for err in mod.lexParseErrors {
+      val (position, message) = match err {
+        LexerOrParseError.LexerError(inner) => (inner.position, inner.getMessage(mod.name, contents))
+        LexerOrParseError.ParseError(inner) => (inner.position, inner.getMessage(mod.name, contents))
       }
+
+      val pos = Position(line: position.line - 1, character: position.col - 1)
+      diagnostics.push(Diagnostic(
+        range: Range(start: pos, end: pos),
+        severity: Some(DiagnosticSeverity.Error),
+        message: message
+          .replaceAll("\n", "\\n")
+          .replaceAll("\"", "\\\"")
+          .replaceAll("\t", "\\t"),
+      ))
     }
+
+    for err in mod.typeErrors {
+      val position = err.position
+      val message = err.getMessage(mod.name, contents)
+      val pos = Position(line: position.line - 1, character: position.col - 1)
+      diagnostics.push(Diagnostic(
+        range: Range(start: pos, end: pos),
+        severity: Some(DiagnosticSeverity.Error),
+        message: message
+          .replaceAll("\n", "\\n")
+          .replaceAll("\"", "\\\"")
+          .replaceAll("\t", "\\t"),
+      ))
+    }
+
+    diagnostics
   }
 
   func _findIdentAtPosition(self, uri: String, position: Position): (Int, Int, Int, IdentifierMeta)? {

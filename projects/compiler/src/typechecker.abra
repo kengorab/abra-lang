@@ -32,7 +32,7 @@ pub type ModuleLoader {
     self.parsedModules.remove(modulePathAbs)
   }
 
-  func _loadFileContents(self, modulePathAbs: String): String? {
+  pub func loadFileContents(self, modulePathAbs: String): String? {
     if self._virtualFileSystem |vfs| {
       val inMemContents = vfs[modulePathAbs]
       if inMemContents return inMemContents
@@ -47,7 +47,7 @@ pub type ModuleLoader {
   func tokenizeAndParse(self, modulePath: String): Result<ParsedModule, TokenizeAndParseError> {
     if self.parsedModules[modulePath] |m| return Ok(m)
 
-    val parsedModule = if self._loadFileContents(modulePath) |contents| {
+    val parsedModule = if self.loadFileContents(modulePath) |contents| {
       match Lexer.tokenize(contents) {
         Ok(tokens) => {
           match Parser.parse(tokens) {
@@ -117,8 +117,16 @@ pub type TypedModule {
   imports: Map<String, ImportedModule> = {}
   pub exports: Map<String, Export> = {}
   pub identsByLine: Map<Int, (Int, Int, IdentifierMeta)[]> = {}
+  pub readFileError: Bool = false
+  pub startsCircDep: Bool = false
+  pub lexParseErrors: LexerOrParseError[] = []
+  pub typeErrors: TypeError[] = []
 
   func bogus(): TypedModule = TypedModule(id: -1, name: "bogus", code: [], rootScope: Scope.bogus())
+
+  func addTypeError(self, err: TypeError) {
+    self.typeErrors.push(err)
+  }
 }
 
 pub enum VariableAlias {
@@ -855,44 +863,16 @@ pub enum AccessorPathSegment {
   }
 }
 
-type TypecheckerError {
-  pub modulePath: String
-  pub kind: TypecheckerErrorKind
-
-  pub func getMessage(self): String {
-    match self.kind {
-      // TODO: Better error message, once imports are a thing
-      TypecheckerErrorKind.ReadFileError(path) => "Could not read file '$path'"
-      TypecheckerErrorKind.LexerError(inner) => {
-        val contents = match fs.readFile(self.modulePath) {
-          Ok(v) => v
-          Err => return "Could not read file '${self.modulePath}'"
-        }
-        inner.getMessage(self.modulePath, contents)
-      }
-      TypecheckerErrorKind.ParseError(inner) => {
-        val contents = match fs.readFile(self.modulePath) {
-          Ok(v) => v
-          Err => return "Could not read file '${self.modulePath}'"
-        }
-        inner.getMessage(self.modulePath, contents)
-      }
-      TypecheckerErrorKind.TypeError(inner) => {
-        val contents = match fs.readFile(self.modulePath) {
-          Ok(v) => v
-          Err => return "Could not read file '${self.modulePath}'"
-        }
-        inner.getMessage(self.modulePath, contents)
-      }
-    }
-  }
-}
-
-pub enum TypecheckerErrorKind {
-  ReadFileError(path: String)
+pub enum LexerOrParseError {
   LexerError(inner: LexerError)
   ParseError(inner: ParseError)
-  TypeError(inner: TypeError)
+
+  pub func getMessage(self, modulePath: String, contents: String): String {
+    match self {
+      LexerOrParseError.LexerError(inner) => inner.getMessage(modulePath, contents)
+      LexerOrParseError.ParseError(inner) => inner.getMessage(modulePath, contents)
+    }
+  }
 }
 
 type TypeError {
@@ -1281,7 +1261,7 @@ type TypeError {
       TypeErrorKind.CircularDependency => {
         lines.push("Could not import module due to circular dependency")
         lines.push(self._getCursorLine(self.position, contents))
-        lines.push("The current module is imported by the imported module (or one of its imports), resulting in a cycle")
+        lines.push("The current module is itself imported by this module (or one of its imports), resulting in a cycle")
       }
       TypeErrorKind.IllegalExportScope => {
         lines.push("Invalid visibility modifier")
@@ -1542,14 +1522,14 @@ pub type Typechecker {
   pub lspMode: Bool = false
   identsByLine: Map<Int, (Int, Int, IdentifierMeta)[]> = {}
 
-  pub func typecheckEntrypoint(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
+  pub func typecheckEntrypoint(self, modulePathAbs: String): TypedModule {
     val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
     val preludeModulePathAbs = "/" + preludeModulePathSegs.join("/")
 
     if !self.project.modules[preludeModulePathAbs] {
       val lspMode = self.lspMode
       self.lspMode = false
-      try self._typecheckModule(preludeModulePathAbs)
+      self._typecheckModule(preludeModulePathAbs)
       self.lspMode = lspMode
 
       val preludeStructs = [
@@ -1576,21 +1556,6 @@ pub type Typechecker {
     }
 
     self._typecheckModule(modulePathAbs)
-  }
-
-  func _tokenizeAndParse(self, modulePathAbs: String): Result<ParsedModule, TypecheckerError> {
-    match self.moduleLoader.tokenizeAndParse(modulePathAbs) {
-      Ok(mod) => Ok(mod)
-      Err(e) => {
-        val kind = match e {
-          TokenizeAndParseError.ReadFileError(path) => TypecheckerErrorKind.ReadFileError(path)
-          TokenizeAndParseError.LexerError(inner) => TypecheckerErrorKind.LexerError(inner)
-          TokenizeAndParseError.ParseError(inner) => TypecheckerErrorKind.ParseError(inner)
-        }
-
-        return Err(TypecheckerError(modulePath: modulePathAbs, kind: kind))
-      }
-    }
   }
 
   func _verifyNameUniqueInScope(self, label: Label, scope: Scope): TypeError? {
@@ -2286,8 +2251,8 @@ pub type Typechecker {
 
   // End LSP helpers
 
-  func _typecheckModule(self, modulePathAbs: String): Result<TypedModule, TypecheckerError> {
-    if self.project.modules[modulePathAbs] |mod| return Ok(mod)
+  func _typecheckModule(self, modulePathAbs: String): TypedModule {
+    if self.project.modules[modulePathAbs] |mod| return mod
 
     self.typecheckingBuiltin = if modulePathAbs == self.moduleLoader.stdRoot + "/prelude.abra" {
       self.project.preludeScope = self.currentScope.makeChild("module_prelude", ScopeKind.Module(id: -1, name: modulePathAbs))
@@ -2305,7 +2270,22 @@ pub type Typechecker {
     self.currentModule = mod
     self.project.modules[modulePathAbs] = mod
 
-    val parsedModule = try self._tokenizeAndParse(modulePathAbs)
+    val parsedModule = try self.moduleLoader.tokenizeAndParse(modulePathAbs) else |e| {
+      match e {
+        TokenizeAndParseError.ReadFileError => {
+          // Mark the module as having an reading error, and also as complete since it's gone as far as it can go
+          mod.readFileError = true
+          mod.complete = true
+        }
+        TokenizeAndParseError.LexerError(inner) => mod.lexParseErrors.push(LexerOrParseError.LexerError(inner))
+        TokenizeAndParseError.ParseError(inner) => mod.lexParseErrors.push(LexerOrParseError.ParseError(inner))
+      }
+
+      // TODO: recover from this error?
+      // Maybe, for ParseErrors perhaps if we emit garbage. That may be a good way to implement intellisense in LSP
+      return mod
+    }
+
     val imports: (TypedModule, ImportNode)[] = []
     for importNode in parsedModule.imports {
       var importNodePath = importNode.moduleName.name
@@ -2320,35 +2300,30 @@ pub type Typechecker {
 
       val typedImportModule = if self.project.modules[importPathAbs] |m| {
         if !m.complete {
-          val err = TypeError(position: importNode.moduleName.position, kind: TypeErrorKind.CircularDependency)
-          return Err(TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(err)))
+          // If a module attempts to import a module that is not yet complete, then we've found a circular dependency.
+          // Flag that imported module since it's the module whose imports began the cycle.
+          m.startsCircDep = true
+          return mod // TODO: recover from this error? i'm not sure we can
         }
 
         m
       } else {
         val childTypechecker = Typechecker(moduleLoader: self.moduleLoader, project: self.project)
-        val typedImportModule = match childTypechecker._typecheckModule(importPathAbs) {
-          Ok(m) => m
-          Err(e) => {
-            val err = match e.kind {
-              TypecheckerErrorKind.ReadFileError => {
-                val kind = if isRelativeImport {
-                  TypeErrorKind.UnknownModule(importPathAbs, true)
-                } else {
-                  TypeErrorKind.UnknownModule(importNode.moduleName.name, false)
-                }
+        childTypechecker._typecheckModule(importPathAbs)
+      }
 
-                val err = TypeError(position: importNode.moduleName.position, kind: kind)
-                TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(err))
-              }
-              _ => e
-            }
-
-            return Err(err)
-          }
+      if typedImportModule.readFileError {
+        val kind = if isRelativeImport {
+          TypeErrorKind.UnknownModule(importPathAbs, true)
+        } else {
+          TypeErrorKind.UnknownModule(importNode.moduleName.name, false)
         }
 
-        typedImportModule
+        mod.addTypeError(TypeError(position: importNode.moduleName.position, kind: kind))
+      } else if mod.startsCircDep {
+        // If the imported module can be read but the current module has been flagged as having started a circular
+        // dependency, we need to add that error to the current module so it can be surfaced.
+        mod.addTypeError(TypeError(position: importNode.moduleName.position, kind: TypeErrorKind.CircularDependency))
       }
 
       imports.push((typedImportModule, importNode))
@@ -2367,15 +2342,16 @@ pub type Typechecker {
     mod.rootScope = moduleScope
 
     for (typedImportModule, importNode) in imports {
-      match self._typecheckImport(typedImportModule, importNode) {
-        Ok(v) => v
-        Err(e) => return Err(TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(e)))
+      val errors = self._typecheckImport(typedImportModule, importNode)
+      for err in errors {
+        mod.addTypeError(err)
       }
     }
 
-    mod.code = match self._typecheckBlock(parsedModule.nodes) {
-      Ok(v) => v
-      Err(e) => return Err(TypecheckerError(modulePath: modulePathAbs, kind: TypecheckerErrorKind.TypeError(e)))
+    // TODO: to be continued...
+    match self._typecheckBlock(parsedModule.nodes) {
+      Ok(v) => mod.code = v
+      Err(e) => mod.addTypeError(e)
     }
 
     self.currentScope = prevScope
@@ -2388,7 +2364,7 @@ pub type Typechecker {
       self.typecheckingBuiltin = None
     }
 
-    Ok(mod)
+    mod
   }
 
   func _typecheckDecoratorNode(self, dec: DecoratorNode): Result<Decorator, TypeError> {
@@ -3020,16 +2996,17 @@ pub type Typechecker {
     Ok(0)
   }
 
-  func _typecheckImport(self, mod: TypedModule, node: ImportNode): Result<Int, TypeError> {
+  func _typecheckImport(self, mod: TypedModule, node: ImportNode): TypeError[] {
     val importedModule = self.currentModule.imports.getOrInsert(mod.name, () => ImportedModule())
 
+    val errors: TypeError[] = []
     match node.kind {
       ImportKind.List(importNames) => {
         for imp in importNames {
           for (_, importedModule) in self.currentModule.imports {
             for (importedName, importedValue) in importedModule.imports {
               if importedName == imp.name {
-                return Err(TypeError(position: imp.position, kind: TypeErrorKind.DuplicateName(original: importedValue.label)))
+                errors.push(TypeError(position: imp.position, kind: TypeErrorKind.DuplicateName(original: importedValue.label)))
               }
             }
           }
@@ -3038,20 +3015,29 @@ pub type Typechecker {
             Export.Variable(v) => TypedImportKind.Variable(v)
             Export.Function(v) => TypedImportKind.Function(v)
             Export.Type(structOrEnum, v) => TypedImportKind.Type(structOrEnum, v)
-            None => return Err(TypeError(position: imp.position, kind: TypeErrorKind.UnknownImport(moduleName: node.moduleName.name, importName: imp.name)))
+            None => {
+              // If the imported module could not be read, then let's not emit UnknownImport. Likewise for when the current module
+              // has been flagged as having started a cycle. In both cases, these errors aren't very actionable and are just noisy.
+              if !mod.readFileError && !self.currentModule.startsCircDep {
+                errors.push(TypeError(position: imp.position, kind: TypeErrorKind.UnknownImport(moduleName: node.moduleName.name, importName: imp.name)))
+              }
+              continue
+            }
           }
 
           importedModule.imports[imp.name] = Import(label: imp, kind: typedImportKind)
         }
       }
       ImportKind.Alias(alias) => {
-        if self._verifyNameUniqueInScope(alias, self.currentScope) |e| return Err(e)
-
-        importedModule.aliases.push(alias)
+        if self._verifyNameUniqueInScope(alias, self.currentScope) |e| {
+          errors.push(e)
+        } else {
+          importedModule.aliases.push(alias)
+        }
       }
     }
 
-    Ok(0)
+    errors
   }
 
   func _typecheckBlock(self, nodes: AstNode[]): Result<TypedAstNode[], TypeError> {

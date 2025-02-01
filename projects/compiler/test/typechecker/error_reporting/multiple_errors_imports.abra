@@ -1,0 +1,7 @@
+import Foo from "./_exportsss"
+import Foo, Bazzzz from "./_exportsss"
+import Foo, Bar, Baz from "./_exports"
+import "./_exports" as e
+import "./_exports" as e
+import "./_exports" as Foo
+import "./_exports" as Bar

@@ -1,0 +1,41 @@
+Error at %TEST_DIR%/typechecker/error_reporting/multiple_errors_imports.abra:1:17
+Could not import module
+  |  import Foo from "./_exportsss"
+                     ^
+No file exists at path '%TEST_DIR%/typechecker/error_reporting/_exportsss.abra'
+
+Error at %TEST_DIR%/typechecker/error_reporting/multiple_errors_imports.abra:2:25
+Could not import module
+  |  import Foo, Bazzzz from "./_exportsss"
+                             ^
+No file exists at path '%TEST_DIR%/typechecker/error_reporting/_exportsss.abra'
+
+Error at %TEST_DIR%/typechecker/error_reporting/multiple_errors_imports.abra:3:18
+Invalid import
+  |  import Foo, Bar, Baz from "./_exports"
+                      ^
+There's no exported value named 'Baz' in module './_exports'
+
+Error at %TEST_DIR%/typechecker/error_reporting/multiple_errors_imports.abra:5:24
+Duplicate name 'e'
+  |  import "./_exports" as e
+                            ^
+This name is also declared at (4:24)
+  |  import "./_exports" as e
+                            ^
+
+Error at %TEST_DIR%/typechecker/error_reporting/multiple_errors_imports.abra:6:24
+Duplicate name 'Foo'
+  |  import "./_exports" as Foo
+                            ^
+This name is also declared at (3:8)
+  |  import Foo, Bar, Baz from "./_exports"
+            ^
+
+Error at %TEST_DIR%/typechecker/error_reporting/multiple_errors_imports.abra:7:24
+Duplicate name 'Bar'
+  |  import "./_exports" as Bar
+                            ^
+This name is also declared at (3:13)
+  |  import Foo, Bar, Baz from "./_exports"
+                 ^
