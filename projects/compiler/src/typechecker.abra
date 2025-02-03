@@ -419,6 +419,7 @@ pub type Type {
 
   pub func repr(self, shorthand = true): String {
     match self.kind {
+      TypeKind.CouldNotDetermine => "<unknown>"
       TypeKind.Any => "Any"
       TypeKind.PrimitiveUnit => "Unit"
       TypeKind.PrimitiveInt => "Int"
@@ -471,6 +472,7 @@ pub type Type {
   }
 
   func hasUnfilledHoles(self): Bool = match self.kind {
+    TypeKind.CouldNotDetermine => false
     TypeKind.Any => false
     TypeKind.PrimitiveUnit => false
     TypeKind.PrimitiveInt => false
@@ -638,6 +640,7 @@ pub enum StructOrEnum {
 }
 
 pub enum TypeKind {
+  CouldNotDetermine
   PrimitiveUnit
   PrimitiveInt
   PrimitiveFloat
@@ -1643,15 +1646,15 @@ pub type Typechecker {
     Ok(0) // <- unnecessary 0
   }
 
-  func _findModuleByAlias(self, name: String): Result<(TypedModule, Label)?, TypeError> {
+  func findModuleByAlias(self, name: String): (TypedModule, Label)? {
     for (importModulePath, importedModule) in self.currentModule.imports {
       if importedModule.aliases.find(a => a.name == name) |alias| {
         val mod = try self.project.modules[importModulePath] else unreachable("unknown module '$importModulePath'")
-        return Ok(Some((mod, alias)))
+        return Some((mod, alias))
       }
     }
 
-    Ok(None)
+    None
   }
 
   func _verifyNumTypeArgs(self, position: Position, typeArguments: TypeIdentifier[], num: Int): Result<Type[], TypeError> {
@@ -1770,8 +1773,9 @@ pub type Typechecker {
     val ty = match typeIdent {
       TypeIdentifier.Normal(label, typeArguments, path) => {
         if path[0] |firstSeg| {
-          val _mod = try self._findModuleByAlias(firstSeg.name)
-          val (mod, aliasLabel) = try _mod else return Err(TypeError(position: firstSeg.position, kind: TypeErrorKind.UnknownName(firstSeg.name, "module")))
+          val (mod, aliasLabel) = try self.findModuleByAlias(firstSeg.name) else {
+            return Err(TypeError(position: firstSeg.position, kind: TypeErrorKind.UnknownName(firstSeg.name, "module")))
+          }
 
           if path[1] |seg| return Err(TypeError(position: seg.position, kind: TypeErrorKind.NotYetImplemented("qualified type paths longer than 2")))
 
@@ -1888,8 +1892,7 @@ pub type Typechecker {
         return Ok(Either.Left(t))
       }
       _ first => {
-        val mod = try self._findModuleByAlias(first.name)
-        match mod {
+        match self.findModuleByAlias(first.name) {
           None => {
             val (ty, importMod) = try self._findTypeByNameInScope(first)
             val label = if path[1] |seg| {
@@ -1991,6 +1994,7 @@ pub type Typechecker {
   }
 
   func _typeSatisfiesRequired(self, ty: Type, required: Type): Bool {
+    if required.kind == TypeKind.CouldNotDetermine || ty.kind == TypeKind.CouldNotDetermine return true
     if required.kind == TypeKind.Hole return true
     if required.kind == TypeKind.Never || ty.kind == TypeKind.Never return true
     if required.kind == TypeKind.Any return true
@@ -2426,7 +2430,7 @@ pub type Typechecker {
     Ok(fn)
   }
 
-  func _typecheckFunctionParam(self, param: FunctionParam, typeHint: Type?, allowSelf: Bool, isRevisit = false): Result<(TypedFunctionParam, Bool), TypeError> {
+  func typecheckFunctionParam(self, param: FunctionParam, typeHint: Type?, allowSelf: Bool, isRevisit = false): Result<(TypedFunctionParam, Bool), TypeError> {
     if param.label.name == "self" {
       if !allowSelf return Err(TypeError(position: param.label.position, kind: TypeErrorKind.InvalidParamPosition(purpose: "self")))
 
@@ -2444,7 +2448,10 @@ pub type Typechecker {
     }
 
     val paramType = if param.typeAnnotation |typeAnn| {
-      val ty = try self.resolveTypeIdentifier(typeAnn)
+      val ty = try self.resolveTypeIdentifier(typeAnn) else |err| {
+        self.currentModule.addTypeError(err)
+        Type(kind: TypeKind.CouldNotDetermine)
+      }
       if typeHint |hintTy| {
         if !self._typeSatisfiesRequired(ty: ty, required: hintTy) {
           return Err(TypeError(position: param.label.position, kind: TypeErrorKind.TypeMismatch([hintTy], ty)))
@@ -2460,8 +2467,12 @@ pub type Typechecker {
     var defaultValue: TypedAstNode? = None
     if param.defaultValue |node| {
       if isRevisit {
-        val expr = try self._typecheckExpression(node, paramType)
-        defaultValue = Some(expr)
+        match self._typecheckExpression(node, paramType) {
+          Ok(expr) => { defaultValue = Some(expr) }
+          Err(err) => {
+            self.currentModule.addTypeError(err)
+          }
+        }
       } else {
         // TODO: There has to be a cleaner way of representing this
         val ctx = ParamDefaultValueContext()
@@ -2492,9 +2503,15 @@ pub type Typechecker {
         if !self._typeSatisfiesRequired(ty: defaultValue.ty, required: paramType) {
           return Err(TypeError(position: defaultValue.token.position, kind: TypeErrorKind.TypeMismatch([paramType], defaultValue.ty)))
         }
-      }
 
-      paramType
+        if paramType.kind == TypeKind.CouldNotDetermine {
+          defaultValue.ty
+        } else {
+          paramType
+        }
+      } else {
+        paramType
+      }
     } else {
       if defaultValue |defaultValue| {
         defaultValue.ty
@@ -2546,7 +2563,7 @@ pub type Typechecker {
       }
 
       val hint = paramHints[idx]
-      val (typedParam, needsRevisit) = try self._typecheckFunctionParam(param, hint, allowSelf)
+      val (typedParam, needsRevisit) = try self.typecheckFunctionParam(param, hint, allowSelf)
       val paramName = typedParam.label.name
       // This is a bit messy - if param is `self` then don't add here; it's already denoted as an instance method via its FunctionKind
       if paramName != "self" { fn.params.push(typedParam) }
@@ -2583,7 +2600,7 @@ pub type Typechecker {
       val defaultValueNode = try paramNode.defaultValue else unreachable("the only way a parameter needs revisiting is if it has a default value")
 
       val hint = paramHints[idx]
-      val (typedParam, needsRevisit) = try self._typecheckFunctionParam(param: paramNode, typeHint: hint, allowSelf: allowSelf, isRevisit: true)
+      val (typedParam, needsRevisit) = try self.typecheckFunctionParam(param: paramNode, typeHint: hint, allowSelf: allowSelf, isRevisit: true)
       if needsRevisit unreachable("parameters should not need to be revisited more than once")
       fn.params[idx] = typedParam
     }
@@ -3419,7 +3436,7 @@ pub type Typechecker {
         return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, op, typedExpr)))
       }
       AssignmentMode.Accessor(accessorNode) => {
-        val typedLhs = try self._typecheckAccessor(token, accessorNode, None)
+        val typedLhs = try self.typecheckAccessor(token, accessorNode, None)
         val (mode, fieldLabel, field) = match typedLhs.kind {
           TypedAstNodeKind.Accessor(head, mid, tail) => {
             val t = match tail {
@@ -3444,9 +3461,9 @@ pub type Typechecker {
           TypedAstNodeKind.Identifier(name, _, _, varImportMod) => {
             val pos = typedLhs.token.position
             if varImportMod return Err(TypeError(position: pos, kind: TypeErrorKind.IllegalAssignment(kind: "member", name: name, reason: IllegalAssignmentReason.Import)))
-            unreachable("_typecheckAccessor returned unexpected TypedAstNodeKind")
+            unreachable("typecheckAccessor returned unexpected TypedAstNodeKind")
           }
-          _ => unreachable("_typecheckAccessor returned unexpected TypedAstNodeKind")
+          _ => unreachable("typecheckAccessor returned unexpected TypedAstNodeKind")
         }
 
         val typedExpr = try self._typecheckExpression(expr, Some(field.ty))
@@ -4042,15 +4059,15 @@ pub type Typechecker {
 
         Ok(TypedAstNode(token: token, ty: Type(kind: kind), kind: TypedAstNodeKind.Literal(literal)))
       }
-      AstNodeKind.StringInterpolation(exprs) => self._typecheckStringInterpolation(token, exprs)
-      AstNodeKind.Unary(node) => self._typecheckUnary(token, node)
-      AstNodeKind.Binary(node) => self._typecheckBinary(token, node)
+      AstNodeKind.StringInterpolation(exprs) => self.typecheckStringInterpolation(token, exprs)
+      AstNodeKind.Unary(node) => self.typecheckUnary(token, node)
+      AstNodeKind.Binary(node) => self.typecheckBinary(token, node)
       AstNodeKind.Grouped(inner) => {
         val expr = try self._typecheckExpression(inner, None)
         Ok(TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Grouped(expr)))
       }
-      AstNodeKind.Identifier(kind) => self._typecheckIdentifier(token, kind, typeHint)
-      AstNodeKind.Accessor(node) => self._typecheckAccessor(token, node, typeHint)
+      AstNodeKind.Identifier(kind) => self.typecheckIdentifier(token, kind, typeHint)
+      AstNodeKind.Accessor(node) => self.typecheckAccessor(token, node, typeHint)
       AstNodeKind.Invocation(node) => self._typecheckInvocation(token, node, typeHint)
       AstNodeKind.Array(items) => self._typecheckArray(token, items, typeHint)
       AstNodeKind.Set(items) => self._typecheckSet(token, items, typeHint)
@@ -4085,18 +4102,24 @@ pub type Typechecker {
     }
   }
 
-  func _typecheckStringInterpolation(self, token: Token, exprs: AstNode[]): Result<TypedAstNode, TypeError> {
+  func typecheckStringInterpolation(self, token: Token, exprs: AstNode[]): Result<TypedAstNode, TypeError> {
     val typedExprs: TypedAstNode[] = []
     for expr in exprs {
-      val typedExpr = try self._typecheckExpression(expr, None)
-      typedExprs.push(typedExpr)
+      match self._typecheckExpression(expr, None) {
+        Ok(typedExpr) => typedExprs.push(typedExpr)
+        Err(err) => self.currentModule.addTypeError(err)
+      }
     }
 
     Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveString), kind: TypedAstNodeKind.StringInterpolation(exprs: typedExprs)))
   }
 
-  func _typecheckUnary(self, token: Token, node: UnaryAstNode): Result<TypedAstNode, TypeError> {
+  func typecheckUnary(self, token: Token, node: UnaryAstNode): Result<TypedAstNode, TypeError> {
     val expr = try self._typecheckExpression(node: node.expr, typeHint: None)
+    if expr.ty.kind == TypeKind.CouldNotDetermine {
+      return Ok(TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Unary(op: node.op, expr: expr)))
+    }
+
     val ty = match node.op {
       UnaryOp.Minus => {
         if !self._typeSatisfiesRequired(ty: expr.ty, required: Type(kind: TypeKind.PrimitiveInt)) &&
@@ -4117,14 +4140,20 @@ pub type Typechecker {
     Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Unary(op: node.op, expr: expr)))
   }
 
-  func _typecheckBinary(self, token: Token, node: BinaryAstNode): Result<TypedAstNode, TypeError> {
+  func typecheckBinary(self, token: Token, node: BinaryAstNode): Result<TypedAstNode, TypeError> {
     val handleCases: ((TypeKind, TypeKind, TypeKind)[]) => Result<TypedAstNode, TypeError> = (cases) => {
       val left = try self._typecheckExpression(node.left, None)
       val right = try self._typecheckExpression(node.right, None)
       for (lTy, rTy, outTy) in cases {
         if (lTy == TypeKind.Hole || self._typeSatisfiesRequired(ty: left.ty, required: Type(kind: lTy))) &&
           ((rTy == TypeKind.Hole || self._typeSatisfiesRequired(ty: right.ty, required: Type(kind: rTy)))) {
-          return Ok(TypedAstNode(token: token, ty: Type(kind: outTy), kind: TypedAstNodeKind.Binary(left, node.op, right)))
+
+          val kind = if left.ty.kind == TypeKind.CouldNotDetermine || right.ty.kind == TypeKind.CouldNotDetermine {
+            TypeKind.CouldNotDetermine
+          } else {
+            outTy
+          }
+          return Ok(TypedAstNode(token: token, ty: Type(kind: kind), kind: TypedAstNodeKind.Binary(left, node.op, right)))
         }
       }
 
@@ -4139,7 +4168,12 @@ pub type Typechecker {
         return Err(TypeError(position: right.token.position, kind: TypeErrorKind.TypeMismatch([left.ty], right.ty)))
       }
 
-      Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveBool), kind: TypedAstNodeKind.Binary(left, node.op, right)))
+      val kind = if left.ty.kind == TypeKind.CouldNotDetermine || right.ty.kind == TypeKind.CouldNotDetermine {
+        TypeKind.CouldNotDetermine
+      } else {
+        TypeKind.PrimitiveBool
+      }
+      Ok(TypedAstNode(token: token, ty: Type(kind: kind), kind: TypedAstNodeKind.Binary(left, node.op, right)))
     }
 
     val standardArithmeticCases = [
@@ -4213,15 +4247,25 @@ pub type Typechecker {
     }
   }
 
-  func _typecheckIdentifier(self, token: Token, kind: IdentifierKind, typeHint: Type?): Result<TypedAstNode, TypeError> {
+  func typecheckIdentifier(self, token: Token, kind: IdentifierKind, typeHint: Type?): Result<TypedAstNode, TypeError> {
     val ((variable, varImportMod), name, fnTypeHint) = match kind {
       IdentifierKind.Named(name) => {
         val resolvedIdentifier = try self._resolveIdentifier(name) else {
+          val err = TypeError(position: token.position, kind: TypeErrorKind.UnknownName(name, "variable"))
           if self.paramDefaultValueContext |ctx| {
             ctx.exprContainsVariableRef = true
+            // Return error here rather than just recording and recovering because the logic which determines whether to revisit a
+            // parameter's failed default value typechecking expects an Error to have been returned. A bit of a weird control flow.
+            return Err(err)
+          } else {
+            self.currentModule.addTypeError(err)
+            val bogusVar = Variable.bogus()
+            bogusVar.label.name = name
+            bogusVar.ty = Type(kind: TypeKind.CouldNotDetermine)
+            (bogusVar, None)
           }
-          return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName(name, "variable")))
         }
+
         val variable = resolvedIdentifier[0]
         val fnTypeHint = match variable.alias {
           VariableAlias.Function(fn) => {
@@ -4303,7 +4347,7 @@ pub type Typechecker {
     Ok(TypedAstNode(token: token, ty: variable.ty, kind: TypedAstNodeKind.Identifier(name, variable, fnTypeHint, varImportMod)))
   }
 
-  func _resolveAccessorPathSegmentAny(self, label: Label, optSafe: Bool, typeHint: Type?): AccessorPathSegment? {
+  func resolveAccessorPathSegmentAny(self, label: Label, optSafe: Bool, typeHint: Type?): AccessorPathSegment? {
     val scope = self.project.preludeScope.makeChild("Any", ScopeKind.Type)
     val method: Function? = if label.name == "toString" {
       Some(Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(None, true)))
@@ -4322,17 +4366,18 @@ pub type Typechecker {
     }
   }
 
-  func _resolveAccessorPathSegment(self, ty: Type, label: Label, typeHint: Type?, optSafe = false): Result<AccessorPathSegment?, TypeError> {
+  func resolveAccessorPathSegment(self, ty: Type, label: Label, typeHint: Type?, optSafe = false): Result<AccessorPathSegment?, TypeError> {
     val foundSegment = match ty.kind {
-      TypeKind.Any => self._resolveAccessorPathSegmentAny(label, optSafe, typeHint)
+      TypeKind.CouldNotDetermine => None
+      TypeKind.Any => self.resolveAccessorPathSegmentAny(label, optSafe, typeHint)
       TypeKind.PrimitiveUnit => None
-      TypeKind.PrimitiveInt => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeIntStruct), [])), label, None, optSafe)
-      TypeKind.PrimitiveFloat => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeFloatStruct), [])), label, None, optSafe)
-      TypeKind.PrimitiveBool => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeBoolStruct), [])), label, None, optSafe)
-      TypeKind.PrimitiveChar => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeCharStruct), [])), label, None, optSafe)
-      TypeKind.PrimitiveString => return self._resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeStringStruct), [])), label, None, optSafe)
+      TypeKind.PrimitiveInt => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeIntStruct), [])), label, None, optSafe)
+      TypeKind.PrimitiveFloat => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeFloatStruct), [])), label, None, optSafe)
+      TypeKind.PrimitiveBool => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeBoolStruct), [])), label, None, optSafe)
+      TypeKind.PrimitiveChar => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeCharStruct), [])), label, None, optSafe)
+      TypeKind.PrimitiveString => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(StructOrEnum.Struct(self.project.preludeStringStruct), [])), label, None, optSafe)
       TypeKind.Never => None
-      TypeKind.Generic => self._resolveAccessorPathSegmentAny(label, optSafe, typeHint)
+      TypeKind.Generic => self.resolveAccessorPathSegmentAny(label, optSafe, typeHint)
       TypeKind.Instance(structOrEnum, generics) => {
         val (instanceMethods, typeParams, instanceTypeModuleId) = match structOrEnum {
           StructOrEnum.Struct(struct) => {
@@ -4445,11 +4490,11 @@ pub type Typechecker {
     Ok(foundSegment)
   }
 
-  func _resolveModuleAliasAccessor(self, root: AstNode, field: (Token, Label)): Result<TypedAstNode?, TypeError> {
+  func resolveModuleAliasAccessor(self, root: AstNode, field: (Token, Label)): (TypedAstNode?, Bool) {
     val _mod = match root.kind {
       AstNodeKind.Identifier(identKind) => {
         match identKind {
-          IdentifierKind.Named(name) => try self._findModuleByAlias(name)
+          IdentifierKind.Named(name) => self.findModuleByAlias(name)
           _ => None
         }
       }
@@ -4458,10 +4503,15 @@ pub type Typechecker {
 
     val identifierNode = if _mod |(mod, aliasLabel)| {
       val (dotTok, label) = field
-      if dotTok.kind == TokenKind.QuestionDot return Err(TypeError(position: dotTok.position, kind: TypeErrorKind.UnnecessaryOptSafety))
+      if dotTok.kind == TokenKind.QuestionDot {
+        self.currentModule.addTypeError(TypeError(position: dotTok.position, kind: TypeErrorKind.UnnecessaryOptSafety))
+      }
 
       val exportVar = match mod.exports[label.name] {
-        None => return Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownImportForAlias(label.name, aliasLabel)))
+        None => {
+          self.currentModule.addTypeError(TypeError(position: label.position, kind: TypeErrorKind.UnknownImportForAlias(label.name, aliasLabel)))
+          return (None, true)
+        }
         Export.Variable(v) => v
         Export.Function(v) => v
         Export.Type(_, v) => v
@@ -4473,19 +4523,21 @@ pub type Typechecker {
       None
     }
 
-    Ok(identifierNode)
+    (identifierNode, false)
   }
 
-  func _typecheckAccessor(self, token: Token, node: AccessorAstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
+  func typecheckAccessor(self, token: Token, node: AccessorAstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
     var accessorPath = node.path
 
     val firstSeg = try accessorPath[0] else unreachable("path should have at least 1 segment")
-    val maybeModuleAccessor = try self._resolveModuleAliasAccessor(node.root, firstSeg)
+    val (maybeModuleAccessor, errorOccurred) = self.resolveModuleAliasAccessor(node.root, firstSeg)
     val typedRoot = if maybeModuleAccessor |n| {
       if accessorPath.length == 1 return Ok(n)
 
       accessorPath = accessorPath[1:]
       n
+    } else if errorOccurred {
+      return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder))
     } else {
       self.isStructOrEnumValueAllowed = true
       val typedNode = try self._typecheckExpression(node.root, None)
@@ -4511,7 +4563,7 @@ pub type Typechecker {
         ty
       }
 
-      val seg = try self._resolveAccessorPathSegment(subjTy, label, typeHint, isOptSafe)
+      val seg = try self.resolveAccessorPathSegment(subjTy, label, typeHint, isOptSafe)
       if seg |seg| {
         val nextTy = seg.getType()
 
@@ -4579,7 +4631,7 @@ pub type Typechecker {
         path.push(seg)
         ty = if isOptSafe {
           match seg {
-            AccessorPathSegment.Field => nextTy // type is already wrapped in Option in _resolveAccessorPathSegment for fields if opt-safe
+            AccessorPathSegment.Field => nextTy // type is already wrapped in Option in resolveAccessorPathSegment for fields if opt-safe
             _ => Type(kind: TypeKind.Instance(StructOrEnum.Enum(self.project.preludeOptionEnum), [nextTy]))
           }
         } else {
@@ -4587,7 +4639,7 @@ pub type Typechecker {
         }
       } else {
         val specialCase = if optInnerTy |innerTy| {
-          val seg = try self._resolveAccessorPathSegment(innerTy, label, typeHint)
+          val seg = try self.resolveAccessorPathSegment(innerTy, label, typeHint)
           if seg {
             Some(UnknownFieldSpecialCase.ExistsButTypeIsNullable(seenOptSafeDot))
           } else {
@@ -4596,7 +4648,7 @@ pub type Typechecker {
         } else {
           match ty.kind {
             TypeKind.Instance(structOrEnum, _) => {
-              val seg = try self._resolveAccessorPathSegment(Type(kind: TypeKind.Type(structOrEnum)), label, typeHint)
+              val seg = try self.resolveAccessorPathSegment(Type(kind: TypeKind.Type(structOrEnum)), label, typeHint)
 
               if seg {
                 Some(UnknownFieldSpecialCase.StaticFieldReferencedAsInstance)
@@ -4608,7 +4660,8 @@ pub type Typechecker {
           }
         }
 
-        return Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownField(ty, label.name, specialCase)))
+        self.currentModule.addTypeError(TypeError(position: label.position, kind: TypeErrorKind.UnknownField(ty, label.name, specialCase)))
+        return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder))
       }
     }
 
