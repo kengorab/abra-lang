@@ -21,23 +21,27 @@ class TestRunner {
     }
 
     const results = []
-    for (const { test, assertions, args, env } of tests) {
-      const result = !!assertions
-        ? await this._runTest(runnerBin, test, assertions)
-        : await this._runCompilerTest(runnerBin, test, args, env)
-      results.push(result)
+    for (const { test, assertions, args, env, printModulesOnErr = false } of tests) {
+      if (!!assertions) {
+        const args = printModulesOnErr ? ['--print-mods-on-err'] : []
+        const result = await this._runTest(runnerBin, test, assertions, args)
+        results.push(result)
+      } else {
+        const result = await this._runCompilerTest(runnerBin, test, args, env)
+        results.push(result)
+      }
     }
 
     return this._outputResults(results)
   }
 
-  async _runTest(bin, testFile, outputFile) {
+  async _runTest(bin, testFile, outputFile, args = []) {
     const testFilePath = `${__dirname}/${testFile}`
     const outputFilePath = `${__dirname}/${outputFile}`
 
     try {
       const [actual, expectedOutput] = await Promise.all([
-        runCommand(bin, [testFilePath]),
+        runCommand(bin, [testFilePath, ...args]),
         fs.readFile(outputFilePath, { encoding: 'utf8' }),
       ])
 

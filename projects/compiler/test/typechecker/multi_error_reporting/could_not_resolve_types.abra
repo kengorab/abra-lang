@@ -1,4 +1,4 @@
-import "./example2" as ex2
+import "./_exports" as ex
 
 func bar(a: Abc): Int {
   val b = -a
@@ -7,8 +7,8 @@ func bar(a: Abc): Int {
   val e = (a)
   val f = r
 
-  val g = ex2?.bar
-  val h = ex2.bar
+  val g = ex?.bar
+  val h = ex.bar
   val arr = [a.abc, a.def]
   val i = arr.size.absVal
   val j = [1, 2, 3][0].abs

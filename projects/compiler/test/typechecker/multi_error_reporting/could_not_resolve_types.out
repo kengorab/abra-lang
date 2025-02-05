@@ -1,0 +1,65 @@
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:3:13
+Unknown type 'Abc'
+  |  func bar(a: Abc): Int {
+                 ^
+No type with that name is visible in current scope
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:8:11
+Unknown variable 'r'
+  |    val f = r
+               ^
+No variable with that name is visible in current scope
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:10:13
+Unnecessary use of '?.' operator
+  |    val g = ex?.bar
+                 ^
+(The lhs value's type here is known to be a non-Option type)
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:10:15
+Unknown member 'bar'
+  |    val g = ex?.bar
+                   ^
+There's no exported value named 'bar' in module aliased as 'ex' at:
+  |  import "./_exports" as ex
+                            ^
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:11:14
+Unknown member 'bar'
+  |    val h = ex.bar
+                  ^
+There's no exported value named 'bar' in module aliased as 'ex' at:
+  |  import "./_exports" as ex
+                            ^
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:12:16
+Unknown field 'abc'
+  |    val arr = [a.abc, a.def]
+                    ^
+No field 'abc' found on type <unknown>
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:12:23
+Unknown field 'def'
+  |    val arr = [a.abc, a.def]
+                           ^
+No field 'def' found on type <unknown>
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:13:15
+Unknown field 'size'
+  |    val i = arr.size.absVal
+                   ^
+No field 'size' found on type <unknown>[]
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:14:24
+Unknown field 'abs'
+  |    val j = [1, 2, 3][0].abs
+                            ^
+Type 'Int' has field 'abs', but lhs is of type 'Int?'
+(You can use the '?.' operator instead of '.')
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:15:15
+Unknown field 'withCapacity'
+  |    val k = arr.withCapacity
+                   ^
+No field 'withCapacity' found on instance of type <unknown>[]
+'withCapacity' is a static member of <unknown>[], did you mean to write <unknown>[].withCapacity?

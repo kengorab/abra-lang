@@ -1,0 +1,19 @@
+// Duplicate top-level declarations
+type Foo {}
+type Foo {}
+
+enum Foo {}
+enum Bar {}
+enum Bar {}
+
+type Bar {}
+
+func foo() {}
+func foo() {}
+func Foo() {}
+func Bar() {}
+
+// Duplicate type parameters in top-level declarations
+type Abc<A, B, A> {}
+enum Abc<A, B, A> {}
+func bar<A, B, A>() {}

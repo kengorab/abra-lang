@@ -1,0 +1,87 @@
+Error at %TEST_DIR%/typechecker/multi_error_reporting/duplicate_toplevel_decls.abra:3:6
+Duplicate name 'Foo'
+  |  type Foo {}
+          ^
+This name is also declared at (2:6)
+  |  type Foo {}
+          ^
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/duplicate_toplevel_decls.abra:17:16
+Duplicate name 'A'
+  |  type Abc<A, B, A> {}
+                    ^
+This name is also declared at (17:10)
+  |  type Abc<A, B, A> {}
+              ^
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/duplicate_toplevel_decls.abra:5:6
+Duplicate name 'Foo'
+  |  enum Foo {}
+          ^
+This name is also declared at (2:6)
+  |  type Foo {}
+          ^
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/duplicate_toplevel_decls.abra:6:6
+Duplicate name 'Bar'
+  |  enum Bar {}
+          ^
+This name is also declared at (9:6)
+  |  type Bar {}
+          ^
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/duplicate_toplevel_decls.abra:7:6
+Duplicate name 'Bar'
+  |  enum Bar {}
+          ^
+This name is also declared at (9:6)
+  |  type Bar {}
+          ^
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/duplicate_toplevel_decls.abra:18:16
+Duplicate name 'A'
+  |  enum Abc<A, B, A> {}
+                    ^
+This name is also declared at (18:10)
+  |  enum Abc<A, B, A> {}
+              ^
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/duplicate_toplevel_decls.abra:18:6
+Duplicate name 'Abc'
+  |  enum Abc<A, B, A> {}
+          ^
+This name is also declared at (17:6)
+  |  type Abc<A, B, A> {}
+          ^
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/duplicate_toplevel_decls.abra:12:6
+Duplicate name 'foo'
+  |  func foo() {}
+          ^
+This name is also declared at (11:6)
+  |  func foo() {}
+          ^
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/duplicate_toplevel_decls.abra:13:6
+Duplicate name 'Foo'
+  |  func Foo() {}
+          ^
+This name is also declared at (2:6)
+  |  type Foo {}
+          ^
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/duplicate_toplevel_decls.abra:14:6
+Duplicate name 'Bar'
+  |  func Bar() {}
+          ^
+This name is also declared at (9:6)
+  |  type Bar {}
+          ^
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/duplicate_toplevel_decls.abra:19:16
+Duplicate name 'A'
+  |  func bar<A, B, A>() {}
+                    ^
+This name is also declared at (19:10)
+  |  func bar<A, B, A>() {}
+              ^

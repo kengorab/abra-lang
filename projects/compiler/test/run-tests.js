@@ -790,7 +790,12 @@ const TYPECHECKER_TESTS = [
   { test: "typechecker/import/error_alias_unknown_import.abra", assertions: "typechecker/import/error_alias_unknown_import.out" },
 
   // Testing error reporting
-  { test: "typechecker/error_reporting/multiple_errors_imports.abra", assertions: "typechecker/error_reporting/multiple_errors_imports.out" },
+  { test: "typechecker/multi_error_reporting/bad_pub_location.abra", assertions: "typechecker/multi_error_reporting/bad_pub_location.out" },
+  { test: "typechecker/multi_error_reporting/duplicate_toplevel_decls.abra", assertions: "typechecker/multi_error_reporting/duplicate_toplevel_decls.out" },
+  { test: "typechecker/multi_error_reporting/imports.abra", assertions: "typechecker/multi_error_reporting/imports.out" },
+  // Not a typo; two assertions are run for this file to validate that the `CouldNotDetermine` type is passed around correctly and that the proper errors are surfaced
+  { test: "typechecker/multi_error_reporting/could_not_resolve_types.abra", assertions: "typechecker/multi_error_reporting/could_not_resolve_types.out" },
+  { test: "typechecker/multi_error_reporting/could_not_resolve_types.abra", assertions: "typechecker/multi_error_reporting/could_not_resolve_types.out.json", printModulesOnErr: true },
 ]
 
 const COMPILER_TESTS = [

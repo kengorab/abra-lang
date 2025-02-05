@@ -1,0 +1,5 @@
+func foo() {
+  pub val x = 123
+
+  val y = x + []
+}

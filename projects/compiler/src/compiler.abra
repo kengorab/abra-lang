@@ -2257,6 +2257,7 @@ pub type Compiler {
 
   func _getQbeTypeForType(self, ty: Type): Result<QbeType?, CompileError> {
     match ty.kind {
+      TypeKind.CouldNotDetermine => unreachable("used for surfacing partial results; no module with this type should make it to the compilation phase")
       TypeKind.PrimitiveUnit => Ok(None)
       TypeKind.PrimitiveInt => Ok(Some(QbeType.U64))
       TypeKind.PrimitiveFloat => Ok(Some(QbeType.F64))
@@ -4253,6 +4254,7 @@ pub type Compiler {
 
   func _getInstanceTypeForType(self, ty: Type): Result<(StructOrEnum, Type[]), CompileError> {
     match ty.kind {
+      TypeKind.CouldNotDetermine => unreachable("used for surfacing partial results; no module with this type should make it to the compilation phase")
       TypeKind.Any => unreachable("getInstanceTypeForType: Any")
       TypeKind.PrimitiveUnit => unreachable("getInstanceTypeForType: Unit")
       TypeKind.PrimitiveInt => Ok((StructOrEnum.Struct(self._project.preludeIntStruct), []))

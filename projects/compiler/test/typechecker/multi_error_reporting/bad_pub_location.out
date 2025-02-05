@@ -1,0 +1,11 @@
+Error at %TEST_DIR%/typechecker/multi_error_reporting/bad_pub_location.abra:2:3
+Invalid visibility modifier
+  |    pub val x = 123
+       ^
+Exported values may only appear at the top level scope in a module
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/bad_pub_location.abra:4:13
+Illegal operator
+  |    val y = x + []
+                 ^
+No operator '+' exists between types Int and <unknown>[]
