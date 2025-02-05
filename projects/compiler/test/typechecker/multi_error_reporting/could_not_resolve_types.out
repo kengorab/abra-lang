@@ -1,65 +1,109 @@
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:49:13
+Unknown type 'Abc'
+  |  func baz(): Abc? {
+                 ^
+No type with that name is visible in current scope
+
 Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:3:13
 Unknown type 'Abc'
   |  func bar(a: Abc): Int {
                  ^
 No type with that name is visible in current scope
 
-Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:8:11
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:22:20
 Unknown variable 'r'
-  |    val f = r
-               ^
+  |    val identifier = r
+                        ^
 No variable with that name is visible in current scope
 
-Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:10:13
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:25:30
 Unnecessary use of '?.' operator
-  |    val g = ex?.bar
-                 ^
+  |    val nonOptModuleAccess = ex?.bar
+                                  ^
 (The lhs value's type here is known to be a non-Option type)
 
-Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:10:15
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:25:32
 Unknown member 'bar'
-  |    val g = ex?.bar
-                   ^
+  |    val nonOptModuleAccess = ex?.bar
+                                    ^
 There's no exported value named 'bar' in module aliased as 'ex' at:
   |  import "./_exports" as ex
                             ^
 
-Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:11:14
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:26:22
 Unknown member 'bar'
-  |    val h = ex.bar
-                  ^
+  |    val modAccess = ex.bar
+                          ^
 There's no exported value named 'bar' in module aliased as 'ex' at:
   |  import "./_exports" as ex
                             ^
 
-Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:12:16
-Unknown field 'abc'
-  |    val arr = [a.abc, a.def]
-                    ^
-No field 'abc' found on type <unknown>
-
-Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:12:23
-Unknown field 'def'
-  |    val arr = [a.abc, a.def]
-                           ^
-No field 'def' found on type <unknown>
-
-Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:13:15
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:28:25
 Unknown field 'size'
-  |    val i = arr.size.absVal
-                   ^
+  |    val fieldAccess = arr.size.absVal
+                             ^
 No field 'size' found on type <unknown>[]
 
-Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:14:24
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:29:37
 Unknown field 'abs'
-  |    val j = [1, 2, 3][0].abs
-                            ^
+  |    val optFieldAccess = [1, 2, 3][0].abs
+                                         ^
 Type 'Int' has field 'abs', but lhs is of type 'Int?'
 (You can use the '?.' operator instead of '.')
 
-Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:15:15
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:30:31
 Unknown field 'withCapacity'
-  |    val k = arr.withCapacity
-                   ^
+  |    val staticFieldAccess = arr.withCapacity
+                                   ^
 No field 'withCapacity' found on instance of type <unknown>[]
 'withCapacity' is a static member of <unknown>[], did you mean to write <unknown>[].withCapacity?
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:33:35
+Unknown member 'bar'
+  |    val invocationModuleAccess = ex.bar()
+                                       ^
+There's no exported value named 'bar' in module aliased as 'ex' at:
+  |  import "./_exports" as ex
+                            ^
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:34:34
+Unknown variable 'what'
+  |    val invocationNoSuchFunction = what()
+                                      ^
+No variable with that name is visible in current scope
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:35:44
+Unknown field 'foo'
+  |    val invocationNoSuchInstanceMethod = arr.foo()
+                                                ^
+No field 'foo' found on type <unknown>[]
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:36:44
+Unknown field 'foo'
+  |    val invocationNoSuchStaticMethod = Array.foo()
+                                                ^
+No field 'foo' found on type <#type Array>
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:38:19
+Unknown variable 'huh'
+  |    val indexing1 = huh[0]
+                       ^
+No variable with that name is visible in current scope
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:39:23
+Unknown field 'huh'
+  |    val indexing2 = arr.huh[0]
+                           ^
+No field 'huh' found on type <unknown>[]
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:41:18
+Unknown variable 'huh'
+  |    val try1 = try huh
+                      ^
+No variable with that name is visible in current scope
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/could_not_resolve_types.abra:42:22
+Unknown field 'huh'
+  |    val try2 = try arr.huh
+                          ^
+No field 'huh' found on type <unknown>[]

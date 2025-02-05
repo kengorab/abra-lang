@@ -229,21 +229,84 @@
                   }
                 },
                 {
-                  "label": { "name": "b", "position": [4, 7] },
+                  "label": { "name": "unary1", "position": [5, 7] },
                   "mutable": false,
                   "type": {
                     "kind": "could not determine"
                   }
                 },
                 {
-                  "label": { "name": "c", "position": [5, 7] },
+                  "label": { "name": "unary2", "position": [6, 7] },
                   "mutable": false,
                   "type": {
                     "kind": "could not determine"
                   }
                 },
                 {
-                  "label": { "name": "d", "position": [6, 7] },
+                  "label": { "name": "binary1", "position": [8, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "binary2", "position": [9, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "binary3", "position": [10, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "binary4", "position": [11, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "binary5", "position": [12, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "binary6", "position": [13, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "binary7", "position": [14, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "binary8", "position": [15, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "binary9", "position": [16, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "stringInterpolation", "position": [18, 7] },
                   "mutable": false,
                   "type": {
                     "kind": "primitive",
@@ -251,35 +314,35 @@
                   }
                 },
                 {
-                  "label": { "name": "e", "position": [7, 7] },
+                  "label": { "name": "grouped", "position": [20, 7] },
                   "mutable": false,
                   "type": {
                     "kind": "could not determine"
                   }
                 },
                 {
-                  "label": { "name": "f", "position": [8, 7] },
+                  "label": { "name": "identifier", "position": [22, 7] },
                   "mutable": false,
                   "type": {
                     "kind": "could not determine"
                   }
                 },
                 {
-                  "label": { "name": "g", "position": [10, 7] },
+                  "label": { "name": "nonOptModuleAccess", "position": [25, 7] },
                   "mutable": false,
                   "type": {
                     "kind": "could not determine"
                   }
                 },
                 {
-                  "label": { "name": "h", "position": [11, 7] },
+                  "label": { "name": "modAccess", "position": [26, 7] },
                   "mutable": false,
                   "type": {
                     "kind": "could not determine"
                   }
                 },
                 {
-                  "label": { "name": "arr", "position": [12, 7] },
+                  "label": { "name": "arr", "position": [27, 7] },
                   "mutable": false,
                   "type": {
                     "kind": "instance",
@@ -292,28 +355,77 @@
                   }
                 },
                 {
-                  "label": { "name": "i", "position": [13, 7] },
+                  "label": { "name": "fieldAccess", "position": [28, 7] },
                   "mutable": false,
                   "type": {
                     "kind": "could not determine"
                   }
                 },
                 {
-                  "label": { "name": "j", "position": [14, 7] },
+                  "label": { "name": "optFieldAccess", "position": [29, 7] },
                   "mutable": false,
                   "type": {
                     "kind": "could not determine"
                   }
                 },
                 {
-                  "label": { "name": "k", "position": [15, 7] },
+                  "label": { "name": "staticFieldAccess", "position": [30, 7] },
                   "mutable": false,
                   "type": {
                     "kind": "could not determine"
                   }
                 },
                 {
-                  "label": { "name": "x", "position": [18, 7] },
+                  "label": { "name": "invocationModuleAccess", "position": [33, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "invocationNoSuchFunction", "position": [34, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "invocationNoSuchInstanceMethod", "position": [35, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "invocationNoSuchStaticMethod", "position": [36, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "indexing1", "position": [38, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "indexing2", "position": [39, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "try1", "position": [41, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "try2", "position": [42, 7] },
                   "mutable": false,
                   "type": {
                     "kind": "could not determine"
@@ -342,65 +454,6 @@
             "body": [
               {
                 "token": {
-                  "position": [4, 3],
-                  "kind": {
-                    "name": "Val"
-                  }
-                },
-                "type": {
-                  "kind": "primitive",
-                  "primitive": "Unit"
-                },
-                "node": {
-                  "kind": "bindingDeclaration",
-                  "pattern": {
-                    "kind": "variable",
-                    "label": { "name": "b", "position": [4, 7] }
-                  },
-                  "variables": [
-                    {
-                      "label": { "name": "b", "position": [4, 7] },
-                      "mutable": false,
-                      "type": {
-                        "kind": "could not determine"
-                      }
-                    }
-                  ],
-                  "expr": {
-                    "token": {
-                      "position": [4, 11],
-                      "kind": {
-                        "name": "Minus"
-                      }
-                    },
-                    "type": {
-                      "kind": "could not determine"
-                    },
-                    "node": {
-                      "kind": "unary",
-                      "op": "UnaryOp.Minus",
-                      "expr": {
-                        "token": {
-                          "position": [4, 12],
-                          "kind": {
-                            "name": "Ident",
-                            "value": "a"
-                          }
-                        },
-                        "type": {
-                          "kind": "could not determine"
-                        },
-                        "node": {
-                          "kind": "identifier",
-                          "name": "a"
-                        }
-                      }
-                    }
-                  }
-                }
-              },
-              {
-                "token": {
                   "position": [5, 3],
                   "kind": {
                     "name": "Val"
@@ -414,11 +467,11 @@
                   "kind": "bindingDeclaration",
                   "pattern": {
                     "kind": "variable",
-                    "label": { "name": "c", "position": [5, 7] }
+                    "label": { "name": "unary1", "position": [5, 7] }
                   },
                   "variables": [
                     {
-                      "label": { "name": "c", "position": [5, 7] },
+                      "label": { "name": "unary1", "position": [5, 7] },
                       "mutable": false,
                       "type": {
                         "kind": "could not determine"
@@ -427,9 +480,9 @@
                   ],
                   "expr": {
                     "token": {
-                      "position": [5, 11],
+                      "position": [5, 16],
                       "kind": {
-                        "name": "Bang"
+                        "name": "Minus"
                       }
                     },
                     "type": {
@@ -437,10 +490,10 @@
                     },
                     "node": {
                       "kind": "unary",
-                      "op": "UnaryOp.Negate",
+                      "op": "UnaryOp.Minus",
                       "expr": {
                         "token": {
-                          "position": [5, 12],
+                          "position": [5, 17],
                           "kind": {
                             "name": "Ident",
                             "value": "a"
@@ -473,115 +526,11 @@
                   "kind": "bindingDeclaration",
                   "pattern": {
                     "kind": "variable",
-                    "label": { "name": "d", "position": [6, 7] }
+                    "label": { "name": "unary2", "position": [6, 7] }
                   },
                   "variables": [
                     {
-                      "label": { "name": "d", "position": [6, 7] },
-                      "mutable": false,
-                      "type": {
-                        "kind": "primitive",
-                        "primitive": "String"
-                      }
-                    }
-                  ],
-                  "expr": {
-                    "token": {
-                      "position": [6, 11],
-                      "kind": {
-                        "name": "StringInterpolation",
-                        "chunks": [
-                          {
-                            "position": [6, 11],
-                            "kind": {
-                              "name": "String",
-                              "value": "hello "
-                            }
-                          },
-                          [
-                            {
-                              "position": [6, 19],
-                              "kind": {
-                                "name": "Ident",
-                                "value": "a"
-                              }
-                            }
-                          ],
-                          {
-                            "position": [6, 20],
-                            "kind": {
-                              "name": "String",
-                              "value": ""
-                            }
-                          }
-                        ]
-                      }
-                    },
-                    "type": {
-                      "kind": "primitive",
-                      "primitive": "String"
-                    },
-                    "node": {
-                      "kind": "stringInterpolation",
-                      "exprs": [
-                        {
-                          "token": {
-                            "position": [6, 11],
-                            "kind": {
-                              "name": "String",
-                              "value": "hello "
-                            }
-                          },
-                          "type": {
-                            "kind": "primitive",
-                            "primitive": "String"
-                          },
-                          "node": {
-                            "kind": "literal",
-                            "value": "hello "
-                          }
-                        },
-                        {
-                          "token": {
-                            "position": [6, 19],
-                            "kind": {
-                              "name": "Ident",
-                              "value": "a"
-                            }
-                          },
-                          "type": {
-                            "kind": "could not determine"
-                          },
-                          "node": {
-                            "kind": "identifier",
-                            "name": "a"
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
-              },
-              {
-                "token": {
-                  "position": [7, 3],
-                  "kind": {
-                    "name": "Val"
-                  }
-                },
-                "type": {
-                  "kind": "primitive",
-                  "primitive": "Unit"
-                },
-                "node": {
-                  "kind": "bindingDeclaration",
-                  "pattern": {
-                    "kind": "variable",
-                    "label": { "name": "e", "position": [7, 7] }
-                  },
-                  "variables": [
-                    {
-                      "label": { "name": "e", "position": [7, 7] },
+                      "label": { "name": "unary2", "position": [6, 7] },
                       "mutable": false,
                       "type": {
                         "kind": "could not determine"
@@ -590,19 +539,20 @@
                   ],
                   "expr": {
                     "token": {
-                      "position": [7, 11],
+                      "position": [6, 16],
                       "kind": {
-                        "name": "LParen"
+                        "name": "Bang"
                       }
                     },
                     "type": {
                       "kind": "could not determine"
                     },
                     "node": {
-                      "kind": "grouped",
+                      "kind": "unary",
+                      "op": "UnaryOp.Negate",
                       "expr": {
                         "token": {
-                          "position": [7, 12],
+                          "position": [6, 17],
                           "kind": {
                             "name": "Ident",
                             "value": "a"
@@ -635,11 +585,11 @@
                   "kind": "bindingDeclaration",
                   "pattern": {
                     "kind": "variable",
-                    "label": { "name": "f", "position": [8, 7] }
+                    "label": { "name": "binary1", "position": [8, 7] }
                   },
                   "variables": [
                     {
-                      "label": { "name": "f", "position": [8, 7] },
+                      "label": { "name": "binary1", "position": [8, 7] },
                       "mutable": false,
                       "type": {
                         "kind": "could not determine"
@@ -648,345 +598,7 @@
                   ],
                   "expr": {
                     "token": {
-                      "position": [8, 11],
-                      "kind": {
-                        "name": "Ident",
-                        "value": "r"
-                      }
-                    },
-                    "type": {
-                      "kind": "could not determine"
-                    },
-                    "node": {
-                      "kind": "identifier",
-                      "name": "r"
-                    }
-                  }
-                }
-              },
-              {
-                "token": {
-                  "position": [10, 3],
-                  "kind": {
-                    "name": "Val"
-                  }
-                },
-                "type": {
-                  "kind": "primitive",
-                  "primitive": "Unit"
-                },
-                "node": {
-                  "kind": "bindingDeclaration",
-                  "pattern": {
-                    "kind": "variable",
-                    "label": { "name": "g", "position": [10, 7] }
-                  },
-                  "variables": [
-                    {
-                      "label": { "name": "g", "position": [10, 7] },
-                      "mutable": false,
-                      "type": {
-                        "kind": "could not determine"
-                      }
-                    }
-                  ],
-                  "expr": {
-                    "token": {
-                      "position": [10, 13],
-                      "kind": {
-                        "name": "QuestionDot"
-                      }
-                    },
-                    "type": {
-                      "kind": "could not determine"
-                    },
-                    "node": {
-                      "kind": "placeholder"
-                    }
-                  }
-                }
-              },
-              {
-                "token": {
-                  "position": [11, 3],
-                  "kind": {
-                    "name": "Val"
-                  }
-                },
-                "type": {
-                  "kind": "primitive",
-                  "primitive": "Unit"
-                },
-                "node": {
-                  "kind": "bindingDeclaration",
-                  "pattern": {
-                    "kind": "variable",
-                    "label": { "name": "h", "position": [11, 7] }
-                  },
-                  "variables": [
-                    {
-                      "label": { "name": "h", "position": [11, 7] },
-                      "mutable": false,
-                      "type": {
-                        "kind": "could not determine"
-                      }
-                    }
-                  ],
-                  "expr": {
-                    "token": {
-                      "position": [11, 13],
-                      "kind": {
-                        "name": "Dot"
-                      }
-                    },
-                    "type": {
-                      "kind": "could not determine"
-                    },
-                    "node": {
-                      "kind": "placeholder"
-                    }
-                  }
-                }
-              },
-              {
-                "token": {
-                  "position": [12, 3],
-                  "kind": {
-                    "name": "Val"
-                  }
-                },
-                "type": {
-                  "kind": "primitive",
-                  "primitive": "Unit"
-                },
-                "node": {
-                  "kind": "bindingDeclaration",
-                  "pattern": {
-                    "kind": "variable",
-                    "label": { "name": "arr", "position": [12, 7] }
-                  },
-                  "variables": [
-                    {
-                      "label": { "name": "arr", "position": [12, 7] },
-                      "mutable": false,
-                      "type": {
-                        "kind": "instance",
-                        "struct": { "moduleId": 2, "name": "Array" },
-                        "typeParams": [
-                          {
-                            "kind": "could not determine"
-                          }
-                        ]
-                      }
-                    }
-                  ],
-                  "expr": {
-                    "token": {
-                      "position": [12, 13],
-                      "kind": {
-                        "name": "LBrack"
-                      }
-                    },
-                    "type": {
-                      "kind": "instance",
-                      "struct": { "moduleId": 2, "name": "Array" },
-                      "typeParams": [
-                        {
-                          "kind": "could not determine"
-                        }
-                      ]
-                    },
-                    "node": {
-                      "kind": "array",
-                      "items": [
-                        {
-                          "token": {
-                            "position": [12, 15],
-                            "kind": {
-                              "name": "Dot"
-                            }
-                          },
-                          "type": {
-                            "kind": "could not determine"
-                          },
-                          "node": {
-                            "kind": "placeholder"
-                          }
-                        },
-                        {
-                          "token": {
-                            "position": [12, 22],
-                            "kind": {
-                              "name": "Dot"
-                            }
-                          },
-                          "type": {
-                            "kind": "could not determine"
-                          },
-                          "node": {
-                            "kind": "placeholder"
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
-              },
-              {
-                "token": {
-                  "position": [13, 3],
-                  "kind": {
-                    "name": "Val"
-                  }
-                },
-                "type": {
-                  "kind": "primitive",
-                  "primitive": "Unit"
-                },
-                "node": {
-                  "kind": "bindingDeclaration",
-                  "pattern": {
-                    "kind": "variable",
-                    "label": { "name": "i", "position": [13, 7] }
-                  },
-                  "variables": [
-                    {
-                      "label": { "name": "i", "position": [13, 7] },
-                      "mutable": false,
-                      "type": {
-                        "kind": "could not determine"
-                      }
-                    }
-                  ],
-                  "expr": {
-                    "token": {
-                      "position": [13, 14],
-                      "kind": {
-                        "name": "Dot"
-                      }
-                    },
-                    "type": {
-                      "kind": "could not determine"
-                    },
-                    "node": {
-                      "kind": "placeholder"
-                    }
-                  }
-                }
-              },
-              {
-                "token": {
-                  "position": [14, 3],
-                  "kind": {
-                    "name": "Val"
-                  }
-                },
-                "type": {
-                  "kind": "primitive",
-                  "primitive": "Unit"
-                },
-                "node": {
-                  "kind": "bindingDeclaration",
-                  "pattern": {
-                    "kind": "variable",
-                    "label": { "name": "j", "position": [14, 7] }
-                  },
-                  "variables": [
-                    {
-                      "label": { "name": "j", "position": [14, 7] },
-                      "mutable": false,
-                      "type": {
-                        "kind": "could not determine"
-                      }
-                    }
-                  ],
-                  "expr": {
-                    "token": {
-                      "position": [14, 23],
-                      "kind": {
-                        "name": "Dot"
-                      }
-                    },
-                    "type": {
-                      "kind": "could not determine"
-                    },
-                    "node": {
-                      "kind": "placeholder"
-                    }
-                  }
-                }
-              },
-              {
-                "token": {
-                  "position": [15, 3],
-                  "kind": {
-                    "name": "Val"
-                  }
-                },
-                "type": {
-                  "kind": "primitive",
-                  "primitive": "Unit"
-                },
-                "node": {
-                  "kind": "bindingDeclaration",
-                  "pattern": {
-                    "kind": "variable",
-                    "label": { "name": "k", "position": [15, 7] }
-                  },
-                  "variables": [
-                    {
-                      "label": { "name": "k", "position": [15, 7] },
-                      "mutable": false,
-                      "type": {
-                        "kind": "could not determine"
-                      }
-                    }
-                  ],
-                  "expr": {
-                    "token": {
-                      "position": [15, 14],
-                      "kind": {
-                        "name": "Dot"
-                      }
-                    },
-                    "type": {
-                      "kind": "could not determine"
-                    },
-                    "node": {
-                      "kind": "placeholder"
-                    }
-                  }
-                }
-              },
-              {
-                "token": {
-                  "position": [18, 3],
-                  "kind": {
-                    "name": "Val"
-                  }
-                },
-                "type": {
-                  "kind": "primitive",
-                  "primitive": "Unit"
-                },
-                "node": {
-                  "kind": "bindingDeclaration",
-                  "pattern": {
-                    "kind": "variable",
-                    "label": { "name": "x", "position": [18, 7] }
-                  },
-                  "variables": [
-                    {
-                      "label": { "name": "x", "position": [18, 7] },
-                      "mutable": false,
-                      "type": {
-                        "kind": "could not determine"
-                      }
-                    }
-                  ],
-                  "expr": {
-                    "token": {
-                      "position": [18, 13],
+                      "position": [8, 19],
                       "kind": {
                         "name": "Plus"
                       }
@@ -999,7 +611,7 @@
                       "op": "BinaryOp.Add",
                       "left": {
                         "token": {
-                          "position": [18, 11],
+                          "position": [8, 17],
                           "kind": {
                             "name": "Ident",
                             "value": "a"
@@ -1015,7 +627,7 @@
                       },
                       "right": {
                         "token": {
-                          "position": [18, 15],
+                          "position": [8, 21],
                           "kind": {
                             "name": "Int",
                             "value": 1
@@ -1036,7 +648,1451 @@
               },
               {
                 "token": {
-                  "position": [19, 3],
+                  "position": [9, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "binary2", "position": [9, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "binary2", "position": [9, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [9, 19],
+                      "kind": {
+                        "name": "Minus"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "binary",
+                      "op": "BinaryOp.Sub",
+                      "left": {
+                        "token": {
+                          "position": [9, 17],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "could not determine"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "a"
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [9, 21],
+                          "kind": {
+                            "name": "Int",
+                            "value": 1
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [10, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "binary3", "position": [10, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "binary3", "position": [10, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [10, 19],
+                      "kind": {
+                        "name": "Star"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "binary",
+                      "op": "BinaryOp.Mul",
+                      "left": {
+                        "token": {
+                          "position": [10, 17],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "could not determine"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "a"
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [10, 21],
+                          "kind": {
+                            "name": "Int",
+                            "value": 1
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [11, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "binary4", "position": [11, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "binary4", "position": [11, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [11, 19],
+                      "kind": {
+                        "name": "Slash"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "binary",
+                      "op": "BinaryOp.Div",
+                      "left": {
+                        "token": {
+                          "position": [11, 17],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "could not determine"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "a"
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [11, 21],
+                          "kind": {
+                            "name": "Int",
+                            "value": 1
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [12, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "binary5", "position": [12, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "binary5", "position": [12, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [12, 19],
+                      "kind": {
+                        "name": "Percent"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "binary",
+                      "op": "BinaryOp.Mod",
+                      "left": {
+                        "token": {
+                          "position": [12, 17],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "could not determine"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "a"
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [12, 21],
+                          "kind": {
+                            "name": "Int",
+                            "value": 1
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [13, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "binary6", "position": [13, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "binary6", "position": [13, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [13, 19],
+                      "kind": {
+                        "name": "GT"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "binary",
+                      "op": "BinaryOp.GT",
+                      "left": {
+                        "token": {
+                          "position": [13, 17],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "could not determine"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "a"
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [13, 21],
+                          "kind": {
+                            "name": "Int",
+                            "value": 1
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [14, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "binary7", "position": [14, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "binary7", "position": [14, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [14, 19],
+                      "kind": {
+                        "name": "GTE"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "binary",
+                      "op": "BinaryOp.GTE",
+                      "left": {
+                        "token": {
+                          "position": [14, 17],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "could not determine"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "a"
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [14, 22],
+                          "kind": {
+                            "name": "Int",
+                            "value": 1
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [15, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "binary8", "position": [15, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "binary8", "position": [15, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [15, 19],
+                      "kind": {
+                        "name": "LT"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "binary",
+                      "op": "BinaryOp.LT",
+                      "left": {
+                        "token": {
+                          "position": [15, 17],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "could not determine"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "a"
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [15, 21],
+                          "kind": {
+                            "name": "Int",
+                            "value": 1
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [16, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "binary9", "position": [16, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "binary9", "position": [16, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [16, 19],
+                      "kind": {
+                        "name": "LTE"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "binary",
+                      "op": "BinaryOp.LTE",
+                      "left": {
+                        "token": {
+                          "position": [16, 17],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "could not determine"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "a"
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [16, 22],
+                          "kind": {
+                            "name": "Int",
+                            "value": 1
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [18, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "stringInterpolation", "position": [18, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "stringInterpolation", "position": [18, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "primitive",
+                        "primitive": "String"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [18, 29],
+                      "kind": {
+                        "name": "StringInterpolation",
+                        "chunks": [
+                          {
+                            "position": [18, 29],
+                            "kind": {
+                              "name": "String",
+                              "value": "hello "
+                            }
+                          },
+                          [
+                            {
+                              "position": [18, 37],
+                              "kind": {
+                                "name": "Ident",
+                                "value": "a"
+                              }
+                            }
+                          ],
+                          {
+                            "position": [18, 38],
+                            "kind": {
+                              "name": "String",
+                              "value": ""
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    },
+                    "node": {
+                      "kind": "stringInterpolation",
+                      "exprs": [
+                        {
+                          "token": {
+                            "position": [18, 29],
+                            "kind": {
+                              "name": "String",
+                              "value": "hello "
+                            }
+                          },
+                          "type": {
+                            "kind": "primitive",
+                            "primitive": "String"
+                          },
+                          "node": {
+                            "kind": "literal",
+                            "value": "hello "
+                          }
+                        },
+                        {
+                          "token": {
+                            "position": [18, 37],
+                            "kind": {
+                              "name": "Ident",
+                              "value": "a"
+                            }
+                          },
+                          "type": {
+                            "kind": "could not determine"
+                          },
+                          "node": {
+                            "kind": "identifier",
+                            "name": "a"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [20, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "grouped", "position": [20, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "grouped", "position": [20, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [20, 17],
+                      "kind": {
+                        "name": "LParen"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "grouped",
+                      "expr": {
+                        "token": {
+                          "position": [20, 18],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "could not determine"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "a"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [22, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "identifier", "position": [22, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "identifier", "position": [22, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [22, 20],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "r"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "r"
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [25, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "nonOptModuleAccess", "position": [25, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "nonOptModuleAccess", "position": [25, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [25, 30],
+                      "kind": {
+                        "name": "QuestionDot"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "placeholder"
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [26, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "modAccess", "position": [26, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "modAccess", "position": [26, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [26, 21],
+                      "kind": {
+                        "name": "Dot"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "placeholder"
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [27, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "arr", "position": [27, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "arr", "position": [27, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "instance",
+                        "struct": { "moduleId": 2, "name": "Array" },
+                        "typeParams": [
+                          {
+                            "kind": "could not determine"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [27, 13],
+                      "kind": {
+                        "name": "LBrack"
+                      }
+                    },
+                    "type": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 2, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "could not determine"
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "array",
+                      "items": [
+                        {
+                          "token": {
+                            "position": [27, 15],
+                            "kind": {
+                              "name": "Dot"
+                            }
+                          },
+                          "type": {
+                            "kind": "could not determine"
+                          },
+                          "node": {
+                            "kind": "placeholder"
+                          }
+                        },
+                        {
+                          "token": {
+                            "position": [27, 22],
+                            "kind": {
+                              "name": "Dot"
+                            }
+                          },
+                          "type": {
+                            "kind": "could not determine"
+                          },
+                          "node": {
+                            "kind": "placeholder"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [28, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "fieldAccess", "position": [28, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "fieldAccess", "position": [28, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [28, 24],
+                      "kind": {
+                        "name": "Dot"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "placeholder"
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [29, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "optFieldAccess", "position": [29, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "optFieldAccess", "position": [29, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [29, 36],
+                      "kind": {
+                        "name": "Dot"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "placeholder"
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [30, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "staticFieldAccess", "position": [30, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "staticFieldAccess", "position": [30, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [30, 30],
+                      "kind": {
+                        "name": "Dot"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "placeholder"
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [33, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "invocationModuleAccess", "position": [33, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "invocationModuleAccess", "position": [33, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [33, 38],
+                      "kind": {
+                        "name": "LParen"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "placeholder"
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [34, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "invocationNoSuchFunction", "position": [34, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "invocationNoSuchFunction", "position": [34, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [34, 38],
+                      "kind": {
+                        "name": "LParen"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "placeholder"
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [35, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "invocationNoSuchInstanceMethod", "position": [35, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "invocationNoSuchInstanceMethod", "position": [35, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [35, 47],
+                      "kind": {
+                        "name": "LParen"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "placeholder"
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [36, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "invocationNoSuchStaticMethod", "position": [36, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "invocationNoSuchStaticMethod", "position": [36, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [36, 47],
+                      "kind": {
+                        "name": "LParen"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "placeholder"
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [38, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "indexing1", "position": [38, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "indexing1", "position": [38, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [38, 22],
+                      "kind": {
+                        "name": "LBrack"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "placeholder"
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [39, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "indexing2", "position": [39, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "indexing2", "position": [39, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [39, 26],
+                      "kind": {
+                        "name": "LBrack"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "placeholder"
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [41, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "try1", "position": [41, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "try1", "position": [41, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [41, 14],
+                      "kind": {
+                        "name": "Try"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "placeholder"
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [42, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "try2", "position": [42, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "try2", "position": [42, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [42, 14],
+                      "kind": {
+                        "name": "Try"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "placeholder"
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [44, 3],
                   "kind": {
                     "name": "Return"
                   }
@@ -1048,18 +2104,50 @@
                   "kind": "return",
                   "expr": {
                     "token": {
-                      "position": [19, 10],
+                      "position": [44, 12],
                       "kind": {
-                        "name": "Ident",
-                        "value": "x"
+                        "name": "Plus"
                       }
                     },
                     "type": {
                       "kind": "could not determine"
                     },
                     "node": {
-                      "kind": "identifier",
-                      "name": "x"
+                      "kind": "binary",
+                      "op": "BinaryOp.Add",
+                      "left": {
+                        "token": {
+                          "position": [44, 10],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "could not determine"
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "a"
+                        }
+                      },
+                      "right": {
+                        "token": {
+                          "position": [44, 14],
+                          "kind": {
+                            "name": "Int",
+                            "value": 1
+                          }
+                        },
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        },
+                        "node": {
+                          "kind": "literal",
+                          "value": 1
+                        }
+                      }
                     }
                   }
                 }
@@ -1070,7 +2158,7 @@
       },
       {
         "token": {
-          "position": [22, 1],
+          "position": [47, 1],
           "kind": {
             "name": "Val"
           }
@@ -1083,11 +2171,11 @@
           "kind": "bindingDeclaration",
           "pattern": {
             "kind": "variable",
-            "label": { "name": "abc", "position": [22, 5] }
+            "label": { "name": "abc", "position": [47, 5] }
           },
           "variables": [
             {
-              "label": { "name": "abc", "position": [22, 5] },
+              "label": { "name": "abc", "position": [47, 5] },
               "mutable": false,
               "type": {
                 "kind": "primitive",
@@ -1097,7 +2185,7 @@
           ],
           "expr": {
             "token": {
-              "position": [22, 14],
+              "position": [47, 14],
               "kind": {
                 "name": "LParen"
               }
@@ -1129,7 +2217,7 @@
               "arguments": [
                 {
                   "token": {
-                    "position": [22, 15],
+                    "position": [47, 15],
                     "kind": {
                       "name": "Int",
                       "value": 123
@@ -1145,6 +2233,239 @@
                   }
                 }
               ]
+            }
+          }
+        }
+      },
+      {
+        "token": {
+          "position": [49, 1],
+          "kind": {
+            "name": "Func"
+          }
+        },
+        "type": {
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "functionDeclaration",
+          "function": {
+            "label": { "name": "baz", "position": [49, 6] },
+            "scope": {
+              "name": "$root::module_4::baz",
+              "variables": [
+                {
+                  "label": { "name": "try1", "position": [50, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "try2", "position": [51, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                },
+                {
+                  "label": { "name": "try3", "position": [52, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "could not determine"
+                  }
+                }
+              ],
+              "functions": [],
+              "types": []
+            },
+            "kind": "FunctionKind.Standalone",
+            "typeParameters": [],
+            "parameters": [],
+            "returnType": {
+              "kind": "could not determine"
+            },
+            "body": [
+              {
+                "token": {
+                  "position": [50, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "try1", "position": [50, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "try1", "position": [50, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [50, 14],
+                      "kind": {
+                        "name": "Try"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "placeholder"
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [51, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "try2", "position": [51, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "try2", "position": [51, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [51, 14],
+                      "kind": {
+                        "name": "Try"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "placeholder"
+                    }
+                  }
+                }
+              },
+              {
+                "token": {
+                  "position": [52, 3],
+                  "kind": {
+                    "name": "Val"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Unit"
+                },
+                "node": {
+                  "kind": "bindingDeclaration",
+                  "pattern": {
+                    "kind": "variable",
+                    "label": { "name": "try3", "position": [52, 7] }
+                  },
+                  "variables": [
+                    {
+                      "label": { "name": "try3", "position": [52, 7] },
+                      "mutable": false,
+                      "type": {
+                        "kind": "could not determine"
+                      }
+                    }
+                  ],
+                  "expr": {
+                    "token": {
+                      "position": [52, 14],
+                      "kind": {
+                        "name": "Try"
+                      }
+                    },
+                    "type": {
+                      "kind": "could not determine"
+                    },
+                    "node": {
+                      "kind": "placeholder"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "token": {
+          "position": [55, 1],
+          "kind": {
+            "name": "Val"
+          }
+        },
+        "type": {
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "bindingDeclaration",
+          "pattern": {
+            "kind": "variable",
+            "label": { "name": "def", "position": [55, 5] }
+          },
+          "variables": [
+            {
+              "label": { "name": "def", "position": [55, 5] },
+              "mutable": false,
+              "type": {
+                "kind": "could not determine"
+              }
+            }
+          ],
+          "expr": {
+            "token": {
+              "position": [55, 14],
+              "kind": {
+                "name": "LParen"
+              }
+            },
+            "type": {
+              "kind": "could not determine"
+            },
+            "node": {
+              "kind": "invocation",
+              "invokee": {
+                "function": "baz",
+                "type": {
+                  "kind": "function",
+                  "parameters": [],
+                  "returnType": {
+                    "kind": "could not determine"
+                  }
+                }
+              },
+              "arguments": []
             }
           }
         }
