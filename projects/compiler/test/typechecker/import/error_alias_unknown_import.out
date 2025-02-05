@@ -5,9 +5,3 @@ Unknown member 'bogus'
 There's no exported value named 'bogus' in module aliased as 'a' at:
   |  import "./_exports" as a
                             ^
-
-Error at %TEST_DIR%/typechecker/import/error_alias_unknown_import.abra:3:2
-Cannot invoke target as function
-  |  a.bogus()
-      ^
-Type '<unknown>' is not callable

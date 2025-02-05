@@ -1366,13 +1366,16 @@ type TypeError {
           InvalidTryLocationReason.NotWithinFunction => {
             lines.push("Try expressions can only be used inside of function bodies")
           }
-          InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel, tryType, returnType, isResult) => {
+          InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel, tryType, returnType, kind) => {
             lines.push("The containing function '${fnLabel.name}' has return type '${returnType.repr()}', which is incompatible with the try expression's type '${tryType.repr()}'.")
             lines.push(self._getCursorLine(fnLabel.position, contents))
-            if isResult {
-              lines.push("To be compatible, '${fnLabel.name}' must return a Result whose error type matches that of the try expression")
-            } else {
-              lines.push("To be compatible, '${fnLabel.name}' must return an Option type")
+            match kind {
+              InvalidFunctionReturnTypeKind.IsResult => {
+                lines.push("To be compatible, '${fnLabel.name}' must return a Result whose error type matches that of the try expression")
+              }
+              InvalidFunctionReturnTypeKind.IsOption => {
+                lines.push("To be compatible, '${fnLabel.name}' must return an Option type")
+              }
             }
           }
         }
@@ -1448,9 +1451,15 @@ enum InvalidDestructuringReason {
   InvalidTupleArity(expected: Int, given: Int)
 }
 
+enum InvalidFunctionReturnTypeKind {
+  IsResult
+  IsOption
+  IsNotTryable
+}
+
 enum InvalidTryLocationReason {
   NotWithinFunction
-  InvalidFunctionReturnType(fnLabel: Label, tryType: Type, returnType: Type, isResult: Bool)
+  InvalidFunctionReturnType(fnLabel: Label, tryType: Type, returnType: Type, kind: InvalidFunctionReturnTypeKind)
 }
 
 enum TypeErrorKind {
@@ -2404,7 +2413,10 @@ pub type Typechecker {
     }
 
     val returnType = if node.returnTypeAnnotation |typeAnn| {
-      try self.resolveTypeIdentifier(typeAnn)
+      try self.resolveTypeIdentifier(typeAnn) else |err| {
+        self.currentModule.addTypeError(err)
+        Type(kind: TypeKind.CouldNotDetermine)
+      }
     } else {
       Type(kind: TypeKind.PrimitiveUnit)
     }
@@ -2585,7 +2597,7 @@ pub type Typechecker {
     val prevFn = self.currentFunction
     self.currentFunction = Some(fn)
 
-    val hasReturnValue = fn.returnType.kind != TypeKind.PrimitiveUnit
+    val hasReturnValue = fn.returnType.kind != TypeKind.PrimitiveUnit && fn.returnType.kind != TypeKind.CouldNotDetermine
     if hasReturnValue && body.isEmpty() {
       if !fn.decorators.find(dec => dec.label.name == "Stub" || dec.label.name == "Intrinsic" || dec.label.name == "CBinding")
         return Err(TypeError(position: fn.label.position, kind: TypeErrorKind.ReturnTypeMismatch(Some(fn.label.name), fn.returnType, None)))
@@ -3420,10 +3432,10 @@ pub type Typechecker {
         return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, op, typedExpr)))
       }
       AssignmentMode.Indexing(targetExpr, indexExpr) => {
-        val typedLhs = try self._typecheckIndexing(token, targetExpr, IndexingMode.Single(indexExpr), None)
+        val typedLhs = try self.typecheckIndexing(token, targetExpr, IndexingMode.Single(indexExpr), None)
         val typedIndexingNode = match typedLhs.kind {
           TypedAstNodeKind.Indexing(node) => node
-          _ => unreachable("_typecheckIndexing returned unexpected TypedAstNodeKind")
+          _ => unreachable("typecheckIndexing returned unexpected TypedAstNodeKind")
         }
         val assignmentTy = self._typeIsOption(typedLhs.ty) ?: typedLhs.ty
 
@@ -4068,16 +4080,16 @@ pub type Typechecker {
       }
       AstNodeKind.Identifier(kind) => self.typecheckIdentifier(token, kind, typeHint)
       AstNodeKind.Accessor(node) => self.typecheckAccessor(token, node, typeHint)
-      AstNodeKind.Invocation(node) => self._typecheckInvocation(token, node, typeHint)
-      AstNodeKind.Array(items) => self._typecheckArray(token, items, typeHint)
-      AstNodeKind.Set(items) => self._typecheckSet(token, items, typeHint)
-      AstNodeKind.Map(items) => self._typecheckMap(token, items, typeHint)
-      AstNodeKind.Tuple(items) => self._typecheckTuple(token, items, typeHint)
-      AstNodeKind.Indexing(expr, index) => self._typecheckIndexing(token, expr, index, typeHint)
+      AstNodeKind.Invocation(node) => self.typecheckInvocation(token, node, typeHint)
+      AstNodeKind.Array(items) => self.typecheckArray(token, items, typeHint)
+      AstNodeKind.Set(items) => self.typecheckSet(token, items, typeHint)
+      AstNodeKind.Map(items) => self.typecheckMap(token, items, typeHint)
+      AstNodeKind.Tuple(items) => self.typecheckTuple(token, items, typeHint)
+      AstNodeKind.Indexing(expr, index) => self.typecheckIndexing(token, expr, index, typeHint)
       AstNodeKind.Lambda(value) => self._typecheckLambda(token, value, typeHint)
       AstNodeKind.If(condition, conditionBinding, ifBlock, elseBlock) => self._typecheckIf(token, condition, conditionBinding, ifBlock, elseBlock, typeHint)
       AstNodeKind.Match(subject, cases) => self._typecheckMatch(token, subject, cases, typeHint)
-      AstNodeKind.Try(expr, elseClause) => self._typecheckTry(token, expr, elseClause, typeHint)
+      AstNodeKind.Try(expr, elseClause) => self.typecheckTry(token, expr, elseClause, typeHint)
       _ => unreachable("all other node types should have already been handled")
     }
 
@@ -4547,6 +4559,8 @@ pub type Typechecker {
 
     val path: AccessorPathSegment[] = []
     var ty = typedRoot.ty
+    if ty.kind == TypeKind.CouldNotDetermine return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder))
+
     var seenOptSafeDot = false
     for (token, label), idx in accessorPath {
       val isOptSafe = token.kind == TokenKind.QuestionDot
@@ -4670,12 +4684,14 @@ pub type Typechecker {
     Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Accessor(typedRoot, path, finalField)))
   }
 
-  func _typecheckInvocation(self, token: Token, node: InvocationAstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
+  func typecheckInvocation(self, token: Token, node: InvocationAstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
     self.isStructOrEnumValueAllowed = true
     self.isEnumContainerValueAllowed = true
     val invokee = try self._typecheckExpression(node.invokee, None)
     self.isEnumContainerValueAllowed = false
     self.isStructOrEnumValueAllowed = false
+
+    if invokee.ty.kind == TypeKind.CouldNotDetermine return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder))
 
     match invokee.kind {
       TypedAstNodeKind.Identifier(name, variable, _, _) => {
@@ -4998,7 +5014,7 @@ pub type Typechecker {
     Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(typedInvokee, typedArguments, resolvedGenerics)))
   }
 
-  func _typecheckArray(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
+  func typecheckArray(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
     var innerType: Type? = None
     if typeHint |hint| {
       if self._typeAsInstance1(hint, self.project.preludeArrayStruct) |inner| {
@@ -5038,7 +5054,7 @@ pub type Typechecker {
     Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Array(typedItems)))
   }
 
-  func _typecheckSet(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
+  func typecheckSet(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
     var innerType: Type? = None
     if typeHint |hint| {
       if self._typeAsInstance1(hint, self.project.preludeSetStruct) |inner| {
@@ -5078,7 +5094,7 @@ pub type Typechecker {
     Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Set(typedItems)))
   }
 
-  func _typecheckMap(self, token: Token, items: (AstNode, AstNode)[], typeHint: Type?): Result<TypedAstNode, TypeError> {
+  func typecheckMap(self, token: Token, items: (AstNode, AstNode)[], typeHint: Type?): Result<TypedAstNode, TypeError> {
     var keyTy: Type? = None
     var valTy: Type? = None
     if typeHint |hint| {
@@ -5138,7 +5154,7 @@ pub type Typechecker {
     Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Map(typedItems)))
   }
 
-  func _typecheckTuple(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
+  func typecheckTuple(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
     var typeHints: Type[]? = None
     if typeHint |hint| {
       match hint.kind {
@@ -5169,8 +5185,10 @@ pub type Typechecker {
     Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Tuple(typedItems)))
   }
 
-  func _typecheckIndexing(self, token: Token, expr: AstNode, indexMode: IndexingMode<AstNode>, typeHint: Type?): Result<TypedAstNode, TypeError> {
+  func typecheckIndexing(self, token: Token, expr: AstNode, indexMode: IndexingMode<AstNode>, typeHint: Type?): Result<TypedAstNode, TypeError> {
     val typedExpr = try self._typecheckExpression(expr, None)
+    if typedExpr.ty.kind == TypeKind.CouldNotDetermine return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder))
+
     if self._typeIsOption(typedExpr.ty) {
       return Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.IllegalIndexableType(ty: typedExpr.ty, isRange: false)))
     }
@@ -5325,7 +5343,7 @@ pub type Typechecker {
     Ok(TypedAstNode(token: token, ty: lambdaTy, kind: TypedAstNodeKind.Lambda(fn, typeHint)))
   }
 
-  func _typecheckTry(self, token: Token, expr: AstNode, elseClause: (Token, BindingPattern?, AstNode[])?, typeHint: Type?): Result<TypedAstNode, TypeError> {
+  func typecheckTry(self, token: Token, expr: AstNode, elseClause: (Token, BindingPattern?, AstNode[])?, typeHint: Type?): Result<TypedAstNode, TypeError> {
     // TODO: support top-level try (the error case would just exit the program)
     val currentFn = try self.currentFunction else return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.NotWithinFunction)))
 
@@ -5342,11 +5360,18 @@ pub type Typechecker {
     } else if elseClause {
       val typedExpr = try self._typecheckExpression(expr, None)
       (typedExpr, None)
+    } else if currentFn.returnType.kind == TypeKind.CouldNotDetermine {
+      return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder))
     } else {
       val typedExpr = try self._typecheckExpression(expr, None)
-      val isResult = !!self._typeIsResult(typedExpr.ty)
-      return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel: currentFn.label, tryType: typedExpr.ty, returnType: currentFn.returnType, isResult: isResult))))
+
+      if typedExpr.ty.kind == TypeKind.CouldNotDetermine return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder))
+
+      val kind = if self._typeIsResult(typedExpr.ty) InvalidFunctionReturnTypeKind.IsResult else InvalidFunctionReturnTypeKind.IsOption
+      return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel: currentFn.label, tryType: typedExpr.ty, returnType: currentFn.returnType, kind: kind))))
     }
+
+    if typedExpr.ty.kind == TypeKind.CouldNotDetermine return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder))
 
     val (tryValType, typedElseClause) = if elseClause |(elseToken, bindingPattern, elseBlock)| {
       val isStatement = if typeHint |hint| hint.kind == TypeKind.PrimitiveUnit else false
@@ -5413,11 +5438,11 @@ pub type Typechecker {
             exprOkType
           }
         } else {
-          return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel: currentFn.label, tryType: typedExpr.ty, returnType: currentFn.returnType, isResult: true))))
+          return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel: currentFn.label, tryType: typedExpr.ty, returnType: currentFn.returnType, kind: InvalidFunctionReturnTypeKind.IsResult))))
         }
       } else if self._typeIsOption(typedExpr.ty) |inner| {
         if returnTypeResultErr {
-          return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel: currentFn.label, tryType: typedExpr.ty, returnType: currentFn.returnType, isResult: false))))
+          return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidTryLocation(InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel: currentFn.label, tryType: typedExpr.ty, returnType: currentFn.returnType, kind: InvalidFunctionReturnTypeKind.IsOption))))
         } else {
           inner
         }

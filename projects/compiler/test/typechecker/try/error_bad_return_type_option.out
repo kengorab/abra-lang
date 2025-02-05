@@ -1,4 +1,4 @@
-Error at %FILE_NAME%:4:11
+Error at %TEST_DIR%/typechecker/try/error_bad_return_type_option.abra:4:11
 Invalid location for try expression
   |    val x = try foo()
                ^
