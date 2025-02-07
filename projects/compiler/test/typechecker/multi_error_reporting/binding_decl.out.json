@@ -51,6 +51,20 @@
                 }
               },
               {
+                "label": { "name": "f", "position": [6, 8] },
+                "mutable": false,
+                "type": {
+                  "kind": "could not determine"
+                }
+              },
+              {
+                "label": { "name": "g", "position": [6, 11] },
+                "mutable": false,
+                "type": {
+                  "kind": "could not determine"
+                }
+              },
+              {
                 "label": { "name": "h", "position": [7, 8] },
                 "mutable": false,
                 "type": {
@@ -79,6 +93,19 @@
                 "type": {
                   "kind": "primitive",
                   "primitive": "Int"
+                }
+              },
+              {
+                "label": { "name": "m", "position": [11, 7] },
+                "mutable": false,
+                "type": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 2, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "hole"
+                    }
+                  ]
                 }
               }
             ],
@@ -341,7 +368,22 @@
                     }
                   ]
                 },
-                "variables": [],
+                "variables": [
+                  {
+                    "label": { "name": "f", "position": [6, 8] },
+                    "mutable": false,
+                    "type": {
+                      "kind": "could not determine"
+                    }
+                  },
+                  {
+                    "label": { "name": "g", "position": [6, 11] },
+                    "mutable": false,
+                    "type": {
+                      "kind": "could not determine"
+                    }
+                  }
+                ],
                 "expr": {
                   "token": {
                     "position": [6, 16],
@@ -570,10 +612,51 @@
                 }
               },
               "type": {
-                "kind": "could not determine"
+                "kind": "primitive",
+                "primitive": "Unit"
               },
               "node": {
-                "kind": "placeholder"
+                "kind": "bindingDeclaration",
+                "pattern": {
+                  "kind": "variable",
+                  "label": { "name": "m", "position": [11, 7] }
+                },
+                "variables": [
+                  {
+                    "label": { "name": "m", "position": [11, 7] },
+                    "mutable": false,
+                    "type": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 2, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "hole"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "expr": {
+                  "token": {
+                    "position": [11, 11],
+                    "kind": {
+                      "name": "LBrack"
+                    }
+                  },
+                  "type": {
+                    "kind": "instance",
+                    "struct": { "moduleId": 2, "name": "Array" },
+                    "typeParams": [
+                      {
+                        "kind": "hole"
+                      }
+                    ]
+                  },
+                  "node": {
+                    "kind": "array",
+                    "items": []
+                  }
+                }
               }
             },
             {
@@ -960,7 +1043,13 @@
                     }
                   },
                   "type": {
-                    "kind": "could not determine"
+                    "kind": "instance",
+                    "struct": { "moduleId": 2, "name": "Array" },
+                    "typeParams": [
+                      {
+                        "kind": "hole"
+                      }
+                    ]
                   },
                   "node": {
                     "kind": "identifier",

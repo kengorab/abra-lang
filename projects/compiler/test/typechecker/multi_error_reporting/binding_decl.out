@@ -62,26 +62,8 @@ Unknown variable 'c'
                ^
 No variable with that name is visible in current scope
 
-Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:13:23
-Unknown variable 'f'
-  |    a + b + c + d + e + f + g + h + i + j + k + l + m
-                           ^
-No variable with that name is visible in current scope
-
-Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:13:27
-Unknown variable 'g'
-  |    a + b + c + d + e + f + g + h + i + j + k + l + m
-                               ^
-No variable with that name is visible in current scope
-
 Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:13:39
 Unknown variable 'j'
   |    a + b + c + d + e + f + g + h + i + j + k + l + m
                                            ^
-No variable with that name is visible in current scope
-
-Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:13:51
-Unknown variable 'm'
-  |    a + b + c + d + e + f + g + h + i + j + k + l + m
-                                                       ^
 No variable with that name is visible in current scope

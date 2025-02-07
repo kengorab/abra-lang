@@ -1,5 +1,5 @@
 Error at %TEST_DIR%/typechecker/try/error_else_bad_destructuring.abra:4:26
 Invalid destructuring
-  |    val x = try ok() else |(e1, e2)| 456
+  |    val x = try ok() else |(e1, e2)| { e1 + e2 }
                               ^
 A value of type 'String' cannot be destructured as a tuple
