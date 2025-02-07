@@ -1,0 +1,16 @@
+func foo(): Int {
+  val a = 1 + []
+  val (a, b) = foobar
+
+  val (d, e) = (1, "2", 3.14)
+  val (f, g) = "asdf"
+  val (h, i, j) = (1, 2)
+
+  val k: Abc = 123
+  val l: Int = 1.23
+  val m = []
+
+  a + b + c + d + e + f + g + h + i + j + k + l + m
+}
+
+val x = foo()

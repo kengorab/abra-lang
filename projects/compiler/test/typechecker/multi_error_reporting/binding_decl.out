@@ -1,0 +1,87 @@
+Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:2:13
+Illegal operator
+  |    val a = 1 + []
+                 ^
+No operator '+' exists between types Int and <unknown>[]
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:3:16
+Unknown variable 'foobar'
+  |    val (a, b) = foobar
+                    ^
+No variable with that name is visible in current scope
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:3:8
+Duplicate name 'a'
+  |    val (a, b) = foobar
+            ^
+This name is also declared at (2:7)
+  |    val a = 1 + []
+           ^
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:5:7
+Incorrect number of destructuring arguments for tuple
+  |    val (d, e) = (1, "2", 3.14)
+           ^
+Expected 3, but 2 were provided
+(You can use '_' to denote positions that you wish to discard)
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:6:7
+Invalid destructuring
+  |    val (f, g) = "asdf"
+           ^
+A value of type 'String' cannot be destructured as a tuple
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:7:14
+Incorrect number of destructuring arguments for tuple
+  |    val (h, i, j) = (1, 2)
+                  ^
+Expected 2, but 3 were provided
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:9:10
+Unknown type 'Abc'
+  |    val k: Abc = 123
+              ^
+No type with that name is visible in current scope
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:10:16
+Type mismatch
+  |    val l: Int = 1.23
+                    ^
+Expected: Int
+but instead found: Float
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:11:11
+Could not determine type for assignment
+  |    val m = []
+               ^
+Type '<unknown>[]' has unfilled holes. Please use an explicit type annotation to denote the type
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:13:11
+Unknown variable 'c'
+  |    a + b + c + d + e + f + g + h + i + j + k + l + m
+               ^
+No variable with that name is visible in current scope
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:13:23
+Unknown variable 'f'
+  |    a + b + c + d + e + f + g + h + i + j + k + l + m
+                           ^
+No variable with that name is visible in current scope
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:13:27
+Unknown variable 'g'
+  |    a + b + c + d + e + f + g + h + i + j + k + l + m
+                               ^
+No variable with that name is visible in current scope
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:13:39
+Unknown variable 'j'
+  |    a + b + c + d + e + f + g + h + i + j + k + l + m
+                                           ^
+No variable with that name is visible in current scope
+
+Error at %TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra:13:51
+Unknown variable 'm'
+  |    a + b + c + d + e + f + g + h + i + j + k + l + m
+                                                       ^
+No variable with that name is visible in current scope

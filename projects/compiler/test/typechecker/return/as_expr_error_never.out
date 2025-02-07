@@ -1,5 +1,11 @@
-Error at %FILE_NAME%:2:11
+Error at %TEST_DIR%/typechecker/return/as_expr_error_never.abra:2:11
 Forbidden type for assignment
   |    val s = if true {
                ^
 Expression has type Never, which can never be used for assignment
+
+Error at %TEST_DIR%/typechecker/return/as_expr_error_never.abra:7:3
+Unreachable code
+  |    s
+       ^
+Control flow exits before this code is reached
