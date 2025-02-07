@@ -1,4 +1,4 @@
-Error at %FILE_NAME%:4:11
+Error at %TEST_DIR%/typechecker/try/error_return_type_err_mismatch.abra:4:11
 Return type mismatch for function containing try expression
   |    val x = try foo()
                ^

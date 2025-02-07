@@ -1,5 +1,11 @@
-Error at %FILE_NAME%:4:5
+Error at %TEST_DIR%/typechecker/return/error_unreachable_stmt_for_inside.1.abra:4:5
 Unreachable code
   |      val y = "abcd"
          ^
+Control flow exits before this code is reached
+
+Error at %TEST_DIR%/typechecker/return/error_unreachable_stmt_for_inside.1.abra:6:3
+Unreachable code
+  |    val x = 123
+       ^
 Control flow exits before this code is reached

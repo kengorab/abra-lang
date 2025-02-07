@@ -1,55 +1,14 @@
-import "./example2" as ex2
+func foo(): Int {
+  val a = 1 + []
+  val (a, b) = foobar
 
-func bar(a: Abc): Int {
-  // unary
-  val unary1 = -a
-  val unary2 = !a
+  val (d, e) = (1, "2", 3.14)
 
-  val binary1 = a + 1
-  val binary2 = a - 1
-  val binary3 = a * 1
-  val binary4 = a / 1
-  val binary5 = a % 1
-  val binary6 = a > 1
-  val binary7 = a >= 1
-  val binary8 = a < 1
-  val binary9 = a <= 1
+  val f: Abc = 123
+  val g: Int = 1.23
+  val h = []
 
-  val stringInterpolation = "hello $a"
-
-  val grouped = (a)
-
-  val identifier = r
-
-  // accessor
-  val nonOptModuleAccess = ex2?.bar
-  val modAccess = ex2.bar
-  val arr = [a.abc, a.def]
-  val fieldAccess = arr.size.absVal
-  val optFieldAccess = [1, 2, 3][0].abs
-  val staticFieldAccess = arr.withCapacity
-
-  // invocation
-  val invocationModuleAccess = ex2.bar()
-  val invocationNoSuchFunction = what()
-  val invocationNoSuchInstanceMethod = arr.foo()
-  val invocationNoSuchStaticMethod = Array.foo()
-
-  val indexing1 = huh[0]
-  val indexing2 = arr.huh[0]
-
-  val try1 = try huh
-  val try2 = try arr.huh
-
-  return a + 1
+  a + b + c + d + e + f
 }
 
-val abc = bar(123)
-
-func baz(): Abc? {
-  val try1 = try [1, 2, 3][0]
-  val try2 = try huh
-  val try3 = try arr.huh
-}
-
-val def = baz()
+val x = foo()
