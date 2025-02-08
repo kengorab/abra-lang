@@ -341,8 +341,26 @@
         "name": "function",
         "decorators": [
           {
-            "name": { "name": "Stub", "position": [12, 2] },
-            "arguments": []
+            "name": { "name": "intrinsic", "position": [12, 2] },
+            "arguments": [
+              {
+                "label": null,
+                "value": {
+                  "token": {
+                    "position": [12, 12],
+                    "kind": {
+                      "name": "String",
+                      "value": "foo_bar"
+                    }
+                  },
+                  "kind": {
+                    "name": "literal",
+                    "type": "string",
+                    "value": "foo_bar"
+                  }
+                }
+              }
+            ]
           }
         ],
         "pubToken": null,
@@ -363,53 +381,13 @@
         "name": "function",
         "decorators": [
           {
-            "name": { "name": "Intrinsic", "position": [15, 2] },
+            "name": { "name": "external", "position": [15, 2] },
             "arguments": [
               {
                 "label": null,
                 "value": {
                   "token": {
-                    "position": [15, 12],
-                    "kind": {
-                      "name": "String",
-                      "value": "foo_bar"
-                    }
-                  },
-                  "kind": {
-                    "name": "literal",
-                    "type": "string",
-                    "value": "foo_bar"
-                  }
-                }
-              }
-            ]
-          }
-        ],
-        "pubToken": null,
-        "ident": { "name": "stubbedFunc", "position": [16, 6] },
-        "typeParams": [],
-        "params": [],
-        "body": []
-      }
-    },
-    {
-      "token": {
-        "position": [19, 1],
-        "kind": {
-          "name": "Func"
-        }
-      },
-      "kind": {
-        "name": "function",
-        "decorators": [
-          {
-            "name": { "name": "CBinding", "position": [18, 2] },
-            "arguments": [
-              {
-                "label": null,
-                "value": {
-                  "token": {
-                    "position": [18, 11],
+                    "position": [15, 11],
                     "kind": {
                       "name": "String",
                       "value": "strlen"
@@ -426,7 +404,7 @@
           }
         ],
         "pubToken": null,
-        "ident": { "name": "stubbedFunc", "position": [19, 6] },
+        "ident": { "name": "stubbedFunc", "position": [16, 6] },
         "typeParams": [],
         "params": [],
         "body": []

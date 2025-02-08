@@ -1113,16 +1113,16 @@ pub type Compiler {
               return res
             }
 
-            val intrinsicDec = fn.decorators.find(dec => dec.label.name == "Intrinsic")
+            val intrinsicDec = fn.decorators.find(dec => dec.label.name == "Intrinsic" || dec.label.name == "intrinsic")
             if intrinsicDec |dec| {
-              val res = self._invokeIntrinsicFn(dec, fn, arguments)
+              val res = self.invokeIntrinsicFn(dec, fn, arguments)
               self._resolvedGenerics.popLayer()
               return res
             }
 
-            val cBindingDec = fn.decorators.find(dec => dec.label.name == "CBinding")
-            if cBindingDec |dec| {
-              val res = self._invokeCBindingFn(dec, fn, arguments)
+            val externalDec = fn.decorators.find(dec => dec.label.name == "CBinding" || dec.label.name == "external")
+            if externalDec |dec| {
+              val res = self.invokeExternalFn(dec, fn, arguments)
               self._resolvedGenerics.popLayer()
               return res
             }
@@ -1150,10 +1150,10 @@ pub type Compiler {
           TypedInvokee.Method(fn, selfExpr, isOptSafe) => {
             var selfInstanceType = try self._addResolvedGenericsLayerForInstanceMethod(selfExpr.ty, fn.label.name, node.token.position, resolvedGenerics)
 
-            val intrinsicDec = fn.decorators.find(dec => dec.label.name == "Intrinsic")
+            val intrinsicDec = fn.decorators.find(dec => dec.label.name == "Intrinsic" || dec.label.name == "intrinsic")
             if intrinsicDec |dec| {
               if isOptSafe unreachable("cannot have opt-safe intrinsic method calls")
-              val res = self._invokeIntrinsicFn(dec, fn, [Some(selfExpr)].concat(arguments))
+              val res = self.invokeIntrinsicFn(dec, fn, [Some(selfExpr)].concat(arguments))
               self._resolvedGenerics.popLayer()
               return res
             }
@@ -2661,10 +2661,10 @@ pub type Compiler {
     Ok(Value.Ident("bogus", QbeType.F32))
   }
 
-  func _invokeCBindingFn(self, dec: Decorator, fn: Function, arguments: TypedAstNode?[]): Result<Value, CompileError> {
+  func invokeExternalFn(self, dec: Decorator, fn: Function, arguments: TypedAstNode?[]): Result<Value, CompileError> {
     val cFnName = match dec.arguments[0] {
       LiteralAstNode.String(value) => value
-      _ => unreachable("@CBinding decorator requires 1 string argument for the name")
+      _ => unreachable("@external decorator requires 1 string argument for the name")
     }
 
     val args: Value[] = []
@@ -2673,7 +2673,7 @@ pub type Compiler {
         val arg = try self._compileExpression(node)
         args.push(arg)
       } else {
-        unreachable("functions with @CBinding decorator cannot have optional parameters")
+        unreachable("functions with @external decorator cannot have optional parameters")
       }
     }
 
@@ -2732,10 +2732,10 @@ pub type Compiler {
     (arg0, arg1, arg2)
   }
 
-  func _invokeIntrinsicFn(self, dec: Decorator, fn: Function, arguments: TypedAstNode?[]): Result<Value, CompileError> {
+  func invokeIntrinsicFn(self, dec: Decorator, fn: Function, arguments: TypedAstNode?[]): Result<Value, CompileError> {
     val intrinsicFnName = match dec.arguments[0] {
       LiteralAstNode.String(value) => value
-      _ => unreachable("@Intrinsic decorator requires 1 string argument for the name")
+      _ => unreachable("@intrinsic decorator requires 1 string argument for the name")
     }
 
     self._currentFn.block.addComment("begin $intrinsicFnName...")

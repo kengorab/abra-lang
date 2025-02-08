@@ -675,7 +675,7 @@ pub type Parser {
 
     val isStub = decorators.find(dec => {
       val decName = dec.name.name
-      decName == "Stub" || decName == "Intrinsic" || decName == "CBinding"
+      decName == "Intrinsic" || decName == "CBinding" || decName == "intrinsic" || decName == "external"
     })
 
     val body = if isStub {
