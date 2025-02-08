@@ -401,7 +401,7 @@ type String {
     (48 <= ch && ch <= 57) || (65 <= ch && ch <= 90) || (97 <= ch && ch <= 122)
   }
 
-  @Stub func padLeft(self, totalSize: Int, padding = " "): String
+  pub func padLeft(self, totalSize: Int, padding = " "): String = todo("String#padLeft")
 
   pub func trim(self): String {
     var i = 0
@@ -427,8 +427,8 @@ type String {
     self.getRange(i, j + 1)
   }
 
-  @Stub func trimStart(self, pattern: String = ""): String
-  @Stub func trimEnd(self, pattern: String = ""): String
+  pub func trimStart(self, pattern = ""): String = todo("String#trimStart")
+  pub func trimEnd(self, pattern = ""): String = todo("String#trimEnd")
 
   pub func split(self, by = ""): String[] {
     if by.isEmpty() {
@@ -479,7 +479,7 @@ type String {
     arr
   }
 
-  @Stub func splitAt(self, index: Int): (String, String)
+  pub func splitAt(self, index: Int): (String, String) = todo("String#splitAt")
 
   pub func lines(self): String[] = self.split(by: "\n")
 
@@ -497,7 +497,7 @@ type String {
     Some(num)
   }
 
-  @Stub func parseFloat(self): Float?
+  pub func parseFloat(self): Float? = todo("String#parseFloat")
 
   pub func startsWith(self, prefix: String): Bool {
     if self.length < prefix.length return false
@@ -764,8 +764,8 @@ type Array<T> {
     }
   }
 
-  @Stub func popFront(self): T?
-  @Stub func splitAt(self, index: Int): (T[], T[])
+  pub func popFront(self): T? = todo("Array#popFront")
+  pub func splitAt(self, index: Int): (T[], T[]) = todo("Array#splitAt")
 
   pub func concat(self, other: T[]): T[] {
     val newArray: T[] = Array.withCapacity(self.length + other.length)
@@ -903,7 +903,7 @@ type Array<T> {
     true
   }
 
-  @Stub func none(self, fn: (T) => Bool): Bool
+  func none(self, fn: (T) => Bool): Bool = todo("Array#none")
 
   // Implementation of quicksort using dual-pivot (Hoare) partitioning. The items are an array of tuples, the first elem
   // of which represents the integer value which will be used as the sort-value; the second elem is the original value
@@ -965,11 +965,11 @@ type Array<T> {
     res
   }
 
-  @Stub func dedupe(self): T[]
-  @Stub func dedupeBy<U>(self, fn: (T) => U): T[]
-  @Stub func partition<U>(self, fn: (T) => U): Map<U, T[]>
-  @Stub func tally(self): Map<T, Int>
-  @Stub func tallyBy<U>(self, fn: (T) => U): Map<U, Int>
+  pub func dedupe(self): T[] = todo("Array#dedupe")
+  pub func dedupeBy<U>(self, fn: (T) => U): T[] = todo("Array#dedupeBy")
+  pub func partition<U>(self, fn: (T) => U): Map<U, T[]> = todo("Array#partition")
+  pub func tally(self): Map<T, Int> = todo("Array#tally")
+  pub func tallyBy<U>(self, fn: (T) => U): Map<U, Int> = todo("Array#tallyBy")
 
   pub func keyBy<U>(self, fn: (T) => U): Map<U, T> {
     val map: Map<U, T> = Map.new()
@@ -1019,8 +1019,8 @@ type Array<T> {
     }
   }
 
-  @Stub func getOr(self, index: Int, default: T): T
-  @Stub func getOrElse(self, index: Int, getDefault: () => T): T
+  pub func getOr(self, index: Int, default: T): T = todo("Array#getOr")
+  pub func getOrElse(self, index: Int, getDefault: () => T): T = todo("Array#getOrElse")
 
   pub func getRange(self, startIndex = 0, endIndex = self.length): T[] {
     val start = if startIndex < 0 startIndex + self.length else startIndex
@@ -1049,8 +1049,8 @@ type Array<T> {
     }
   }
 
-  @Stub func update(self, index: Int, updater: (T) => T)
-  @Stub func reversed(self): T[]
+  pub func update(self, index: Int, updater: (T) => T) = todo("Array#update")
+  pub func reversed(self): T[] = todo("Array#reversed")
 }
 
 @noreturn
@@ -1120,7 +1120,7 @@ type Set<T> {
     self._map.forEach(key => fn(key))
   }
 
-  @Stub func remove(self, item: T): T?
+  func remove(self, item: T): T? = todo("Set#remove")
 
   pub func map<U>(self, fn: (T) => U): U[] {
     val arr: U[] = Array.withCapacity(self.size)
@@ -1140,7 +1140,7 @@ type Set<T> {
     newSet
   }
 
-  @Stub func reduce<U>(self, initialValue: U, fn: (U, T) => U): U
+  pub func reduce<U>(self, initialValue: U, fn: (U, T) => U): U = todo("Set#reduce")
 
   pub func asArray(self): T[] {
     val arr: T[] = Array.withCapacity(self.size)

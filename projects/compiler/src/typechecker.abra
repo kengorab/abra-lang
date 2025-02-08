@@ -2602,7 +2602,7 @@ pub type Typechecker {
 
     val hasReturnValue = fn.returnType.kind != TypeKind.PrimitiveUnit && fn.returnType.kind != TypeKind.CouldNotDetermine
     if hasReturnValue && body.isEmpty() {
-      if !fn.decorators.find(dec => dec.label.name == "Stub" || dec.label.name == "Intrinsic" || dec.label.name == "CBinding")
+      if !fn.decorators.find(dec => dec.label.name == "Intrinsic" || dec.label.name == "CBinding" || dec.label.name == "intrinsic" || dec.label.name == "external")
         return Err(TypeError(position: fn.label.position, kind: TypeErrorKind.ReturnTypeMismatch(Some(fn.label.name), fn.returnType, None)))
     }
 
