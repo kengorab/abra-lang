@@ -264,21 +264,21 @@ func printTypeIdentifierAsJson(typeIdentifier: TypeIdentifier, indentLevelStart:
   print("$endIndent}")
 }
 
-func printDecoratorNodeAsJson(decorator: DecoratorNode, indentLevelStart: Int, currentIndentLevel: Int) {
+func printDecoratorNodeAsJson(dec: DecoratorNode, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
   val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
   val endIndent = "  ".repeat(currentIndentLevel)
 
   print("$startIndent{\n$fieldsIndent\"name\": ")
-  printLabelAsJson(decorator.name)
+  printLabelAsJson(dec.name)
 
-  if decorator.arguments.isEmpty() {
+  if dec.arguments.isEmpty() {
     println(",\n$fieldsIndent\"arguments\": []")
   } else {
     println(",\n$fieldsIndent\"arguments\": [")
     val pathIndent = "  ".repeat(currentIndentLevel + 2)
     val pathsIndent = "  ".repeat(currentIndentLevel + 3)
-    for arg, idx in decorator.arguments {
+    for arg, idx in dec.arguments {
       print("$pathIndent{\n$pathsIndent\"label\": ")
       if arg.label |label| {
         printLabelAsJson(label)
@@ -288,7 +288,7 @@ func printDecoratorNodeAsJson(decorator: DecoratorNode, indentLevelStart: Int, c
       }
       print("$pathsIndent\"value\": ")
       printAstNodeAsJson(arg.value, 0, currentIndentLevel + 3)
-      val comma = if idx != decorator.arguments.length - 1 "," else ""
+      val comma = if idx != dec.arguments.length - 1 "," else ""
       println("\n$pathIndent}$comma")
     }
     println("$fieldsIndent]")
