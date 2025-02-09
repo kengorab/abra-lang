@@ -1,0 +1,60 @@
+decorator Foo { }
+decorator Foo<A, B> { }
+decorator Foo<A> { a: A, b: Bool }
+decorator Foo {
+  a: Int
+  b: Bool = true
+}
+
+decorator FooBar123 {
+  func foo(self, b: String) {}
+}
+
+decorator FooBar123 {
+  a: Int
+
+  func foo(self, b: String): X<Y> = 123
+  func bar(self, b = true) { self.a + b }
+}
+
+decorator FooBar123 {
+  a: Int
+
+  func foo(self, b: String): X<Y> = 123
+
+  @Foo
+  func bar(self, b = true) { self.a + b }
+}
+
+decorator Outer {
+  a: Int
+
+  func foo(self, b: String): X<Y> { 123 }
+
+  type InnerType {
+    a: Int
+
+    func bar(self, b = true) { self.a + b }
+  }
+
+  enum InnerEnum {
+    A(a: Int)
+
+    func bar(self, b = true) { self.a + b }
+  }
+}
+
+@Bar("a")
+pub decorator Outer {
+  a: Int
+
+  @Bar("b")
+  func foo(self, b: String): X<Y> { 123 }
+
+  @Bar("c")
+  type Inner { a: Int }
+}
+
+pub decorator Outer2 {
+  pub a: Int
+}
