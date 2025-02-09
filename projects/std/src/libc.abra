@@ -1,12 +1,12 @@
 import Pointer, Byte from "./_intrinsics"
 
-@CBinding("getenv")
+@external("getenv")
 pub func getenv(name: Pointer<Byte>): Pointer<Byte>
 
-@Intrinsic("errno")
+@intrinsic("errno")
 pub func errno(): Int
 
-@CBinding("strerror")
+@external("strerror")
 pub func strerror(errno: Int): Pointer<Byte>
 
 pub val O_RDONLY = 0
@@ -14,45 +14,45 @@ pub val O_WRONLY = 1
 pub val O_RDWR   = 2
 pub val O_CREAT  = 512
 
-@CBinding("open")
+@external("open")
 pub func open(pathname: Pointer<Byte>, flags: Int, mode: Int): Int
 
-@CBinding("close")
+@external("close")
 pub func close(fd: Int): Int
 
 pub val SEEK_SET = 0
 pub val SEEK_CUR = 1
 pub val SEEK_END = 2
 
-@CBinding("lseek")
+@external("lseek")
 pub func lseek(fd: Int, offset: Int, whence: Int): Int
 
-@CBinding("read")
+@external("read")
 pub func read(fd: Int, buf: Pointer<Byte>, count: Int): Int
 
-@CBinding("stat")
+@external("stat")
 pub func stat(pathname: Pointer<Byte>, statbuf: Pointer<Byte>): Int
 
 pub val STDIN_FILENO  = 0
 pub val STDOUT_FILENO = 1
 pub val STDERR_FILENO = 2
 
-@CBinding("write")
+@external("write")
 pub func write(fd: Int, buf: Pointer<Byte>, count: Int): Int
 
 pub val PATH_MAX = 4096
 
-@CBinding("getcwd")
+@external("getcwd")
 pub func getcwd(buf: Pointer<Byte>, count: Int): Pointer<Byte>
 
-@CBinding("strlen")
+@external("strlen")
 pub func strlen(s: Pointer<Byte>): Int
 
-@CBinding("uname")
+@external("uname")
 pub func uname(utsnameBuf: Pointer<Byte>): Int
 
-@CBinding("rand")
+@external("rand")
 pub func rand(): Int
 
-@CBinding("exit")
+@external("exit")
 pub func exit(status: Int): Unit
