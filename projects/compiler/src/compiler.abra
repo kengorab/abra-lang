@@ -1113,14 +1113,14 @@ pub type Compiler {
               return res
             }
 
-            val intrinsicDec = fn.decorators.find(dec => dec.label.name == "Intrinsic" || dec.label.name == "intrinsic")
+            val intrinsicDec = fn.decorators.find(dec => dec.label.name == "intrinsic")
             if intrinsicDec |dec| {
               val res = self.invokeIntrinsicFn(dec, fn, arguments)
               self._resolvedGenerics.popLayer()
               return res
             }
 
-            val externalDec = fn.decorators.find(dec => dec.label.name == "CBinding" || dec.label.name == "external")
+            val externalDec = fn.decorators.find(dec => dec.label.name == "external")
             if externalDec |dec| {
               val res = self.invokeExternalFn(dec, fn, arguments)
               self._resolvedGenerics.popLayer()
@@ -1150,7 +1150,7 @@ pub type Compiler {
           TypedInvokee.Method(fn, selfExpr, isOptSafe) => {
             var selfInstanceType = try self._addResolvedGenericsLayerForInstanceMethod(selfExpr.ty, fn.label.name, node.token.position, resolvedGenerics)
 
-            val intrinsicDec = fn.decorators.find(dec => dec.label.name == "Intrinsic" || dec.label.name == "intrinsic")
+            val intrinsicDec = fn.decorators.find(dec => dec.label.name == "intrinsic")
             if intrinsicDec |dec| {
               if isOptSafe unreachable("cannot have opt-safe intrinsic method calls")
               val res = self.invokeIntrinsicFn(dec, fn, [Some(selfExpr)].concat(arguments))
