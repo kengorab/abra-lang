@@ -252,17 +252,6 @@ pub type DecoratorNode {
   pub arguments: InvocationArgument[]
 }
 
-pub type DecoratorDeclarationNode {
-  pub decorators: DecoratorNode[]
-  pub pubToken: Token?
-  pub name: Label
-  pub typeParams: Label[]
-  pub fields: TypeField[]
-  pub methods: FunctionDeclarationNode[]
-  pub types: TypeDeclarationNode[]
-  pub enums: EnumDeclarationNode[]
-}
-
 pub enum AstNodeKind {
   Literal(value: LiteralAstNode)
   StringInterpolation(chunks: AstNode[])
@@ -288,7 +277,6 @@ pub enum AstNodeKind {
   FunctionDeclaration(value: FunctionDeclarationNode)
   TypeDeclaration(value: TypeDeclarationNode)
   EnumDeclaration(value: EnumDeclarationNode)
-  DecoratorDeclaration(value: DecoratorDeclarationNode)
   Break
   Continue
   Return(expr: AstNode?)
@@ -508,7 +496,7 @@ pub type Parser {
         try self._parseDecorator()
 
         val nextToken = try self._expectPeek()
-        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.Decorator, TokenKind.At, TokenKind.Pub]
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.At, TokenKind.Pub]
         if !expected.contains(nextToken.kind) {
           return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
         }
@@ -520,7 +508,7 @@ pub type Parser {
         self._advance() // consume 'pub' token
 
         val nextToken = try self._expectPeek()
-        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.Decorator]
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum]
         if !expected.contains(nextToken.kind) {
           return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
         }
@@ -532,7 +520,6 @@ pub type Parser {
       TokenKind.Func => self._parseFunctionDeclaration()
       TokenKind.Type => self._parseTypeDeclaration()
       TokenKind.Enum => self._parseEnumDeclaration()
-      TokenKind.Decorator => self._parseDecoratorDeclaration()
       TokenKind.While => self._parseWhileLoop()
       TokenKind.For => self._parseForLoop()
       TokenKind.Break => self._parseBreak()
@@ -858,75 +845,6 @@ pub type Parser {
       enums: enums,
     )
     Ok(AstNode(token: token, kind: AstNodeKind.EnumDeclaration(node)))
-  }
-
-  func _parseDecoratorDeclaration(self): Result<AstNode, ParseError> {
-    val decorators = self._seenDecorators
-    self._seenDecorators = []
-
-    val pubToken = self._pubToken
-    self._pubToken = None
-
-    val token = try self._expectNext()
-    val decoratorName = try self._expectNextLabel()
-
-    var nextToken = try self._expectPeek()
-    val typeParams = match nextToken.kind {
-      TokenKind.LT => {
-        self._advance() // consume '<' token
-        try self._parseTypeParameters()
-      }
-      TokenKind.LBrace => []
-      _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
-    }
-
-    try self._expectNextTokenKind(TokenKind.LBrace)
-
-    val fields: TypeField[] = []
-    var fieldPubToken: Token? = None
-    while self._peek() |nextToken| {
-      match nextToken.kind {
-        TokenKind.Ident => {
-          val field = try self._parseField(fieldPubToken)
-
-          val nextToken = try self._expectPeek()
-          if nextToken.kind == TokenKind.Comma {
-            self._advance() // consume ',' token
-          }
-
-          fields.push(field)
-          fieldPubToken = None
-        }
-        TokenKind.Pub => {
-          if fieldPubToken |token| return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], nextToken.kind)))
-
-          // If the token after 'pub' is an identifier, consume 'pub'. Otherwise leave it and it'll be picked up while parsing inner decls
-          match self._peek(ahead: 1)?.kind {
-            TokenKind.Ident => self._advance()
-            else => break
-          }
-
-          fieldPubToken = Some(nextToken)
-        }
-        _ => break
-      }
-    }
-
-    val (methods, types, enums) = try self._parseBodyForTypeOrEnum()
-
-    try self._expectNextTokenKind(TokenKind.RBrace)
-
-    val node = DecoratorDeclarationNode(
-      decorators: decorators,
-      pubToken: pubToken,
-      name: decoratorName,
-      typeParams: typeParams,
-      fields: fields,
-      methods: methods,
-      types: types,
-      enums: enums,
-    )
-    Ok(AstNode(token: token, kind: AstNodeKind.DecoratorDeclaration(node)))
   }
 
   func _parseField(self, pubToken: Token? = None): Result<TypeField, ParseError> {

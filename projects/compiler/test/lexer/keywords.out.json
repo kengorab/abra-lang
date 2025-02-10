@@ -132,11 +132,5 @@
     "kind": {
       "name": "Pub"
     }
-  },
-  {
-    "position": [1, 114],
-    "kind": {
-      "name": "Decorator"
-    }
   }
 ]

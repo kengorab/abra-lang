@@ -81,7 +81,6 @@ func printTokenKindAsJson(kind: TokenKind, indentLevelStart: Int, currentIndentL
     TokenKind.Match => println("$fieldsIndent\"name\": \"Match\"")
     TokenKind.Type => println("$fieldsIndent\"name\": \"Type\"")
     TokenKind.Enum => println("$fieldsIndent\"name\": \"Enum\"")
-    TokenKind.Decorator => println("$fieldsIndent\"name\": \"Decorator\"")
     TokenKind.Return => println("$fieldsIndent\"name\": \"Return\"")
     TokenKind.Readonly => println("$fieldsIndent\"name\": \"Readonly\"")
     TokenKind.Import => println("$fieldsIndent\"name\": \"Import\"")
@@ -264,21 +263,21 @@ func printTypeIdentifierAsJson(typeIdentifier: TypeIdentifier, indentLevelStart:
   print("$endIndent}")
 }
 
-func printDecoratorNodeAsJson(dec: DecoratorNode, indentLevelStart: Int, currentIndentLevel: Int) {
+func printDecoratorNodeAsJson(decorator: DecoratorNode, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
   val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
   val endIndent = "  ".repeat(currentIndentLevel)
 
   print("$startIndent{\n$fieldsIndent\"name\": ")
-  printLabelAsJson(dec.name)
+  printLabelAsJson(decorator.name)
 
-  if dec.arguments.isEmpty() {
+  if decorator.arguments.isEmpty() {
     println(",\n$fieldsIndent\"arguments\": []")
   } else {
     println(",\n$fieldsIndent\"arguments\": [")
     val pathIndent = "  ".repeat(currentIndentLevel + 2)
     val pathsIndent = "  ".repeat(currentIndentLevel + 3)
-    for arg, idx in dec.arguments {
+    for arg, idx in decorator.arguments {
       print("$pathIndent{\n$pathsIndent\"label\": ")
       if arg.label |label| {
         printLabelAsJson(label)
@@ -288,7 +287,7 @@ func printDecoratorNodeAsJson(dec: DecoratorNode, indentLevelStart: Int, current
       }
       print("$pathsIndent\"value\": ")
       printAstNodeAsJson(arg.value, 0, currentIndentLevel + 3)
-      val comma = if idx != dec.arguments.length - 1 "," else ""
+      val comma = if idx != decorator.arguments.length - 1 "," else ""
       println("\n$pathIndent}$comma")
     }
     println("$fieldsIndent]")
@@ -1085,104 +1084,6 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
             }
           }
           val comma = if idx != node.variants.length - 1 "," else ""
-          println("\n$fieldsIndent  }$comma")
-        }
-        println("$fieldsIndent],")
-      }
-
-      if node.methods.isEmpty() {
-        println("$fieldsIndent\"methods\": [],")
-      } else {
-        println("$fieldsIndent\"methods\": [")
-        for method, idx in node.methods {
-          printAstNodeKindAsJson(AstNodeKind.FunctionDeclaration(method), currentIndentLevel + 2, currentIndentLevel + 2)
-          val comma = if idx != node.methods.length - 1 "," else ""
-          println("$comma")
-        }
-        println("$fieldsIndent],")
-      }
-
-      if node.types.isEmpty() {
-        println("$fieldsIndent\"nestedTypes\": [],")
-      } else {
-        println("$fieldsIndent\"nestedTypes\": [")
-        for nestedType, idx in node.types {
-          printAstNodeKindAsJson(AstNodeKind.TypeDeclaration(nestedType), currentIndentLevel + 2, currentIndentLevel + 2)
-          val comma = if idx != node.types.length - 1 "," else ""
-          println("$comma")
-        }
-        println("$fieldsIndent],")
-      }
-
-      if node.enums.isEmpty() {
-        println("$fieldsIndent\"nestedEnums\": []")
-      } else {
-        println("$fieldsIndent\"nestedEnums\": [")
-        for nestedEnum, idx in node.enums {
-          printAstNodeKindAsJson(AstNodeKind.EnumDeclaration(nestedEnum), currentIndentLevel + 2, currentIndentLevel + 2)
-          val comma = if idx != node.types.length - 1 "," else ""
-          println("$comma")
-        }
-        println("$fieldsIndent]")
-      }
-    }
-    AstNodeKind.DecoratorDeclaration(node) => {
-      println("$fieldsIndent\"name\": \"decoratorDeclaration\",")
-      if node.decorators.isEmpty() {
-        println("$fieldsIndent\"decorators\": [],")
-      } else {
-        println("$fieldsIndent\"decorators\": [")
-        for dec, idx in node.decorators {
-          printDecoratorNodeAsJson(dec, currentIndentLevel + 2, currentIndentLevel + 2)
-          val comma = if idx != node.decorators.length - 1 "," else ""
-          println("$comma")
-        }
-        println("$fieldsIndent],")
-      }
-      if node.pubToken |token| {
-        print("$fieldsIndent\"pubToken\": ")
-        printTokenAsJson(token, 0, currentIndentLevel + 1)
-        println(",")
-      } else {
-        println("$fieldsIndent\"pubToken\": null,")
-      }
-      print("$fieldsIndent\"typeName\": ")
-      printLabelAsJson(node.name)
-
-      if node.typeParams.isEmpty() {
-        println(",\n$fieldsIndent\"typeParams\": [],")
-      } else {
-        println(",\n$fieldsIndent\"typeParams\": [")
-        for label, idx in node.typeParams {
-          print("$fieldsIndent  ")
-          printLabelAsJson(label)
-          val comma = if idx != node.typeParams.length - 1 "," else ""
-          println("$comma")
-        }
-        println("$fieldsIndent],")
-      }
-
-      if node.fields.isEmpty() {
-        println("$fieldsIndent\"fields\": [],")
-      } else {
-        println("$fieldsIndent\"fields\": [")
-        for f, idx in node.fields {
-          println("$fieldsIndent  {")
-          print("$fieldsIndent    \"label\": ")
-          printLabelAsJson(f.name)
-          if f.pubToken |token| {
-            print(",\n$fieldsIndent    \"pubToken\": ")
-            printTokenAsJson(token, 0, currentIndentLevel + 3)
-          }
-          print(",\n$fieldsIndent    \"typeAnnotation\": ")
-          printTypeIdentifierAsJson(f.typeAnnotation, 0, currentIndentLevel + 3)
-          print(",\n$fieldsIndent    \"initializer\": ")
-          if f.initializer |initializer| {
-            printAstNodeAsJson(initializer, 0, currentIndentLevel + 3)
-          } else {
-            print("null")
-          }
-          val comma = if idx != node.fields.length - 1 "," else ""
           println("\n$fieldsIndent  }$comma")
         }
         println("$fieldsIndent],")
