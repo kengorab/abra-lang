@@ -1,4 +1,4 @@
 Error at %FILE_NAME%:2:1
-Unexpected token 'while', expected one of 'val', 'var', 'func', 'type', 'enum', '@', 'pub':
+Unexpected token 'while', expected one of 'val', 'var', 'func', 'type', 'enum', 'decorator', '@', 'pub':
   |  while true { }
      ^
