@@ -223,6 +223,7 @@ type TypeField {
 pub type TypeDeclarationNode {
   pub decorators: DecoratorNode[]
   pub pubToken: Token?
+  pub isDecorator: Bool
   pub name: Label
   pub typeParams: Label[]
   pub fields: TypeField[]
@@ -496,7 +497,7 @@ pub type Parser {
         try self._parseDecorator()
 
         val nextToken = try self._expectPeek()
-        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.At, TokenKind.Pub]
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.Decorator, TokenKind.At, TokenKind.Pub]
         if !expected.contains(nextToken.kind) {
           return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
         }
@@ -508,7 +509,7 @@ pub type Parser {
         self._advance() // consume 'pub' token
 
         val nextToken = try self._expectPeek()
-        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum]
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.Decorator]
         if !expected.contains(nextToken.kind) {
           return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
         }
@@ -518,8 +519,9 @@ pub type Parser {
       TokenKind.Val => self._parseBindingDeclaration(mutable: false)
       TokenKind.Var => self._parseBindingDeclaration(mutable: true)
       TokenKind.Func => self._parseFunctionDeclaration()
-      TokenKind.Type => self._parseTypeDeclaration()
+      TokenKind.Type => self._parseTypeDeclaration(isDecorator: false)
       TokenKind.Enum => self._parseEnumDeclaration()
+      TokenKind.Decorator => self._parseTypeDeclaration(isDecorator: true)
       TokenKind.While => self._parseWhileLoop()
       TokenKind.For => self._parseForLoop()
       TokenKind.Break => self._parseBreak()
@@ -703,7 +705,7 @@ pub type Parser {
     Ok(AstNode(token: token, kind: AstNodeKind.FunctionDeclaration(node)))
   }
 
-  func _parseTypeDeclaration(self): Result<AstNode, ParseError> {
+  func _parseTypeDeclaration(self, isDecorator: Bool): Result<AstNode, ParseError> {
     val decorators = self._seenDecorators
     self._seenDecorators = []
 
@@ -762,6 +764,7 @@ pub type Parser {
     val node = TypeDeclarationNode(
       decorators: decorators,
       pubToken: pubToken,
+      isDecorator: isDecorator,
       name: typeName,
       typeParams: typeParams,
       fields: fields,
