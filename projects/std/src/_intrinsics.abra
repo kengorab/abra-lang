@@ -1,3 +1,5 @@
+pub decorator intrinsic { name: String }
+
 @intrinsic("argc")
 pub func argc(): Int
 

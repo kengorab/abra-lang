@@ -1,0 +1,18 @@
+import FromOtherModule1, FromOtherModule2 from "./_exports"
+
+decorator Bar {
+  a: String
+}
+
+// no necessary label if only one argument
+@Bar("asdf")
+func f1() {}
+
+@Bar(a: "asdf")
+func f2() {}
+
+@FromOtherModule1(a: 3, b: 1)
+func f3() {}
+
+@FromOtherModule2(4)
+func f4() {}

@@ -1,0 +1,8 @@
+type Foo {
+  a: String
+}
+
+@Foo(b: "asdf")
+func foo() {
+
+}

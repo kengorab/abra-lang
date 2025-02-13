@@ -726,6 +726,14 @@ const TYPECHECKER_TESTS = [
   { test: "typechecker/enumdecl/error_invalid_tostring_signature.abra", assertions: "typechecker/enumdecl/error_invalid_tostring_signature.out" },
   { test: "typechecker/enumdecl/error_method_bad_self_position.abra", assertions: "typechecker/enumdecl/error_method_bad_self_position.out" },
   { test: "typechecker/enumdecl/error_variant_field_initializer_type_mismatch.abra", assertions: "typechecker/enumdecl/error_variant_field_initializer_type_mismatch.out" },
+  // Decorator declaration
+  { test: "typechecker/decorators/error_enum_as_decorator.abra", assertions: "typechecker/decorators/error_enum_as_decorator.out" },
+  { test: "typechecker/decorators/error_noncomptime_field.abra", assertions: "typechecker/decorators/error_noncomptime_field.out" },
+  { test: "typechecker/decorators/error_too_few_args.abra", assertions: "typechecker/decorators/error_too_few_args.out" },
+  { test: "typechecker/decorators/error_too_many_args.abra", assertions: "typechecker/decorators/error_too_many_args.out" },
+  { test: "typechecker/decorators/error_type_as_decorator.abra", assertions: "typechecker/decorators/error_type_as_decorator.out" },
+  { test: "typechecker/decorators/error_unlabeled_args.abra", assertions: "typechecker/decorators/error_unlabeled_args.out" },
+  { test: "typechecker/decorators/function_decorator.abra", assertions: "typechecker/decorators/function_decorator.out.json" },
 
   // Returns
   { test: "typechecker/return/return.1.abra", assertions: "typechecker/return/return.1.out.json" },

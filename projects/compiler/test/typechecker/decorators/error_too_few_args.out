@@ -1,0 +1,5 @@
+Error at %TEST_DIR%/typechecker/decorators/error_too_few_args.abra:5:2
+Invalid instantiation
+  |  @Bar
+      ^
+The following required fields are missing: 'a'

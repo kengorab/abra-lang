@@ -1,0 +1,6 @@
+decorator Bar {
+  a: String
+}
+
+@Bar
+func foo() {}

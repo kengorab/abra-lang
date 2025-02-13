@@ -1,0 +1,5 @@
+Error at %TEST_DIR%/typechecker/decorators/error_too_many_args.abra:5:14
+Too many arguments for invocation
+  |  @Bar("asdf", 123)
+                  ^
+Expected no more than 1 argument, but 2 were passed

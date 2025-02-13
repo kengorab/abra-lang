@@ -1,0 +1,8 @@
+enum Foo {
+  Bar
+}
+
+@Foo.Bar(b: "asdf")
+func foo() {
+
+}
