@@ -1,0 +1,4 @@
+Error at %TEST_DIR%/typechecker/decorators/error_type_as_decorator.abra:5:2
+Cannot use non-decorator type as a decorator
+  |  @Foo(b: "asdf")
+      ^

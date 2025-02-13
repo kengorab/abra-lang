@@ -1,0 +1,8 @@
+pub decorator FromOtherModule1 {
+  pub a: Int
+  pub b: Int
+}
+
+pub decorator FromOtherModule2 {
+  pub a: Int
+}

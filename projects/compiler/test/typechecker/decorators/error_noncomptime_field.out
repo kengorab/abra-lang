@@ -1,0 +1,6 @@
+Error at %TEST_DIR%/typechecker/decorators/error_noncomptime_field.abra:2:3
+Forbidden field type for decorator 'Bar'
+  |    p: Person
+       ^
+This field has type 'Person', which is not allowed for fields of decorators.
+Decorators' fields must be one of: Int, Float, Bool, String

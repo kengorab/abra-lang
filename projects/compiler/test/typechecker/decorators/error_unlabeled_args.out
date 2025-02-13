@@ -1,0 +1,5 @@
+Error at %TEST_DIR%/typechecker/decorators/error_unlabeled_args.abra:6:6
+Invalid instantiation
+  |  @Bar("asdf", 123)
+          ^
+Calls of type constructors must include argument labels

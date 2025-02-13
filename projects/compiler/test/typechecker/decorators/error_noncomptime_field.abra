@@ -1,0 +1,5 @@
+decorator Bar {
+  p: Person
+}
+
+type Person { name: String }

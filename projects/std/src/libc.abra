@@ -1,4 +1,6 @@
-import Pointer, Byte from "./_intrinsics"
+import Pointer, Byte, intrinsic from "./_intrinsics"
+
+pub decorator external { name: String }
 
 @external("getenv")
 pub func getenv(name: Pointer<Byte>): Pointer<Byte>

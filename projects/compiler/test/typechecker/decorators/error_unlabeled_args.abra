@@ -1,0 +1,7 @@
+decorator Bar {
+  a: String
+  b: Int
+}
+
+@Bar("asdf", 123)
+func foo() {}

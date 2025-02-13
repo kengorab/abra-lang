@@ -1053,18 +1053,6 @@ type Array<T> {
   pub func reversed(self): T[] = todo("Array#reversed")
 }
 
-@noreturn
-pub func unreachable(message = "") {
-  println("Encountered unreachable code:", message)
-  libc.exit(1)
-}
-
-@noreturn
-pub func todo(message = "") {
-  println("Encountered unimplemented code:", message)
-  libc.exit(1)
-}
-
 type SetIterator<T> {
   _mapIterator: MapIterator<T, Bool>
 
@@ -1525,4 +1513,18 @@ type Map<K, V> {
 
     None
   }
+}
+
+pub decorator noreturn { }
+
+@noreturn
+pub func unreachable(message = "") {
+  println("Encountered unreachable code:", message)
+  libc.exit(1)
+}
+
+@noreturn
+pub func todo(message = "") {
+  println("Encountered unimplemented code:", message)
+  libc.exit(1)
 }

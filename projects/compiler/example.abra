@@ -1,3 +1,8 @@
+decorator bar {
+  a: String
+}
+
+@bar(a: "a")
 func foo(): Int {
   val a = 1 + []
   val (a, b) = foobar
