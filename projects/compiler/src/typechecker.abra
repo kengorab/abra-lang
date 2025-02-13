@@ -127,6 +127,15 @@ pub type TypedModule {
   func addTypeError(self, err: TypeError) {
     self.typeErrors.push(err)
   }
+
+  func hasError(self): Bool {
+    if self.readFileError return true
+    if self.startsCircDep return true
+    if !self.lexParseErrors.isEmpty() return true
+    if !self.typeErrors.isEmpty() return true
+
+    false
+  }
 }
 
 pub enum VariableAlias {
@@ -1537,7 +1546,7 @@ pub type Typechecker {
   pub lspMode: Bool = false
   identsByLine: Map<Int, (Int, Int, IdentifierMeta)[]> = {}
 
-  pub func typecheckEntrypoint(self, modulePathAbs: String): TypedModule {
+  pub func typecheckEntrypoint(self, modulePathAbs: String) {
     val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
     val preludeModulePathAbs = "/" + preludeModulePathSegs.join("/")
 
@@ -1546,6 +1555,10 @@ pub type Typechecker {
       self.lspMode = false
       self._typecheckModule(preludeModulePathAbs)
       self.lspMode = lspMode
+
+      for (_, mod) in self.project.modules {
+        if mod.hasError() return
+      }
 
       val preludeStructs = [
         self.project.preludeIntStruct,
