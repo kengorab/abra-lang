@@ -1,0 +1,12 @@
+trait Foo1 {
+
+}
+
+trait Foo2 {
+  func foo(self): Int
+}
+
+trait Foo3 {
+  func foo1(self): Int
+  func foo2(self): Int
+}

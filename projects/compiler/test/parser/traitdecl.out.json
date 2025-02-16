@@ -1,0 +1,109 @@
+{
+  "imports": [],
+  "nodes": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "Trait"
+        }
+      },
+      "kind": {
+        "name": "traitDeclaration",
+        "decorators": [],
+        "pubToken": null,
+        "typeName": { "name": "Foo1", "position": [1, 7] },
+        "typeParams": [],
+        "methods": [],
+        "nestedTypes": [],
+        "nestedEnums": []
+      }
+    },
+    {
+      "token": {
+        "position": [5, 1],
+        "kind": {
+          "name": "Trait"
+        }
+      },
+      "kind": {
+        "name": "traitDeclaration",
+        "decorators": [],
+        "pubToken": null,
+        "typeName": { "name": "Foo2", "position": [5, 7] },
+        "typeParams": [],
+        "methods": [
+          {
+            "name": "function",
+            "decorators": [],
+            "pubToken": null,
+            "ident": { "name": "foo", "position": [6, 8] },
+            "typeParams": [],
+            "params": [
+              {
+                "label": { "name": "self", "position": [6, 12] },
+                "isVariadic": false,
+                "typeAnnotation": null,
+                "defaultValue": null
+              }
+            ],
+            "body": []
+          }
+        ],
+        "nestedTypes": [],
+        "nestedEnums": []
+      }
+    },
+    {
+      "token": {
+        "position": [9, 1],
+        "kind": {
+          "name": "Trait"
+        }
+      },
+      "kind": {
+        "name": "traitDeclaration",
+        "decorators": [],
+        "pubToken": null,
+        "typeName": { "name": "Foo3", "position": [9, 7] },
+        "typeParams": [],
+        "methods": [
+          {
+            "name": "function",
+            "decorators": [],
+            "pubToken": null,
+            "ident": { "name": "foo1", "position": [10, 8] },
+            "typeParams": [],
+            "params": [
+              {
+                "label": { "name": "self", "position": [10, 13] },
+                "isVariadic": false,
+                "typeAnnotation": null,
+                "defaultValue": null
+              }
+            ],
+            "body": []
+          },
+          {
+            "name": "function",
+            "decorators": [],
+            "pubToken": null,
+            "ident": { "name": "foo2", "position": [11, 8] },
+            "typeParams": [],
+            "params": [
+              {
+                "label": { "name": "self", "position": [11, 13] },
+                "isVariadic": false,
+                "typeAnnotation": null,
+                "defaultValue": null
+              }
+            ],
+            "body": []
+          }
+        ],
+        "nestedTypes": [],
+        "nestedEnums": []
+      }
+    }
+  ]
+}
