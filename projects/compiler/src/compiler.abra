@@ -2,7 +2,7 @@ import "fs" as fs
 import "process" as process
 import Position from "./lexer"
 import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern, IndexingMode from "./parser"
-import Project, TypedModule, Scope, ScopeKind, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, StructOrEnum, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCase, TypedMatchCaseKind, BuiltinModule, Variable, Terminator from "./typechecker"
+import Project, TypedModule, Scope, ScopeKind, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, InstanceKind, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCase, TypedMatchCaseKind, BuiltinModule, Variable, Terminator from "./typechecker"
 import ModuleBuilder, Block, QbeType, Dest, QbeFunction, Value, Label, Callable, QbeData, QbeDataKind, Var from "./qbe"
 
 type CompilationError {
@@ -107,12 +107,12 @@ type ResolvedGenerics {
           Err("layer: could not resolve generic '$genericName'")
         }
       }
-      TypeKind.Instance(structOrEnum, typeArgs) => {
+      TypeKind.Instance(instanceKind, typeArgs) => {
         val resolvedGenerics: Type[] = []
         for typeArg in typeArgs {
           resolvedGenerics.push(try self._resolveType(typeArg))
         }
-        Ok(Type(kind: TypeKind.Instance(structOrEnum, resolvedGenerics)))
+        Ok(Type(kind: TypeKind.Instance(instanceKind, resolvedGenerics)))
       }
       TypeKind.Tuple(typeArgs) => {
         val resolvedGenerics: Type[] = []
@@ -387,7 +387,7 @@ pub type Compiler {
         val (instTy, typeArgs) = try self._getInstanceTypeForType(typedIterator.ty)
 
         val (iterVal, iterTy, nextFn, popAdditionalResolvedGenericsLayer) = match instTy {
-          StructOrEnum.Struct(s) => {
+          InstanceKind.Struct(s) => {
             if s == self._project.preludeArrayStruct {
               val innerTy = try typeArgs[0] else unreachable("Array has 1 required type argument")
               match self._resolvedGenerics.addLayer("array literal", { "T": innerTy }) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: "array literal", message: e))) }
@@ -403,10 +403,10 @@ pub type Compiler {
               val frameCtx = CallframeContext(position: typedIterator.token.position, callee: Some(fnName))
               val iter = try self._buildCall(Some(frameCtx), Callable.Function(iteratorFnVal), [arrayVal])
 
-              val (structOrEnum, typeArgs) = try self._getInstanceTypeForType(iteratorFn.returnType)
-              val nextFn = self._getMethodFunctionByName(structOrEnum, "next")
+              val (instanceKind, typeArgs) = try self._getInstanceTypeForType(iteratorFn.returnType)
+              val nextFn = self._getMethodFunctionByName(instanceKind, "next")
 
-              val iterTy = Type(kind: TypeKind.Instance(structOrEnum, typeArgs))
+              val iterTy = Type(kind: TypeKind.Instance(instanceKind, typeArgs))
               (iter, iterTy, nextFn, true)
             } else if s == self._project.preludeSetStruct {
               val innerTy = try typeArgs[0] else unreachable("Set has 1 required type argument")
@@ -423,10 +423,10 @@ pub type Compiler {
               val frameCtx = CallframeContext(position: typedIterator.token.position, callee: Some(fnName))
               val iter = try self._buildCall(Some(frameCtx), Callable.Function(iteratorFnVal), [mapVal])
 
-              val (structOrEnum, typeArgs) = try self._getInstanceTypeForType(iteratorFn.returnType)
-              val nextFn = self._getMethodFunctionByName(structOrEnum, "next")
+              val (instanceKind, typeArgs) = try self._getInstanceTypeForType(iteratorFn.returnType)
+              val nextFn = self._getMethodFunctionByName(instanceKind, "next")
 
-              val iterTy = Type(kind: TypeKind.Instance(structOrEnum, typeArgs))
+              val iterTy = Type(kind: TypeKind.Instance(instanceKind, typeArgs))
               (iter, iterTy, nextFn, true)
             } else if s == self._project.preludeMapStruct {
               val keyTy = try typeArgs[0] else unreachable("Map has 2 required type arguments")
@@ -444,10 +444,10 @@ pub type Compiler {
               val frameCtx = CallframeContext(position: typedIterator.token.position, callee: Some(fnName))
               val iter = try self._buildCall(Some(frameCtx), Callable.Function(iteratorFnVal), [mapVal])
 
-              val (structOrEnum, typeArgs) = try self._getInstanceTypeForType(iteratorFn.returnType)
-              val nextFn = self._getMethodFunctionByName(structOrEnum, "next")
+              val (instanceKind, typeArgs) = try self._getInstanceTypeForType(iteratorFn.returnType)
+              val nextFn = self._getMethodFunctionByName(instanceKind, "next")
 
-              val iterTy = Type(kind: TypeKind.Instance(structOrEnum, typeArgs))
+              val iterTy = Type(kind: TypeKind.Instance(instanceKind, typeArgs))
               (iter, iterTy, nextFn, true)
             } else {
               self._currentFn.block.addComment("for-loop (${node.token.position.line}, ${node.token.position.col}) iterator")
@@ -457,7 +457,7 @@ pub type Compiler {
               (iter, typedIterator.ty, nextFn, false)
             }
           }
-          StructOrEnum.Enum(_enum) => todo("enum as for-loop target")
+          InstanceKind.Enum(_enum) => todo("enum as for-loop target")
         }
 
         val nextItemTy = try self._typeIsOption(nextFn.returnType) else unreachable("a 'next' method must return an Option type")
@@ -620,13 +620,13 @@ pub type Compiler {
                     val idxExprVal = try self._compileExpression(idxExpr)
 
                     val instType = try self._addResolvedGenericsLayerForInstanceMethod(expr.ty, "set", expr.token.position)
-                    val (structOrEnum, _) = try self._getInstanceTypeForType(expr.ty)
-                    match structOrEnum {
-                      StructOrEnum.Struct(struct) => if struct != self._project.preludeArrayStruct unreachable("index-assignment only implemented for arrays")
-                      StructOrEnum.Enum => unreachable("index-assignment only implemented for arrays")
+                    val (instanceKind, _) = try self._getInstanceTypeForType(expr.ty)
+                    match instanceKind {
+                      InstanceKind.Struct(struct) => if struct != self._project.preludeArrayStruct unreachable("index-assignment only implemented for arrays")
+                      InstanceKind.Enum => unreachable("index-assignment only implemented for arrays")
                     }
 
-                    val setFn = self._getMethodFunctionByName(StructOrEnum.Struct(self._project.preludeArrayStruct), "set")
+                    val setFn = self._getMethodFunctionByName(InstanceKind.Struct(self._project.preludeArrayStruct), "set")
                     val setFnVal = try self._getOrCompileMethod(instType, setFn)
                     self._resolvedGenerics.popLayer()
 
@@ -641,13 +641,13 @@ pub type Compiler {
                 val idxExprVal = try self._compileExpression(idxExpr)
 
                 val instType = try self._addResolvedGenericsLayerForInstanceMethod(expr.ty, "set", expr.token.position)
-                val (structOrEnum, _) = try self._getInstanceTypeForType(expr.ty)
-                match structOrEnum {
-                  StructOrEnum.Struct(struct) => if struct != self._project.preludeMapStruct unreachable("index-assignment only implemented for map")
-                  StructOrEnum.Enum => unreachable("index-assignment only implemented for maps")
+                val (instanceKind, _) = try self._getInstanceTypeForType(expr.ty)
+                match instanceKind {
+                  InstanceKind.Struct(struct) => if struct != self._project.preludeMapStruct unreachable("index-assignment only implemented for map")
+                  InstanceKind.Enum => unreachable("index-assignment only implemented for maps")
                 }
 
-                val insertFn = self._getMethodFunctionByName(StructOrEnum.Struct(self._project.preludeMapStruct), "insert")
+                val insertFn = self._getMethodFunctionByName(InstanceKind.Struct(self._project.preludeMapStruct), "insert")
                 val insertFnVal = try self._getOrCompileMethod(instType, insertFn)
                 self._resolvedGenerics.popLayer()
 
@@ -710,8 +710,8 @@ pub type Compiler {
           lenVal = try self._currentFn.block.buildAdd(lenVal, stringLength) else |e| return qbeError(e)
         }
 
-        val stringWithLengthFn = self._getMethodFunctionByName(StructOrEnum.Struct(self._project.preludeStringStruct), "withLength", staticMethod: true)
-        val stringWithLengthFnVal = try self._getOrCompileMethod(Type(kind: TypeKind.Type(StructOrEnum.Struct(self._project.preludeStringStruct))), stringWithLengthFn)
+        val stringWithLengthFn = self._getMethodFunctionByName(InstanceKind.Struct(self._project.preludeStringStruct), "withLength", staticMethod: true)
+        val stringWithLengthFnVal = try self._getOrCompileMethod(Type(kind: TypeKind.Type(InstanceKind.Struct(self._project.preludeStringStruct))), stringWithLengthFn)
         // Do not track String.withLength in callframes
         val newString = try self._buildCall(None, Callable.Function(stringWithLengthFnVal), [lenVal])
         var newBuffer = self._currentFn.block.buildLoadL(try self._currentFn.block.buildAdd(Value.Int(8), newString) else |e| return qbeError(e))
@@ -783,8 +783,8 @@ pub type Compiler {
                 rightVal = try self._buildCall(Some(frameCtx), Callable.Function(rightToStringFnVal), [rightVal])
               }
 
-              val stringWithLengthFn = self._getMethodFunctionByName(StructOrEnum.Struct(self._project.preludeStringStruct), "withLength", staticMethod: true)
-              val stringWithLengthFnVal = try self._getOrCompileMethod(Type(kind: TypeKind.Type(StructOrEnum.Struct(self._project.preludeStringStruct))), stringWithLengthFn)
+              val stringWithLengthFn = self._getMethodFunctionByName(InstanceKind.Struct(self._project.preludeStringStruct), "withLength", staticMethod: true)
+              val stringWithLengthFnVal = try self._getOrCompileMethod(Type(kind: TypeKind.Type(InstanceKind.Struct(self._project.preludeStringStruct))), stringWithLengthFn)
               val leftLength = self._currentFn.block.buildLoadL(leftVal)
               val rightLength = self._currentFn.block.buildLoadL(rightVal)
               val totalLength = try self._currentFn.block.buildAdd(leftLength, rightLength) else |e| return qbeError(e)
@@ -1315,7 +1315,7 @@ pub type Compiler {
           _ => unreachable("we know it's an array instance here")
         }
 
-        val arrayWithCapacityFn = self._getMethodFunctionByName(StructOrEnum.Struct(self._project.preludeArrayStruct), "withCapacity", staticMethod: true)
+        val arrayWithCapacityFn = self._getMethodFunctionByName(InstanceKind.Struct(self._project.preludeArrayStruct), "withCapacity", staticMethod: true)
         val arrayWithCapacityFnVal = try self._getOrCompileMethod(node.ty, arrayWithCapacityFn)
 
         val sizeVal = Value.Int(items.length.nextPowerOf2())
@@ -1323,7 +1323,7 @@ pub type Compiler {
         val arrayInstance = try self._buildCall(None, Callable.Function(arrayWithCapacityFnVal), [sizeVal], resultLocalName)
         self._currentFn.block.addCommentBefore("${arrayInstance.repr()}: ${node.ty.repr()}")
 
-        val arrayPushFn = self._getMethodFunctionByName(StructOrEnum.Struct(self._project.preludeArrayStruct), "push")
+        val arrayPushFn = self._getMethodFunctionByName(InstanceKind.Struct(self._project.preludeArrayStruct), "push")
         val arrayPushFnVal = try self._getOrCompileMethod(node.ty, arrayPushFn)
 
         for item in items {
@@ -1345,14 +1345,14 @@ pub type Compiler {
           _ => unreachable("we know it's a set instance here")
         }
 
-        val setNewFn = self._getMethodFunctionByName(StructOrEnum.Struct(self._project.preludeSetStruct), "new", staticMethod: true)
+        val setNewFn = self._getMethodFunctionByName(InstanceKind.Struct(self._project.preludeSetStruct), "new", staticMethod: true)
         val setNewFnVal = try self._getOrCompileMethod(node.ty, setNewFn, [true])
 
         // Do not track Set.new in callframes
         val setInstance = try self._buildCall(None, Callable.Function(setNewFnVal), [], resultLocalName)
         self._currentFn.block.addCommentBefore("${setInstance.repr()}: ${node.ty.repr()}")
 
-        val setInsertFn = self._getMethodFunctionByName(StructOrEnum.Struct(self._project.preludeSetStruct), "insert")
+        val setInsertFn = self._getMethodFunctionByName(InstanceKind.Struct(self._project.preludeSetStruct), "insert")
         val setInsertFnVal = try self._getOrCompileMethod(node.ty, setInsertFn)
 
         for item in items {
@@ -1375,7 +1375,7 @@ pub type Compiler {
           _ => unreachable("we know it's a map instance here")
         }
 
-        val mapNewFn = self._getMethodFunctionByName(StructOrEnum.Struct(self._project.preludeMapStruct), "new", staticMethod: true)
+        val mapNewFn = self._getMethodFunctionByName(InstanceKind.Struct(self._project.preludeMapStruct), "new", staticMethod: true)
         val mapNewFnVal = try self._getOrCompileMethod(node.ty, mapNewFn, [true])
 
         val fnName = self._functionName(mapNewFn.label.name, mapNewFn.kind)
@@ -1383,7 +1383,7 @@ pub type Compiler {
         val mapInstance = try self._buildCall(None, Callable.Function(mapNewFnVal), [], resultLocalName)
         self._currentFn.block.addCommentBefore("${mapInstance.repr()}: ${node.ty.repr()}")
 
-        val mapInsertFn = self._getMethodFunctionByName(StructOrEnum.Struct(self._project.preludeMapStruct), "insert")
+        val mapInsertFn = self._getMethodFunctionByName(InstanceKind.Struct(self._project.preludeMapStruct), "insert")
         val mapInsertFnVal = try self._getOrCompileMethod(node.ty, mapInsertFn)
 
         for (keyExpr, valExpr) in items {
@@ -1399,10 +1399,10 @@ pub type Compiler {
       }
       TypedAstNodeKind.Tuple(items) => {
         val tupleStruct = self._tupleStruct(items.length)
-        val selfType = Type(kind: TypeKind.Instance(StructOrEnum.Struct(tupleStruct), items.map(node => node.ty)))
+        val selfType = Type(kind: TypeKind.Instance(InstanceKind.Struct(tupleStruct), items.map(node => node.ty)))
 
         val resolvedGenerics: Map<String, Type> = {}
-        val template = Type(kind: TypeKind.Instance(StructOrEnum.Struct(tupleStruct), tupleStruct.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+        val template = Type(kind: TypeKind.Instance(InstanceKind.Struct(tupleStruct), tupleStruct.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
         for (name, ty) in selfType.extractGenerics(template) {
           resolvedGenerics[name] = ty
         }
@@ -1430,10 +1430,10 @@ pub type Compiler {
                 val idxExprVal = try self._compileExpression(idxExpr)
 
                 val instType = try self._addResolvedGenericsLayerForInstanceMethod(expr.ty, "get", expr.token.position)
-                val (structOrEnum, _) = try self._getInstanceTypeForType(expr.ty)
-                val getFn = match structOrEnum {
-                  StructOrEnum.Struct => self._getMethodFunctionByName(structOrEnum, "get")
-                  StructOrEnum.Enum => unreachable("array-like indexing never applies to enum instances")
+                val (instanceKind, _) = try self._getInstanceTypeForType(expr.ty)
+                val getFn = match instanceKind {
+                  InstanceKind.Struct => self._getMethodFunctionByName(instanceKind, "get")
+                  InstanceKind.Enum => unreachable("array-like indexing never applies to enum instances")
                 }
                 val getFnVal = try self._getOrCompileMethod(instType, getFn)
                 self._resolvedGenerics.popLayer()
@@ -1458,10 +1458,10 @@ pub type Compiler {
                 }
 
                 val instType = try self._addResolvedGenericsLayerForInstanceMethod(expr.ty, "getRange", expr.token.position)
-                val (structOrEnum, _) = try self._getInstanceTypeForType(expr.ty)
-                val getRangeFn = match structOrEnum {
-                  StructOrEnum.Struct => self._getMethodFunctionByName(structOrEnum, "getRange")
-                  StructOrEnum.Enum => unreachable("array-like indexing never applies to enum instances")
+                val (instanceKind, _) = try self._getInstanceTypeForType(expr.ty)
+                val getRangeFn = match instanceKind {
+                  InstanceKind.Struct => self._getMethodFunctionByName(instanceKind, "getRange")
+                  InstanceKind.Enum => unreachable("array-like indexing never applies to enum instances")
                 }
                 val getRangeFnVal = try self._getOrCompileMethod(instType, getRangeFn, paramsNeedingDefaultValue)
                 self._resolvedGenerics.popLayer()
@@ -1476,13 +1476,13 @@ pub type Compiler {
             val idxExprVal = try self._compileExpression(idxExpr)
 
             val instType = try self._addResolvedGenericsLayerForInstanceMethod(expr.ty, "get", expr.token.position)
-            val (structOrEnum, _) = try self._getInstanceTypeForType(expr.ty)
-            match structOrEnum {
-              StructOrEnum.Struct(struct) => if struct != self._project.preludeMapStruct unreachable("map indexing only implemented for map")
-              StructOrEnum.Enum => unreachable("map indexing never applies to enum instances")
+            val (instanceKind, _) = try self._getInstanceTypeForType(expr.ty)
+            match instanceKind {
+              InstanceKind.Struct(struct) => if struct != self._project.preludeMapStruct unreachable("map indexing only implemented for map")
+              InstanceKind.Enum => unreachable("map indexing never applies to enum instances")
             }
 
-            val getFn = self._getMethodFunctionByName(structOrEnum, "get")
+            val getFn = self._getMethodFunctionByName(instanceKind, "get")
             val getFnVal = try self._getOrCompileMethod(instType, getFn)
             self._resolvedGenerics.popLayer()
 
@@ -1492,16 +1492,16 @@ pub type Compiler {
           TypedIndexingNode.Tuple(tupleExpr, idx) => {
             val exprVal = try self._compileExpression(tupleExpr)
 
-            val (structOrEnum, typeArgs) = try self._getInstanceTypeForType(tupleExpr.ty)
-            val struct = match structOrEnum {
-              StructOrEnum.Struct(struct) => struct
-              StructOrEnum.Enum => unreachable("tuples are represented as structs")
+            val (instanceKind, typeArgs) = try self._getInstanceTypeForType(tupleExpr.ty)
+            val struct = match instanceKind {
+              InstanceKind.Struct(struct) => struct
+              InstanceKind.Enum => unreachable("tuples are represented as structs")
             }
 
-            val selfType = Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), typeArgs))
+            val selfType = Type(kind: TypeKind.Instance(InstanceKind.Struct(struct), typeArgs))
 
             val resolvedGenerics: Map<String, Type> = {}
-            val template = Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), struct.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+            val template = Type(kind: TypeKind.Instance(InstanceKind.Struct(struct), struct.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
             for (name, ty) in selfType.extractGenerics(template) {
               resolvedGenerics[name] = ty
             }
@@ -2057,19 +2057,19 @@ pub type Compiler {
     } else {
       // If the closure is being called in the same scope in which it was declared, then the `*.captures` value is visible as a stack local.
       val prefix = match fn.kind {
-        FunctionKind.InstanceMethod(structOrEnum, _) => {
-          if structOrEnum |structOrEnum| {
-            val typeName = match structOrEnum {
-              StructOrEnum.Struct(struct) => struct.label.name
-              StructOrEnum.Enum(enum_) => enum_.label.name
+        FunctionKind.InstanceMethod(instanceKind, _) => {
+          if instanceKind |instanceKind| {
+            val typeName = match instanceKind {
+              InstanceKind.Struct(struct) => struct.label.name
+              InstanceKind.Enum(enum_) => enum_.label.name
             }
             "$typeName.."
-          } else unreachable("an instance method should have a structOrEnum")
+          } else unreachable("an instance method should have a instanceKind")
         }
-        FunctionKind.StaticMethod(structOrEnum, _) => {
-          val typeName = match structOrEnum {
-            StructOrEnum.Struct(struct) => struct.label.name
-            StructOrEnum.Enum(enum_) => enum_.label.name
+        FunctionKind.StaticMethod(instanceKind, _) => {
+          val typeName = match instanceKind {
+            InstanceKind.Struct(struct) => struct.label.name
+            InstanceKind.Enum(enum_) => enum_.label.name
           }
           "$typeName."
         }
@@ -2231,10 +2231,10 @@ pub type Compiler {
     val hasReturn = fn.returnType.kind != TypeKind.PrimitiveUnit
     val (struct, _) = self._functionStruct(targetArity, hasReturn)
     val typeArgs = (if hasReturn { [fn.returnType] } else []).concat(fnValParamTypes)
-    val fnStructSelfType = Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), typeArgs))
+    val fnStructSelfType = Type(kind: TypeKind.Instance(InstanceKind.Struct(struct), typeArgs))
 
     val resolvedGenerics: Map<String, Type> = {}
-    val template = Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), struct.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+    val template = Type(kind: TypeKind.Instance(InstanceKind.Struct(struct), struct.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
     for (name, ty) in fnStructSelfType.extractGenerics(template) {
       resolvedGenerics[name] = ty
     }
@@ -2269,9 +2269,9 @@ pub type Compiler {
       TypeKind.Generic(name) => {
         if self._resolvedGenerics.resolveGeneric(name) |ty| self._getQbeTypeForType(ty) else unreachable("unexpected generic '$name' at this point")
       }
-      TypeKind.Instance(structOrEnum, generics) => {
-        match structOrEnum {
-          StructOrEnum.Struct(struct) => {
+      TypeKind.Instance(instanceKind, generics) => {
+        match instanceKind {
+          InstanceKind.Struct(struct) => {
             if struct == self._project.preludeIntStruct return Ok(Some(QbeType.U64))
             if struct == self._project.preludeFloatStruct return Ok(Some(QbeType.F64))
 
@@ -2299,8 +2299,8 @@ pub type Compiler {
 
   func _followAccessorPath(self, head: TypedAstNode, middle: AccessorPathSegment[], tail: AccessorPathSegment, loadFinal: Bool, localName: String? = None): Result<Value, CompileError> {
     val segs = middle.concat([tail])
-    var instTy = StructOrEnum.Struct(self._project.preludeBoolStruct)
-    var instType = Type(kind: TypeKind.Instance(StructOrEnum.Struct(self._project.preludeBoolStruct), []))
+    var instTy = InstanceKind.Struct(self._project.preludeBoolStruct)
+    var instType = Type(kind: TypeKind.Instance(InstanceKind.Struct(self._project.preludeBoolStruct), []))
     var curVal = Value.Ident("bogus", QbeType.F32)
     match segs[0] {
       AccessorPathSegment.Field => {
@@ -2339,7 +2339,7 @@ pub type Compiler {
 
           curVal = try self._getOrCompileEnumVariantConst(enum_, variant)
 
-          instTy = StructOrEnum.Enum(enum_)
+          instTy = InstanceKind.Enum(enum_)
         }
         AccessorPathSegment.Method(label, fn, isOptSafe, fnAliasTypeHint) => {
           if isOptSafe todo("opt-safe method accessor")
@@ -2413,7 +2413,7 @@ pub type Compiler {
           }
 
           match instTy {
-            StructOrEnum.Struct(struct) => {
+            InstanceKind.Struct(struct) => {
               var offset = 0
               var fieldTyQbe = QbeType.F32 // placeholder sentinel value
               for f in struct.fields {
@@ -2442,7 +2442,7 @@ pub type Compiler {
                 curVal = nextVal
               }
             }
-            StructOrEnum.Enum(_enum) => todo("enum field accessor")
+            InstanceKind.Enum(_enum) => todo("enum field accessor")
           }
 
           if optSafeCtx |(labelIsNone, noneRes, someVariantFn, labelCont)| {
@@ -2691,9 +2691,9 @@ pub type Compiler {
   func _pointerSize(self, ty: Type): Result<Int, CompileError> {
     val isByte = match ty.kind {
       TypeKind.Generic(name) => unreachable("unresolved generic '$name'")
-      TypeKind.Instance(structOrEnum, generics) => {
-        match structOrEnum {
-          StructOrEnum.Struct(struct) => struct.builtin == Some(BuiltinModule.Intrinsics) && struct.label.name == "Byte"
+      TypeKind.Instance(instanceKind, generics) => {
+        match instanceKind {
+          InstanceKind.Struct(struct) => struct.builtin == Some(BuiltinModule.Intrinsics) && struct.label.name == "Byte"
           _ => false
         }
       }
@@ -3136,8 +3136,8 @@ pub type Compiler {
   func _getOrCompileFunctionCallMethod(self, selfType: Type): Result<QbeFunction, CompileError> {
     val (selfTy, typeArgs) = try self._getInstanceTypeForType(selfType)
     val (fnStruct, fnCallMethodFn) = match selfTy {
-      StructOrEnum.Struct(struct) => try self._isFunctionStruct(struct) else unreachable("type of fn expr must be a Function struct")
-      StructOrEnum.Enum => unreachable()
+      InstanceKind.Struct(struct) => try self._isFunctionStruct(struct) else unreachable("type of fn expr must be a Function struct")
+      InstanceKind.Enum => unreachable()
     }
 
     var methodName = try self._structMethodFnName(fnStruct, fnCallMethodFn)
@@ -3298,7 +3298,7 @@ pub type Compiler {
   func _getOrCompileToStringMethod(self, ty: Type): Result<QbeFunction, CompileError> {
     val (selfTy, typeArgs) = try self._getInstanceTypeForType(ty)
     val (methodName, fn) = match selfTy {
-      StructOrEnum.Struct(struct) => {
+      InstanceKind.Struct(struct) => {
         if struct == self._project.preludeIntStruct return self._getOrCompileIntToStringMethod()
         if struct == self._project.preludeFloatStruct return self._getOrCompileFloatToStringMethod()
         if struct == self._project.preludeStringStruct return self._getOrCompileStringToStringMethod()
@@ -3308,7 +3308,7 @@ pub type Compiler {
 
         (try self._structMethodFnName(struct, fn), fn)
       }
-      StructOrEnum.Enum(enum_) => {
+      InstanceKind.Enum(enum_) => {
         val fn = self._getMethodFunctionByName(selfTy, "toString")
 
         (try self._enumMethodFnName(enum_, fn), fn)
@@ -3339,7 +3339,7 @@ pub type Compiler {
     val selfParamVal = fnVal.addParameter("self", selfTyQbe)
 
     match selfTy {
-      StructOrEnum.Struct(struct) => {
+      InstanceKind.Struct(struct) => {
         val data: (String, Position, Type)[] = []
 
         if self._isFunctionStruct(struct) {
@@ -3359,7 +3359,7 @@ pub type Compiler {
           self._currentFn.block.buildReturn(Some(res))
         }
       }
-      StructOrEnum.Enum(enum_) => {
+      InstanceKind.Enum(enum_) => {
         val variantIdxVal = self._emitGetEnumVariantIdx(selfParamVal)
 
         var labelElse = self._currentFn.block.addLabel("__initial")
@@ -3453,8 +3453,8 @@ pub type Compiler {
     }
 
     val totalLengthVal = try self._currentFn.block.buildAdd(Value.Int(len), lenVal) else |e| return qbeError(e)
-    val stringWithLengthFn = self._getMethodFunctionByName(StructOrEnum.Struct(self._project.preludeStringStruct), "withLength", staticMethod: true)
-    val stringWithLengthFnVal = try self._getOrCompileMethod(Type(kind: TypeKind.Type(StructOrEnum.Struct(self._project.preludeStringStruct))), stringWithLengthFn)
+    val stringWithLengthFn = self._getMethodFunctionByName(InstanceKind.Struct(self._project.preludeStringStruct), "withLength", staticMethod: true)
+    val stringWithLengthFnVal = try self._getOrCompileMethod(Type(kind: TypeKind.Type(InstanceKind.Struct(self._project.preludeStringStruct))), stringWithLengthFn)
     // Do not track String.withLength in callframes
     val newStr = try self._buildCall(None, Callable.Function(stringWithLengthFnVal), [totalLengthVal])
 
@@ -3636,7 +3636,7 @@ pub type Compiler {
   func _getOrCompileEqMethod(self, ty: Type): Result<QbeFunction, CompileError> {
     val (selfTy, _) = try self._getInstanceTypeForType(ty)
     val (methodName, fn) = match selfTy {
-      StructOrEnum.Struct(struct) => {
+      InstanceKind.Struct(struct) => {
         val boolTypeQbe = try self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveBool), "bool qbe type should exist")
 
         // TODO: surely there's a cleaner way to represent these built-in eq methods
@@ -3731,7 +3731,7 @@ pub type Compiler {
 
         (try self._structMethodFnName(struct, fn), fn)
       }
-      StructOrEnum.Enum(enum_) => {
+      InstanceKind.Enum(enum_) => {
         val fn = self._getMethodFunctionByName(selfTy, "eq")
 
         (try self._enumMethodFnName(enum_, fn), fn)
@@ -3763,7 +3763,7 @@ pub type Compiler {
     val otherParamVal = fnVal.addParameter("other", selfTyQbe)
 
     match selfTy {
-      StructOrEnum.Struct(struct) => {
+      InstanceKind.Struct(struct) => {
         val data: (String, Position, Type)[] = []
 
         val isTuple = self._isTupleStruct(struct)
@@ -3774,7 +3774,7 @@ pub type Compiler {
 
         try self._emitEqLogicForStructuredData(selfParamVal, otherParamVal, data)
       }
-      StructOrEnum.Enum(enum_) => {
+      InstanceKind.Enum(enum_) => {
         val selfVariantIdxVal = self._emitGetEnumVariantIdx(selfParamVal)
         val otherVariantIdxVal = self._emitGetEnumVariantIdx(otherParamVal)
 
@@ -3875,7 +3875,7 @@ pub type Compiler {
   func _getOrCompileHashMethod(self, ty: Type): Result<QbeFunction, CompileError> {
     val (selfTy, _) = try self._getInstanceTypeForType(ty)
     val (methodName, fn) = match selfTy {
-      StructOrEnum.Struct(struct) => {
+      InstanceKind.Struct(struct) => {
         val intTypeQbe = try self._getQbeTypeForTypeExpect(Type(kind: TypeKind.PrimitiveInt), "int qbe type should exist")
 
         // TODO: surely there's a cleaner way to represent these built-in hash methods
@@ -3964,7 +3964,7 @@ pub type Compiler {
 
         (try self._structMethodFnName(struct, fn), fn)
       }
-      StructOrEnum.Enum(enum_) => {
+      InstanceKind.Enum(enum_) => {
         val fn = self._getMethodFunctionByName(selfTy, "hash")
 
         (try self._enumMethodFnName(enum_, fn), fn)
@@ -3995,7 +3995,7 @@ pub type Compiler {
     val selfParamVal = fnVal.addParameter("self", selfTyQbe)
 
     match selfTy {
-      StructOrEnum.Struct(struct) => {
+      InstanceKind.Struct(struct) => {
         val data: (String, Position, Type)[] = []
         val isTuple = self._isTupleStruct(struct)
         for field in struct.fields {
@@ -4005,7 +4005,7 @@ pub type Compiler {
 
         try self._emitHashLogicForStructuredData(selfParamVal, data)
       }
-      StructOrEnum.Enum(enum_) => {
+      InstanceKind.Enum(enum_) => {
         val variantIdxVal = self._emitGetEnumVariantIdx(selfParamVal)
 
         var labelElse = self._currentFn.block.addLabel("__initial")
@@ -4156,17 +4156,17 @@ pub type Compiler {
   }
 
   func _addResolvedGenericsLayerForInstanceMethod(self, ty: Type, methodName: String, position: Position, resolvedGenerics: Map<String, Type> = {}): Result<Type, CompileError> {
-    val (structOrEnum, typeArgs) = try self._getInstanceTypeForType(ty)
-    val (template, selfInstanceType) = match structOrEnum {
-      StructOrEnum.Struct(struct) => {
-        val template = Type(kind: TypeKind.Instance(structOrEnum, struct.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
-        val inst = Type(kind: TypeKind.Instance(structOrEnum, typeArgs))
+    val (instanceKind, typeArgs) = try self._getInstanceTypeForType(ty)
+    val (template, selfInstanceType) = match instanceKind {
+      InstanceKind.Struct(struct) => {
+        val template = Type(kind: TypeKind.Instance(instanceKind, struct.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+        val inst = Type(kind: TypeKind.Instance(instanceKind, typeArgs))
 
         (template, inst)
       }
-      StructOrEnum.Enum(enum_) => {
-        val template = Type(kind: TypeKind.Instance(structOrEnum, enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
-        val inst = Type(kind: TypeKind.Instance(structOrEnum, typeArgs))
+      InstanceKind.Enum(enum_) => {
+        val template = Type(kind: TypeKind.Instance(instanceKind, enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+        val inst = Type(kind: TypeKind.Instance(instanceKind, typeArgs))
 
         (template, inst)
       }
@@ -4174,9 +4174,9 @@ pub type Compiler {
     for (name, ty) in selfInstanceType.extractGenerics(template) {
       resolvedGenerics[name] = ty
     }
-    val layerName = match structOrEnum {
-      StructOrEnum.Struct(struct) => "${struct.label.name}.$methodName"
-      StructOrEnum.Enum(enum_) => "${enum_.label.name}.$methodName"
+    val layerName = match instanceKind {
+      InstanceKind.Struct(struct) => "${struct.label.name}.$methodName"
+      InstanceKind.Enum(enum_) => "${enum_.label.name}.$methodName"
     }
     match self._resolvedGenerics.addLayer(layerName, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: position, kind: CompileErrorKind.ResolvedGenericsError(context: layerName, message: e))) }
 
@@ -4184,12 +4184,12 @@ pub type Compiler {
   }
 
   func _addResolvedGenericsLayerForEnumVariant(self, ty: Type, variantName: String, position: Position, resolvedGenerics: Map<String, Type> = {}): Result<Type, CompileError> {
-    val (structOrEnum, typeArgs) = try self._getInstanceTypeForType(ty)
-    match structOrEnum {
-      StructOrEnum.Struct => unreachable("type should always be an enum here")
-      StructOrEnum.Enum(enum_) => {
-        val template = Type(kind: TypeKind.Instance(structOrEnum, enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
-        val selfInstanceType = Type(kind: TypeKind.Instance(structOrEnum, typeArgs))
+    val (instanceKind, typeArgs) = try self._getInstanceTypeForType(ty)
+    match instanceKind {
+      InstanceKind.Struct => unreachable("type should always be an enum here")
+      InstanceKind.Enum(enum_) => {
+        val template = Type(kind: TypeKind.Instance(instanceKind, enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+        val selfInstanceType = Type(kind: TypeKind.Instance(instanceKind, typeArgs))
 
         for (name, ty) in selfInstanceType.extractGenerics(template) {
           resolvedGenerics[name] = ty
@@ -4225,7 +4225,7 @@ pub type Compiler {
         name: "call",
         params: params,
         returnType: returnType,
-        kind: FunctionKind.InstanceMethod(Some(StructOrEnum.Struct(struct)), false),
+        kind: FunctionKind.InstanceMethod(Some(InstanceKind.Struct(struct)), false),
       )
 
       (struct, callMethod)
@@ -4252,33 +4252,33 @@ pub type Compiler {
 
   func _isTupleStruct(self, struct: Struct): Bool = if self._tupleStructs[struct.label.name] |s| s == struct else false
 
-  func _getInstanceTypeForType(self, ty: Type): Result<(StructOrEnum, Type[]), CompileError> {
+  func _getInstanceTypeForType(self, ty: Type): Result<(InstanceKind, Type[]), CompileError> {
     match ty.kind {
       TypeKind.CouldNotDetermine => unreachable("used for surfacing partial results; no module with this type should make it to the compilation phase")
       TypeKind.Any => unreachable("getInstanceTypeForType: Any")
       TypeKind.PrimitiveUnit => unreachable("getInstanceTypeForType: Unit")
-      TypeKind.PrimitiveInt => Ok((StructOrEnum.Struct(self._project.preludeIntStruct), []))
-      TypeKind.PrimitiveFloat => Ok((StructOrEnum.Struct(self._project.preludeFloatStruct), []))
-      TypeKind.PrimitiveBool => Ok((StructOrEnum.Struct(self._project.preludeBoolStruct), []))
-      TypeKind.PrimitiveChar => Ok((StructOrEnum.Struct(self._project.preludeCharStruct), []))
-      TypeKind.PrimitiveString => Ok((StructOrEnum.Struct(self._project.preludeStringStruct), []))
+      TypeKind.PrimitiveInt => Ok((InstanceKind.Struct(self._project.preludeIntStruct), []))
+      TypeKind.PrimitiveFloat => Ok((InstanceKind.Struct(self._project.preludeFloatStruct), []))
+      TypeKind.PrimitiveBool => Ok((InstanceKind.Struct(self._project.preludeBoolStruct), []))
+      TypeKind.PrimitiveChar => Ok((InstanceKind.Struct(self._project.preludeCharStruct), []))
+      TypeKind.PrimitiveString => Ok((InstanceKind.Struct(self._project.preludeStringStruct), []))
       TypeKind.Never => unreachable("getInstanceTypeForType: Never")
       TypeKind.Generic(name) => {
         if self._resolvedGenerics.resolveGeneric(name) |ty| self._getInstanceTypeForType(ty) else unreachable("failed to resolve generic: '$name'")
       }
-      TypeKind.Instance(structOrEnum, typeParams) => Ok((structOrEnum, typeParams))
+      TypeKind.Instance(instanceKind, typeParams) => Ok((instanceKind, typeParams))
       TypeKind.Tuple(types) => {
         val struct = self._tupleStruct(types.length)
-        Ok((StructOrEnum.Struct(struct), types))
+        Ok((InstanceKind.Struct(struct), types))
       }
       TypeKind.Func(paramTypes, returnType) => {
         val hasReturn = returnType.kind != TypeKind.PrimitiveUnit
         val (struct, _) = self._functionStruct(paramTypes.length, hasReturn)
 
         val typeArgs = (if hasReturn { [returnType] } else []).concat(paramTypes.map(_p => _p[0]))
-        Ok((StructOrEnum.Struct(struct), typeArgs))
+        Ok((InstanceKind.Struct(struct), typeArgs))
       }
-      TypeKind.Type(structOrEnum) => Ok((structOrEnum, []))
+      TypeKind.Type(instanceKind) => Ok((instanceKind, []))
       TypeKind.Hole => unreachable("getInstanceTypeForType: Hole")
     }
   }
@@ -4288,10 +4288,10 @@ pub type Compiler {
       TypeKind.Generic(name) => {
         if self._resolvedGenerics.resolveGeneric(name) |ty| self._getReprForType(ty) else unreachable("failed to resolve generic repr: '$name'")
       }
-      TypeKind.Instance(structOrEnum, typeParams) => {
-        val n = match structOrEnum {
-          StructOrEnum.Struct(struct) => struct.label.name
-          StructOrEnum.Enum(_enum) => _enum.label.name
+      TypeKind.Instance(instanceKind, typeParams) => {
+        val n = match instanceKind {
+          InstanceKind.Struct(struct) => struct.label.name
+          InstanceKind.Enum(_enum) => _enum.label.name
         }
         if !typeParams.isEmpty() {
           val params: String[] = []
@@ -4306,14 +4306,14 @@ pub type Compiler {
       }
       TypeKind.Tuple(types) => {
         val struct = self._tupleStruct(types.length)
-        self._getReprForType(Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), types)))
+        self._getReprForType(Type(kind: TypeKind.Instance(InstanceKind.Struct(struct), types)))
       }
       TypeKind.Func(paramTypes, returnType) => {
         val hasReturn = returnType.kind != TypeKind.PrimitiveUnit
         val (struct, _) = self._functionStruct(paramTypes.length, hasReturn)
 
         val typeArgs = (if hasReturn { [returnType] } else []).concat(paramTypes.map(_p => _p[0]))
-        self._getReprForType(Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), typeArgs)))
+        self._getReprForType(Type(kind: TypeKind.Instance(InstanceKind.Struct(struct), typeArgs)))
       }
       _ => Ok(ty.repr())
     }
@@ -4324,10 +4324,10 @@ pub type Compiler {
       TypeKind.Generic(name) => {
         if self._resolvedGenerics.resolveGeneric(name) |ty| self._getNameForType(ty) else unreachable("failed to resolve generic repr: '$name'")
       }
-      TypeKind.Instance(structOrEnum, typeParams) => {
-        val n = match structOrEnum {
-          StructOrEnum.Struct(struct) => struct.label.name
-          StructOrEnum.Enum(_enum) => _enum.label.name
+      TypeKind.Instance(instanceKind, typeParams) => {
+        val n = match instanceKind {
+          InstanceKind.Struct(struct) => struct.label.name
+          InstanceKind.Enum(_enum) => _enum.label.name
         }
         if !typeParams.isEmpty() {
           val params: String[] = []
@@ -4342,14 +4342,14 @@ pub type Compiler {
       }
       TypeKind.Tuple(types) => {
         val struct = self._tupleStruct(types.length)
-        self._getNameForType(Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), types)))
+        self._getNameForType(Type(kind: TypeKind.Instance(InstanceKind.Struct(struct), types)))
       }
       TypeKind.Func(paramTypes, returnType) => {
         val hasReturn = returnType.kind != TypeKind.PrimitiveUnit
         val (struct, _) = self._functionStruct(paramTypes.length, hasReturn)
 
         val typeArgs = (if hasReturn { [returnType] } else []).concat(paramTypes.map(_p => _p[0]))
-        self._getNameForType(Type(kind: TypeKind.Instance(StructOrEnum.Struct(struct), typeArgs)))
+        self._getNameForType(Type(kind: TypeKind.Instance(InstanceKind.Struct(struct), typeArgs)))
       }
       _ => Ok(ty.repr())
     }
@@ -4366,13 +4366,13 @@ pub type Compiler {
     match kind {
       FunctionKind.Standalone => name
       FunctionKind.InstanceMethod(structOrEnumOpt, _) => match structOrEnumOpt {
-        StructOrEnum.Struct(s) => "${s.label.name}.$name"
-        StructOrEnum.Enum(e) => "${e.label.name}.$name"
+        InstanceKind.Struct(s) => "${s.label.name}.$name"
+        InstanceKind.Enum(e) => "${e.label.name}.$name"
         _ => name
       }
-      FunctionKind.StaticMethod(structOrEnum, _) => match structOrEnum {
-        StructOrEnum.Struct(s) => "${s.label.name}#$name"
-        StructOrEnum.Enum(e) => "${e.label.name}#$name"
+      FunctionKind.StaticMethod(instanceKind, _) => match instanceKind {
+        InstanceKind.Struct(s) => "${s.label.name}#$name"
+        InstanceKind.Enum(e) => "${e.label.name}#$name"
       }
     }
   }
@@ -4462,17 +4462,17 @@ pub type Compiler {
     Ok("${typeName}${sep}${fn.label.name}")
   }
 
-  func _methodFnName(self, structOrEnum: StructOrEnum, fn: Function): Result<String, CompileError> {
-    match structOrEnum {
-      StructOrEnum.Struct(struct) => self._structMethodFnName(struct, fn)
-      StructOrEnum.Enum(enum_) => self._enumMethodFnName(enum_, fn)
+  func _methodFnName(self, instanceKind: InstanceKind, fn: Function): Result<String, CompileError> {
+    match instanceKind {
+      InstanceKind.Struct(struct) => self._structMethodFnName(struct, fn)
+      InstanceKind.Enum(enum_) => self._enumMethodFnName(enum_, fn)
     }
   }
 
-  func _fnSignature(self, structOrEnum: StructOrEnum?, fn: Function, paramsNeedingDefaultValue: Bool[] = []): Result<String, CompileError> {
+  func _fnSignature(self, instanceKind: InstanceKind?, fn: Function, paramsNeedingDefaultValue: Bool[] = []): Result<String, CompileError> {
     val parts: String[] = []
-    match structOrEnum {
-      StructOrEnum.Struct(struct) => {
+    match instanceKind {
+      InstanceKind.Struct(struct) => {
         parts.push(struct.label.name)
         if !struct.typeParams.isEmpty() {
           parts.push("<")
@@ -4486,7 +4486,7 @@ pub type Compiler {
         }
         parts.push(match fn.kind { FunctionKind.InstanceMethod => "#", _ => "." })
       }
-      StructOrEnum.Enum(enum_) => {
+      InstanceKind.Enum(enum_) => {
         parts.push(enum_.label.name)
         if !enum_.typeParams.isEmpty() {
           parts.push("<")
@@ -4583,10 +4583,10 @@ pub type Compiler {
     Ok(parts.join())
   }
 
-  func _getMethodFunctionByName(self, parent: StructOrEnum, name: String, staticMethod = false): Function {
+  func _getMethodFunctionByName(self, parent: InstanceKind, name: String, staticMethod = false): Function {
     val (parentName, methods) = match parent {
-      StructOrEnum.Struct(s) => (s.label.name, if staticMethod s.staticMethods else s.instanceMethods)
-      StructOrEnum.Enum(e) => (e.label.name, if staticMethod e.staticMethods else e.instanceMethods)
+      InstanceKind.Struct(s) => (s.label.name, if staticMethod s.staticMethods else s.instanceMethods)
+      InstanceKind.Enum(e) => (e.label.name, if staticMethod e.staticMethods else e.instanceMethods)
     }
 
     try methods.find(m => m.label.name == name) else {
@@ -4599,18 +4599,18 @@ pub type Compiler {
     try enum_.variants.findIndex(v => v.label.name == name) else unreachable("${enum_.label.name}.$name must exist")
   }
 
-  func _typeIsInt(self, ty: Type): Bool = ty.kind == TypeKind.PrimitiveInt || ty.kind == TypeKind.Instance(StructOrEnum.Struct(self._project.preludeIntStruct), [])
-  func _typeIsFloat(self, ty: Type): Bool = ty.kind == TypeKind.PrimitiveFloat || ty.kind == TypeKind.Instance(StructOrEnum.Struct(self._project.preludeFloatStruct), [])
-  func _typeIsBool(self, ty: Type): Bool = ty.kind == TypeKind.PrimitiveBool || ty.kind == TypeKind.Instance(StructOrEnum.Struct(self._project.preludeBoolStruct), [])
-  func _typeIsChar(self, ty: Type): Bool = ty.kind == TypeKind.PrimitiveChar || ty.kind == TypeKind.Instance(StructOrEnum.Struct(self._project.preludeCharStruct), [])
-  func _typeIsString(self, ty: Type): Bool = ty.kind == TypeKind.PrimitiveString || ty.kind == TypeKind.Instance(StructOrEnum.Struct(self._project.preludeStringStruct), [])
+  func _typeIsInt(self, ty: Type): Bool = ty.kind == TypeKind.PrimitiveInt || ty.kind == TypeKind.Instance(InstanceKind.Struct(self._project.preludeIntStruct), [])
+  func _typeIsFloat(self, ty: Type): Bool = ty.kind == TypeKind.PrimitiveFloat || ty.kind == TypeKind.Instance(InstanceKind.Struct(self._project.preludeFloatStruct), [])
+  func _typeIsBool(self, ty: Type): Bool = ty.kind == TypeKind.PrimitiveBool || ty.kind == TypeKind.Instance(InstanceKind.Struct(self._project.preludeBoolStruct), [])
+  func _typeIsChar(self, ty: Type): Bool = ty.kind == TypeKind.PrimitiveChar || ty.kind == TypeKind.Instance(InstanceKind.Struct(self._project.preludeCharStruct), [])
+  func _typeIsString(self, ty: Type): Bool = ty.kind == TypeKind.PrimitiveString || ty.kind == TypeKind.Instance(InstanceKind.Struct(self._project.preludeStringStruct), [])
 
   // TODO: this is copied from Typechecker
   func _typeIsOption(self, ty: Type): Type? {
     match ty.kind {
-      TypeKind.Instance(structOrEnum, generics) => {
-        match structOrEnum {
-          StructOrEnum.Enum(enum_) => {
+      TypeKind.Instance(instanceKind, generics) => {
+        match instanceKind {
+          InstanceKind.Enum(enum_) => {
             if enum_ != self._project.preludeOptionEnum return None
             if generics[0] |innerTy| {
               Some(innerTy)
