@@ -1,5 +1,5 @@
 import LiteralAstNode, IndexingMode from "./parser"
-import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, FunctionKind, Scope, Struct, Enum, StructOrEnum, AccessorPathSegment, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export, TypedMatchCaseKind from "./typechecker"
+import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, FunctionKind, Scope, Struct, Enum, InstanceKind, AccessorPathSegment, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export, TypedMatchCaseKind from "./typechecker"
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 
 pub type Jsonifier {
@@ -127,13 +127,13 @@ pub type Jsonifier {
         self.println("\"kind\": \"generic\",")
         self.println("\"name\": \"$name\"")
       }
-      TypeKind.Instance(structOrEnum, generics) => {
-        match structOrEnum {
-          StructOrEnum.Struct(struct) => {
+      TypeKind.Instance(instanceKind, generics) => {
+        match instanceKind {
+          InstanceKind.Struct(struct) => {
             self.println("\"kind\": \"instance\",")
             self.println("\"struct\": { \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.label.name}\" },")
           }
-          StructOrEnum.Enum(enum_) => {
+          InstanceKind.Enum(enum_) => {
             self.println("\"kind\": \"enumInstance\",")
             self.println("\"enum\": { \"moduleId\": ${enum_.moduleId}, \"name\": \"${enum_.label.name}\" },")
           }
@@ -169,14 +169,14 @@ pub type Jsonifier {
         self.printType(ret)
         println()
       }
-      TypeKind.Type(structOrEnum) => {
-        match structOrEnum {
-          StructOrEnum.Struct(struct) => {
+      TypeKind.Type(instanceKind) => {
+        match instanceKind {
+          InstanceKind.Struct(struct) => {
             self.println("\"kind\": \"struct\",")
             self.print("\"struct\": ")
             self.printStruct(struct: struct, abridged: true)
           }
-          StructOrEnum.Enum(enum_) => {
+          InstanceKind.Enum(enum_) => {
             self.println("\"kind\": \"enum\",")
             self.print("\"enum\": ")
             self.printEnum(enum_: enum_, abridged: true)
