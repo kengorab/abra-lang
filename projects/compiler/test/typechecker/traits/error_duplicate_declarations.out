@@ -1,0 +1,23 @@
+Error at %TEST_DIR%/typechecker/traits/error_duplicate_declarations.abra:4:11
+Duplicate name 'Foo'
+  |  decorator Foo {  }
+               ^
+This name is also declared at (1:6)
+  |  type Foo {  }
+          ^
+
+Error at %TEST_DIR%/typechecker/traits/error_duplicate_declarations.abra:3:6
+Duplicate name 'Foo'
+  |  enum Foo { Bar }
+          ^
+This name is also declared at (1:6)
+  |  type Foo {  }
+          ^
+
+Error at %TEST_DIR%/typechecker/traits/error_duplicate_declarations.abra:2:7
+Duplicate name 'Foo'
+  |  trait Foo {  }
+           ^
+This name is also declared at (1:6)
+  |  type Foo {  }
+          ^
