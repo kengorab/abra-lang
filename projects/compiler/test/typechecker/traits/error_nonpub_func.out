@@ -1,0 +1,11 @@
+Error at %TEST_DIR%/typechecker/traits/error_nonpub_func.abra:2:8
+Missing 'pub' modifier for trait method
+  |    func foo(self): Int
+            ^
+Trait methods must always be marked as 'pub'
+
+Error at %TEST_DIR%/typechecker/traits/error_nonpub_func.abra:4:8
+Missing 'pub' modifier for trait method
+  |    func fooStatic(): Int
+            ^
+Trait methods must always be marked as 'pub'

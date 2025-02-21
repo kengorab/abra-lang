@@ -1,4 +1,4 @@
 Error at %TEST_DIR%/typechecker/decorators/error_enum_as_decorator.abra:5:5
-Unexpected token '.', expected one of 'val', 'var', 'func', 'type', 'enum', 'decorator', '@', 'pub':
+Unexpected token '.', expected one of 'val', 'var', 'func', 'type', 'enum', 'trait', 'decorator', '@', 'pub':
   |  @Foo.Bar(b: "asdf")
          ^

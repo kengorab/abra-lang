@@ -739,6 +739,12 @@ const TYPECHECKER_TESTS = [
   { test: "typechecker/decorators/error_type_as_decorator.abra", assertions: "typechecker/decorators/error_type_as_decorator.out" },
   { test: "typechecker/decorators/error_unlabeled_args.abra", assertions: "typechecker/decorators/error_unlabeled_args.out" },
   { test: "typechecker/decorators/function_decorator.abra", assertions: "typechecker/decorators/function_decorator.out.json" },
+  // Trait declaration
+  { test: "typechecker/traits/error_duplicate_declarations.abra", assertions: "typechecker/traits/error_duplicate_declarations.out" },
+  { test: "typechecker/traits/error_nonpub_func.abra", assertions: "typechecker/traits/error_nonpub_func.out" },
+  { test: "typechecker/traits/traitdecl.1.abra", assertions: "typechecker/traits/traitdecl.1.out.json" },
+  { test: "typechecker/traits/traitdecl.2.abra", assertions: "typechecker/traits/traitdecl.2.out.json" },
+  { test: "typechecker/traits/traitdecl_exported.abra", assertions: "typechecker/traits/traitdecl_exported.out.json" },
 
   // Returns
   { test: "typechecker/return/return.1.abra", assertions: "typechecker/return/return.1.out.json" },
