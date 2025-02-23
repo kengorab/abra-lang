@@ -200,10 +200,12 @@ const PARSER_TESTS = [
   { test: "parser/functiondecl_error_self_variadic.abra", assertions: "parser/functiondecl_error_self_variadic.out" },
   // Type declaration
   { test: "parser/typedecl.abra", assertions: "parser/typedecl.out.json" },
+  { test: "parser/typedecl_with_trait.abra", assertions: "parser/typedecl_with_trait.out.json" },
   { test: "parser/typedecl_error_field_after_method.abra", assertions: "parser/typedecl_error_field_after_method.out" },
   { test: "parser/typedecl_error_illegal_body_part.abra", assertions: "parser/typedecl_error_illegal_body_part.out" },
   // Enum declaration
   { test: "parser/enumdecl.abra", assertions: "parser/enumdecl.out.json" },
+  { test: "parser/enumdecl_with_trait.abra", assertions: "parser/enumdecl_with_trait.out.json" },
   { test: "parser/enumdecl_error_container_no_typeannotation.abra", assertions: "parser/enumdecl_error_container_no_typeannotation.out" },
   { test: "parser/enumdecl_error_empty_container_variant.abra", assertions: "parser/enumdecl_error_empty_container_variant.out" },
   // Decorator declaration
