@@ -1,0 +1,4 @@
+enum Foo : Bar { }
+enum Foo : Bar<T, A> { }
+enum Foo : Bar, Baz<T, A> { }
+enum Foo : Bar<X>, Baz<T, A> { }
