@@ -226,6 +226,7 @@ pub type TypeDeclarationNode {
   pub isDecorator: Bool
   pub name: Label
   pub typeParams: Label[]
+  pub traitImpls: TypeIdentifier[]
   pub fields: TypeField[]
   pub methods: FunctionDeclarationNode[]
   pub types: TypeDeclarationNode[]
@@ -237,6 +238,7 @@ pub type TraitDeclarationNode {
   pub pubToken: Token?
   pub name: Label
   pub typeParams: Label[]
+  pub traitImpls: TypeIdentifier[]
   pub methods: FunctionDeclarationNode[]
   pub types: TypeDeclarationNode[]
   pub enums: EnumDeclarationNode[]
@@ -252,6 +254,7 @@ pub type EnumDeclarationNode {
   pub pubToken: Token?
   pub name: Label
   pub typeParams: Label[]
+  pub traitImpls: TypeIdentifier[]
   pub variants: EnumVariant[]
   pub methods: FunctionDeclarationNode[]
   pub types: TypeDeclarationNode[]
@@ -731,7 +734,17 @@ pub type Parser {
         try self._parseTypeParameters()
       }
       TokenKind.LBrace => []
+      TokenKind.Colon => []
       _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
+    }
+
+    nextToken = try self._expectPeek()
+    val traitImpls = if nextToken.kind == TokenKind.Colon {
+      self._advance() // consume ':' token
+
+      try self._commaSeparated(end: TokenKind.LBrace, consumeFinal: false, fn: () => self._parseTypeIdentifier())
+    } else {
+      []
     }
 
     try self._expectNextTokenKind(TokenKind.LBrace)
@@ -776,6 +789,7 @@ pub type Parser {
       isDecorator: isDecorator,
       name: typeName,
       typeParams: typeParams,
+      traitImpls: traitImpls,
       fields: fields,
       methods: methods,
       types: types,
@@ -801,7 +815,17 @@ pub type Parser {
         try self._parseTypeParameters()
       }
       TokenKind.LBrace => []
+      TokenKind.Colon => []
       _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
+    }
+
+    nextToken = try self._expectPeek()
+    val traitImpls = if nextToken.kind == TokenKind.Colon {
+      self._advance() // consume ':' token
+
+      try self._commaSeparated(end: TokenKind.LBrace, consumeFinal: false, fn: () => self._parseTypeIdentifier())
+    } else {
+      []
     }
 
     try self._expectNextTokenKind(TokenKind.LBrace)
@@ -818,6 +842,7 @@ pub type Parser {
       pubToken: pubToken,
       name: typeName,
       typeParams: typeParams,
+      traitImpls: traitImpls,
       methods: methods,
       types: types,
       enums: enums,
@@ -842,7 +867,17 @@ pub type Parser {
         try self._parseTypeParameters()
       }
       TokenKind.LBrace => []
+      TokenKind.Colon => []
       _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
+    }
+
+    nextToken = try self._expectPeek()
+    val traitImpls = if nextToken.kind == TokenKind.Colon {
+      self._advance() // consume ':' token
+
+      try self._commaSeparated(end: TokenKind.LBrace, consumeFinal: false, fn: () => self._parseTypeIdentifier())
+    } else {
+      []
     }
 
     try self._expectNextTokenKind(TokenKind.LBrace)
@@ -892,6 +927,7 @@ pub type Parser {
       pubToken: pubToken,
       name: enumName,
       typeParams: typeParams,
+      traitImpls: traitImpls,
       variants: variants,
       methods: methods,
       types: types,
@@ -905,7 +941,7 @@ pub type Parser {
     try self._expectNextTokenKind(TokenKind.Colon)
     val typeAnnotation = try self._parseTypeIdentifier()
 
-    var nextToken = try self._expectPeek()
+    val nextToken = try self._expectPeek()
     val initializer = if nextToken.kind == TokenKind.Eq {
       self._advance() // consume '=' token
       Some(try self.parseExpression())
