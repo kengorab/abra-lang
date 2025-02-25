@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:21
+Unexpected token '?':
+  |  enum FooBar123 : Foo? {
+                         ^

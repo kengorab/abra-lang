@@ -1,0 +1,3 @@
+enum FooBar123 : Foo[] {
+
+}

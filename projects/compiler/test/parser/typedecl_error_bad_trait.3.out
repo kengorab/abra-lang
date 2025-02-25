@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:18
+Unexpected token '(', expected 'identifier':
+  |  type FooBar123 : (Foo) => Bar {
+                      ^

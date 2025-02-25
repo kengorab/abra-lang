@@ -727,7 +727,7 @@ pub type Parser {
     val token = try self._expectNext()
     val typeName = try self._expectNextLabel()
 
-    var nextToken = try self._expectPeek()
+    val nextToken = try self._expectPeek()
     val typeParams = match nextToken.kind {
       TokenKind.LT => {
         self._advance() // consume '<' token
@@ -738,14 +738,7 @@ pub type Parser {
       _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
     }
 
-    nextToken = try self._expectPeek()
-    val traitImpls = if nextToken.kind == TokenKind.Colon {
-      self._advance() // consume ':' token
-
-      try self._commaSeparated(end: TokenKind.LBrace, consumeFinal: false, fn: () => self._parseTypeIdentifier())
-    } else {
-      []
-    }
+    val traitImpls = try self.parseTraitImplsList()
 
     try self._expectNextTokenKind(TokenKind.LBrace)
 
@@ -808,7 +801,7 @@ pub type Parser {
     val token = try self._expectNext()
     val typeName = try self._expectNextLabel()
 
-    var nextToken = try self._expectPeek()
+    val nextToken = try self._expectPeek()
     val typeParams = match nextToken.kind {
       TokenKind.LT => {
         self._advance() // consume '<' token
@@ -819,14 +812,7 @@ pub type Parser {
       _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
     }
 
-    nextToken = try self._expectPeek()
-    val traitImpls = if nextToken.kind == TokenKind.Colon {
-      self._advance() // consume ':' token
-
-      try self._commaSeparated(end: TokenKind.LBrace, consumeFinal: false, fn: () => self._parseTypeIdentifier())
-    } else {
-      []
-    }
+    val traitImpls = try self.parseTraitImplsList()
 
     try self._expectNextTokenKind(TokenKind.LBrace)
 
@@ -860,7 +846,7 @@ pub type Parser {
     val token = try self._expectNext()
     val enumName = try self._expectNextLabel()
 
-    var nextToken = try self._expectPeek()
+    val nextToken = try self._expectPeek()
     val typeParams = match nextToken.kind {
       TokenKind.LT => {
         self._advance() // consume '<' token
@@ -871,14 +857,7 @@ pub type Parser {
       _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
     }
 
-    nextToken = try self._expectPeek()
-    val traitImpls = if nextToken.kind == TokenKind.Colon {
-      self._advance() // consume ':' token
-
-      try self._commaSeparated(end: TokenKind.LBrace, consumeFinal: false, fn: () => self._parseTypeIdentifier())
-    } else {
-      []
-    }
+    val traitImpls = try self.parseTraitImplsList()
 
     try self._expectNextTokenKind(TokenKind.LBrace)
 
@@ -979,9 +958,9 @@ pub type Parser {
     Ok((methods, types, enums))
   }
 
-  func _parseTypeIdentifier(self): Result<TypeIdentifier, ParseError> {
+  func _parseTypeIdentifier(self, requireNormal = false): Result<TypeIdentifier, ParseError> {
     val token = try self._expectNext()
-    var typeIdent =  match token.kind {
+    var typeIdent = match token.kind {
       TokenKind.Ident(name) => {
         var label = Label(name: name, position: token.position)
         val path: Label[] = []
@@ -1017,6 +996,8 @@ pub type Parser {
         TypeIdentifier.Normal(name: label, typeArguments: typeArguments, path: path)
       }
       TokenKind.LParen => {
+        if requireNormal return Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
+
         val args = try self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: () => self._parseTypeIdentifier())
 
         val nextTokenIsArrow = if self._peek()?.kind |kind| kind == TokenKind.Arrow else false
@@ -1045,12 +1026,16 @@ pub type Parser {
         TokenKind.LBrack(preceedingNewline) => if preceedingNewline {
           break
         } else {
+          if requireNormal return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.UnexpectedToken(nextToken)))
+
           self._advance() // consume '[' token
           try self._expectNextTokenKind(TokenKind.RBrack)
 
           typeIdent = TypeIdentifier.Array(inner: typeIdent)
         }
         TokenKind.Question => {
+          if requireNormal return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.UnexpectedToken(nextToken)))
+
           self._advance() // consume '?' token
           typeIdent = TypeIdentifier.Option(inner: typeIdent)
         }
@@ -1059,6 +1044,18 @@ pub type Parser {
     }
 
     Ok(typeIdent)
+  }
+
+  func parseTraitImplsList(self): Result<TypeIdentifier[], ParseError> {
+    val nextToken = try self._expectPeek()
+
+    if nextToken.kind == TokenKind.Colon {
+      self._advance() // consume ':' token
+
+      self._commaSeparated(end: TokenKind.LBrace, consumeFinal: false, fn: () => self._parseTypeIdentifier(requireNormal: true))
+    } else {
+      Ok([])
+    }
   }
 
   func _parseFunctionParameters(self, allowSelf: Bool): Result<FunctionParam[], ParseError> {

@@ -1,7 +1,9 @@
-trait Foo<T> {
-  pub func foo(self): T
+import "./example2" as ex2
+
+trait Foo {
+  pub func foo(self): Int
 }
 
-type Bar<T> : Foo<T>, Baz {
+type Bar : Foo, ex2.Foo {
   a: Int
 }

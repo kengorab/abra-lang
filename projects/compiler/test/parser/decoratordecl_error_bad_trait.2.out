@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:23
+Unexpected token '(', expected 'identifier':
+  |  decorator FooBar123 : (Foo, Int) {
+                           ^

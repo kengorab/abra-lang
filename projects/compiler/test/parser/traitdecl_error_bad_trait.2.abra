@@ -1,0 +1,3 @@
+trait FooBar123 : (Foo, Int) {
+
+}

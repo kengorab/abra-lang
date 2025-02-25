@@ -228,6 +228,11 @@ pub enum BuiltinModule {
   Intrinsics
 }
 
+pub type TraitImpl {
+  pub trait_: Trait
+  pub typeArgs: Type[]
+}
+
 pub type Field {
   pub name: Label
   pub ty: Type
@@ -240,6 +245,7 @@ pub type Struct {
   pub label: Label
   pub scope: Scope
   pub typeParams: String[] = []
+  pub traitImpls: TraitImpl[]
   pub fields: Field[] = []
   pub instanceMethods: Function[] = []
   pub staticMethods: Function[] = []
@@ -255,6 +261,7 @@ pub type Struct {
       label: Label(name: name, position: bogusPosition),
       scope: bogusScope,
       typeParams: typeParams,
+      traitImpls: [], // TODO: Add `Any`
       fields: fields.map(_f => Field(name: Label(name: _f[0], position: bogusPosition), ty: _f[1], initializer: None, isPublic: false)),
       instanceMethods: [],
       staticMethods: [],
@@ -290,6 +297,7 @@ pub type Trait {
   pub label: Label
   pub scope: Scope
   pub typeParams: String[] = []
+  pub traitImpls: TraitImpl[]
   pub instanceMethods: Function[] = []
   pub staticMethods: Function[] = []
   pub builtin: BuiltinModule? = None
@@ -315,6 +323,7 @@ pub type Enum {
   pub label: Label
   scope: Scope
   pub typeParams: String[] = []
+  pub traitImpls: TraitImpl[]
   pub variants: TypedEnumVariant[] = []
   pub instanceMethods: Function[] = []
   pub staticMethods: Function[] = []
@@ -344,16 +353,16 @@ enum Instantiatable {
 pub type Project {
   pub modules: Map<String, TypedModule> = {}
   pub preludeScope: Scope = Scope.bogus()
-  pub preludeIntStruct: Struct = Struct(moduleId: 0, label: Label(name: "Int", position: Position.bogus()), scope: Scope(name: "Int"))
-  pub preludeFloatStruct: Struct = Struct(moduleId: 0, label: Label(name: "Float", position: Position.bogus()), scope: Scope(name: "Float"))
-  pub preludeBoolStruct: Struct = Struct(moduleId: 0, label: Label(name: "Bool", position: Position.bogus()), scope: Scope(name: "Bool"))
-  pub preludeCharStruct: Struct = Struct(moduleId: 0, label: Label(name: "Char", position: Position.bogus()), scope: Scope(name: "Char"))
-  pub preludeStringStruct: Struct = Struct(moduleId: 0, label: Label(name: "String", position: Position.bogus()), scope: Scope(name: "String"))
-  pub preludeArrayStruct: Struct = Struct(moduleId: 0, label: Label(name: "Array", position: Position.bogus()), scope: Scope(name: "Array"), typeParams: ["T"])
-  pub preludeMapStruct: Struct = Struct(moduleId: 0, label: Label(name: "Map", position: Position.bogus()), scope: Scope(name: "Array"), typeParams: ["K", "V"])
-  pub preludeSetStruct: Struct = Struct(moduleId: 0, label: Label(name: "Set", position: Position.bogus()), scope: Scope(name: "Set"), typeParams: ["T"])
-  pub preludeOptionEnum: Enum = Enum(moduleId: 0, label: Label(name: "Option", position: Position.bogus()), scope: Scope(name: "Option"), typeParams: ["T"])
-  pub preludeResultEnum: Enum = Enum(moduleId: 0, label: Label(name: "Result", position: Position.bogus()), scope: Scope(name: "Result"), typeParams: ["V", "E"])
+  pub preludeIntStruct: Struct = Struct(moduleId: 0, label: Label(name: "Int", position: Position.bogus()), scope: Scope(name: "Int"), traitImpls: [])
+  pub preludeFloatStruct: Struct = Struct(moduleId: 0, label: Label(name: "Float", position: Position.bogus()), scope: Scope(name: "Float"), traitImpls: [])
+  pub preludeBoolStruct: Struct = Struct(moduleId: 0, label: Label(name: "Bool", position: Position.bogus()), scope: Scope(name: "Bool"), traitImpls: [])
+  pub preludeCharStruct: Struct = Struct(moduleId: 0, label: Label(name: "Char", position: Position.bogus()), scope: Scope(name: "Char"), traitImpls: [])
+  pub preludeStringStruct: Struct = Struct(moduleId: 0, label: Label(name: "String", position: Position.bogus()), scope: Scope(name: "String"), traitImpls: [])
+  pub preludeArrayStruct: Struct = Struct(moduleId: 0, label: Label(name: "Array", position: Position.bogus()), scope: Scope(name: "Array"), typeParams: ["T"], traitImpls: [])
+  pub preludeMapStruct: Struct = Struct(moduleId: 0, label: Label(name: "Map", position: Position.bogus()), scope: Scope(name: "Array"), typeParams: ["K", "V"], traitImpls: [])
+  pub preludeSetStruct: Struct = Struct(moduleId: 0, label: Label(name: "Set", position: Position.bogus()), scope: Scope(name: "Set"), typeParams: ["T"], traitImpls: [])
+  pub preludeOptionEnum: Enum = Enum(moduleId: 0, label: Label(name: "Option", position: Position.bogus()), scope: Scope(name: "Option"), typeParams: ["T"], traitImpls: [])
+  pub preludeResultEnum: Enum = Enum(moduleId: 0, label: Label(name: "Result", position: Position.bogus()), scope: Scope(name: "Result"), typeParams: ["V", "E"], traitImpls: [])
 
   pub func typesAreEquivalent(self, ty: Type, other: Type): Bool {
     if other.kind == TypeKind.CouldNotDetermine return true
@@ -1444,6 +1453,22 @@ type TypeError {
         lines.push(self._getCursorLine(self.position, contents))
         lines.push("Trait methods must always be marked as 'pub'")
       }
+      TypeErrorKind.NonTraitInImplsList(badTy) => {
+        lines.push("Invalid item in trait implementations list")
+        lines.push(self._getCursorLine(self.position, contents))
+
+        val (badLabel, badName) = match badTy {
+          InstanceKind.Struct(s) => (if s.isDecoratorType "decorator" else "type", s.label.name)
+          InstanceKind.Enum(e) => ("enum", e.label.name)
+          InstanceKind.Trait(t) => ("trait", t.label.name)
+        }
+        val article = if badLabel == "enum" "an" else "a"
+        lines.push("Expected the name of a trait, but instead found '$badName' (which is $article $badLabel)")
+      }
+      TypeErrorKind.DuplicateTraitInImplsList => {
+        lines.push("Duplicate trait in implementations list")
+        lines.push(self._getCursorLine(self.position, contents))
+      }
     }
 
     lines.join("\n")
@@ -1566,6 +1591,9 @@ enum TypeErrorKind {
   TryReturnTypeMismatch(fnLabel: Label, tryType: Type, tryErrType: Type, retErrType: Type)
   NonComptimeDecoratorFieldType(decoratorName: String, fieldName: String, fieldTy: Type)
   NonPubTraitMethod
+  InvalidTypeIdentifierInImplsList(parentTy: InstanceKind)
+  NonTraitInImplsList(badTy: InstanceKind)
+  DuplicateTraitInImplsList
 }
 
 type ParamDefaultValueContext {
@@ -1756,7 +1784,7 @@ pub type Typechecker {
     Ok(types)
   }
 
-  func _resolveInstanceTypeIdentifier(self, importMod: TypedModule?, instanceKind: InstanceKind, label: Label, typeArguments: TypeIdentifier[]): Result<Type?, TypeError> {
+  func resolveInstanceTypeIdentifier(self, importMod: TypedModule?, instanceKind: InstanceKind, label: Label, typeArguments: TypeIdentifier[]): Result<Type?, TypeError> {
     match instanceKind {
       InstanceKind.Struct(struct) => {
         if self.lspMode {
@@ -1773,6 +1801,14 @@ pub type Typechecker {
 
         val instanceTypeArgs = try self._verifyNumTypeArgs(label.position, typeArguments, enum_.typeParams.length)
         return Ok(Some(Type(kind: TypeKind.Instance(InstanceKind.Enum(enum_), instanceTypeArgs))))
+      }
+      InstanceKind.Trait(trait_) => {
+        if self.lspMode {
+          self._addLSPIdentForTrait(label.position, trait_, importMod)
+        }
+
+        val instanceTypeArgs = try self._verifyNumTypeArgs(label.position, typeArguments, trait_.typeParams.length)
+        return Ok(Some(Type(kind: TypeKind.Instance(InstanceKind.Trait(trait_), instanceTypeArgs))))
       }
     }
 
@@ -1800,6 +1836,7 @@ pub type Typechecker {
                 match instanceKind {
                   InstanceKind.Struct(struct) => if name == struct.label.name return Some((ty, None))
                   InstanceKind.Enum(enum_) => if name == enum_.label.name return Some((ty, None))
+                  InstanceKind.Trait(trait_) => if name == trait_.label.name return Some((ty, None))
                 }
               }
               _ => continue
@@ -1815,6 +1852,7 @@ pub type Typechecker {
               match instanceKind {
                 InstanceKind.Struct(struct) => if name == struct.label.name return Some((ty, None))
                 InstanceKind.Enum(enum_) => if name == enum_.label.name return Some((ty, None))
+                InstanceKind.Trait(trait_) => if name == trait_.label.name return Some((ty, None))
               }
             }
             _ => continue
@@ -1832,6 +1870,7 @@ pub type Typechecker {
                   match instanceKind {
                     InstanceKind.Struct(struct) => if name == struct.label.name return Some((ty, importMod))
                     InstanceKind.Enum(enum_) => if name == enum_.label.name return Some((ty, importMod))
+                    InstanceKind.Trait(trait_) => if name == trait_.label.name return Some((ty, None))
                   }
                 }
                 _ => continue
@@ -1867,7 +1906,7 @@ pub type Typechecker {
           val foundTy = match mod.exports[label.name] {
             None => return Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownImportForAlias(label.name, aliasLabel)))
             Export.Type(instanceKind, _) => {
-              try self._resolveInstanceTypeIdentifier(Some(mod), instanceKind, label, typeArguments)
+              try self.resolveInstanceTypeIdentifier(Some(mod), instanceKind, label, typeArguments)
             }
             _ => None
           }
@@ -1880,7 +1919,7 @@ pub type Typechecker {
         }
         match ty.kind {
           TypeKind.Type(instanceKind) => {
-            val ty = try self._resolveInstanceTypeIdentifier(importMod, instanceKind, label, typeArguments)
+            val ty = try self.resolveInstanceTypeIdentifier(importMod, instanceKind, label, typeArguments)
             try ty else unreachable()
           }
           TypeKind.PrimitiveInt => {
@@ -2289,6 +2328,22 @@ pub type Typechecker {
       kind: IdentifierKindMeta.EnumVariant(enumTypeRepr, fields),
       definitionPosition: Some((definitionModule, variant.label.position)),
     )
+    self._addLSPIdent(position, ident)
+  }
+
+  func _addLSPIdentForTrait(self, position: Position, trait_: Trait, importMod: TypedModule?) {
+    val defMod = if trait_.scope.parent == Some(self.project.preludeScope) {
+      IdentifierMetaModule.Prelude
+    } else {
+      IdentifierMetaModule.Module(importMod?.name ?: self.currentModule.name)
+    }
+
+    val ident = IdentifierMeta(
+      name: trait_.label.name,
+      kind: IdentifierKindMeta.Type(isEnum: false, typeParams: trait_.typeParams),
+      definitionPosition: Some((defMod, trait_.label.position)),
+    )
+
     self._addLSPIdent(position, ident)
   }
 
@@ -2797,7 +2852,8 @@ pub type Typechecker {
     self.currentScope = prevScope
 
     val currentModuleId = self.currentModule.id
-    val struct = Struct(moduleId: currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, builtin: self.typecheckingBuiltin)
+    // TODO: Add `Any` traitimpl
+    val struct = Struct(moduleId: currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, traitImpls: [], builtin: self.typecheckingBuiltin)
     try self.addStructToScope(struct, isPublic)
 
     Ok(struct)
@@ -2808,6 +2864,8 @@ pub type Typechecker {
     self.currentScope = struct.scope
     val prevTypeDecl = self.currentTypeDecl
     self.currentTypeDecl = Some(InstanceKind.Struct(struct))
+
+    struct.traitImpls = self.typecheckTraitImplList(node.traitImpls)
 
     val seenFields: Map<String, Label> = {}
     for field in node.fields {
@@ -3001,7 +3059,8 @@ pub type Typechecker {
     self.currentScope = prevScope
 
     val currentModuleId = self.currentModule.id
-    val enum_ = Enum(moduleId: currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, builtin: self.typecheckingBuiltin)
+    // TODO: Add `Any` traitimpl
+    val enum_ = Enum(moduleId: currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, traitImpls: [], builtin: self.typecheckingBuiltin)
     try self.addEnumToScope(enum_, isPublic)
 
     Ok(enum_)
@@ -3012,6 +3071,8 @@ pub type Typechecker {
     self.currentScope = enum_.scope
     val prevTypeDecl = self.currentTypeDecl
     self.currentTypeDecl = Some(InstanceKind.Enum(enum_))
+
+    enum_.traitImpls = self.typecheckTraitImplList(node.traitImpls)
 
     var allVariantsConstant = true
     val seenVariants: Map<String, Label> = {}
@@ -3163,7 +3224,7 @@ pub type Typechecker {
     self.currentScope = prevScope
 
     val currentModuleId = self.currentModule.id
-    val trait_ = Trait(moduleId: currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, builtin: self.typecheckingBuiltin)
+    val trait_ = Trait(moduleId: currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, traitImpls: [], builtin: self.typecheckingBuiltin)
     try self.addTraitToScope(trait_, isPublic)
 
     Ok(trait_)
@@ -3174,6 +3235,8 @@ pub type Typechecker {
     self.currentScope = trait_.scope
     val prevTypeDecl = self.currentTypeDecl
     self.currentTypeDecl = Some(InstanceKind.Trait(trait_))
+
+    trait_.traitImpls = self.typecheckTraitImplList(node.traitImpls)
 
     for funcDeclNode in node.methods {
       val fn = try self.typecheckFunctionPass1(funcDeclNode)
@@ -3236,6 +3299,43 @@ pub type Typechecker {
     self.currentScope = prevScope
 
     Ok(0)
+  }
+
+  func typecheckTraitImplList(self, traitImplList: TypeIdentifier[]): TraitImpl[] {
+    val traitImpls: TraitImpl[] = []
+
+    val seenTraits: Set<(Int, String)> = #{}
+    for traitImplTypeIdent in traitImplList {
+      val traitImplLabel = match traitImplTypeIdent {
+        TypeIdentifier.Normal(label, _, _) => label
+        else => unreachable("parser guarantees that trait impls are TypeIdentifier.Normal")
+      }
+
+      val traitImplTy = try self.resolveTypeIdentifier(traitImplTypeIdent) else |err| {
+        self.currentModule.addTypeError(err)
+        continue
+      }
+      val (trait_, typeArgs) = match traitImplTy.kind {
+        TypeKind.Instance(instanceTy, typeArgs) => match instanceTy {
+          InstanceKind.Trait(t) => (t, typeArgs)
+          else => {
+            self.currentModule.addTypeError(TypeError(position: traitImplLabel.position, kind: TypeErrorKind.NonTraitInImplsList(instanceTy)))
+            continue
+          }
+        }
+        else => unreachable("expected trait type identifier to resolve to an instance")
+      }
+
+      if seenTraits.contains((trait_.moduleId, trait_.label.name)) {
+        self.currentModule.addTypeError(TypeError(position: traitImplLabel.position, kind: TypeErrorKind.DuplicateTraitInImplsList))
+        continue
+      }
+      seenTraits.insert((trait_.moduleId, trait_.label.name))
+
+      traitImpls.push(TraitImpl(trait_: trait_, typeArgs: typeArgs))
+    }
+
+    traitImpls
   }
 
   func _typecheckImport(self, mod: TypedModule, node: ImportNode): TypeError[] {

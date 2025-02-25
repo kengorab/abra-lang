@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:1:26
+Unexpected token '[':
+  |  decorator FooBar123 : Foo[] {
+                              ^

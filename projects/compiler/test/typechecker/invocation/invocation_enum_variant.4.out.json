@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "%FILE_NAME%",
+  "name": "%TEST_DIR%/typechecker/invocation/invocation_enum_variant.4.abra",
   "code": [
     {
       "token": {
@@ -21,6 +21,7 @@
           "typeParams": [
             "T"
           ],
+          "traitImpls": [],
           "variants": [
             {
               "label": { "name": "Bar", "position": [2, 3] },
