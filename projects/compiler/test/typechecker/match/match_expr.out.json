@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "%FILE_NAME%",
+  "name": "%TEST_DIR%/typechecker/match/match_expr.abra",
   "code": [
     {
       "token": {
@@ -1243,6 +1243,7 @@
           "moduleId": 3,
           "name": { "name": "Color", "position": [34, 6] },
           "typeParams": [],
+          "traitImpls": [],
           "variants": [
             {
               "label": { "name": "Red", "position": [34, 14] },
@@ -1863,6 +1864,7 @@
           "moduleId": 3,
           "name": { "name": "Color2", "position": [45, 6] },
           "typeParams": [],
+          "traitImpls": [],
           "variants": [
             {
               "label": { "name": "RGB", "position": [45, 15] },

@@ -30,6 +30,7 @@
             "moduleId": 3,
             "name": { "name": "Foo", "position": [1, 10] },
             "typeParams": [],
+            "traitImpls": [],
             "fields": [],
             "instanceMethods": [
               {
@@ -122,6 +123,7 @@
             "moduleId": 3,
             "name": { "name": "Bar", "position": [2, 10] },
             "typeParams": [],
+            "traitImpls": [],
             "variants": [],
             "instanceMethods": [
               {

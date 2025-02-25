@@ -1,0 +1,6 @@
+trait Foo {}
+type Bar : Foo, Foo {}
+
+// A trait is considered duplicated regardless of the provided generics
+trait Foo2<A> {}
+type Bar2 : Foo2<Int>, Foo2<Float> {}

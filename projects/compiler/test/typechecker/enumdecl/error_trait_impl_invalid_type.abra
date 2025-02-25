@@ -1,0 +1,9 @@
+type Foo1 {}
+enum Foo2 {}
+decorator Foo3 {}
+
+enum Bar1 : Foo1 {}
+enum Bar2 : Foo2 {}
+enum Bar3 : Foo3 {}
+
+enum BarAll : Foo1, Foo2, Foo3 {}

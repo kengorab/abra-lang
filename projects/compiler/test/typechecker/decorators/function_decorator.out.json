@@ -10,6 +10,10 @@
       {
         "kind": "type",
         "name": "FromOtherModule1"
+      },
+      {
+        "kind": "type",
+        "name": "Foo"
       }
     ],
     "code": [
@@ -30,6 +34,7 @@
             "moduleId": 3,
             "name": { "name": "FromOtherModule1", "position": [1, 15] },
             "typeParams": [],
+            "traitImpls": [],
             "fields": [
               {
                 "name": { "name": "a", "position": [2, 7] },
@@ -141,6 +146,7 @@
             "moduleId": 3,
             "name": { "name": "FromOtherModule2", "position": [6, 15] },
             "typeParams": [],
+            "traitImpls": [],
             "fields": [
               {
                 "name": { "name": "a", "position": [7, 7] },
@@ -225,6 +231,29 @@
             "staticMethods": []
           }
         }
+      },
+      {
+        "token": {
+          "position": [10, 5],
+          "kind": {
+            "name": "Trait"
+          }
+        },
+        "type": {
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "traitDeclaration",
+          "trait": {
+            "moduleId": 3,
+            "name": { "name": "Foo", "position": [10, 11] },
+            "typeParams": [],
+            "traitImpls": [],
+            "instanceMethods": [],
+            "staticMethods": []
+          }
+        }
       }
     ]
   },
@@ -249,6 +278,7 @@
             "moduleId": 4,
             "name": { "name": "Bar", "position": [3, 11] },
             "typeParams": [],
+            "traitImpls": [],
             "fields": [
               {
                 "name": { "name": "a", "position": [4, 3] },

@@ -58,3 +58,7 @@ pub decorator Outer {
 pub decorator Outer2 {
   pub a: Int
 }
+
+pub decorator Outer2 : SomeTrait {
+  pub a: Int
+}

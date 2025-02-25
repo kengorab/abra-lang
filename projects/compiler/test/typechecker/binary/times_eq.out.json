@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "%FILE_NAME%",
+  "name": "%TEST_DIR%/typechecker/binary/times_eq.abra",
   "code": [
     {
       "token": {
@@ -265,6 +265,7 @@
           "moduleId": 3,
           "name": { "name": "Foo", "position": [7, 6] },
           "typeParams": [],
+          "traitImpls": [],
           "fields": [
             {
               "name": { "name": "a", "position": [7, 12] },

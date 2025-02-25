@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "%FILE_NAME%",
+  "name": "%TEST_DIR%/typechecker/enumdecl/enumdecl_exported.abra",
   "exports": [
     {
       "kind": "type",
@@ -25,6 +25,7 @@
           "moduleId": 3,
           "name": { "name": "Foo", "position": [1, 10] },
           "typeParams": [],
+          "traitImpls": [],
           "variants": [
             {
               "label": { "name": "Bar", "position": [2, 3] },

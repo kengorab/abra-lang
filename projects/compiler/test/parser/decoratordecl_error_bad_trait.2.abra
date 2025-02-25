@@ -1,0 +1,3 @@
+decorator FooBar123 : (Foo, Int) {
+
+}

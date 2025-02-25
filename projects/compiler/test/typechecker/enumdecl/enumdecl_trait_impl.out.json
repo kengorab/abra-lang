@@ -1,0 +1,270 @@
+[
+  {
+    "id": 3,
+    "name": "%TEST_DIR%/typechecker/enumdecl/_exports.abra",
+    "exports": [
+      {
+        "kind": "type",
+        "name": "Foo"
+      }
+    ],
+    "code": [
+      {
+        "token": {
+          "position": [1, 5],
+          "kind": {
+            "name": "Trait"
+          }
+        },
+        "type": {
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "traitDeclaration",
+          "trait": {
+            "moduleId": 3,
+            "name": { "name": "Foo", "position": [1, 11] },
+            "typeParams": [],
+            "traitImpls": [],
+            "instanceMethods": [],
+            "staticMethods": []
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "name": "%TEST_DIR%/typechecker/enumdecl/enumdecl_trait_impl.abra",
+    "code": [
+      {
+        "token": {
+          "position": [4, 1],
+          "kind": {
+            "name": "Trait"
+          }
+        },
+        "type": {
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "traitDeclaration",
+          "trait": {
+            "moduleId": 4,
+            "name": { "name": "Bar", "position": [4, 7] },
+            "typeParams": [],
+            "traitImpls": [],
+            "instanceMethods": [],
+            "staticMethods": []
+          }
+        }
+      },
+      {
+        "token": {
+          "position": [6, 1],
+          "kind": {
+            "name": "Enum"
+          }
+        },
+        "type": {
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "enumDeclaration",
+          "enum": {
+            "moduleId": 4,
+            "name": { "name": "Baz", "position": [6, 6] },
+            "typeParams": [],
+            "traitImpls": [
+              {
+                "trait": { "moduleId": 3, "name": "Foo" },
+                "typeParams": []
+              },
+              {
+                "trait": { "moduleId": 4, "name": "Bar" },
+                "typeParams": []
+              }
+            ],
+            "variants": [],
+            "instanceMethods": [
+              {
+                "label": { "name": "toString", "position": [0, 0] },
+                "scope": {
+                  "name": "$root::module_4::Baz::toString",
+                  "variables": [],
+                  "functions": [],
+                  "types": []
+                },
+                "isGenerated": true,
+                "kind": "FunctionKind.InstanceMethod",
+                "isPublic": true,
+                "typeParameters": [],
+                "parameters": [],
+                "returnType": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "body": []
+              },
+              {
+                "label": { "name": "hash", "position": [0, 0] },
+                "scope": {
+                  "name": "$root::module_4::Baz::hash",
+                  "variables": [],
+                  "functions": [],
+                  "types": []
+                },
+                "isGenerated": true,
+                "kind": "FunctionKind.InstanceMethod",
+                "isPublic": true,
+                "typeParameters": [],
+                "parameters": [],
+                "returnType": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "body": []
+              },
+              {
+                "label": { "name": "eq", "position": [0, 0] },
+                "scope": {
+                  "name": "$root::module_4::Baz::eq",
+                  "variables": [],
+                  "functions": [],
+                  "types": []
+                },
+                "isGenerated": true,
+                "kind": "FunctionKind.InstanceMethod",
+                "isPublic": true,
+                "typeParameters": [],
+                "parameters": [
+                  {
+                    "label": { "name": "other", "position": [0, 0] },
+                    "type": {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 4, "name": "Baz" },
+                      "typeParams": []
+                    },
+                    "defaultValue": null,
+                    "isVariadic": false
+                  }
+                ],
+                "returnType": {
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                },
+                "body": []
+              }
+            ],
+            "staticMethods": []
+          }
+        }
+      },
+      {
+        "token": {
+          "position": [8, 1],
+          "kind": {
+            "name": "Enum"
+          }
+        },
+        "type": {
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "enumDeclaration",
+          "enum": {
+            "moduleId": 4,
+            "name": { "name": "Qux", "position": [8, 6] },
+            "typeParams": [],
+            "traitImpls": [
+              {
+                "trait": { "moduleId": 3, "name": "Foo" },
+                "typeParams": []
+              },
+              {
+                "trait": { "moduleId": 4, "name": "Bar" },
+                "typeParams": []
+              }
+            ],
+            "variants": [],
+            "instanceMethods": [
+              {
+                "label": { "name": "toString", "position": [0, 0] },
+                "scope": {
+                  "name": "$root::module_4::Qux::toString",
+                  "variables": [],
+                  "functions": [],
+                  "types": []
+                },
+                "isGenerated": true,
+                "kind": "FunctionKind.InstanceMethod",
+                "isPublic": true,
+                "typeParameters": [],
+                "parameters": [],
+                "returnType": {
+                  "kind": "primitive",
+                  "primitive": "String"
+                },
+                "body": []
+              },
+              {
+                "label": { "name": "hash", "position": [0, 0] },
+                "scope": {
+                  "name": "$root::module_4::Qux::hash",
+                  "variables": [],
+                  "functions": [],
+                  "types": []
+                },
+                "isGenerated": true,
+                "kind": "FunctionKind.InstanceMethod",
+                "isPublic": true,
+                "typeParameters": [],
+                "parameters": [],
+                "returnType": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "body": []
+              },
+              {
+                "label": { "name": "eq", "position": [0, 0] },
+                "scope": {
+                  "name": "$root::module_4::Qux::eq",
+                  "variables": [],
+                  "functions": [],
+                  "types": []
+                },
+                "isGenerated": true,
+                "kind": "FunctionKind.InstanceMethod",
+                "isPublic": true,
+                "typeParameters": [],
+                "parameters": [
+                  {
+                    "label": { "name": "other", "position": [0, 0] },
+                    "type": {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 4, "name": "Qux" },
+                      "typeParams": []
+                    },
+                    "defaultValue": null,
+                    "isVariadic": false
+                  }
+                ],
+                "returnType": {
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                },
+                "body": []
+              }
+            ],
+            "staticMethods": []
+          }
+        }
+      }
+    ]
+  }
+]

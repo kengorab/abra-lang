@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "%FILE_NAME%",
+  "name": "%TEST_DIR%/typechecker/accessor/accessor.2.abra",
   "code": [
     {
       "token": {
@@ -19,6 +19,7 @@
           "moduleId": 3,
           "name": { "name": "Foo", "position": [1, 6] },
           "typeParams": [],
+          "traitImpls": [],
           "fields": [
             {
               "name": { "name": "bar", "position": [1, 12] },
@@ -121,6 +122,7 @@
           "moduleId": 3,
           "name": { "name": "Bar", "position": [2, 6] },
           "typeParams": [],
+          "traitImpls": [],
           "fields": [
             {
               "name": { "name": "str", "position": [2, 12] },

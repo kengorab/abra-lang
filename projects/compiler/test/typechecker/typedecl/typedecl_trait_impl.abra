@@ -1,0 +1,8 @@
+import Foo from "./_exports"
+import "./_exports" as ex
+
+trait Bar {}
+
+type Baz : Foo, Bar {}
+
+type Qux : ex.Foo, Bar {}
