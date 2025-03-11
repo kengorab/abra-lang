@@ -25,7 +25,6 @@
           "moduleId": 3,
           "name": { "name": "Foo", "position": [1, 11] },
           "typeParams": [],
-          "traitImpls": [],
           "instanceMethods": [
             {
               "label": { "name": "foo", "position": [2, 12] },

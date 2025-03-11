@@ -1,3 +1,0 @@
-type FooBar123 : (Foo) => Bar {
-
-}

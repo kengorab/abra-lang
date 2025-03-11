@@ -10,7 +10,3 @@ trait Foo3 {
   func foo1(self): Int
   func foo2(self): Int
 }
-
-trait Foo4 : Foo1, Foo2, Foo3 {
-
-}

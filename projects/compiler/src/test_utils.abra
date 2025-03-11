@@ -951,19 +951,6 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         println("$fieldsIndent],")
       }
 
-      if node.traitImpls.isEmpty() {
-        println("$fieldsIndent\"traitImpls\": [],")
-      } else {
-        println("$fieldsIndent\"traitImpls\": [")
-        for ann, idx in node.traitImpls {
-          print("$fieldsIndent  ")
-          printTypeIdentifierAsJson(ann, 0, currentIndentLevel + 2)
-          val comma = if idx != node.traitImpls.length - 1 "," else ""
-          println("$comma")
-        }
-        println("$fieldsIndent],")
-      }
-
       if node.fields.isEmpty() {
         println("$fieldsIndent\"fields\": [],")
       } else {
@@ -1062,19 +1049,6 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         println("$fieldsIndent],")
       }
 
-      if node.traitImpls.isEmpty() {
-        println("$fieldsIndent\"traitImpls\": [],")
-      } else {
-        println("$fieldsIndent\"traitImpls\": [")
-        for ann, idx in node.traitImpls {
-          print("$fieldsIndent  ")
-          printTypeIdentifierAsJson(ann, 0, currentIndentLevel + 2)
-          val comma = if idx != node.traitImpls.length - 1 "," else ""
-          println("$comma")
-        }
-        println("$fieldsIndent],")
-      }
-
       if node.methods.isEmpty() {
         println("$fieldsIndent\"methods\": [],")
       } else {
@@ -1142,19 +1116,6 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
           print("$fieldsIndent  ")
           printLabelAsJson(label)
           val comma = if idx != node.typeParams.length - 1 "," else ""
-          println("$comma")
-        }
-        println("$fieldsIndent],")
-      }
-
-      if node.traitImpls.isEmpty() {
-        println("$fieldsIndent\"traitImpls\": [],")
-      } else {
-        println("$fieldsIndent\"traitImpls\": [")
-        for ann, idx in node.traitImpls {
-          print("$fieldsIndent  ")
-          printTypeIdentifierAsJson(ann, 0, currentIndentLevel + 2)
-          val comma = if idx != node.traitImpls.length - 1 "," else ""
           println("$comma")
         }
         println("$fieldsIndent],")

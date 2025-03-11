@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "%TEST_DIR%/typechecker/typedecl/typedecl_exported.abra",
+  "name": "%FILE_NAME%",
   "exports": [
     {
       "kind": "type",
@@ -25,7 +25,6 @@
           "moduleId": 3,
           "name": { "name": "Foo", "position": [1, 10] },
           "typeParams": [],
-          "traitImpls": [],
           "fields": [
             {
               "name": { "name": "a", "position": [2, 3] },

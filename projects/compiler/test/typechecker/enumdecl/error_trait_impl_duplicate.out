@@ -1,9 +1,0 @@
-Error at %TEST_DIR%/typechecker/enumdecl/error_trait_impl_duplicate.abra:2:17
-Duplicate trait in implementations list
-  |  enum Bar : Foo, Foo {}
-                     ^
-
-Error at %TEST_DIR%/typechecker/enumdecl/error_trait_impl_duplicate.abra:6:24
-Duplicate trait in implementations list
-  |  enum Bar2 : Foo2<Int>, Foo2<Float> {}
-                            ^

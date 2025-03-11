@@ -1,9 +1,19 @@
-import "./example2" as ex2
-
-trait Foo {
-  pub func foo(self): Int
+decorator bar {
+  a: String
 }
 
-type Bar : Foo, ex2.Foo {
-  a: Int
+@bar(a: "a")
+func foo(): Int {
+  val a = 1 + []
+  val (a, b) = foobar
+
+  val (d, e) = (1, "2", 3.14)
+
+  val f: Abc = 123
+  val g: Int = 1.23
+  val h = []
+
+  a + b + c + d + e + f
 }
+
+val x = foo()

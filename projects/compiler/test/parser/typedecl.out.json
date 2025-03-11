@@ -14,7 +14,6 @@
         "pubToken": null,
         "typeName": { "name": "Foo", "position": [1, 6] },
         "typeParams": [],
-        "traitImpls": [],
         "fields": [],
         "methods": [],
         "nestedTypes": [],
@@ -37,7 +36,6 @@
           { "name": "A", "position": [2, 10] },
           { "name": "B", "position": [2, 13] }
         ],
-        "traitImpls": [],
         "fields": [],
         "methods": [],
         "nestedTypes": [],
@@ -59,7 +57,6 @@
         "typeParams": [
           { "name": "A", "position": [3, 10] }
         ],
-        "traitImpls": [],
         "fields": [
           {
             "label": { "name": "a", "position": [3, 15] },
@@ -98,7 +95,6 @@
         "pubToken": null,
         "typeName": { "name": "Foo", "position": [4, 6] },
         "typeParams": [],
-        "traitImpls": [],
         "fields": [
           {
             "label": { "name": "a", "position": [5, 3] },
@@ -150,7 +146,6 @@
         "pubToken": null,
         "typeName": { "name": "FooBar123", "position": [9, 6] },
         "typeParams": [],
-        "traitImpls": [],
         "fields": [],
         "methods": [
           {
@@ -197,7 +192,6 @@
         "pubToken": null,
         "typeName": { "name": "FooBar123", "position": [13, 6] },
         "typeParams": [],
-        "traitImpls": [],
         "fields": [
           {
             "label": { "name": "a", "position": [14, 3] },
@@ -365,7 +359,6 @@
         "pubToken": null,
         "typeName": { "name": "FooBar123", "position": [20, 6] },
         "typeParams": [],
-        "traitImpls": [],
         "fields": [
           {
             "label": { "name": "a", "position": [21, 3] },
@@ -538,7 +531,6 @@
         "pubToken": null,
         "typeName": { "name": "Outer", "position": [29, 6] },
         "typeParams": [],
-        "traitImpls": [],
         "fields": [
           {
             "label": { "name": "a", "position": [30, 3] },
@@ -600,7 +592,6 @@
             "pubToken": null,
             "typeName": { "name": "InnerType", "position": [34, 8] },
             "typeParams": [],
-            "traitImpls": [],
             "fields": [
               {
                 "label": { "name": "a", "position": [35, 5] },
@@ -721,7 +712,6 @@
             "pubToken": null,
             "typeName": { "name": "InnerEnum", "position": [40, 8] },
             "typeParams": [],
-            "traitImpls": [],
             "variants": [
               {
                 "kind": "container",
@@ -884,7 +874,6 @@
         },
         "typeName": { "name": "Outer", "position": [48, 10] },
         "typeParams": [],
-        "traitImpls": [],
         "fields": [
           {
             "label": { "name": "a", "position": [49, 3] },
@@ -992,7 +981,6 @@
             "pubToken": null,
             "typeName": { "name": "Inner", "position": [55, 8] },
             "typeParams": [],
-            "traitImpls": [],
             "fields": [
               {
                 "label": { "name": "a", "position": [55, 16] },
@@ -1030,7 +1018,6 @@
         },
         "typeName": { "name": "Outer2", "position": [58, 10] },
         "typeParams": [],
-        "traitImpls": [],
         "fields": [
           {
             "label": { "name": "a", "position": [59, 7] },

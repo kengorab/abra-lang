@@ -1,6 +1,0 @@
-trait Foo {}
-decorator Bar : Foo, Foo {}
-
-// A trait is considered duplicated regardless of the provided generics
-trait Foo2<A> {}
-decorator Bar2 : Foo2<Int>, Foo2<Float> {}

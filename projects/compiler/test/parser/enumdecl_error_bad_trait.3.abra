@@ -1,3 +1,0 @@
-enum FooBar123 : (Foo) => Bar {
-
-}

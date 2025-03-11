@@ -207,7 +207,6 @@
             "moduleId": 3,
             "name": { "name": "Foo", "position": [5, 10] },
             "typeParams": [],
-            "traitImpls": [],
             "fields": [
               {
                 "name": { "name": "color", "position": [6, 7] },
@@ -444,7 +443,6 @@
             "moduleId": 3,
             "name": { "name": "Color", "position": [12, 10] },
             "typeParams": [],
-            "traitImpls": [],
             "variants": [
               {
                 "label": { "name": "Red", "position": [13, 3] },

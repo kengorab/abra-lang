@@ -1,5 +1,5 @@
 import LiteralAstNode, IndexingMode from "./parser"
-import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, FunctionKind, Scope, Struct, Enum, Trait, InstanceKind, AccessorPathSegment, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export, TypedMatchCaseKind, TraitImpl from "./typechecker"
+import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, FunctionKind, Scope, Struct, Enum, Trait, InstanceKind, AccessorPathSegment, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export, TypedMatchCaseKind from "./typechecker"
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 
 pub type Jsonifier {
@@ -219,10 +219,6 @@ pub type Jsonifier {
     self.array(struct.typeParams, p => print("\"$p\""))
     println(",")
 
-    self.print("\"traitImpls\": ")
-    self.array(struct.traitImpls, t => self.printTraitImpl(t))
-    println(",")
-
     self.print("\"fields\": ")
     self.array(struct.fields, f => self.printField(f))
     println(",")
@@ -283,10 +279,6 @@ pub type Jsonifier {
     self.array(enum_.typeParams, p => print("\"$p\""))
     println(",")
 
-    self.print("\"traitImpls\": ")
-    self.array(enum_.traitImpls, t => self.printTraitImpl(t))
-    println(",")
-
     self.print("\"variants\": ")
     self.array(enum_.variants, v => {
       println("{")
@@ -344,32 +336,12 @@ pub type Jsonifier {
     self.array(trait_.typeParams, p => print("\"$p\""))
     println(",")
 
-    self.print("\"traitImpls\": ")
-    self.array(trait_.traitImpls, t => self.printTraitImpl(t))
-    println(",")
-
     self.print("\"instanceMethods\": ")
     self.array(trait_.instanceMethods, m => self.printFunc(m))
     println(",")
 
     self.print("\"staticMethods\": ")
     self.array(trait_.staticMethods, m => self.printFunc(m))
-    println()
-
-    self.indentDec()
-    self.print("}")
-  }
-
-  func printTraitImpl(self, traitImpl: TraitImpl) {
-    println("{")
-    self.indentInc()
-
-    self.print("\"trait\": ")
-    self.printTrait(trait_: traitImpl.trait_, abridged: true)
-    println(",")
-
-    self.print("\"typeParams\": ")
-    self.array(traitImpl.typeArgs, t => self.printType(t))
     println()
 
     self.indentDec()

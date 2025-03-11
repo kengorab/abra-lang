@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "%TEST_DIR%/typechecker/funcdecl/default_param_value_accessor.abra",
+  "name": "%FILE_NAME%",
   "code": [
     {
       "token": {
@@ -19,7 +19,6 @@
           "moduleId": 3,
           "name": { "name": "Foo", "position": [1, 6] },
           "typeParams": [],
-          "traitImpls": [],
           "fields": [
             {
               "name": { "name": "int", "position": [1, 12] },

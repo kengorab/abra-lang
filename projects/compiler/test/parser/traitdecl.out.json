@@ -14,7 +14,6 @@
         "pubToken": null,
         "typeName": { "name": "Foo1", "position": [1, 7] },
         "typeParams": [],
-        "traitImpls": [],
         "methods": [],
         "nestedTypes": [],
         "nestedEnums": []
@@ -33,7 +32,6 @@
         "pubToken": null,
         "typeName": { "name": "Foo2", "position": [5, 7] },
         "typeParams": [],
-        "traitImpls": [],
         "methods": [
           {
             "name": "function",
@@ -69,7 +67,6 @@
         "pubToken": null,
         "typeName": { "name": "Foo3", "position": [9, 7] },
         "typeParams": [],
-        "traitImpls": [],
         "methods": [
           {
             "name": "function",
@@ -104,41 +101,6 @@
             "body": []
           }
         ],
-        "nestedTypes": [],
-        "nestedEnums": []
-      }
-    },
-    {
-      "token": {
-        "position": [14, 1],
-        "kind": {
-          "name": "Trait"
-        }
-      },
-      "kind": {
-        "name": "traitDeclaration",
-        "decorators": [],
-        "pubToken": null,
-        "typeName": { "name": "Foo4", "position": [14, 7] },
-        "typeParams": [],
-        "traitImpls": [
-          {
-            "kind": "normal",
-            "label": { "name": "Foo1", "position": [14, 14] },
-            "typeArguments": []
-          },
-          {
-            "kind": "normal",
-            "label": { "name": "Foo2", "position": [14, 20] },
-            "typeArguments": []
-          },
-          {
-            "kind": "normal",
-            "label": { "name": "Foo3", "position": [14, 26] },
-            "typeArguments": []
-          }
-        ],
-        "methods": [],
         "nestedTypes": [],
         "nestedEnums": []
       }

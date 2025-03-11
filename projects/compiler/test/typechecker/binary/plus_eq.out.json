@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "%TEST_DIR%/typechecker/binary/plus_eq.abra",
+  "name": "%FILE_NAME%",
   "code": [
     {
       "token": {
@@ -465,7 +465,6 @@
           "moduleId": 3,
           "name": { "name": "Foo", "position": [11, 6] },
           "typeParams": [],
-          "traitImpls": [],
           "fields": [
             {
               "name": { "name": "a", "position": [11, 12] },
