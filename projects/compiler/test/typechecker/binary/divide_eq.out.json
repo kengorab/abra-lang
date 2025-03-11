@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "%TEST_DIR%/typechecker/binary/divide_eq.abra",
+  "name": "%FILE_NAME%",
   "code": [
     {
       "token": {
@@ -265,7 +265,6 @@
           "moduleId": 3,
           "name": { "name": "Foo", "position": [7, 6] },
           "typeParams": [],
-          "traitImpls": [],
           "fields": [
             {
               "name": { "name": "a", "position": [7, 12] },

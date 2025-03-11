@@ -1,3 +1,0 @@
-decorator FooBar123 : (Foo) => Bar {
-
-}

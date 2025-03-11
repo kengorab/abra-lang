@@ -1,9 +1,0 @@
-type Foo1 {}
-enum Foo2 {}
-decorator Foo3 {}
-
-decorator Bar1 : Foo1 {}
-decorator Bar2 : Foo2 {}
-decorator Bar3 : Foo3 {}
-
-decorator BarAll : Foo1, Foo2, Foo3 {}

@@ -6,5 +6,3 @@ pub decorator FromOtherModule1 {
 pub decorator FromOtherModule2 {
   pub a: Int
 }
-
-pub trait Foo {}

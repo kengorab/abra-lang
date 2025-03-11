@@ -38,7 +38,6 @@ pub enum TokenKind {
   Type
   Enum
   Decorator
-  Trait
   Return(subsequentNewline: Bool)
   Readonly
   Import
@@ -114,7 +113,6 @@ pub enum TokenKind {
     TokenKind.Type => "type"
     TokenKind.Enum => "enum"
     TokenKind.Decorator => "decorator"
-    TokenKind.Trait => "trait"
     TokenKind.Return => "return"
     TokenKind.Readonly => "readonly"
     TokenKind.Import => "import"
@@ -669,7 +667,6 @@ pub type Lexer {
       "type" => TokenKind.Type
       "enum" => TokenKind.Enum
       "decorator" => TokenKind.Decorator
-      "trait" => TokenKind.Trait
       "return" => {
         val sawNewline = self._skipWhitespace()
         TokenKind.Return(sawNewline)

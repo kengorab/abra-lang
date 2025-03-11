@@ -1,9 +1,0 @@
-Error at %TEST_DIR%/typechecker/traits/error_trait_impl_duplicate.abra:2:18
-Duplicate trait in implementations list
-  |  trait Bar : Foo, Foo {}
-                      ^
-
-Error at %TEST_DIR%/typechecker/traits/error_trait_impl_duplicate.abra:6:25
-Duplicate trait in implementations list
-  |  trait Bar2 : Foo2<Int>, Foo2<Float> {}
-                             ^

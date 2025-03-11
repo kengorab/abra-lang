@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "%TEST_DIR%/typechecker/if/expr.abra",
+  "name": "%FILE_NAME%",
   "code": [
     {
       "token": {
@@ -2542,7 +2542,6 @@
           "moduleId": 3,
           "name": { "name": "Foo1", "position": [56, 6] },
           "typeParams": [],
-          "traitImpls": [],
           "fields": [
             {
               "name": { "name": "a", "position": [56, 13] },
@@ -2833,7 +2832,6 @@
           "moduleId": 3,
           "name": { "name": "Foo2", "position": [60, 6] },
           "typeParams": [],
-          "traitImpls": [],
           "variants": [
             {
               "label": { "name": "Bar", "position": [60, 13] },

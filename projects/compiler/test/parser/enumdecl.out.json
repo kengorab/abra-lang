@@ -14,7 +14,6 @@
         "pubToken": null,
         "typeName": { "name": "Foo", "position": [1, 6] },
         "typeParams": [],
-        "traitImpls": [],
         "variants": [],
         "methods": [],
         "nestedTypes": [],
@@ -37,7 +36,6 @@
           { "name": "A", "position": [2, 10] },
           { "name": "B", "position": [2, 13] }
         ],
-        "traitImpls": [],
         "variants": [],
         "methods": [],
         "nestedTypes": [],
@@ -59,7 +57,6 @@
         "typeParams": [
           { "name": "A", "position": [3, 10] }
         ],
-        "traitImpls": [],
         "variants": [
           {
             "kind": "constant",
@@ -90,7 +87,6 @@
         "typeParams": [
           { "name": "A", "position": [4, 10] }
         ],
-        "traitImpls": [],
         "variants": [
           {
             "kind": "container",
@@ -152,7 +148,6 @@
         "pubToken": null,
         "typeName": { "name": "FooBar123", "position": [9, 6] },
         "typeParams": [],
-        "traitImpls": [],
         "variants": [],
         "methods": [
           {
@@ -204,7 +199,6 @@
         "pubToken": null,
         "typeName": { "name": "Outer", "position": [14, 6] },
         "typeParams": [],
-        "traitImpls": [],
         "variants": [
           {
             "kind": "constant",
@@ -260,7 +254,6 @@
             "pubToken": null,
             "typeName": { "name": "InnerType", "position": [25, 8] },
             "typeParams": [],
-            "traitImpls": [],
             "fields": [
               {
                 "label": { "name": "a", "position": [25, 20] },
@@ -298,7 +291,6 @@
             "pubToken": null,
             "typeName": { "name": "InnerEnum", "position": [22, 8] },
             "typeParams": [],
-            "traitImpls": [],
             "variants": [
               {
                 "kind": "constant",

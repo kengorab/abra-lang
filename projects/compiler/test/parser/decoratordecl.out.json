@@ -15,7 +15,6 @@
         "isDecorator": true,
         "typeName": { "name": "Foo", "position": [1, 11] },
         "typeParams": [],
-        "traitImpls": [],
         "fields": [],
         "methods": [],
         "nestedTypes": [],
@@ -39,7 +38,6 @@
           { "name": "A", "position": [2, 15] },
           { "name": "B", "position": [2, 18] }
         ],
-        "traitImpls": [],
         "fields": [],
         "methods": [],
         "nestedTypes": [],
@@ -62,7 +60,6 @@
         "typeParams": [
           { "name": "A", "position": [3, 15] }
         ],
-        "traitImpls": [],
         "fields": [
           {
             "label": { "name": "a", "position": [3, 20] },
@@ -102,7 +99,6 @@
         "isDecorator": true,
         "typeName": { "name": "Foo", "position": [4, 11] },
         "typeParams": [],
-        "traitImpls": [],
         "fields": [
           {
             "label": { "name": "a", "position": [5, 3] },
@@ -155,7 +151,6 @@
         "isDecorator": true,
         "typeName": { "name": "FooBar123", "position": [9, 11] },
         "typeParams": [],
-        "traitImpls": [],
         "fields": [],
         "methods": [
           {
@@ -203,7 +198,6 @@
         "isDecorator": true,
         "typeName": { "name": "FooBar123", "position": [13, 11] },
         "typeParams": [],
-        "traitImpls": [],
         "fields": [
           {
             "label": { "name": "a", "position": [14, 3] },
@@ -372,7 +366,6 @@
         "isDecorator": true,
         "typeName": { "name": "FooBar123", "position": [20, 11] },
         "typeParams": [],
-        "traitImpls": [],
         "fields": [
           {
             "label": { "name": "a", "position": [21, 3] },
@@ -546,7 +539,6 @@
         "isDecorator": true,
         "typeName": { "name": "Outer", "position": [29, 11] },
         "typeParams": [],
-        "traitImpls": [],
         "fields": [
           {
             "label": { "name": "a", "position": [30, 3] },
@@ -608,7 +600,6 @@
             "pubToken": null,
             "typeName": { "name": "InnerType", "position": [34, 8] },
             "typeParams": [],
-            "traitImpls": [],
             "fields": [
               {
                 "label": { "name": "a", "position": [35, 5] },
@@ -729,7 +720,6 @@
             "pubToken": null,
             "typeName": { "name": "InnerEnum", "position": [40, 8] },
             "typeParams": [],
-            "traitImpls": [],
             "variants": [
               {
                 "kind": "container",
@@ -893,7 +883,6 @@
         "isDecorator": true,
         "typeName": { "name": "Outer", "position": [48, 15] },
         "typeParams": [],
-        "traitImpls": [],
         "fields": [
           {
             "label": { "name": "a", "position": [49, 3] },
@@ -1001,7 +990,6 @@
             "pubToken": null,
             "typeName": { "name": "Inner", "position": [55, 8] },
             "typeParams": [],
-            "traitImpls": [],
             "fields": [
               {
                 "label": { "name": "a", "position": [55, 16] },
@@ -1040,7 +1028,6 @@
         "isDecorator": true,
         "typeName": { "name": "Outer2", "position": [58, 15] },
         "typeParams": [],
-        "traitImpls": [],
         "fields": [
           {
             "label": { "name": "a", "position": [59, 7] },
@@ -1053,54 +1040,6 @@
             "typeAnnotation": {
               "kind": "normal",
               "label": { "name": "Int", "position": [59, 10] },
-              "typeArguments": []
-            },
-            "initializer": null
-          }
-        ],
-        "methods": [],
-        "nestedTypes": [],
-        "nestedEnums": []
-      }
-    },
-    {
-      "token": {
-        "position": [62, 5],
-        "kind": {
-          "name": "Decorator"
-        }
-      },
-      "kind": {
-        "name": "typeDeclaration",
-        "decorators": [],
-        "pubToken": {
-          "position": [62, 1],
-          "kind": {
-            "name": "Pub"
-          }
-        },
-        "isDecorator": true,
-        "typeName": { "name": "Outer2", "position": [62, 15] },
-        "typeParams": [],
-        "traitImpls": [
-          {
-            "kind": "normal",
-            "label": { "name": "SomeTrait", "position": [62, 24] },
-            "typeArguments": []
-          }
-        ],
-        "fields": [
-          {
-            "label": { "name": "a", "position": [63, 7] },
-            "pubToken": {
-              "position": [63, 3],
-              "kind": {
-                "name": "Pub"
-              }
-            },
-            "typeAnnotation": {
-              "kind": "normal",
-              "label": { "name": "Int", "position": [63, 10] },
               "typeArguments": []
             },
             "initializer": null

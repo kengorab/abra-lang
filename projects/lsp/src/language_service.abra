@@ -388,7 +388,6 @@ pub type AbraLanguageService {
         range: Range(start: pos, end: pos),
         severity: Some(DiagnosticSeverity.Error),
         message: message
-          .replaceAll("\\", "\\\\")
           .replaceAll("\n", "\\n")
           .replaceAll("\"", "\\\"")
           .replaceAll("\t", "\\t"),

@@ -1,6 +1,0 @@
-trait Foo {
-  pub func foo(self): Int
-  pub func fooStatic(): Int
-}
-
-// var f: Foo

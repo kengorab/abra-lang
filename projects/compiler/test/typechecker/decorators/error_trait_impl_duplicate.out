@@ -1,9 +1,0 @@
-Error at %TEST_DIR%/typechecker/decorators/error_trait_impl_duplicate.abra:2:22
-Duplicate trait in implementations list
-  |  decorator Bar : Foo, Foo {}
-                          ^
-
-Error at %TEST_DIR%/typechecker/decorators/error_trait_impl_duplicate.abra:6:29
-Duplicate trait in implementations list
-  |  decorator Bar2 : Foo2<Int>, Foo2<Float> {}
-                                 ^

@@ -1,8 +1,0 @@
-import Foo from "./_exports"
-import "./_exports" as ex
-
-trait Bar {}
-
-trait Baz : Foo, Bar {}
-
-trait Qux : ex.Foo, Bar {}

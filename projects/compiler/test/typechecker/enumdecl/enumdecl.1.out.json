@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "%TEST_DIR%/typechecker/enumdecl/enumdecl.1.abra",
+  "name": "%FILE_NAME%",
   "code": [
     {
       "token": {
@@ -19,7 +19,6 @@
           "moduleId": 3,
           "name": { "name": "Foo", "position": [1, 6] },
           "typeParams": [],
-          "traitImpls": [],
           "variants": [
             {
               "label": { "name": "Bar", "position": [2, 3] },

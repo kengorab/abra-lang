@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "%TEST_DIR%/typechecker/invocation/invocation_method.1.abra",
+  "name": "%FILE_NAME%",
   "code": [
     {
       "token": {
@@ -19,7 +19,6 @@
           "moduleId": 3,
           "name": { "name": "Foo", "position": [1, 6] },
           "typeParams": [],
-          "traitImpls": [],
           "fields": [
             {
               "name": { "name": "int", "position": [2, 3] },

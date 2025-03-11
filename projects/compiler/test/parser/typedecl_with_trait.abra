@@ -1,4 +1,0 @@
-type Foo : Bar { }
-type Foo : Bar<T, A> { }
-type Foo : Bar, Baz<T, A> { }
-type Foo : Bar<X>, Baz<T, A> { }

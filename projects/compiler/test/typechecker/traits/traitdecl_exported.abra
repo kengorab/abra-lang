@@ -1,3 +1,0 @@
-pub trait Foo {
-  pub func foo(self): Int
-}

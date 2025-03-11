@@ -1,3 +1,0 @@
-trait FooBar123 : (Foo) => Bar {
-
-}
