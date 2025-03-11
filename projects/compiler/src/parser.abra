@@ -509,7 +509,7 @@ pub type Parser {
         try self._parseDecorator()
 
         val nextToken = try self._expectPeek()
-        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.Trait, TokenKind.Decorator, TokenKind.At, TokenKind.Pub]
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.Decorator, TokenKind.At, TokenKind.Pub]
         if !expected.contains(nextToken.kind) {
           return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
         }
@@ -521,7 +521,7 @@ pub type Parser {
         self._advance() // consume 'pub' token
 
         val nextToken = try self._expectPeek()
-        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.Trait, TokenKind.Decorator]
+        val expected = [TokenKind.Val, TokenKind.Var, TokenKind.Func, TokenKind.Type, TokenKind.Enum, TokenKind.Decorator]
         if !expected.contains(nextToken.kind) {
           return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
         }

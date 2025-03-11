@@ -457,8 +457,7 @@ pub type Compiler {
               (iter, typedIterator.ty, nextFn, false)
             }
           }
-          InstanceKind.Enum => todo("enum as for-loop target")
-          InstanceKind.Trait => unreachable("trait as for-loop target")
+          InstanceKind.Enum(_enum) => todo("enum as for-loop target")
         }
 
         val nextItemTy = try self._typeIsOption(nextFn.returnType) else unreachable("a 'next' method must return an Option type")
@@ -1435,7 +1434,6 @@ pub type Compiler {
                 val getFn = match instanceKind {
                   InstanceKind.Struct => self._getMethodFunctionByName(instanceKind, "get")
                   InstanceKind.Enum => unreachable("array-like indexing never applies to enum instances")
-                  InstanceKind.Trait => unreachable("array-like indexing never applies to trait instances")
                 }
                 val getFnVal = try self._getOrCompileMethod(instType, getFn)
                 self._resolvedGenerics.popLayer()
@@ -1464,7 +1462,6 @@ pub type Compiler {
                 val getRangeFn = match instanceKind {
                   InstanceKind.Struct => self._getMethodFunctionByName(instanceKind, "getRange")
                   InstanceKind.Enum => unreachable("array-like indexing never applies to enum instances")
-                  InstanceKind.Trait => unreachable("array-like indexing never applies to trait instances")
                 }
                 val getRangeFnVal = try self._getOrCompileMethod(instType, getRangeFn, paramsNeedingDefaultValue)
                 self._resolvedGenerics.popLayer()
@@ -1498,7 +1495,7 @@ pub type Compiler {
             val (instanceKind, typeArgs) = try self._getInstanceTypeForType(tupleExpr.ty)
             val struct = match instanceKind {
               InstanceKind.Struct(struct) => struct
-              else => unreachable("tuples are represented as structs")
+              InstanceKind.Enum => unreachable("tuples are represented as structs")
             }
 
             val selfType = Type(kind: TypeKind.Instance(InstanceKind.Struct(struct), typeArgs))
@@ -2065,7 +2062,6 @@ pub type Compiler {
             val typeName = match instanceKind {
               InstanceKind.Struct(struct) => struct.label.name
               InstanceKind.Enum(enum_) => enum_.label.name
-              InstanceKind.Trait(trait_) => todo()
             }
             "$typeName.."
           } else unreachable("an instance method should have a instanceKind")
@@ -2074,7 +2070,6 @@ pub type Compiler {
           val typeName = match instanceKind {
             InstanceKind.Struct(struct) => struct.label.name
             InstanceKind.Enum(enum_) => enum_.label.name
-            InstanceKind.Trait(trait_) => todo()
           }
           "$typeName."
         }
@@ -3142,7 +3137,7 @@ pub type Compiler {
     val (selfTy, typeArgs) = try self._getInstanceTypeForType(selfType)
     val (fnStruct, fnCallMethodFn) = match selfTy {
       InstanceKind.Struct(struct) => try self._isFunctionStruct(struct) else unreachable("type of fn expr must be a Function struct")
-      else => unreachable("type of fn expr must be a Function struct")
+      InstanceKind.Enum => unreachable()
     }
 
     var methodName = try self._structMethodFnName(fnStruct, fnCallMethodFn)
@@ -3318,7 +3313,6 @@ pub type Compiler {
 
         (try self._enumMethodFnName(enum_, fn), fn)
       }
-      InstanceKind.Trait(trait_) => todo("_getOrCompileToStringMethod for trait")
     }
     if self._builder.getFunction(methodName) |fn| return Ok(fn)
 
@@ -3742,7 +3736,6 @@ pub type Compiler {
 
         (try self._enumMethodFnName(enum_, fn), fn)
       }
-      InstanceKind.Trait(trait_) => todo("_getOrCompileEqMethod for trait")
     }
     if self._builder.getFunction(methodName) |fn| return Ok(fn)
 
@@ -3976,7 +3969,6 @@ pub type Compiler {
 
         (try self._enumMethodFnName(enum_, fn), fn)
       }
-      InstanceKind.Trait(trait_) => todo("_getOrCompileHashMethod for trait")
     }
     if self._builder.getFunction(methodName) |fn| return Ok(fn)
 
@@ -4178,7 +4170,6 @@ pub type Compiler {
 
         (template, inst)
       }
-      InstanceKind.Trait(trait_) => todo("_addResolvedGenericsLayerForInstanceMethod for trait")
     }
     for (name, ty) in selfInstanceType.extractGenerics(template) {
       resolvedGenerics[name] = ty
@@ -4186,7 +4177,6 @@ pub type Compiler {
     val layerName = match instanceKind {
       InstanceKind.Struct(struct) => "${struct.label.name}.$methodName"
       InstanceKind.Enum(enum_) => "${enum_.label.name}.$methodName"
-      InstanceKind.Trait(trait_) => todo("_addResolvedGenericsLayerForInstanceMethod for trait")
     }
     match self._resolvedGenerics.addLayer(layerName, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: position, kind: CompileErrorKind.ResolvedGenericsError(context: layerName, message: e))) }
 
@@ -4196,6 +4186,7 @@ pub type Compiler {
   func _addResolvedGenericsLayerForEnumVariant(self, ty: Type, variantName: String, position: Position, resolvedGenerics: Map<String, Type> = {}): Result<Type, CompileError> {
     val (instanceKind, typeArgs) = try self._getInstanceTypeForType(ty)
     match instanceKind {
+      InstanceKind.Struct => unreachable("type should always be an enum here")
       InstanceKind.Enum(enum_) => {
         val template = Type(kind: TypeKind.Instance(instanceKind, enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
         val selfInstanceType = Type(kind: TypeKind.Instance(instanceKind, typeArgs))
@@ -4209,7 +4200,6 @@ pub type Compiler {
 
         Ok(selfInstanceType)
       }
-      else => unreachable("type should always be an enum here")
     }
   }
 
@@ -4301,8 +4291,7 @@ pub type Compiler {
       TypeKind.Instance(instanceKind, typeParams) => {
         val n = match instanceKind {
           InstanceKind.Struct(struct) => struct.label.name
-          InstanceKind.Enum(enum_) => enum_.label.name
-          InstanceKind.Trait(trait_) => trait_.label.name
+          InstanceKind.Enum(_enum) => _enum.label.name
         }
         if !typeParams.isEmpty() {
           val params: String[] = []
@@ -4338,8 +4327,7 @@ pub type Compiler {
       TypeKind.Instance(instanceKind, typeParams) => {
         val n = match instanceKind {
           InstanceKind.Struct(struct) => struct.label.name
-          InstanceKind.Enum(enum_) => enum_.label.name
-          InstanceKind.Trait(trait_) => trait_.label.name
+          InstanceKind.Enum(_enum) => _enum.label.name
         }
         if !typeParams.isEmpty() {
           val params: String[] = []
@@ -4380,13 +4368,11 @@ pub type Compiler {
       FunctionKind.InstanceMethod(structOrEnumOpt, _) => match structOrEnumOpt {
         InstanceKind.Struct(s) => "${s.label.name}.$name"
         InstanceKind.Enum(e) => "${e.label.name}.$name"
-        InstanceKind.Trait(t) => todo("_functionName for trait")
         _ => name
       }
       FunctionKind.StaticMethod(instanceKind, _) => match instanceKind {
         InstanceKind.Struct(s) => "${s.label.name}#$name"
         InstanceKind.Enum(e) => "${e.label.name}#$name"
-        InstanceKind.Trait(t) => todo("_functionName for trait")
       }
     }
   }
@@ -4480,7 +4466,6 @@ pub type Compiler {
     match instanceKind {
       InstanceKind.Struct(struct) => self._structMethodFnName(struct, fn)
       InstanceKind.Enum(enum_) => self._enumMethodFnName(enum_, fn)
-      InstanceKind.Trait(trait_) => todo("_methodFnName for trait")
     }
   }
 
@@ -4602,7 +4587,6 @@ pub type Compiler {
     val (parentName, methods) = match parent {
       InstanceKind.Struct(s) => (s.label.name, if staticMethod s.staticMethods else s.instanceMethods)
       InstanceKind.Enum(e) => (e.label.name, if staticMethod e.staticMethods else e.instanceMethods)
-      InstanceKind.Trait(t) => todo("_getMethodFunctionByName for trait")
     }
 
     try methods.find(m => m.label.name == name) else {

@@ -1,4 +1,0 @@
-type Foo {  }
-trait Foo {  }
-enum Foo { Bar }
-decorator Foo {  }

@@ -1,7 +1,0 @@
-trait Foo {
-  pub func foo(self, s = string("foo")): Int
-}
-
-func string(s: String): String = s + "!"
-
-// var f: Foo
