@@ -206,11 +206,6 @@ const PARSER_TESTS = [
   { test: "parser/enumdecl.abra", assertions: "parser/enumdecl.out.json" },
   { test: "parser/enumdecl_error_container_no_typeannotation.abra", assertions: "parser/enumdecl_error_container_no_typeannotation.out" },
   { test: "parser/enumdecl_error_empty_container_variant.abra", assertions: "parser/enumdecl_error_empty_container_variant.out" },
-  // Decorator declaration
-  { test: "parser/decoratordecl.abra", assertions: "parser/decoratordecl.out.json" },
-  // Trait declaration
-  { test: "parser/traitdecl.abra", assertions: "parser/traitdecl.out.json" },
-  { test: "parser/traitdecl_error_field.abra", assertions: "parser/traitdecl_error_field.out" },
   // Returns
   { test: "parser/return.abra", assertions: "parser/return.out.json" },
   { test: "parser/return_error_nonexpr.abra", assertions: "parser/return_error_nonexpr.out" },

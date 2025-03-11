@@ -138,11 +138,5 @@
     "kind": {
       "name": "Decorator"
     }
-  },
-  {
-    "position": [1, 124],
-    "kind": {
-      "name": "Trait"
-    }
   }
 ]
