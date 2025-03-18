@@ -1,0 +1,85 @@
+// When executed directly, this will perform typechecking and compilation, using qbe[^1] as a
+// simple backend. This file assumes it'll be called via the top-level `abra` script in the
+// directory above, as that script takes the output ssa file and runs it through qbe, and then
+// through clang to produce a binary, and then executes that binary.
+// Eventually, that wrapper script will be unnecessary, but there currently isn't a way to shell
+// out from within Abra.
+//
+// This is split out into a separate runnable file so that the test-specific code is never compiled into
+// the actual resulting binary; this results in a separate binary being compiled which is only used for
+// testing.
+//
+// [^1] https://c9x.me/compile
+
+import "fs" as fs
+import "process" as process
+import getAbsolutePath from "./utils"
+import ModuleLoader, Project, Typechecker, TypedModule from "./typechecker"
+import Generator, StringBuilder from "./ir"
+
+func main() {
+  val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {
+    println("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
+    process.exit(1)
+  }
+
+  val args = process.args()
+
+  if args[1] |fileName| {
+    val absPathSegs = getAbsolutePath(fileName)
+    val filePathAbs = "/" + absPathSegs.join("/")
+
+    val moduleLoader = ModuleLoader(stdRoot: abraStdRoot)
+    val project = Project()
+    val typechecker = Typechecker(moduleLoader: moduleLoader, project: project)
+
+    typechecker.typecheckEntrypoint(filePathAbs)
+
+    val readFileErrors: String[] = []
+    val errorMessages: String[] = []
+    for mod in project.modules.values().sortBy(m => -m.id) {
+      if mod.readFileError {
+        readFileErrors.push(mod.name)
+        continue
+      }
+
+      val contents = try moduleLoader.loadFileContents(mod.name) else {
+        // Any unreadable modules should have had the `readFileError` field set, which is checked above
+        unreachable("Could not read file '${mod.name}'")
+      }
+
+      for err in mod.lexParseErrors {
+        errorMessages.push(err.getMessage(mod.name, contents))
+      }
+
+      for err in mod.typeErrors {
+        errorMessages.push(err.getMessage(mod.name, contents))
+      }
+    }
+
+    if !errorMessages.isEmpty() {
+      for msg, idx in errorMessages {
+        println(msg)
+        if idx != errorMessages.length - 1 println() // spacer
+      }
+      process.exit(1)
+    } else if !readFileErrors.isEmpty() {
+      for path, idx in readFileErrors {
+        println("Could not read file '$path'")
+        if idx != readFileErrors.length - 1 println() // spacer
+      }
+      process.exit(1)
+    }
+
+    val ir = Generator.generateIR(project)
+
+    val sb = StringBuilder()
+    ir.render(sb)
+    println(sb.build())
+  } else {
+    println("Missing required argument <file-name>")
+    process.exit(1)
+  }
+}
+
+main()

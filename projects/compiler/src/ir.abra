@@ -1,0 +1,281 @@
+import Position from "./lexer"
+import LiteralAstNode, BinaryOp from "./parser"
+import TypedAstNodeKind from "./typechecker"
+import "./typechecker" as tc
+
+// TODO: move to stdlib
+pub type StringBuilder {
+  chunks: String[] = []
+
+  pub func write(self, str: String): StringBuilder {
+    if !str.isEmpty() self.chunks.push(str)
+    self
+  }
+
+  pub func writeln(self, str: String = ""): StringBuilder = self.write(str).write("\n")
+
+  pub func build(self): String = self.chunks.join("")
+}
+
+pub type IR {
+  pub mainFunction: IrFunction
+  pub functions: IrFunction[]
+
+  pub func render(self, sb: StringBuilder) {
+    self.mainFunction.render(sb)
+    sb.writeln()
+
+    for f in self.functions {
+      f.render(sb)
+      sb.writeln()
+    }
+  }
+}
+
+pub type IrFunction {
+  pub name: String
+  pub params: Ident[]
+  pub ret: IrType
+  pub block: Instruction[]
+
+  pub func render(self, sb: StringBuilder) {
+    sb.write("function ")
+    sb.write(self.name)
+
+    sb.write("(")
+    for p, idx in self.params {
+      p.render(sb)
+      if idx != self.params.length - 1 {
+        sb.write(", ")
+      }
+    }
+    sb.write(") ")
+
+    self.ret.render(sb)
+    sb.writeln()
+
+    for inst in self.block {
+      sb.write("  ")
+      inst.render(sb)
+      sb.writeln()
+    }
+  }
+}
+
+pub type Instruction {
+  pub assignee: Ident? = None
+  pub op: Operation
+
+  pub func render(self, sb: StringBuilder) {
+    if self.assignee |a| {
+      sb.write("%").write(a.name).write(" = ")
+    }
+
+    self.op.render(sb)
+  }
+}
+
+pub type Ident {
+  pub ty: IrType
+  pub name: String
+
+  pub func render(self, sb: StringBuilder) {
+    self.ty.render(sb)
+    sb.write(" %").write(self.name)
+  }
+}
+
+pub enum Value {
+  ConstInt(value: Int)
+  Ident(ident: Ident)
+
+  pub func getType(self): IrType {
+    match self {
+      Value.ConstInt => IrType.I64
+      Value.Ident(i) => i.ty
+    }
+  }
+
+  pub func render(self, sb: StringBuilder) {
+    match self {
+      Value.ConstInt(v) => {
+        IrType.I64.render(sb)
+        sb.write(" ").write(v.toString())
+      }
+      Value.Ident(i) => i.render(sb)
+    }
+  }
+}
+
+pub enum Operation {
+  Add(left: Value, right: Value)
+
+  Call(ret: IrType, fnName: String, args: Value[])
+
+  Return(value: Value? = None)
+
+  pub func render(self, sb: StringBuilder) {
+    match self {
+      Operation.Add(l, r) => {
+        sb.write("add(")
+        l.render(sb)
+        sb.write(", ")
+        r.render(sb)
+        sb.write(")")
+      }
+      Operation.Call(ret, fnName, args) => {
+        sb.write("call(")
+        ret.render(sb)
+        sb.write(", ").write(fnName)
+        for arg, idx in args {
+          sb.write(", ")
+          arg.render(sb)
+        }
+        sb.write(")")
+      }
+      Operation.Return(v) => {
+        sb.write("return(")
+        if v |v| v.render(sb)
+        sb.write(")")
+      }
+    }
+  }
+}
+
+pub enum IrType {
+  Unit
+  I64
+
+  pub func render(self, sb: StringBuilder) {
+    match self {
+      IrType.Unit => sb.write("unit")
+      IrType.I64 => sb.write("i64")
+    }
+  }
+}
+
+type CurrentFunctionContext {
+  fn: IrFunction
+  locals: Ident[]
+  anonLocalIdx: Int = 0
+}
+
+pub type Generator {
+  functions: IrFunction[]
+  curFn: CurrentFunctionContext
+
+  pub func generateIR(project: tc.Project): IR {
+    val allModules = project.modules.values().sortBy(m => m.id)
+
+    val mainFn = IrFunction(name: "main", params: [], ret: IrType.Unit, block: [])
+    val curFn = CurrentFunctionContext(fn: mainFn, locals: [])
+    val generator = Generator(functions: [], curFn: curFn)
+
+    for mod in allModules {
+      val modFn = generator.genModule(mod)
+      mainFn.block.push(Instruction(op: Operation.Call(ret: modFn.ret, fnName: modFn.name, args: [])))
+    }
+
+    mainFn.block.push(Instruction(op: Operation.Return(value: Some(Value.ConstInt(0)))))
+
+    IR(mainFunction: mainFn, functions: generator.functions)
+  }
+
+  func genModule(self, mod: tc.TypedModule): IrFunction {
+    val modFnName = "__mod_${mod.id}"
+    val modFn = IrFunction(name: modFnName, params: [], ret: IrType.Unit, block: [])
+    self.functions.push(modFn)
+    val prevFn = self.enterFunction(modFn)
+
+    for node in mod.code {
+      self.genStatement(node)
+    }
+    self.emit(Instruction(op: Operation.Return()))
+
+    self.curFn = prevFn
+
+    modFn
+  }
+
+  func genStatement(self, node: tc.TypedAstNode) {
+    match node.kind {
+      TypedAstNodeKind.If => todo("TypedAstNodeKind.If (${node.token.position})")
+      TypedAstNodeKind.Match => todo("TypedAstNodeKind.Match (${node.token.position})")
+      TypedAstNodeKind.While => todo("TypedAstNodeKind.While (${node.token.position})")
+      TypedAstNodeKind.For => todo("TypedAstNodeKind.For (${node.token.position})")
+      TypedAstNodeKind.BindingDeclaration => { /* todo: TypedAstNodeKind.BindingDeclaration */ }
+      TypedAstNodeKind.FunctionDeclaration => { /* todo: TypedAstNodeKind.FunctionDeclaration */ }
+      TypedAstNodeKind.TypeDeclaration => { /* todo: TypedAstNodeKind.TypeDeclaration */ }
+      TypedAstNodeKind.EnumDeclaration => { /* todo: TypedAstNodeKind.EnumDeclaration */ }
+      TypedAstNodeKind.Break => todo("TypedAstNodeKind.Break (${node.token.position})")
+      TypedAstNodeKind.Continue => todo("TypedAstNodeKind.Continue (${node.token.position})")
+      TypedAstNodeKind.Return => todo("TypedAstNodeKind.Return (${node.token.position})")
+      TypedAstNodeKind.Placeholder => unreachable("Placeholder nodes should not be emitted from the typechecker")
+      TypedAstNodeKind.Assignment => todo("TypedAstNodeKind.Assignment (${node.token.position})")
+      else => self.genExpression(node)
+    }
+  }
+
+  func genExpression(self, node: tc.TypedAstNode): Value {
+    val pos = node.token.position
+
+    match node.kind {
+      TypedAstNodeKind.Literal(lit) => self.genLiteral(pos, lit)
+      TypedAstNodeKind.Binary(left, op, right) => self.genBinary(pos, left, op, right)
+      else => todo("Other expressions ($pos)")
+    }
+  }
+
+  func genLiteral(self, pos: Position, lit: LiteralAstNode): Value {
+    match lit {
+      LiteralAstNode.Int(i) => Value.ConstInt(i)
+      else => todo("Other literal kinds ($pos)")
+    }
+  }
+
+  func genBinary(self, pos: Position, left: tc.TypedAstNode, op: BinaryOp, right: tc.TypedAstNode): Value {
+    match op {
+      BinaryOp.Add => {
+        // todo: check left/right type
+        val lval = self.genExpression(left)
+        val rval = self.genExpression(right)
+
+        // todo: comptime constant-folding
+        // match lval {
+        //   Value.ConstInt(l) => {
+        //     match rval {
+        //       Value.ConstInt(r) => {
+        //         return Value.ConstInt(l + r)
+        //       }
+        //     }
+        //   }
+        // }
+
+        val op = Operation.Add(lval, rval)
+        val ident = Ident(ty: IrType.I64, name: self.nextAnonLocal().toString())
+        self.emit(Instruction(assignee: Some(ident), op: op))
+
+        Value.Ident(ident: ident)
+      }
+      else => todo("Other binary operators ($pos)")
+    }
+  }
+
+  // helpers
+
+  func enterFunction(self, fn: IrFunction): CurrentFunctionContext {
+    val prevFn = self.curFn
+    val params = fn.params.map(p => Ident(ty: IrType.I64, name: p.name))
+    self.curFn = CurrentFunctionContext(fn: fn, locals: params)
+
+    prevFn
+  }
+
+  func emit(self, inst: Instruction) = self.curFn.fn.block.push(inst)
+
+  func nextAnonLocal(self): Int {
+    val idx = self.curFn.anonLocalIdx
+    self.curFn.anonLocalIdx += 1
+    idx
+  }
+}
