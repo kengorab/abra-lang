@@ -1,0 +1,114 @@
+import IR, IrFunction, IrType, Instruction, Operation, Value from "./ir"
+import ModuleBuilder, QbeType from "./qbe"
+import "./qbe" as qbe
+
+pub type Compiler {
+  builder: ModuleBuilder
+
+  pub func compile(ir: IR): ModuleBuilder {
+    val builder = ModuleBuilder()
+
+    val compiler = Compiler(builder: builder)
+    compiler.compileFunction(ir.mainFunction)
+
+    for fn in ir.functions {
+      compiler.compileFunction(fn)
+    }
+
+    builder
+  }
+
+  func compileFunction(self, fn: IrFunction) {
+    val returnType = match fn.ret {
+      IrType.I64 => Some(QbeType.U64)
+      IrType.Unit => None
+    }
+    val f = self.builder.buildFunction(name: fn.name, returnType: returnType)
+
+    for param in fn.params {
+      val ty = match param.ty {
+        IrType.I64 => QbeType.U64
+        IrType.Unit => unreachable("params cannot be of type Unit")
+      }
+      f.addParameter(param.name, ty)
+    }
+
+    for inst in fn.block {
+      self.compileInstruction(f, inst)
+    }
+  }
+
+  func compileInstruction(self, f: qbe.QbeFunction, inst: Instruction) {
+    match inst.op {
+      Operation.Add(l, r) => {
+        if l.getType() != r.getType() unreachable("l.getType() != r.getType()")
+
+        val left = match l {
+          Value.ConstInt(i) => qbe.Value.Int(i)
+          Value.Ident(i) => {
+            val ty = match i.ty {
+              IrType.I64 => QbeType.U64
+              IrType.Unit => unreachable("values cannot be of type Unit")
+            }
+            qbe.Value.Ident(name: i.name, ty: ty)
+          }
+        }
+        val right = match r {
+          Value.ConstInt(i) => qbe.Value.Int(i)
+          Value.Ident(i) => {
+            val ty = match i.ty {
+              IrType.I64 => QbeType.U64
+              IrType.Unit => unreachable("values cannot be of type Unit")
+            }
+            qbe.Value.Ident(name: i.name, ty: ty)
+          }
+        }
+        val dst = inst.assignee?.name
+
+        f.block.buildAdd(left, right, dst)
+      }
+      Operation.Call(ret, fnName, args) => {
+        val argVals = args.map(a => {
+          match a {
+            Value.ConstInt(i) => qbe.Value.Int(i)
+            Value.Ident(i) => {
+              val ty = match i.ty {
+                IrType.I64 => QbeType.U64
+                IrType.Unit => unreachable("values cannot be of type Unit")
+              }
+              qbe.Value.Ident(name: i.name, ty: ty)
+            }
+          }
+        })
+        val returnType = match ret {
+          IrType.I64 => Some(QbeType.U64)
+          IrType.Unit => None
+        }
+        if returnType |ret| {
+          try f.block.buildCallRaw(fnName, ret, argVals) else |e| {
+            unreachable(e)
+          }
+        } else {
+          f.block.buildVoidCallRaw(fnName, argVals)
+        }
+      }
+      Operation.Return(value) => {
+        if value |v| {
+          val retVal = match v {
+            Value.ConstInt(i) => qbe.Value.Int(i)
+            Value.Ident(i) => {
+              val ty = match i.ty {
+                IrType.I64 => QbeType.U64
+                IrType.Unit => unreachable("values cannot be of type Unit")
+              }
+              qbe.Value.Ident(name: i.name, ty: ty)
+            }
+          }
+          f.block.buildReturn(Some(retVal))
+        } else {
+          f.block.buildReturn()
+        }
+      }
+    }
+  }
+}
