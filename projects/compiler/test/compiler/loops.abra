@@ -2,14 +2,14 @@
 (() => {
   var i = 0
   while i < 3 {
-    println(i)
+    printlnv2(i)
     i += 1
   }
   /// Expect: 0
   /// Expect: 1
   /// Expect: 2
   /// Expect: done
-  println("done")
+  printlnv2("done")
 })()
 
 // Condition bindings
@@ -17,14 +17,14 @@
   val arr = [1, 2, 3]
   var n = 0
   while arr[n] |item| {
-    println(100 + item)
+    printlnv2(100 + item)
     n += 1
   }
   /// Expect: 101
   /// Expect: 102
   /// Expect: 103
   /// Expect: done
-  println("done")
+  printlnv2("done")
 })()
 
 // Destructuring condition binding as tuple
@@ -32,13 +32,13 @@
   val arr = [("a", 1), ("bc", 2)]
   var n = 0
   while arr[n] |(k, v)| {
-    println(100 + k.length + v)
+    printlnv2(100 + k.length + v)
     n += 1
   }
   /// Expect: 102
   /// Expect: 104
   /// Expect: done
-  println("done")
+  printlnv2("done")
 })()
 
 // Control flow within loops
@@ -46,10 +46,10 @@
   /// Expect: first loop
   /// Expect: done
   while true {
-    println("first loop")
+    printlnv2("first loop")
     break
   }
-  println("done")
+  printlnv2("done")
 
   /// Expect: 0
   /// Expect: 1
@@ -61,10 +61,10 @@
       x += 1
       continue
     }
-    println(x)
+    printlnv2(x)
     x += 1
   }
-  println("done")
+  printlnv2("done")
 })()
 
 // For-loops
@@ -75,26 +75,26 @@
   /// Expect: b
   /// Expect: c
   for ch in ["a", "b", "c"] {
-    println(ch)
+    printlnv2(ch)
   }
 
   /// Expect: a 0
   /// Expect: b 1
   /// Expect: c 2
   for ch, idx in ["a", "b", "c"] {
-    println(ch, idx)
+    printlnv2("$ch $idx")
   }
 
   /// Expect: a 0
   /// Expect: b 1
   /// Expect: done
   for ch, idx in ["a", "b", "c"] {
-    println(ch, idx)
+    printlnv2("$ch $idx")
     if ch == "b" {
       break
     }
   }
-  println("done")
+  printlnv2("done")
 
   /// Expect: a 0
   /// Expect: c 2
@@ -103,21 +103,21 @@
     if ch == "b" {
       continue
     }
-    println(ch, idx)
+    printlnv2("$ch $idx")
   }
-  println("done")
+  printlnv2("done")
 })()
 
 // Destructuring iteratee binding as tuple
 (() => {
   val arr = [("a", 1), ("bc", 2)]
   for (k, v) in arr {
-    println(100 + k.length + v)
+    printlnv2(100 + k.length + v)
   }
   /// Expect: 102
   /// Expect: 104
   /// Expect: done
-  println("done")
+  printlnv2("done")
 })()
 
 // Iterating over `Iterator` type
@@ -127,7 +127,7 @@
   /// Expect: 4
   /// Expect: done
   for i in range(0, 5, 2) {
-    println(i)
+    printlnv2(i)
   }
-  println("done")
+  printlnv2("done")
 })()

@@ -2,20 +2,28 @@ val a = 'a'
 val b = 'b'
 
 /// Expect: a b
-println(a, b)
+printlnv2("$a $b")
 
-/// Expect: false true
-println(a == b, a == 'a')
-/// Expect: false true
-println(b != b, b != 'a')
+/// Expect: false
+printlnv2(a == b)
+/// Expect: true
+printlnv2(a == 'a')
+/// Expect: false
+printlnv2(b != b)
+/// Expect: true
+printlnv2(b != 'a')
 
 // Test escape sequences in char literals
 /// Expect: true
-println('\\' == '\u005C')
+printlnv2('\\' == '\u005C')
 
 val m = { 'a': 1, 'b': 2 }
-/// Expect: { a: 1, b: 2 } Option.None Option.Some(value: 1)
-println(m, m['c'], m['a'])
+/// Expect: { a: 1, b: 2 }
+printlnv2(m)
+/// Expect: Option.None
+printlnv2(m['c'])
+/// Expect: Option.Some(value: 1)
+printlnv2(m['a'])
 
 // Test UTF-8 encoding/decoding
 val chars = "a£￫😀".chars()
@@ -24,9 +32,9 @@ val chars = "a£￫😀".chars()
 /// Expect: ￫ 65515 [0b11101111, 0b10111111, 0b10101011]
 /// Expect: 😀 128512 [0b11110000, 0b10011111, 0b10011000, 0b10000000]
 for ch in chars {
-  println(ch, ch.asInt(), ch.bytes().map(b => b.binary()))
+  printlnv2("$ch ${ch.asInt()} ${ch.bytes().map(b => b.binary())}")
 }
 
 val ch = Char.fromInt(0xD800)
 /// Expect: �
-println(ch)
+printlnv2(ch)

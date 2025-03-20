@@ -1,18 +1,18 @@
 import "process" as process
 
 func foo() {
-  print("hello ")
+  printv2("hello ")
   bar()
 }
 
 func bar() {
-  print("world")
+  printv2("world")
   baz()
 }
 
 func baz() {
-  println("!")
-  println(process.getStackTrace())
+  printlnv2("!")
+  printlnv2(process.getStackTrace())
 }
 
 val arr = [1].map((i, _) => {
@@ -26,7 +26,7 @@ val arr = [1].map((i, _) => {
 /// Expect:   at baz (%TEST_DIR%/compiler/process_callstack.abra:10)
 /// Expect:   at bar (%TEST_DIR%/compiler/process_callstack.abra:5)
 /// Expect:   at foo (%TEST_DIR%/compiler/process_callstack.abra:19)
-/// Expect:   at <expression> (%STD_DIR%/prelude.abra:784)
+/// Expect:   at <expression> (%STD_DIR%/prelude.abra:791)
 /// Expect:   at Array.map (%TEST_DIR%/compiler/process_callstack.abra:18)
 
 type OneTwoThreeIterator {
@@ -35,7 +35,7 @@ type OneTwoThreeIterator {
   func next(self): Int? {
     val v = self._count
     if v > 3 {
-      println(process.getStackTrace())
+      printlnv2(process.getStackTrace())
       None
     } else {
       self._count += 1
@@ -46,7 +46,7 @@ type OneTwoThreeIterator {
 
 val iter = OneTwoThreeIterator()
 for i in iter {
-  println(i)
+  printlnv2(i)
 }
 
 /// Expect: 1
@@ -57,7 +57,7 @@ for i in iter {
 /// Expect:   at OneTwoThreeIterator.next (%TEST_DIR%/compiler/process_callstack.abra:48)
 
 func returnOneButAlsoPrintStackTraceForSomeReason(): Int {
-  println(process.getStackTrace())
+  printlnv2(process.getStackTrace())
   1
 }
 

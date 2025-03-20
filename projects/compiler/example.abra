@@ -1,1 +1,9 @@
-1 + 2
+// Functions and closures as value (lambdas too)
+func abc(): Int = 24
+printlnv2(abc)
+val abcVal = abc
+printlnv2("$abcVal ${abcVal()}")
+
+val str = "abc"
+
+printlnv2(str.isEmpty)
