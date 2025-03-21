@@ -1,9 +1,9 @@
 // Functions and closures as value (lambdas too)
 func abc(): Int = 24
-printlnv2(abc)
+println(abc)
 val abcVal = abc
-printlnv2("$abcVal ${abcVal()}")
+println("$abcVal ${abcVal()}")
 
 val str = "abc"
 
-printlnv2(str.isEmpty)
+println(str.isEmpty)

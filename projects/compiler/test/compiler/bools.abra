@@ -1,51 +1,51 @@
 /// Expect: true
-printlnv2(true)
+println(true)
 
 /// Expect: false
-printlnv2(false)
+println(false)
 
 // Unary operation
 /// Expect: true
-printlnv2(!false)
+println(!false)
 /// Expect: false
-printlnv2(!!false)
+println(!!false)
 /// Expect: false
-printlnv2(!true)
+println(!true)
 /// Expect: true
-printlnv2(!!true)
+println(!!true)
 
 // Binary operations
 func returnsFalse(): Bool {
-  printlnv2("boolFunc called")
+  println("boolFunc called")
   false
 }
 
 /// Expect: boolFunc called
 /// Expect: false
-printlnv2(true && returnsFalse())
+println(true && returnsFalse())
 /// Expect: false
-printlnv2(false && returnsFalse())
+println(false && returnsFalse())
 
 /// Expect: true
-printlnv2(true || returnsFalse())
+println(true || returnsFalse())
 /// Expect: boolFunc called
 /// Expect: false
-printlnv2(false || returnsFalse())
+println(false || returnsFalse())
 
 /// Expect: true
-printlnv2(true ^ false)
+println(true ^ false)
 /// Expect: true
-printlnv2(false ^ true)
+println(false ^ true)
 /// Expect: false
-printlnv2(false ^ false)
+println(false ^ false)
 /// Expect: false
-printlnv2(true ^ true)
+println(true ^ true)
 
 /// Expect: true
-printlnv2(true == true)
+println(true == true)
 /// Expect: false
-printlnv2(true != true)
+println(true != true)
 /// Expect: false
-printlnv2(false == true)
+println(false == true)
 /// Expect: true
-printlnv2(true != false)
+println(true != false)

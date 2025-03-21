@@ -10,7 +10,7 @@ pub type Jsonifier {
     val manyModules = modules.length > 1
 
     if manyModules {
-      printlnv2("[")
+      println("[")
       self.indentInc()
     }
 
@@ -19,1033 +19,1033 @@ pub type Jsonifier {
       self.printModule(mod)
       if manyModules {
         if idx != modules.length - 1 {
-          printv2(",")
+          print(",")
         }
-        printlnv2("")
+        println("")
       }
     }
 
     if manyModules {
       self.indentDec()
-      printv2("]")
+      print("]")
     }
 
-    printlnv2("")
+    println("")
   }
 
   func printModule(self, mod: TypedModule) {
-    printlnv2("{")
+    println("{")
     self.indentInc()
 
-    self.printlnv2("\"id\": ${mod.id},")
-    self.printlnv2("\"name\": \"${mod.name}\",")
+    self.println("\"id\": ${mod.id},")
+    self.println("\"name\": \"${mod.name}\",")
 
     if !mod.exports.isEmpty() {
-      self.printlnv2("\"exports\": [")
+      self.println("\"exports\": [")
       self.indentInc()
 
       for (name, exp), idx in mod.exports {
-        self.printlnv2("{")
+        self.println("{")
         self.indentInc()
 
         match exp {
-          Export.Variable => self.printlnv2("\"kind\": \"variable\",")
-          Export.Function => self.printlnv2("\"kind\": \"function\",")
-          Export.Type => self.printlnv2("\"kind\": \"type\",")
+          Export.Variable => self.println("\"kind\": \"variable\",")
+          Export.Function => self.println("\"kind\": \"function\",")
+          Export.Type => self.println("\"kind\": \"type\",")
         }
-        self.printlnv2("\"name\": \"$name\"")
+        self.println("\"name\": \"$name\"")
 
         self.indentDec()
-        self.printv2("}")
+        self.print("}")
 
         val comma = if idx != mod.exports.size - 1 "," else ""
-        printlnv2(comma)
+        println(comma)
       }
       self.indentDec()
-      self.printlnv2("],")
+      self.println("],")
     }
 
-    self.printv2("\"code\": ")
+    self.print("\"code\": ")
     self.printNodes(mod.code)
-    printlnv2("")
+    println("")
 
     self.indentDec()
-    self.printv2("}")
+    self.print("}")
   }
 
   func printNodes(self, nodes: TypedAstNode[]) {
-    printlnv2("[")
+    println("[")
     self.indentInc()
 
     for node, idx in nodes {
       self.indent()
       self.printNode(node)
       val comma = if idx != nodes.length - 1 "," else ""
-      printlnv2(comma)
+      println(comma)
     }
 
     self.indentDec()
-    self.printv2("]")
+    self.print("]")
   }
 
   func printType(self, ty: Type) {
-    printlnv2("{")
+    println("{")
     self.indentInc()
 
     match ty.kind {
       TypeKind.CouldNotDetermine => {
-        self.printlnv2("\"kind\": \"could not determine\"")
+        self.println("\"kind\": \"could not determine\"")
       }
       TypeKind.Any => {
-        self.printlnv2("\"kind\": \"primitive\",")
-        self.printlnv2("\"primitive\": \"Any\"")
+        self.println("\"kind\": \"primitive\",")
+        self.println("\"primitive\": \"Any\"")
       }
       TypeKind.PrimitiveUnit => {
-        self.printlnv2("\"kind\": \"primitive\",")
-        self.printlnv2("\"primitive\": \"Unit\"")
+        self.println("\"kind\": \"primitive\",")
+        self.println("\"primitive\": \"Unit\"")
       }
       TypeKind.PrimitiveInt => {
-        self.printlnv2("\"kind\": \"primitive\",")
-        self.printlnv2("\"primitive\": \"Int\"")
+        self.println("\"kind\": \"primitive\",")
+        self.println("\"primitive\": \"Int\"")
       }
       TypeKind.PrimitiveFloat => {
-        self.printlnv2("\"kind\": \"primitive\",")
-        self.printlnv2("\"primitive\": \"Float\"")
+        self.println("\"kind\": \"primitive\",")
+        self.println("\"primitive\": \"Float\"")
       }
       TypeKind.PrimitiveBool => {
-        self.printlnv2("\"kind\": \"primitive\",")
-        self.printlnv2("\"primitive\": \"Bool\"")
+        self.println("\"kind\": \"primitive\",")
+        self.println("\"primitive\": \"Bool\"")
       }
       TypeKind.PrimitiveString => {
-        self.printlnv2("\"kind\": \"primitive\",")
-        self.printlnv2("\"primitive\": \"String\"")
+        self.println("\"kind\": \"primitive\",")
+        self.println("\"primitive\": \"String\"")
       }
       TypeKind.Never => {
-        self.printlnv2("\"kind\": \"never\"")
+        self.println("\"kind\": \"never\"")
       }
       TypeKind.Generic(name) => {
-        self.printlnv2("\"kind\": \"generic\",")
-        self.printlnv2("\"name\": \"$name\"")
+        self.println("\"kind\": \"generic\",")
+        self.println("\"name\": \"$name\"")
       }
       TypeKind.Instance(instanceKind, generics) => {
         match instanceKind {
           InstanceKind.Struct(struct) => {
-            self.printlnv2("\"kind\": \"instance\",")
-            self.printlnv2("\"struct\": { \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.label.name}\" },")
+            self.println("\"kind\": \"instance\",")
+            self.println("\"struct\": { \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.label.name}\" },")
           }
           InstanceKind.Enum(enum_) => {
-            self.printlnv2("\"kind\": \"enumInstance\",")
-            self.printlnv2("\"enum\": { \"moduleId\": ${enum_.moduleId}, \"name\": \"${enum_.label.name}\" },")
+            self.println("\"kind\": \"enumInstance\",")
+            self.println("\"enum\": { \"moduleId\": ${enum_.moduleId}, \"name\": \"${enum_.label.name}\" },")
           }
         }
-        self.printv2("\"typeParams\": ")
+        self.print("\"typeParams\": ")
         self.array(generics, t => self.printType(t))
-        printlnv2("")
+        println("")
       }
       TypeKind.Tuple(types) => {
-        self.printlnv2("\"kind\": \"tuple\",")
-        self.printv2("\"types\": ")
+        self.println("\"kind\": \"tuple\",")
+        self.print("\"types\": ")
         self.array(types, t => self.printType(t))
-        printlnv2("")
+        println("")
       }
       TypeKind.Func(params, ret) => {
-        self.printlnv2("\"kind\": \"function\",")
-        self.printv2("\"parameters\": ")
+        self.println("\"kind\": \"function\",")
+        self.print("\"parameters\": ")
         self.array(params, p => {
-          printlnv2("{")
+          println("{")
           self.indentInc()
 
-          self.printlnv2("\"required\": ${p[1]},")
+          self.println("\"required\": ${p[1]},")
 
-          self.printv2("\"type\": ")
+          self.print("\"type\": ")
           self.printType(p[0])
-          printlnv2("")
+          println("")
 
           self.indentDec()
-          self.printv2("}")
+          self.print("}")
         })
-        printlnv2(",")
-        self.printv2("\"returnType\": ")
+        println(",")
+        self.print("\"returnType\": ")
         self.printType(ret)
-        printlnv2("")
+        println("")
       }
       TypeKind.Type(instanceKind) => {
         match instanceKind {
           InstanceKind.Struct(struct) => {
-            self.printlnv2("\"kind\": \"struct\",")
-            self.printv2("\"struct\": ")
+            self.println("\"kind\": \"struct\",")
+            self.print("\"struct\": ")
             self.printStruct(struct: struct, abridged: true)
           }
           InstanceKind.Enum(enum_) => {
-            self.printlnv2("\"kind\": \"enum\",")
-            self.printv2("\"enum\": ")
+            self.println("\"kind\": \"enum\",")
+            self.print("\"enum\": ")
             self.printEnum(enum_: enum_, abridged: true)
           }
         }
-        printlnv2("")
+        println("")
       }
-      TypeKind.Hole => self.printlnv2("\"kind\": \"hole\"")
+      TypeKind.Hole => self.println("\"kind\": \"hole\"")
     }
 
     self.indentDec()
-    self.printv2("}")
+    self.print("}")
   }
 
   func printStruct(self, struct: Struct, abridged: Bool) {
     if abridged {
-      printv2("{ \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.label.name}\" }")
+      print("{ \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.label.name}\" }")
       return
     }
 
-    printlnv2("{")
+    println("{")
     self.indentInc()
 
-    self.printlnv2("\"moduleId\": ${struct.moduleId},")
+    self.println("\"moduleId\": ${struct.moduleId},")
 
-    self.printv2("\"name\": ")
+    self.print("\"name\": ")
     printLabelAsJson(struct.label)
-    printlnv2(",")
+    println(",")
 
-    self.printv2("\"typeParams\": ")
-    self.array(struct.typeParams, p => printv2("\"$p\""))
-    printlnv2(",")
+    self.print("\"typeParams\": ")
+    self.array(struct.typeParams, p => print("\"$p\""))
+    println(",")
 
-    self.printv2("\"fields\": ")
+    self.print("\"fields\": ")
     self.array(struct.fields, f => self.printField(f))
-    printlnv2(",")
+    println(",")
 
-    self.printv2("\"instanceMethods\": ")
+    self.print("\"instanceMethods\": ")
     self.array(struct.instanceMethods, m => self.printFunc(m))
-    printlnv2(",")
+    println(",")
 
-    self.printv2("\"staticMethods\": ")
+    self.print("\"staticMethods\": ")
     self.array(struct.staticMethods, m => self.printFunc(m))
-    printlnv2("")
+    println("")
 
     self.indentDec()
-    self.printv2("}")
+    self.print("}")
   }
 
   func printField(self, field: Field) {
-    printlnv2("{")
+    println("{")
     self.indentInc()
 
-    self.printv2("\"name\": ")
+    self.print("\"name\": ")
     printLabelAsJson(field.name)
-    printlnv2(",")
+    println(",")
 
-    self.printv2("\"type\": ")
+    self.print("\"type\": ")
     self.printType(field.ty)
-    printlnv2(",")
+    println(",")
 
-    self.printv2("\"initializer\": ")
+    self.print("\"initializer\": ")
     self.opt(field.initializer, n => self.printNode(n))
 
     if field.isPublic {
-      printlnv2(",")
-      self.printv2("\"isPublic\": true")
+      println(",")
+      self.print("\"isPublic\": true")
     }
-    printlnv2("")
+    println("")
 
     self.indentDec()
-    self.printv2("}")
+    self.print("}")
   }
 
   func printEnum(self, enum_: Enum, abridged: Bool) {
     if abridged {
-      printv2("{ \"moduleId\": ${enum_.moduleId}, \"name\": \"${enum_.label.name}\" }")
+      print("{ \"moduleId\": ${enum_.moduleId}, \"name\": \"${enum_.label.name}\" }")
       return
     }
 
-    printlnv2("{")
+    println("{")
     self.indentInc()
 
-    self.printlnv2("\"moduleId\": ${enum_.moduleId},")
+    self.println("\"moduleId\": ${enum_.moduleId},")
 
-    self.printv2("\"name\": ")
+    self.print("\"name\": ")
     printLabelAsJson(enum_.label)
-    printlnv2(",")
+    println(",")
 
-    self.printv2("\"typeParams\": ")
-    self.array(enum_.typeParams, p => printv2("\"$p\""))
-    printlnv2(",")
+    self.print("\"typeParams\": ")
+    self.array(enum_.typeParams, p => print("\"$p\""))
+    println(",")
 
-    self.printv2("\"variants\": ")
+    self.print("\"variants\": ")
     self.array(enum_.variants, v => {
-      printlnv2("{")
+      println("{")
       self.indentInc()
 
-      self.printv2("\"label\": ")
+      self.print("\"label\": ")
       printLabelAsJson(v.label)
-      printlnv2(",")
+      println(",")
 
       match v.kind {
         EnumVariantKind.Constant => {
-          self.printlnv2("\"kind\": \"constant\"")
+          self.println("\"kind\": \"constant\"")
         }
         EnumVariantKind.Container(fields) => {
-          self.printlnv2("\"kind\": \"container\",")
-          self.printv2("\"fields\": ")
+          self.println("\"kind\": \"container\",")
+          self.print("\"fields\": ")
           self.array(fields, f => self.printField(f))
-          printlnv2("")
+          println("")
         }
       }
 
       self.indentDec()
-      self.printv2("}")
+      self.print("}")
     })
-    printlnv2(",")
+    println(",")
 
-    self.printv2("\"instanceMethods\": ")
+    self.print("\"instanceMethods\": ")
     self.array(enum_.instanceMethods, m => self.printFunc(m))
-    printlnv2(",")
+    println(",")
 
-    self.printv2("\"staticMethods\": ")
+    self.print("\"staticMethods\": ")
     self.array(enum_.staticMethods, m => self.printFunc(m))
-    printlnv2("")
+    println("")
 
     self.indentDec()
-    self.printv2("}")
+    self.print("}")
   }
 
   func printNode(self, node: TypedAstNode) {
-    printlnv2("{")
+    println("{")
     self.indentInc()
 
-    self.printv2("\"token\": ")
+    self.print("\"token\": ")
     printTokenAsJson(node.token, 0, self.indentLevel)
-    printlnv2(",")
+    println(",")
 
-    self.printv2("\"type\": ")
+    self.print("\"type\": ")
     self.printType(node.ty)
-    printlnv2(",")
+    println(",")
 
-    self.printv2("\"node\": ")
+    self.print("\"node\": ")
     self.printNodeKind(node.kind)
-    printlnv2("")
+    println("")
 
     self.indentDec()
-    self.printv2("}")
+    self.print("}")
   }
 
   func printNodeKind(self, kind: TypedAstNodeKind) {
-    printlnv2("{")
+    println("{")
     self.indentInc()
 
     match kind {
       TypedAstNodeKind.Literal(value) => {
-        self.printlnv2("\"kind\": \"literal\",")
+        self.println("\"kind\": \"literal\",")
         match value {
-          LiteralAstNode.Int(value) => self.printlnv2("\"value\": $value")
-          LiteralAstNode.Float(value) => self.printlnv2("\"value\": $value")
-          LiteralAstNode.Bool(value) => self.printlnv2("\"value\": $value")
-          LiteralAstNode.Char(value) => self.printlnv2("\"value\": \"${value.hex()}\"")
-          LiteralAstNode.String(value) => self.printlnv2("\"value\": \"$value\"")
+          LiteralAstNode.Int(value) => self.println("\"value\": $value")
+          LiteralAstNode.Float(value) => self.println("\"value\": $value")
+          LiteralAstNode.Bool(value) => self.println("\"value\": $value")
+          LiteralAstNode.Char(value) => self.println("\"value\": \"${value.hex()}\"")
+          LiteralAstNode.String(value) => self.println("\"value\": \"$value\"")
         }
       }
       TypedAstNodeKind.StringInterpolation(exprs) => {
-        self.printlnv2("\"kind\": \"stringInterpolation\",")
+        self.println("\"kind\": \"stringInterpolation\",")
 
-        self.printv2("\"exprs\": ")
+        self.print("\"exprs\": ")
         self.array(exprs, n => self.printNode(n))
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.Unary(op, expr) => {
-        self.printlnv2("\"kind\": \"unary\",")
-        self.printlnv2("\"op\": \"$op\",")
-        self.printv2("\"expr\": ")
+        self.println("\"kind\": \"unary\",")
+        self.println("\"op\": \"$op\",")
+        self.print("\"expr\": ")
         self.printNode(expr)
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.Binary(left, op, right) => {
-        self.printlnv2("\"kind\": \"binary\",")
-        self.printlnv2("\"op\": \"$op\",")
-        self.printv2("\"left\": ")
+        self.println("\"kind\": \"binary\",")
+        self.println("\"op\": \"$op\",")
+        self.print("\"left\": ")
         self.printNode(left)
-        printlnv2(",")
-        self.printv2("\"right\": ")
+        println(",")
+        self.print("\"right\": ")
         self.printNode(right)
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.Grouped(inner) => {
-        self.printlnv2("\"kind\": \"grouped\",")
-        self.printv2("\"expr\": ")
+        self.println("\"kind\": \"grouped\",")
+        self.print("\"expr\": ")
         self.printNode(inner)
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.Identifier(name, _, _, _) => {
-        self.printlnv2("\"kind\": \"identifier\",")
+        self.println("\"kind\": \"identifier\",")
 
-        self.printv2("\"name\": \"$name\"")
-        printlnv2("")
+        self.print("\"name\": \"$name\"")
+        println("")
       }
       TypedAstNodeKind.Accessor(head, middle, tail) => {
-        self.printlnv2("\"kind\": \"accessor\",")
+        self.println("\"kind\": \"accessor\",")
 
-        self.printv2("\"head\": ")
+        self.print("\"head\": ")
         self.printNode(head)
-        printlnv2(",")
+        println(",")
 
-        self.printv2("\"middle\": ")
+        self.print("\"middle\": ")
         self.array(middle, seg => {
-          printlnv2("{")
+          println("{")
           self.indentInc()
 
           match seg {
             AccessorPathSegment.EnumVariant(_, _, enum_, variant) => {
-              self.printlnv2("\"kind\": \"enumVariant\",")
-              self.printlnv2("\"name\": \"${enum_.label.name}.${variant.label.name}\"")
+              self.println("\"kind\": \"enumVariant\",")
+              self.println("\"name\": \"${enum_.label.name}.${variant.label.name}\"")
             }
             AccessorPathSegment.Method(_, f, _, _) => {
-              self.printlnv2("\"kind\": \"method\",")
-              self.printlnv2("\"name\": \"${f.label.name}\"")
+              self.println("\"kind\": \"method\",")
+              self.println("\"name\": \"${f.label.name}\"")
             }
             AccessorPathSegment.Field(_, ty, f, _) => {
-              self.printlnv2("\"kind\": \"field\",")
-              self.printlnv2("\"name\": \"${f.name.name}\",")
-              self.printv2("\"type\": ")
+              self.println("\"kind\": \"field\",")
+              self.println("\"name\": \"${f.name.name}\",")
+              self.print("\"type\": ")
               self.printType(ty)
-              printlnv2("")
+              println("")
             }
           }
 
           self.indentDec()
-          self.printv2("}")
+          self.print("}")
         })
-        printlnv2(",")
+        println(",")
 
-        self.printlnv2("\"tail\": {")
+        self.println("\"tail\": {")
         self.indentInc()
         match tail {
           AccessorPathSegment.EnumVariant(_, _, enum_, variant) => {
-            self.printlnv2("\"kind\": \"enumVariant\",")
-            self.printlnv2("\"name\": \"${enum_.label.name}.${variant.label.name}\"")
+            self.println("\"kind\": \"enumVariant\",")
+            self.println("\"name\": \"${enum_.label.name}.${variant.label.name}\"")
           }
           AccessorPathSegment.Method(_, f, _, _) => {
-            self.printlnv2("\"kind\": \"method\",")
-            self.printlnv2("\"name\": \"${f.label.name}\"")
+            self.println("\"kind\": \"method\",")
+            self.println("\"name\": \"${f.label.name}\"")
           }
           AccessorPathSegment.Field(_, ty, f, _) => {
-            self.printlnv2("\"kind\": \"field\",")
-            self.printlnv2("\"name\": \"${f.name.name}\",")
-            self.printv2("\"type\": ")
+            self.println("\"kind\": \"field\",")
+            self.println("\"name\": \"${f.name.name}\",")
+            self.print("\"type\": ")
             self.printType(ty)
-            printlnv2("")
+            println("")
           }
         }
         self.indentDec()
-        self.printlnv2("}")
+        self.println("}")
       }
       TypedAstNodeKind.Invocation(invokee, arguments, _) => {
-        self.printlnv2("\"kind\": \"invocation\",")
+        self.println("\"kind\": \"invocation\",")
 
-        self.printv2("\"invokee\": ")
+        self.print("\"invokee\": ")
         match invokee {
           TypedInvokee.Method(fn, selfVal, isOptSafe) => {
-            printlnv2("{")
+            println("{")
             self.indentInc()
 
-            self.printlnv2("\"method\": \"${fn.label.name}\",")
+            self.println("\"method\": \"${fn.label.name}\",")
 
-            self.printv2("\"type\": ")
+            self.print("\"type\": ")
             self.printType(fn.getType())
-            printlnv2(",")
+            println(",")
 
-            self.printlnv2("\"isOptSafe\": $isOptSafe,")
-            self.printv2("\"self\": ")
+            self.println("\"isOptSafe\": $isOptSafe,")
+            self.print("\"self\": ")
             self.printNode(selfVal)
-            printlnv2("")
+            println("")
 
             self.indentDec()
-            self.printv2("}")
+            self.print("}")
           }
           TypedInvokee.Function(fn) => {
-            printlnv2("{")
+            println("{")
             self.indentInc()
 
-            self.printlnv2("\"function\": \"${fn.label.name}\",")
+            self.println("\"function\": \"${fn.label.name}\",")
 
-            self.printv2("\"type\": ")
+            self.print("\"type\": ")
             self.printType(fn.getType())
-            printlnv2("")
+            println("")
 
             self.indentDec()
-            self.printv2("}")
+            self.print("}")
           }
           TypedInvokee.Struct(struct) => self.printStruct(struct: struct, abridged: true)
           TypedInvokee.Expr(expr) => self.printNode(expr)
-          TypedInvokee.EnumVariant(enum_, variant) => printv2("\"${enum_.label.name}.${variant.label.name}\"")
+          TypedInvokee.EnumVariant(enum_, variant) => print("\"${enum_.label.name}.${variant.label.name}\"")
         }
-        printlnv2(",")
+        println(",")
 
-        self.printv2("\"arguments\": ")
+        self.print("\"arguments\": ")
         self.array(arguments, n => self.opt(n, n => self.printNode(n)))
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.Array(items) => {
-        self.printlnv2("\"kind\": \"array\",")
+        self.println("\"kind\": \"array\",")
 
-        self.printv2("\"items\": ")
+        self.print("\"items\": ")
         self.array(items, n => self.printNode(n))
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.Set(items) => {
-        self.printlnv2("\"kind\": \"set\",")
+        self.println("\"kind\": \"set\",")
 
-        self.printv2("\"items\": ")
+        self.print("\"items\": ")
         self.array(items, n => self.printNode(n))
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.Map(pairs) => {
-        self.printlnv2("\"kind\": \"map\",")
+        self.println("\"kind\": \"map\",")
 
-        self.printv2("\"pairs\": ")
+        self.print("\"pairs\": ")
         self.array(pairs, p => {
           self.array([p[0], p[1]], n => self.printNode(n))
         })
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.Tuple(items) => {
-        self.printlnv2("\"kind\": \"tuple\",")
+        self.println("\"kind\": \"tuple\",")
 
-        self.printv2("\"items\": ")
+        self.print("\"items\": ")
         self.array(items, n => self.printNode(n))
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.Indexing(node) => {
-        self.printlnv2("\"kind\": \"indexing\",")
+        self.println("\"kind\": \"indexing\",")
 
-        self.printv2("\"node\": ")
+        self.print("\"node\": ")
         self.printTypedIndexingNode(node)
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.Lambda(fn, _) => {
-        self.printlnv2("\"kind\": \"lambda\",")
-        self.printv2("\"function\": ")
+        self.println("\"kind\": \"lambda\",")
+        self.print("\"function\": ")
         self.printFunc(fn)
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.Assignment(mode, op, expr) => {
-        self.printlnv2("\"kind\": \"assignment\",")
+        self.println("\"kind\": \"assignment\",")
 
-        self.printv2("\"expr\": ")
+        self.print("\"expr\": ")
         self.printNode(expr)
-        printlnv2(",")
+        println(",")
 
-        self.printlnv2("\"op\": \"$op\",")
+        self.println("\"op\": \"$op\",")
 
-        self.printv2("\"mode\": ")
+        self.print("\"mode\": ")
 
         match mode {
           TypedAssignmentMode.Variable(v) => {
-            printlnv2("{")
+            println("{")
             self.indentInc()
 
-            self.printlnv2("\"kind\": \"variable\",")
-            self.printv2("\"variable\": ")
+            self.println("\"kind\": \"variable\",")
+            self.print("\"variable\": ")
             self.printVariable(v)
-            printlnv2("")
+            println("")
 
             self.indentDec()
-            self.printv2("}")
-            printlnv2("")
+            self.print("}")
+            println("")
           }
           TypedAssignmentMode.Indexing(typedIndexingNode) => {
-            printlnv2("{")
+            println("{")
             self.indentInc()
 
-            self.printlnv2("\"kind\": \"indexing\",")
-            self.printv2("\"indexNode\": ")
+            self.println("\"kind\": \"indexing\",")
+            self.print("\"indexNode\": ")
             self.printTypedIndexingNode(typedIndexingNode)
-            printlnv2("")
+            println("")
 
             self.indentDec()
-            self.printv2("}")
-            printlnv2("")
+            self.print("}")
+            println("")
           }
           TypedAssignmentMode.Accessor(head, mid, tail) => {
             self.printNodeKind(TypedAstNodeKind.Accessor(head, mid, tail))
-            printlnv2("")
+            println("")
           }
         }
       }
       TypedAstNodeKind.If(isStatement, condition, conditionBindingPattern, ifBlock, _, elseBlock, _) => {
-        self.printlnv2("\"kind\": \"if\",")
+        self.println("\"kind\": \"if\",")
 
-        self.printlnv2("\"isStatement\": $isStatement,")
+        self.println("\"isStatement\": $isStatement,")
 
-        self.printv2("\"condition\": ")
+        self.print("\"condition\": ")
         self.printNode(condition)
-        printlnv2(",")
+        println(",")
 
-        self.printv2("\"conditionBindingPattern\": ")
+        self.print("\"conditionBindingPattern\": ")
         self.opt(conditionBindingPattern, pair => {
-          printlnv2("{")
+          println("{")
           self.indentInc()
 
-          self.printv2("\"bindingPattern\": ")
+          self.print("\"bindingPattern\": ")
           printBindingPatternAsJson(pair[0], 0, self.indentLevel)
-          printlnv2(",")
+          println(",")
 
-          self.printv2("\"variables\": ")
+          self.print("\"variables\": ")
           self.array(pair[1], v => self.printVariable(v))
-          printlnv2("")
+          println("")
 
           self.indentDec()
-          self.printv2("}")
+          self.print("}")
         })
-        printlnv2(",")
+        println(",")
 
-        self.printv2("\"ifBlock\": ")
+        self.print("\"ifBlock\": ")
         self.array(ifBlock, n => self.printNode(n))
-        printlnv2(",")
+        println(",")
 
-        self.printv2("\"elseBlock\": ")
+        self.print("\"elseBlock\": ")
         self.array(elseBlock, n => self.printNode(n))
-        printlnv2("")
+        println("")
       }
 
       TypedAstNodeKind.Match(isStatement, subject, cases) => {
-        self.printlnv2("\"kind\": \"match\",")
+        self.println("\"kind\": \"match\",")
 
-        self.printlnv2("\"isStatement\": $isStatement,")
+        self.println("\"isStatement\": $isStatement,")
 
-        self.printv2("\"subject\": ")
+        self.print("\"subject\": ")
         self.printNode(subject)
-        printlnv2(",")
+        println(",")
 
-        self.printv2("\"cases\": ")
+        self.print("\"cases\": ")
         self.array(cases, case => {
-          printlnv2("{")
+          println("{")
           self.indentInc()
 
-          self.printv2("\"kind\": ")
+          self.print("\"kind\": ")
           match case.kind {
             TypedMatchCaseKind.Type(ty) => {
-              printlnv2("{")
+              println("{")
               self.indentInc()
 
-              self.printlnv2("\"kind\": \"type\",")
-              self.printv2("\"type\": ")
+              self.println("\"kind\": \"type\",")
+              self.print("\"type\": ")
               self.printType(ty)
-              printlnv2("")
+              println("")
 
               self.indentDec()
-              self.printv2("}")
+              self.print("}")
             }
             TypedMatchCaseKind.EnumVariant(enum_, _, variantIdx, destructuredVariables) => {
-              printlnv2("{")
+              println("{")
               self.indentInc()
 
-              self.printlnv2("\"kind\": \"enumVariant\",")
-              self.printlnv2("\"variantIdx\": $variantIdx,")
-              self.printv2("\"enum\": ")
+              self.println("\"kind\": \"enumVariant\",")
+              self.println("\"variantIdx\": $variantIdx,")
+              self.print("\"enum\": ")
               self.printEnum(enum_: enum_, abridged: true)
-              printlnv2(",")
-              self.printv2("\"destructuredVariables\": ")
+              println(",")
+              self.print("\"destructuredVariables\": ")
               self.array(destructuredVariables, v => self.printVariable(v))
-              printlnv2("")
+              println("")
 
               self.indentDec()
-              self.printv2("}")
+              self.print("}")
             }
             TypedMatchCaseKind.Literal(value) => {
-              printlnv2("{")
+              println("{")
               self.indentInc()
 
-              self.printlnv2("\"kind\": \"literal\",")
+              self.println("\"kind\": \"literal\",")
               match value {
-                LiteralAstNode.Int(value) => self.printlnv2("\"value\": $value")
-                LiteralAstNode.Float(value) => self.printlnv2("\"value\": $value")
-                LiteralAstNode.Bool(value) => self.printlnv2("\"value\": $value")
-                LiteralAstNode.String(value) => self.printlnv2("\"value\": \"$value\"")
+                LiteralAstNode.Int(value) => self.println("\"value\": $value")
+                LiteralAstNode.Float(value) => self.println("\"value\": $value")
+                LiteralAstNode.Bool(value) => self.println("\"value\": $value")
+                LiteralAstNode.String(value) => self.println("\"value\": \"$value\"")
               }
 
               self.indentDec()
-              self.printv2("}")
+              self.print("}")
             }
-            TypedMatchCaseKind.None_ => printv2("\"None\"")
-            TypedMatchCaseKind.Else => printv2("\"else\"")
+            TypedMatchCaseKind.None_ => print("\"None\"")
+            TypedMatchCaseKind.Else => print("\"else\"")
           }
-          printlnv2(",")
+          println(",")
 
-          self.printv2("\"binding\": ")
+          self.print("\"binding\": ")
           self.opt(case.binding, v => self.printVariable(v))
-          printlnv2(",")
+          println(",")
 
-          self.printv2("\"body\": ")
+          self.print("\"body\": ")
           self.array(case.body, n => self.printNode(n))
-          printlnv2("")
+          println("")
 
           self.indentDec()
-          self.printv2("}")
+          self.print("}")
         })
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.Try(expr, elseClause) => {
-        self.printlnv2("\"kind\": \"try\",")
+        self.println("\"kind\": \"try\",")
 
-        self.printv2("\"expr\": ")
+        self.print("\"expr\": ")
         self.printNode(expr)
         if elseClause |elseClause| {
-          printlnv2(",")
-          self.printv2("\"elseBindingPattern\": ")
+          println(",")
+          self.print("\"elseBindingPattern\": ")
           self.opt(elseClause.pattern, _pair => {
             val (pat, vars) = _pair
-            printlnv2("{")
+            println("{")
             self.indentInc()
 
-            self.printv2("\"bindingPattern\": ")
+            self.print("\"bindingPattern\": ")
             printBindingPatternAsJson(pat, 0, self.indentLevel)
-            printlnv2(",")
+            println(",")
 
-            self.printv2("\"variables\": ")
+            self.print("\"variables\": ")
             self.array(vars, v => self.printVariable(v))
-            printlnv2("")
+            println("")
 
             self.indentDec()
-            self.printv2("}")
+            self.print("}")
           })
 
-          printlnv2(",")
+          println(",")
 
-          self.printv2("\"elseBlock\": ")
+          self.print("\"elseBlock\": ")
           self.array(elseClause.block, n => self.printNode(n))
         }
-        printlnv2("")
+        println("")
       }
 
       // Statements
       TypedAstNodeKind.While(condition, conditionBindingPattern, block, _) => {
-        self.printlnv2("\"kind\": \"while\",")
+        self.println("\"kind\": \"while\",")
 
-        self.printv2("\"condition\": ")
+        self.print("\"condition\": ")
         self.printNode(condition)
-        printlnv2(",")
+        println(",")
 
-        self.printv2("\"conditionBindingPattern\": ")
+        self.print("\"conditionBindingPattern\": ")
         self.opt(conditionBindingPattern, _pair => {
           val (pat, vars) = _pair
-          printlnv2("{")
+          println("{")
           self.indentInc()
 
-          self.printv2("\"bindingPattern\": ")
+          self.print("\"bindingPattern\": ")
           printBindingPatternAsJson(pat, 0, self.indentLevel)
-          printlnv2(",")
+          println(",")
 
-          self.printv2("\"variables\": ")
+          self.print("\"variables\": ")
           self.array(vars, v => self.printVariable(v))
-          printlnv2("")
+          println("")
 
           self.indentDec()
-          self.printv2("}")
+          self.print("}")
         })
-        printlnv2(",")
+        println(",")
 
-        self.printv2("\"block\": ")
+        self.print("\"block\": ")
         self.array(block, n => self.printNode(n))
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.For(iterator, itemBindingPattern, indexBinding, block) => {
-        self.printlnv2("\"kind\": \"for\",")
+        self.println("\"kind\": \"for\",")
 
-        self.printv2("\"iterator\": ")
+        self.print("\"iterator\": ")
         self.printNode(iterator)
-        printlnv2(",")
+        println(",")
 
-        self.printlnv2("\"itemBindingPattern\": {")
+        self.println("\"itemBindingPattern\": {")
         self.indentInc()
-        self.printv2("\"bindingPattern\": ")
+        self.print("\"bindingPattern\": ")
         printBindingPatternAsJson(itemBindingPattern[0], 0, self.indentLevel)
-        printlnv2(",")
-        self.printv2("\"variables\": ")
+        println(",")
+        self.print("\"variables\": ")
         self.array(itemBindingPattern[1], v => self.printVariable(v))
-        printlnv2("")
+        println("")
         self.indentDec()
-        self.printlnv2("},")
+        self.println("},")
 
-        self.printv2("\"indexBinding\": ")
+        self.print("\"indexBinding\": ")
         self.opt(indexBinding, v => self.printVariable(v))
-        printlnv2(",")
+        println(",")
 
-        self.printv2("\"block\": ")
+        self.print("\"block\": ")
         self.array(block, n => self.printNode(n))
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.BindingDeclaration(node) => {
-        self.printlnv2("\"kind\": \"bindingDeclaration\",")
+        self.println("\"kind\": \"bindingDeclaration\",")
 
-        self.printv2("\"pattern\": ")
+        self.print("\"pattern\": ")
         printBindingPatternAsJson(node.bindingPattern, 0, self.indentLevel)
-        printlnv2(",")
+        println(",")
 
-        self.printv2("\"variables\": ")
+        self.print("\"variables\": ")
         self.array(node.variables, v => self.printVariable(v))
-        printlnv2(",")
+        println(",")
 
-        self.printv2("\"expr\": ")
+        self.print("\"expr\": ")
         self.opt(node.expr, n => self.printNode(n))
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.FunctionDeclaration(fn) => {
-        self.printlnv2("\"kind\": \"functionDeclaration\",")
-        self.printv2("\"function\": ")
+        self.println("\"kind\": \"functionDeclaration\",")
+        self.print("\"function\": ")
         self.printFunc(fn)
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.TypeDeclaration(struct) => {
-        self.printlnv2("\"kind\": \"typeDeclaration\",")
-        self.printv2("\"struct\": ")
+        self.println("\"kind\": \"typeDeclaration\",")
+        self.print("\"struct\": ")
         self.printStruct(struct: struct, abridged: false)
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.EnumDeclaration(enum_) => {
-        self.printlnv2("\"kind\": \"enumDeclaration\",")
-        self.printv2("\"enum\": ")
+        self.println("\"kind\": \"enumDeclaration\",")
+        self.print("\"enum\": ")
         self.printEnum(enum_: enum_, abridged: false)
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.Break => {
-        self.printlnv2("\"kind\": \"break\"")
+        self.println("\"kind\": \"break\"")
       }
       TypedAstNodeKind.Continue => {
-        self.printlnv2("\"kind\": \"continue\"")
+        self.println("\"kind\": \"continue\"")
       }
       TypedAstNodeKind.Return(expr) => {
-        self.printlnv2("\"kind\": \"return\",")
-        self.printv2("\"expr\": ")
+        self.println("\"kind\": \"return\",")
+        self.print("\"expr\": ")
         self.opt(expr, n => self.printNode(n))
-        printlnv2("")
+        println("")
       }
       TypedAstNodeKind.Placeholder => {
         if self.allowPlaceholderNodes {
-          self.printlnv2("\"kind\": \"placeholder\"")
+          self.println("\"kind\": \"placeholder\"")
         } else {
-          self.printlnv2("ERROR: There should never be a Placeholder node emitted")
+          self.println("ERROR: There should never be a Placeholder node emitted")
         }
       }
     }
 
     self.indentDec()
-    self.printv2("}")
+    self.print("}")
   }
 
   func printVariable(self, variable: Variable) {
-    printlnv2("{")
+    println("{")
     self.indentInc()
 
-    self.printv2("\"label\": ")
+    self.print("\"label\": ")
     printLabelAsJson(variable.label)
-    printlnv2(",")
+    println(",")
 
-    self.printlnv2("\"mutable\": ${variable.mutable},")
+    self.println("\"mutable\": ${variable.mutable},")
 
     if variable.isCaptured {
-      self.printlnv2("\"isCaptured\": true,")
+      self.println("\"isCaptured\": true,")
     }
 
-    self.printv2("\"type\": ")
+    self.print("\"type\": ")
     self.printType(variable.ty)
-    printlnv2("")
+    println("")
 
     self.indentDec()
-    self.printv2("}")
+    self.print("}")
   }
 
   func printFunc(self, function: Function) {
-    printlnv2("{")
+    println("{")
     self.indentInc()
 
-    self.printv2("\"label\": ")
+    self.print("\"label\": ")
     printLabelAsJson(function.label)
-    printlnv2(",")
+    println(",")
 
-    self.printv2("\"scope\": ")
+    self.print("\"scope\": ")
     self.printScope(function.scope)
-    printlnv2(",")
+    println(",")
 
     if function.isGenerated {
-      self.printlnv2("\"isGenerated\": ${function.isGenerated},")
+      self.println("\"isGenerated\": ${function.isGenerated},")
     }
 
-    self.printv2("\"kind\": ")
+    self.print("\"kind\": ")
     match function.kind {
-      FunctionKind.Standalone => printv2("\"FunctionKind.Standalone\"")
+      FunctionKind.Standalone => print("\"FunctionKind.Standalone\"")
       FunctionKind.InstanceMethod(_, isPublic) => {
-        printv2("\"FunctionKind.InstanceMethod\"")
-        printlnv2(",")
-        self.printv2("\"isPublic\": $isPublic")
+        print("\"FunctionKind.InstanceMethod\"")
+        println(",")
+        self.print("\"isPublic\": $isPublic")
       }
       FunctionKind.StaticMethod(_, isPublic) => {
-        printv2("\"FunctionKind.StaticMethod\"")
-        printlnv2(",")
-        self.printv2("\"isPublic\": $isPublic")
+        print("\"FunctionKind.StaticMethod\"")
+        println(",")
+        self.print("\"isPublic\": $isPublic")
       }
     }
-    printlnv2(",")
+    println(",")
 
-    self.printv2("\"typeParameters\": ")
+    self.print("\"typeParameters\": ")
     self.array(function.typeParams, typeParam => {
-      printlnv2("{")
+      println("{")
       self.indentInc()
 
-      self.printv2("\"label\": ")
+      self.print("\"label\": ")
       printLabelAsJson(typeParam[1])
-      printlnv2(",")
+      println(",")
 
-      self.printv2("\"type\": ")
+      self.print("\"type\": ")
       self.printType(typeParam[0])
-      printlnv2("")
+      println("")
 
       self.indentDec()
-      self.printv2("}")
+      self.print("}")
     })
-    printlnv2(",")
+    println(",")
 
-    self.printv2("\"parameters\": ")
+    self.print("\"parameters\": ")
     self.array(function.params, param => {
-      printlnv2("{")
+      println("{")
       self.indentInc()
 
-      self.printv2("\"label\": ")
+      self.print("\"label\": ")
       printLabelAsJson(param.label)
-      printlnv2(",")
+      println(",")
 
-      self.printv2("\"type\": ")
+      self.print("\"type\": ")
       self.printType(param.ty)
-      printlnv2(",")
+      println(",")
 
-      self.printv2("\"defaultValue\": ")
+      self.print("\"defaultValue\": ")
       self.opt(param.defaultValue, v => self.printNode(v))
-      printlnv2(",")
+      println(",")
 
-      self.printlnv2("\"isVariadic\": ${param.isVariadic}")
+      self.println("\"isVariadic\": ${param.isVariadic}")
 
       self.indentDec()
-      self.printv2("}")
+      self.print("}")
     })
-    printlnv2(",")
+    println(",")
 
-    self.printv2("\"returnType\": ")
+    self.print("\"returnType\": ")
     self.printType(function.returnType)
-    printlnv2(",")
+    println(",")
 
     if !function.captures.isEmpty() {
-      self.printv2("\"captures\": ")
+      self.print("\"captures\": ")
       self.array(function.captures, v => {
         self.printVariable(v)
       })
-      printlnv2(",")
+      println(",")
     }
 
     if !function.capturedClosures.isEmpty() {
-      self.printv2("\"capturedClosures\": ")
+      self.print("\"capturedClosures\": ")
       self.array(function.capturedClosures, fn => {
-        printv2("\"${fn.label.name}\"")
+        print("\"${fn.label.name}\"")
       })
-      printlnv2(",")
+      println(",")
     }
 
-    self.printv2("\"body\": ")
+    self.print("\"body\": ")
     self.array(function.body, n => self.printNode(n))
-    printlnv2("")
+    println("")
 
     self.indentDec()
-    self.printv2("}")
+    self.print("}")
   }
 
   func printScope(self, scope: Scope) {
-    printlnv2("{")
+    println("{")
     self.indentInc()
 
-    self.printlnv2("\"name\": \"${scope.name}\",")
+    self.println("\"name\": \"${scope.name}\",")
 
-    self.printv2("\"variables\": ")
+    self.print("\"variables\": ")
     self.array(scope.variables, v => self.printVariable(v))
-    printlnv2(",")
+    println(",")
 
-    self.printv2("\"functions\": ")
+    self.print("\"functions\": ")
     self.array(scope.functions, f => self.printFunc(f))
-    printlnv2(",")
+    println(",")
 
-    self.printv2("\"types\": ")
+    self.print("\"types\": ")
     self.array(scope.types, t => self.printType(t))
-    printlnv2("")
+    println("")
 
     self.indentDec()
-    self.printv2("}")
+    self.print("}")
   }
 
   func printTypedIndexingNode(self, node: TypedIndexingNode) {
-    printlnv2("{")
+    println("{")
     self.indentInc()
 
     match node {
       TypedIndexingNode.ArrayLike(expr, indexingMode) => {
-        self.printlnv2("\"kind\": \"arraylike\",")
-        self.printv2("\"expr\": ")
+        self.println("\"kind\": \"arraylike\",")
+        self.print("\"expr\": ")
         self.printNode(expr)
-        printlnv2(",")
+        println(",")
 
         match indexingMode {
           IndexingMode.Single(idxNode) => {
-            self.printv2("\"index\": ")
+            self.print("\"index\": ")
             self.printNode(idxNode)
-            printlnv2("")
+            println("")
           }
           IndexingMode.Range(startNode, endNode) => {
-            self.printv2("\"startIndex\": ")
-            if startNode |n| self.printNode(n) else printv2("null")
-            printlnv2(",")
-            self.printv2("\"endIndex\": ")
-            if endNode |n| self.printNode(n) else printv2("null")
-            printlnv2("")
+            self.print("\"startIndex\": ")
+            if startNode |n| self.printNode(n) else print("null")
+            println(",")
+            self.print("\"endIndex\": ")
+            if endNode |n| self.printNode(n) else print("null")
+            println("")
           }
         }
       }
       TypedIndexingNode.Map(expr, idx) => {
-        self.printlnv2("\"kind\": \"map\",")
-        self.printv2("\"expr\": ")
+        self.println("\"kind\": \"map\",")
+        self.print("\"expr\": ")
         self.printNode(expr)
-        printlnv2(",")
-        self.printv2("\"index\": ")
+        println(",")
+        self.print("\"index\": ")
         self.printNode(idx)
-        printlnv2("")
+        println("")
       }
       TypedIndexingNode.Tuple(expr, idx) => {
-        self.printlnv2("\"kind\": \"tuple\",")
-        self.printlnv2("\"index\": $idx,")
-        self.printv2("\"expr\": ")
+        self.println("\"kind\": \"tuple\",")
+        self.println("\"index\": $idx,")
+        self.print("\"expr\": ")
         self.printNode(expr)
-        printlnv2("")
+        println("")
       }
     }
 
     self.indentDec()
-    self.printv2("}")
+    self.print("}")
   }
 
-  func indent(self) = printv2("  ".repeat(self.indentLevel))
+  func indent(self) = print("  ".repeat(self.indentLevel))
 
   func indentInc(self) { self.indentLevel += 1 }
 
   func indentDec(self) { self.indentLevel -= 1 }
 
-  func printv2(self, str: String) {
+  func print(self, str: String) {
     self.indent()
-    printv2(str)
+    print(str)
   }
 
-  func printlnv2(self, str: String) {
+  func println(self, str: String) {
     self.indent()
-    printlnv2(str)
+    println(str)
   }
 
   func array<T>(self, arr: T[], fn: (T) => Unit) {
     if arr.isEmpty() {
-      printv2("[]")
+      print("[]")
     } else {
-      printlnv2("[")
+      println("[")
       self.indentInc()
 
       for item, idx in arr {
@@ -1053,11 +1053,11 @@ pub type Jsonifier {
         fn(item)
 
         val comma = if idx != arr.length - 1 "," else ""
-        printlnv2(comma)
+        println(comma)
       }
 
       self.indentDec()
-      self.printv2("]")
+      self.print("]")
     }
   }
 
@@ -1065,7 +1065,7 @@ pub type Jsonifier {
     if v |v| {
       fn(v)
     } else {
-      printv2("null")
+      print("null")
     }
   }
 }

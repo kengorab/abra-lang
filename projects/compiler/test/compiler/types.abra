@@ -7,29 +7,29 @@ val p1 = Person(name: "Ken", age: 32)
 
 // Test field accesses
 /// Expect: Ken
-printlnv2(p1.name)
+println(p1.name)
 /// Expect: 32
-printlnv2(p1.age)
+println(p1.age)
 
 // Test default toString method
 /// Expect: Person(name: "Ken", age: 32)
-printlnv2(p1)
+println(p1)
 /// Expect: Person(name: "Ken", age: 32)
-printlnv2(p1.toString())
+println(p1.toString())
 
 // Test default hash method
 /// Expect: true
-printlnv2(p1.hash() == Person(name: "Ken", age: 32).hash())
+println(p1.hash() == Person(name: "Ken", age: 32).hash())
 /// Expect: false
-printlnv2(p1.hash() == Person(name: "Ken", age: 33).hash())
+println(p1.hash() == Person(name: "Ken", age: 33).hash())
 
 // Test default eq method
 /// Expect: true
-printlnv2(p1 == Person(name: "Ken", age: 32))
+println(p1 == Person(name: "Ken", age: 32))
 /// Expect: false
-printlnv2(p1 == Person(name: "Ben", age: 32))
+println(p1 == Person(name: "Ben", age: 32))
 /// Expect: false
-printlnv2(p1 == Person(name: "Ken", age: 33))
+println(p1 == Person(name: "Ken", age: 33))
 
 type Person2 {
   name: String
@@ -38,7 +38,7 @@ type Person2 {
   func toString(self): String = "custom Person#toString method"
   func hash(self): Int = 0
   func eq(self, other: Person2): Bool {
-    printlnv2("[Person2#eq]  here")
+    println("[Person2#eq]  here")
     false
   }
 }
@@ -47,15 +47,15 @@ val p2 = Person2(name: "Ken", age: 32)
 
 // Test custom toString method
 /// Expect: custom Person#toString method
-printlnv2(p2)
+println(p2)
 /// Expect: custom Person#toString method
-printlnv2(p2.toString())
+println(p2.toString())
 /// Expect: 0
-printlnv2(p2.hash())
+println(p2.hash())
 
 /// Expect: [Person2#eq]  here
 /// Expect: false
-printlnv2(p2 == Person2(name: "Ken", age: 32))
+println(p2 == Person2(name: "Ken", age: 32))
 
 // Fields with default values
 type Foo {
@@ -66,9 +66,9 @@ type Foo {
 
 val f = Foo()
 /// Expect: Foo(a: 12, b: "", c: [1, 2, 3])
-printlnv2(f)
+println(f)
 /// Expect: true
-printlnv2(f.hash() == Foo().hash())
+println(f.hash() == Foo().hash())
 
 // Methods that capture variables
 var capturedInt = 11
@@ -82,30 +82,30 @@ type FooWithCaptures {
 
 val fooWithCaptures = FooWithCaptures(i: 12)
 /// Expect: 23
-printlnv2(fooWithCaptures.foo())
+println(fooWithCaptures.foo())
 capturedInt = 17
 /// Expect: 29
-printlnv2(fooWithCaptures.foo())
+println(fooWithCaptures.foo())
 
 capturedInt = 17
 /// Expect: 29
-printlnv2(fooWithCaptures.foo2())
+println(fooWithCaptures.foo2())
 capturedInt = 17
 /// Expect: 15
-printlnv2(fooWithCaptures.foo2(3))
+println(fooWithCaptures.foo2(3))
 /// Expect: 17
-printlnv2(FooWithCaptures.fooStatic())
+println(FooWithCaptures.fooStatic())
 
 val foo1Ref1 = fooWithCaptures.foo
 func wrapper1() {
   val foo1Ref2 = fooWithCaptures.foo
 
   /// Expect: 29
-  printlnv2(fooWithCaptures.foo())
+  println(fooWithCaptures.foo())
   /// Expect: 29
-  printlnv2(foo1Ref1())
+  println(foo1Ref1())
   /// Expect: 29
-  printlnv2(foo1Ref2())
+  println(foo1Ref2())
 }
 wrapper1()
 
@@ -113,17 +113,17 @@ capturedInt = 11
 func wrapper() {
   val f = FooWithCaptures(i: 12)
   /// Expect: 23
-  printlnv2(f.foo())
+  println(f.foo())
   /// Expect: 11
-  printlnv2(FooWithCaptures.fooStatic())
+  println(FooWithCaptures.fooStatic())
 }
 wrapper()
 
 // Test passing function/closure values as parameters
 // This is similar to the suite of tests in `functions.abra`, but for references to methods instead
-func callFn(fn: (Int) => Int) = printlnv2(fn(16))
-func callFn2(fn: (Int, Int, Int) => Int) = printlnv2(fn(16, 17, 18))
-func callFn3(fn: (Int, Int, Int, Int) => Int) = printlnv2(fn(16, 17, 18, 19))
+func callFn(fn: (Int) => Int) = println(fn(16))
+func callFn2(fn: (Int, Int, Int) => Int) = println(fn(16, 17, 18))
+func callFn3(fn: (Int, Int, Int, Int) => Int) = println(fn(16, 17, 18, 19))
 
 val xyz = "xyz"
 type Foo2 {

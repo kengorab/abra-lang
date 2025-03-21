@@ -4,12 +4,12 @@ import "process" as process
 val args = process.args()
 
 /// Expect: [-f, bar, --baz, qux]
-printlnv2(args[1:])
+println(args[1:])
 
 val bogusEnvVar = process.getEnvVar("BOGUS")
 /// Expect: Option.None
-printlnv2(bogusEnvVar)
+println(bogusEnvVar)
 
 val fooEnvVar = process.getEnvVar("FOO")
 /// Expect: Option.Some(value: "bar")
-printlnv2(fooEnvVar)
+println(fooEnvVar)

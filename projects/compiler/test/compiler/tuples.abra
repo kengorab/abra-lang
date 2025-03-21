@@ -1,45 +1,45 @@
 // Instantiation
 val point = (0.5, 1.5, -0.75)
 /// Expect: (0.5, 1.5, -0.75)
-printlnv2(point)
+println(point)
 
 val y = (1, "two", ["three"])
 /// Expect: (1, "two", [three])
-printlnv2(y)
+println(y)
 
 // Indexing
 val quad = (1, "two", ["three"], (2, 3))
 val two = quad[1]
 /// Expect: two
-printlnv2(two)
+println(two)
 
 /// Expect: 2
-printlnv2(quad[3][0])
+println(quad[3][0])
 
 // /// Expect: true
-// printlnv2(quad.hash() == (1, "two", ["three"], (2, 3)).hash())
+// println(quad.hash() == (1, "two", ["three"], (2, 3)).hash())
 
 // == operator
 (() => {
   val t1 = (1, "abc", [true, false])
 
   /// Expect: true
-  printlnv2(t1 == (1, "abc", [true, false]))
+  println(t1 == (1, "abc", [true, false]))
   /// Expect: true
-  printlnv2((1, "two", [3]) == (1, "tw" + "o", [2 + 1]))
+  println((1, "two", [3]) == (1, "tw" + "o", [2 + 1]))
 
 //   /// Expect: false
-//   printlnv2(t1 == ["a", "b"])
+//   println(t1 == ["a", "b"])
 //   /// Expect: false
-//   printlnv2(t1 == "ab")
+//   println(t1 == "ab")
 //   /// Expect: false
-//   printlnv2(t1 == 123)
+//   println(t1 == 123)
 //   /// Expect: false
-//   printlnv2(t1 == 12.3)
+//   println(t1 == 12.3)
 //   /// Expect: false
-//   printlnv2(t1 == [1, 2, 3])
+//   println(t1 == [1, 2, 3])
 //   /// Expect: false
-//   printlnv2(t1 == #{1, 2, 3})
+//   println(t1 == #{1, 2, 3})
 //   /// Expect: false
-//   printlnv2(t1 == { (1): "a", (2): "b" })
+//   println(t1 == { (1): "a", (2): "b" })
 })()

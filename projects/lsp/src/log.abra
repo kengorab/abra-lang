@@ -7,7 +7,7 @@ val logFilePath = "$cwd/log.txt"
 pub val log = match fs.createFile(logFilePath, fs.AccessMode.WriteOnly) {
   Ok(v) => v
   Err(e) => {
-    printlnv2(e)
+    println(e)
     process.exit(1)
   }
 }

@@ -6,6 +6,6 @@ import "process" as process
 val uname = process.uname()
 
 /// Expect: Darwin
-printlnv2(uname.sysname)
+println(uname.sysname)
 /// Expect: arm64
-printlnv2(uname.machine)
+println(uname.machine)

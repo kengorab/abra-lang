@@ -1,130 +1,130 @@
 /// Expect: 24
-printlnv2(24)
+println(24)
 
 // Unary operations
 /// Expect: -1
-printlnv2(-1)
+println(-1)
 /// Expect: 1
-printlnv2(--1)
+println(--1)
 
 // Binary operations
 /// Expect: 32
-printlnv2(17 + 15)
+println(17 + 15)
 /// Expect: 32.1
-printlnv2(17 + 15.1)
+println(17 + 15.1)
 
 /// Expect: 2
-printlnv2(17 - 15)
+println(17 - 15)
 /// Expect: 1.9
-printlnv2(17 - 15.1)
+println(17 - 15.1)
 
 /// Expect: 2550
-printlnv2(17 * 150)
+println(17 * 150)
 /// Expect: 2551.7
-printlnv2(17 * 150.1)
+println(17 * 150.1)
 
 /// Expect: 1.13333
-printlnv2(17 / 15)
+println(17 / 15)
 /// Expect: 1.12583
-printlnv2(17 / 15.1)
+println(17 / 15.1)
 
 /// Expect: 2
-printlnv2(7 % 5)
+println(7 % 5)
 /// Expect: 1.8
-printlnv2(7 % 5.2)
+println(7 % 5.2)
 
 /// Expect: 32
-printlnv2(2 ** 5)
+println(2 ** 5)
 /// Expect: 0.03125
-printlnv2(2 ** -5)
+println(2 ** -5)
 /// Expect: -32
-printlnv2(-2 ** 5)
+println(-2 ** 5)
 /// Expect: -0.03125
-printlnv2(-2 ** -5)
+println(-2 ** -5)
 
 /// Expect: true
-printlnv2(1 << 3 != 17)
+println(1 << 3 != 17)
 /// Expect: true
-printlnv2(0x00ff << 8 == 0xff00)
+println(0x00ff << 8 == 0xff00)
 /// Expect: true
-printlnv2(0xff00 >> 8 == 0x00ff)
+println(0xff00 >> 8 == 0x00ff)
 
 /// Expect: 1
-printlnv2(0xff && 1)
+println(0xff && 1)
 /// Expect: 255
-printlnv2(0xfe || 1)
+println(0xfe || 1)
 /// Expect: 255
-printlnv2(0b01010101 ^ 0b10101010)
+println(0b01010101 ^ 0b10101010)
 
 /// Expect: true
-printlnv2(17 == (15 + 2))
+println(17 == (15 + 2))
 /// Expect: false
-printlnv2(17 == 15)
+println(17 == 15)
 // /// Expect: true
-// printlnv2(17 == (15 + 2.0))
+// println(17 == (15 + 2.0))
 // /// Expect: false
-// printlnv2(17 == 15.1)
+// println(17 == 15.1)
 
 /// Expect: false
-printlnv2(17 != (15 + 2))
+println(17 != (15 + 2))
 /// Expect: true
-printlnv2(17 != 15)
+println(17 != 15)
 // /// Expect: false
-// printlnv2(17 != (15 + 2.0))
+// println(17 != (15 + 2.0))
 // /// Expect: true
-// printlnv2(17 != 15.1)
+// println(17 != 15.1)
 
 /// Expect: true
-printlnv2(17 < 18)
+println(17 < 18)
 /// Expect: false
-printlnv2(17 < 15)
+println(17 < 15)
 /// Expect: true
-printlnv2(17 < 18.0)
+println(17 < 18.0)
 /// Expect: false
-printlnv2(17 < 15.1)
+println(17 < 15.1)
 
 /// Expect: false
-printlnv2(17 > 18)
+println(17 > 18)
 /// Expect: true
-printlnv2(17 > 15)
+println(17 > 15)
 /// Expect: false
-printlnv2(17 > 18.0)
+println(17 > 18.0)
 /// Expect: true
-printlnv2(17 > 15.1)
+println(17 > 15.1)
 
 /// Expect: true
-printlnv2(17 <= 18)
+println(17 <= 18)
 /// Expect: false
-printlnv2(17 <= 15)
+println(17 <= 15)
 /// Expect: true
-printlnv2(17 <= 18.0)
+println(17 <= 18.0)
 /// Expect: false
-printlnv2(17 <= 15.1)
+println(17 <= 15.1)
 
 /// Expect: false
-printlnv2(17 >= 18)
+println(17 >= 18)
 /// Expect: true
-printlnv2(17 >= 15)
+println(17 >= 15)
 /// Expect: false
-printlnv2(17 >= 18.0)
+println(17 >= 18.0)
 /// Expect: true
-printlnv2(17 >= 15.1)
+println(17 >= 15.1)
 
 // Int#unsignedToString
 (() => {
   val i1 = 118
   /// Expect: 118
-  printlnv2(i1.toString())
+  println(i1.toString())
   /// Expect: 118
-  printlnv2(i1.unsignedToString())
+  println(i1.unsignedToString())
 
   val i2 = (1 << 63) || (1 << 31)
   /// Expect: -9223372034707292160
-  printlnv2(i2.toString())
+  println(i2.toString())
   /// Expect: 9223372039002259456
-  printlnv2(i2.unsignedToString())
+  println(i2.unsignedToString())
 
 //   val i3 = 0b1000000000000000000000000000000010000000000000000000000000000000
 //   /// Expect: -9223372034707292160 9223372039002259456
-//   printlnv2(i3.toString(), i3.unsignedToString())
+//   println(i3.toString(), i3.unsignedToString())
 })()

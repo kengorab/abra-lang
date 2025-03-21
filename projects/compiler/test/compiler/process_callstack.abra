@@ -1,18 +1,18 @@
 import "process" as process
 
 func foo() {
-  printv2("hello ")
+  print("hello ")
   bar()
 }
 
 func bar() {
-  printv2("world")
+  print("world")
   baz()
 }
 
 func baz() {
-  printlnv2("!")
-  printlnv2(process.getStackTrace())
+  println("!")
+  println(process.getStackTrace())
 }
 
 val arr = [1].map((i, _) => {
@@ -35,7 +35,7 @@ type OneTwoThreeIterator {
   func next(self): Int? {
     val v = self._count
     if v > 3 {
-      printlnv2(process.getStackTrace())
+      println(process.getStackTrace())
       None
     } else {
       self._count += 1
@@ -46,7 +46,7 @@ type OneTwoThreeIterator {
 
 val iter = OneTwoThreeIterator()
 for i in iter {
-  printlnv2(i)
+  println(i)
 }
 
 /// Expect: 1
@@ -57,7 +57,7 @@ for i in iter {
 /// Expect:   at OneTwoThreeIterator.next (%TEST_DIR%/compiler/process_callstack.abra:48)
 
 func returnOneButAlsoPrintStackTraceForSomeReason(): Int {
-  printlnv2(process.getStackTrace())
+  println(process.getStackTrace())
   1
 }
 

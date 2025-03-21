@@ -3,35 +3,35 @@
 //   val arr = Array<Int>(length: 0, _buffer: Pointer.malloc<Int>(1), _capacity: 1)
 //   arr.push(12)
 //   /// Expect: [12]
-//   printlnv2(arr)
+//   println(arr)
 // })()
 
 /// Expect: 1
-printlnv2([1].length)
+println([1].length)
 /// Expect: 2
-printlnv2([[1, 2], [3, 4]].length)
+println([[1, 2], [3, 4]].length)
 
 // Test array literal construction
 (() => {
   val emptyArr: Int[] = []
   /// Expect: []
-  printlnv2(emptyArr)
+  println(emptyArr)
 
   val intArr = [1, 2, 3, 4]
   /// Expect: [1, 2, 3, 4]
-  printlnv2(intArr)
+  println(intArr)
 
   val floatArr = [0.12, 3.45, 6.0]
   /// Expect: [0.12, 3.45, 6]
-  printlnv2(floatArr.toString())
+  println(floatArr.toString())
 
   val stringArr = ["ab", "cd", "ef"]
   /// Expect: [ab, cd, ef]
-  printlnv2(stringArr)
+  println(stringArr)
 
   val nestedArr = [[1, 2], [3, 4], [5, 6]]
   /// Expect: [[1, 2], [3, 4], [5, 6]]
-  printlnv2(nestedArr)
+  println(nestedArr)
 })()
 
 // Test array indexing assignment
@@ -39,47 +39,47 @@ printlnv2([[1, 2], [3, 4]].length)
   val emptyArr: Int[] = []
   emptyArr[0] = 123
   /// Expect: []
-  printlnv2(emptyArr)
+  println(emptyArr)
 
   val intArr = [1, 2, 3, 4]
   /// Expect: [1, 2, 3, 4]
-  printlnv2(intArr)
+  println(intArr)
   intArr[0] = 0
   /// Expect: [0, 2, 3, 4]
-  printlnv2(intArr)
+  println(intArr)
   intArr[-1] = 0
   /// Expect: [0, 2, 3, 0]
-  printlnv2(intArr)
+  println(intArr)
 
   val floatArr = [0.12, 3.45, 6.0]
   /// Expect: [0.12, 3.45, 6]
-  printlnv2(floatArr.toString())
+  println(floatArr.toString())
   floatArr[0] = 0.001
   /// Expect: [0.001, 3.45, 6]
-  printlnv2(floatArr.toString())
+  println(floatArr.toString())
   floatArr[-1] = 0.001
   /// Expect: [0.001, 3.45, 0.001]
-  printlnv2(floatArr.toString())
+  println(floatArr.toString())
 
   val stringArr = ["ab", "cd", "ef"]
   /// Expect: [ab, cd, ef]
-  printlnv2(stringArr)
+  println(stringArr)
   stringArr[0] = "ba"
   /// Expect: [ba, cd, ef]
-  printlnv2(stringArr)
+  println(stringArr)
   stringArr[-1] = "fe"
   /// Expect: [ba, cd, fe]
-  printlnv2(stringArr)
+  println(stringArr)
 
   val nestedArr = [[1, 2], [3, 4], [5, 6]]
   /// Expect: [[1, 2], [3, 4], [5, 6]]
-  printlnv2(nestedArr)
+  println(nestedArr)
   nestedArr[0] = [0, 1]
   /// Expect: [[0, 1], [3, 4], [5, 6]]
-  printlnv2(nestedArr)
+  println(nestedArr)
   nestedArr[-1] = [3, 2]
   /// Expect: [[0, 1], [3, 4], [3, 2]]
-  printlnv2(nestedArr)
+  println(nestedArr)
 })()
 
 // == operator (also Array#eq)
@@ -87,34 +87,34 @@ printlnv2([[1, 2], [3, 4]].length)
   val arr = [1, 2]
 
   /// Expect: true
-  printlnv2(arr == [1, 2])
+  println(arr == [1, 2])
   /// Expect: true
-  printlnv2([[1, 2], [3, 4]] == [[1, 2], [3, 4]])
+  println([[1, 2], [3, 4]] == [[1, 2], [3, 4]])
   /// Expect: true
-  printlnv2([1.2, 3.4] != [5.6, 7.8])
+  println([1.2, 3.4] != [5.6, 7.8])
   /// Expect: true
-  printlnv2([true, false] != [false, true])
+  println([true, false] != [false, true])
 })()
 
 // Indexing (also Array#get(index: Int))
 (() => {
   val arr = [1, 2, 3]
   /// Expect: Option.None
-  printlnv2(arr[-4])
+  println(arr[-4])
   /// Expect: Option.Some(value: 1)
-  printlnv2(arr[-3])
+  println(arr[-3])
   /// Expect: Option.Some(value: 2)
-  printlnv2(arr[-2])
+  println(arr[-2])
   /// Expect: Option.Some(value: 3)
-  printlnv2(arr[-1])
+  println(arr[-1])
   /// Expect: Option.Some(value: 1)
-  printlnv2(arr[0])
+  println(arr[0])
   /// Expect: Option.Some(value: 2)
-  printlnv2(arr[1])
+  println(arr[1])
   /// Expect: Option.Some(value: 3)
-  printlnv2(arr[2])
+  println(arr[2])
   /// Expect: Option.None
-  printlnv2(arr[3])
+  println(arr[3])
 })()
 
 // Range indexing (also Array#getRange(startIndex: Int, endIndex: Int))
@@ -122,47 +122,47 @@ printlnv2([[1, 2], [3, 4]].length)
   val arr = [1, 2, 3, 4, 5]
 
   /// Expect: [2, 3, 4]
-  printlnv2(arr[1:4])
+  println(arr[1:4])
   /// Expect: [2, 3, 4]
-  printlnv2(arr[-4:4])
+  println(arr[-4:4])
   /// Expect: [2, 3, 4]
-  printlnv2(arr[1:-1])
+  println(arr[1:-1])
 
   /// Expect: []
-  printlnv2(arr[1:1])
+  println(arr[1:1])
 
   val x = 1
   val y = 4
 
   /// Expect: [2, 3, 4]
-  printlnv2(arr[x:y])
+  println(arr[x:y])
   /// Expect: [2, 3, 4]
-  printlnv2(arr[-y:y])
+  println(arr[-y:y])
 
   /// Expect: [2, 3, 4, 5]
-  printlnv2(arr[1:])
+  println(arr[1:])
   /// Expect: [1]
-  printlnv2(arr[:1])
+  println(arr[:1])
 
   /// Expect: [2, 3, 4, 5]
-  printlnv2(arr[x:])
+  println(arr[x:])
   /// Expect: [1]
-  printlnv2(arr[:x])
+  println(arr[:x])
 })()
 
 // Array.fill
 (() => {
   val zeroes = Array.fill(5, 0)
   /// Expect: [0, 0, 0, 0, 0]
-  printlnv2(zeroes)
+  println(zeroes)
 
   val arr = [1, 2]
   val refs = Array.fill(3, arr)
   /// Expect: [[1, 2], [1, 2], [1, 2]]
-  printlnv2(refs)
+  println(refs)
   arr.push(3)
   /// Expect: [[1, 2, 3], [1, 2, 3], [1, 2, 3]]
-  printlnv2(refs)
+  println(refs)
 })()
 
 // Array.fillBy
@@ -170,36 +170,36 @@ printlnv2([[1, 2], [3, 4]].length)
   val zero = 0
   val zeroes = Array.fillBy(5, () => zero)
   /// Expect: [0, 0, 0, 0, 0]
-  printlnv2(zeroes)
+  println(zeroes)
 
   val nums = Array.fillBy(5, i => i + 1)
   /// Expect: [1, 2, 3, 4, 5]
-  printlnv2(nums)
+  println(nums)
 
   val arr = [1, 2]
   val sharedRefs = Array.fillBy(3, () => arr)
   /// Expect: [[1, 2], [1, 2], [1, 2]]
-  printlnv2(sharedRefs)
+  println(sharedRefs)
   arr.push(3)
   /// Expect: [[1, 2, 3], [1, 2, 3], [1, 2, 3]]
-  printlnv2(sharedRefs)
+  println(sharedRefs)
 
   val uniqueRefs = Array.fillBy(3, () => [1, 2])
   /// Expect: [[1, 2], [1, 2], [1, 2]]
-  printlnv2(uniqueRefs)
+  println(uniqueRefs)
   if uniqueRefs[0] |arr| arr[1] = 0
   /// Expect: [[1, 0], [1, 2], [1, 2]]
-  printlnv2(uniqueRefs)
+  println(uniqueRefs)
 })()
 
 // Array#hash
 (() => {
   val arr = [1, 2, 3]
   /// Expect: true
-  printlnv2(arr.hash() == [1, 2, 3].hash())
+  println(arr.hash() == [1, 2, 3].hash())
 
   /// Expect: false
-  printlnv2(arr.hash() == [1, 2].hash())
+  println(arr.hash() == [1, 2].hash())
 })()
 
 // Array#iterator
@@ -207,15 +207,15 @@ printlnv2([[1, 2], [3, 4]].length)
   val a = [1.23, 4.56, 7.89]
   val iter = a.iterator()
   /// Expect: Option.Some(value: 1.23)
-  printlnv2(iter.next())
+  println(iter.next())
   /// Expect: Option.Some(value: 4.56)
-  printlnv2(iter.next())
+  println(iter.next())
   /// Expect: Option.Some(value: 7.89)
-  printlnv2(iter.next())
+  println(iter.next())
   /// Expect: Option.None
-  printlnv2(iter.next())
+  println(iter.next())
   /// Expect: Option.None
-  printlnv2(iter.next())
+  println(iter.next())
 })()
 
 // For-loops
@@ -223,59 +223,59 @@ printlnv2([[1, 2], [3, 4]].length)
 /// Expect: b
 /// Expect: c
 for ch in ["a", "b", "c"] {
-  printlnv2(ch)
+  println(ch)
 }
 
 // Array#push
 (() => {
   val intArr = [1, 2, 3]
   /// Expect: [1, 2, 3] 3 4
-  printlnv2("$intArr ${intArr.length} ${intArr.getCapacity()}")
+  println("$intArr ${intArr.length} ${intArr.getCapacity()}")
   // Pushing beyond the capacity should expand the array
   intArr.push(4)
   intArr.push(5)
   /// Expect: [1, 2, 3, 4, 5] 5 8
-  printlnv2("$intArr ${intArr.length} ${intArr.getCapacity()}")
+  println("$intArr ${intArr.length} ${intArr.getCapacity()}")
 
   // Popping element should leave _capacity
   intArr.pop()
   intArr.pop()
   /// Expect: [1, 2, 3] 3 8
-  printlnv2("$intArr ${intArr.length} ${intArr.getCapacity()}")
+  println("$intArr ${intArr.length} ${intArr.getCapacity()}")
 
   val strArr = ["a", "b", "c"]
   val arrArr = [strArr, strArr]
   /// Expect: [[a, b, c], [a, b, c]] 3 4
-  printlnv2("$arrArr ${strArr.length} ${strArr.getCapacity()}")
+  println("$arrArr ${strArr.length} ${strArr.getCapacity()}")
   // Pushing beyond the capacity should expand the array
   strArr.push("d")
   strArr.push("e")
   /// Expect: [[a, b, c, d, e], [a, b, c, d, e]] 5 8
-  printlnv2("$arrArr ${strArr.length} ${strArr.getCapacity()}")
+  println("$arrArr ${strArr.length} ${strArr.getCapacity()}")
 })()
 
 // Array#pop
 (() => {
   val arr = [1, 2, 3]
   /// Expect: Option.Some(value: 3)
-  printlnv2(arr.pop())
+  println(arr.pop())
   /// Expect: [1, 2]
-  printlnv2(arr)
+  println(arr)
 
   /// Expect: Option.Some(value: 2)
-  printlnv2(arr.pop())
+  println(arr.pop())
   /// Expect: [1]
-  printlnv2(arr)
+  println(arr)
 
   /// Expect: Option.Some(value: 1)
-  printlnv2(arr.pop())
+  println(arr.pop())
   /// Expect: []
-  printlnv2(arr)
+  println(arr)
 
   /// Expect: Option.None
-  printlnv2(arr.pop())
+  println(arr.pop())
   /// Expect: []
-  printlnv2(arr)
+  println(arr)
 })()
 
 // Array#concat
@@ -283,9 +283,9 @@ for ch in ["a", "b", "c"] {
   val arr1 = [1, 2, 3, 4]
   val arr2 = [5, 6, 7]
   /// Expect: [1, 2, 3, 4, 5, 6, 7]
-  printlnv2(arr1.concat(arr2))
+  println(arr1.concat(arr2))
   /// Expect: [1, 2, 3, 4] [5, 6, 7]
-  printlnv2("$arr1 $arr2") // verify originals unmodified
+  println("$arr1 $arr2") // verify originals unmodified
 })()
 
 // Array#map
@@ -296,16 +296,16 @@ func exclaim(i: Int, _: Int, x = "!"): String = i + x //"$i$x"
   val arr = [1, 2, 3, 4]
 
   /// Expect: [2, 3, 4, 5]
-  printlnv2(arr.map(addOne))
+  println(arr.map(addOne))
   /// Expect: [2, 3, 4, 5]
-  printlnv2(arr.map(i => i + 1))
+  println(arr.map(i => i + 1))
   // /// Expect: [2, 3, 4, 5]
-  // printlnv2(arr.map(i => i + one))
+  // println(arr.map(i => i + one))
 
   /// Expect: [1!, 2!, 3!, 4!]
-  printlnv2(arr.map(exclaim))
+  println(arr.map(exclaim))
   /// Expect: [1!, 2!, 3!, 4!]
-  printlnv2(arr.map((i, _, x = "!") => i + x))
+  println(arr.map((i, _, x = "!") => i + x))
 })()
 
 // Array#flatMap
@@ -313,7 +313,7 @@ func exclaim(i: Int, _: Int, x = "!"): String = i + x //"$i$x"
   val arr = [1, 2, 3, 4]
 
   /// Expect: [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
-  printlnv2(arr.flatMap(i => Array.fill(i, i)))
+  println(arr.flatMap(i => Array.fill(i, i)))
 })()
 
 // Array#filter
@@ -322,9 +322,9 @@ func isEven(i: Int): Bool = i % 2 == 0
   val arr = [1, 2, 3, 4]
 
   /// Expect: [2, 4]
-  printlnv2(arr.filter(isEven))
+  println(arr.filter(isEven))
   /// Expect: [2, 4]
-  printlnv2(arr.filter(x => x % 2 == 0))
+  println(arr.filter(x => x % 2 == 0))
 })()
 
 // Array#reduce
@@ -334,21 +334,21 @@ func doSum(acc: Int, i: Int): Int = acc + i
 
   // TODO: I shouldn't need r1/r2 below, but otherwise I get a typechecker error:
   //   Type mismatch for parameter 'initialValue'
-  //     |    printlnv2(arr.reduce(0, doSum))
+  //     |    println(arr.reduce(0, doSum))
   //                             ^
   //   Expected: Any
   //   but instead found: Int
 
   /// Expect: 10
   val r1 = arr.reduce(0, doSum)
-  printlnv2(r1)
+  println(r1)
   /// Expect: 10
   val r2 = arr.reduce(0, (acc, i) => acc + i)
-  printlnv2(r2)
+  println(r2)
 })()
 
 // Array#forEach
-func printItem(item: Int) = printlnv2(item)
+func printItem(item: Int) = println(item)
 (() => {
   val arr = [1, 2, 3, 4]
 
@@ -362,7 +362,7 @@ func printItem(item: Int) = printlnv2(item)
   /// Expect: 3
   /// Expect: 4
   arr.forEach(i => {
-    printlnv2(i)
+    println(i)
   })
 })()
 
@@ -370,107 +370,107 @@ func printItem(item: Int) = printlnv2(item)
 (() => {
   val arr = [123, 456, 789]
   /// Expect: 123|456|789
-  printlnv2(arr.join("|"))
+  println(arr.join("|"))
   /// Expect: 123456789
-  printlnv2(arr.join())
+  println(arr.join())
 
   /// Expect: 1
-  printlnv2([1].join(", "))
+  println([1].join(", "))
 })()
 
 // Array#contains
 (() => {
   val intArr = [123, 456, 789]
   /// Expect: true
-  printlnv2(intArr.contains(123))
+  println(intArr.contains(123))
   /// Expect: false
-  printlnv2(intArr.contains(10))
+  println(intArr.contains(10))
 
   val empty: Int[] = []
   /// Expect: false
-  printlnv2(empty.contains(123))
+  println(empty.contains(123))
 
   val strArr = ["hello", "world"]
   /// Expect: true
-  printlnv2(strArr.contains("hello"))
+  println(strArr.contains("hello"))
   /// Expect: false
-  printlnv2(strArr.contains("HELLO"))
+  println(strArr.contains("HELLO"))
 })()
 
 // Array#find
 (() => {
   val intArr = [123, 456, 789]
   /// Expect: Option.Some(value: 123)
-  printlnv2(intArr.find(i => i == 123))
+  println(intArr.find(i => i == 123))
   /// Expect: Option.None
-  printlnv2(intArr.find(i => i == 10))
+  println(intArr.find(i => i == 10))
 
   val empty: Int[] = []
   /// Expect: Option.None
-  printlnv2(empty.find(i => i == 123))
+  println(empty.find(i => i == 123))
 
   val strArr = ["hello", "world"]
   /// Expect: Option.Some(value: "hello")
-  printlnv2(strArr.find(s => s == "hello"))
+  println(strArr.find(s => s == "hello"))
   /// Expect: Option.None
-  printlnv2(strArr.find(s => s == "HELLO"))
+  println(strArr.find(s => s == "HELLO"))
 })()
 
 // Array#findIndex
 (() => {
   val intArr = [123, 456, 789]
   /// Expect: Option.Some(value: (123, 0))
-  printlnv2(intArr.findIndex(i => i == 123))
+  println(intArr.findIndex(i => i == 123))
   /// Expect: Option.None
-  printlnv2(intArr.findIndex(i => i == 10))
+  println(intArr.findIndex(i => i == 10))
 
   val empty: Int[] = []
   /// Expect: Option.None
-  printlnv2(empty.findIndex(i => i == 123))
+  println(empty.findIndex(i => i == 123))
 
   val strArr = ["hello", "world"]
   /// Expect: Option.Some(value: ("hello", 0))
-  printlnv2(strArr.findIndex(s => s == "hello"))
+  println(strArr.findIndex(s => s == "hello"))
   /// Expect: Option.None
-  printlnv2(strArr.findIndex(s => s == "HELLO"))
+  println(strArr.findIndex(s => s == "HELLO"))
 })()
 
 // Array#any
 (() => {
   val intArr = [123, 456, 789]
   /// Expect: true
-  printlnv2(intArr.any(i => i == 123))
+  println(intArr.any(i => i == 123))
   /// Expect: false
-  printlnv2(intArr.any(i => i == 10))
+  println(intArr.any(i => i == 10))
 
   val empty: Int[] = []
   /// Expect: false
-  printlnv2(empty.any(i => i == 123))
+  println(empty.any(i => i == 123))
 
   val strArr = ["hello", "world"]
   /// Expect: true
-  printlnv2(strArr.any(s => s == "hello"))
+  println(strArr.any(s => s == "hello"))
   /// Expect: false
-  printlnv2(strArr.any(s => s == "HELLO"))
+  println(strArr.any(s => s == "HELLO"))
 })()
 
 // Array#all
 (() => {
   val intArr = [123, 456, 789]
   /// Expect: true
-  printlnv2(intArr.all(i => i > 0))
+  println(intArr.all(i => i > 0))
   /// Expect: false
-  printlnv2(intArr.all(i => i == 10))
+  println(intArr.all(i => i == 10))
 
   val empty: Int[] = []
   /// Expect: true
-  printlnv2(empty.all(i => i == 123))
+  println(empty.all(i => i == 123))
 
   val strArr = ["hello", "world"]
   /// Expect: true
-  printlnv2(strArr.all(s => s.length > 0))
+  println(strArr.all(s => s.length > 0))
   /// Expect: false
-  printlnv2(strArr.all(s => s == "HELLO"))
+  println(strArr.all(s => s == "HELLO"))
 })()
 
 // Array#sortBy
@@ -478,38 +478,38 @@ func printItem(item: Int) = printlnv2(item)
   val strings = ["abc", "d", "efgh", "ij", "k", "lm", "nopqr", "stu", "v", "wxyz"]
   val sorted = strings.sortBy(s => s.length)
   /// Expect: [abc, d, efgh, ij, k, lm, nopqr, stu, v, wxyz]
-  printlnv2(strings) // original should be unmodified
+  println(strings) // original should be unmodified
   /// Expect: [d, k, v, ij, lm, stu, abc, efgh, wxyz, nopqr]
-  printlnv2(sorted)
+  println(sorted)
 
   val arrays = [[1, 2], [], [3, 4, 5], [6], [7, 8, 9, 10]]
   val sortedRev = arrays.sortBy(fn: a => a.length, reverse: true)
   /// Expect: [[1, 2], [], [3, 4, 5], [6], [7, 8, 9, 10]]
-  printlnv2(arrays) // original should be unmodified
+  println(arrays) // original should be unmodified
   /// Expect: [[7, 8, 9, 10], [3, 4, 5], [1, 2], [6], []]
-  printlnv2(sortedRev)
+  println(sortedRev)
 })()
 
 // Array#keyBy
 (() => {
   val empty: String[] = []
   /// Expect: {}
-  printlnv2(empty.keyBy(s => s.length))
+  println(empty.keyBy(s => s.length))
 
   val strArr = "The quick brown fox jumped over the lazy dog".split(" ")
   /// Expect: { 3: dog, 4: lazy, 5: brown, 6: jumped }
-  printlnv2(strArr.keyBy(s => s.length))
+  println(strArr.keyBy(s => s.length))
 })()
 
 // Array#indexBy
 (() => {
   val empty: String[] = []
   /// Expect: {}
-  printlnv2(empty.indexBy(s => s.length))
+  println(empty.indexBy(s => s.length))
 
   val strArr = "The quick brown fox jumped over the lazy dog".split(" ")
   /// Expect: { 3: [The, fox, the, dog], 4: [over, lazy], 5: [quick, brown], 6: [jumped] }
-  printlnv2(strArr.indexBy(s => s.length))
+  println(strArr.indexBy(s => s.length))
 })()
 
 // Array#asSet
@@ -517,9 +517,9 @@ func printItem(item: Int) = printlnv2(item)
   val empty: String[] = []
   val emptySet: Set<String> = #{}
   /// Expect: true
-  printlnv2(empty.asSet() == emptySet)
+  println(empty.asSet() == emptySet)
 
   val arr = [1, 2, 3, 4, 3, 2, 1]
   /// Expect: true
-  printlnv2(arr.asSet() == #{1, 2, 3, 4})
+  println(arr.asSet() == #{1, 2, 3, 4})
 })()

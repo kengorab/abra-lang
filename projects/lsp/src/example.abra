@@ -7,7 +7,7 @@ val cwd = fs.getCurrentWorkingDirectory()
 val file = match fs.readFile("$cwd/message.json") {
   Ok(v) => v
   Err(e) => {
-    printlnv2(e)
+    println(e)
     process.exit(1)
   }
 }
@@ -15,7 +15,7 @@ val file = match fs.readFile("$cwd/message.json") {
 val jsonValue = match json.JsonParser.parseString(file) {
   Ok(v) => v
   Err(e) => {
-    printlnv2(e)
+    println(e)
     process.exit(1)
   }
 }
@@ -23,12 +23,12 @@ val jsonValue = match json.JsonParser.parseString(file) {
 val message = match lsp.RequestMessage.fromJson(jsonValue) {
   Ok(v) => v
   Err(e) => {
-    printlnv2(e)
+    println(e)
     process.exit(1)
   }
 }
 
-printlnv2(message)
+println(message)
 
 val msg = lsp.ResponseMessage.Success(
   id: 0,
@@ -43,5 +43,5 @@ val msg = lsp.ResponseMessage.Success(
   ))
 )
 val msgJson = msg.toJson()
-printlnv2(msgJson)
-printlnv2(msgJson.encode())
+println(msgJson)
+println(msgJson.encode())

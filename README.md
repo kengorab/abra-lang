@@ -16,7 +16,7 @@ variable which points to the `~/.abra/std/` directory.
 You should then be able to run
 ```swift
 // example.abra
-printlnv2("Hello world")
+println("Hello world")
 ```
 ```sh
 $ abra example.abra
@@ -37,7 +37,7 @@ func fib(n: Int): Int {
   }
 }
 
-printlnv2(fib(10))
+println(fib(10))
 ```
 
 You can also see and play with more examples on the [Try It Out](https://abra.kengorab.dev/try) page of the language documentation site.

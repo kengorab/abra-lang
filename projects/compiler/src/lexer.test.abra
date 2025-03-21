@@ -10,17 +10,17 @@ import Token, Lexer from "./lexer"
 import printTokenAsJson from "./test_utils"
 
 pub func printTokensAsJson(tokens: Token[]) {
-  printlnv2("[")
+  println("[")
 
   val indent = "  "
 
   for token, idx in tokens {
     printTokenAsJson(token, 1, 1)
     val comma = if idx != tokens.length - 1 "," else ""
-    printlnv2(comma)
+    println(comma)
   }
 
-  printlnv2("]")
+  println("]")
 }
 
 if process.args()[1] |fileName| {
@@ -28,13 +28,13 @@ if process.args()[1] |fileName| {
     Ok(contents) => {
       match Lexer.tokenize(contents) {
         Ok(tokens) => printTokensAsJson(tokens)
-        Err(error) => printv2(error.getMessage(fileName, contents))
+        Err(error) => print(error.getMessage(fileName, contents))
       }
     }
     Err(e) => {
-      printlnv2("Could not read file: $e")
+      println("Could not read file: $e")
     }
   }
 } else {
-  printlnv2("Missing required argument <file-name>")
+  println("Missing required argument <file-name>")
 }

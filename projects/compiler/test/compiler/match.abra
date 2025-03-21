@@ -2,13 +2,13 @@
 (() => {
   /// Expect: here
   match "abc" {
-    _ => printlnv2("here")
+    _ => println("here")
   }
 
   // v2 syntax
   /// Expect: here
   match "abc" {
-    else => printlnv2("here")
+    else => println("here")
   }
 })()
 
@@ -20,9 +20,9 @@
   /// Expect: case 3: 567
   for i in [1, 2, 34, 567] {
     match i {
-      1 v => printlnv2("case 1: $v")
-      2 v => printlnv2("case 2: $v")
-      _ v => printlnv2("case 3: $v")
+      1 v => println("case 1: $v")
+      2 v => println("case 2: $v")
+      _ v => println("case 3: $v")
     }
   }
 
@@ -32,9 +32,9 @@
   /// Expect: case 3: 5.67
   for f in [1.1, 2.2, 3.4, 5.67] {
     match f {
-      1.1 v => printlnv2("case 1: $v")
-      2.2 v => printlnv2("case 2: $v")
-      _ v => printlnv2("case 3: $v")
+      1.1 v => println("case 1: $v")
+      2.2 v => println("case 2: $v")
+      _ v => println("case 3: $v")
     }
   }
 
@@ -42,8 +42,8 @@
   /// Expect: case 2: false
   for b in [true, false] {
     match b {
-      true v => printlnv2("case 1: $v")
-      false v => printlnv2("case 2: $v")
+      true v => println("case 1: $v")
+      false v => println("case 2: $v")
     }
   }
 
@@ -52,17 +52,17 @@
   /// Expect: case 5: bonjour
   for s in ["hello", "hi", "bonjour"] {
     match s {
-      "howdy" v => printlnv2("case 1: $v")
-      "hola" v => printlnv2("case 2: $v")
-      "hi" v => printlnv2("case 3: $v")
-      "hello" v => printlnv2("case 4: $v")
-      _ v => printlnv2("case 5: $v")
+      "howdy" v => println("case 1: $v")
+      "hola" v => println("case 2: $v")
+      "hi" v => println("case 3: $v")
+      "hello" v => println("case 4: $v")
+      _ v => println("case 5: $v")
     }
   }
 
   // TODO: remove this, lambda is unhappy to have a for-loop be the last statement for some reason
   /// Expect: done
-  printlnv2("done")
+  println("done")
 })()
 
 // Testing option type
@@ -71,105 +71,105 @@
 
   /// Expect: found a number
   match arr[1] {
-    None => printlnv2("nothing here")
-    else => printlnv2("found a number")
+    None => println("nothing here")
+    else => println("found a number")
   }
   /// Expect: nothing here
   match arr[14] {
-    None => printlnv2("nothing here")
-    else => printlnv2("found a number")
+    None => println("nothing here")
+    else => println("found a number")
   }
 
   // With case binding
 
   /// Expect: found a number: 2
   match arr[1] {
-    None v => printlnv2("nothing here: $v")
-    else v => printlnv2("found a number: $v")
+    None v => println("nothing here: $v")
+    else v => println("found a number: $v")
   }
   /// Expect: nothing here: Option.None
   match arr[14] {
-    None v => printlnv2("nothing here: $v")
-    else v => printlnv2("found a number: $v")
+    None v => println("nothing here: $v")
+    else v => println("found a number: $v")
   }
 
   // With case binding and _no_ `None` case
 
   /// Expect: value: Option.Some(value: 2)
   match arr[1] {
-    else v => printlnv2("value: $v")
+    else v => println("value: $v")
   }
   /// Expect: value: Option.None
   match arr[14] {
-    else v => printlnv2("value: $v")
+    else v => println("value: $v")
   }
 
   // With constant cases
 
   /// Expect: 18
   match arr[1] {
-    2 v => printlnv2(16 + v)
-    1 => printlnv2(15)
-    None => printlnv2(-4)
-    else => printlnv2(100)
+    2 v => println(16 + v)
+    1 => println(15)
+    None => println(-4)
+    else => println(100)
   }
   /// Expect: 18
   match arr[1] {
-    None => printlnv2(-4)
-    2 v => printlnv2(16 + v)
-    1 => printlnv2(15)
-    else => printlnv2(100)
+    None => println(-4)
+    2 v => println(16 + v)
+    1 => println(15)
+    else => println(100)
   }
   /// Expect: 18
   match arr[1] {
-    2 v => printlnv2(16 + v)
-    1 => printlnv2(15)
-    else => printlnv2(100)
+    2 v => println(16 + v)
+    1 => println(15)
+    else => println(100)
   }
   /// Expect: -4
   match arr[5] {
-    2 v => printlnv2(16 + v)
-    1 => printlnv2(15)
-    None => printlnv2(-4)
-    else => printlnv2(100)
+    2 v => println(16 + v)
+    1 => println(15)
+    None => println(-4)
+    else => println(100)
   }
   /// Expect: -4
   match arr[5] {
-    None => printlnv2(-4)
-    2 v => printlnv2(16 + v)
-    1 => printlnv2(15)
-    else => printlnv2(100)
+    None => println(-4)
+    2 v => println(16 + v)
+    1 => println(15)
+    else => println(100)
   }
   /// Expect: 100 Option.None
   match arr[5] {
-    2 v => printlnv2(16 + v)
-    1 => printlnv2(15)
-    else v => printlnv2("${100} $v")
+    2 v => println(16 + v)
+    1 => println(15)
+    else v => println("${100} $v")
   }
   /// Expect: 100 Option.Some(value: 4)
   match arr[3] {
-    2 v => printlnv2(16 + v)
-    1 => printlnv2(15)
-    else v => printlnv2("${100} $v")
+    2 v => println(16 + v)
+    1 => println(15)
+    else v => println("${100} $v")
   }
 
 //   // With type cases
 
 //   /// Expect: 2000
 //   match arr[1] {
-//     None => printlnv2(-4)
-//     Int v => printlnv2(v * 1000)
-//     2 v => printlnv2(16 + v)
-//     1 => printlnv2(15)
-//     _ => printlnv2(100)
+//     None => println(-4)
+//     Int v => println(v * 1000)
+//     2 v => println(16 + v)
+//     1 => println(15)
+//     _ => println(100)
 //   }
 //   /// Expect: 18
 //   match arr[1] {
-//     None => printlnv2(-4)
-//     2 v => printlnv2(16 + v)
-//     Int v => printlnv2(v * 1000)
-//     1 => printlnv2(15)
-//     _ => printlnv2(100)
+//     None => println(-4)
+//     2 v => println(16 + v)
+//     Int v => println(v * 1000)
+//     1 => println(15)
+//     _ => println(100)
 //   }
 })()
 
@@ -190,45 +190,45 @@ enum Color {
   /// Expect: rgb(1, 2, 3)
   for color in colors {
     match color {
-      Color.Red => printlnv2("red")
-      Color.Blue => printlnv2("blue")
-      Color.Green => printlnv2("green")
-      Color.RGB(r, g, b) => printlnv2("rgb($r, $g, $b)")
+      Color.Red => println("red")
+      Color.Blue => println("blue")
+      Color.Green => println("green")
+      Color.RGB(r, g, b) => println("rgb($r, $g, $b)")
     }
   }
 
   /// Expect: blue
   match colors[1] {
-    None => printlnv2("none")
-    Color.Red => printlnv2("red")
-    Color.Blue => printlnv2("blue")
-    Color.Green => printlnv2("green")
-    Color.RGB(r, g, b) => printlnv2("rgb($r, $g, $b)")
+    None => println("none")
+    Color.Red => println("red")
+    Color.Blue => println("blue")
+    Color.Green => println("green")
+    Color.RGB(r, g, b) => println("rgb($r, $g, $b)")
   }
   /// Expect: blue
   match colors[1] {
-    Color.Red => printlnv2("red")
-    Color.Blue => printlnv2("blue")
-    Color.Green => printlnv2("green")
-    Color.RGB(r, g, b) => printlnv2("rgb($r, $g, $b)")
-    None => printlnv2("none")
+    Color.Red => println("red")
+    Color.Blue => println("blue")
+    Color.Green => println("green")
+    Color.RGB(r, g, b) => println("rgb($r, $g, $b)")
+    None => println("none")
   }
 
   /// Expect: none
   match colors[5] {
-    None => printlnv2("none")
-    Color.Red => printlnv2("red")
-    Color.Blue => printlnv2("blue")
-    Color.Green => printlnv2("green")
-    Color.RGB(r, g, b) => printlnv2("rgb($r, $g, $b)")
+    None => println("none")
+    Color.Red => println("red")
+    Color.Blue => println("blue")
+    Color.Green => println("green")
+    Color.RGB(r, g, b) => println("rgb($r, $g, $b)")
   }
   /// Expect: none
   match colors[5] {
-    Color.Red => printlnv2("red")
-    Color.Blue => printlnv2("blue")
-    Color.Green => printlnv2("green")
-    Color.RGB(r, g, b) => printlnv2("rgb($r, $g, $b)")
-    None => printlnv2("none")
+    Color.Red => println("red")
+    Color.Blue => println("blue")
+    Color.Green => println("green")
+    Color.RGB(r, g, b) => println("rgb($r, $g, $b)")
+    None => println("none")
   }
 
 //   // Updating values of enum variant
@@ -241,7 +241,7 @@ enum Color {
 //     _ => {}
 //   }
 //   /// Expect: Color.RGB(r: 1, g: 2, b: 100)
-//   printlnv2(c)
+//   println(c)
 })()
 
 // Testing match as expression
@@ -252,14 +252,14 @@ enum Color {
     _ v => v * 100
   }
   /// Expect: 200
-  printlnv2(x)
+  println(x)
 
   val y = match arr[14] {
     None => -1
     _ v => v * 100
   }
   /// Expect: -1
-  printlnv2(y)
+  println(y)
 })()
 
 // Testing terminator in block
@@ -272,20 +272,20 @@ func matchExprCaseHasReturn(input: Int?): Int {
   x + 1
 }
 /// Expect: -1
-printlnv2(matchExprCaseHasReturn(None))
+println(matchExprCaseHasReturn(None))
 /// Expect: 401
-printlnv2(matchExprCaseHasReturn(Option.Some(value: 4)))
+println(matchExprCaseHasReturn(Option.Some(value: 4)))
 
 func matchStmtCaseHasReturn(input: Int?): Int {
   match input {
     None => return -1
-    else v => printlnv2(v * 100)
+    else v => println(v * 100)
   }
 
   1
 }
 /// Expect: -1
-printlnv2(matchStmtCaseHasReturn(None))
+println(matchStmtCaseHasReturn(None))
 /// Expect: 400
 /// Expect: 1
-printlnv2(matchStmtCaseHasReturn(Option.Some(value: 4)))
+println(matchStmtCaseHasReturn(Option.Some(value: 4)))

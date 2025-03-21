@@ -6,12 +6,12 @@ if process.args()[1] |fileName| {
   match fs.readFile(fileName) {
     Ok(contents) => {
       val tokens = Lexer.tokenize(contents)
-      printlnv2("tokens: $tokens")
+      println("tokens: $tokens")
     }
     Err(e) => {
-      printlnv2("Could not read file: $e")
+      println("Could not read file: $e")
     }
   }
 } else {
-  printlnv2("Missing required argument <file-name>")
+  println("Missing required argument <file-name>")
 }

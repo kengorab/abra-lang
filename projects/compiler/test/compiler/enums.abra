@@ -34,79 +34,79 @@ val cyan = Color.RGB2(g: 255, b: 255)
 val yellow = Color.RGB2(r: 255, g: 255)
 
 /// Expect: Color.RGB2(r: 0, g: 0, b: 0)
-printlnv2(black)
+println(black)
 /// Expect: Color.RGB2(r: 255, g: 255, b: 255)
-printlnv2(white)
+println(white)
 /// Expect: Color.RGB2(r: 255, g: 0, b: 0)
-printlnv2(red)
+println(red)
 /// Expect: Color.RGB2(r: 0, g: 255, b: 0)
-printlnv2(green)
+println(green)
 /// Expect: Color.RGB2(r: 0, g: 0, b: 255)
-printlnv2(blue)
+println(blue)
 /// Expect: Color.RGB2(r: 255, g: 0, b: 255)
-printlnv2(pink)
+println(pink)
 /// Expect: Color.RGB2(r: 0, g: 255, b: 255)
-printlnv2(cyan)
+println(cyan)
 /// Expect: Color.RGB2(r: 255, g: 255, b: 0)
-printlnv2(yellow)
+println(yellow)
 
 // Test default toString method
 /// Expect: Color.Red
-printlnv2(r)
+println(r)
 /// Expect: Color.Red
-printlnv2(Color.Red)
+println(Color.Red)
 /// Expect: Color.Green
-printlnv2(g)
+println(g)
 /// Expect: Color.Green
-printlnv2(Color.Green)
+println(Color.Green)
 /// Expect: Color.Blue
-printlnv2(b)
+println(b)
 /// Expect: Color.Blue
-printlnv2(Color.Blue)
+println(Color.Blue)
 /// Expect: Color.RGB(r: 170, g: 170, b: 170)
-printlnv2(gray)
+println(gray)
 /// Expect: Color.RGB(r: 170, g: 170, b: 170)
-printlnv2(Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa))
+println(Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa))
 
 // Test default hash method
 /// Expect: true
-printlnv2(r.hash() == Color.Red.hash())
+println(r.hash() == Color.Red.hash())
 /// Expect: true
-printlnv2(g.hash() == Color.Green.hash())
+println(g.hash() == Color.Green.hash())
 /// Expect: true
-printlnv2(b.hash() == Color.Blue.hash())
+println(b.hash() == Color.Blue.hash())
 /// Expect: true
-printlnv2(gray.hash() == Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa).hash())
+println(gray.hash() == Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa).hash())
 /// Expect: false
-printlnv2(r.hash() == Color.Blue.hash())
+println(r.hash() == Color.Blue.hash())
 /// Expect: false
-printlnv2(r.hash() == Color.Green.hash())
+println(r.hash() == Color.Green.hash())
 /// Expect: false
-printlnv2(gray.hash() == Color.Red.hash())
+println(gray.hash() == Color.Red.hash())
 
 // Test default eq method
 /// Expect: true
-printlnv2(r == Color.Red)
+println(r == Color.Red)
 /// Expect: false
-printlnv2(r == Color.Green)
+println(r == Color.Green)
 /// Expect: false
-printlnv2(r == Color.Blue)
+println(r == Color.Blue)
 /// Expect: true
-printlnv2(gray == Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa))
+println(gray == Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa))
 /// Expect: false
-printlnv2(gray == Color.RGB(r: 0x33, g: 0x33, b: 0x33))
+println(gray == Color.RGB(r: 0x33, g: 0x33, b: 0x33))
 /// Expect: false
-printlnv2(gray == Color.Green)
+println(gray == Color.Green)
 
 // Test calling method
 /// Expect: 0xFF0000 0xFF0000
-printlnv2("${Color.Red.hex()} ${r.hex()}")
+println("${Color.Red.hex()} ${r.hex()}")
 /// Expect: 0x00FF00 0x00FF00
-printlnv2("${Color.Green.hex()} ${g.hex()}")
+println("${Color.Green.hex()} ${g.hex()}")
 /// Expect: 0x0000FF 0x0000FF
-printlnv2("${Color.Blue.hex()} ${b.hex()}")
+println("${Color.Blue.hex()} ${b.hex()}")
 /// Expect: todo todo
-printlnv2("${Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa).hex()} ${gray.hex()}")
+println("${Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa).hex()} ${gray.hex()}")
 
 enum Color2 {
   Red
@@ -116,23 +116,23 @@ enum Color2 {
   func toString(self): String = "custom Color2#toString implementation"
   func hash(self): Int = 17
   func eq(self, other: Color2): Bool {
-    printlnv2("[Color2#eq] here")
+    println("[Color2#eq] here")
     false
   }
 }
 
 // Test custom toString method
 /// Expect: custom Color2#toString implementation
-printlnv2(Color2.Red.toString())
+println(Color2.Red.toString())
 
 // Test custom hash method
 /// Expect: 17
-printlnv2(Color2.Green.hash())
+println(Color2.Green.hash())
 
 // Test custom eq method
 /// Expect: [Color2#eq] here
 /// Expect: false
-printlnv2(Color2.Blue == Color2.Blue)
+println(Color2.Blue == Color2.Blue)
 
 // Test generic enum
 
@@ -164,6 +164,6 @@ enum List<T> {
 
 val list = List.Cons(value: "a", next: List.Cons(value: "b", next: List.Cons(value: "c", next: List.Nil)))
 /// Expect: 3
-printlnv2(list.length())
+println(list.length())
 /// Expect: 3
-printlnv2(List.lengthOf(list))
+println(List.lengthOf(list))

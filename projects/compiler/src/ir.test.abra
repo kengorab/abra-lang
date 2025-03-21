@@ -19,7 +19,7 @@ import Generator, StringBuilder from "./ir"
 
 func main() {
   val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {
-    printlnv2("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
+    println("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
     process.exit(1)
   }
 
@@ -59,14 +59,14 @@ func main() {
 
     if !errorMessages.isEmpty() {
       for msg, idx in errorMessages {
-        printlnv2(msg)
-        if idx != errorMessages.length - 1 printlnv2("") // spacer
+        println(msg)
+        if idx != errorMessages.length - 1 println("") // spacer
       }
       process.exit(1)
     } else if !readFileErrors.isEmpty() {
       for path, idx in readFileErrors {
-        printlnv2("Could not read file '$path'")
-        if idx != readFileErrors.length - 1 printlnv2("") // spacer
+        println("Could not read file '$path'")
+        if idx != readFileErrors.length - 1 println("") // spacer
       }
       process.exit(1)
     }
@@ -75,9 +75,9 @@ func main() {
 
     val sb = StringBuilder()
     ir.render(sb)
-    printlnv2(sb.build())
+    println(sb.build())
   } else {
-    printlnv2("Missing required argument <file-name>")
+    println("Missing required argument <file-name>")
     process.exit(1)
   }
 }
