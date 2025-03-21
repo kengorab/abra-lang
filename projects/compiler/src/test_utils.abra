@@ -153,7 +153,7 @@ pub func printParsedModuleAsJson(module: ParsedModule) {
           println("        \"kind\": \"alias\",")
           print("        \"alias\": ")
           printLabelAsJson(alias)
-          println()
+          println("")
         }
         ImportKind.List(names) => {
           println("        \"kind\": \"list\",")
@@ -227,12 +227,12 @@ func printTypeIdentifierAsJson(typeIdentifier: TypeIdentifier, indentLevelStart:
     TypeIdentifier.Array(inner) => {
       print("\"array\",\n$fieldsIndent\"inner\": ")
       printTypeIdentifierAsJson(inner, 0, currentIndentLevel + 1)
-      println()
+      println("")
     }
     TypeIdentifier.Option(inner) => {
       print("\"option\",\n$fieldsIndent\"inner\": ")
       printTypeIdentifierAsJson(inner, 0, currentIndentLevel + 1)
-      println()
+      println("")
     }
     TypeIdentifier.Tuple(typeArguments) => {
       println("\"tuple\",\n$fieldsIndent\"typeArguments\": [")
@@ -258,7 +258,7 @@ func printTypeIdentifierAsJson(typeIdentifier: TypeIdentifier, indentLevelStart:
       }
       print("$fieldsIndent\"returnType\": ")
       printTypeIdentifierAsJson(retType, 0, currentIndentLevel + 1)
-      println()
+      println("")
     }
   }
   print("$endIndent}")
@@ -375,7 +375,7 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
       println("$fieldsIndent\"op\": \"${unaryNode.op}\",")
       print("$fieldsIndent\"expr\": ")
       printAstNodeAsJson(unaryNode.expr, 0, currentIndentLevel + 1)
-      println()
+      println("")
     }
     AstNodeKind.Binary(binaryNode) => {
       println("$fieldsIndent\"name\": \"binary\",")
@@ -384,13 +384,13 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
       printAstNodeAsJson(binaryNode.left, 0, currentIndentLevel + 1)
       print(",\n$fieldsIndent\"right\": ")
       printAstNodeAsJson(binaryNode.right, 0, currentIndentLevel + 1)
-      println()
+      println("")
     }
     AstNodeKind.Grouped(inner) => {
       println("$fieldsIndent\"name\": \"grouped\",")
       print("$fieldsIndent\"inner\": ")
       printAstNodeAsJson(inner, 0, currentIndentLevel + 1)
-      println()
+      println("")
     }
     AstNodeKind.Identifier(kind) => {
       println("$fieldsIndent\"name\": \"identifier\",")
@@ -610,7 +610,7 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         }
         AssignmentMode.Accessor(node) => {
           printAstNodeKindAsJson(AstNodeKind.Accessor(node), 0, currentIndentLevel + 1)
-          println()
+          println("")
         }
       }
     }
@@ -754,7 +754,7 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
           print("$fieldsIndent]")
         }
       }
-      println()
+      println("")
     }
     AstNodeKind.While(condition, conditionBinding, block) => {
       println("$fieldsIndent\"name\": \"while\",")
@@ -1137,7 +1137,7 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
       if expr |expr| {
         print("$fieldsIndent\"expr\": ")
         printAstNodeAsJson(expr, 0, currentIndentLevel + 1)
-        println()
+        println("")
       } else {
         println("$fieldsIndent\"expr\": null")
       }

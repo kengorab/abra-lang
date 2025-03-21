@@ -5,8 +5,14 @@ println(true)
 println(false)
 
 // Unary operation
-/// Expect: true false false true
-println(!false, !!false, !true, !!true)
+/// Expect: true
+println(!false)
+/// Expect: false
+println(!!false)
+/// Expect: false
+println(!true)
+/// Expect: true
+println(!!true)
 
 // Binary operations
 func returnsFalse(): Bool {
@@ -26,8 +32,14 @@ println(true || returnsFalse())
 /// Expect: false
 println(false || returnsFalse())
 
-/// Expect: true true false false
-println(true ^ false, false ^ true, false ^ false, true ^ true)
+/// Expect: true
+println(true ^ false)
+/// Expect: true
+println(false ^ true)
+/// Expect: false
+println(false ^ false)
+/// Expect: false
+println(true ^ true)
 
 /// Expect: true
 println(true == true)

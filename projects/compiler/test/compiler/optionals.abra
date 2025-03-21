@@ -132,11 +132,15 @@ type TestOptChainingMethodInvocation {
 val someInt = Some(123)
 val noneInt: Int? = None
 
-/// Expect: true false
-println(!noneInt, !someInt)
+/// Expect: true
+println(!noneInt)
+/// Expect: false
+println(!someInt)
 
-/// Expect: false true
-println(!!noneInt, !!someInt)
+/// Expect: false
+println(!!noneInt)
+/// Expect: true
+println(!!someInt)
 
 // Optional enum instances
 

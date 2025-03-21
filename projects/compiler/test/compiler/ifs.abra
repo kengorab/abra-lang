@@ -65,7 +65,7 @@ println(if arr[5] |item| { item + 100 } else { 0 })
   // Statement
   if pairs[0] |(k, v)| {
     /// Expect: a 1
-    println(k, v)
+    println("$k $v")
   }
 
   // Expression

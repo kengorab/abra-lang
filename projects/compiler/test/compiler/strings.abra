@@ -18,14 +18,22 @@ println("hello")
 (() => {
   /// Expect: helloworld
   println("hello" + "world")
-  /// Expect: hello12 12hello
-  println("hello" + 12, 12 + "hello")
-  /// Expect: hello1.23 1.23hello
-  println("hello" + 1.23, 1.23 + "hello")
-  /// Expect: hellotrue truehello
-  println("hello" + true, true + "hello")
-  /// Expect: hello[1, 2, 3] [1, 2, 3]hello
-  println("hello" + [1, 2, 3], [1, 2, 3] + "hello")
+  /// Expect: hello12
+  println("hello" + 12)
+  /// Expect: 12hello
+  println(12 + "hello")
+  /// Expect: hello1.23
+  println("hello" + 1.23)
+  /// Expect: 1.23hello
+  println(1.23 + "hello")
+  /// Expect: hellotrue
+  println("hello" + true)
+  /// Expect: truehello
+  println(true + "hello")
+  /// Expect: hello[1, 2, 3]
+  println("hello" + [1, 2, 3])
+  /// Expect: [1, 2, 3]hello
+  println([1, 2, 3] + "hello")
 })()
 
 // == operator (also String#eq)
@@ -40,17 +48,6 @@ println("hello")
   println(s1 != s1)
   /// Expect: true
   println(s1 != "string!")
-
-//   /// Expect: false
-//   println(s1 == 123)
-//   /// Expect: false
-//   println(s1 == 12.3)
-//   /// Expect: false
-//   println(s1 == [1, 2, 3])
-//   /// Expect: false
-//   println(s1 == #{1, 2, 3})
-//   /// Expect: false
-//   println(s1 == { (1): "a", (2): "b" })
 })()
 
 // Interpolation
@@ -108,7 +105,7 @@ println("hello")
   /// Expect: l 3
   /// Expect: o 4
   for ch, idx in chars {
-    println(ch, idx)
+    println("$ch $idx")
   }
 
   /// Expect: done
@@ -120,18 +117,18 @@ println("hello")
   val s1 = "abc"
 
   /// Expect: |  a b c a b c  |
-  println("|", s1[-4], s1[-3], s1[-2], s1[-1], s1[0], s1[1], s1[2], s1[3], "|")
+  println("| ${s1[-4]} ${s1[-3]} ${s1[-2]} ${s1[-1]} ${s1[0]} ${s1[1]} ${s1[2]} ${s1[3]} |")
 
   val s2 = "hello"
 
   /// Expect: h e l l o
-  println(s2[0], s2[1], s2[2], s2[3], s2[4])
+  println("${s2[0]} ${s2[1]} ${s2[2]} ${s2[3]} ${s2[4]}")
 
   /// Expect: o l l e h
-  println(s2[-1], s2[-2], s2[-3], s2[-4], s2[-5])
+  println("${s2[-1]} ${s2[-2]} ${s2[-3]} ${s2[-4]} ${s2[-5]}")
 
   /// Expect:   end
-  println(s2[5], s2[-6], "end")
+  println("${s2[5]} ${s2[-6]} end")
 })()
 
 // Range indexing (also String#getRange(startIndex: Int, endIndex: Int))
@@ -139,22 +136,22 @@ println("hello")
   val s = "hello"
 
   /// Expect: ell ell
-  println(s[1:4], s[-4:4])
+  println("${s[1:4]} ${s[-4:4]}")
 
   /// Expect:  end
-  println(s[1:1], "end")
+  println("${s[1:1]} end")
 
   val a = 1
   val b = 4
 
   /// Expect: ell ell
-  println(s[a:b], s[-b:b])
+  println("${s[a:b]} ${s[-b:b]}")
 
   /// Expect: ello h
-  println(s[1:], s[:1])
+  println("${s[1:]} ${s[:1]}")
 
   /// Expect: ello h
-  println(s[a:], s[:a])
+  println("${s[a:]} ${s[:a]}")
 })()
 
 // String#hash
@@ -181,16 +178,16 @@ println("hello")
 
 // String#toLower
 (() => {
-  /// Expect:  |
-  println("".toLower(), "|")
+  /// Expect: ||
+  println("|" + "".toLower() + "|")
   /// Expect: -hello!
   println("-hElLo!".toLower())
 })()
 
 // String#toUpper
 (() => {
-  /// Expect:  |
-  println("".toUpper(), "|")
+  /// Expect: ||
+  println("|" + "".toUpper() + "|")
   /// Expect: -HELLO!
   println("-hElLo!".toUpper())
 })()
@@ -275,11 +272,11 @@ println("hello")
 
 // String#repeat
 (() => {
-  /// Expect:  |
-  println("abc".repeat(0), "|")
+  /// Expect: ||
+  println("|" + "abc".repeat(0) + "|")
 
-  /// Expect:  |
-  println("abc".repeat(-1), "|")
+  /// Expect: ||
+  println("|" + "abc".repeat(-1) + "|")
 
   /// Expect: abcabcabc
   println("abc".repeat(3))

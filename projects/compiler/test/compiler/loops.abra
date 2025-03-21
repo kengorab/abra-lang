@@ -82,14 +82,14 @@
   /// Expect: b 1
   /// Expect: c 2
   for ch, idx in ["a", "b", "c"] {
-    println(ch, idx)
+    println("$ch $idx")
   }
 
   /// Expect: a 0
   /// Expect: b 1
   /// Expect: done
   for ch, idx in ["a", "b", "c"] {
-    println(ch, idx)
+    println("$ch $idx")
     if ch == "b" {
       break
     }
@@ -103,7 +103,7 @@
     if ch == "b" {
       continue
     }
-    println(ch, idx)
+    println("$ch $idx")
   }
   println("done")
 })()

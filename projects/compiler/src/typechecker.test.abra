@@ -70,14 +70,14 @@ func main() {
       if !errorMessages.isEmpty() {
         for msg, idx in errorMessages {
           println(msg)
-          if idx != errorMessages.length - 1 println() // spacer
+          if idx != errorMessages.length - 1 println("") // spacer
         }
 
         return
       } else if !readFileErrors.isEmpty() {
         for path, idx in readFileErrors {
           println("Could not read file '$path'")
-          if idx != readFileErrors.length - 1 println() // spacer
+          if idx != readFileErrors.length - 1 println("") // spacer
         }
 
         return

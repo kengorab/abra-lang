@@ -2,8 +2,10 @@
 println(24)
 
 // Unary operations
-/// Expect: -1 1
-println(-1, --1)
+/// Expect: -1
+println(-1)
+/// Expect: 1
+println(--1)
 
 // Binary operations
 /// Expect: 32
@@ -111,12 +113,16 @@ println(17 >= 15.1)
 // Int#unsignedToString
 (() => {
   val i1 = 118
-  /// Expect: 118 118
-  println(i1.toString(), i1.unsignedToString())
+  /// Expect: 118
+  println(i1.toString())
+  /// Expect: 118
+  println(i1.unsignedToString())
 
   val i2 = (1 << 63) || (1 << 31)
-  /// Expect: -9223372034707292160 9223372039002259456
-  println(i2.toString(), i2.unsignedToString())
+  /// Expect: -9223372034707292160
+  println(i2.toString())
+  /// Expect: 9223372039002259456
+  println(i2.unsignedToString())
 
 //   val i3 = 0b1000000000000000000000000000000010000000000000000000000000000000
 //   /// Expect: -9223372034707292160 9223372039002259456

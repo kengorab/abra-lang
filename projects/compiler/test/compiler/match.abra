@@ -20,9 +20,9 @@
   /// Expect: case 3: 567
   for i in [1, 2, 34, 567] {
     match i {
-      1 v => println("case 1:", v)
-      2 v => println("case 2:", v)
-      _ v => println("case 3:", v)
+      1 v => println("case 1: $v")
+      2 v => println("case 2: $v")
+      _ v => println("case 3: $v")
     }
   }
 
@@ -32,9 +32,9 @@
   /// Expect: case 3: 5.67
   for f in [1.1, 2.2, 3.4, 5.67] {
     match f {
-      1.1 v => println("case 1:", v)
-      2.2 v => println("case 2:", v)
-      _ v => println("case 3:", v)
+      1.1 v => println("case 1: $v")
+      2.2 v => println("case 2: $v")
+      _ v => println("case 3: $v")
     }
   }
 
@@ -42,8 +42,8 @@
   /// Expect: case 2: false
   for b in [true, false] {
     match b {
-      true v => println("case 1:", v)
-      false v => println("case 2:", v)
+      true v => println("case 1: $v")
+      false v => println("case 2: $v")
     }
   }
 
@@ -52,11 +52,11 @@
   /// Expect: case 5: bonjour
   for s in ["hello", "hi", "bonjour"] {
     match s {
-      "howdy" v => println("case 1:", v)
-      "hola" v => println("case 2:", v)
-      "hi" v => println("case 3:", v)
-      "hello" v => println("case 4:", v)
-      _ v => println("case 5:", v)
+      "howdy" v => println("case 1: $v")
+      "hola" v => println("case 2: $v")
+      "hi" v => println("case 3: $v")
+      "hello" v => println("case 4: $v")
+      _ v => println("case 5: $v")
     }
   }
 
@@ -84,24 +84,24 @@
 
   /// Expect: found a number: 2
   match arr[1] {
-    None v => println("nothing here:", v)
-    else v => println("found a number:", v)
+    None v => println("nothing here: $v")
+    else v => println("found a number: $v")
   }
   /// Expect: nothing here: Option.None
   match arr[14] {
-    None v => println("nothing here:", v)
-    else v => println("found a number:", v)
+    None v => println("nothing here: $v")
+    else v => println("found a number: $v")
   }
 
   // With case binding and _no_ `None` case
 
   /// Expect: value: Option.Some(value: 2)
   match arr[1] {
-    else v => println("value:", v)
+    else v => println("value: $v")
   }
   /// Expect: value: Option.None
   match arr[14] {
-    else v => println("value:", v)
+    else v => println("value: $v")
   }
 
   // With constant cases
@@ -144,13 +144,13 @@
   match arr[5] {
     2 v => println(16 + v)
     1 => println(15)
-    else v => println(100, v)
+    else v => println("${100} $v")
   }
   /// Expect: 100 Option.Some(value: 4)
   match arr[3] {
     2 v => println(16 + v)
     1 => println(15)
-    else v => println(100, v)
+    else v => println("${100} $v")
   }
 
 //   // With type cases
@@ -193,7 +193,7 @@ enum Color {
       Color.Red => println("red")
       Color.Blue => println("blue")
       Color.Green => println("green")
-      Color.RGB(r, g, b) => println("rgb(" + r + ",", g + ",", b + ")")
+      Color.RGB(r, g, b) => println("rgb($r, $g, $b)")
     }
   }
 
@@ -203,14 +203,14 @@ enum Color {
     Color.Red => println("red")
     Color.Blue => println("blue")
     Color.Green => println("green")
-    Color.RGB(r, g, b) => println("rgb(" + r + ",", g + ",", b + ")")
+    Color.RGB(r, g, b) => println("rgb($r, $g, $b)")
   }
   /// Expect: blue
   match colors[1] {
     Color.Red => println("red")
     Color.Blue => println("blue")
     Color.Green => println("green")
-    Color.RGB(r, g, b) => println("rgb(" + r + ",", g + ",", b + ")")
+    Color.RGB(r, g, b) => println("rgb($r, $g, $b)")
     None => println("none")
   }
 
@@ -220,14 +220,14 @@ enum Color {
     Color.Red => println("red")
     Color.Blue => println("blue")
     Color.Green => println("green")
-    Color.RGB(r, g, b) => println("rgb(" + r + ",", g + ",", b + ")")
+    Color.RGB(r, g, b) => println("rgb($r, $g, $b)")
   }
   /// Expect: none
   match colors[5] {
     Color.Red => println("red")
     Color.Blue => println("blue")
     Color.Green => println("green")
-    Color.RGB(r, g, b) => println("rgb(" + r + ",", g + ",", b + ")")
+    Color.RGB(r, g, b) => println("rgb($r, $g, $b)")
     None => println("none")
   }
 

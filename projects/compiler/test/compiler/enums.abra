@@ -100,13 +100,13 @@ println(gray == Color.Green)
 
 // Test calling method
 /// Expect: 0xFF0000 0xFF0000
-println(Color.Red.hex(), r.hex())
+println("${Color.Red.hex()} ${r.hex()}")
 /// Expect: 0x00FF00 0x00FF00
-println(Color.Green.hex(), g.hex())
+println("${Color.Green.hex()} ${g.hex()}")
 /// Expect: 0x0000FF 0x0000FF
-println(Color.Blue.hex(), b.hex())
+println("${Color.Blue.hex()} ${b.hex()}")
 /// Expect: todo todo
-println(Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa).hex(), gray.hex())
+println("${Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa).hex()} ${gray.hex()}")
 
 enum Color2 {
   Red
@@ -163,5 +163,7 @@ enum List<T> {
 }
 
 val list = List.Cons(value: "a", next: List.Cons(value: "b", next: List.Cons(value: "c", next: List.Nil)))
-/// Expect: 3 3
-println(list.length(), List.lengthOf(list))
+/// Expect: 3
+println(list.length())
+/// Expect: 3
+println(List.lengthOf(list))

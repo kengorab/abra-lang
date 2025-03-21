@@ -96,7 +96,9 @@ type Person {
 /// Expect: c 0
 /// Expect: b 1
 /// Expect: a 2
-for ch, idx in #{"a", "b", "c"} { println(ch, idx) }
+for ch, idx in #{"a", "b", "c"} {
+  println("$ch $idx")
+}
 
 // Set#contains
 (() => {

@@ -4,20 +4,24 @@ func bar(x: Int, y = 10): Int = x + y
 /// Expect: 31
 println(foo(2))
 
-// Variadic parameters
-func variadic(*items: Int[]) = println(items)
-/// Expect: [1, 2, 3]
-variadic(1, 2, 3)
-/// Expect: []
-variadic()
+// Temporarily moved lower; see comment below
+// // Variadic parameters
+// func variadic(*items: Int[]) = println(items)
+// /// Expect: [1, 2, 3]
+// variadic(1, 2, 3)
+// /// Expect: []
+// variadic()
 
-// Functions and closures as value (lambdas too)
+// Functions, methods, and closures as value (lambdas too)
 func abc(): Int = 24
 /// Expect: <#function>
 println(abc)
 val abcVal = abc
 /// Expect: <#function> 24
-println(abcVal, abcVal())
+println("$abcVal ${abcVal()}")
+
+/// Expect: <#function>
+println("abc".isEmpty)
 
 func def(a: Int): Int = a + 1
 val defVal = def
@@ -135,7 +139,7 @@ callFn3(f7Closure)
 /// Expect: 54
 callFn3((x, y = 12, z = 100) => x + y + z + xyz.length)
 
-// Closures
+// // Closures
 var capturedFloat = 1.1
 func closure1(one: Int): Float {
   capturedFloat += 1.1
@@ -156,6 +160,15 @@ println(capturedFloat)
 println(closure1(one: 1))
 /// Expect: 11.2
 println(capturedFloat)
+
+// Temporarily moved here from above, since there's something wrong with the order in which generics are resolved which
+// otherwise causes issues when attempting to print a Float value.
+// Variadic parameters
+func variadic(*items: Int[]) = println(items)
+/// Expect: [1, 2, 3]
+variadic(1, 2, 3)
+/// Expect: []
+variadic()
 
 val capturedArray = [1, 2, 3]
 func closure2(zero = 0): Int {
@@ -306,8 +319,10 @@ func finalIfExpressionReturns(b: Bool): Int {
   if b return 1 else return 2
 }
 
-/// Expect: 1 2
-println(finalIfExpressionReturns(true), finalIfExpressionReturns(false))
+/// Expect: 1
+println(finalIfExpressionReturns(true))
+/// Expect: 2
+println(finalIfExpressionReturns(false))
 
 // Return statements in if-expressions
 func returnExprInArr(i: Int): Int[] {

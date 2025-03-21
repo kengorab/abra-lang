@@ -6,8 +6,10 @@
 //   println(arr)
 // })()
 
-/// Expect: 1 2
-println([1].length, [[1, 2], [3, 4]].length)
+/// Expect: 1
+println([1].length)
+/// Expect: 2
+println([[1, 2], [3, 4]].length)
 
 // Test array literal construction
 (() => {
@@ -21,7 +23,7 @@ println([1].length, [[1, 2], [3, 4]].length)
 
   val floatArr = [0.12, 3.45, 6.0]
   /// Expect: [0.12, 3.45, 6]
-  println(floatArr)
+  println(floatArr.toString())
 
   val stringArr = ["ab", "cd", "ef"]
   /// Expect: [ab, cd, ef]
@@ -51,13 +53,13 @@ println([1].length, [[1, 2], [3, 4]].length)
 
   val floatArr = [0.12, 3.45, 6.0]
   /// Expect: [0.12, 3.45, 6]
-  println(floatArr)
+  println(floatArr.toString())
   floatArr[0] = 0.001
   /// Expect: [0.001, 3.45, 6]
-  println(floatArr)
+  println(floatArr.toString())
   floatArr[-1] = 0.001
   /// Expect: [0.001, 3.45, 0.001]
-  println(floatArr)
+  println(floatArr.toString())
 
   val stringArr = ["ab", "cd", "ef"]
   /// Expect: [ab, cd, ef]
@@ -92,36 +94,39 @@ println([1].length, [[1, 2], [3, 4]].length)
   println([1.2, 3.4] != [5.6, 7.8])
   /// Expect: true
   println([true, false] != [false, true])
-
-//   /// Expect: false
-//   println(arr == ["a", "b"])
-//   /// Expect: false
-//   println(arr == "ab")
-//   /// Expect: false
-//   println(arr == 123)
-//   /// Expect: false
-//   println(arr == 12.3)
-//   /// Expect: false
-//   println(arr == [1, 2, 3])
-//   /// Expect: false
-//   println(arr == #{1, 2, 3})
-//   /// Expect: false
-//   println(arr == { (1): "a", (2): "b" })
 })()
 
 // Indexing (also Array#get(index: Int))
 (() => {
   val arr = [1, 2, 3]
-  /// Expect: Option.None Option.Some(value: 1) Option.Some(value: 2) Option.Some(value: 3) Option.Some(value: 1) Option.Some(value: 2) Option.Some(value: 3) Option.None
-  println(arr[-4], arr[-3], arr[-2], arr[-1], arr[0], arr[1], arr[2], arr[3])
+  /// Expect: Option.None
+  println(arr[-4])
+  /// Expect: Option.Some(value: 1)
+  println(arr[-3])
+  /// Expect: Option.Some(value: 2)
+  println(arr[-2])
+  /// Expect: Option.Some(value: 3)
+  println(arr[-1])
+  /// Expect: Option.Some(value: 1)
+  println(arr[0])
+  /// Expect: Option.Some(value: 2)
+  println(arr[1])
+  /// Expect: Option.Some(value: 3)
+  println(arr[2])
+  /// Expect: Option.None
+  println(arr[3])
 })()
 
 // Range indexing (also Array#getRange(startIndex: Int, endIndex: Int))
 (() => {
   val arr = [1, 2, 3, 4, 5]
 
-  /// Expect: [2, 3, 4] [2, 3, 4] [2, 3, 4]
-  println(arr[1:4], arr[-4:4], arr[1:-1])
+  /// Expect: [2, 3, 4]
+  println(arr[1:4])
+  /// Expect: [2, 3, 4]
+  println(arr[-4:4])
+  /// Expect: [2, 3, 4]
+  println(arr[1:-1])
 
   /// Expect: []
   println(arr[1:1])
@@ -129,14 +134,20 @@ println([1].length, [[1, 2], [3, 4]].length)
   val x = 1
   val y = 4
 
-  /// Expect: [2, 3, 4] [2, 3, 4]
-  println(arr[x:y], arr[-y:y])
+  /// Expect: [2, 3, 4]
+  println(arr[x:y])
+  /// Expect: [2, 3, 4]
+  println(arr[-y:y])
 
-  /// Expect: [2, 3, 4, 5] [1]
-  println(arr[1:], arr[:1])
+  /// Expect: [2, 3, 4, 5]
+  println(arr[1:])
+  /// Expect: [1]
+  println(arr[:1])
 
-  /// Expect: [2, 3, 4, 5] [1]
-  println(arr[x:], arr[:x])
+  /// Expect: [2, 3, 4, 5]
+  println(arr[x:])
+  /// Expect: [1]
+  println(arr[:x])
 })()
 
 // Array.fill
@@ -211,34 +222,36 @@ println([1].length, [[1, 2], [3, 4]].length)
 /// Expect: a
 /// Expect: b
 /// Expect: c
-for ch in ["a", "b", "c"] println(ch)
+for ch in ["a", "b", "c"] {
+  println(ch)
+}
 
 // Array#push
 (() => {
   val intArr = [1, 2, 3]
   /// Expect: [1, 2, 3] 3 4
-  println(intArr, intArr.length, intArr.getCapacity())
+  println("$intArr ${intArr.length} ${intArr.getCapacity()}")
   // Pushing beyond the capacity should expand the array
   intArr.push(4)
   intArr.push(5)
   /// Expect: [1, 2, 3, 4, 5] 5 8
-  println(intArr, intArr.length, intArr.getCapacity())
+  println("$intArr ${intArr.length} ${intArr.getCapacity()}")
 
   // Popping element should leave _capacity
   intArr.pop()
   intArr.pop()
   /// Expect: [1, 2, 3] 3 8
-  println(intArr, intArr.length, intArr.getCapacity())
+  println("$intArr ${intArr.length} ${intArr.getCapacity()}")
 
   val strArr = ["a", "b", "c"]
   val arrArr = [strArr, strArr]
   /// Expect: [[a, b, c], [a, b, c]] 3 4
-  println(arrArr, strArr.length, strArr.getCapacity())
+  println("$arrArr ${strArr.length} ${strArr.getCapacity()}")
   // Pushing beyond the capacity should expand the array
   strArr.push("d")
   strArr.push("e")
   /// Expect: [[a, b, c, d, e], [a, b, c, d, e]] 5 8
-  println(arrArr, strArr.length, strArr.getCapacity())
+  println("$arrArr ${strArr.length} ${strArr.getCapacity()}")
 })()
 
 // Array#pop
@@ -272,7 +285,7 @@ for ch in ["a", "b", "c"] println(ch)
   /// Expect: [1, 2, 3, 4, 5, 6, 7]
   println(arr1.concat(arr2))
   /// Expect: [1, 2, 3, 4] [5, 6, 7]
-  println(arr1, arr2) // verify originals unmodified
+  println("$arr1 $arr2") // verify originals unmodified
 })()
 
 // Array#map

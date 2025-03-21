@@ -6,10 +6,10 @@ if process.args()[1] |fileName| {
   match fs.readFile(fileName) {
     Ok(contents) => {
       val tokens = Lexer.tokenize(contents)
-      println("tokens:", tokens)
+      println("tokens: $tokens")
     }
     Err(e) => {
-      println("Could not read file:", e)
+      println("Could not read file: $e")
     }
   }
 } else {
