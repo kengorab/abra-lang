@@ -6,6 +6,11 @@ func stdoutWrite(str: String) {
   libc.write(libc.STDOUT_FILENO, str._buffer, str.length)
 }
 
+func stdoutWriteln(str: String) {
+  libc.write(libc.STDOUT_FILENO, str._buffer, str.length)
+  stdoutWrite("\n")
+}
+
 func print<T>(value: T) = stdoutWrite(value.toString())
 
 func println<T>(value: T) {
