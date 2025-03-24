@@ -846,18 +846,18 @@ async function main() {
   const compilerPath = `${__dirname}/../src/compiler.test.abra`
 
   const runners = [
-    // {
-    //   runner: new TestRunner('lexer_test', lexerPath),
-    //   tests: LEXER_TESTS,
-    // },
-    // {
-    //   runner: new TestRunner('parser_test', parserPath),
-    //   tests: PARSER_TESTS,
-    // },
-    // {
-    //   runner: new TestRunner('typechecker_test', typecheckerPath),
-    //   tests: TYPECHECKER_TESTS,
-    // },
+    {
+      runner: new TestRunner('lexer_test', lexerPath),
+      tests: LEXER_TESTS,
+    },
+    {
+      runner: new TestRunner('parser_test', parserPath),
+      tests: PARSER_TESTS,
+    },
+    {
+      runner: new TestRunner('typechecker_test', typecheckerPath),
+      tests: TYPECHECKER_TESTS,
+    },
     {
       runner: new TestRunner('compiler_test', compilerPath),
       tests: COMPILER_TESTS,

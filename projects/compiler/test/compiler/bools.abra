@@ -1,51 +1,53 @@
+func printlnBool(b: Bool) = stdoutWriteln(b.toString())
+
 /// Expect: true
-println(true)
+printlnBool(true)
 
 /// Expect: false
-println(false)
+printlnBool(false)
 
 // Unary operation
 /// Expect: true
-println(!false)
+printlnBool(!false)
 /// Expect: false
-println(!!false)
+printlnBool(!!false)
 /// Expect: false
-println(!true)
+printlnBool(!true)
 /// Expect: true
-println(!!true)
+printlnBool(!!true)
 
 // Binary operations
 func returnsFalse(): Bool {
-  println("boolFunc called")
+  stdoutWriteln("boolFunc called")
   false
 }
 
 /// Expect: boolFunc called
 /// Expect: false
-println(true && returnsFalse())
+printlnBool(true && returnsFalse())
 /// Expect: false
-println(false && returnsFalse())
+printlnBool(false && returnsFalse())
 
 /// Expect: true
-println(true || returnsFalse())
+printlnBool(true || returnsFalse())
 /// Expect: boolFunc called
 /// Expect: false
-println(false || returnsFalse())
+printlnBool(false || returnsFalse())
 
 /// Expect: true
-println(true ^ false)
+printlnBool(true ^ false)
 /// Expect: true
-println(false ^ true)
+printlnBool(false ^ true)
 /// Expect: false
-println(false ^ false)
+printlnBool(false ^ false)
 /// Expect: false
-println(true ^ true)
+printlnBool(true ^ true)
 
 /// Expect: true
-println(true == true)
+printlnBool(true == true)
 /// Expect: false
-println(true != true)
+printlnBool(true != true)
 /// Expect: false
-println(false == true)
+printlnBool(false == true)
 /// Expect: true
-println(true != false)
+printlnBool(true != false)

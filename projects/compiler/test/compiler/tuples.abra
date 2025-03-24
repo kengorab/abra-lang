@@ -1,45 +1,32 @@
+func printlnBool(b: Bool) = stdoutWriteln(b.toString())
+
 // Instantiation
 val point = (0.5, 1.5, -0.75)
 /// Expect: (0.5, 1.5, -0.75)
-println(point)
+stdoutWriteln("$point")
 
 val y = (1, "two", ["three"])
 /// Expect: (1, "two", [three])
-println(y)
+stdoutWriteln("$y")
 
 // Indexing
 val quad = (1, "two", ["three"], (2, 3))
 val two = quad[1]
 /// Expect: two
-println(two)
+stdoutWriteln(two)
 
 /// Expect: 2
-println(quad[3][0])
+stdoutWriteln(quad[3][0].toString())
 
 // /// Expect: true
-// println(quad.hash() == (1, "two", ["three"], (2, 3)).hash())
+// stdoutWriteln(quad.hash() == (1, "two", ["three"], (2, 3)).hash())
 
 // == operator
 (() => {
   val t1 = (1, "abc", [true, false])
 
   /// Expect: true
-  println(t1 == (1, "abc", [true, false]))
+  printlnBool(t1 == (1, "abc", [true, false]))
   /// Expect: true
-  println((1, "two", [3]) == (1, "tw" + "o", [2 + 1]))
-
-//   /// Expect: false
-//   println(t1 == ["a", "b"])
-//   /// Expect: false
-//   println(t1 == "ab")
-//   /// Expect: false
-//   println(t1 == 123)
-//   /// Expect: false
-//   println(t1 == 12.3)
-//   /// Expect: false
-//   println(t1 == [1, 2, 3])
-//   /// Expect: false
-//   println(t1 == #{1, 2, 3})
-//   /// Expect: false
-//   println(t1 == { (1): "a", (2): "b" })
+  printlnBool((1, "two", [3]) == (1, "tw" + "o", [2 + 1]))
 })()

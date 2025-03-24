@@ -1,3 +1,5 @@
+func printlnBool(b: Bool) = stdoutWriteln(b.toString())
+
 type Person {
   name: String
   age: Int
@@ -7,29 +9,29 @@ val p1 = Person(name: "Ken", age: 32)
 
 // Test field accesses
 /// Expect: Ken
-println(p1.name)
+stdoutWriteln(p1.name)
 /// Expect: 32
-println(p1.age)
+stdoutWriteln(p1.age.toString())
 
 // Test default toString method
 /// Expect: Person(name: "Ken", age: 32)
-println(p1)
+stdoutWriteln(p1.toString())
 /// Expect: Person(name: "Ken", age: 32)
-println(p1.toString())
+stdoutWriteln(p1.toString())
 
 // Test default hash method
 /// Expect: true
-println(p1.hash() == Person(name: "Ken", age: 32).hash())
+printlnBool(p1.hash() == Person(name: "Ken", age: 32).hash())
 /// Expect: false
-println(p1.hash() == Person(name: "Ken", age: 33).hash())
+printlnBool(p1.hash() == Person(name: "Ken", age: 33).hash())
 
 // Test default eq method
 /// Expect: true
-println(p1 == Person(name: "Ken", age: 32))
+printlnBool(p1 == Person(name: "Ken", age: 32))
 /// Expect: false
-println(p1 == Person(name: "Ben", age: 32))
+printlnBool(p1 == Person(name: "Ben", age: 32))
 /// Expect: false
-println(p1 == Person(name: "Ken", age: 33))
+printlnBool(p1 == Person(name: "Ken", age: 33))
 
 type Person2 {
   name: String
@@ -38,7 +40,7 @@ type Person2 {
   func toString(self): String = "custom Person#toString method"
   func hash(self): Int = 0
   func eq(self, other: Person2): Bool {
-    println("[Person2#eq]  here")
+    stdoutWriteln("[Person2#eq]  here")
     false
   }
 }
@@ -47,15 +49,15 @@ val p2 = Person2(name: "Ken", age: 32)
 
 // Test custom toString method
 /// Expect: custom Person#toString method
-println(p2)
+stdoutWriteln(p2.toString())
 /// Expect: custom Person#toString method
-println(p2.toString())
+stdoutWriteln(p2.toString())
 /// Expect: 0
-println(p2.hash())
+stdoutWriteln(p2.hash().toString())
 
 /// Expect: [Person2#eq]  here
 /// Expect: false
-println(p2 == Person2(name: "Ken", age: 32))
+printlnBool(p2 == Person2(name: "Ken", age: 32))
 
 // Fields with default values
 type Foo {
@@ -66,9 +68,9 @@ type Foo {
 
 val f = Foo()
 /// Expect: Foo(a: 12, b: "", c: [1, 2, 3])
-println(f)
+stdoutWriteln(f.toString())
 /// Expect: true
-println(f.hash() == Foo().hash())
+printlnBool(f.hash() == Foo().hash())
 
 // Methods that capture variables
 var capturedInt = 11
@@ -82,30 +84,30 @@ type FooWithCaptures {
 
 val fooWithCaptures = FooWithCaptures(i: 12)
 /// Expect: 23
-println(fooWithCaptures.foo())
+stdoutWriteln(fooWithCaptures.foo().toString())
 capturedInt = 17
 /// Expect: 29
-println(fooWithCaptures.foo())
+stdoutWriteln(fooWithCaptures.foo().toString())
 
 capturedInt = 17
 /// Expect: 29
-println(fooWithCaptures.foo2())
+stdoutWriteln(fooWithCaptures.foo2().toString())
 capturedInt = 17
 /// Expect: 15
-println(fooWithCaptures.foo2(3))
+stdoutWriteln(fooWithCaptures.foo2(3).toString())
 /// Expect: 17
-println(FooWithCaptures.fooStatic())
+stdoutWriteln(FooWithCaptures.fooStatic().toString())
 
 val foo1Ref1 = fooWithCaptures.foo
 func wrapper1() {
   val foo1Ref2 = fooWithCaptures.foo
 
   /// Expect: 29
-  println(fooWithCaptures.foo())
+  stdoutWriteln(fooWithCaptures.foo().toString())
   /// Expect: 29
-  println(foo1Ref1())
+  stdoutWriteln(foo1Ref1().toString())
   /// Expect: 29
-  println(foo1Ref2())
+  stdoutWriteln(foo1Ref2().toString())
 }
 wrapper1()
 
@@ -113,17 +115,17 @@ capturedInt = 11
 func wrapper() {
   val f = FooWithCaptures(i: 12)
   /// Expect: 23
-  println(f.foo())
+  stdoutWriteln(f.foo().toString())
   /// Expect: 11
-  println(FooWithCaptures.fooStatic())
+  stdoutWriteln(FooWithCaptures.fooStatic().toString())
 }
 wrapper()
 
 // Test passing function/closure values as parameters
 // This is similar to the suite of tests in `functions.abra`, but for references to methods instead
-func callFn(fn: (Int) => Int) = println(fn(16))
-func callFn2(fn: (Int, Int, Int) => Int) = println(fn(16, 17, 18))
-func callFn3(fn: (Int, Int, Int, Int) => Int) = println(fn(16, 17, 18, 19))
+func callFn(fn: (Int) => Int) = stdoutWriteln(fn(16).toString())
+func callFn2(fn: (Int, Int, Int) => Int) = stdoutWriteln(fn(16, 17, 18).toString())
+func callFn3(fn: (Int, Int, Int, Int) => Int) = stdoutWriteln(fn(16, 17, 18, 19).toString())
 
 val xyz = "xyz"
 type Foo2 {

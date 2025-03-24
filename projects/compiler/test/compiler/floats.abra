@@ -1,157 +1,160 @@
+func printlnBool(b: Bool) = stdoutWriteln(b.toString())
+func printlnFloat(f: Float) = stdoutWriteln(f.toString())
+
 /// Expect: 1.23
-println(1.23)
+printlnFloat(1.23)
 
 /// Expect: 0.123
-println(0.123)
+printlnFloat(0.123)
 
 /// Expect: 1
-println(1.0)
+printlnFloat(1.0)
 
 // Unary operations
 /// Expect: -1.1
-println(-1.1)
+printlnFloat(-1.1)
 /// Expect: 1.1
-println(--1.1)
+printlnFloat(--1.1)
 /// Expect: -0
-println(-0.0)
+printlnFloat(-0.0)
 
 // Binary operations
 /// Expect: 32.1
-println(17.1 + 15)
+printlnFloat(17.1 + 15)
 /// Expect: 32.2
-println(17.1 + 15.1)
+printlnFloat(17.1 + 15.1)
 
 /// Expect: 2.1
-println(17.1 - 15)
+printlnFloat(17.1 - 15)
 /// Expect: 2.1
-println(17.2 - 15.1)
+printlnFloat(17.2 - 15.1)
 
 /// Expect: 2565
-println(17.1 * 150)
+printlnFloat(17.1 * 150)
 /// Expect: 2566.71
-println(17.1 * 150.1)
+printlnFloat(17.1 * 150.1)
 
 /// Expect: 1.14
-println(17.1 / 15)
+printlnFloat(17.1 / 15)
 /// Expect: 1.13245
-println(17.1 / 15.1)
+printlnFloat(17.1 / 15.1)
 
 /// Expect: 1.25
-println(5.25 % 2)
+printlnFloat(5.25 % 2)
 /// Expect: 0.25
-println(5.25 % 2.5)
+printlnFloat(5.25 % 2.5)
 
 /// Expect: 34.2968
-println(2 ** 5.1)
+printlnFloat(2 ** 5.1)
 /// Expect: 43.9864
-println(2.1 ** 5.1)
+printlnFloat(2.1 ** 5.1)
 /// Expect: 40.841
-println(2.1 ** 5)
+printlnFloat(2.1 ** 5)
 /// Expect: -34.2968
-println(-2 ** 5.1)
+printlnFloat(-2 ** 5.1)
 /// Expect: -43.9864
-println(-2.1 ** 5.1)
+printlnFloat(-2.1 ** 5.1)
 /// Expect: -40.841
-println(-2.1 ** 5)
+printlnFloat(-2.1 ** 5)
 /// Expect: 0.0291573
-println(2 ** -5.1)
+printlnFloat(2 ** -5.1)
 /// Expect: 0.0227343
-println(2.1 ** -5.1)
+printlnFloat(2.1 ** -5.1)
 /// Expect: 0.0244852
-println(2.1 ** -5)
+printlnFloat(2.1 ** -5)
 
 // /// Expect: true
-// println(17.0 == (15 + 2))
+// stdoutWriteln(17.0 == (15 + 2))
 // /// Expect: false
-// println(17.1 == 15)
+// stdoutWriteln(17.1 == 15)
 /// Expect: true
-println(17.0 == (15 + 2.0))
+printlnBool(17.0 == (15 + 2.0))
 /// Expect: false
-println(17.1 == 15.1)
+printlnBool(17.1 == 15.1)
 
 // /// Expect: false
-// println(17.0 != (15 + 2))
+// stdoutWriteln(17.0 != (15 + 2))
 // /// Expect: true
-// println(17.1 != 15)
+// stdoutWriteln(17.1 != 15)
 /// Expect: false
-println(17.0 != (15 + 2.0))
+printlnBool(17.0 != (15 + 2.0))
 /// Expect: true
-println(17.1 != 15.1)
+printlnBool(17.1 != 15.1)
 
 /// Expect: true
-println(17.1 < 18)
+printlnBool(17.1 < 18)
 /// Expect: false
-println(17.1 < 15)
+printlnBool(17.1 < 15)
 /// Expect: true
-println(17.1 < 18.0)
+printlnBool(17.1 < 18.0)
 /// Expect: false
-println(17.1 < 15.1)
+printlnBool(17.1 < 15.1)
 
 /// Expect: false
-println(17.1 > 18)
+printlnBool(17.1 > 18)
 /// Expect: true
-println(17.1 > 15)
+printlnBool(17.1 > 15)
 /// Expect: false
-println(17.1 > 18.0)
+printlnBool(17.1 > 18.0)
 /// Expect: true
-println(17.1 > 15.1)
+printlnBool(17.1 > 15.1)
 
 /// Expect: true
-println(17.1 <= 18)
+printlnBool(17.1 <= 18)
 /// Expect: false
-println(17.1 <= 15)
+printlnBool(17.1 <= 15)
 /// Expect: true
-println(17.1 <= 18.0)
+printlnBool(17.1 <= 18.0)
 /// Expect: false
-println(17.1 <= 15.1)
+printlnBool(17.1 <= 15.1)
 
 /// Expect: false
-println(17.1 >= 18)
+printlnBool(17.1 >= 18)
 /// Expect: true
-println(17.1 >= 15)
+printlnBool(17.1 >= 15)
 /// Expect: false
-println(17.1 >= 18.0)
+printlnBool(17.1 >= 18.0)
 /// Expect: true
-println(17.1 >= 15.1)
+printlnBool(17.1 >= 15.1)
 
 // Float#asInt
 /// Expect: 1
-println((1.23).asInt())
+stdoutWriteln((1.23).asInt().toString())
 
 // Float#abs
 /// Expect: 1.23
-println((1.23).abs())
+stdoutWriteln((1.23).abs().toString())
 /// Expect: 1.23
-println((-1.23).abs())
+stdoutWriteln((-1.23).abs().toString())
 
 // Float#floor
 /// Expect: 1
-println((1.23).floor())
+stdoutWriteln((1.23).floor().toString())
 /// Expect: -2
-println((-1.23).floor())
+stdoutWriteln((-1.23).floor().toString())
 
 // Float#ceil
 /// Expect: 2
-println((1.23).ceil())
+stdoutWriteln((1.23).ceil().toString())
 /// Expect: -1
-println((-1.23).ceil())
+stdoutWriteln((-1.23).ceil().toString())
 
 // Float#round
 /// Expect: 6
-println((6.24).round())
+stdoutWriteln((6.24).round().toString())
 /// Expect: 7
-println((6.54).round())
+stdoutWriteln((6.54).round().toString())
 /// Expect: -6
-println((-6.24).round())
+stdoutWriteln((-6.24).round().toString())
 /// Expect: -7
-println((-6.54).round())
+stdoutWriteln((-6.54).round().toString())
 
 // Float#withPrecision
 /// Expect: 6
-println((6.12345).withPrecision(0))
+printlnFloat((6.12345).withPrecision(0))
 /// Expect: 7
-println((6.98765).withPrecision(0))
+printlnFloat((6.98765).withPrecision(0))
 /// Expect: 6.98765
-println((6.98765).withPrecision(-1))
+printlnFloat((6.98765).withPrecision(-1))
 /// Expect: 1.23
-println((1.23456).withPrecision(2))
+printlnFloat((1.23456).withPrecision(2))

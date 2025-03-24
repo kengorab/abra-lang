@@ -18,16 +18,16 @@ if process.args()[1] |fileName| {
         Ok(tokens) => {
           match Parser.parse(tokens) {
             Ok(parsedModule) => printParsedModuleAsJson(parsedModule)
-            Err(error) => print(error.getMessage(fileName, contents))
+            Err(error) => stdoutWrite(error.getMessage(fileName, contents))
           }
         }
-        Err(error) => print(error.getMessage(fileName, contents))
+        Err(error) => stdoutWrite(error.getMessage(fileName, contents))
       }
     }
     Err(e) => {
-      println("Could not read file: $e")
+      stdoutWriteln("Could not read file: $e")
     }
   }
 } else {
-  println("Missing required argument <file-name>")
+  stdoutWriteln("Missing required argument <file-name>")
 }

@@ -19,7 +19,7 @@ import Compiler from "./compiler"
 
 func main() {
   val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {
-    println("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
+    stdoutWriteln("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
     process.exit(1)
   }
 
@@ -59,14 +59,14 @@ func main() {
 
     if !errorMessages.isEmpty() {
       for msg, idx in errorMessages {
-        println(msg)
-        if idx != errorMessages.length - 1 println("") // spacer
+        stdoutWriteln(msg)
+        if idx != errorMessages.length - 1 stdoutWriteln("") // spacer
       }
       process.exit(1)
     } else if !readFileErrors.isEmpty() {
       for path, idx in readFileErrors {
-        println("Could not read file '$path'")
-        if idx != readFileErrors.length - 1 println("") // spacer
+        stdoutWriteln("Could not read file '$path'")
+        if idx != readFileErrors.length - 1 stdoutWriteln("") // spacer
       }
       process.exit(1)
     }
@@ -74,7 +74,7 @@ func main() {
     val builder = match Compiler.compile(project) {
       Ok(v) => v
       Err(e) => {
-        println(e.getMessage())
+        stdoutWriteln(e.getMessage())
         process.exit(1)
       }
     }
@@ -87,13 +87,13 @@ func main() {
     val ssaOutFile = match fs.openFile(ssaOutPath, fs.AccessMode.WriteOnly) {
       Ok(v) => v
       Err(e) => {
-        println(e)
+        stdoutWriteln(e.toString())
         process.exit(1)
       }
     }
     builder.writeToFile(ssaOutFile)
   } else {
-    println("Missing required argument <file-name>")
+    stdoutWriteln("Missing required argument <file-name>")
     process.exit(1)
   }
 }

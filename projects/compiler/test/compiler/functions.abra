@@ -2,11 +2,11 @@
 func foo(a: Int, b = bar(a), c = bar(a, b), arr = [a, b, c]): Int = a + b + c + arr.length
 func bar(x: Int, y = 10): Int = x + y
 /// Expect: 31
-println(foo(2))
+stdoutWriteln(foo(2).toString())
 
 // Temporarily moved lower; see comment below
 // // Variadic parameters
-// func variadic(*items: Int[]) = println(items)
+// func variadic(*items: Int[]) = stdoutWriteln(items)
 // /// Expect: [1, 2, 3]
 // variadic(1, 2, 3)
 // /// Expect: []
@@ -15,39 +15,39 @@ println(foo(2))
 // Functions, methods, and closures as value (lambdas too)
 func abc(): Int = 24
 /// Expect: <#function>
-println(abc)
+stdoutWriteln("$abc")
 val abcVal = abc
 /// Expect: <#function> 24
-println("$abcVal ${abcVal()}")
+stdoutWriteln("$abcVal ${abcVal()}")
 
 /// Expect: <#function>
-println("abc".isEmpty)
+stdoutWriteln("${"abc".isEmpty}")
 
 func def(a: Int): Int = a + 1
 val defVal = def
 /// Expect: 24
-println(defVal(23))
+stdoutWriteln(defVal(23).toString())
 
 func ghi(a: Int, b: Int): Int = a + b
 val ghiVal = ghi
 /// Expect: 24
-println(ghiVal(11, 13))
+stdoutWriteln(ghiVal(11, 13).toString())
 
 // Test reference to closure as value, from a nested scope
 val bang = "!"
 func bangbang(): String = bang + "!"
 func functionReferencingClosureAsValue() {
   val fn = bangbang
-  println(fn())
+  stdoutWriteln(fn())
 }
 /// Expect: !!
 functionReferencingClosureAsValue()
 
 // Test passing function/closure values as parameters
 
-func callFn(fn: (Int) => Int) = println(fn(16))
-func callFn2(fn: (Int, Int, Int) => Int) = println(fn(16, 17, 18))
-func callFn3(fn: (Int, Int, Int, Int) => Int) = println(fn(16, 17, 18, 19))
+func callFn(fn: (Int) => Int) = stdoutWriteln(fn(16).toString())
+func callFn2(fn: (Int, Int, Int) => Int) = stdoutWriteln(fn(16, 17, 18).toString())
+func callFn3(fn: (Int, Int, Int, Int) => Int) = stdoutWriteln(fn(16, 17, 18, 19).toString())
 
 val xyz = "xyz"
 
@@ -147,24 +147,24 @@ func closure1(one: Int): Float {
   x
 }
 /// Expect: 1.1
-println(capturedFloat)
+stdoutWriteln(capturedFloat.toString())
 /// Expect: 3.2
-println(closure1(one: 1))
+stdoutWriteln(closure1(one: 1).toString())
 /// Expect: 2.2
-println(capturedFloat)
+stdoutWriteln(capturedFloat.toString())
 
 capturedFloat = 10.1
 /// Expect: 10.1
-println(capturedFloat)
+stdoutWriteln(capturedFloat.toString())
 /// Expect: 12.2
-println(closure1(one: 1))
+stdoutWriteln(closure1(one: 1).toString())
 /// Expect: 11.2
-println(capturedFloat)
+stdoutWriteln(capturedFloat.toString())
 
 // Temporarily moved here from above, since there's something wrong with the order in which generics are resolved which
 // otherwise causes issues when attempting to print a Float value.
 // Variadic parameters
-func variadic(*items: Int[]) = println(items)
+func variadic(*items: Int[]) = stdoutWriteln(items.toString())
 /// Expect: [1, 2, 3]
 variadic(1, 2, 3)
 /// Expect: []
@@ -176,14 +176,14 @@ func closure2(zero = 0): Int {
   capturedArray.length + zero
 }
 /// Expect: [1, 2, 3]
-println(capturedArray)
+stdoutWriteln(capturedArray.toString())
 /// Expect: 2
-println(closure2())
+stdoutWriteln(closure2().toString())
 /// Expect: [1, 2]
-println(capturedArray)
+stdoutWriteln(capturedArray.toString())
 capturedArray.push(3)
 /// Expect: [1, 2, 3]
-println(capturedArray)
+stdoutWriteln(capturedArray.toString())
 
 var capturedInt = 1
 func closure3<T>(arr: T[], extra = 0) {
@@ -191,21 +191,21 @@ func closure3<T>(arr: T[], extra = 0) {
 }
 
 /// Expect: 1
-println(capturedInt)
+stdoutWriteln(capturedInt.toString())
 closure3([1, 2, 3])
 /// Expect: 4
-println(capturedInt)
+stdoutWriteln(capturedInt.toString())
 capturedInt = 1
 closure3(["a", "b"], 12)
 /// Expect: 15
-println(capturedInt)
+stdoutWriteln(capturedInt.toString())
 
 func closure4(a: Int, b = a + capturedInt): Int = a + b
 /// Expect: 3
-println(closure4(1, 2))
+stdoutWriteln(closure4(1, 2).toString())
 /// Expect: 16
 capturedInt = 14
-println(closure4(1))
+stdoutWriteln(closure4(1).toString())
 
 capturedInt = 1
 func closure5() { capturedInt += 2 }
@@ -213,19 +213,19 @@ func containsClosures1() { closure5() }
 func containsClosures2() { containsClosures1() }
 
 /// Expect: 1
-println(capturedInt)
+stdoutWriteln(capturedInt.toString())
 containsClosures2()
 /// Expect: 3
-println(capturedInt)
+stdoutWriteln(capturedInt.toString())
 containsClosures2()
 /// Expect: 5
-println(capturedInt)
+stdoutWriteln(capturedInt.toString())
 
 // Returning a function/closure value
 func makeNonClosure(): (Int) => Int = i => i + 1
 val nonClosure = makeNonClosure()
 /// Expect: 12
-println(nonClosure(11))
+stdoutWriteln(nonClosure(11).toString())
 
 func makeClosure(): (Int) => Int {
   val x = 123
@@ -233,7 +233,7 @@ func makeClosure(): (Int) => Int {
 }
 val closure = makeClosure()
 /// Expect: 134
-println(closure(11))
+stdoutWriteln(closure(11).toString())
 
 val one = 1
 func makeClosureCapturingOutside(): (Int) => Int {
@@ -241,7 +241,7 @@ func makeClosureCapturingOutside(): (Int) => Int {
 }
 val closureCapturingOutside1 = makeClosureCapturingOutside()
 /// Expect: 12
-println(closureCapturingOutside1(11))
+stdoutWriteln(closureCapturingOutside1(11).toString())
 // Even more ridiculous example
 func getClosureCapturingOutside(): (Int) => Int {
   val fn = () => makeClosureCapturingOutside()
@@ -249,14 +249,14 @@ func getClosureCapturingOutside(): (Int) => Int {
 }
 val closureCapturingOutside2 = getClosureCapturingOutside()
 /// Expect: 12
-println(closureCapturingOutside2(11))
+stdoutWriteln(closureCapturingOutside2(11).toString())
 
 func makeAdder(x: Int): (Int) => Int {
   i => i + x
 }
 val addOne = makeAdder(1)
 /// Expect: 12
-println(addOne(11))
+stdoutWriteln(addOne(11).toString())
 
 val capturedArr = [1, 2, 3]
 func makeClosureCapturingOutsideAndParam(arr: Int[]): (Int) => Int {
@@ -266,12 +266,12 @@ func makeClosureCapturingOutsideAndParam(arr: Int[]): (Int) => Int {
 }
 val closureCapturingOutsideAndParam = makeClosureCapturingOutsideAndParam(capturedArr)
 /// Expect: [1, 2]
-println(capturedArr)
+stdoutWriteln(capturedArr.toString())
 capturedArr.push(3)
 /// Expect: [1, 2, 3]
-println(capturedArr)
+stdoutWriteln(capturedArr.toString())
 /// Expect: 15
-println(closureCapturingOutsideAndParam(11))
+stdoutWriteln(closureCapturingOutsideAndParam(11).toString())
 
 // This is a pretty cool stress-test for closures and functions as values
 // TODO: there's some issue here with the generics. the error is: "unexpected generic 'A' at this point"
@@ -303,15 +303,15 @@ func makeJankClass(className: String, a: Int, b: Float[]): JankInstance {
 }
 val jank = makeJankClass("Wow", 1, [2.3, 4.5])
 /// Expect: Wow(a: 1, b: [2.3, 4.5])
-println(jank.toString())
+stdoutWriteln(jank.toString())
 jank.setA(2)
 jank.b.push(6.7)
 /// Expect: Wow(a: 2, b: [2.3, 4.5, 6.7])
-println(jank.toString())
+stdoutWriteln(jank.toString())
 jank.setA(0)
 jank.setB([1.2, 3.4])
 /// Expect: Wow(a: 0, b: [1.2, 3.4])
-println(jank.toString())
+stdoutWriteln(jank.toString())
 
 // Returns
 
@@ -320,9 +320,9 @@ func finalIfExpressionReturns(b: Bool): Int {
 }
 
 /// Expect: 1
-println(finalIfExpressionReturns(true))
+stdoutWriteln(finalIfExpressionReturns(true).toString())
 /// Expect: 2
-println(finalIfExpressionReturns(false))
+stdoutWriteln(finalIfExpressionReturns(false).toString())
 
 // Return statements in if-expressions
 func returnExprInArr(i: Int): Int[] {
@@ -335,9 +335,9 @@ func returnExprInArr(i: Int): Int[] {
   arr
 }
 /// Expect: []
-println(returnExprInArr(0))
+stdoutWriteln(returnExprInArr(0).toString())
 /// Expect: [1, 2, 3]
-println(returnExprInArr(1))
+stdoutWriteln(returnExprInArr(1).toString())
 
 func returnInVarDecl(i: Int): Int {
   val a = if i == 100 {
@@ -350,6 +350,6 @@ func returnInVarDecl(i: Int): Int {
 }
 
 /// Expect: 17
-println(returnInVarDecl(100))
+stdoutWriteln(returnInVarDecl(100).toString())
 /// Expect: -1
-println(returnInVarDecl(0))
+stdoutWriteln(returnInVarDecl(0).toString())

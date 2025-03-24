@@ -217,7 +217,7 @@ pub type Compiler {
       val moduleFn = match compiler._compileModule(mod) {
         Ok(v) => v
         Err(e) => {
-          // println(compiler._currentNode?.token)
+          // stdoutWriteln(compiler._currentNode?.token)
           return Err(CompilationError(modulePath: mod.name, error: e))
         }
       }
@@ -1109,11 +1109,12 @@ pub type Compiler {
           TypedInvokee.Function(fn) => {
             match self._resolvedGenerics.addLayer(fn.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: fn.label.name, message: e))) }
 
-            // if fn.label.name == "println" || fn.label.name == "print" {
+            if fn.label.name == "println" || fn.label.name == "print" {
+              unreachable("should be no more print[ln] calls (${node.token.position})")
             //   val res = self._invokePrint(arguments: arguments, withNewline: fn.label.name == "println")
             //   self._resolvedGenerics.popLayer()
             //   return res
-            // }
+            }
 
             val intrinsicDec = fn.decorators.find(dec => dec.label.name == "intrinsic")
             if intrinsicDec |dec| {

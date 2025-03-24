@@ -6,35 +6,35 @@ func f1(): Result<Int, String> {
   Ok(x + 1)
 }
 /// Expect: Result.Ok(value: 124)
-println(f1())
+stdoutWriteln(f1().toString())
 
 func f2(): Result<Int, String> {
   val x = try err()
   Ok(x + 1)
 }
 /// Expect: Result.Err(error: "foo")
-println(f2())
+stdoutWriteln(f2().toString())
 
 func f3(): Result<Int[], String> {
   val arr = [try ok(), (try ok()) + 1, (try ok()) + 2]
   Ok(arr)
 }
 /// Expect: Result.Ok(value: [123, 124, 125])
-println(f3())
+stdoutWriteln(f3().toString())
 
 func f4(): Result<Int[], String> {
   val arr = [try ok(), (try err()) + 1, (try ok()) + 2]
   Ok(arr)
 }
 /// Expect: Result.Err(error: "foo")
-println(f4())
+stdoutWriteln(f4().toString())
 
 func f5(): Result<Int, String> {
   val x = (try f1()) + (try f2()) + (try f3()).length + (try f4()).length
   Ok(x)
 }
 /// Expect: Result.Err(error: "foo")
-println(f5())
+stdoutWriteln(f5().toString())
 
 // Testing else-clause with terminators
 
@@ -52,7 +52,7 @@ func f6(): Result<Int, Int> {
 }
 
 /// Expect: Result.Ok(value: 123)
-println(f6())
+stdoutWriteln(f6().toString())
 
 func f7(): Result<Int, Int> {
   var acc = 0
@@ -65,7 +65,7 @@ func f7(): Result<Int, Int> {
 }
 
 /// Expect: Result.Ok(value: 123)
-println(f7())
+stdoutWriteln(f7().toString())
 
 func f8(): Result<Int, Int> {
   var acc = 0
@@ -81,7 +81,7 @@ func f8(): Result<Int, Int> {
 }
 
 /// Expect: Result.Ok(value: 199)
-println(f8())
+stdoutWriteln(f8().toString())
 
 func f9(): Result<Int, Int> {
   var acc = 0
@@ -94,7 +94,7 @@ func f9(): Result<Int, Int> {
 }
 
 /// Expect: Result.Ok(value: 0)
-println(f9())
+stdoutWriteln(f9().toString())
 
 func f10(): Result<Int, Int> {
   var acc = 0
@@ -107,7 +107,7 @@ func f10(): Result<Int, Int> {
 }
 
 /// Expect: Result.Ok(value: 123)
-println(f10())
+stdoutWriteln(f10().toString())
 
 func f11(): Result<Int, Int> {
   var acc = 0
@@ -120,7 +120,7 @@ func f11(): Result<Int, Int> {
 }
 
 /// Expect: Result.Ok(value: 123)
-println(f11())
+stdoutWriteln(f11().toString())
 
 func f12(): Result<Int, Int> {
   var acc = 0
@@ -133,7 +133,7 @@ func f12(): Result<Int, Int> {
 }
 
 /// Expect: Result.Ok(value: 12)
-println(f12())
+stdoutWriteln(f12().toString())
 
 func f13(): Result<Int, Int> {
   var acc = 0
@@ -146,7 +146,7 @@ func f13(): Result<Int, Int> {
 }
 
 /// Expect: Result.Err(error: 12)
-println(f13())
+stdoutWriteln(f13().toString())
 
 func f14(): Result<Int, Int> {
   val x = try ok() else return Ok(12)
@@ -155,7 +155,7 @@ func f14(): Result<Int, Int> {
 }
 
 /// Expect: Result.Ok(value: 123)
-println(f14())
+stdoutWriteln(f14().toString())
 
 func f15(): Result<Int, Int> {
   val x = try ok() else return Err(12)
@@ -164,7 +164,7 @@ func f15(): Result<Int, Int> {
 }
 
 /// Expect: Result.Ok(value: 123)
-println(f15())
+stdoutWriteln(f15().toString())
 
 func f16(): Result<Int, Int> {
   val x = try err() else return Ok(12)
@@ -173,7 +173,7 @@ func f16(): Result<Int, Int> {
 }
 
 /// Expect: Result.Ok(value: 12)
-println(f16())
+stdoutWriteln(f16().toString())
 
 func f17(): Result<Int, Int> {
   val x = try err() else return Err(12)
@@ -182,7 +182,7 @@ func f17(): Result<Int, Int> {
 }
 
 /// Expect: Result.Err(error: 12)
-println(f17())
+stdoutWriteln(f17().toString())
 
 // Testing else-clause without terminators
 
@@ -193,7 +193,7 @@ func f18(): Result<Int, Int> {
 }
 
 /// Expect: Result.Ok(value: 123)
-println(f18())
+stdoutWriteln(f18().toString())
 
 func f19(): Int {
   val x = try ok() else 7
@@ -202,7 +202,7 @@ func f19(): Int {
 }
 
 /// Expect: 124
-println(f19())
+stdoutWriteln(f19().toString())
 
 func f20(): Result<Int, Int> {
   val x = try err() else 7
@@ -211,7 +211,7 @@ func f20(): Result<Int, Int> {
 }
 
 /// Expect: Result.Ok(value: 7)
-println(f20())
+stdoutWriteln(f20().toString())
 
 func f21(): Int {
   val x = try err() else 7
@@ -220,4 +220,4 @@ func f21(): Int {
 }
 
 /// Expect: 8
-println(f21())
+stdoutWriteln(f21().toString())
