@@ -474,7 +474,7 @@ pub type Jsonifier {
           }
           TypedInvokee.Struct(struct) => self.printStruct(struct: struct, abridged: true)
           TypedInvokee.Expr(expr) => self.printNode(expr)
-          TypedInvokee.EnumVariant(enum_, variant) => print("\"${enum_.label.name}.${variant.label.name}\"")
+          TypedInvokee.EnumVariant(enum_, variant) => stdoutWrite("\"${enum_.label.name}.${variant.label.name}\"")
         }
         stdoutWriteln(",")
 
@@ -664,8 +664,8 @@ pub type Jsonifier {
               self.indentDec()
               self.print("}")
             }
-            TypedMatchCaseKind.None_ => print("\"None\"")
-            TypedMatchCaseKind.Else => print("\"else\"")
+            TypedMatchCaseKind.None_ => stdoutWrite("\"None\"")
+            TypedMatchCaseKind.Else => stdoutWrite("\"else\"")
           }
           stdoutWriteln(",")
 
@@ -870,14 +870,14 @@ pub type Jsonifier {
 
     self.print("\"kind\": ")
     match function.kind {
-      FunctionKind.Standalone => print("\"FunctionKind.Standalone\"")
+      FunctionKind.Standalone => stdoutWrite("\"FunctionKind.Standalone\"")
       FunctionKind.InstanceMethod(_, isPublic) => {
-        print("\"FunctionKind.InstanceMethod\"")
+        stdoutWrite("\"FunctionKind.InstanceMethod\"")
         stdoutWriteln(",")
         self.print("\"isPublic\": $isPublic")
       }
       FunctionKind.StaticMethod(_, isPublic) => {
-        print("\"FunctionKind.StaticMethod\"")
+        stdoutWrite("\"FunctionKind.StaticMethod\"")
         stdoutWriteln(",")
         self.print("\"isPublic\": $isPublic")
       }
@@ -941,7 +941,7 @@ pub type Jsonifier {
     if !function.capturedClosures.isEmpty() {
       self.print("\"capturedClosures\": ")
       self.array(function.capturedClosures, fn => {
-        print("\"${fn.label.name}\"")
+        stdoutWrite("\"${fn.label.name}\"")
       })
       stdoutWriteln(",")
     }
@@ -995,10 +995,10 @@ pub type Jsonifier {
           }
           IndexingMode.Range(startNode, endNode) => {
             self.print("\"startIndex\": ")
-            if startNode |n| self.printNode(n) else print("null")
+            if startNode |n| self.printNode(n) else stdoutWrite("null")
             stdoutWriteln(",")
             self.print("\"endIndex\": ")
-            if endNode |n| self.printNode(n) else print("null")
+            if endNode |n| self.printNode(n) else stdoutWrite("null")
             stdoutWriteln()
           }
         }
@@ -1025,7 +1025,7 @@ pub type Jsonifier {
     self.print("}")
   }
 
-  func indent(self) = print("  ".repeat(self.indentLevel))
+  func indent(self) = stdoutWrite("  ".repeat(self.indentLevel))
 
   func indentInc(self) { self.indentLevel += 1 }
 
@@ -1033,7 +1033,7 @@ pub type Jsonifier {
 
   func print(self, str: String) {
     self.indent()
-    print(str)
+    stdoutWrite(str)
   }
 
   func println(self, str: String) {
@@ -1043,7 +1043,7 @@ pub type Jsonifier {
 
   func array<T>(self, arr: T[], fn: (T) => Unit) {
     if arr.isEmpty() {
-      print("[]")
+      stdoutWrite("[]")
     } else {
       stdoutWriteln("[")
       self.indentInc()
@@ -1065,7 +1065,7 @@ pub type Jsonifier {
     if v |v| {
       fn(v)
     } else {
-      print("null")
+      stdoutWrite("null")
     }
   }
 }
