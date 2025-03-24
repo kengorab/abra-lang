@@ -1109,13 +1109,6 @@ pub type Compiler {
           TypedInvokee.Function(fn) => {
             match self._resolvedGenerics.addLayer(fn.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: fn.label.name, message: e))) }
 
-            if fn.label.name == "println" || fn.label.name == "print" {
-              unreachable("should be no more print[ln] calls (${node.token.position})")
-            //   val res = self._invokePrint(arguments: arguments, withNewline: fn.label.name == "println")
-            //   self._resolvedGenerics.popLayer()
-            //   return res
-            }
-
             val intrinsicDec = fn.decorators.find(dec => dec.label.name == "intrinsic")
             if intrinsicDec |dec| {
               val res = self.invokeIntrinsicFn(dec, fn, arguments)
@@ -2194,7 +2187,7 @@ pub type Compiler {
         try self._getOrCompileFunction(fn)
       }
 
-      val fnName = (try self._fnName(fn)) + ".discard"
+      val fnName = self._fnName(fn) + ".discard"
       val returnTypeQbe = try self._getQbeTypeForType(fn.returnType)
       val fnVal = self._builder.buildFunction(name: fnName, returnType: returnTypeQbe)
       if fn.isClosure() fnVal.addEnv()
@@ -2618,54 +2611,6 @@ pub type Compiler {
     Ok(fn)
   }
 
-  // func _invokePrint(self, arguments: TypedAstNode?[], withNewline = false): Result<Value, CompileError> {
-  //   val fnName = if withNewline "println" else "print"
-  //   self._currentFn.block.addComment("begin $fnName...")
-  //   val varargItems = if arguments[0] |node| {
-  //     if node |node| {
-  //       val items = match node.kind {
-  //         TypedAstNodeKind.Array(items) => items
-  //         _ => unreachable("`$fnName` receives an array of its variadic arguments")
-  //       }
-  //       items
-  //     } else unreachable("`$fnName` receives an array of its variadic arguments")
-  //   } else []
-
-  //   val stdoutWriteFn = try self._project.preludeScope.functions.find(fn => fn.label.name == "stdoutWrite") else unreachable("`stdoutWrite` must exist in prelude")
-  //   val stdoutWriteFnVal = try self._getOrCompileFunction(stdoutWriteFn)
-
-  //   val space = self._builder.buildGlobalString(" ")
-  //   val spaceStr = try self._constructString(space, Value.Int(1))
-
-  //   for item, idx in varargItems {
-  //     val itemVal = try self._compileExpression(item)
-
-  //     val itemInstanceType = try self._addResolvedGenericsLayerForInstanceMethod(item.ty, "toString", item.token.position)
-  //     val itemToStringFnVal = try self._getOrCompileToStringMethod(itemInstanceType)
-  //     self._resolvedGenerics.popLayer()
-
-  //     val fnName = self._functionName("eq", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(item.ty))[0]), true))
-  //     val frameCtx = CallframeContext(position: item.token.position, callee: Some(fnName))
-  //     val toStringVal = try self._buildCall(Some(frameCtx), Callable.Function(itemToStringFnVal), [itemVal])
-
-  //     self._currentFn.block.buildVoidCall(Callable.Function(stdoutWriteFnVal), [toStringVal])
-
-  //     if idx != varargItems.length - 1 {
-  //       self._currentFn.block.buildVoidCall(Callable.Function(stdoutWriteFnVal), [spaceStr])
-  //     }
-  //   }
-
-  //   if withNewline {
-  //     val newline = self._builder.buildGlobalString("\\n")
-  //     val newlineStr = try self._constructString(newline, Value.Int(1))
-  //     self._currentFn.block.buildVoidCall(Callable.Function(stdoutWriteFnVal), [newlineStr])
-  //   }
-
-  //   self._currentFn.block.addComment("...$fnName end")
-
-  //   Ok(Value.Ident("bogus", QbeType.F32))
-  // }
-
   func invokeExternalFn(self, dec: Decorator, fn: Function, arguments: TypedAstNode?[]): Result<Value, CompileError> {
     val cFnName = match dec.arguments[0] {
       LiteralAstNode.String(value) => value
@@ -3031,7 +2976,7 @@ pub type Compiler {
 
   func _getOrCompileFunction(self, fn: Function, paramsNeedingDefaultValue: Bool[] = []): Result<QbeFunction, CompileError> {
     val defaultValuesFlag = paramsNeedingDefaultValue.reduce(0, (acc, f) => (acc << 1) || (if f 1 else 0))
-    val fnName = if defaultValuesFlag == 0 { try self._fnName(fn) } else { (try self._fnName(fn)) + ".$defaultValuesFlag" }
+    val fnName = if defaultValuesFlag == 0 { self._fnName(fn) } else { self._fnName(fn) + ".$defaultValuesFlag" }
     if self._builder.getFunction(fnName) |fn| return Ok(fn)
 
     val returnTypeQbe = try self._getQbeTypeForType(fn.returnType)
@@ -4449,25 +4394,7 @@ pub type Compiler {
     Ok("$enumTypeName.${variant.label.name}")
   }
 
-  func _fnName(self, fn: Function): Result<String, CompileError> {
-    val base = fn.label.name
-    val name = if !fn.typeParams.isEmpty() {
-      val parts: String[] = []
-      for (_, label) in fn.typeParams {
-        val repr = if self._resolvedGenerics.resolveGeneric(label.name) |ty| {
-          try self._getNameForType(ty)
-        } else {
-          unreachable("could not resolve '${label.name}'")
-        }
-        parts.push(repr)
-      }
-      "$base.${parts.join(".")}"
-    } else {
-      base
-    }
-
-    Ok(name)
-  }
+  func _fnName(self, fn: Function): String = ".${fn.label.name}"
 
   func _structMethodFnName(self, struct: Struct, fn: Function): Result<String, CompileError> {
     val sep = match fn.kind {
@@ -4475,7 +4402,7 @@ pub type Compiler {
       _ => "."
     }
     val typeName = try self._structTypeName(struct, excludeTypeParams: sep == ".")
-    val fnName = try self._fnName(fn)
+    val fnName = self._fnName(fn)
     Ok("${typeName}${sep}$fnName")
   }
   func _enumMethodFnName(self, enum_: Enum, fn: Function): Result<String, CompileError> {
@@ -4484,7 +4411,7 @@ pub type Compiler {
       _ => "."
     }
     val typeName = try self._enumTypeName(enum_, excludeTypeParams: sep == ".")
-    val fnName = try self._fnName(fn)
+    val fnName = self._fnName(fn)
     Ok("${typeName}${sep}$fnName")
   }
 
