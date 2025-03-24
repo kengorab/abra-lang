@@ -2,8 +2,13 @@ import "./_intrinsics" as intrinsics
 import Pointer, Byte from "./_intrinsics"
 import "libc" as libc
 
-func stdoutWrite(str: String) {
-  libc.write(libc.STDOUT_FILENO, str._buffer, str.length)
+func stdoutWrite(str = "") {
+  if !str.isEmpty() libc.write(libc.STDOUT_FILENO, str._buffer, str.length)
+}
+
+func stdoutWriteln(str = "") {
+  stdoutWrite(str)
+  stdoutWrite("\n")
 }
 
 func print(*items: Any[]) {
@@ -1519,12 +1524,12 @@ pub decorator noreturn { }
 
 @noreturn
 pub func unreachable(message = "") {
-  println("Encountered unreachable code:", message)
+  stdoutWriteln("Encountered unreachable code: $message")
   libc.exit(1)
 }
 
 @noreturn
 pub func todo(message = "") {
-  println("Encountered unimplemented code:", message)
+  stdoutWriteln("Encountered unimplemented code: $message")
   libc.exit(1)
 }

@@ -6,35 +6,35 @@ func f1(): Int? {
   Some(x + 1)
 }
 /// Expect: Option.Some(value: 124)
-println(f1())
+stdoutWriteln(f1().toString())
 
 func f2(): Int? {
   val x = try none()
   Some(x + 1)
 }
 /// Expect: Option.None
-println(f2())
+stdoutWriteln(f2().toString())
 
 func f3(): Int[]? {
   val arr = [try some(), (try some()) + 1, (try some()) + 2]
   Some(arr)
 }
 /// Expect: Option.Some(value: [123, 124, 125])
-println(f3())
+stdoutWriteln(f3().toString())
 
 func f4(): Int[]? {
   val arr = [try some(), (try none()) + 1, (try some()) + 2]
   Some(arr)
 }
 /// Expect: Option.None
-println(f4())
+stdoutWriteln(f4().toString())
 
 func f5(): Int? {
   val x = (try f1()) + (try f2()) + (try f3()).length + (try f4()).length
   Some(x)
 }
 /// Expect: Option.None
-println(f5())
+stdoutWriteln(f5().toString())
 
 // Testing else-clause with terminators
 
@@ -52,7 +52,7 @@ func f6(): Int? {
 }
 
 /// Expect: Option.Some(value: 123)
-println(f6())
+stdoutWriteln(f6().toString())
 
 func f7(): Int? {
   var acc = 0
@@ -65,7 +65,7 @@ func f7(): Int? {
 }
 
 /// Expect: Option.Some(value: 123)
-println(f7())
+stdoutWriteln(f7().toString())
 
 func f8(): Int? {
   var acc = 0
@@ -81,7 +81,7 @@ func f8(): Int? {
 }
 
 /// Expect: Option.Some(value: 199)
-println(f8())
+stdoutWriteln(f8().toString())
 
 func f9(): Int? {
   var acc = 0
@@ -94,7 +94,7 @@ func f9(): Int? {
 }
 
 /// Expect: Option.Some(value: 0)
-println(f9())
+stdoutWriteln(f9().toString())
 
 func f10(): Int? {
   var acc = 0
@@ -107,7 +107,7 @@ func f10(): Int? {
 }
 
 /// Expect: Option.Some(value: 123)
-println(f10())
+stdoutWriteln(f10().toString())
 
 func f11(): Int? {
   var acc = 0
@@ -120,7 +120,7 @@ func f11(): Int? {
 }
 
 /// Expect: Option.Some(value: 123)
-println(f11())
+stdoutWriteln(f11().toString())
 
 func f12(): Int? {
   var acc = 0
@@ -133,7 +133,7 @@ func f12(): Int? {
 }
 
 /// Expect: Option.Some(value: 12)
-println(f12())
+stdoutWriteln(f12().toString())
 
 func f13(): Int? {
   var acc = 0
@@ -146,7 +146,7 @@ func f13(): Int? {
 }
 
 /// Expect: Option.None
-println(f13())
+stdoutWriteln(f13().toString())
 
 func f14(): Int? {
   val x = try some() else return Some(12)
@@ -155,7 +155,7 @@ func f14(): Int? {
 }
 
 /// Expect: Option.Some(value: 123)
-println(f14())
+stdoutWriteln(f14().toString())
 
 func f15(): Int? {
   val x = try some() else return None
@@ -164,7 +164,7 @@ func f15(): Int? {
 }
 
 /// Expect: Option.Some(value: 123)
-println(f15())
+stdoutWriteln(f15().toString())
 
 func f16(): Int? {
   val x = try none() else return Some(12)
@@ -173,7 +173,7 @@ func f16(): Int? {
 }
 
 /// Expect: Option.Some(value: 12)
-println(f16())
+stdoutWriteln(f16().toString())
 
 func f17(): Int? {
   val x = try none() else return None
@@ -182,7 +182,7 @@ func f17(): Int? {
 }
 
 /// Expect: Option.None
-println(f17())
+stdoutWriteln(f17().toString())
 
 // Testing else-clause without terminators
 
@@ -193,7 +193,7 @@ func f18(): Int? {
 }
 
 /// Expect: Option.Some(value: 123)
-println(f18())
+stdoutWriteln(f18().toString())
 
 func f19(): Int {
   val x = try some() else 7
@@ -202,7 +202,7 @@ func f19(): Int {
 }
 
 /// Expect: 124
-println(f19())
+stdoutWriteln(f19().toString())
 
 func f20(): Int? {
   val x = try none() else 7
@@ -211,7 +211,7 @@ func f20(): Int? {
 }
 
 /// Expect: Option.Some(value: 7)
-println(f20())
+stdoutWriteln(f20().toString())
 
 func f21(): Int {
   val x = try none() else 7
@@ -220,4 +220,4 @@ func f21(): Int {
 }
 
 /// Expect: 8
-println(f21())
+stdoutWriteln(f21().toString())

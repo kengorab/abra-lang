@@ -217,7 +217,7 @@ pub type Compiler {
       val moduleFn = match compiler._compileModule(mod) {
         Ok(v) => v
         Err(e) => {
-          // println(compiler._currentNode?.token)
+          // stdoutWriteln(compiler._currentNode?.token)
           return Err(CompilationError(modulePath: mod.name, error: e))
         }
       }
@@ -1050,7 +1050,9 @@ pub type Compiler {
               val targetParamTypes = if fnAliasTypeHint |hint| {
                 val paramTypes = match hint.kind {
                   TypeKind.Func(paramTypes, _) => Some(paramTypes)
-                  TypeKind.Any => None // if the function value is being treated as an Any, then no param type info needs to be known later anyway
+                  // If the function value is being treated as a Any or a Hole, then no param type info needs to be known later anyway
+                  TypeKind.Any => None
+                  TypeKind.Hole => None
                   _ => unreachable("fnAliasTypeKind must be TypeKind.Func")
                 }
                 paramTypes
@@ -1106,12 +1108,6 @@ pub type Compiler {
         val (fnVal, frameCtx, closureEnvPtr) = match invokee {
           TypedInvokee.Function(fn) => {
             match self._resolvedGenerics.addLayer(fn.label.name, resolvedGenerics) { Ok => {}, Err(e) => return Err(CompileError(position: node.token.position, kind: CompileErrorKind.ResolvedGenericsError(context: fn.label.name, message: e))) }
-
-            if fn.label.name == "println" || fn.label.name == "print" {
-              val res = self._invokePrint(arguments: arguments, withNewline: fn.label.name == "println")
-              self._resolvedGenerics.popLayer()
-              return res
-            }
 
             val intrinsicDec = fn.decorators.find(dec => dec.label.name == "intrinsic")
             if intrinsicDec |dec| {
@@ -2362,7 +2358,9 @@ pub type Compiler {
           val targetParamTypes = if fnAliasTypeHint |hint| {
             val paramTypes = match hint.kind {
               TypeKind.Func(paramTypes, _) => Some(paramTypes)
-              TypeKind.Any => None // if the function value is being treated as an Any, then no param type info needs to be known later anyway
+              // If the function value is being treated as a Any or a Hole, then no param type info needs to be known later anyway
+              TypeKind.Any => None
+              TypeKind.Hole => None
               _ => unreachable("fnAliasTypeKind must be TypeKind.Func")
             }
             paramTypes
@@ -2611,54 +2609,6 @@ pub type Compiler {
     self._currentFn = prevFn
 
     Ok(fn)
-  }
-
-  func _invokePrint(self, arguments: TypedAstNode?[], withNewline = false): Result<Value, CompileError> {
-    val fnName = if withNewline "println" else "print"
-    self._currentFn.block.addComment("begin $fnName...")
-    val varargItems = if arguments[0] |node| {
-      if node |node| {
-        val items = match node.kind {
-          TypedAstNodeKind.Array(items) => items
-          _ => unreachable("`$fnName` receives an array of its variadic arguments")
-        }
-        items
-      } else unreachable("`$fnName` receives an array of its variadic arguments")
-    } else []
-
-    val stdoutWriteFn = try self._project.preludeScope.functions.find(fn => fn.label.name == "stdoutWrite") else unreachable("`stdoutWrite` must exist in prelude")
-    val stdoutWriteFnVal = try self._getOrCompileFunction(stdoutWriteFn)
-
-    val space = self._builder.buildGlobalString(" ")
-    val spaceStr = try self._constructString(space, Value.Int(1))
-
-    for item, idx in varargItems {
-      val itemVal = try self._compileExpression(item)
-
-      val itemInstanceType = try self._addResolvedGenericsLayerForInstanceMethod(item.ty, "toString", item.token.position)
-      val itemToStringFnVal = try self._getOrCompileToStringMethod(itemInstanceType)
-      self._resolvedGenerics.popLayer()
-
-      val fnName = self._functionName("eq", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(item.ty))[0]), true))
-      val frameCtx = CallframeContext(position: item.token.position, callee: Some(fnName))
-      val toStringVal = try self._buildCall(Some(frameCtx), Callable.Function(itemToStringFnVal), [itemVal])
-
-      self._currentFn.block.buildVoidCall(Callable.Function(stdoutWriteFnVal), [toStringVal])
-
-      if idx != varargItems.length - 1 {
-        self._currentFn.block.buildVoidCall(Callable.Function(stdoutWriteFnVal), [spaceStr])
-      }
-    }
-
-    if withNewline {
-      val newline = self._builder.buildGlobalString("\\n")
-      val newlineStr = try self._constructString(newline, Value.Int(1))
-      self._currentFn.block.buildVoidCall(Callable.Function(stdoutWriteFnVal), [newlineStr])
-    }
-
-    self._currentFn.block.addComment("...$fnName end")
-
-    Ok(Value.Ident("bogus", QbeType.F32))
   }
 
   func invokeExternalFn(self, dec: Decorator, fn: Function, arguments: TypedAstNode?[]): Result<Value, CompileError> {
@@ -4377,9 +4327,9 @@ pub type Compiler {
     }
   }
 
-  func _structTypeName(self, struct: Struct): Result<String, CompileError> {
+  func _structTypeName(self, struct: Struct, excludeTypeParams = false): Result<String, CompileError> {
     val base = ".${struct.moduleId}.${struct.label.name}"
-    val name = if !struct.typeParams.isEmpty() {
+    val name = if !excludeTypeParams && !struct.typeParams.isEmpty() {
       val parts: String[] = []
       for name in struct.typeParams {
         val repr = if self._resolvedGenerics.resolveGeneric(name) |ty| {
@@ -4411,9 +4361,9 @@ pub type Compiler {
   }
 
   func _enumTypeNameBase(self, enum_: Enum): String = ".${enum_.moduleId}.${enum_.label.name}"
-  func _enumTypeName(self, enum_: Enum): Result<String, CompileError> {
+  func _enumTypeName(self, enum_: Enum, excludeTypeParams = false): Result<String, CompileError> {
     val base = self._enumTypeNameBase(enum_)
-    val name = if !enum_.typeParams.isEmpty() {
+    val name = if !excludeTypeParams && !enum_.typeParams.isEmpty() {
       val parts: String[] = []
       for name in enum_.typeParams {
         val repr = if self._resolvedGenerics.resolveGeneric(name) |ty| {
@@ -4445,21 +4395,24 @@ pub type Compiler {
   }
 
   func _fnName(self, fn: Function): String = ".${fn.label.name}"
+
   func _structMethodFnName(self, struct: Struct, fn: Function): Result<String, CompileError> {
-    val typeName = try self._structTypeName(struct)
     val sep = match fn.kind {
       FunctionKind.InstanceMethod => ".."
       _ => "."
     }
-    Ok("${typeName}${sep}${fn.label.name}")
+    val typeName = try self._structTypeName(struct, excludeTypeParams: sep == ".")
+    val fnName = self._fnName(fn)
+    Ok("${typeName}${sep}$fnName")
   }
   func _enumMethodFnName(self, enum_: Enum, fn: Function): Result<String, CompileError> {
-    val typeName = try self._enumTypeName(enum_)
     val sep = match fn.kind {
       FunctionKind.InstanceMethod => ".."
       _ => "."
     }
-    Ok("${typeName}${sep}${fn.label.name}")
+    val typeName = try self._enumTypeName(enum_, excludeTypeParams: sep == ".")
+    val fnName = self._fnName(fn)
+    Ok("${typeName}${sep}$fnName")
   }
 
   func _methodFnName(self, instanceKind: InstanceKind, fn: Function): Result<String, CompileError> {

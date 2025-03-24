@@ -1,1 +1,9 @@
-1 + 2
+// Functions and closures as value (lambdas too)
+func abc(): Int = 24
+stdoutWriteln(abc)
+val abcVal = abc
+stdoutWriteln("$abcVal ${abcVal()}")
+
+val str = "abc"
+
+stdoutWriteln(str.isEmpty)

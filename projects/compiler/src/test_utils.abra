@@ -6,10 +6,10 @@ pub func printTokenAsJson(token: Token, indentLevelStart: Int, currentIndentLeve
   val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
   val endIndent = "  ".repeat(currentIndentLevel)
 
-  println("$startIndent{\n$fieldsIndent\"position\": [${token.position.line}, ${token.position.col}],")
-  print("$fieldsIndent\"kind\": ")
+  stdoutWriteln("$startIndent{\n$fieldsIndent\"position\": [${token.position.line}, ${token.position.col}],")
+  stdoutWrite("$fieldsIndent\"kind\": ")
   printTokenKindAsJson(kind: token.kind, indentLevelStart: 0, currentIndentLevel: currentIndentLevel + 1)
-  print("$endIndent}")
+  stdoutWrite("$endIndent}")
 }
 
 func printTokenKindAsJson(kind: TokenKind, indentLevelStart: Int, currentIndentLevel: Int) {
@@ -17,178 +17,178 @@ func printTokenKindAsJson(kind: TokenKind, indentLevelStart: Int, currentIndentL
   val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
   val endIndent = "  ".repeat(currentIndentLevel)
 
-  println("$startIndent{")
+  stdoutWriteln("$startIndent{")
   match kind {
     TokenKind.Int(value) => {
-      println("$fieldsIndent\"name\": \"Int\",")
-      println("$fieldsIndent\"value\": $value")
+      stdoutWriteln("$fieldsIndent\"name\": \"Int\",")
+      stdoutWriteln("$fieldsIndent\"value\": $value")
     }
     TokenKind.Float(value) => {
-      println("$fieldsIndent\"name\": \"Float\",")
-      println("$fieldsIndent\"value\": $value")
+      stdoutWriteln("$fieldsIndent\"name\": \"Float\",")
+      stdoutWriteln("$fieldsIndent\"value\": $value")
     }
     TokenKind.Bool(value) => {
-      println("$fieldsIndent\"name\": \"Bool\",")
-      println("$fieldsIndent\"value\": $value")
+      stdoutWriteln("$fieldsIndent\"name\": \"Bool\",")
+      stdoutWriteln("$fieldsIndent\"value\": $value")
     }
     TokenKind.Char(intVal) => {
-      println("$fieldsIndent\"name\": \"Char\",")
-      println("$fieldsIndent\"value\": \"${intVal.hex()}\"")
+      stdoutWriteln("$fieldsIndent\"name\": \"Char\",")
+      stdoutWriteln("$fieldsIndent\"value\": \"${intVal.hex()}\"")
     }
     TokenKind.String(value) => {
-      println("$fieldsIndent\"name\": \"String\",")
-      println("$fieldsIndent\"value\": \"$value\"")
+      stdoutWriteln("$fieldsIndent\"name\": \"String\",")
+      stdoutWriteln("$fieldsIndent\"value\": \"$value\"")
     }
     TokenKind.StringInterpolation(chunks) => {
-      println("$fieldsIndent\"name\": \"StringInterpolation\",")
-      println("$fieldsIndent\"chunks\": [")
+      stdoutWriteln("$fieldsIndent\"name\": \"StringInterpolation\",")
+      stdoutWriteln("$fieldsIndent\"chunks\": [")
       for chunk, idx in chunks {
         match chunk {
           StringInterpolationChunk.String(pos, value) => {
             printTokenAsJson(Token(position: pos, kind: TokenKind.String(value)), indentLevelStart + currentIndentLevel + 2, currentIndentLevel + 2)
           }
           StringInterpolationChunk.Interpolation(tokens) => {
-            println("$fieldsIndent  [")
+            stdoutWriteln("$fieldsIndent  [")
             for token, idx in tokens {
               printTokenAsJson(token, indentLevelStart + currentIndentLevel + 3, currentIndentLevel + 3)
 
               val comma = if idx != tokens.length - 1 "," else ""
-              println(comma)
+              stdoutWriteln(comma)
             }
-            print("$fieldsIndent  ]")
+            stdoutWrite("$fieldsIndent  ]")
           }
         }
         val comma = if idx != chunks.length - 1 "," else ""
-        println(comma)
+        stdoutWriteln(comma)
       }
-      println("$fieldsIndent]")
+      stdoutWriteln("$fieldsIndent]")
     }
     TokenKind.Ident(name) => {
-      println("$fieldsIndent\"name\": \"Ident\",")
-      println("$fieldsIndent\"value\": \"$name\"")
+      stdoutWriteln("$fieldsIndent\"name\": \"Ident\",")
+      stdoutWriteln("$fieldsIndent\"value\": \"$name\"")
     }
-    TokenKind.If => println("$fieldsIndent\"name\": \"If\"")
-    TokenKind.Else => println("$fieldsIndent\"name\": \"Else\"")
-    TokenKind.Val => println("$fieldsIndent\"name\": \"Val\"")
-    TokenKind.Var => println("$fieldsIndent\"name\": \"Var\"")
-    TokenKind.Func => println("$fieldsIndent\"name\": \"Func\"")
-    TokenKind.Self => println("$fieldsIndent\"name\": \"Self\"")
-    TokenKind.While => println("$fieldsIndent\"name\": \"While\"")
-    TokenKind.Break => println("$fieldsIndent\"name\": \"Break\"")
-    TokenKind.Continue => println("$fieldsIndent\"name\": \"Continue\"")
-    TokenKind.For => println("$fieldsIndent\"name\": \"For\"")
-    TokenKind.In => println("$fieldsIndent\"name\": \"In\"")
-    TokenKind.Match => println("$fieldsIndent\"name\": \"Match\"")
-    TokenKind.Type => println("$fieldsIndent\"name\": \"Type\"")
-    TokenKind.Enum => println("$fieldsIndent\"name\": \"Enum\"")
-    TokenKind.Decorator => println("$fieldsIndent\"name\": \"Decorator\"")
-    TokenKind.Return => println("$fieldsIndent\"name\": \"Return\"")
-    TokenKind.Readonly => println("$fieldsIndent\"name\": \"Readonly\"")
-    TokenKind.Import => println("$fieldsIndent\"name\": \"Import\"")
-    TokenKind.From => println("$fieldsIndent\"name\": \"From\"")
-    TokenKind.As => println("$fieldsIndent\"name\": \"As\"")
-    TokenKind.Try => println("$fieldsIndent\"name\": \"Try\"")
-    TokenKind.None_ => println("$fieldsIndent\"name\": \"None\"")
-    TokenKind.Pub => println("$fieldsIndent\"name\": \"Pub\"")
-    TokenKind.Plus => println("$fieldsIndent\"name\": \"Plus\"")
-    TokenKind.PlusEq => println("$fieldsIndent\"name\": \"PlusEq\"")
-    TokenKind.Minus => println("$fieldsIndent\"name\": \"Minus\"")
-    TokenKind.MinusEq => println("$fieldsIndent\"name\": \"MinusEq\"")
-    TokenKind.Star => println("$fieldsIndent\"name\": \"Star\"")
-    TokenKind.StarEq => println("$fieldsIndent\"name\": \"StarEq\"")
-    TokenKind.StarStar => println("$fieldsIndent\"name\": \"StarStar\"")
-    TokenKind.Slash => println("$fieldsIndent\"name\": \"Slash\"")
-    TokenKind.SlashEq => println("$fieldsIndent\"name\": \"SlashEq\"")
-    TokenKind.Percent => println("$fieldsIndent\"name\": \"Percent\"")
-    TokenKind.PercentEq => println("$fieldsIndent\"name\": \"PercentEq\"")
-    TokenKind.LT => println("$fieldsIndent\"name\": \"LT\"")
-    TokenKind.LTE => println("$fieldsIndent\"name\": \"LTE\"")
-    TokenKind.GT => println("$fieldsIndent\"name\": \"GT\"")
-    TokenKind.GTE => println("$fieldsIndent\"name\": \"GTE\"")
-    TokenKind.Bang => println("$fieldsIndent\"name\": \"Bang\"")
-    TokenKind.Eq => println("$fieldsIndent\"name\": \"Assign\"")
-    TokenKind.EqEq => println("$fieldsIndent\"name\": \"Eq\"")
-    TokenKind.Neq => println("$fieldsIndent\"name\": \"Neq\"")
-    TokenKind.Arrow => println("$fieldsIndent\"name\": \"Arrow\"")
-    TokenKind.Dot => println("$fieldsIndent\"name\": \"Dot\"")
-    TokenKind.Or => println("$fieldsIndent\"name\": \"Or\"")
-    TokenKind.OrEq => println("$fieldsIndent\"name\": \"OrEq\"")
-    TokenKind.And => println("$fieldsIndent\"name\": \"And\"")
-    TokenKind.AndEq => println("$fieldsIndent\"name\": \"AndEq\"")
-    TokenKind.Caret => println("$fieldsIndent\"name\": \"Caret\"")
-    TokenKind.LParen => println("$fieldsIndent\"name\": \"LParen\"")
-    TokenKind.RParen => println("$fieldsIndent\"name\": \"RParen\"")
-    TokenKind.LBrack => println("$fieldsIndent\"name\": \"LBrack\"")
-    TokenKind.RBrack => println("$fieldsIndent\"name\": \"RBrack\"")
-    TokenKind.LBrace => println("$fieldsIndent\"name\": \"LBrace\"")
-    TokenKind.RBrace => println("$fieldsIndent\"name\": \"RBrace\"")
-    TokenKind.Pipe => println("$fieldsIndent\"name\": \"Pipe\"")
-    TokenKind.Comma => println("$fieldsIndent\"name\": \"Comma\"")
-    TokenKind.Colon => println("$fieldsIndent\"name\": \"Colon\"")
-    TokenKind.Question => println("$fieldsIndent\"name\": \"Question\"")
-    TokenKind.Elvis => println("$fieldsIndent\"name\": \"Elvis\"")
-    TokenKind.ElvisEq => println("$fieldsIndent\"name\": \"ElvisEq\"")
-    TokenKind.QuestionDot => println("$fieldsIndent\"name\": \"QuestionDot\"")
-    TokenKind.HashBrace => println("$fieldsIndent\"name\": \"LBraceHash\"")
-    TokenKind.At => println("$fieldsIndent\"name\": \"At\"")
+    TokenKind.If => stdoutWriteln("$fieldsIndent\"name\": \"If\"")
+    TokenKind.Else => stdoutWriteln("$fieldsIndent\"name\": \"Else\"")
+    TokenKind.Val => stdoutWriteln("$fieldsIndent\"name\": \"Val\"")
+    TokenKind.Var => stdoutWriteln("$fieldsIndent\"name\": \"Var\"")
+    TokenKind.Func => stdoutWriteln("$fieldsIndent\"name\": \"Func\"")
+    TokenKind.Self => stdoutWriteln("$fieldsIndent\"name\": \"Self\"")
+    TokenKind.While => stdoutWriteln("$fieldsIndent\"name\": \"While\"")
+    TokenKind.Break => stdoutWriteln("$fieldsIndent\"name\": \"Break\"")
+    TokenKind.Continue => stdoutWriteln("$fieldsIndent\"name\": \"Continue\"")
+    TokenKind.For => stdoutWriteln("$fieldsIndent\"name\": \"For\"")
+    TokenKind.In => stdoutWriteln("$fieldsIndent\"name\": \"In\"")
+    TokenKind.Match => stdoutWriteln("$fieldsIndent\"name\": \"Match\"")
+    TokenKind.Type => stdoutWriteln("$fieldsIndent\"name\": \"Type\"")
+    TokenKind.Enum => stdoutWriteln("$fieldsIndent\"name\": \"Enum\"")
+    TokenKind.Decorator => stdoutWriteln("$fieldsIndent\"name\": \"Decorator\"")
+    TokenKind.Return => stdoutWriteln("$fieldsIndent\"name\": \"Return\"")
+    TokenKind.Readonly => stdoutWriteln("$fieldsIndent\"name\": \"Readonly\"")
+    TokenKind.Import => stdoutWriteln("$fieldsIndent\"name\": \"Import\"")
+    TokenKind.From => stdoutWriteln("$fieldsIndent\"name\": \"From\"")
+    TokenKind.As => stdoutWriteln("$fieldsIndent\"name\": \"As\"")
+    TokenKind.Try => stdoutWriteln("$fieldsIndent\"name\": \"Try\"")
+    TokenKind.None_ => stdoutWriteln("$fieldsIndent\"name\": \"None\"")
+    TokenKind.Pub => stdoutWriteln("$fieldsIndent\"name\": \"Pub\"")
+    TokenKind.Plus => stdoutWriteln("$fieldsIndent\"name\": \"Plus\"")
+    TokenKind.PlusEq => stdoutWriteln("$fieldsIndent\"name\": \"PlusEq\"")
+    TokenKind.Minus => stdoutWriteln("$fieldsIndent\"name\": \"Minus\"")
+    TokenKind.MinusEq => stdoutWriteln("$fieldsIndent\"name\": \"MinusEq\"")
+    TokenKind.Star => stdoutWriteln("$fieldsIndent\"name\": \"Star\"")
+    TokenKind.StarEq => stdoutWriteln("$fieldsIndent\"name\": \"StarEq\"")
+    TokenKind.StarStar => stdoutWriteln("$fieldsIndent\"name\": \"StarStar\"")
+    TokenKind.Slash => stdoutWriteln("$fieldsIndent\"name\": \"Slash\"")
+    TokenKind.SlashEq => stdoutWriteln("$fieldsIndent\"name\": \"SlashEq\"")
+    TokenKind.Percent => stdoutWriteln("$fieldsIndent\"name\": \"Percent\"")
+    TokenKind.PercentEq => stdoutWriteln("$fieldsIndent\"name\": \"PercentEq\"")
+    TokenKind.LT => stdoutWriteln("$fieldsIndent\"name\": \"LT\"")
+    TokenKind.LTE => stdoutWriteln("$fieldsIndent\"name\": \"LTE\"")
+    TokenKind.GT => stdoutWriteln("$fieldsIndent\"name\": \"GT\"")
+    TokenKind.GTE => stdoutWriteln("$fieldsIndent\"name\": \"GTE\"")
+    TokenKind.Bang => stdoutWriteln("$fieldsIndent\"name\": \"Bang\"")
+    TokenKind.Eq => stdoutWriteln("$fieldsIndent\"name\": \"Assign\"")
+    TokenKind.EqEq => stdoutWriteln("$fieldsIndent\"name\": \"Eq\"")
+    TokenKind.Neq => stdoutWriteln("$fieldsIndent\"name\": \"Neq\"")
+    TokenKind.Arrow => stdoutWriteln("$fieldsIndent\"name\": \"Arrow\"")
+    TokenKind.Dot => stdoutWriteln("$fieldsIndent\"name\": \"Dot\"")
+    TokenKind.Or => stdoutWriteln("$fieldsIndent\"name\": \"Or\"")
+    TokenKind.OrEq => stdoutWriteln("$fieldsIndent\"name\": \"OrEq\"")
+    TokenKind.And => stdoutWriteln("$fieldsIndent\"name\": \"And\"")
+    TokenKind.AndEq => stdoutWriteln("$fieldsIndent\"name\": \"AndEq\"")
+    TokenKind.Caret => stdoutWriteln("$fieldsIndent\"name\": \"Caret\"")
+    TokenKind.LParen => stdoutWriteln("$fieldsIndent\"name\": \"LParen\"")
+    TokenKind.RParen => stdoutWriteln("$fieldsIndent\"name\": \"RParen\"")
+    TokenKind.LBrack => stdoutWriteln("$fieldsIndent\"name\": \"LBrack\"")
+    TokenKind.RBrack => stdoutWriteln("$fieldsIndent\"name\": \"RBrack\"")
+    TokenKind.LBrace => stdoutWriteln("$fieldsIndent\"name\": \"LBrace\"")
+    TokenKind.RBrace => stdoutWriteln("$fieldsIndent\"name\": \"RBrace\"")
+    TokenKind.Pipe => stdoutWriteln("$fieldsIndent\"name\": \"Pipe\"")
+    TokenKind.Comma => stdoutWriteln("$fieldsIndent\"name\": \"Comma\"")
+    TokenKind.Colon => stdoutWriteln("$fieldsIndent\"name\": \"Colon\"")
+    TokenKind.Question => stdoutWriteln("$fieldsIndent\"name\": \"Question\"")
+    TokenKind.Elvis => stdoutWriteln("$fieldsIndent\"name\": \"Elvis\"")
+    TokenKind.ElvisEq => stdoutWriteln("$fieldsIndent\"name\": \"ElvisEq\"")
+    TokenKind.QuestionDot => stdoutWriteln("$fieldsIndent\"name\": \"QuestionDot\"")
+    TokenKind.HashBrace => stdoutWriteln("$fieldsIndent\"name\": \"LBraceHash\"")
+    TokenKind.At => stdoutWriteln("$fieldsIndent\"name\": \"At\"")
   }
-  println("$endIndent}")
+  stdoutWriteln("$endIndent}")
 }
 
 pub func printParsedModuleAsJson(module: ParsedModule) {
-  println("{")
+  stdoutWriteln("{")
   if module.imports.isEmpty() {
-    println("  \"imports\": [],")
+    stdoutWriteln("  \"imports\": [],")
   } else {
-    println("  \"imports\": [")
+    stdoutWriteln("  \"imports\": [")
     for importNode, idx in module.imports {
-      println("    {")
-      print("      \"token\": ")
+      stdoutWriteln("    {")
+      stdoutWrite("      \"token\": ")
       printTokenAsJson(importNode.token, 0, 3)
-      print(",\n      \"moduleName\": ")
+      stdoutWrite(",\n      \"moduleName\": ")
       printLabelAsJson(importNode.moduleName)
-      println(",\n      \"importKind\": {")
+      stdoutWriteln(",\n      \"importKind\": {")
       match importNode.kind {
         ImportKind.Alias(alias) => {
-          println("        \"kind\": \"alias\",")
-          print("        \"alias\": ")
+          stdoutWriteln("        \"kind\": \"alias\",")
+          stdoutWrite("        \"alias\": ")
           printLabelAsJson(alias)
-          println()
+          stdoutWriteln()
         }
         ImportKind.List(names) => {
-          println("        \"kind\": \"list\",")
-          println("        \"names\": [")
+          stdoutWriteln("        \"kind\": \"list\",")
+          stdoutWriteln("        \"names\": [")
           for name, idx in names {
-            print("          ")
+            stdoutWrite("          ")
             printLabelAsJson(name)
             val comma = if idx != names.length - 1 "," else ""
-            println(comma)
+            stdoutWriteln(comma)
           }
-          println("        ]")
+          stdoutWriteln("        ]")
         }
       }
-      println("      }")
+      stdoutWriteln("      }")
       val comma = if idx != module.imports.length - 1 "," else ""
-      println("    }$comma")
+      stdoutWriteln("    }$comma")
     }
-    println("  ],")
+    stdoutWriteln("  ],")
   }
   if module.nodes.isEmpty() {
-    println("  \"nodes\": []")
+    stdoutWriteln("  \"nodes\": []")
   } else {
-    println("  \"nodes\": [")
+    stdoutWriteln("  \"nodes\": [")
     for node, idx in module.nodes {
       printAstNodeAsJson(node, 2, 2)
       val comma = if idx != module.nodes.length - 1 "," else ""
-      println(comma)
+      stdoutWriteln(comma)
     }
-    println("  ]")
+    stdoutWriteln("  ]")
   }
-  println("}")
+  stdoutWriteln("}")
 }
 
 pub func printLabelAsJson(label: Label) {
-  print("{ \"name\": \"${label.name}\", \"position\": [${label.position.line}, ${label.position.col}] }")
+  stdoutWrite("{ \"name\": \"${label.name}\", \"position\": [${label.position.line}, ${label.position.col}] }")
 }
 
 func printTypeIdentifierAsJson(typeIdentifier: TypeIdentifier, indentLevelStart: Int, currentIndentLevel: Int) {
@@ -196,72 +196,72 @@ func printTypeIdentifierAsJson(typeIdentifier: TypeIdentifier, indentLevelStart:
   val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
   val endIndent = "  ".repeat(currentIndentLevel)
 
-  print("$startIndent{\n$fieldsIndent\"kind\": ")
+  stdoutWrite("$startIndent{\n$fieldsIndent\"kind\": ")
   match typeIdentifier {
     TypeIdentifier.Normal(label, typeArguments, path) => {
-      println("\"normal\",")
+      stdoutWriteln("\"normal\",")
       if !path.isEmpty() {
-        println("$fieldsIndent\"path\": [")
+        stdoutWriteln("$fieldsIndent\"path\": [")
         for seg, idx in path {
-          print("$fieldsIndent  ")
+          stdoutWrite("$fieldsIndent  ")
           printLabelAsJson(seg)
           val comma = if idx != path.length - 1 "," else ""
-          println(comma)
+          stdoutWriteln(comma)
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
-      print("$fieldsIndent\"label\": ")
+      stdoutWrite("$fieldsIndent\"label\": ")
       printLabelAsJson(label)
       if typeArguments.isEmpty() {
-        println(",\n$fieldsIndent\"typeArguments\": []")
+        stdoutWriteln(",\n$fieldsIndent\"typeArguments\": []")
       } else {
-        println(",\n$fieldsIndent\"typeArguments\": [")
+        stdoutWriteln(",\n$fieldsIndent\"typeArguments\": [")
         for arg, idx in typeArguments {
           printTypeIdentifierAsJson(arg, currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != typeArguments.length - 1 "," else ""
-          println(comma)
+          stdoutWriteln(comma)
         }
-        println("$fieldsIndent]")
+        stdoutWriteln("$fieldsIndent]")
       }
     }
     TypeIdentifier.Array(inner) => {
-      print("\"array\",\n$fieldsIndent\"inner\": ")
+      stdoutWrite("\"array\",\n$fieldsIndent\"inner\": ")
       printTypeIdentifierAsJson(inner, 0, currentIndentLevel + 1)
-      println()
+      stdoutWriteln()
     }
     TypeIdentifier.Option(inner) => {
-      print("\"option\",\n$fieldsIndent\"inner\": ")
+      stdoutWrite("\"option\",\n$fieldsIndent\"inner\": ")
       printTypeIdentifierAsJson(inner, 0, currentIndentLevel + 1)
-      println()
+      stdoutWriteln()
     }
     TypeIdentifier.Tuple(typeArguments) => {
-      println("\"tuple\",\n$fieldsIndent\"typeArguments\": [")
+      stdoutWriteln("\"tuple\",\n$fieldsIndent\"typeArguments\": [")
       for arg, idx in typeArguments {
         printTypeIdentifierAsJson(arg, currentIndentLevel + 2, currentIndentLevel + 2)
         val comma = if idx != typeArguments.length - 1 "," else ""
-        println(comma)
+        stdoutWriteln(comma)
       }
-      println("$fieldsIndent]")
+      stdoutWriteln("$fieldsIndent]")
     }
     TypeIdentifier.Function(argTypes, retType) => {
-      println("\"function\",")
+      stdoutWriteln("\"function\",")
       if argTypes.isEmpty() {
-        println("$fieldsIndent\"argumentTypes\": [],")
+        stdoutWriteln("$fieldsIndent\"argumentTypes\": [],")
       } else {
-        println("$fieldsIndent\"argumentTypes\": [")
+        stdoutWriteln("$fieldsIndent\"argumentTypes\": [")
         for arg, idx in argTypes {
           printTypeIdentifierAsJson(arg, currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != argTypes.length - 1 "," else ""
-          println(comma)
+          stdoutWriteln(comma)
         }
-        print("$fieldsIndent],\n")
+        stdoutWrite("$fieldsIndent],\n")
       }
-      print("$fieldsIndent\"returnType\": ")
+      stdoutWrite("$fieldsIndent\"returnType\": ")
       printTypeIdentifierAsJson(retType, 0, currentIndentLevel + 1)
-      println()
+      stdoutWriteln()
     }
   }
-  print("$endIndent}")
+  stdoutWrite("$endIndent}")
 }
 
 func printDecoratorNodeAsJson(dec: DecoratorNode, indentLevelStart: Int, currentIndentLevel: Int) {
@@ -269,32 +269,32 @@ func printDecoratorNodeAsJson(dec: DecoratorNode, indentLevelStart: Int, current
   val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
   val endIndent = "  ".repeat(currentIndentLevel)
 
-  print("$startIndent{\n$fieldsIndent\"name\": ")
+  stdoutWrite("$startIndent{\n$fieldsIndent\"name\": ")
   printLabelAsJson(dec.name)
 
   if dec.arguments.isEmpty() {
-    println(",\n$fieldsIndent\"arguments\": []")
+    stdoutWriteln(",\n$fieldsIndent\"arguments\": []")
   } else {
-    println(",\n$fieldsIndent\"arguments\": [")
+    stdoutWriteln(",\n$fieldsIndent\"arguments\": [")
     val pathIndent = "  ".repeat(currentIndentLevel + 2)
     val pathsIndent = "  ".repeat(currentIndentLevel + 3)
     for arg, idx in dec.arguments {
-      print("$pathIndent{\n$pathsIndent\"label\": ")
+      stdoutWrite("$pathIndent{\n$pathsIndent\"label\": ")
       if arg.label |label| {
         printLabelAsJson(label)
-        println(",")
+        stdoutWriteln(",")
       } else {
-        println("null,")
+        stdoutWriteln("null,")
       }
-      print("$pathsIndent\"value\": ")
+      stdoutWrite("$pathsIndent\"value\": ")
       printAstNodeAsJson(arg.value, 0, currentIndentLevel + 3)
       val comma = if idx != dec.arguments.length - 1 "," else ""
-      println("\n$pathIndent}$comma")
+      stdoutWriteln("\n$pathIndent}$comma")
     }
-    println("$fieldsIndent]")
+    stdoutWriteln("$fieldsIndent]")
   }
 
-  print("$endIndent}")
+  stdoutWrite("$endIndent}")
 }
 
 pub func printBindingPatternAsJson(bindingPattern: BindingPattern, indentLevelStart: Int, currentIndentLevel: Int) {
@@ -302,24 +302,24 @@ pub func printBindingPatternAsJson(bindingPattern: BindingPattern, indentLevelSt
   val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
   val endIndent = "  ".repeat(currentIndentLevel)
 
-  print("$startIndent{\n$fieldsIndent\"kind\": ")
+  stdoutWrite("$startIndent{\n$fieldsIndent\"kind\": ")
   match bindingPattern {
     BindingPattern.Variable(label) => {
-      print("\"variable\",\n$fieldsIndent\"label\": ")
+      stdoutWrite("\"variable\",\n$fieldsIndent\"label\": ")
       printLabelAsJson(label)
     }
     BindingPattern.Tuple(_, patterns) => {
-      println("\"tuple\",\n$fieldsIndent\"patterns\": [")
+      stdoutWriteln("\"tuple\",\n$fieldsIndent\"patterns\": [")
       for pat, idx in patterns {
         printBindingPatternAsJson(pat, currentIndentLevel + 2, currentIndentLevel + 2)
         if idx != patterns.length - 1 {
-          println(",")
+          stdoutWriteln(",")
         }
       }
-      print("\n$fieldsIndent]")
+      stdoutWrite("\n$fieldsIndent]")
     }
   }
-  print("\n$endIndent}")
+  stdoutWrite("\n$endIndent}")
 }
 
 func printAstNodeAsJson(node: AstNode, indentLevelStart: Int, currentIndentLevel: Int) {
@@ -327,11 +327,11 @@ func printAstNodeAsJson(node: AstNode, indentLevelStart: Int, currentIndentLevel
   val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
   val endIndent = "  ".repeat(currentIndentLevel)
 
-  print("$startIndent{\n$fieldsIndent\"token\": ")
+  stdoutWrite("$startIndent{\n$fieldsIndent\"token\": ")
   printTokenAsJson(token: node.token, indentLevelStart: 0, currentIndentLevel: currentIndentLevel + 1)
-  print(",\n$fieldsIndent\"kind\": ")
+  stdoutWrite(",\n$fieldsIndent\"kind\": ")
   printAstNodeKindAsJson(kind: node.kind, indentLevelStart: 0, currentIndentLevel: currentIndentLevel + 1)
-  print("\n$endIndent}")
+  stdoutWrite("\n$endIndent}")
 }
 
 func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentIndentLevel: Int) {
@@ -339,7 +339,7 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
   val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
   val endIndent = "  ".repeat(currentIndentLevel)
 
-  println("$startIndent{")
+  stdoutWriteln("$startIndent{")
   match kind {
     AstNodeKind.Literal(literal) => {
       val (kind, value) = match literal {
@@ -352,322 +352,322 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         LiteralAstNode.String(value) => ("string", "\"$value\"")
       }
 
-      println("$fieldsIndent\"name\": \"literal\",")
-      println("$fieldsIndent\"type\": \"$kind\",")
-      println("$fieldsIndent\"value\": $value")
+      stdoutWriteln("$fieldsIndent\"name\": \"literal\",")
+      stdoutWriteln("$fieldsIndent\"type\": \"$kind\",")
+      stdoutWriteln("$fieldsIndent\"value\": $value")
     }
     AstNodeKind.StringInterpolation(exprs) => {
-      println("$fieldsIndent\"name\": \"stringInterpolation\",")
+      stdoutWriteln("$fieldsIndent\"name\": \"stringInterpolation\",")
       if exprs.isEmpty() {
-        println("$fieldsIndent\"exprs\": []")
+        stdoutWriteln("$fieldsIndent\"exprs\": []")
       } else {
-        println("$fieldsIndent\"exprs\": [")
+        stdoutWriteln("$fieldsIndent\"exprs\": [")
         for item, idx in exprs {
           printAstNodeAsJson(item, currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != exprs.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent]")
+        stdoutWriteln("$fieldsIndent]")
       }
     }
     AstNodeKind.Unary(unaryNode) => {
-      println("$fieldsIndent\"name\": \"unary\",")
-      println("$fieldsIndent\"op\": \"${unaryNode.op}\",")
-      print("$fieldsIndent\"expr\": ")
+      stdoutWriteln("$fieldsIndent\"name\": \"unary\",")
+      stdoutWriteln("$fieldsIndent\"op\": \"${unaryNode.op}\",")
+      stdoutWrite("$fieldsIndent\"expr\": ")
       printAstNodeAsJson(unaryNode.expr, 0, currentIndentLevel + 1)
-      println()
+      stdoutWriteln()
     }
     AstNodeKind.Binary(binaryNode) => {
-      println("$fieldsIndent\"name\": \"binary\",")
-      println("$fieldsIndent\"op\": \"${binaryNode.op}\",")
-      print("$fieldsIndent\"left\": ")
+      stdoutWriteln("$fieldsIndent\"name\": \"binary\",")
+      stdoutWriteln("$fieldsIndent\"op\": \"${binaryNode.op}\",")
+      stdoutWrite("$fieldsIndent\"left\": ")
       printAstNodeAsJson(binaryNode.left, 0, currentIndentLevel + 1)
-      print(",\n$fieldsIndent\"right\": ")
+      stdoutWrite(",\n$fieldsIndent\"right\": ")
       printAstNodeAsJson(binaryNode.right, 0, currentIndentLevel + 1)
-      println()
+      stdoutWriteln()
     }
     AstNodeKind.Grouped(inner) => {
-      println("$fieldsIndent\"name\": \"grouped\",")
-      print("$fieldsIndent\"inner\": ")
+      stdoutWriteln("$fieldsIndent\"name\": \"grouped\",")
+      stdoutWrite("$fieldsIndent\"inner\": ")
       printAstNodeAsJson(inner, 0, currentIndentLevel + 1)
-      println()
+      stdoutWriteln()
     }
     AstNodeKind.Identifier(kind) => {
-      println("$fieldsIndent\"name\": \"identifier\",")
-      print("$fieldsIndent\"ident\": ")
+      stdoutWriteln("$fieldsIndent\"name\": \"identifier\",")
+      stdoutWrite("$fieldsIndent\"ident\": ")
       match kind {
-        IdentifierKind.Named(name) => println("\"$name\"")
-        IdentifierKind.None_ => println("\"None\"")
-        IdentifierKind.Self => println("\"self\"")
-        IdentifierKind.Discard => println("\"_\"")
+        IdentifierKind.Named(name) => stdoutWriteln("\"$name\"")
+        IdentifierKind.None_ => stdoutWriteln("\"None\"")
+        IdentifierKind.Self => stdoutWriteln("\"self\"")
+        IdentifierKind.Discard => stdoutWriteln("\"_\"")
       }
     }
     AstNodeKind.Accessor(accessorNode) => {
-      println("$fieldsIndent\"name\": \"accessor\",")
-      print("$fieldsIndent\"root\": ")
+      stdoutWriteln("$fieldsIndent\"name\": \"accessor\",")
+      stdoutWrite("$fieldsIndent\"root\": ")
       printAstNodeAsJson(accessorNode.root, 0, currentIndentLevel + 1)
-      println(",\n$fieldsIndent\"path\": [")
+      stdoutWriteln(",\n$fieldsIndent\"path\": [")
       val pathIndent = "  ".repeat(currentIndentLevel + 2)
       val pathsIndent = "  ".repeat(currentIndentLevel + 3)
       for (dotToken, label), idx in accessorNode.path {
-        print("$pathIndent{\n$pathsIndent\"dotToken\": ")
+        stdoutWrite("$pathIndent{\n$pathsIndent\"dotToken\": ")
         printTokenAsJson(dotToken, 0, currentIndentLevel + 3)
-        println(",\n$pathsIndent\"ident\": \"${label.name}\",")
-        println("$pathsIndent\"position\": [${label.position.line}, ${label.position.col}]")
+        stdoutWriteln(",\n$pathsIndent\"ident\": \"${label.name}\",")
+        stdoutWriteln("$pathsIndent\"position\": [${label.position.line}, ${label.position.col}]")
         val comma = if idx != accessorNode.path.length - 1 "," else ""
-        println("$pathIndent}$comma")
+        stdoutWriteln("$pathIndent}$comma")
       }
-      println("$fieldsIndent]")
+      stdoutWriteln("$fieldsIndent]")
     }
     AstNodeKind.Invocation(invocationNode) => {
-      println("$fieldsIndent\"name\": \"invocation\",")
-      print("$fieldsIndent\"invokee\": ")
+      stdoutWriteln("$fieldsIndent\"name\": \"invocation\",")
+      stdoutWrite("$fieldsIndent\"invokee\": ")
       printAstNodeAsJson(invocationNode.invokee, 0, currentIndentLevel + 1)
       if invocationNode.typeArguments.isEmpty() {
-        println(",\n$fieldsIndent\"typeArguments\": [],")
+        stdoutWriteln(",\n$fieldsIndent\"typeArguments\": [],")
       } else {
-        println(",\n$fieldsIndent\"typeArguments\": [")
+        stdoutWriteln(",\n$fieldsIndent\"typeArguments\": [")
         for typeArg, idx in invocationNode.typeArguments {
           printTypeIdentifierAsJson(typeArg, currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != invocationNode.typeArguments.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
 
       if invocationNode.arguments.isEmpty() {
-        println("$fieldsIndent\"arguments\": []")
+        stdoutWriteln("$fieldsIndent\"arguments\": []")
       } else {
-        println("$fieldsIndent\"arguments\": [")
+        stdoutWriteln("$fieldsIndent\"arguments\": [")
         val pathIndent = "  ".repeat(currentIndentLevel + 2)
         val pathsIndent = "  ".repeat(currentIndentLevel + 3)
         for arg, idx in invocationNode.arguments {
-          print("$pathIndent{\n$pathsIndent\"label\": ")
+          stdoutWrite("$pathIndent{\n$pathsIndent\"label\": ")
           if arg.label |label| {
             printLabelAsJson(label)
-            println(",")
+            stdoutWriteln(",")
           } else {
-            println("null,")
+            stdoutWriteln("null,")
           }
-          print("$pathsIndent\"value\": ")
+          stdoutWrite("$pathsIndent\"value\": ")
           printAstNodeAsJson(arg.value, 0, currentIndentLevel + 3)
           val comma = if idx != invocationNode.arguments.length - 1 "," else ""
-          println("\n$pathIndent}$comma")
+          stdoutWriteln("\n$pathIndent}$comma")
         }
-        println("$fieldsIndent]")
+        stdoutWriteln("$fieldsIndent]")
       }
     }
     AstNodeKind.Array(items) => {
-      println("$fieldsIndent\"name\": \"array\",")
+      stdoutWriteln("$fieldsIndent\"name\": \"array\",")
       if items.isEmpty() {
-        println("$fieldsIndent\"items\": []")
+        stdoutWriteln("$fieldsIndent\"items\": []")
       } else {
-        println("$fieldsIndent\"items\": [")
+        stdoutWriteln("$fieldsIndent\"items\": [")
         for item, idx in items {
           printAstNodeAsJson(item, currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != items.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent]")
+        stdoutWriteln("$fieldsIndent]")
       }
     }
     AstNodeKind.Set(items) => {
-      println("$fieldsIndent\"name\": \"set\",")
+      stdoutWriteln("$fieldsIndent\"name\": \"set\",")
       if items.isEmpty() {
-        println("$fieldsIndent\"items\": []")
+        stdoutWriteln("$fieldsIndent\"items\": []")
       } else {
-        println("$fieldsIndent\"items\": [")
+        stdoutWriteln("$fieldsIndent\"items\": [")
         for item, idx in items {
           printAstNodeAsJson(item, currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != items.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent]")
+        stdoutWriteln("$fieldsIndent]")
       }
     }
     AstNodeKind.Map(items) => {
-      println("$fieldsIndent\"name\": \"map\",")
+      stdoutWriteln("$fieldsIndent\"name\": \"map\",")
       if items.isEmpty() {
-        println("$fieldsIndent\"items\": []")
+        stdoutWriteln("$fieldsIndent\"items\": []")
       } else {
-        println("$fieldsIndent\"items\": [")
+        stdoutWriteln("$fieldsIndent\"items\": [")
         for (key, value), idx in items {
-          println("$fieldsIndent  {")
-          print("$fieldsIndent    \"key\": ")
+          stdoutWriteln("$fieldsIndent  {")
+          stdoutWrite("$fieldsIndent    \"key\": ")
           printAstNodeAsJson(key, 0, currentIndentLevel + 3)
-          print(",\n$fieldsIndent    \"value\": ")
+          stdoutWrite(",\n$fieldsIndent    \"value\": ")
           printAstNodeAsJson(value, 0, currentIndentLevel + 3)
           val comma = if idx != items.length - 1 "," else ""
-          println("\n$fieldsIndent  }$comma")
+          stdoutWriteln("\n$fieldsIndent  }$comma")
         }
-        println("$fieldsIndent]")
+        stdoutWriteln("$fieldsIndent]")
       }
     }
     AstNodeKind.Tuple(items) => {
-      println("$fieldsIndent\"name\": \"tuple\",")
+      stdoutWriteln("$fieldsIndent\"name\": \"tuple\",")
       if items.isEmpty() {
-        println("$fieldsIndent\"items\": []")
+        stdoutWriteln("$fieldsIndent\"items\": []")
       } else {
-        println("$fieldsIndent\"items\": [")
+        stdoutWriteln("$fieldsIndent\"items\": [")
         for item, idx in items {
           printAstNodeAsJson(item, currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != items.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent]")
+        stdoutWriteln("$fieldsIndent]")
       }
     }
     AstNodeKind.Indexing(expr, indexMode) => {
-      println("$fieldsIndent\"name\": \"indexing\",")
-      print("$fieldsIndent\"expr\": ")
+      stdoutWriteln("$fieldsIndent\"name\": \"indexing\",")
+      stdoutWrite("$fieldsIndent\"expr\": ")
       printAstNodeAsJson(expr, 0, currentIndentLevel + 1)
-      println(",\n$fieldsIndent\"index\": {")
+      stdoutWriteln(",\n$fieldsIndent\"index\": {")
       match indexMode {
         IndexingMode.Single(item) => {
-          println("$fieldsIndent  \"indexKind\": \"single\",")
-          print("$fieldsIndent  \"value\": ")
+          stdoutWriteln("$fieldsIndent  \"indexKind\": \"single\",")
+          stdoutWrite("$fieldsIndent  \"value\": ")
           printAstNodeAsJson(item, 0, currentIndentLevel + 2)
         }
         IndexingMode.Range(start, end) => {
-          println("$fieldsIndent  \"indexKind\": \"range\",")
+          stdoutWriteln("$fieldsIndent  \"indexKind\": \"range\",")
           if start |start| {
-            print("$fieldsIndent  \"start\": ")
+            stdoutWrite("$fieldsIndent  \"start\": ")
             printAstNodeAsJson(start, 0, currentIndentLevel + 2)
-            println(",")
+            stdoutWriteln(",")
           } else {
-            println("$fieldsIndent  \"start\": null,")
+            stdoutWriteln("$fieldsIndent  \"start\": null,")
           }
           if end |end| {
-            print("$fieldsIndent  \"end\": ")
+            stdoutWrite("$fieldsIndent  \"end\": ")
             printAstNodeAsJson(end, 0, currentIndentLevel + 2)
           } else {
-            print("$fieldsIndent  \"end\": null")
+            stdoutWrite("$fieldsIndent  \"end\": null")
           }
         }
       }
-      println("\n$fieldsIndent}")
+      stdoutWriteln("\n$fieldsIndent}")
     }
     AstNodeKind.Lambda(node) => {
-      println("$fieldsIndent\"name\": \"lambda\",")
+      stdoutWriteln("$fieldsIndent\"name\": \"lambda\",")
       if node.params.isEmpty() {
-        println("$fieldsIndent\"params\": [],")
+        stdoutWriteln("$fieldsIndent\"params\": [],")
       } else {
-        println("$fieldsIndent\"params\": [")
+        stdoutWriteln("$fieldsIndent\"params\": [")
         for p, idx in node.params {
-          println("$fieldsIndent  {")
-          print("$fieldsIndent    \"label\": ")
+          stdoutWriteln("$fieldsIndent  {")
+          stdoutWrite("$fieldsIndent    \"label\": ")
           printLabelAsJson(p.label)
-          println(",\n$fieldsIndent    \"isVariadic\": ${p.isVariadic},")
-          print("$fieldsIndent    \"typeAnnotation\": ")
+          stdoutWriteln(",\n$fieldsIndent    \"isVariadic\": ${p.isVariadic},")
+          stdoutWrite("$fieldsIndent    \"typeAnnotation\": ")
           if p.typeAnnotation |ann| {
             printTypeIdentifierAsJson(ann, 0, currentIndentLevel + 3)
           } else {
-            print("null")
+            stdoutWrite("null")
           }
-          print(",\n$fieldsIndent    \"defaultValue\": ")
+          stdoutWrite(",\n$fieldsIndent    \"defaultValue\": ")
           if p.defaultValue |defaultValue| {
             printAstNodeAsJson(defaultValue, 0, currentIndentLevel + 3)
           } else {
-            print("null")
+            stdoutWrite("null")
           }
           val comma = if idx != node.params.length - 1 "," else ""
-          println("\n$fieldsIndent  }$comma")
+          stdoutWriteln("\n$fieldsIndent  }$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
       if node.body.isEmpty() {
-        println("$fieldsIndent\"body\": []")
+        stdoutWriteln("$fieldsIndent\"body\": []")
       } else {
-        println("$fieldsIndent\"body\": [")
+        stdoutWriteln("$fieldsIndent\"body\": [")
         for n, idx in node.body {
           printAstNodeAsJson(n, currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != node.body.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent]")
+        stdoutWriteln("$fieldsIndent]")
       }
     }
     AstNodeKind.Assignment(expr, op, mode) => {
-      println("$fieldsIndent\"name\": \"assignment\",")
-      print("$fieldsIndent\"expr\": ")
+      stdoutWriteln("$fieldsIndent\"name\": \"assignment\",")
+      stdoutWrite("$fieldsIndent\"expr\": ")
       printAstNodeAsJson(expr, 0, currentIndentLevel + 1)
-      println(",\n$fieldsIndent\"op\": \"$op\",")
-      print("$fieldsIndent\"mode\": ")
+      stdoutWriteln(",\n$fieldsIndent\"op\": \"$op\",")
+      stdoutWrite("$fieldsIndent\"mode\": ")
       match mode {
         AssignmentMode.Variable(name, _) => {
-          println("{\n$fieldsIndent  \"mode\": \"variable\",")
-          println("$fieldsIndent  \"variable\": \"$name\"")
-          println("$fieldsIndent}")
+          stdoutWriteln("{\n$fieldsIndent  \"mode\": \"variable\",")
+          stdoutWriteln("$fieldsIndent  \"variable\": \"$name\"")
+          stdoutWriteln("$fieldsIndent}")
         }
         AssignmentMode.Indexing(expr, indexExpr) => {
-          println("{\n$fieldsIndent  \"mode\": \"indexing\",")
-          print("$fieldsIndent  \"expr\": ")
+          stdoutWriteln("{\n$fieldsIndent  \"mode\": \"indexing\",")
+          stdoutWrite("$fieldsIndent  \"expr\": ")
           printAstNodeAsJson(expr, 0, currentIndentLevel + 2)
-          println(",")
-          print("$fieldsIndent  \"indexExpr\": ")
+          stdoutWriteln(",")
+          stdoutWrite("$fieldsIndent  \"indexExpr\": ")
           printAstNodeAsJson(indexExpr, 0, currentIndentLevel + 2)
-          println("\n$fieldsIndent}")
+          stdoutWriteln("\n$fieldsIndent}")
         }
         AssignmentMode.Accessor(node) => {
           printAstNodeKindAsJson(AstNodeKind.Accessor(node), 0, currentIndentLevel + 1)
-          println()
+          stdoutWriteln()
         }
       }
     }
     AstNodeKind.If(condition, conditionBinding, ifBlock, elseBlock) => {
-      println("$fieldsIndent\"name\": \"if\",")
-      print("$fieldsIndent\"condition\": ")
+      stdoutWriteln("$fieldsIndent\"name\": \"if\",")
+      stdoutWrite("$fieldsIndent\"condition\": ")
       printAstNodeAsJson(condition, 0, currentIndentLevel + 1)
       if conditionBinding |pat| {
-        print(",\n$fieldsIndent\"conditionBinding\": ")
+        stdoutWrite(",\n$fieldsIndent\"conditionBinding\": ")
         printBindingPatternAsJson(pat, 0, currentIndentLevel + 1)
       } else {
-        print(",\n$fieldsIndent\"conditionBinding\": null")
+        stdoutWrite(",\n$fieldsIndent\"conditionBinding\": null")
       }
       if ifBlock.isEmpty() {
-        println(",\n$fieldsIndent\"ifBlock\": [],")
+        stdoutWriteln(",\n$fieldsIndent\"ifBlock\": [],")
       } else {
-        println(",\n$fieldsIndent\"ifBlock\": [")
+        stdoutWriteln(",\n$fieldsIndent\"ifBlock\": [")
         for node, idx in ifBlock {
           printAstNodeAsJson(node, currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != ifBlock.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
       if elseBlock |block| {
         if block.isEmpty() {
-          println("$fieldsIndent\"elseBlock\": []")
+          stdoutWriteln("$fieldsIndent\"elseBlock\": []")
         } else {
-          println("$fieldsIndent\"elseBlock\": [")
+          stdoutWriteln("$fieldsIndent\"elseBlock\": [")
           for node, idx in block {
             printAstNodeAsJson(node, currentIndentLevel + 2, currentIndentLevel + 2)
             val comma = if idx != block.length - 1 "," else ""
-            println("$comma")
+            stdoutWriteln("$comma")
           }
-          println("$fieldsIndent]")
+          stdoutWriteln("$fieldsIndent]")
         }
       } else {
-        println("$fieldsIndent\"elseBlock\": null")
+        stdoutWriteln("$fieldsIndent\"elseBlock\": null")
       }
     }
     AstNodeKind.Match(expr, cases) => {
-      println("$fieldsIndent\"name\": \"match\",")
-      print("$fieldsIndent\"expr\": ")
+      stdoutWriteln("$fieldsIndent\"name\": \"match\",")
+      stdoutWrite("$fieldsIndent\"expr\": ")
       printAstNodeAsJson(expr, 0, currentIndentLevel + 1)
       if cases.isEmpty() {
-        println(",\n$fieldsIndent\"cases\": [],")
+        stdoutWriteln(",\n$fieldsIndent\"cases\": [],")
       } else {
-        println(",\n$fieldsIndent\"cases\": [")
+        stdoutWriteln(",\n$fieldsIndent\"cases\": [")
         for case, idx in cases {
-          println("$fieldsIndent  {")
-          println("$fieldsIndent    \"caseKind\": {")
+          stdoutWriteln("$fieldsIndent  {")
+          stdoutWriteln("$fieldsIndent    \"caseKind\": {")
           match case.kind {
             MatchCaseKind.None_ => {
-              println("$fieldsIndent      \"kind\": \"none\"")
+              stdoutWriteln("$fieldsIndent      \"kind\": \"none\"")
             }
             MatchCaseKind.Literal(literal) => {
-              println("$fieldsIndent      \"kind\": \"literal\",")
+              stdoutWriteln("$fieldsIndent      \"kind\": \"literal\",")
               val (kind, value) = match literal {
                 LiteralAstNode.Int(value) => ("int", value.toString())
                 LiteralAstNode.Float(value) => ("float", value.toString())
@@ -678,470 +678,470 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
                 LiteralAstNode.String(value) => ("string", "\"$value\"")
               }
 
-              println("$fieldsIndent      \"type\": \"$kind\",")
-              println("$fieldsIndent      \"value\": $value")
+              stdoutWriteln("$fieldsIndent      \"type\": \"$kind\",")
+              stdoutWriteln("$fieldsIndent      \"value\": $value")
             }
             MatchCaseKind.Type(path, last, args) => {
-              println("$fieldsIndent      \"kind\": \"type\",")
-              println("$fieldsIndent      \"path\": [")
+              stdoutWriteln("$fieldsIndent      \"kind\": \"type\",")
+              stdoutWriteln("$fieldsIndent      \"path\": [")
               val fullPath = path.concat([last])
               for label, idx in fullPath {
-                print("$fieldsIndent        ")
+                stdoutWrite("$fieldsIndent        ")
                 printLabelAsJson(label)
                 val comma = if idx != fullPath.length - 1 "," else ""
-                println("$comma")
+                stdoutWriteln("$comma")
               }
-              println("$fieldsIndent      ],")
-              println("$fieldsIndent      \"arguments\": [")
+              stdoutWriteln("$fieldsIndent      ],")
+              stdoutWriteln("$fieldsIndent      \"arguments\": [")
               for label, idx in args {
-                print("$fieldsIndent        ")
+                stdoutWrite("$fieldsIndent        ")
                 printLabelAsJson(label)
                 val comma = if idx != args.length - 1 "," else ""
-                println("$comma")
+                stdoutWriteln("$comma")
               }
-              println("$fieldsIndent      ]")
+              stdoutWriteln("$fieldsIndent      ]")
             }
             MatchCaseKind.Else => {
-              println("$fieldsIndent      \"kind\": \"else\"")
+              stdoutWriteln("$fieldsIndent      \"kind\": \"else\"")
             }
           }
-          println("$fieldsIndent    },")
+          stdoutWriteln("$fieldsIndent    },")
           if case.binding |binding| {
-            print("$fieldsIndent    \"caseBinding\": ")
+            stdoutWrite("$fieldsIndent    \"caseBinding\": ")
             printLabelAsJson(binding)
-            println(",")
+            stdoutWriteln(",")
           } else {
-            println("$fieldsIndent    \"caseBinding\": null,")
+            stdoutWriteln("$fieldsIndent    \"caseBinding\": null,")
           }
           if case.body.isEmpty() {
-            println("$fieldsIndent    \"body\": []")
+            stdoutWriteln("$fieldsIndent    \"body\": []")
           } else {
-            println("$fieldsIndent    \"body\": [")
+            stdoutWriteln("$fieldsIndent    \"body\": [")
             for node, idx in case.body {
               printAstNodeAsJson(node, currentIndentLevel + 4, currentIndentLevel + 4)
               val comma = if idx != case.body.length - 1 "," else ""
-              println("$comma")
+              stdoutWriteln("$comma")
             }
-            println("$fieldsIndent    ]")
+            stdoutWriteln("$fieldsIndent    ]")
           }
           val comma = if idx != cases.length - 1 "," else ""
-          println("$fieldsIndent  }$comma")
+          stdoutWriteln("$fieldsIndent  }$comma")
         }
-        println("$fieldsIndent]")
+        stdoutWriteln("$fieldsIndent]")
       }
     }
     AstNodeKind.Try(expr, elseClause) => {
-      println("$fieldsIndent\"name\": \"try\",")
-      print("$fieldsIndent\"expr\": ")
+      stdoutWriteln("$fieldsIndent\"name\": \"try\",")
+      stdoutWrite("$fieldsIndent\"expr\": ")
       printAstNodeAsJson(expr, 0, currentIndentLevel + 1)
       if elseClause |(_, bindingPattern, block)| {
         if bindingPattern |pat| {
-          print(",\n$fieldsIndent\"elseBindingPattern\": ")
+          stdoutWrite(",\n$fieldsIndent\"elseBindingPattern\": ")
           printBindingPatternAsJson(pat, 0, currentIndentLevel + 1)
         } else {
-          print(",\n$fieldsIndent\"elseBindingPattern\": null")
+          stdoutWrite(",\n$fieldsIndent\"elseBindingPattern\": null")
         }
 
         if block.isEmpty() {
-          println(",\n$fieldsIndent\"elseBlock\": []")
+          stdoutWriteln(",\n$fieldsIndent\"elseBlock\": []")
         } else {
-          println(",\n$fieldsIndent\"elseBlock\": [")
+          stdoutWriteln(",\n$fieldsIndent\"elseBlock\": [")
           for node, idx in block {
             printAstNodeAsJson(node, currentIndentLevel + 2, currentIndentLevel + 2)
             val comma = if idx != block.length - 1 "," else ""
-            println("$comma")
+            stdoutWriteln("$comma")
           }
-          print("$fieldsIndent]")
+          stdoutWrite("$fieldsIndent]")
         }
       }
-      println()
+      stdoutWriteln()
     }
     AstNodeKind.While(condition, conditionBinding, block) => {
-      println("$fieldsIndent\"name\": \"while\",")
-      print("$fieldsIndent\"condition\": ")
+      stdoutWriteln("$fieldsIndent\"name\": \"while\",")
+      stdoutWrite("$fieldsIndent\"condition\": ")
       printAstNodeAsJson(condition, 0, currentIndentLevel + 1)
       if conditionBinding |pat| {
-        print(",\n$fieldsIndent\"conditionBinding\": ")
+        stdoutWrite(",\n$fieldsIndent\"conditionBinding\": ")
         printBindingPatternAsJson(pat, 0, currentIndentLevel + 1)
       } else {
-        print(",\n$fieldsIndent\"conditionBinding\": null")
+        stdoutWrite(",\n$fieldsIndent\"conditionBinding\": null")
       }
       if block.isEmpty() {
-        println(",\n$fieldsIndent\"block\": []")
+        stdoutWriteln(",\n$fieldsIndent\"block\": []")
       } else {
-        println(",\n$fieldsIndent\"block\": [")
+        stdoutWriteln(",\n$fieldsIndent\"block\": [")
         for node, idx in block {
           printAstNodeAsJson(node, currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != block.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent]")
+        stdoutWriteln("$fieldsIndent]")
       }
     }
     AstNodeKind.For(itemPattern, indexPattern, iterator, block) => {
-      println("$fieldsIndent\"name\": \"for\",")
-      print("$fieldsIndent\"itemPattern\": ")
+      stdoutWriteln("$fieldsIndent\"name\": \"for\",")
+      stdoutWrite("$fieldsIndent\"itemPattern\": ")
       printBindingPatternAsJson(itemPattern, 0, currentIndentLevel + 1)
       if indexPattern |pat| {
-        print(",\n$fieldsIndent\"indexPattern\": ")
+        stdoutWrite(",\n$fieldsIndent\"indexPattern\": ")
         printBindingPatternAsJson(pat, 0, currentIndentLevel + 1)
       } else {
-        print(",\n$fieldsIndent\"indexPattern\": null")
+        stdoutWrite(",\n$fieldsIndent\"indexPattern\": null")
       }
-      print(",\n$fieldsIndent\"iterator\": ")
+      stdoutWrite(",\n$fieldsIndent\"iterator\": ")
       printAstNodeAsJson(iterator, 0, currentIndentLevel + 1)
       if block.isEmpty() {
-        println(",\n$fieldsIndent\"block\": []")
+        stdoutWriteln(",\n$fieldsIndent\"block\": []")
       } else {
-        println(",\n$fieldsIndent\"block\": [")
+        stdoutWriteln(",\n$fieldsIndent\"block\": [")
         for node, idx in block {
           printAstNodeAsJson(node, currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != block.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent]")
+        stdoutWriteln("$fieldsIndent]")
       }
     }
     AstNodeKind.BindingDeclaration(value) => {
-      println("$fieldsIndent\"name\": \"bindingDecl\",")
+      stdoutWriteln("$fieldsIndent\"name\": \"bindingDecl\",")
       if value.decorators.isEmpty() {
-        println("$fieldsIndent\"decorators\": [],")
+        stdoutWriteln("$fieldsIndent\"decorators\": [],")
       } else {
-        println("$fieldsIndent\"decorators\": [")
+        stdoutWriteln("$fieldsIndent\"decorators\": [")
         for dec, idx in value.decorators {
           printDecoratorNodeAsJson(dec, currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != value.decorators.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
       if value.pubToken |token| {
-        print("$fieldsIndent\"pubToken\": ")
+        stdoutWrite("$fieldsIndent\"pubToken\": ")
         printTokenAsJson(token, 0, currentIndentLevel + 1)
-        println(",")
+        stdoutWriteln(",")
       } else {
-        println("$fieldsIndent\"pubToken\": null,")
+        stdoutWriteln("$fieldsIndent\"pubToken\": null,")
       }
-      print("$fieldsIndent\"bindingPattern\": ")
+      stdoutWrite("$fieldsIndent\"bindingPattern\": ")
       printBindingPatternAsJson(value.bindingPattern, 0, currentIndentLevel + 1)
-      println(",")
+      stdoutWriteln(",")
       if value.typeAnnotation |ann| {
-        print("$fieldsIndent\"typeAnnotation\": ")
+        stdoutWrite("$fieldsIndent\"typeAnnotation\": ")
         printTypeIdentifierAsJson(ann, 0, currentIndentLevel + 1)
       } else {
-        print("$fieldsIndent\"typeAnnotation\": null")
+        stdoutWrite("$fieldsIndent\"typeAnnotation\": null")
       }
       if value.expr |expr| {
-        print(",\n$fieldsIndent\"expr\": ")
+        stdoutWrite(",\n$fieldsIndent\"expr\": ")
         printAstNodeAsJson(expr, 0, currentIndentLevel + 1)
       } else {
-        print(",\n$fieldsIndent\"expr\": null")
+        stdoutWrite(",\n$fieldsIndent\"expr\": null")
       }
-      print("\n")
+      stdoutWrite("\n")
     }
     AstNodeKind.FunctionDeclaration(node) => {
-      println("$fieldsIndent\"name\": \"function\",")
+      stdoutWriteln("$fieldsIndent\"name\": \"function\",")
       if node.decorators.isEmpty() {
-        println("$fieldsIndent\"decorators\": [],")
+        stdoutWriteln("$fieldsIndent\"decorators\": [],")
       } else {
-        println("$fieldsIndent\"decorators\": [")
+        stdoutWriteln("$fieldsIndent\"decorators\": [")
         for dec, idx in node.decorators {
           printDecoratorNodeAsJson(dec, currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != node.decorators.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
       if node.pubToken |token| {
-        print("$fieldsIndent\"pubToken\": ")
+        stdoutWrite("$fieldsIndent\"pubToken\": ")
         printTokenAsJson(token, 0, currentIndentLevel + 1)
-        println(",")
+        stdoutWriteln(",")
       } else {
-        println("$fieldsIndent\"pubToken\": null,")
+        stdoutWriteln("$fieldsIndent\"pubToken\": null,")
       }
-      print("$fieldsIndent\"ident\": ")
+      stdoutWrite("$fieldsIndent\"ident\": ")
       printLabelAsJson(node.name)
       if node.typeParams.isEmpty() {
-        println(",\n$fieldsIndent\"typeParams\": [],")
+        stdoutWriteln(",\n$fieldsIndent\"typeParams\": [],")
       } else {
-        println(",\n$fieldsIndent\"typeParams\": [")
+        stdoutWriteln(",\n$fieldsIndent\"typeParams\": [")
         for label, idx in node.typeParams {
-          print("$fieldsIndent  ")
+          stdoutWrite("$fieldsIndent  ")
           printLabelAsJson(label)
           val comma = if idx != node.typeParams.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
       if node.params.isEmpty() {
-        println("$fieldsIndent\"params\": [],")
+        stdoutWriteln("$fieldsIndent\"params\": [],")
       } else {
-        println("$fieldsIndent\"params\": [")
+        stdoutWriteln("$fieldsIndent\"params\": [")
         for p, idx in node.params {
-          println("$fieldsIndent  {")
-          print("$fieldsIndent    \"label\": ")
+          stdoutWriteln("$fieldsIndent  {")
+          stdoutWrite("$fieldsIndent    \"label\": ")
           printLabelAsJson(p.label)
-          println(",\n$fieldsIndent    \"isVariadic\": ${p.isVariadic},")
-          print("$fieldsIndent    \"typeAnnotation\": ")
+          stdoutWriteln(",\n$fieldsIndent    \"isVariadic\": ${p.isVariadic},")
+          stdoutWrite("$fieldsIndent    \"typeAnnotation\": ")
           if p.typeAnnotation |ann| {
             printTypeIdentifierAsJson(ann, 0, currentIndentLevel + 3)
           } else {
-            print("null")
+            stdoutWrite("null")
           }
-          print(",\n$fieldsIndent    \"defaultValue\": ")
+          stdoutWrite(",\n$fieldsIndent    \"defaultValue\": ")
           if p.defaultValue |defaultValue| {
             printAstNodeAsJson(defaultValue, 0, currentIndentLevel + 3)
           } else {
-            print("null")
+            stdoutWrite("null")
           }
           val comma = if idx != node.params.length - 1 "," else ""
-          println("\n$fieldsIndent  }$comma")
+          stdoutWriteln("\n$fieldsIndent  }$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
       if node.body.isEmpty() {
-        println("$fieldsIndent\"body\": []")
+        stdoutWriteln("$fieldsIndent\"body\": []")
       } else {
-        println("$fieldsIndent\"body\": [")
+        stdoutWriteln("$fieldsIndent\"body\": [")
         for n, idx in node.body {
           printAstNodeAsJson(n, currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != node.body.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent]")
+        stdoutWriteln("$fieldsIndent]")
       }
     }
     AstNodeKind.TypeDeclaration(node) => {
-      println("$fieldsIndent\"name\": \"typeDeclaration\",")
+      stdoutWriteln("$fieldsIndent\"name\": \"typeDeclaration\",")
       if node.decorators.isEmpty() {
-        println("$fieldsIndent\"decorators\": [],")
+        stdoutWriteln("$fieldsIndent\"decorators\": [],")
       } else {
-        println("$fieldsIndent\"decorators\": [")
+        stdoutWriteln("$fieldsIndent\"decorators\": [")
         for dec, idx in node.decorators {
           printDecoratorNodeAsJson(dec, currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != node.decorators.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
       if node.pubToken |token| {
-        print("$fieldsIndent\"pubToken\": ")
+        stdoutWrite("$fieldsIndent\"pubToken\": ")
         printTokenAsJson(token, 0, currentIndentLevel + 1)
-        println(",")
+        stdoutWriteln(",")
       } else {
-        println("$fieldsIndent\"pubToken\": null,")
+        stdoutWriteln("$fieldsIndent\"pubToken\": null,")
       }
       if node.isDecorator {
-        println("$fieldsIndent\"isDecorator\": true,")
+        stdoutWriteln("$fieldsIndent\"isDecorator\": true,")
       }
-      print("$fieldsIndent\"typeName\": ")
+      stdoutWrite("$fieldsIndent\"typeName\": ")
       printLabelAsJson(node.name)
 
       if node.typeParams.isEmpty() {
-        println(",\n$fieldsIndent\"typeParams\": [],")
+        stdoutWriteln(",\n$fieldsIndent\"typeParams\": [],")
       } else {
-        println(",\n$fieldsIndent\"typeParams\": [")
+        stdoutWriteln(",\n$fieldsIndent\"typeParams\": [")
         for label, idx in node.typeParams {
-          print("$fieldsIndent  ")
+          stdoutWrite("$fieldsIndent  ")
           printLabelAsJson(label)
           val comma = if idx != node.typeParams.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
 
       if node.fields.isEmpty() {
-        println("$fieldsIndent\"fields\": [],")
+        stdoutWriteln("$fieldsIndent\"fields\": [],")
       } else {
-        println("$fieldsIndent\"fields\": [")
+        stdoutWriteln("$fieldsIndent\"fields\": [")
         for f, idx in node.fields {
-          println("$fieldsIndent  {")
-          print("$fieldsIndent    \"label\": ")
+          stdoutWriteln("$fieldsIndent  {")
+          stdoutWrite("$fieldsIndent    \"label\": ")
           printLabelAsJson(f.name)
           if f.pubToken |token| {
-            print(",\n$fieldsIndent    \"pubToken\": ")
+            stdoutWrite(",\n$fieldsIndent    \"pubToken\": ")
             printTokenAsJson(token, 0, currentIndentLevel + 3)
           }
-          print(",\n$fieldsIndent    \"typeAnnotation\": ")
+          stdoutWrite(",\n$fieldsIndent    \"typeAnnotation\": ")
           printTypeIdentifierAsJson(f.typeAnnotation, 0, currentIndentLevel + 3)
-          print(",\n$fieldsIndent    \"initializer\": ")
+          stdoutWrite(",\n$fieldsIndent    \"initializer\": ")
           if f.initializer |initializer| {
             printAstNodeAsJson(initializer, 0, currentIndentLevel + 3)
           } else {
-            print("null")
+            stdoutWrite("null")
           }
           val comma = if idx != node.fields.length - 1 "," else ""
-          println("\n$fieldsIndent  }$comma")
+          stdoutWriteln("\n$fieldsIndent  }$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
 
       if node.methods.isEmpty() {
-        println("$fieldsIndent\"methods\": [],")
+        stdoutWriteln("$fieldsIndent\"methods\": [],")
       } else {
-        println("$fieldsIndent\"methods\": [")
+        stdoutWriteln("$fieldsIndent\"methods\": [")
         for method, idx in node.methods {
           printAstNodeKindAsJson(AstNodeKind.FunctionDeclaration(method), currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != node.methods.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
 
       if node.types.isEmpty() {
-        println("$fieldsIndent\"nestedTypes\": [],")
+        stdoutWriteln("$fieldsIndent\"nestedTypes\": [],")
       } else {
-        println("$fieldsIndent\"nestedTypes\": [")
+        stdoutWriteln("$fieldsIndent\"nestedTypes\": [")
         for nestedType, idx in node.types {
           printAstNodeKindAsJson(AstNodeKind.TypeDeclaration(nestedType), currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != node.types.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
 
       if node.enums.isEmpty() {
-        println("$fieldsIndent\"nestedEnums\": []")
+        stdoutWriteln("$fieldsIndent\"nestedEnums\": []")
       } else {
-        println("$fieldsIndent\"nestedEnums\": [")
+        stdoutWriteln("$fieldsIndent\"nestedEnums\": [")
         for nestedEnum, idx in node.enums {
           printAstNodeKindAsJson(AstNodeKind.EnumDeclaration(nestedEnum), currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != node.types.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent]")
+        stdoutWriteln("$fieldsIndent]")
       }
     }
     AstNodeKind.EnumDeclaration(node) => {
-      println("$fieldsIndent\"name\": \"enumDeclaration\",")
+      stdoutWriteln("$fieldsIndent\"name\": \"enumDeclaration\",")
       if node.decorators.isEmpty() {
-        println("$fieldsIndent\"decorators\": [],")
+        stdoutWriteln("$fieldsIndent\"decorators\": [],")
       } else {
-        println("$fieldsIndent\"decorators\": [")
+        stdoutWriteln("$fieldsIndent\"decorators\": [")
         for dec, idx in node.decorators {
           printDecoratorNodeAsJson(dec, currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != node.decorators.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
       if node.pubToken |token| {
-        print("$fieldsIndent\"pubToken\": ")
+        stdoutWrite("$fieldsIndent\"pubToken\": ")
         printTokenAsJson(token, 0, currentIndentLevel + 1)
-        println(",")
+        stdoutWriteln(",")
       } else {
-        println("$fieldsIndent\"pubToken\": null,")
+        stdoutWriteln("$fieldsIndent\"pubToken\": null,")
       }
-      print("$fieldsIndent\"typeName\": ")
+      stdoutWrite("$fieldsIndent\"typeName\": ")
       printLabelAsJson(node.name)
 
       if node.typeParams.isEmpty() {
-        println(",\n$fieldsIndent\"typeParams\": [],")
+        stdoutWriteln(",\n$fieldsIndent\"typeParams\": [],")
       } else {
-        println(",\n$fieldsIndent\"typeParams\": [")
+        stdoutWriteln(",\n$fieldsIndent\"typeParams\": [")
         for label, idx in node.typeParams {
-          print("$fieldsIndent  ")
+          stdoutWrite("$fieldsIndent  ")
           printLabelAsJson(label)
           val comma = if idx != node.typeParams.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
 
       if node.variants.isEmpty() {
-        println("$fieldsIndent\"variants\": [],")
+        stdoutWriteln("$fieldsIndent\"variants\": [],")
       } else {
-        println("$fieldsIndent\"variants\": [")
+        stdoutWriteln("$fieldsIndent\"variants\": [")
         for v, idx in node.variants {
-          println("$fieldsIndent  {")
+          stdoutWriteln("$fieldsIndent  {")
           match v {
             EnumVariant.Constant(name) => {
-              println("$fieldsIndent    \"kind\": \"constant\",")
-              print("$fieldsIndent    \"name\": ")
+              stdoutWriteln("$fieldsIndent    \"kind\": \"constant\",")
+              stdoutWrite("$fieldsIndent    \"name\": ")
               printLabelAsJson(name)
             }
             EnumVariant.Container(name, fields) => {
-              println("$fieldsIndent    \"kind\": \"container\",")
-              print("$fieldsIndent    \"name\": ")
+              stdoutWriteln("$fieldsIndent    \"kind\": \"container\",")
+              stdoutWrite("$fieldsIndent    \"name\": ")
               printLabelAsJson(name)
               if fields.isEmpty() {
                 // unreachable
               } else {
-                println(",\n$fieldsIndent    \"fields\": [")
+                stdoutWriteln(",\n$fieldsIndent    \"fields\": [")
                 for f, idx in fields {
-                  println("$fieldsIndent      {")
-                  print("$fieldsIndent        \"label\": ")
+                  stdoutWriteln("$fieldsIndent      {")
+                  stdoutWrite("$fieldsIndent        \"label\": ")
                   printLabelAsJson(f.name)
-                  print(",\n$fieldsIndent        \"typeAnnotation\": ")
+                  stdoutWrite(",\n$fieldsIndent        \"typeAnnotation\": ")
                   printTypeIdentifierAsJson(f.typeAnnotation, 0, currentIndentLevel + 5)
-                  print(",\n$fieldsIndent        \"initializer\": ")
+                  stdoutWrite(",\n$fieldsIndent        \"initializer\": ")
                   if f.initializer |initializer| {
                     printAstNodeAsJson(initializer, 0, currentIndentLevel + 5)
                   } else {
-                    print("null")
+                    stdoutWrite("null")
                   }
                   val comma = if idx != fields.length - 1 "," else ""
-                  println("\n$fieldsIndent      }$comma")
+                  stdoutWriteln("\n$fieldsIndent      }$comma")
                 }
-                print("$fieldsIndent    ]")
+                stdoutWrite("$fieldsIndent    ]")
               }
             }
           }
           val comma = if idx != node.variants.length - 1 "," else ""
-          println("\n$fieldsIndent  }$comma")
+          stdoutWriteln("\n$fieldsIndent  }$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
 
       if node.methods.isEmpty() {
-        println("$fieldsIndent\"methods\": [],")
+        stdoutWriteln("$fieldsIndent\"methods\": [],")
       } else {
-        println("$fieldsIndent\"methods\": [")
+        stdoutWriteln("$fieldsIndent\"methods\": [")
         for method, idx in node.methods {
           printAstNodeKindAsJson(AstNodeKind.FunctionDeclaration(method), currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != node.methods.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
 
       if node.types.isEmpty() {
-        println("$fieldsIndent\"nestedTypes\": [],")
+        stdoutWriteln("$fieldsIndent\"nestedTypes\": [],")
       } else {
-        println("$fieldsIndent\"nestedTypes\": [")
+        stdoutWriteln("$fieldsIndent\"nestedTypes\": [")
         for nestedType, idx in node.types {
           printAstNodeKindAsJson(AstNodeKind.TypeDeclaration(nestedType), currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != node.types.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent],")
+        stdoutWriteln("$fieldsIndent],")
       }
 
       if node.enums.isEmpty() {
-        println("$fieldsIndent\"nestedEnums\": []")
+        stdoutWriteln("$fieldsIndent\"nestedEnums\": []")
       } else {
-        println("$fieldsIndent\"nestedEnums\": [")
+        stdoutWriteln("$fieldsIndent\"nestedEnums\": [")
         for nestedEnum, idx in node.enums {
           printAstNodeKindAsJson(AstNodeKind.EnumDeclaration(nestedEnum), currentIndentLevel + 2, currentIndentLevel + 2)
           val comma = if idx != node.types.length - 1 "," else ""
-          println("$comma")
+          stdoutWriteln("$comma")
         }
-        println("$fieldsIndent]")
+        stdoutWriteln("$fieldsIndent]")
       }
     }
-    AstNodeKind.Break => println("$fieldsIndent\"name\": \"break\"")
-    AstNodeKind.Continue => println("$fieldsIndent\"name\": \"continue\"")
+    AstNodeKind.Break => stdoutWriteln("$fieldsIndent\"name\": \"break\"")
+    AstNodeKind.Continue => stdoutWriteln("$fieldsIndent\"name\": \"continue\"")
     AstNodeKind.Return(expr) => {
-      println("$fieldsIndent\"name\": \"return\",")
+      stdoutWriteln("$fieldsIndent\"name\": \"return\",")
 
       if expr |expr| {
-        print("$fieldsIndent\"expr\": ")
+        stdoutWrite("$fieldsIndent\"expr\": ")
         printAstNodeAsJson(expr, 0, currentIndentLevel + 1)
-        println()
+        stdoutWriteln()
       } else {
-        println("$fieldsIndent\"expr\": null")
+        stdoutWriteln("$fieldsIndent\"expr\": null")
       }
     }
   }
-  print("$endIndent}")
+  stdoutWrite("$endIndent}")
 }

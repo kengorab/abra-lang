@@ -10,7 +10,7 @@ pub type Jsonifier {
     val manyModules = modules.length > 1
 
     if manyModules {
-      println("[")
+      stdoutWriteln("[")
       self.indentInc()
     }
 
@@ -19,22 +19,22 @@ pub type Jsonifier {
       self.printModule(mod)
       if manyModules {
         if idx != modules.length - 1 {
-          print(",")
+          stdoutWrite(",")
         }
-        println()
+        stdoutWriteln()
       }
     }
 
     if manyModules {
       self.indentDec()
-      print("]")
+      stdoutWrite("]")
     }
 
-    println()
+    stdoutWriteln()
   }
 
   func printModule(self, mod: TypedModule) {
-    println("{")
+    stdoutWriteln("{")
     self.indentInc()
 
     self.println("\"id\": ${mod.id},")
@@ -59,7 +59,7 @@ pub type Jsonifier {
         self.print("}")
 
         val comma = if idx != mod.exports.size - 1 "," else ""
-        println(comma)
+        stdoutWriteln(comma)
       }
       self.indentDec()
       self.println("],")
@@ -67,21 +67,21 @@ pub type Jsonifier {
 
     self.print("\"code\": ")
     self.printNodes(mod.code)
-    println()
+    stdoutWriteln()
 
     self.indentDec()
     self.print("}")
   }
 
   func printNodes(self, nodes: TypedAstNode[]) {
-    println("[")
+    stdoutWriteln("[")
     self.indentInc()
 
     for node, idx in nodes {
       self.indent()
       self.printNode(node)
       val comma = if idx != nodes.length - 1 "," else ""
-      println(comma)
+      stdoutWriteln(comma)
     }
 
     self.indentDec()
@@ -89,7 +89,7 @@ pub type Jsonifier {
   }
 
   func printType(self, ty: Type) {
-    println("{")
+    stdoutWriteln("{")
     self.indentInc()
 
     match ty.kind {
@@ -140,34 +140,34 @@ pub type Jsonifier {
         }
         self.print("\"typeParams\": ")
         self.array(generics, t => self.printType(t))
-        println()
+        stdoutWriteln()
       }
       TypeKind.Tuple(types) => {
         self.println("\"kind\": \"tuple\",")
         self.print("\"types\": ")
         self.array(types, t => self.printType(t))
-        println()
+        stdoutWriteln()
       }
       TypeKind.Func(params, ret) => {
         self.println("\"kind\": \"function\",")
         self.print("\"parameters\": ")
         self.array(params, p => {
-          println("{")
+          stdoutWriteln("{")
           self.indentInc()
 
           self.println("\"required\": ${p[1]},")
 
           self.print("\"type\": ")
           self.printType(p[0])
-          println()
+          stdoutWriteln()
 
           self.indentDec()
           self.print("}")
         })
-        println(",")
+        stdoutWriteln(",")
         self.print("\"returnType\": ")
         self.printType(ret)
-        println()
+        stdoutWriteln()
       }
       TypeKind.Type(instanceKind) => {
         match instanceKind {
@@ -182,7 +182,7 @@ pub type Jsonifier {
             self.printEnum(enum_: enum_, abridged: true)
           }
         }
-        println()
+        stdoutWriteln()
       }
       TypeKind.Hole => self.println("\"kind\": \"hole\"")
     }
@@ -193,59 +193,59 @@ pub type Jsonifier {
 
   func printStruct(self, struct: Struct, abridged: Bool) {
     if abridged {
-      print("{ \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.label.name}\" }")
+      stdoutWrite("{ \"moduleId\": ${struct.moduleId}, \"name\": \"${struct.label.name}\" }")
       return
     }
 
-    println("{")
+    stdoutWriteln("{")
     self.indentInc()
 
     self.println("\"moduleId\": ${struct.moduleId},")
 
     self.print("\"name\": ")
     printLabelAsJson(struct.label)
-    println(",")
+    stdoutWriteln(",")
 
     self.print("\"typeParams\": ")
-    self.array(struct.typeParams, p => print("\"$p\""))
-    println(",")
+    self.array(struct.typeParams, p => stdoutWrite("\"$p\""))
+    stdoutWriteln(",")
 
     self.print("\"fields\": ")
     self.array(struct.fields, f => self.printField(f))
-    println(",")
+    stdoutWriteln(",")
 
     self.print("\"instanceMethods\": ")
     self.array(struct.instanceMethods, m => self.printFunc(m))
-    println(",")
+    stdoutWriteln(",")
 
     self.print("\"staticMethods\": ")
     self.array(struct.staticMethods, m => self.printFunc(m))
-    println()
+    stdoutWriteln()
 
     self.indentDec()
     self.print("}")
   }
 
   func printField(self, field: Field) {
-    println("{")
+    stdoutWriteln("{")
     self.indentInc()
 
     self.print("\"name\": ")
     printLabelAsJson(field.name)
-    println(",")
+    stdoutWriteln(",")
 
     self.print("\"type\": ")
     self.printType(field.ty)
-    println(",")
+    stdoutWriteln(",")
 
     self.print("\"initializer\": ")
     self.opt(field.initializer, n => self.printNode(n))
 
     if field.isPublic {
-      println(",")
+      stdoutWriteln(",")
       self.print("\"isPublic\": true")
     }
-    println()
+    stdoutWriteln()
 
     self.indentDec()
     self.print("}")
@@ -253,31 +253,31 @@ pub type Jsonifier {
 
   func printEnum(self, enum_: Enum, abridged: Bool) {
     if abridged {
-      print("{ \"moduleId\": ${enum_.moduleId}, \"name\": \"${enum_.label.name}\" }")
+      stdoutWrite("{ \"moduleId\": ${enum_.moduleId}, \"name\": \"${enum_.label.name}\" }")
       return
     }
 
-    println("{")
+    stdoutWriteln("{")
     self.indentInc()
 
     self.println("\"moduleId\": ${enum_.moduleId},")
 
     self.print("\"name\": ")
     printLabelAsJson(enum_.label)
-    println(",")
+    stdoutWriteln(",")
 
     self.print("\"typeParams\": ")
-    self.array(enum_.typeParams, p => print("\"$p\""))
-    println(",")
+    self.array(enum_.typeParams, p => stdoutWrite("\"$p\""))
+    stdoutWriteln(",")
 
     self.print("\"variants\": ")
     self.array(enum_.variants, v => {
-      println("{")
+      stdoutWriteln("{")
       self.indentInc()
 
       self.print("\"label\": ")
       printLabelAsJson(v.label)
-      println(",")
+      stdoutWriteln(",")
 
       match v.kind {
         EnumVariantKind.Constant => {
@@ -287,49 +287,49 @@ pub type Jsonifier {
           self.println("\"kind\": \"container\",")
           self.print("\"fields\": ")
           self.array(fields, f => self.printField(f))
-          println()
+          stdoutWriteln()
         }
       }
 
       self.indentDec()
       self.print("}")
     })
-    println(",")
+    stdoutWriteln(",")
 
     self.print("\"instanceMethods\": ")
     self.array(enum_.instanceMethods, m => self.printFunc(m))
-    println(",")
+    stdoutWriteln(",")
 
     self.print("\"staticMethods\": ")
     self.array(enum_.staticMethods, m => self.printFunc(m))
-    println()
+    stdoutWriteln()
 
     self.indentDec()
     self.print("}")
   }
 
   func printNode(self, node: TypedAstNode) {
-    println("{")
+    stdoutWriteln("{")
     self.indentInc()
 
     self.print("\"token\": ")
     printTokenAsJson(node.token, 0, self.indentLevel)
-    println(",")
+    stdoutWriteln(",")
 
     self.print("\"type\": ")
     self.printType(node.ty)
-    println(",")
+    stdoutWriteln(",")
 
     self.print("\"node\": ")
     self.printNodeKind(node.kind)
-    println()
+    stdoutWriteln()
 
     self.indentDec()
     self.print("}")
   }
 
   func printNodeKind(self, kind: TypedAstNodeKind) {
-    println("{")
+    stdoutWriteln("{")
     self.indentInc()
 
     match kind {
@@ -348,47 +348,47 @@ pub type Jsonifier {
 
         self.print("\"exprs\": ")
         self.array(exprs, n => self.printNode(n))
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.Unary(op, expr) => {
         self.println("\"kind\": \"unary\",")
         self.println("\"op\": \"$op\",")
         self.print("\"expr\": ")
         self.printNode(expr)
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.Binary(left, op, right) => {
         self.println("\"kind\": \"binary\",")
         self.println("\"op\": \"$op\",")
         self.print("\"left\": ")
         self.printNode(left)
-        println(",")
+        stdoutWriteln(",")
         self.print("\"right\": ")
         self.printNode(right)
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.Grouped(inner) => {
         self.println("\"kind\": \"grouped\",")
         self.print("\"expr\": ")
         self.printNode(inner)
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.Identifier(name, _, _, _) => {
         self.println("\"kind\": \"identifier\",")
 
         self.print("\"name\": \"$name\"")
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.Accessor(head, middle, tail) => {
         self.println("\"kind\": \"accessor\",")
 
         self.print("\"head\": ")
         self.printNode(head)
-        println(",")
+        stdoutWriteln(",")
 
         self.print("\"middle\": ")
         self.array(middle, seg => {
-          println("{")
+          stdoutWriteln("{")
           self.indentInc()
 
           match seg {
@@ -405,14 +405,14 @@ pub type Jsonifier {
               self.println("\"name\": \"${f.name.name}\",")
               self.print("\"type\": ")
               self.printType(ty)
-              println()
+              stdoutWriteln()
             }
           }
 
           self.indentDec()
           self.print("}")
         })
-        println(",")
+        stdoutWriteln(",")
 
         self.println("\"tail\": {")
         self.indentInc()
@@ -430,7 +430,7 @@ pub type Jsonifier {
             self.println("\"name\": \"${f.name.name}\",")
             self.print("\"type\": ")
             self.printType(ty)
-            println()
+            stdoutWriteln()
           }
         }
         self.indentDec()
@@ -442,59 +442,59 @@ pub type Jsonifier {
         self.print("\"invokee\": ")
         match invokee {
           TypedInvokee.Method(fn, selfVal, isOptSafe) => {
-            println("{")
+            stdoutWriteln("{")
             self.indentInc()
 
             self.println("\"method\": \"${fn.label.name}\",")
 
             self.print("\"type\": ")
             self.printType(fn.getType())
-            println(",")
+            stdoutWriteln(",")
 
             self.println("\"isOptSafe\": $isOptSafe,")
             self.print("\"self\": ")
             self.printNode(selfVal)
-            println()
+            stdoutWriteln()
 
             self.indentDec()
             self.print("}")
           }
           TypedInvokee.Function(fn) => {
-            println("{")
+            stdoutWriteln("{")
             self.indentInc()
 
             self.println("\"function\": \"${fn.label.name}\",")
 
             self.print("\"type\": ")
             self.printType(fn.getType())
-            println()
+            stdoutWriteln()
 
             self.indentDec()
             self.print("}")
           }
           TypedInvokee.Struct(struct) => self.printStruct(struct: struct, abridged: true)
           TypedInvokee.Expr(expr) => self.printNode(expr)
-          TypedInvokee.EnumVariant(enum_, variant) => print("\"${enum_.label.name}.${variant.label.name}\"")
+          TypedInvokee.EnumVariant(enum_, variant) => stdoutWrite("\"${enum_.label.name}.${variant.label.name}\"")
         }
-        println(",")
+        stdoutWriteln(",")
 
         self.print("\"arguments\": ")
         self.array(arguments, n => self.opt(n, n => self.printNode(n)))
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.Array(items) => {
         self.println("\"kind\": \"array\",")
 
         self.print("\"items\": ")
         self.array(items, n => self.printNode(n))
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.Set(items) => {
         self.println("\"kind\": \"set\",")
 
         self.print("\"items\": ")
         self.array(items, n => self.printNode(n))
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.Map(pairs) => {
         self.println("\"kind\": \"map\",")
@@ -503,34 +503,34 @@ pub type Jsonifier {
         self.array(pairs, p => {
           self.array([p[0], p[1]], n => self.printNode(n))
         })
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.Tuple(items) => {
         self.println("\"kind\": \"tuple\",")
 
         self.print("\"items\": ")
         self.array(items, n => self.printNode(n))
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.Indexing(node) => {
         self.println("\"kind\": \"indexing\",")
 
         self.print("\"node\": ")
         self.printTypedIndexingNode(node)
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.Lambda(fn, _) => {
         self.println("\"kind\": \"lambda\",")
         self.print("\"function\": ")
         self.printFunc(fn)
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.Assignment(mode, op, expr) => {
         self.println("\"kind\": \"assignment\",")
 
         self.print("\"expr\": ")
         self.printNode(expr)
-        println(",")
+        stdoutWriteln(",")
 
         self.println("\"op\": \"$op\",")
 
@@ -538,34 +538,34 @@ pub type Jsonifier {
 
         match mode {
           TypedAssignmentMode.Variable(v) => {
-            println("{")
+            stdoutWriteln("{")
             self.indentInc()
 
             self.println("\"kind\": \"variable\",")
             self.print("\"variable\": ")
             self.printVariable(v)
-            println()
+            stdoutWriteln()
 
             self.indentDec()
             self.print("}")
-            println()
+            stdoutWriteln()
           }
           TypedAssignmentMode.Indexing(typedIndexingNode) => {
-            println("{")
+            stdoutWriteln("{")
             self.indentInc()
 
             self.println("\"kind\": \"indexing\",")
             self.print("\"indexNode\": ")
             self.printTypedIndexingNode(typedIndexingNode)
-            println()
+            stdoutWriteln()
 
             self.indentDec()
             self.print("}")
-            println()
+            stdoutWriteln()
           }
           TypedAssignmentMode.Accessor(head, mid, tail) => {
             self.printNodeKind(TypedAstNodeKind.Accessor(head, mid, tail))
-            println()
+            stdoutWriteln()
           }
         }
       }
@@ -576,33 +576,33 @@ pub type Jsonifier {
 
         self.print("\"condition\": ")
         self.printNode(condition)
-        println(",")
+        stdoutWriteln(",")
 
         self.print("\"conditionBindingPattern\": ")
         self.opt(conditionBindingPattern, pair => {
-          println("{")
+          stdoutWriteln("{")
           self.indentInc()
 
           self.print("\"bindingPattern\": ")
           printBindingPatternAsJson(pair[0], 0, self.indentLevel)
-          println(",")
+          stdoutWriteln(",")
 
           self.print("\"variables\": ")
           self.array(pair[1], v => self.printVariable(v))
-          println()
+          stdoutWriteln()
 
           self.indentDec()
           self.print("}")
         })
-        println(",")
+        stdoutWriteln(",")
 
         self.print("\"ifBlock\": ")
         self.array(ifBlock, n => self.printNode(n))
-        println(",")
+        stdoutWriteln(",")
 
         self.print("\"elseBlock\": ")
         self.array(elseBlock, n => self.printNode(n))
-        println()
+        stdoutWriteln()
       }
 
       TypedAstNodeKind.Match(isStatement, subject, cases) => {
@@ -612,45 +612,45 @@ pub type Jsonifier {
 
         self.print("\"subject\": ")
         self.printNode(subject)
-        println(",")
+        stdoutWriteln(",")
 
         self.print("\"cases\": ")
         self.array(cases, case => {
-          println("{")
+          stdoutWriteln("{")
           self.indentInc()
 
           self.print("\"kind\": ")
           match case.kind {
             TypedMatchCaseKind.Type(ty) => {
-              println("{")
+              stdoutWriteln("{")
               self.indentInc()
 
               self.println("\"kind\": \"type\",")
               self.print("\"type\": ")
               self.printType(ty)
-              println()
+              stdoutWriteln()
 
               self.indentDec()
               self.print("}")
             }
             TypedMatchCaseKind.EnumVariant(enum_, _, variantIdx, destructuredVariables) => {
-              println("{")
+              stdoutWriteln("{")
               self.indentInc()
 
               self.println("\"kind\": \"enumVariant\",")
               self.println("\"variantIdx\": $variantIdx,")
               self.print("\"enum\": ")
               self.printEnum(enum_: enum_, abridged: true)
-              println(",")
+              stdoutWriteln(",")
               self.print("\"destructuredVariables\": ")
               self.array(destructuredVariables, v => self.printVariable(v))
-              println()
+              stdoutWriteln()
 
               self.indentDec()
               self.print("}")
             }
             TypedMatchCaseKind.Literal(value) => {
-              println("{")
+              stdoutWriteln("{")
               self.indentInc()
 
               self.println("\"kind\": \"literal\",")
@@ -664,23 +664,23 @@ pub type Jsonifier {
               self.indentDec()
               self.print("}")
             }
-            TypedMatchCaseKind.None_ => print("\"None\"")
-            TypedMatchCaseKind.Else => print("\"else\"")
+            TypedMatchCaseKind.None_ => stdoutWrite("\"None\"")
+            TypedMatchCaseKind.Else => stdoutWrite("\"else\"")
           }
-          println(",")
+          stdoutWriteln(",")
 
           self.print("\"binding\": ")
           self.opt(case.binding, v => self.printVariable(v))
-          println(",")
+          stdoutWriteln(",")
 
           self.print("\"body\": ")
           self.array(case.body, n => self.printNode(n))
-          println()
+          stdoutWriteln()
 
           self.indentDec()
           self.print("}")
         })
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.Try(expr, elseClause) => {
         self.println("\"kind\": \"try\",")
@@ -688,31 +688,31 @@ pub type Jsonifier {
         self.print("\"expr\": ")
         self.printNode(expr)
         if elseClause |elseClause| {
-          println(",")
+          stdoutWriteln(",")
           self.print("\"elseBindingPattern\": ")
           self.opt(elseClause.pattern, _pair => {
             val (pat, vars) = _pair
-            println("{")
+            stdoutWriteln("{")
             self.indentInc()
 
             self.print("\"bindingPattern\": ")
             printBindingPatternAsJson(pat, 0, self.indentLevel)
-            println(",")
+            stdoutWriteln(",")
 
             self.print("\"variables\": ")
             self.array(vars, v => self.printVariable(v))
-            println()
+            stdoutWriteln()
 
             self.indentDec()
             self.print("}")
           })
 
-          println(",")
+          stdoutWriteln(",")
 
           self.print("\"elseBlock\": ")
           self.array(elseClause.block, n => self.printNode(n))
         }
-        println()
+        stdoutWriteln()
       }
 
       // Statements
@@ -721,89 +721,89 @@ pub type Jsonifier {
 
         self.print("\"condition\": ")
         self.printNode(condition)
-        println(",")
+        stdoutWriteln(",")
 
         self.print("\"conditionBindingPattern\": ")
         self.opt(conditionBindingPattern, _pair => {
           val (pat, vars) = _pair
-          println("{")
+          stdoutWriteln("{")
           self.indentInc()
 
           self.print("\"bindingPattern\": ")
           printBindingPatternAsJson(pat, 0, self.indentLevel)
-          println(",")
+          stdoutWriteln(",")
 
           self.print("\"variables\": ")
           self.array(vars, v => self.printVariable(v))
-          println()
+          stdoutWriteln()
 
           self.indentDec()
           self.print("}")
         })
-        println(",")
+        stdoutWriteln(",")
 
         self.print("\"block\": ")
         self.array(block, n => self.printNode(n))
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.For(iterator, itemBindingPattern, indexBinding, block) => {
         self.println("\"kind\": \"for\",")
 
         self.print("\"iterator\": ")
         self.printNode(iterator)
-        println(",")
+        stdoutWriteln(",")
 
         self.println("\"itemBindingPattern\": {")
         self.indentInc()
         self.print("\"bindingPattern\": ")
         printBindingPatternAsJson(itemBindingPattern[0], 0, self.indentLevel)
-        println(",")
+        stdoutWriteln(",")
         self.print("\"variables\": ")
         self.array(itemBindingPattern[1], v => self.printVariable(v))
-        println()
+        stdoutWriteln()
         self.indentDec()
         self.println("},")
 
         self.print("\"indexBinding\": ")
         self.opt(indexBinding, v => self.printVariable(v))
-        println(",")
+        stdoutWriteln(",")
 
         self.print("\"block\": ")
         self.array(block, n => self.printNode(n))
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.BindingDeclaration(node) => {
         self.println("\"kind\": \"bindingDeclaration\",")
 
         self.print("\"pattern\": ")
         printBindingPatternAsJson(node.bindingPattern, 0, self.indentLevel)
-        println(",")
+        stdoutWriteln(",")
 
         self.print("\"variables\": ")
         self.array(node.variables, v => self.printVariable(v))
-        println(",")
+        stdoutWriteln(",")
 
         self.print("\"expr\": ")
         self.opt(node.expr, n => self.printNode(n))
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.FunctionDeclaration(fn) => {
         self.println("\"kind\": \"functionDeclaration\",")
         self.print("\"function\": ")
         self.printFunc(fn)
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.TypeDeclaration(struct) => {
         self.println("\"kind\": \"typeDeclaration\",")
         self.print("\"struct\": ")
         self.printStruct(struct: struct, abridged: false)
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.EnumDeclaration(enum_) => {
         self.println("\"kind\": \"enumDeclaration\",")
         self.print("\"enum\": ")
         self.printEnum(enum_: enum_, abridged: false)
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.Break => {
         self.println("\"kind\": \"break\"")
@@ -815,7 +815,7 @@ pub type Jsonifier {
         self.println("\"kind\": \"return\",")
         self.print("\"expr\": ")
         self.opt(expr, n => self.printNode(n))
-        println()
+        stdoutWriteln()
       }
       TypedAstNodeKind.Placeholder => {
         if self.allowPlaceholderNodes {
@@ -831,12 +831,12 @@ pub type Jsonifier {
   }
 
   func printVariable(self, variable: Variable) {
-    println("{")
+    stdoutWriteln("{")
     self.indentInc()
 
     self.print("\"label\": ")
     printLabelAsJson(variable.label)
-    println(",")
+    stdoutWriteln(",")
 
     self.println("\"mutable\": ${variable.mutable},")
 
@@ -846,23 +846,23 @@ pub type Jsonifier {
 
     self.print("\"type\": ")
     self.printType(variable.ty)
-    println()
+    stdoutWriteln()
 
     self.indentDec()
     self.print("}")
   }
 
   func printFunc(self, function: Function) {
-    println("{")
+    stdoutWriteln("{")
     self.indentInc()
 
     self.print("\"label\": ")
     printLabelAsJson(function.label)
-    println(",")
+    stdoutWriteln(",")
 
     self.print("\"scope\": ")
     self.printScope(function.scope)
-    println(",")
+    stdoutWriteln(",")
 
     if function.isGenerated {
       self.println("\"isGenerated\": ${function.isGenerated},")
@@ -870,114 +870,114 @@ pub type Jsonifier {
 
     self.print("\"kind\": ")
     match function.kind {
-      FunctionKind.Standalone => print("\"FunctionKind.Standalone\"")
+      FunctionKind.Standalone => stdoutWrite("\"FunctionKind.Standalone\"")
       FunctionKind.InstanceMethod(_, isPublic) => {
-        print("\"FunctionKind.InstanceMethod\"")
-        println(",")
+        stdoutWrite("\"FunctionKind.InstanceMethod\"")
+        stdoutWriteln(",")
         self.print("\"isPublic\": $isPublic")
       }
       FunctionKind.StaticMethod(_, isPublic) => {
-        print("\"FunctionKind.StaticMethod\"")
-        println(",")
+        stdoutWrite("\"FunctionKind.StaticMethod\"")
+        stdoutWriteln(",")
         self.print("\"isPublic\": $isPublic")
       }
     }
-    println(",")
+    stdoutWriteln(",")
 
     self.print("\"typeParameters\": ")
     self.array(function.typeParams, typeParam => {
-      println("{")
+      stdoutWriteln("{")
       self.indentInc()
 
       self.print("\"label\": ")
       printLabelAsJson(typeParam[1])
-      println(",")
+      stdoutWriteln(",")
 
       self.print("\"type\": ")
       self.printType(typeParam[0])
-      println()
+      stdoutWriteln()
 
       self.indentDec()
       self.print("}")
     })
-    println(",")
+    stdoutWriteln(",")
 
     self.print("\"parameters\": ")
     self.array(function.params, param => {
-      println("{")
+      stdoutWriteln("{")
       self.indentInc()
 
       self.print("\"label\": ")
       printLabelAsJson(param.label)
-      println(",")
+      stdoutWriteln(",")
 
       self.print("\"type\": ")
       self.printType(param.ty)
-      println(",")
+      stdoutWriteln(",")
 
       self.print("\"defaultValue\": ")
       self.opt(param.defaultValue, v => self.printNode(v))
-      println(",")
+      stdoutWriteln(",")
 
       self.println("\"isVariadic\": ${param.isVariadic}")
 
       self.indentDec()
       self.print("}")
     })
-    println(",")
+    stdoutWriteln(",")
 
     self.print("\"returnType\": ")
     self.printType(function.returnType)
-    println(",")
+    stdoutWriteln(",")
 
     if !function.captures.isEmpty() {
       self.print("\"captures\": ")
       self.array(function.captures, v => {
         self.printVariable(v)
       })
-      println(",")
+      stdoutWriteln(",")
     }
 
     if !function.capturedClosures.isEmpty() {
       self.print("\"capturedClosures\": ")
       self.array(function.capturedClosures, fn => {
-        print("\"${fn.label.name}\"")
+        stdoutWrite("\"${fn.label.name}\"")
       })
-      println(",")
+      stdoutWriteln(",")
     }
 
     self.print("\"body\": ")
     self.array(function.body, n => self.printNode(n))
-    println()
+    stdoutWriteln()
 
     self.indentDec()
     self.print("}")
   }
 
   func printScope(self, scope: Scope) {
-    println("{")
+    stdoutWriteln("{")
     self.indentInc()
 
     self.println("\"name\": \"${scope.name}\",")
 
     self.print("\"variables\": ")
     self.array(scope.variables, v => self.printVariable(v))
-    println(",")
+    stdoutWriteln(",")
 
     self.print("\"functions\": ")
     self.array(scope.functions, f => self.printFunc(f))
-    println(",")
+    stdoutWriteln(",")
 
     self.print("\"types\": ")
     self.array(scope.types, t => self.printType(t))
-    println()
+    stdoutWriteln()
 
     self.indentDec()
     self.print("}")
   }
 
   func printTypedIndexingNode(self, node: TypedIndexingNode) {
-    println("{")
+    stdoutWriteln("{")
     self.indentInc()
 
     match node {
@@ -985,21 +985,21 @@ pub type Jsonifier {
         self.println("\"kind\": \"arraylike\",")
         self.print("\"expr\": ")
         self.printNode(expr)
-        println(",")
+        stdoutWriteln(",")
 
         match indexingMode {
           IndexingMode.Single(idxNode) => {
             self.print("\"index\": ")
             self.printNode(idxNode)
-            println()
+            stdoutWriteln()
           }
           IndexingMode.Range(startNode, endNode) => {
             self.print("\"startIndex\": ")
-            if startNode |n| self.printNode(n) else print("null")
-            println(",")
+            if startNode |n| self.printNode(n) else stdoutWrite("null")
+            stdoutWriteln(",")
             self.print("\"endIndex\": ")
-            if endNode |n| self.printNode(n) else print("null")
-            println()
+            if endNode |n| self.printNode(n) else stdoutWrite("null")
+            stdoutWriteln()
           }
         }
       }
@@ -1007,17 +1007,17 @@ pub type Jsonifier {
         self.println("\"kind\": \"map\",")
         self.print("\"expr\": ")
         self.printNode(expr)
-        println(",")
+        stdoutWriteln(",")
         self.print("\"index\": ")
         self.printNode(idx)
-        println()
+        stdoutWriteln()
       }
       TypedIndexingNode.Tuple(expr, idx) => {
         self.println("\"kind\": \"tuple\",")
         self.println("\"index\": $idx,")
         self.print("\"expr\": ")
         self.printNode(expr)
-        println()
+        stdoutWriteln()
       }
     }
 
@@ -1025,7 +1025,7 @@ pub type Jsonifier {
     self.print("}")
   }
 
-  func indent(self) = print("  ".repeat(self.indentLevel))
+  func indent(self) = stdoutWrite("  ".repeat(self.indentLevel))
 
   func indentInc(self) { self.indentLevel += 1 }
 
@@ -1033,19 +1033,19 @@ pub type Jsonifier {
 
   func print(self, str: String) {
     self.indent()
-    print(str)
+    stdoutWrite(str)
   }
 
   func println(self, str: String) {
     self.indent()
-    println(str)
+    stdoutWriteln(str)
   }
 
   func array<T>(self, arr: T[], fn: (T) => Unit) {
     if arr.isEmpty() {
-      print("[]")
+      stdoutWrite("[]")
     } else {
-      println("[")
+      stdoutWriteln("[")
       self.indentInc()
 
       for item, idx in arr {
@@ -1053,7 +1053,7 @@ pub type Jsonifier {
         fn(item)
 
         val comma = if idx != arr.length - 1 "," else ""
-        println(comma)
+        stdoutWriteln(comma)
       }
 
       self.indentDec()
@@ -1065,7 +1065,7 @@ pub type Jsonifier {
     if v |v| {
       fn(v)
     } else {
-      print("null")
+      stdoutWrite("null")
     }
   }
 }

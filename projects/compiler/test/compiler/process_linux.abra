@@ -6,6 +6,6 @@ import "process" as process
 val uname = process.uname()
 
 /// Expect: Linux
-println(uname.sysname)
+stdoutWriteln(uname.sysname)
 /// Expect: x86_64
-println(uname.machine)
+stdoutWriteln(uname.machine)
