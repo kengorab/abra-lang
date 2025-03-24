@@ -11,10 +11,19 @@ func stdoutWriteln(str = "") {
   stdoutWrite("\n")
 }
 
-func print<T>(value: T) = stdoutWrite(value.toString())
+func print(*items: Any[]) {
+  for i in range(0, items.length) {
+    val item = items._buffer.offset(i).load()
+    stdoutWrite(item.toString())
 
-func println<T>(value: T) {
-  stdoutWrite(value.toString())
+    if i != items.length - 1 {
+      stdoutWrite(" ")
+    }
+  }
+}
+
+func println(*items: Any[]) {
+  print(items: items)
   stdoutWrite("\n")
 }
 
