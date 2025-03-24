@@ -2,12 +2,12 @@ import "./_intrinsics" as intrinsics
 import Pointer, Byte from "./_intrinsics"
 import "libc" as libc
 
-func stdoutWrite(str: String) {
-  libc.write(libc.STDOUT_FILENO, str._buffer, str.length)
+func stdoutWrite(str = "") {
+  if !str.isEmpty() libc.write(libc.STDOUT_FILENO, str._buffer, str.length)
 }
 
-func stdoutWriteln(str: String) {
-  libc.write(libc.STDOUT_FILENO, str._buffer, str.length)
+func stdoutWriteln(str = "") {
+  stdoutWrite(str)
   stdoutWrite("\n")
 }
 
