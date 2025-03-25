@@ -11,21 +11,21 @@ func stdoutWriteln(str = "") {
   stdoutWrite("\n")
 }
 
-func print(*items: Any[]) {
-  for i in range(0, items.length) {
-    val item = items._buffer.offset(i).load()
-    stdoutWrite(item.toString())
-
-    if i != items.length - 1 {
-      stdoutWrite(" ")
-    }
-  }
-}
-
-func println(*items: Any[]) {
-  print(items: items)
-  stdoutWrite("\n")
-}
+//func print(*items: Any[]) {
+//  for i in range(0, items.length) {
+//    val item = items._buffer.offset(i).load()
+//    stdoutWrite(item.toString())
+//
+//    if i != items.length - 1 {
+//      stdoutWrite(" ")
+//    }
+//  }
+//}
+//
+//func println(*items: Any[]) {
+//  print(items: items)
+//  stdoutWrite("\n")
+//}
 
 pub enum Option<V> {
   Some(value: V)
@@ -533,24 +533,6 @@ type String {
     }
 
     true
-  }
-
-  pub func concat<T>(self, suffix: T, *others: Any[]): String {
-    val suffixStr = suffix.toString()
-    val othersRepr = others.join()
-    var newLength = self.length + suffixStr.length + othersRepr.length
-
-    val newString = String.withLength(newLength)
-    newString._buffer.copyFrom(self._buffer, self.length)
-    newString._buffer
-      .offset(self.length)
-      .copyFrom(suffixStr._buffer, suffixStr.length)
-    if !others.isEmpty() {
-      newString._buffer
-        .offset(self.length + suffixStr.length)
-        .copyFrom(othersRepr._buffer, othersRepr.length)
-    }
-    newString
   }
 
   pub func replaceAll(self, pattern: String, replacement: String): String {

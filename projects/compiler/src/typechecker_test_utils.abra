@@ -96,10 +96,6 @@ pub type Jsonifier {
       TypeKind.CouldNotDetermine => {
         self.println("\"kind\": \"could not determine\"")
       }
-      TypeKind.Any => {
-        self.println("\"kind\": \"primitive\",")
-        self.println("\"primitive\": \"Any\"")
-      }
       TypeKind.PrimitiveUnit => {
         self.println("\"kind\": \"primitive\",")
         self.println("\"primitive\": \"Unit\"")

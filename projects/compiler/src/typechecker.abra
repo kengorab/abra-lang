@@ -433,7 +433,6 @@ pub type Type {
   pub func repr(self, shorthand = true): String {
     match self.kind {
       TypeKind.CouldNotDetermine => "<unknown>"
-      TypeKind.Any => "Any"
       TypeKind.PrimitiveUnit => "Unit"
       TypeKind.PrimitiveInt => "Int"
       TypeKind.PrimitiveFloat => "Float"
@@ -486,7 +485,6 @@ pub type Type {
 
   func hasUnfilledHoles(self): Bool = match self.kind {
     TypeKind.CouldNotDetermine => false
-    TypeKind.Any => false
     TypeKind.PrimitiveUnit => false
     TypeKind.PrimitiveInt => false
     TypeKind.PrimitiveFloat => false
@@ -661,7 +659,6 @@ pub enum TypeKind {
   PrimitiveChar
   PrimitiveString
   Never
-  Any
   Generic(name: String)
   Instance(instanceKind: InstanceKind, generics: Type[])
   Func(paramTypes: (Type, Bool)[], returnType: Type)
@@ -1736,7 +1733,6 @@ pub type Typechecker {
 
   func findTypeByNameInScope(self, name: String, startingScope = self.currentScope): (Type, TypedModule?)? {
     match name {
-      "Any" => Some((Type(kind: TypeKind.Any), None))
       "Unit" => Some((Type(kind: TypeKind.PrimitiveUnit), None))
       "Int" => Some((Type(kind: TypeKind.PrimitiveInt), None))
       "Float" => Some((Type(kind: TypeKind.PrimitiveFloat), None))
@@ -2034,7 +2030,6 @@ pub type Typechecker {
     if required.kind == TypeKind.CouldNotDetermine || ty.kind == TypeKind.CouldNotDetermine return true
     if required.kind == TypeKind.Hole return true
     if required.kind == TypeKind.Never || ty.kind == TypeKind.Never return true
-    if required.kind == TypeKind.Any return true
 
     match required.kind {
       TypeKind.PrimitiveInt => match ty.kind {
@@ -4472,29 +4467,9 @@ pub type Typechecker {
     Ok(TypedAstNode(token: token, ty: variable.ty, kind: TypedAstNodeKind.Identifier(name, variable, fnTypeHint, varImportMod)))
   }
 
-  func resolveAccessorPathSegmentAny(self, label: Label, optSafe: Bool, typeHint: Type?): AccessorPathSegment? {
-    val scope = self.project.preludeScope.makeChild("Any", ScopeKind.Type)
-    val method: Function? = if label.name == "toString" {
-      Some(Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(None, true)))
-    } else if label.name == "hash" {
-      Some(Function.generated(scope, "hash", [], Type(kind: TypeKind.PrimitiveInt), FunctionKind.InstanceMethod(None, true)))
-    } else if label.name == "eq" {
-      Some(Function.generated(scope, "eq", [("other", Type(kind: TypeKind.Any))], Type(kind: TypeKind.PrimitiveBool), FunctionKind.InstanceMethod(None, true)))
-    } else {
-      None
-    }
-
-    if method |method| {
-      Some(AccessorPathSegment.Method(label, method, optSafe, typeHint))
-    } else {
-      None
-    }
-  }
-
   func resolveAccessorPathSegment(self, ty: Type, label: Label, typeHint: Type?, optSafe = false): Result<AccessorPathSegment?, TypeError> {
     val foundSegment = match ty.kind {
       TypeKind.CouldNotDetermine => None
-      TypeKind.Any => self.resolveAccessorPathSegmentAny(label, optSafe, typeHint)
       TypeKind.PrimitiveUnit => None
       TypeKind.PrimitiveInt => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.preludeIntStruct), [])), label, None, optSafe)
       TypeKind.PrimitiveFloat => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.preludeFloatStruct), [])), label, None, optSafe)
@@ -4502,7 +4477,24 @@ pub type Typechecker {
       TypeKind.PrimitiveChar => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.preludeCharStruct), [])), label, None, optSafe)
       TypeKind.PrimitiveString => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.preludeStringStruct), [])), label, None, optSafe)
       TypeKind.Never => None
-      TypeKind.Generic => self.resolveAccessorPathSegmentAny(label, optSafe, typeHint)
+      TypeKind.Generic => {
+        val scope = self.project.preludeScope.makeChild("T", ScopeKind.Type)
+        val method = if label.name == "toString" {
+          Some(Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(None, true)))
+        } else if label.name == "hash" {
+          Some(Function.generated(scope, "hash", [], Type(kind: TypeKind.PrimitiveInt), FunctionKind.InstanceMethod(None, true)))
+        } else if label.name == "eq" {
+          Some(Function.generated(scope, "eq", [("other", ty)], Type(kind: TypeKind.PrimitiveBool), FunctionKind.InstanceMethod(None, true)))
+        } else {
+          None
+        }
+
+        if method |method| {
+          Some(AccessorPathSegment.Method(label, method, optSafe, typeHint))
+        } else {
+          None
+        }
+      }
       TypeKind.Instance(instanceKind, generics) => {
         val (instanceMethods, typeParams, instanceTypeModuleId) = match instanceKind {
           InstanceKind.Struct(struct) => {

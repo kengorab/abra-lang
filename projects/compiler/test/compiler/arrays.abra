@@ -334,7 +334,7 @@ func doSum(acc: Int, i: Int): Int = acc + i
 
   // TODO: I shouldn't need r1/r2 below, but otherwise I get a typechecker error:
   //   Type mismatch for parameter 'initialValue'
-  //     |    stdoutWriteln(arr.reduce(0, doSum))
+  //     |    println(arr.reduce(0, doSum))
   //                             ^
   //   Expected: Any
   //   but instead found: Int
