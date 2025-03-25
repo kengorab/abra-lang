@@ -256,22 +256,6 @@ stdoutWriteln("hello")
   stdoutWriteln("hello".endsWith("hhello").toString())
 })()
 
-// // String#concat
-// (() => {
-//   /// Expect: helloworld
-//   stdoutWriteln("hello".concat("world"))
-//   /// Expect: hello12
-//   stdoutWriteln("hello".concat(12))
-//   /// Expect: hello1.23
-//   stdoutWriteln("hello".concat(1.23))
-//   /// Expect: hellotrue
-//   stdoutWriteln("hello".concat(true))
-//   /// Expect: hello[1, 2, 3]
-//   stdoutWriteln("hello".concat([1, 2, 3]))
-//   /// Expect: hello12.3true[1, 2, 3]
-//   stdoutWriteln("hello".concat(1, 2.3, true, [1, 2, 3]))
-// })()
-
 // String#repeat
 (() => {
   /// Expect: ||

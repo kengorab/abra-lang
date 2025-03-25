@@ -1050,8 +1050,7 @@ pub type Compiler {
               val targetParamTypes = if fnAliasTypeHint |hint| {
                 val paramTypes = match hint.kind {
                   TypeKind.Func(paramTypes, _) => Some(paramTypes)
-                  // If the function value is being treated as a Any or a Hole, then no param type info needs to be known later anyway
-                  TypeKind.Any => None
+                  // If the function value is being treated as a Hole, then no param type info needs to be known later anyway
                   TypeKind.Hole => None
                   _ => unreachable("fnAliasTypeKind must be TypeKind.Func")
                 }
@@ -1524,7 +1523,8 @@ pub type Compiler {
         val targetParamTypes = if typeHint |hint| {
           val paramTypes = match hint.kind {
             TypeKind.Func(paramTypes, _) => Some(paramTypes)
-            TypeKind.Any => None // if the function value is being treated as an Any, then no param type info needs to be known later anyway
+            // If the function value is being treated as a Hole, then no param type info needs to be known later anyway
+            TypeKind.Hole => None
             _ => unreachable("typeKind must be TypeKind.Func")
           }
           paramTypes
@@ -2261,7 +2261,6 @@ pub type Compiler {
       TypeKind.PrimitiveChar => Ok(Some(QbeType.U64))
       TypeKind.PrimitiveString => Ok(Some(QbeType.Pointer))
       TypeKind.Never => Ok(None)
-      TypeKind.Any => todo("TypeKind.Any")
       TypeKind.Generic(name) => {
         if self._resolvedGenerics.resolveGeneric(name) |ty| self._getQbeTypeForType(ty) else unreachable("unexpected generic '$name' at this point")
       }
@@ -2358,8 +2357,7 @@ pub type Compiler {
           val targetParamTypes = if fnAliasTypeHint |hint| {
             val paramTypes = match hint.kind {
               TypeKind.Func(paramTypes, _) => Some(paramTypes)
-              // If the function value is being treated as a Any or a Hole, then no param type info needs to be known later anyway
-              TypeKind.Any => None
+              // If the function value is being treated as a Hole, then no param type info needs to be known later anyway
               TypeKind.Hole => None
               _ => unreachable("fnAliasTypeKind must be TypeKind.Func")
             }
@@ -4205,7 +4203,6 @@ pub type Compiler {
   func _getInstanceTypeForType(self, ty: Type): Result<(InstanceKind, Type[]), CompileError> {
     match ty.kind {
       TypeKind.CouldNotDetermine => unreachable("used for surfacing partial results; no module with this type should make it to the compilation phase")
-      TypeKind.Any => unreachable("getInstanceTypeForType: Any")
       TypeKind.PrimitiveUnit => unreachable("getInstanceTypeForType: Unit")
       TypeKind.PrimitiveInt => Ok((InstanceKind.Struct(self._project.preludeIntStruct), []))
       TypeKind.PrimitiveFloat => Ok((InstanceKind.Struct(self._project.preludeFloatStruct), []))
