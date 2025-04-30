@@ -1,9 +1,7 @@
-// Functions and closures as value (lambdas too)
-func abc(): Int = 24
-stdoutWriteln(abc)
-val abcVal = abc
-stdoutWriteln("$abcVal ${abcVal()}")
+func add(a: Int, b: Int): Int = a + b
 
-val str = "abc"
+stdoutWriteln(add(1, 2 + 3).toString())
 
-stdoutWriteln(str.isEmpty)
+// func str(): String = "hello"
+
+// str()

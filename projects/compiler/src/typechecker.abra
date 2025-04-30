@@ -146,7 +146,7 @@ pub enum VariableAlias {
 
 pub type Variable {
   pub label: Label
-  scope: Scope
+  pub scope: Scope
   pub mutable: Bool
   pub ty: Type
   pub alias: VariableAlias? = None
@@ -218,6 +218,18 @@ pub type Scope {
     }
 
     false
+  }
+
+  pub func findParentModule(self): (Int, String)? {
+    var sc = Some(self)
+    while sc |s| {
+      match s.kind {
+        ScopeKind.Module(id, name) => return Some((id, name))
+        else => sc = s.parent
+      }
+    }
+
+    None
   }
 }
 
@@ -296,7 +308,7 @@ pub enum EnumVariantKind {
 pub type Enum {
   pub moduleId: Int
   pub label: Label
-  scope: Scope
+  pub scope: Scope
   pub typeParams: String[] = []
   pub variants: TypedEnumVariant[] = []
   pub instanceMethods: Function[] = []
@@ -678,7 +690,7 @@ pub type Decorator {
   pub arguments: LiteralAstNode[]
 }
 
-type TypedBindingDeclarationNode {
+pub type TypedBindingDeclarationNode {
   pub bindingPattern: BindingPattern
   pub variables: Variable[]
   pub expr: TypedAstNode?

@@ -1,15 +1,29 @@
-import IR, IrFunction, IrType, Instruction, Operation, Value from "./ir"
+import IR, IrFunction, IrType, Instruction, Operation, Value, IdentKind, GlobalVariable from "./ir"
 import ModuleBuilder, QbeType from "./qbe"
 import "./qbe" as qbe
 
 pub type Compiler {
+  ir: IR
   builder: ModuleBuilder
+  currentFn: qbe.QbeFunction
+  numTemps: Int = 0
+  mallocFn: qbe.QbeFunction = qbe.QbeFunction.spec(name: "GC_malloc", returnType: Some(QbeType.Pointer))
+  snprintfFn: qbe.QbeFunction = qbe.QbeFunction.spec(name: "snprintf", returnType: Some(QbeType.U64), parameters: [], variadicIdx: Some(3))
 
   pub func compile(ir: IR): ModuleBuilder {
     val builder = ModuleBuilder()
 
-    val compiler = Compiler(builder: builder)
-    compiler.compileFunction(ir.mainFunction)
+    val compiler = Compiler(
+      ir: ir,
+      builder: builder,
+      currentFn: qbe.QbeFunction.spec(name: "dummy"),
+    )
+
+    compiler.compileMainFunction(ir.mainFunction)
+
+    for g in ir.globals {
+      compiler.compileGlobal(g)
+    }
 
     for fn in ir.functions {
       compiler.compileFunction(fn)
@@ -18,97 +32,157 @@ pub type Compiler {
     builder
   }
 
-  func compileFunction(self, fn: IrFunction) {
-    val returnType = match fn.ret {
-      IrType.I64 => Some(QbeType.U64)
-      IrType.Unit => None
-    }
-    val f = self.builder.buildFunction(name: fn.name, returnType: returnType)
+  func compileGlobal(self, global: GlobalVariable) {
+    val globalTy = self.irTypeToQbeType(global.ty)
+    self.builder.addData(qbe.QbeData(name: global.name, kind: qbe.QbeDataKind.Constants([(globalTy, globalTy.zeroValue())])))
+  }
 
-    for param in fn.params {
-      val ty = match param.ty {
-        IrType.I64 => QbeType.U64
-        IrType.Unit => unreachable("params cannot be of type Unit")
-      }
-      f.addParameter(param.name, ty)
-    }
+  func compileMainFunction(self, fn: IrFunction) {
+    val f = self.builder.buildFunction(name: fn.name, returnType: Some(qbe.QbeType.U64), exported: true)
+    self.currentFn = f
+
+    // TODO: persist to globals
+    val argcVal = f.addParameter("argc", qbe.QbeType.U64)
+    val argvVal = f.addParameter("argv", qbe.QbeType.U64)
+
+    f.block.buildVoidCallRaw("GC_init", [])
 
     for inst in fn.block {
-      self.compileInstruction(f, inst)
+      self.compileInstruction(inst)
     }
   }
 
-  func compileInstruction(self, f: qbe.QbeFunction, inst: Instruction) {
+  func compileFunction(self, fn: IrFunction) {
+    if fn.extern return
+
+    val returnType = self.irTypeToQbeReturnType(fn.ret)
+    val f = self.builder.buildFunction(name: fn.name, returnType: returnType)
+    self.currentFn = f
+    self.numTemps = 0
+
+    for param in fn.params {
+      val ty = self.irTypeToQbeType(param.ty)
+      val paramName = match param.kind { IdentKind.Named(name) => name, else => unreachable("expected IdentKind.Named for param") }
+      f.addParameter(paramName, ty)
+    }
+
+    for inst in fn.block {
+      self.compileInstruction(inst)
+    }
+  }
+
+  func compileInstruction(self, inst: Instruction) {
+    val dst = match inst.assignee?.kind {
+      IdentKind.Anon(idx) => Some("_$idx")
+      IdentKind.Named(name) => Some(name)
+      else => None
+    }
+
     match inst.op {
       Operation.Add(l, r) => {
-        if l.getType() != r.getType() unreachable("l.getType() != r.getType()")
+        if self.ir.getType(l) != self.ir.getType(r) unreachable("self.ir.getType(l) != self.ir.getType(r)")
 
-        val left = match l {
-          Value.ConstInt(i) => qbe.Value.Int(i)
-          Value.Ident(i) => {
-            val ty = match i.ty {
-              IrType.I64 => QbeType.U64
-              IrType.Unit => unreachable("values cannot be of type Unit")
-            }
-            qbe.Value.Ident(name: i.name, ty: ty)
-          }
-        }
-        val right = match r {
-          Value.ConstInt(i) => qbe.Value.Int(i)
-          Value.Ident(i) => {
-            val ty = match i.ty {
-              IrType.I64 => QbeType.U64
-              IrType.Unit => unreachable("values cannot be of type Unit")
-            }
-            qbe.Value.Ident(name: i.name, ty: ty)
-          }
-        }
-        val dst = inst.assignee?.name
+        val left = self.irValueToQbeValue(l)
+        val right = self.irValueToQbeValue(r)
 
-        f.block.buildAdd(left, right, dst)
+        self.currentFn.block.buildAdd(left, right, dst)
+      }
+      Operation.Load(ty, mem, offset) => {
+        val dst1 = Some(self.nextTemp())
+        val ptr = try self.currentFn.block.buildAdd(qbe.Value.Int(offset), self.irValueToQbeValue(mem), dst1) else |e| unreachable(e)
+        self.currentFn.block.buildLoad(self.irTypeToQbeType(ty), ptr, dst)
+      }
+      Operation.Store(ty, value, mem, offset) => {
+        val dst1 = Some(self.nextTemp())
+        val ptr = try self.currentFn.block.buildAdd(qbe.Value.Int(offset), self.irValueToQbeValue(mem), dst1) else |e| unreachable(e)
+        self.currentFn.block.buildStore(self.irTypeToQbeType(ty), self.irValueToQbeValue(value), ptr)
       }
       Operation.Call(ret, fnName, args) => {
-        val argVals = args.map(a => {
-          match a {
-            Value.ConstInt(i) => qbe.Value.Int(i)
-            Value.Ident(i) => {
-              val ty = match i.ty {
-                IrType.I64 => QbeType.U64
-                IrType.Unit => unreachable("values cannot be of type Unit")
-              }
-              qbe.Value.Ident(name: i.name, ty: ty)
-            }
-          }
-        })
-        val returnType = match ret {
-          IrType.I64 => Some(QbeType.U64)
-          IrType.Unit => None
-        }
-        if returnType |ret| {
-          try f.block.buildCallRaw(fnName, ret, argVals) else |e| {
-            unreachable(e)
-          }
+        val argVals = args.map(a => self.irValueToQbeValue(a))
+        if self.irTypeToQbeReturnType(ret) |ret| {
+          try self.currentFn.block.buildCallRaw(fnName, ret, argVals, dst) else |e| unreachable(e)
         } else {
-          f.block.buildVoidCallRaw(fnName, argVals)
+          self.currentFn.block.buildVoidCallRaw(fnName, argVals)
         }
       }
       Operation.Return(value) => {
         if value |v| {
-          val retVal = match v {
-            Value.ConstInt(i) => qbe.Value.Int(i)
-            Value.Ident(i) => {
-              val ty = match i.ty {
-                IrType.I64 => QbeType.U64
-                IrType.Unit => unreachable("values cannot be of type Unit")
-              }
-              qbe.Value.Ident(name: i.name, ty: ty)
-            }
-          }
-          f.block.buildReturn(Some(retVal))
+          self.currentFn.block.buildReturn(Some(self.irValueToQbeValue(v)))
         } else {
-          f.block.buildReturn()
+          self.currentFn.block.buildReturn()
+        }
+      }
+      Operation.Builtin(ret, id, args) => {
+        match id {
+          "malloc" => {
+            val sizeVal = try args[0] else unreachable()
+            self.callMalloc(self.irValueToQbeValue(sizeVal), dst)
+          }
+          "i64_to_string" => {
+            val intVal = self.irValueToQbeValue(try args[0] else unreachable())
+            val intFmtPtr = self.builder.buildGlobalString("%lld")
+            val dst1 = Some(self.nextTemp())
+            val sizeVal = try self.currentFn.block.buildCall(qbe.Callable.Function(self.snprintfFn), [qbe.Value.Int(0), qbe.Value.Int(0), intFmtPtr, intVal], dst1) else |e| unreachable(e)
+            val dst2 = Some(self.nextTemp())
+            val mallocSizeVal = try self.currentFn.block.buildAdd(qbe.Value.Int(1), sizeVal, dst2) else |e| unreachable(e)
+
+            val dst3 = Some(self.nextTemp())
+            val mem = self.callMalloc(mallocSizeVal, dst3)
+            val dst4 = Some(self.nextTemp())
+            try self.currentFn.block.buildCall(qbe.Callable.Function(self.snprintfFn), [mem, mallocSizeVal, intFmtPtr, intVal], dst4) else |e| unreachable(e)
+            self.constructString(mem, sizeVal, dst)
+          }
         }
       }
     }
+  }
+
+  func nextTemp(self): String {
+    val name = "_t${self.numTemps}"
+    self.numTemps += 1
+    name
+  }
+
+  func irTypeToQbeType(self, irType: IrType): qbe.QbeType {
+    match irType {
+      IrType.I64 => QbeType.U64
+      IrType.Composite => QbeType.U64 // pointer to GC'd object
+      IrType.Ptr => QbeType.U64 // raw pointer
+      IrType.Unit => unreachable("values cannot be of type Unit")
+    }
+  }
+
+  func irTypeToQbeReturnType(self, irType: IrType): qbe.QbeType? = match irType { IrType.Unit => None, else t => Some(self.irTypeToQbeType(t)) }
+
+  func irValueToQbeValue(self, v: Value): qbe.Value {
+    match v {
+      Value.Unit => unreachable("values cannot be of type unit")
+      Value.ConstInt(i) => qbe.Value.Int(i)
+      Value.ConstString(s) => {
+        val dataPtr = self.builder.buildGlobalString(s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r"))
+        self.constructString(dataPtr, qbe.Value.Int(s.length))
+      }
+      Value.Ident(i) => {
+        val ty = self.irTypeToQbeType(i.ty)
+        val name = match i.kind {
+          IdentKind.Anon(idx) => "_$idx"
+          IdentKind.Named(name) => name
+        }
+        qbe.Value.Ident(name: name, ty: ty)
+      }
+      Value.Global(g) => {
+        val ty = self.irTypeToQbeType(g.ty)
+        qbe.Value.Global(name: g.name, ty: ty)
+      }
+    }
+  }
+
+  func constructString(self, ptrVal: qbe.Value, lenVal: qbe.Value, dst: String? = None): qbe.Value {
+    val retTy = self.irTypeToQbeType(IrType.Composite(name: "2_String"))
+    try self.currentFn.block.buildCallRaw("_2_String__init__", retTy, [lenVal, ptrVal], dst) else |e| unreachable(e)
+  }
+
+  func callMalloc(self, sizeVal: qbe.Value, dst: String? = None): qbe.Value {
+    try self.currentFn.block.buildCall(qbe.Callable.Function(self.mallocFn), [sizeVal], dst) else |e| unreachable(e)
   }
 }

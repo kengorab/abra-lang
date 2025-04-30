@@ -1,6 +1,8 @@
+import "process" as process
 import Position from "./lexer"
-import LiteralAstNode, BinaryOp from "./parser"
-import TypedAstNodeKind from "./typechecker"
+import LiteralAstNode, BinaryOp, BindingPattern from "./parser"
+// match arms don't support import-based namespacing for enums yet, so enums used in matches are imported by name
+import TypedAstNodeKind, TypedInvokee, FunctionKind, TypeKind, ScopeKind, InstanceKind, VariableAlias, AccessorPathSegment from "./typechecker"
 import "./typechecker" as tc
 
 // TODO: move to stdlib
@@ -20,25 +22,51 @@ pub type StringBuilder {
 pub type IR {
   pub mainFunction: IrFunction
   pub functions: IrFunction[]
+  pub types: CompositeType[]
+  pub globals: GlobalVariable[]
+  cachedTypes: Map<String, CompositeType> = {}
 
   pub func render(self, sb: StringBuilder) {
-    self.mainFunction.render(sb)
+    for t in self.types {
+      t.render(sb)
+      sb.writeln()
+    }
+
+    for g in self.globals {
+      g.render(sb)
+      sb.writeln()
+    }
+
     sb.writeln()
+    self.mainFunction.render(sb)
 
     for f in self.functions {
-      f.render(sb)
       sb.writeln()
+      f.render(sb)
+    }
+  }
+
+  pub func getType(self, value: Value): IrType {
+    match value {
+      Value.Unit => IrType.Unit
+      Value.ConstInt => IrType.I64
+      Value.ConstString => IrType.Composite(name: "2_String") // TODO: don't hardcode this
+      Value.Ident(i) => i.ty
+      Value.Global(g) => g.ty
     }
   }
 }
 
 pub type IrFunction {
+  pub extern: String? = None
   pub name: String
   pub params: Ident[]
   pub ret: IrType
   pub block: Instruction[]
 
   pub func render(self, sb: StringBuilder) {
+    if self.extern |name| sb.writeln("@extern($name)")
+
     sb.write("function ")
     sb.write(self.name)
 
@@ -68,41 +96,57 @@ pub type Instruction {
 
   pub func render(self, sb: StringBuilder) {
     if self.assignee |a| {
-      sb.write("%").write(a.name).write(" = ")
+      a.render(sb)
+      sb.write(" = ")
     }
 
     self.op.render(sb)
   }
 }
 
+pub enum IdentKind {
+  Anon(idx: Int)
+  Named(name: String)
+}
+
 pub type Ident {
   pub ty: IrType
-  pub name: String
+  pub kind: IdentKind
 
   pub func render(self, sb: StringBuilder) {
     self.ty.render(sb)
-    sb.write(" %").write(self.name)
+    sb.write(" %")
+    match self.kind {
+      IdentKind.Anon(idx) => sb.write("_$idx")
+      IdentKind.Named(name) => sb.write(name)
+    }
   }
 }
 
 pub enum Value {
+  Unit
   ConstInt(value: Int)
+  ConstString(value: String)
   Ident(ident: Ident)
-
-  pub func getType(self): IrType {
-    match self {
-      Value.ConstInt => IrType.I64
-      Value.Ident(i) => i.ty
-    }
-  }
+  Global(global: GlobalVariable)
 
   pub func render(self, sb: StringBuilder) {
     match self {
+      Value.Unit => {}
       Value.ConstInt(v) => {
         IrType.I64.render(sb)
         sb.write(" ").write(v.toString())
       }
+      Value.ConstString(s) => {
+        sb.write("\"")
+          .write(s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r"))
+          .write("\"")
+      }
       Value.Ident(i) => i.render(sb)
+      Value.Global(g) => {
+        g.ty.render(sb)
+        sb.write(" $").write(g.name)
+      }
     }
   }
 }
@@ -110,9 +154,14 @@ pub enum Value {
 pub enum Operation {
   Add(left: Value, right: Value)
 
+  Load(ty: IrType, mem: Value, offset: Int = 0)
+  Store(ty: IrType, value: Value, mem: Value, offset: Int = 0)
+
   Call(ret: IrType, fnName: String, args: Value[])
 
   Return(value: Value? = None)
+
+  Builtin(ret: IrType, id: String, args: Value[] = [])
 
   pub func render(self, sb: StringBuilder) {
     match self {
@@ -121,6 +170,32 @@ pub enum Operation {
         l.render(sb)
         sb.write(", ")
         r.render(sb)
+        sb.write(")")
+      }
+      Operation.Load(ty, mem, offset) => {
+        sb.write("load(")
+        ty.render(sb)
+        sb.write(", ")
+        mem.render(sb)
+
+        if offset != 0 {
+          sb.write(", $offset")
+        }
+
+        sb.write(")")
+      }
+      Operation.Store(ty, value, mem, offset) => {
+        sb.write("store(")
+        ty.render(sb)
+        sb.write(", ")
+        value.render(sb)
+        sb.write(", ")
+        mem.render(sb)
+
+        if offset != 0 {
+          sb.write(", $offset")
+        }
+
         sb.write(")")
       }
       Operation.Call(ret, fnName, args) => {
@@ -138,6 +213,16 @@ pub enum Operation {
         if v |v| v.render(sb)
         sb.write(")")
       }
+      Operation.Builtin(ret, id, args) => {
+        sb.write("builtin(")
+        ret.render(sb)
+        sb.write(", ").write(id)
+        for arg, idx in args {
+          sb.write(", ")
+          arg.render(sb)
+        }
+        sb.write(")")
+      }
     }
   }
 }
@@ -145,12 +230,48 @@ pub enum Operation {
 pub enum IrType {
   Unit
   I64
+  Composite(name: String)
+  Ptr
 
   pub func render(self, sb: StringBuilder) {
     match self {
       IrType.Unit => sb.write("unit")
       IrType.I64 => sb.write("i64")
+      IrType.Composite(name) => sb.write(name)
+      IrType.Ptr => sb.write("ptr")
     }
+  }
+}
+
+pub type CompositeType {
+  name: String
+  fields: (String, IrType)[]
+
+  pub func render(self, sb: StringBuilder) {
+    sb.write("type ")
+      .write(self.name)
+      .write(" = struct {")
+    if !self.fields.isEmpty() sb.writeln()
+
+    for (name, ty) in self.fields {
+      sb.write("\n")
+        .write("  ")
+        .write(name)
+        .write(": ")
+      ty.render(sb)
+    }
+    sb.writeln("}")
+  }
+}
+
+pub type GlobalVariable {
+  pub name: String
+  pub ty: IrType
+
+  pub func render(self, sb: StringBuilder) {
+    sb.write("global ")
+    self.ty.render(sb)
+    sb.write(" ${self.name}")
   }
 }
 
@@ -160,16 +281,34 @@ type CurrentFunctionContext {
   anonLocalIdx: Int = 0
 }
 
+type FunctionToCompile {
+  fn: tc.Function
+  fnName: String
+  paramsNeedingDefaultValue: Bool[]
+  resolvedGenerics: Map<String, tc.Type>
+  methodInstanceType: ConcreteType? = None
+}
+
+type ConcreteType {
+  instanceKind: InstanceKind
+  typeArgs: ConcreteType[] = []
+}
+
 pub type Generator {
+  project: tc.Project
   functions: IrFunction[]
+  functionsByName: Map<String, IrFunction>
   curFn: CurrentFunctionContext
+  fnQueue: FunctionToCompile[] = []
+  types: Map<String, CompositeType> = {}
+  globals: Map<String, GlobalVariable> = {}
 
   pub func generateIR(project: tc.Project): IR {
     val allModules = project.modules.values().sortBy(m => m.id)
 
-    val mainFn = IrFunction(name: "main", params: [], ret: IrType.Unit, block: [])
+    val mainFn = IrFunction(name: "main", params: [], ret: IrType.I64, block: [])
     val curFn = CurrentFunctionContext(fn: mainFn, locals: [])
-    val generator = Generator(functions: [], curFn: curFn)
+    val generator = Generator(project: project, functions: [], functionsByName: {}, curFn: curFn)
 
     for mod in allModules {
       val modFn = generator.genModule(mod)
@@ -178,7 +317,7 @@ pub type Generator {
 
     mainFn.block.push(Instruction(op: Operation.Return(value: Some(Value.ConstInt(0)))))
 
-    IR(mainFunction: mainFn, functions: generator.functions)
+    IR(mainFunction: mainFn, functions: generator.functions, types: generator.types.values(), globals: generator.globals.values())
   }
 
   func genModule(self, mod: tc.TypedModule): IrFunction {
@@ -194,8 +333,157 @@ pub type Generator {
 
     self.curFn = prevFn
 
+    for nextFn in self.fnQueue {
+      self.genFunction(nextFn)
+    }
+
     modFn
   }
+
+  func genFunction(self, fn: FunctionToCompile) {
+    if self.functionsByName[fn.fnName] return
+
+    val returnType = match fn.fn.returnType.kind {
+      TypeKind.Generic(name) => try fn.resolvedGenerics[name] else unreachable("genFunction, no generic")
+      else ty => fn.fn.returnType
+    }
+    val retTy = if returnType.kind == tc.TypeKind.PrimitiveUnit {
+      IrType.Unit
+    } else {
+      val retConcreteType = self.getConcreteTypeFromType(returnType)
+      self.getIrTypeForConcreteType(retConcreteType)
+    }
+
+    val externName = self.getExternName(fn.fn)
+    val irFunc = IrFunction(extern: externName, name: fn.fnName, params: [], ret: retTy, block: [])
+    self.addFunction(fn.fnName, irFunc)
+    val prevFn = self.enterFunction(irFunc)
+
+    match fn.fn.kind {
+      FunctionKind.InstanceMethod(instanceKind, _) => {
+        val selfConcreteType = try fn.methodInstanceType else unreachable("Instance method without instance type")
+        val selfTy = self.getIrTypeForConcreteType(selfConcreteType)
+        val selfParamIdent = Ident(ty: selfTy, kind: IdentKind.Named("self"))
+        irFunc.params.push(selfParamIdent)
+
+        if fn.fn.label.name == "toString" && fn.fn.isGenerated {
+          val inst = try instanceKind else unreachable("generic receiver of toString method")
+          self.genToStringMethodBody(Value.Ident(selfParamIdent), inst, fn)
+          self.curFn = prevFn
+          return
+        }
+      }
+    }
+
+    var anyParamNeedsDefault = false
+    for param, idx in fn.fn.params {
+      val paramConcreteType = self.getConcreteTypeFromType(param.ty)
+      val paramTy = self.getIrTypeForConcreteType(paramConcreteType)
+      val paramIdent = Ident(ty: paramTy, kind: IdentKind.Named(param.label.name))
+
+      if param.defaultValue {
+        val paramNeedsDefault = fn.paramsNeedingDefaultValue[idx] ?: false
+        if paramNeedsDefault {
+          anyParamNeedsDefault = true
+          todo("params with default values")
+        } else {
+          irFunc.params.push(paramIdent)
+        }
+      } else {
+        irFunc.params.push(paramIdent)
+      }
+    }
+
+    if anyParamNeedsDefault {
+      todo()
+    } else {
+      for node, idx in fn.fn.body {
+        if idx == fn.fn.body.length - 1 {
+          if retTy != IrType.Unit {
+            val retVal = self.genExpression(node)
+            self.emit(Instruction(op: Operation.Return(Some(retVal))))
+          } else {
+            self.genStatement(node)
+            self.emit(Instruction(op: Operation.Return()))
+          }
+        } else {
+          self.genStatement(node)
+        }
+      }
+    }
+
+    self.curFn = prevFn
+  }
+
+  func getOrGenStructInitializer(self, concreteType: ConcreteType, fieldsNeedingDefaultValue: Bool[] = []): IrFunction {
+    val struct = match concreteType.instanceKind { InstanceKind.Struct(s) => s, else => unreachable("getOrGenStructInitializer called with non-struct") }
+
+    val fnName = self.structInitFnName(concreteType)
+    if self.functionsByName[fnName] |f| return f
+
+    val retTy = self.getIrTypeForConcreteType(concreteType)
+
+    var size = 0
+    var anyFieldNeedsDefault = false
+    val params: Ident[] = []
+    val argsForUnderlying: (Value, IrType, Int)[] = []
+    for field, idx in struct.fields {
+      val fieldConcreteType = self.getConcreteTypeFromType(field.ty)
+      val fieldTy = self.getIrTypeForConcreteType(fieldConcreteType)
+      size += 8 // TODO: don't assume 8 byte alignment for all fields
+
+      val fieldVal = if field.initializer |initializerNode| {
+        val fieldNeedsDefault = fieldsNeedingDefaultValue[idx] ?: false
+        if fieldNeedsDefault {
+          anyFieldNeedsDefault = true
+          todo("fields with default values")
+        } else {
+          val ident = Ident(ty: fieldTy, kind: IdentKind.Named(field.name.name))
+          params.push(ident)
+          Value.Ident(ident)
+        }
+      } else {
+        val ident = Ident(ty: fieldTy, kind: IdentKind.Named(field.name.name))
+        params.push(ident)
+        Value.Ident(ident)
+      }
+
+      // TODO: don't assume 8 byte alignment for all fields
+      argsForUnderlying.push((fieldVal, fieldTy, idx * 8))
+    }
+
+    val irFunc = IrFunction(name: fnName, params: params, ret: retTy, block: [])
+    self.addFunction(fnName, irFunc)
+    val prevFn = self.enterFunction(irFunc)
+
+    val ident = Ident(ty: IrType.Ptr, kind: IdentKind.Anon(self.nextAnonLocal()))
+    self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: IrType.Ptr, id: "malloc", args: [Value.ConstInt(size)])))
+    val mem = Value.Ident(ident: ident)
+
+    for (fieldVal, fieldTy, fieldOffset), idx in argsForUnderlying {
+      self.emit(Instruction(op: Operation.Store(ty: fieldTy, value: fieldVal, mem: mem, offset: fieldOffset)))
+    }
+
+    self.emit(Instruction(op: Operation.Return(Some(mem))))
+
+    self.curFn = prevFn
+    irFunc
+  }
+
+  func genToStringMethodBody(self, selfVal: Value, instanceKind: tc.InstanceKind, fn: FunctionToCompile) {
+    match instanceKind {
+      InstanceKind.Struct(s) => {
+        if s == self.project.preludeIntStruct {
+          val strTy = self.getIrTypeForConcreteType(ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct), typeArgs: []))
+          val ident = Ident(ty: IrType.I64, kind: IdentKind.Anon(self.nextAnonLocal()))
+          self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: strTy, id: "i64_to_string", args: [selfVal])))
+          self.emit(Instruction(op: Operation.Return(Some(Value.Ident(ident)))))
+        }
+      }
+      InstanceKind.Enum(e) => todo()
+    }
+  }
+
 
   func genStatement(self, node: tc.TypedAstNode) {
     match node.kind {
@@ -203,7 +491,7 @@ pub type Generator {
       TypedAstNodeKind.Match => todo("TypedAstNodeKind.Match (${node.token.position})")
       TypedAstNodeKind.While => todo("TypedAstNodeKind.While (${node.token.position})")
       TypedAstNodeKind.For => todo("TypedAstNodeKind.For (${node.token.position})")
-      TypedAstNodeKind.BindingDeclaration => { /* todo: TypedAstNodeKind.BindingDeclaration */ }
+      TypedAstNodeKind.BindingDeclaration(node) => self.genBindingDeclaration(node)
       TypedAstNodeKind.FunctionDeclaration => { /* todo: TypedAstNodeKind.FunctionDeclaration */ }
       TypedAstNodeKind.TypeDeclaration => { /* todo: TypedAstNodeKind.TypeDeclaration */ }
       TypedAstNodeKind.EnumDeclaration => { /* todo: TypedAstNodeKind.EnumDeclaration */ }
@@ -216,19 +504,68 @@ pub type Generator {
     }
   }
 
+  func genBindingDeclaration(self, node: tc.TypedBindingDeclarationNode) {
+    val variables = node.variables.keyBy(v => v.label.name)
+    val exprVal = if node.expr |expr| {
+      Some(self.genExpression(expr))
+    } else {
+      None
+    }
+
+    self.genBindingPattern(node.bindingPattern, variables, exprVal)
+  }
+
+  func genBindingPattern(self, pattern: BindingPattern, variables: Map<String, tc.Variable>, value: Value?) {
+    val varName = match pattern {
+      BindingPattern.Variable(label) => label.name
+      BindingPattern.Tuple => todo("genBindingPattern: BindingPattern.Tuple")
+    }
+
+    val variable = try variables[varName] else unreachable("expected binding '$varName', but missing from variables")
+    val isGlobal = !!variable.isGlobal()
+
+    // Top-level variables in a module are only globals if they're captured; otherwise they're treated as locals within the module wrapper fn.
+    // Exported variables (which _should_ also be top-level) are necessarily hoisted to global scope.
+    if variable.isExported || (variable.isCaptured && isGlobal) {
+      val global = self.addGlobal(variable)
+      if value |value| {
+        self.emit(Instruction(op: Operation.Store(ty: global.ty, value: value, mem: Value.Global(global))))
+      }
+    }
+  }
+
   func genExpression(self, node: tc.TypedAstNode): Value {
     val pos = node.token.position
 
     match node.kind {
       TypedAstNodeKind.Literal(lit) => self.genLiteral(pos, lit)
       TypedAstNodeKind.Binary(left, op, right) => self.genBinary(pos, left, op, right)
-      else => todo("Other expressions ($pos)")
+      TypedAstNodeKind.Invocation(invokee, args, resolvedGenerics) => self.genCall(pos, node.ty, invokee, args, resolvedGenerics)
+      TypedAstNodeKind.Identifier(name, variable, fnAliasTypeHint, varImportModule) => self.genIdentifier(pos, name, variable, fnAliasTypeHint, varImportModule)
+      TypedAstNodeKind.Accessor(head, middle, tail) => {
+        val (ty, mem, offset) = self.followAccessorPath(head, middle, tail)
+
+        val ident = Ident(ty: ty, kind: IdentKind.Anon(self.nextAnonLocal()))
+        val op = Operation.Load(ty: ty, mem: mem, offset: offset)
+        self.emit(Instruction(assignee: Some(ident), op: op))
+
+        Value.Ident(ident: ident)
+      }
+      else => todo("Other expressions (${node.token})")
     }
   }
 
   func genLiteral(self, pos: Position, lit: LiteralAstNode): Value {
     match lit {
       LiteralAstNode.Int(i) => Value.ConstInt(i)
+      LiteralAstNode.String(s) => {
+        val strConcreteTy = ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct))
+        // Ensure the composite type and struct initializer functions are present, even though they're not used here
+        self.getOrAddCompositeType(strConcreteTy)
+        self.getOrGenStructInitializer(strConcreteTy, [false, false])
+
+        Value.ConstString(s)
+      }
       else => todo("Other literal kinds ($pos)")
     }
   }
@@ -241,19 +578,8 @@ pub type Generator {
         val rval = self.genExpression(right)
 
         // todo: comptime constant-folding
-        // match lval {
-        //   Value.ConstInt(l) => {
-        //     match rval {
-        //       Value.ConstInt(r) => {
-        //         return Value.ConstInt(l + r)
-        //       }
-        //     }
-        //   }
-        // }
-
-        val op = Operation.Add(lval, rval)
-        val ident = Ident(ty: IrType.I64, name: self.nextAnonLocal().toString())
-        self.emit(Instruction(assignee: Some(ident), op: op))
+        val ident = Ident(ty: IrType.I64, kind: IdentKind.Anon(self.nextAnonLocal()))
+        self.emit(Instruction(assignee: Some(ident), op: Operation.Add(lval, rval)))
 
         Value.Ident(ident: ident)
       }
@@ -261,14 +587,299 @@ pub type Generator {
     }
   }
 
+  func genCall(self, pos: Position, returnType: tc.Type, invokee: tc.TypedInvokee, args: tc.TypedAstNode?[], resolvedGenerics: Map<String, tc.Type>): Value {
+    val argValues: Value[] = []
+
+    val fnName = match invokee {
+      TypedInvokee.Function(fn) => {
+        if self.getExternName(fn) |fnName| {
+          self.enqueueFunction(fn, fnName, [], None, {})
+          fnName
+        } else {
+          // todo: check for @intrinsic
+          // todo: check for closure
+          val paramsNeedingDefaultValue = args.map((arg, idx) => {
+            // todo: simplify expression to just `!!fn.params[idx]?.defaultValue && !arg` ?
+            if fn.params[idx] |param| {
+              !!param.defaultValue && !arg
+            } else {
+              false
+            }
+          })
+
+          // TODO: does `resolvedGenerics` contain both T and U for `Array<T>#map<U>`??
+          val fnName = self.fnName(None, fn, resolvedGenerics, paramsNeedingDefaultValue)
+          self.enqueueFunction(fn, fnName, paramsNeedingDefaultValue, None, resolvedGenerics)
+
+          fnName
+        }
+      }
+      TypedInvokee.Method(fn, selfVal, isOptSafe) => {
+        // todo: check for @intrinsic and @external
+        // todo: check for closure
+
+        val paramsNeedingDefaultValue = args.map((arg, idx) => {
+          // todo: simplify expression to just `!!fn.params[idx]?.defaultValue && !arg` ?
+          if fn.params[idx] |param| {
+            !!param.defaultValue && !arg
+          } else {
+            false
+          }
+        })
+
+        val selfConcreteType = self.getConcreteTypeFromType(selfVal.ty)
+        val fnName = self.fnName(Some(selfConcreteType), fn, resolvedGenerics, paramsNeedingDefaultValue)
+        self.enqueueFunction(fn, fnName, paramsNeedingDefaultValue, Some(selfConcreteType), resolvedGenerics)
+
+        argValues.push(self.genExpression(selfVal))
+
+        fnName
+      }
+      else => todo("other TypedInvokee types")
+    }
+
+    for arg in args {
+      if arg |arg| {
+        argValues.push(self.genExpression(arg))
+      }
+    }
+
+    if returnType.kind == tc.TypeKind.PrimitiveUnit {
+      val op = Operation.Call(ret: IrType.Unit, fnName: fnName, args: argValues)
+      self.emit(Instruction(op: op))
+
+      Value.Unit
+    } else {
+      val retConcreteType = self.getConcreteTypeFromType(returnType)
+      val retTy = self.getIrTypeForConcreteType(retConcreteType)
+
+      val op = Operation.Call(ret: retTy, fnName: fnName, args: argValues)
+      val ident = Ident(ty: retTy, kind: IdentKind.Anon(self.nextAnonLocal()))
+      self.emit(Instruction(assignee: Some(ident), op: op))
+
+      Value.Ident(ident: ident)
+    }
+  }
+
+  func genIdentifier(self, pos: Position, name: String, variable: tc.Variable, fnAliasTypeHint: tc.Type?, varImportModule: tc.TypedModule?): Value {
+    val varConcreteType = self.getConcreteTypeFromType(variable.ty)
+    val varTy = self.getIrTypeForConcreteType(varConcreteType)
+
+    if variable.isParameter {
+      // todo: handle whether variable is captured
+
+      return Value.Ident(ident: Ident(ty: varTy, kind: IdentKind.Named(name)))
+    }
+
+    match variable.alias {
+      VariableAlias.Function => todo("genIdentifier VariableAlias.Function")
+      else => {
+        if varImportModule |mod| {
+          val globalName = self.globalName(mod.id, variable.label.name)
+          val global = try self.globals[globalName] else unreachable("no such global '$globalName'")
+
+          val op = Operation.Load(ty: global.ty, mem: Value.Global(global))
+          val ident = Ident(ty: global.ty, kind: IdentKind.Anon(self.nextAnonLocal()))
+          self.emit(Instruction(assignee: Some(ident), op: op))
+
+          return Value.Ident(ident: ident)
+        }
+
+        todo("genIdentifier other aliases")
+      }
+    }
+
+    todo("handle non-parameter identifier '${variable.label.toString()}'")
+  }
+
+
+  func followAccessorPath(self, head: tc.TypedAstNode, middle: tc.AccessorPathSegment[], tail: tc.AccessorPathSegment): (IrType, Value, Int) {
+    val segs = middle.concat([tail])
+
+    var (workingVal, concreteType) = match segs[0] {
+      AccessorPathSegment.EnumVariant => todo()
+      else => {
+        val concreteType = self.getConcreteTypeFromType(head.ty)
+        val headVal = self.genExpression(head)
+
+        (headVal, concreteType)
+      }
+    }
+
+    for seg, idx in segs {
+      match seg {
+        AccessorPathSegment.EnumVariant => todo()
+        AccessorPathSegment.Method => todo()
+        AccessorPathSegment.Field(label, ty, field, isOptSafe) => {
+          if isOptSafe todo()
+
+          match concreteType.instanceKind {
+            InstanceKind.Struct(struct) => {
+              val (f, fieldIdx) = try struct.fields.findIndex(f => f.name.name == field.name.name) else unreachable("no such field '${field.name.name}'")
+              val offset = fieldIdx * 8 // TODO: don't assume 8 byte alignment for all fields
+              val fieldConcreteType = self.getConcreteTypeFromType(f.ty)
+              val fieldTy = self.getIrTypeForConcreteType(fieldConcreteType)
+
+              if idx == segs.length - 1 return (fieldTy, workingVal, offset)
+
+              val ident = Ident(ty: fieldTy, kind: IdentKind.Anon(self.nextAnonLocal()))
+              val op = Operation.Load(ty: fieldTy, mem: workingVal, offset: offset)
+              self.emit(Instruction(assignee: Some(ident), op: op))
+
+              workingVal = Value.Ident(ident: ident)
+              concreteType = self.getConcreteTypeFromType(ty)
+            }
+            InstanceKind.Enum => todo("enum field accessor")
+          }
+        }
+      }
+    }
+
+    unreachable("followAccessorPath end (${segs.length})")
+  }
+
   // helpers
 
   func enterFunction(self, fn: IrFunction): CurrentFunctionContext {
     val prevFn = self.curFn
-    val params = fn.params.map(p => Ident(ty: IrType.I64, name: p.name))
+    val params = fn.params.map(p => Ident(ty: IrType.I64, kind: p.kind))
     self.curFn = CurrentFunctionContext(fn: fn, locals: params)
 
     prevFn
+  }
+
+  func enqueueFunction(self, fn: tc.Function, fnName: String, paramsNeedingDefaultValue: Bool[], methodInstanceType: ConcreteType?, resolvedGenerics: Map<String, tc.Type>) {
+    self.fnQueue.push(FunctionToCompile(fn: fn, fnName: fnName, paramsNeedingDefaultValue: paramsNeedingDefaultValue, resolvedGenerics: resolvedGenerics, methodInstanceType: methodInstanceType))
+  }
+
+  func addFunction(self, fnName: String, fn: IrFunction) {
+    self.functions.push(fn)
+    self.functionsByName[fnName] = fn
+  }
+
+  func addGlobal(self, variable: tc.Variable): GlobalVariable {
+    val varConcreteType = self.getConcreteTypeFromType(variable.ty)
+    val varTy = self.getIrTypeForConcreteType(varConcreteType)
+    val (modId, _) = try variable.scope.findParentModule() else unreachable("could not find parent module for struct '${variable.label.name}'")
+
+    val globalName = self.globalName(modId, variable.label.name)
+    val v = GlobalVariable(name: globalName, ty: varTy)
+    self.globals[globalName] = v
+
+    v
+  }
+
+  func globalName(self, modId: Int, name: String): String = "_${modId}_$name"
+
+  func typeName(self, ty: ConcreteType): String {
+    val (id, baseName) = match ty.instanceKind {
+      InstanceKind.Struct(s) => {
+        val (id, _) = try s.scope.findParentModule() else unreachable("could not find parent module for struct '${s.label.name}'")
+
+        (id, s.label.name)
+      }
+      InstanceKind.Enum(e) => {
+        val (id, _) = try e.scope.findParentModule() else unreachable("could not find parent module for enum '${e.label.name}'")
+
+        (id, e.label.name)
+      }
+    }
+
+    val parts = [id.toString(), baseName]
+    for typeArg in ty.typeArgs {
+      parts.push(self.typeName(typeArg))
+    }
+
+    parts.join("_")
+  }
+
+  func getConcreteTypeFromType(self, ty: tc.Type): ConcreteType {
+    match ty.kind {
+      TypeKind.CouldNotDetermine => unreachable("Encountered CouldNotDetermine type")
+      TypeKind.PrimitiveUnit => unreachable("getConcreteTypeFromType: Unit")
+      TypeKind.PrimitiveInt => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeIntStruct), typeArgs: [])
+      TypeKind.PrimitiveFloat => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeFloatStruct), typeArgs: [])
+      TypeKind.PrimitiveBool => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeBoolStruct), typeArgs: [])
+      TypeKind.PrimitiveChar => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeCharStruct), typeArgs: [])
+      TypeKind.PrimitiveString => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct), typeArgs: [])
+      TypeKind.Never => unreachable("Encountered Never type")
+      TypeKind.Generic(name) => unreachable("getConcreteTypeFromType: generic '$name'")
+      TypeKind.Instance(instanceKind, typeArgs) => {
+        val concreteTypeArgs = typeArgs.map(t => self.getConcreteTypeFromType(t))
+        ConcreteType(instanceKind: instanceKind, typeArgs: concreteTypeArgs)
+      }
+      TypeKind.Func(paramTypes, returnType) => todo("TypeKind.Func")
+      TypeKind.Type(type_) => todo("TypeKind.Type")
+      TypeKind.Tuple(types) => todo("TypeKind.Tuple")
+      TypeKind.Hole => todo("TypeKind.Hole")
+    }
+  }
+
+  func fnName(self, methodInstTy: ConcreteType?, fn: tc.Function, resolvedGenerics: Map<String, tc.Type>, paramsNeedingDefaultValue: Bool[] = []): String {
+    val defaultValuesFlag = paramsNeedingDefaultValue.reduce(0, (acc, f) => (acc << 1) || (if f 1 else 0))
+    val prefix = match fn.kind {
+      FunctionKind.Standalone => {
+        val (defModId, _) = try fn.scope.findParentModule() else unreachable("could not find parent module for function '${fn.label.name}'")
+
+        val base = "_${defModId}_${fn.label.name}"
+        if !fn.typeParams.isEmpty() todo("generic functions")
+
+        base
+      }
+      FunctionKind.InstanceMethod(instanceKind, _) => {
+        val instTy = try methodInstTy else unreachable("InstanceMethod without methodInstTy")
+        val typeName = self.typeName(instTy)
+
+
+        val base = "_${typeName}_${fn.label.name}"
+        if !fn.typeParams.isEmpty() todo("[3] generic methods")
+
+        base
+      }
+      else => todo("other FunctionKinds")
+    }
+
+    if defaultValuesFlag == 0 {
+      prefix
+    } else {
+      "${prefix}_$defaultValuesFlag"
+    }
+  }
+
+  func structInitFnName(self, ty: ConcreteType): String {
+    val typeName = self.typeName(ty)
+    "_${typeName}__init__"
+  }
+
+  func getIrTypeForConcreteType(self, ty: ConcreteType): IrType {
+    match ty.instanceKind {
+      InstanceKind.Struct(s) => {
+        if s == self.project.preludeIntStruct return IrType.I64
+
+        val t = self.getOrAddCompositeType(ty)
+        IrType.Composite(name: t.name)
+      }
+      InstanceKind.Enum => todo("getIrTypeForConcreteType enums")
+    }
+  }
+
+  func getOrAddCompositeType(self, ty: ConcreteType): CompositeType {
+    val typeName = self.typeName(ty)
+
+    if self.types[typeName] |t| return t
+
+    // TODO
+    // val fields = match instanceKind {
+    //   InstanceKind.Struct(s) => {
+    //     s.fields.map(f => (f.name.name, self.getIrTypeForTcType(f.ty)))
+    //   }
+    //   InstanceKind.Enum => todo("getOrAddCompositeType for enums")
+    // }
+
+    val t = CompositeType(name: typeName, fields: [])
+    self.types[typeName] = t
+
+    t
   }
 
   func emit(self, inst: Instruction) = self.curFn.fn.block.push(inst)
@@ -277,5 +888,16 @@ pub type Generator {
     val idx = self.curFn.anonLocalIdx
     self.curFn.anonLocalIdx += 1
     idx
+  }
+
+  func getExternName(self, fn: tc.Function): String? {
+    if fn.decorators.find(dec => dec.label.name == "external") |dec| {
+      match dec.arguments[0] {
+        LiteralAstNode.String(value) => Some(value)
+        _ => unreachable("@external decorator requires 1 string argument for the name")
+      }
+    } else {
+      None
+    }
   }
 }
