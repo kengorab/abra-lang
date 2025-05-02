@@ -34,5 +34,13 @@ b	c\\nde"f$$"
       "name": "String",
       "value": "zの矧�"
     }
+  },
+  {
+    "position": [5, 1],
+    "kind": {
+      "name": "String",
+      "value": "a
+b"
+    }
   }
 ]
