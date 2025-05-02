@@ -19,12 +19,20 @@ pub type StringBuilder {
   pub func build(self): String = self.chunks.join("")
 }
 
+pub type Knowns {
+  strTy: CompositeType? = None
+  strInit: IrFunction? = None
+
+  pub func stringType(self): CompositeType = try self.strTy else unreachable("String type expected to be initialized")
+  pub func stringInitializerFn(self): IrFunction = try self.strInit else unreachable("String initializer fn expected to be initialized")
+}
+
 pub type IR {
   pub mainFunction: IrFunction
   pub functions: IrFunction[]
   pub types: CompositeType[]
   pub globals: GlobalVariable[]
-  cachedTypes: Map<String, CompositeType> = {}
+  pub knowns: Knowns = Knowns()
 
   pub func render(self, sb: StringBuilder) {
     for t in self.types {
@@ -43,16 +51,6 @@ pub type IR {
     for f in self.functions {
       sb.writeln()
       f.render(sb)
-    }
-  }
-
-  pub func getType(self, value: Value): IrType {
-    match value {
-      Value.Unit => IrType.Unit
-      Value.ConstInt => IrType.I64
-      Value.ConstString => IrType.Composite(name: "2_String") // TODO: don't hardcode this
-      Value.Ident(i) => i.ty
-      Value.Global(g) => g.ty
     }
   }
 }
@@ -244,8 +242,8 @@ pub enum IrType {
 }
 
 pub type CompositeType {
-  name: String
-  fields: (String, IrType)[]
+  pub name: String
+  pub fields: (String, IrType)[]
 
   pub func render(self, sb: StringBuilder) {
     sb.write("type ")
@@ -267,11 +265,30 @@ pub type CompositeType {
 pub type GlobalVariable {
   pub name: String
   pub ty: IrType
+  pub mutable: Bool
+  pub initialValue: Value? = None
+  pub referenced: Bool = false
 
   pub func render(self, sb: StringBuilder) {
     sb.write("global ")
+
+    if self.mutable {
+      sb.write("mutable ")
+    } else {
+      sb.write("const ")
+    }
+
     self.ty.render(sb)
     sb.write(" ${self.name}")
+
+    if self.initialValue |v| {
+      sb.write(" = ")
+      v.render(sb)
+    }
+
+    if !self.referenced {
+      sb.write(" # not referenced")
+    }
   }
 }
 
@@ -302,6 +319,7 @@ pub type Generator {
   fnQueue: FunctionToCompile[] = []
   types: Map<String, CompositeType> = {}
   globals: Map<String, GlobalVariable> = {}
+  knowns: Knowns = Knowns()
 
   pub func generateIR(project: tc.Project): IR {
     val allModules = project.modules.values().sortBy(m => m.id)
@@ -311,24 +329,34 @@ pub type Generator {
     val generator = Generator(project: project, functions: [], functionsByName: {}, curFn: curFn)
 
     for mod in allModules {
-      val modFn = generator.genModule(mod)
-      mainFn.block.push(Instruction(op: Operation.Call(ret: modFn.ret, fnName: modFn.name, args: [])))
+      if generator.genModule(mod) |modFn| {
+        mainFn.block.push(Instruction(op: Operation.Call(ret: modFn.ret, fnName: modFn.name, args: [])))
+      }
     }
 
     mainFn.block.push(Instruction(op: Operation.Return(value: Some(Value.ConstInt(0)))))
 
-    IR(mainFunction: mainFn, functions: generator.functions, types: generator.types.values(), globals: generator.globals.values())
+    IR(
+      mainFunction: mainFn,
+      functions: generator.functions,
+      types: generator.types.values(),
+      globals: generator.globals.values(),
+      knowns: generator.knowns
+    )
   }
 
-  func genModule(self, mod: tc.TypedModule): IrFunction {
+  func genModule(self, mod: tc.TypedModule): IrFunction? {
     val modFnName = "__mod_${mod.id}"
     val modFn = IrFunction(name: modFnName, params: [], ret: IrType.Unit, block: [])
-    self.functions.push(modFn)
-    val prevFn = self.enterFunction(modFn)
+    val prevFn = self.curFn
+    self.curFn = CurrentFunctionContext(fn: modFn, locals: [])
 
     for node in mod.code {
       self.genStatement(node)
     }
+    if self.curFn.fn.block.isEmpty() return None
+
+    self.functions.push(modFn)
     self.emit(Instruction(op: Operation.Return()))
 
     self.curFn = prevFn
@@ -337,7 +365,7 @@ pub type Generator {
       self.genFunction(nextFn)
     }
 
-    modFn
+    Some(modFn)
   }
 
   func genFunction(self, fn: FunctionToCompile) {
@@ -522,14 +550,15 @@ pub type Generator {
     }
 
     val variable = try variables[varName] else unreachable("expected binding '$varName', but missing from variables")
-    val isGlobal = !!variable.isGlobal()
 
-    // Top-level variables in a module are only globals if they're captured; otherwise they're treated as locals within the module wrapper fn.
-    // Exported variables (which _should_ also be top-level) are necessarily hoisted to global scope.
-    if variable.isExported || (variable.isCaptured && isGlobal) {
-      val global = self.addGlobal(variable)
+    if self.variableIsGlobal(variable) |modId| {
+      val global = self.addGlobal(variable, modId)
       if value |value| {
-        self.emit(Instruction(op: Operation.Store(ty: global.ty, value: value, mem: Value.Global(global))))
+        if self.valueAsCompileTime(value) |v| {
+          global.initialValue = Some(v)
+        } else {
+          self.emit(Instruction(op: Operation.Store(ty: global.ty, value: value, mem: Value.Global(global))))
+        }
       }
     }
   }
@@ -560,9 +589,9 @@ pub type Generator {
       LiteralAstNode.Int(i) => Value.ConstInt(i)
       LiteralAstNode.String(s) => {
         val strConcreteTy = ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct))
-        // Ensure the composite type and struct initializer functions are present, even though they're not used here
-        self.getOrAddCompositeType(strConcreteTy)
-        self.getOrGenStructInitializer(strConcreteTy, [false, false])
+        // Ensure the composite type and struct initializer functions are known, even though they're not used when constructing a string literal
+        self.knowns.strTy = Some(self.getOrAddCompositeType(strConcreteTy))
+        self.knowns.strInit = Some(self.getOrGenStructInitializer(strConcreteTy, [false, false]))
 
         Value.ConstString(s)
       }
@@ -573,11 +602,18 @@ pub type Generator {
   func genBinary(self, pos: Position, left: tc.TypedAstNode, op: BinaryOp, right: tc.TypedAstNode): Value {
     match op {
       BinaryOp.Add => {
-        // todo: check left/right type
         val lval = self.genExpression(left)
         val rval = self.genExpression(right)
 
-        // todo: comptime constant-folding
+        if self.valueAsCompileTime(lval) |lval| {
+          if self.valueAsCompileTime(rval) |rval| {
+            val l = match lval { Value.ConstInt(l) => l, else => todo("genBinary: constant-folding other value types (add)") }
+            val r = match rval { Value.ConstInt(r) => r, else => todo("genBinary: constant-folding other value types (add)") }
+
+            return Value.ConstInt(l + r)
+          }
+        }
+
         val ident = Ident(ty: IrType.I64, kind: IdentKind.Anon(self.nextAnonLocal()))
         self.emit(Instruction(assignee: Some(ident), op: Operation.Add(lval, rval)))
 
@@ -677,21 +713,24 @@ pub type Generator {
         if varImportModule |mod| {
           val globalName = self.globalName(mod.id, variable.label.name)
           val global = try self.globals[globalName] else unreachable("no such global '$globalName'")
+          global.referenced = true
 
-          val op = Operation.Load(ty: global.ty, mem: Value.Global(global))
-          val ident = Ident(ty: global.ty, kind: IdentKind.Anon(self.nextAnonLocal()))
-          self.emit(Instruction(assignee: Some(ident), op: op))
+          Value.Global(global)
+        } else if self.variableIsGlobal(variable) |modId| {
+          val globalName = self.globalName(modId, variable.label.name)
+          val global = try self.globals[globalName] else unreachable("no such global '$globalName'")
+          global.referenced = true
 
-          return Value.Ident(ident: ident)
+          Value.Global(global)
+        } else if variable.isCaptured {
+          // Note: captured top-level variables are "global" and are handled above; variables handled here are not top-level
+          todo("genIdentifier captured variable")
+        } else {
+          Value.Ident(ident: Ident(ty: varTy, kind: IdentKind.Named(name)))
         }
-
-        todo("genIdentifier other aliases")
       }
     }
-
-    todo("handle non-parameter identifier '${variable.label.toString()}'")
   }
-
 
   func followAccessorPath(self, head: tc.TypedAstNode, middle: tc.AccessorPathSegment[], tail: tc.AccessorPathSegment): (IrType, Value, Int) {
     val segs = middle.concat([tail])
@@ -757,13 +796,12 @@ pub type Generator {
     self.functionsByName[fnName] = fn
   }
 
-  func addGlobal(self, variable: tc.Variable): GlobalVariable {
+  func addGlobal(self, variable: tc.Variable, modId: Int): GlobalVariable {
     val varConcreteType = self.getConcreteTypeFromType(variable.ty)
     val varTy = self.getIrTypeForConcreteType(varConcreteType)
-    val (modId, _) = try variable.scope.findParentModule() else unreachable("could not find parent module for struct '${variable.label.name}'")
 
     val globalName = self.globalName(modId, variable.label.name)
-    val v = GlobalVariable(name: globalName, ty: varTy)
+    val v = GlobalVariable(name: globalName, ty: varTy, mutable: variable.mutable)
     self.globals[globalName] = v
 
     v
@@ -830,7 +868,6 @@ pub type Generator {
         val instTy = try methodInstTy else unreachable("InstanceMethod without methodInstTy")
         val typeName = self.typeName(instTy)
 
-
         val base = "_${typeName}_${fn.label.name}"
         if !fn.typeParams.isEmpty() todo("[3] generic methods")
 
@@ -883,6 +920,31 @@ pub type Generator {
   }
 
   func emit(self, inst: Instruction) = self.curFn.fn.block.push(inst)
+
+  func variableIsGlobal(self, variable: tc.Variable): Int? {
+    // Top-level variables in a module are only globals if they're captured; otherwise they're treated as locals within the module wrapper function.
+    // Exported variables (which _should_ also be top-level) are necessarily hoisted to global scope.
+    val modId = variable.isGlobal()
+    if variable.isExported {
+      if !modId unreachable("a variable should only be able to be exported if it's at the top-level")
+      return modId
+    }
+
+    if !variable.isCaptured return None
+
+    modId
+  }
+
+  func valueAsCompileTime(self, value: Value): Value? {
+    // A value is said to be known at compile time if it's a constant (int, float, bool, or string), or if it's an immutable global.
+    match value {
+      Value.Unit => None // should be unreachable, but it's ok to return None here
+      Value.ConstInt => Some(value)
+      Value.ConstString => Some(value)
+      Value.Ident => None
+      Value.Global(global) => if global.mutable None else global.initialValue
+    }
+  }
 
   func nextAnonLocal(self): Int {
     val idx = self.curFn.anonLocalIdx

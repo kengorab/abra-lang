@@ -33,8 +33,15 @@ pub type Compiler {
   }
 
   func compileGlobal(self, global: GlobalVariable) {
+    if !global.referenced return
+
     val globalTy = self.irTypeToQbeType(global.ty)
-    self.builder.addData(qbe.QbeData(name: global.name, kind: qbe.QbeDataKind.Constants([(globalTy, globalTy.zeroValue())])))
+    val globalData = if global.initialValue |init| {
+      self.irValueToQbeValue(init)
+    } else {
+      globalTy.zeroValue()
+    }
+    self.builder.addData(qbe.QbeData(name: global.name, kind: qbe.QbeDataKind.Constants([(globalTy, globalData)])))
   }
 
   func compileMainFunction(self, fn: IrFunction) {
@@ -80,22 +87,24 @@ pub type Compiler {
 
     match inst.op {
       Operation.Add(l, r) => {
-        if self.ir.getType(l) != self.ir.getType(r) unreachable("self.ir.getType(l) != self.ir.getType(r)")
-
         val left = self.irValueToQbeValue(l)
         val right = self.irValueToQbeValue(r)
+
+        if left.ty() != right.ty() unreachable("Operation.Add: left.ty (${left.ty}) != right.ty (${right.ty})")
 
         self.currentFn.block.buildAdd(left, right, dst)
       }
       Operation.Load(ty, mem, offset) => {
-        val dst1 = Some(self.nextTemp())
-        val ptr = try self.currentFn.block.buildAdd(qbe.Value.Int(offset), self.irValueToQbeValue(mem), dst1) else |e| unreachable(e)
+        val memVal = self.irValueToQbeValue(mem)
+        val ptr = try self.currentFn.block.buildAdd(qbe.Value.Int(offset), memVal, Some(self.nextTemp())) else |e| unreachable(e)
         self.currentFn.block.buildLoad(self.irTypeToQbeType(ty), ptr, dst)
       }
       Operation.Store(ty, value, mem, offset) => {
-        val dst1 = Some(self.nextTemp())
-        val ptr = try self.currentFn.block.buildAdd(qbe.Value.Int(offset), self.irValueToQbeValue(mem), dst1) else |e| unreachable(e)
-        self.currentFn.block.buildStore(self.irTypeToQbeType(ty), self.irValueToQbeValue(value), ptr)
+        val memVal = self.irValueToQbeValue(mem)
+        val ptr = try self.currentFn.block.buildAdd(qbe.Value.Int(offset), memVal, Some(self.nextTemp())) else |e| unreachable(e)
+
+        val v = self.irValueToQbeValue(value)
+        self.currentFn.block.buildStore(self.irTypeToQbeType(ty), v, ptr)
       }
       Operation.Call(ret, fnName, args) => {
         val argVals = args.map(a => self.irValueToQbeValue(a))
@@ -120,7 +129,7 @@ pub type Compiler {
           }
           "i64_to_string" => {
             val intVal = self.irValueToQbeValue(try args[0] else unreachable())
-            val intFmtPtr = self.builder.buildGlobalString("%lld")
+            val (intFmtPtr, _) = self.builder.buildGlobalString("%lld")
             val dst1 = Some(self.nextTemp())
             val sizeVal = try self.currentFn.block.buildCall(qbe.Callable.Function(self.snprintfFn), [qbe.Value.Int(0), qbe.Value.Int(0), intFmtPtr, intVal], dst1) else |e| unreachable(e)
             val dst2 = Some(self.nextTemp())
@@ -159,8 +168,13 @@ pub type Compiler {
       Value.Unit => unreachable("values cannot be of type unit")
       Value.ConstInt(i) => qbe.Value.Int(i)
       Value.ConstString(s) => {
-        val dataPtr = self.builder.buildGlobalString(s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r"))
-        self.constructString(dataPtr, qbe.Value.Int(s.length))
+        val str = s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r")
+        val (dataPtr, data) = self.builder.buildGlobalString(str)
+        val (slot, _) = self.builder.addData(qbe.QbeData(
+          name: "${data.name}str",
+          kind: qbe.QbeDataKind.Constants([(qbe.QbeType.U64, qbe.Value.Int(s.length)), (qbe.QbeType.Pointer, dataPtr)])
+        ))
+        slot
       }
       Value.Ident(i) => {
         val ty = self.irTypeToQbeType(i.ty)
@@ -172,14 +186,15 @@ pub type Compiler {
       }
       Value.Global(g) => {
         val ty = self.irTypeToQbeType(g.ty)
-        qbe.Value.Global(name: g.name, ty: ty)
+        self.currentFn.block.buildLoad(ty, qbe.Value.Global(name: g.name, ty: ty), Some(self.nextTemp()))
       }
     }
   }
 
   func constructString(self, ptrVal: qbe.Value, lenVal: qbe.Value, dst: String? = None): qbe.Value {
-    val retTy = self.irTypeToQbeType(IrType.Composite(name: "2_String"))
-    try self.currentFn.block.buildCallRaw("_2_String__init__", retTy, [lenVal, ptrVal], dst) else |e| unreachable(e)
+    val strTy = self.irTypeToQbeType(IrType.Composite(self.ir.knowns.stringType().name))
+    val strInitFn = self.ir.knowns.stringInitializerFn()
+    try self.currentFn.block.buildCallRaw(strInitFn.name, strTy, [lenVal, ptrVal], dst) else |e| unreachable(e)
   }
 
   func callMalloc(self, sizeVal: qbe.Value, dst: String? = None): qbe.Value {

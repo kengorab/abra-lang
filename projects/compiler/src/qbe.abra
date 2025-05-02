@@ -3,7 +3,7 @@ import File from "fs"
 pub type ModuleBuilder {
   _data: QbeData[] = []
   _dataByName: Map<String, Value> = {}
-  _globalStrs: Map<String, Value> = {}
+  _globalStrs: Map<String, (Value, QbeData)> = {}
   _functions: QbeFunction[] = []
   _functionsByName: Map<String, QbeFunction> = {}
 
@@ -33,15 +33,15 @@ pub type ModuleBuilder {
     fn
   }
 
-  pub func buildGlobalString(self, string: String, name: String? = None): Value {
+  pub func buildGlobalString(self, string: String): (Value, QbeData) {
     if self._globalStrs[string] |ptr| return ptr
 
-    val dataName = name ?: "_${self._data.length}"
+    val dataName = "_${self._data.length}"
     val data = QbeData(name: dataName, align: None, kind: QbeDataKind.String(string))
     val (ptr, _) = self.addData(data)
-    self._globalStrs[string] = ptr
+    self._globalStrs[string] = (ptr, data)
 
-    ptr
+    (ptr, data)
   }
 
   pub func getData(self, name: String): Value? = self._dataByName[name]
