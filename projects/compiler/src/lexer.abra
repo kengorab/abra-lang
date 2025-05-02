@@ -514,6 +514,7 @@ pub type Lexer {
         val ch = self._input[self._cursor]
         val escapedCh = match ch {
           "n" => "\n"
+          "\n" => "\n"
           "\\" => "\\"
           "r" => "\r"
           "t" => "\t"
