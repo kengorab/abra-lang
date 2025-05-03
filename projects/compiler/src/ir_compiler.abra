@@ -1,16 +1,31 @@
+import File from "fs"
 import IR, IrFunction, IrType, Instruction, Operation, Value, IdentKind, GlobalVariable from "./ir"
 import ModuleBuilder, QbeType from "./qbe"
 import "./qbe" as qbe
+import i64ToString from "./ir_compiler_builtins"
+
+pub type CompilationResult {
+  builder: ModuleBuilder
+  builtinI64ToStringUsed: Bool
+
+  pub func writeToFile(self, file: File) {
+    self.builder.writeToFile(file)
+
+    if self.builtinI64ToStringUsed {
+      file.write(i64ToString.code)
+    }
+  }
+}
 
 pub type Compiler {
   ir: IR
   builder: ModuleBuilder
   currentFn: qbe.QbeFunction
   numTemps: Int = 0
+  builtinI64ToStringUsed: Bool = false
   mallocFn: qbe.QbeFunction = qbe.QbeFunction.spec(name: "GC_malloc", returnType: Some(QbeType.Pointer))
-  snprintfFn: qbe.QbeFunction = qbe.QbeFunction.spec(name: "snprintf", returnType: Some(QbeType.U64), parameters: [], variadicIdx: Some(3))
 
-  pub func compile(ir: IR): ModuleBuilder {
+  pub func compile(ir: IR): CompilationResult {
     val builder = ModuleBuilder()
 
     val compiler = Compiler(
@@ -29,7 +44,10 @@ pub type Compiler {
       compiler.compileFunction(fn)
     }
 
-    builder
+    CompilationResult(
+      builder: builder,
+      builtinI64ToStringUsed: compiler.builtinI64ToStringUsed
+    )
   }
 
   func compileGlobal(self, global: GlobalVariable) {
@@ -128,18 +146,13 @@ pub type Compiler {
             self.callMalloc(self.irValueToQbeValue(sizeVal), dst)
           }
           "i64_to_string" => {
-            val intVal = self.irValueToQbeValue(try args[0] else unreachable())
-            val (intFmtPtr, _) = self.builder.buildGlobalString("%lld")
-            val dst1 = Some(self.nextTemp())
-            val sizeVal = try self.currentFn.block.buildCall(qbe.Callable.Function(self.snprintfFn), [qbe.Value.Int(0), qbe.Value.Int(0), intFmtPtr, intVal], dst1) else |e| unreachable(e)
-            val dst2 = Some(self.nextTemp())
-            val mallocSizeVal = try self.currentFn.block.buildAdd(qbe.Value.Int(1), sizeVal, dst2) else |e| unreachable(e)
+            self.builtinI64ToStringUsed = true
 
-            val dst3 = Some(self.nextTemp())
-            val mem = self.callMalloc(mallocSizeVal, dst3)
-            val dst4 = Some(self.nextTemp())
-            try self.currentFn.block.buildCall(qbe.Callable.Function(self.snprintfFn), [mem, mallocSizeVal, intFmtPtr, intVal], dst4) else |e| unreachable(e)
-            self.constructString(mem, sizeVal, dst)
+            val intVal = self.irValueToQbeValue(try args[0] else unreachable())
+            val lenPtr = self.currentFn.block.buildAlloc8(1, Some("lenptr"))
+            val mem = try self.currentFn.block.buildCallRaw(i64ToString.name, qbe.QbeType.Pointer, [intVal, lenPtr], Some(self.nextTemp())) else |e| unreachable(e)
+            val lenVal = self.currentFn.block.buildLoadL(lenPtr, Some(self.nextTemp()))
+            self.constructString(mem, lenVal, dst)
           }
         }
       }

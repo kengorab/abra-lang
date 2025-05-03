@@ -74,7 +74,7 @@ func main() {
 
     val ir = Generator.generateIR(project)
 
-    val builder = Compiler.compile(ir)
+    val result = Compiler.compile(ir)
     // TODO: right now the code assumes that the output file and directory will exist prior to writing
     // to it. Instead, we should create the directory and file if we need to.
     val cwd = fs.getCurrentWorkingDirectory()
@@ -87,7 +87,8 @@ func main() {
         process.exit(1)
       }
     }
-    builder.writeToFile(ssaOutFile)
+
+    result.writeToFile(ssaOutFile)
   } else {
     stdoutWriteln("Missing required argument <file-name>")
     process.exit(1)
