@@ -1,5 +1,5 @@
 import File from "fs"
-import IR, IrFunction, IrType, Instruction, Operation, Value, IdentKind, GlobalVariable from "./ir"
+import IR, IrFunction, IrType, Instruction, Operation, Value, IdentKind, GlobalVariable, Builtin from "./ir"
 import ModuleBuilder, QbeType from "./qbe"
 import "./qbe" as qbe
 import i64ToString from "./ir_compiler_builtins"
@@ -104,6 +104,28 @@ pub type Compiler {
     }
 
     match inst.op {
+      Operation.NewLocal(ty, initialValue) => {
+        if !dst unreachable("Operation.NewLocal requires a destination")
+
+        val qbeTy = self.irTypeToQbeType(ty)
+        val slot = match qbeTy {
+          QbeType.U8 => self.currentFn.block.buildAlloc8(1, dst)      // 'b'
+          QbeType.U16 => self.currentFn.block.buildAlloc4(1, dst)     // 'h' (should be unreachable)
+          QbeType.U32 => self.currentFn.block.buildAlloc4(1, dst)     // 'w' (should be unreachable)
+          QbeType.U64 => self.currentFn.block.buildAlloc8(1, dst)     // 'l'
+          QbeType.Pointer => self.currentFn.block.buildAlloc8(1, dst) // 'l'
+          QbeType.F32 => self.currentFn.block.buildAlloc4(1, dst)     // 's' (should be unreachable)
+          QbeType.F64 => self.currentFn.block.buildAlloc8(1, dst)     // 'd'
+        }
+
+        if initialValue |initialValue| {
+          val v = self.irValueToQbeValue(initialValue)
+          self.currentFn.block.buildStore(qbeTy, slot, v)
+        }
+      }
+      Operation.ConstInt(int) => {
+        self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(int), dst)
+      }
       Operation.Add(l, r) => {
         val left = self.irValueToQbeValue(l)
         val right = self.irValueToQbeValue(r)
@@ -139,16 +161,32 @@ pub type Compiler {
           self.currentFn.block.buildReturn()
         }
       }
-      Operation.Builtin(ret, id, args) => {
-        match id {
-          "malloc" => {
-            val sizeVal = try args[0] else unreachable()
-            self.callMalloc(self.irValueToQbeValue(sizeVal), dst)
+      Operation.Builtin(ret, builtin) => {
+        match builtin {
+          Builtin.Malloc(count, itemTy) => {
+            val countVal = self.irValueToQbeValue(count)
+            val sizeVal = if itemTy |itemTy| {
+              val size = match self.irTypeToQbeType(itemTy) {
+                QbeType.U8 => 1      // 'b'
+                QbeType.U16 => 2     // 'h' (should be unreachable)
+                QbeType.U32 => 4     // 'w' (should be unreachable)
+                QbeType.U64 => 8     // 'l'
+                QbeType.Pointer => 8 // 'l'
+                QbeType.F32 => 4     // 's' (should be unreachable)
+                QbeType.F64 => 8     // 'd'
+              }
+
+              try self.currentFn.block.buildMul(qbe.Value.Int(size), countVal, Some(self.nextTemp())) else |e| unreachable(e)
+            } else {
+              countVal
+            }
+
+            self.callMalloc(sizeVal, dst)
           }
-          "i64_to_string" => {
+          Builtin.I64ToString(int) => {
             self.builtinI64ToStringUsed = true
 
-            val intVal = self.irValueToQbeValue(try args[0] else unreachable())
+            val intVal = self.irValueToQbeValue(int)
             val lenPtr = self.currentFn.block.buildAlloc8(1, Some("lenptr"))
             val mem = try self.currentFn.block.buildCallRaw(i64ToString.name, qbe.QbeType.Pointer, [intVal, lenPtr], Some(self.nextTemp())) else |e| unreachable(e)
             val lenVal = self.currentFn.block.buildLoadL(lenPtr, Some(self.nextTemp()))

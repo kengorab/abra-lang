@@ -1,9 +1,13 @@
-pub val a = 123
-pub var b = a + 123
+// pub val a = 123
+// pub var b = a + 123
 
-func add(x: Int, b: Int): Int = x + b
+// func add(x: Int, b: Int): Int = x + b
 
-stdoutWriteln(add(1 + b, 2 + 3).toString())
+// stdoutWriteln(add(1 + b, 2 + 3).toString())
+
+val arr = [1, 2, 3]
+stdoutWriteln(arr.length.toString())
+// stdoutWriteln(arr.toString())
 
 // func str(): String = "hello"
 
