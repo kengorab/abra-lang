@@ -622,13 +622,13 @@ pub type Generator {
     val varIrTy = self.getIrTypeForConcreteType(varTy)
     val ident = Ident(ty: varIrTy, kind: IdentKind.Named(varName))
     if valueNode |node| {
-      val value = self.genExpression(node, concreteGenerics, Some(varName))
+      val value = self.genExpression(node, concreteGenerics, if variable.mutable None else Some(varName))
       match value {
         Value.Unit => unreachable("values cannot be of type Unit")
         Value.ConstInt(i) => self.emit(Instruction(assignee: Some(ident), op: Operation.ConstInt(i)))
         Value.ConstString => self.emit(Instruction(assignee: Some(ident), op: Operation.NewLocal(ty: varIrTy, initialValue: Some(value))))
-        Value.Ident(ident) => {
-          if ident.kind != IdentKind.Named(varName) {
+        Value.Ident(id) => {
+          if id.kind != ident.kind {
             self.emit(Instruction(assignee: Some(ident), op: Operation.NewLocal(ty: varIrTy, initialValue: Some(value))))
           }
         }
@@ -860,6 +860,13 @@ pub type Generator {
         } else if variable.isCaptured {
           // Note: captured top-level variables are "global" and are handled above; variables handled here are not top-level
           todo("genIdentifier captured variable")
+        } else if variable.mutable {
+          val slot = Value.Ident(ident: Ident(ty: varTy, kind: IdentKind.Named(name)))
+          val ident = Ident(ty: varTy, kind: IdentKind.Anon(self.nextAnonLocal()))
+          val op = Operation.Load(ty: varTy, mem: slot)
+          self.emit(Instruction(assignee: Some(ident), op: op))
+
+          Value.Ident(ident)
         } else {
           Value.Ident(ident: Ident(ty: varTy, kind: IdentKind.Named(name)))
         }
@@ -992,16 +999,14 @@ pub type Generator {
       }
     }
 
+    val parts = [id.toString(), baseName]
     if withTypeArgs {
-      val parts = [id.toString(), baseName]
       for typeArg in ty.typeArgs {
         parts.push(self.typeName(typeArg))
       }
-
-      parts.join("_")
-    } else {
-      id.toString()
     }
+
+    parts.join("_")
   }
 
   func getConcreteTypeFromType(self, ty: tc.Type, concreteGenerics: Map<String, ConcreteType>): ConcreteType {

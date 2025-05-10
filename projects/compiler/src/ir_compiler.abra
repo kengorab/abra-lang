@@ -120,7 +120,7 @@ pub type Compiler {
 
         if initialValue |initialValue| {
           val v = self.irValueToQbeValue(initialValue)
-          self.currentFn.block.buildStore(qbeTy, slot, v)
+          self.currentFn.block.buildStore(qbeTy, v, slot)
         }
       }
       Operation.ConstInt(int) => {
@@ -135,13 +135,21 @@ pub type Compiler {
         self.currentFn.block.buildAdd(left, right, dst)
       }
       Operation.Load(ty, mem, offset) => {
-        val memVal = self.irValueToQbeValue(mem)
-        val ptr = try self.currentFn.block.buildAdd(qbe.Value.Int(offset), memVal, Some(self.nextTemp())) else |e| unreachable(e)
+        val ptr = if offset == 0 {
+          self.irValueToQbeValue(mem)
+        } else {
+          val memVal = self.irValueToQbeValue(mem)
+          try self.currentFn.block.buildAdd(qbe.Value.Int(offset), memVal, Some(self.nextTemp())) else |e| unreachable(e)
+        }
         self.currentFn.block.buildLoad(self.irTypeToQbeType(ty), ptr, dst)
       }
       Operation.Store(ty, value, mem, offset) => {
-        val memVal = self.irValueToQbeValue(mem)
-        val ptr = try self.currentFn.block.buildAdd(qbe.Value.Int(offset), memVal, Some(self.nextTemp())) else |e| unreachable(e)
+        val ptr = if offset == 0 {
+          self.irValueToQbeValue(mem)
+        } else {
+          val memVal = self.irValueToQbeValue(mem)
+          try self.currentFn.block.buildAdd(qbe.Value.Int(offset), memVal, Some(self.nextTemp())) else |e| unreachable(e)
+        }
 
         val v = self.irValueToQbeValue(value)
         self.currentFn.block.buildStore(self.irTypeToQbeType(ty), v, ptr)

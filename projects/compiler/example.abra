@@ -5,7 +5,7 @@
 
 // stdoutWriteln(add(1 + b, 2 + 3).toString())
 
-val arr = [1, 2, 3]
+var arr = [1, 2, 3]
 stdoutWriteln(arr.length.toString())
 // stdoutWriteln(arr.toString())
 
