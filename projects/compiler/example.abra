@@ -5,10 +5,46 @@
 
 // stdoutWriteln(add(1 + b, 2 + 3).toString())
 
+// pub var a = 15
+// pub var b = 31
+
+// if t() {
+//   stdoutWriteln("hello")
+// }
+
+// func t(): Bool = true
+// func foo() {
+//   val b = 1
+//   val x = if t() {
+//     val b = a + 1
+//     b
+//   } else {
+//     val b = 30
+//     b + 1
+//   }
+//   stdoutWriteln(x.toString())
+// }
+// foo()
+
+// if 1 == 1 {
+//   stdoutWriteln("true")
+// } else {
+//   stdoutWriteln("false")
+// }
+
+// if 1 != 1 {
+//   stdoutWriteln("true")
+// } else {
+//   stdoutWriteln("false")
+// }
+
 var arr = [1, 2, 3]
 stdoutWriteln(arr.length.toString())
+
+arr.push(4)
+arr.push(5)
+arr.push(6)
+stdoutWriteln(arr.length.toString())
+
 // stdoutWriteln(arr.toString())
 
-// func str(): String = "hello"
-
-// str()
