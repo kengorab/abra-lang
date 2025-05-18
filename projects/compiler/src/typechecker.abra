@@ -146,7 +146,7 @@ pub enum VariableAlias {
 
 pub type Variable {
   pub label: Label
-  scope: Scope
+  pub scope: Scope
   pub mutable: Bool
   pub ty: Type
   pub alias: VariableAlias? = None
@@ -199,6 +199,7 @@ pub type Scope {
   pub kind: ScopeKind = ScopeKind.Root
   pub parent: Scope? = None
   pub terminator: Terminator? = None
+  pub idxInFn: Int? = None
   numLambdas: Int = 0
 
   pub func bogus(name = ""): Scope {
@@ -208,7 +209,8 @@ pub type Scope {
 
   pub func eq(self, other: Scope): Bool = self.name == other.name
 
-  pub func makeChild(self, name: String, kind: ScopeKind): Scope = Scope(name: "${self.name}::$name", kind: kind, parent: Some(self))
+  pub func makeChild(self, name: String, kind: ScopeKind, idxInFn: Int? = None): Scope =
+    Scope(name: "${self.name}::$name", kind: kind, parent: Some(self), idxInFn: idxInFn)
 
   func contains(self, other: Scope): Bool {
     var child = Some(other)
@@ -218,6 +220,18 @@ pub type Scope {
     }
 
     false
+  }
+
+  pub func findParentModule(self): (Int, String)? {
+    var sc = Some(self)
+    while sc |s| {
+      match s.kind {
+        ScopeKind.Module(id, name) => return Some((id, name))
+        else => sc = s.parent
+      }
+    }
+
+    None
   }
 }
 
@@ -296,7 +310,7 @@ pub enum EnumVariantKind {
 pub type Enum {
   pub moduleId: Int
   pub label: Label
-  scope: Scope
+  pub scope: Scope
   pub typeParams: String[] = []
   pub variants: TypedEnumVariant[] = []
   pub instanceMethods: Function[] = []
@@ -423,6 +437,25 @@ pub type Project {
         _ => false
       }
       _ => false
+    }
+  }
+
+  pub func typeIsOption(self, ty: Type): Type? {
+    match ty.kind {
+      TypeKind.Instance(instanceKind, generics) => {
+        match instanceKind {
+          InstanceKind.Enum(enum_) => {
+            if enum_ != self.preludeOptionEnum return None
+            if generics[0] |innerTy| {
+              Some(innerTy)
+            } else {
+              None
+            }
+          }
+          _ => None
+        }
+      }
+      _ => None
     }
   }
 }
@@ -678,7 +711,7 @@ pub type Decorator {
   pub arguments: LiteralAstNode[]
 }
 
-type TypedBindingDeclarationNode {
+pub type TypedBindingDeclarationNode {
   pub bindingPattern: BindingPattern
   pub variables: Variable[]
   pub expr: TypedAstNode?
@@ -711,6 +744,7 @@ pub type Function {
   pub decorators: Decorator[] = []
   pub captures: Variable[] = []
   pub capturedClosures: Function[] = []
+  numScopes: Int = 0
 
   pub func generated(
     scope: Scope,
@@ -2180,6 +2214,17 @@ pub type Typechecker {
     name
   }
 
+  func beginChildScope(self, name: String, kind: ScopeKind): Scope {
+    val newScope = self.currentScope.makeChild(name, kind)
+    if self.currentFunction |f| {
+      f.numScopes += 1
+      newScope.idxInFn = Some(f.numScopes)
+    }
+    val prevScope = self.currentScope
+    self.currentScope = newScope
+    prevScope
+  }
+
   // Start LSP helpers
 
   func _addLSPIdentForStruct(self, position: Position, struct: Struct, importMod: TypedModule?) {
@@ -2438,9 +2483,8 @@ pub type Typechecker {
       decorators.push(dec)
     }
 
-    val fnScope = self.currentScope.makeChild(node.name.name, ScopeKind.Func)
-    val prevScope = self.currentScope
-    self.currentScope = fnScope
+    val prevScope = self.beginChildScope(node.name.name, ScopeKind.Func)
+    val fnScope = self.currentScope
 
     val typeParams: (Type, Label)[] = []
     val seenTypeParams: Map<String, Label> = {}
@@ -2725,9 +2769,8 @@ pub type Typechecker {
       false
     }
 
-    val typeScope = self.currentScope.makeChild(node.name.name, ScopeKind.Type)
-    val prevScope = self.currentScope
-    self.currentScope = typeScope
+    val prevScope = self.beginChildScope(node.name.name, ScopeKind.Type)
+    val typeScope = self.currentScope
 
     val typeParams: String[] = []
     val seenTypeParams: Map<String, Label> = {}
@@ -2929,9 +2972,8 @@ pub type Typechecker {
       false
     }
 
-    val typeScope = self.currentScope.makeChild(node.name.name, ScopeKind.Type)
-    val prevScope = self.currentScope
-    self.currentScope = typeScope
+    val prevScope = self.beginChildScope(node.name.name, ScopeKind.Type)
+    val typeScope = self.currentScope
 
     val typeParams: String[] = []
     val seenTypeParams: Map<String, Label> = {}
@@ -3545,7 +3587,7 @@ pub type Typechecker {
         return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, op, typedExpr)))
       }
       AssignmentMode.Accessor(accessorNode) => {
-        val typedLhs = try self.typecheckAccessor(token, accessorNode, None)
+        val typedLhs = try self.typecheckAccessor(token, accessorNode, None, isInvocation: false)
         val (mode, fieldLabel, field) = match typedLhs.kind {
           TypedAstNodeKind.Accessor(head, mid, tail) => {
             val t = match tail {
@@ -3592,8 +3634,7 @@ pub type Typechecker {
       return Err(TypeError(position: typedCondition.token.position, kind: TypeErrorKind.IllegalControlFlowType(ty: typedCondition.ty, purpose: "while")))
     }
 
-    val prevScope = self.currentScope
-    self.currentScope = self.currentScope.makeChild("while", ScopeKind.While)
+    val prevScope = self.beginChildScope("while", ScopeKind.While)
 
     val conditionBindingPattern = if conditionBinding |pattern| {
       val ty = condOptInnerTy ?: typedCondition.ty
@@ -3714,8 +3755,7 @@ pub type Typechecker {
       return Err(TypeError(position: typedIterator.token.position, kind: TypeErrorKind.IllegalControlFlowType(ty: typedIterator.ty, purpose: "for")))
     }
 
-    val prevScope = self.currentScope
-    self.currentScope = self.currentScope.makeChild("for", ScopeKind.For)
+    val prevScope = self.beginChildScope("for", ScopeKind.For)
 
     val variables = self.typecheckBindingPattern(false, itemPattern, itemType)
     val indexBinding = if indexPattern |pat| {
@@ -3825,9 +3865,7 @@ pub type Typechecker {
       return Err(TypeError(position: typedCondition.token.position, kind: TypeErrorKind.IllegalControlFlowType(ty: typedCondition.ty, purpose: "if")))
     }
 
-    val typedIfBlock: TypedAstNode[] = []
-    var prevScope = self.currentScope
-    self.currentScope = self.currentScope.makeChild("if_then", ScopeKind.If)
+    var prevScope = self.beginChildScope("if_then", ScopeKind.If)
 
     val conditionBindingPattern = if conditionBinding |pattern| {
       val ty = condOptInnerTy ?: typedCondition.ty
@@ -3838,6 +3876,7 @@ pub type Typechecker {
       None
     }
 
+    val typedIfBlock: TypedAstNode[] = []
     for node, idx in ifBlock {
       if self.currentScope.terminator == Some(Terminator.Returning) return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
 
@@ -3853,10 +3892,9 @@ pub type Typechecker {
     val ifBlockTerminator = self.currentScope.terminator
     self.currentScope = prevScope
 
+    prevScope = self.beginChildScope("if_else", ScopeKind.If)
     var hasElseBlock = false
     val typedElseBlock: TypedAstNode[] = []
-    prevScope = self.currentScope
-    self.currentScope = self.currentScope.makeChild("if_else", ScopeKind.If)
     if elseBlock |elseBlock| {
       hasElseBlock = true
       for node, idx in elseBlock {
@@ -3972,7 +4010,7 @@ pub type Typechecker {
                 return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: Some(caseTy)), typedExpr.ty)))
               }
 
-              self.currentScope = self.currentScope.makeChild("matchcase_${caseTy.repr()}", ScopeKind.MatchCase)
+              self.beginChildScope("matchcase_${caseTy.repr()}", ScopeKind.MatchCase)
               if case.binding |binding| {
                 // TODO: generics in ty
                 caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: caseTy))
@@ -4003,7 +4041,7 @@ pub type Typechecker {
                 return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: Some(caseTy)), typedExpr.ty)))
               }
 
-              self.currentScope = self.currentScope.makeChild("matchcase_${enum_.label.name}_$variantIdx", ScopeKind.MatchCase)
+              self.beginChildScope("matchcase_${enum_.label.name}_$variantIdx", ScopeKind.MatchCase)
 
               val variables: Variable[] = []
               if args[0] |firstArg| {
@@ -4064,7 +4102,7 @@ pub type Typechecker {
             LiteralAstNode.String => Type(kind: TypeKind.PrimitiveString)
           }
 
-          self.currentScope = self.currentScope.makeChild("matchcase_$value", ScopeKind.MatchCase)
+          self.beginChildScope("matchcase_$value", ScopeKind.MatchCase)
           if case.binding |binding| {
             caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: literalTy))
           }
@@ -4082,7 +4120,7 @@ pub type Typechecker {
           if seenNoneCase return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.AlreadyCovered(exhaustive: false), typedExpr.ty)))
           seenNoneCase = true
 
-          self.currentScope = self.currentScope.makeChild("matchcase_None", ScopeKind.MatchCase)
+          self.beginChildScope("matchcase_None", ScopeKind.MatchCase)
           if case.binding |binding| {
             caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: subjectTy))
           }
@@ -4096,7 +4134,7 @@ pub type Typechecker {
         MatchCaseKind.Else => {
           seenElseCase = true
 
-          self.currentScope = self.currentScope.makeChild("matchcase_else", ScopeKind.MatchCase)
+          self.beginChildScope("matchcase_else", ScopeKind.MatchCase)
           if case.binding |binding| {
             caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: subjectTy))
           }
@@ -4187,7 +4225,7 @@ pub type Typechecker {
         TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Grouped(expr))
       }
       AstNodeKind.Identifier(kind) => try self.typecheckIdentifier(token, kind, typeHint)
-      AstNodeKind.Accessor(node) => try self.typecheckAccessor(token, node, typeHint)
+      AstNodeKind.Accessor(node) => try self.typecheckAccessor(token, node, typeHint, isInvocation: false)
       AstNodeKind.Invocation(node) => try self.typecheckInvocation(token, node, typeHint)
       AstNodeKind.Array(items) => try self.typecheckArray(token, items, typeHint)
       AstNodeKind.Set(items) => try self.typecheckSet(token, items, typeHint)
@@ -4467,15 +4505,15 @@ pub type Typechecker {
     Ok(TypedAstNode(token: token, ty: variable.ty, kind: TypedAstNodeKind.Identifier(name, variable, fnTypeHint, varImportMod)))
   }
 
-  func resolveAccessorPathSegment(self, ty: Type, label: Label, typeHint: Type?, optSafe = false): Result<AccessorPathSegment?, TypeError> {
+  func resolveAccessorPathSegment(self, ty: Type, label: Label, typeHint: Type?, isInvocation: Bool, optSafe = false): Result<AccessorPathSegment?, TypeError> {
     val foundSegment = match ty.kind {
       TypeKind.CouldNotDetermine => None
       TypeKind.PrimitiveUnit => None
-      TypeKind.PrimitiveInt => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.preludeIntStruct), [])), label, None, optSafe)
-      TypeKind.PrimitiveFloat => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.preludeFloatStruct), [])), label, None, optSafe)
-      TypeKind.PrimitiveBool => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.preludeBoolStruct), [])), label, None, optSafe)
-      TypeKind.PrimitiveChar => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.preludeCharStruct), [])), label, None, optSafe)
-      TypeKind.PrimitiveString => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.preludeStringStruct), [])), label, None, optSafe)
+      TypeKind.PrimitiveInt => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.preludeIntStruct), [])), label, None, isInvocation, optSafe)
+      TypeKind.PrimitiveFloat => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.preludeFloatStruct), [])), label, None, isInvocation, optSafe)
+      TypeKind.PrimitiveBool => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.preludeBoolStruct), [])), label, None, isInvocation, optSafe)
+      TypeKind.PrimitiveChar => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.preludeCharStruct), [])), label, None, isInvocation, optSafe)
+      TypeKind.PrimitiveString => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.preludeStringStruct), [])), label, None, isInvocation, optSafe)
       TypeKind.Never => None
       TypeKind.Generic => {
         val scope = self.project.preludeScope.makeChild("T", ScopeKind.Type)
@@ -4531,11 +4569,16 @@ pub type Typechecker {
               return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAccess(name: fn.label.name, kind: "method", parentTy: ty)))
             }
 
-            val resolvedGenerics: Map<String, Type> = {}
-            for name, idx in typeParams {
-              resolvedGenerics[name] = try generics[idx] else unreachable("typeParams.length != generics.length")
+            val method = if typeParams.isEmpty() || isInvocation {
+              fn
+            } else {
+              val resolvedGenerics: Map<String, Type> = {}
+              for name, idx in typeParams {
+                resolvedGenerics[name] = try generics[idx] else unreachable("typeParams.length != generics.length")
+              }
+
+              fn.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: true, genericsInScope: #{})
             }
-            val method = if resolvedGenerics.isEmpty() fn else fn.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: true, genericsInScope: #{})
             return Ok(Some(AccessorPathSegment.Method(label, method, optSafe, typeHint)))
           }
         }
@@ -4643,7 +4686,7 @@ pub type Typechecker {
     (identifierNode, false)
   }
 
-  func typecheckAccessor(self, token: Token, node: AccessorAstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
+  func typecheckAccessor(self, token: Token, node: AccessorAstNode, typeHint: Type?, isInvocation: Bool): Result<TypedAstNode, TypeError> {
     var accessorPath = node.path
 
     val firstSeg = try accessorPath[0] else unreachable("path should have at least 1 segment")
@@ -4682,7 +4725,7 @@ pub type Typechecker {
         ty
       }
 
-      val seg = try self.resolveAccessorPathSegment(subjTy, label, typeHint, isOptSafe)
+      val seg = try self.resolveAccessorPathSegment(subjTy, label, typeHint, isInvocation, isOptSafe)
       if seg |seg| {
         val nextTy = seg.getType()
 
@@ -4758,8 +4801,7 @@ pub type Typechecker {
         }
       } else {
         val specialCase = if optInnerTy |innerTy| {
-          val seg = try self.resolveAccessorPathSegment(innerTy, label, typeHint)
-          if seg {
+          if try self.resolveAccessorPathSegment(innerTy, label, typeHint, isInvocation) {
             Some(UnknownFieldSpecialCase.ExistsButTypeIsNullable(seenOptSafeDot))
           } else {
             None
@@ -4767,9 +4809,7 @@ pub type Typechecker {
         } else {
           match ty.kind {
             TypeKind.Instance(instanceKind, _) => {
-              val seg = try self.resolveAccessorPathSegment(Type(kind: TypeKind.Type(instanceKind)), label, typeHint)
-
-              if seg {
+              if try self.resolveAccessorPathSegment(Type(kind: TypeKind.Type(instanceKind)), label, typeHint, isInvocation) {
                 Some(UnknownFieldSpecialCase.StaticFieldReferencedAsInstance)
               } else {
                 None
@@ -4792,11 +4832,16 @@ pub type Typechecker {
   func typecheckInvocation(self, token: Token, node: InvocationAstNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
     self.isStructOrEnumValueAllowed = true
     self.isEnumContainerValueAllowed = true
-    val invokee = try self._typecheckExpression(node.invokee, None)
-    self.isEnumContainerValueAllowed = false
-    self.isStructOrEnumValueAllowed = false
-
+    // If invokee is an accessor, typecheck the accessor by passing a special flag. This flag indicates to _not_ substitute generics into the
+    // underlying node (if it's a method); that will be resolved later on in this method. This is necessary because when typechecking a non-invocation
+    // accessor, we _do_ want to substitute generics into methods since otherwise that information will be lost from that point onwards.
+    val invokee = match node.invokee.kind {
+      AstNodeKind.Accessor(value) => try self.typecheckAccessor(node.invokee.token, value, None, isInvocation: true),
+      else => try self._typecheckExpression(node.invokee, None)
+    }
     if invokee.ty.kind == TypeKind.CouldNotDetermine return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder))
+    self.isStructOrEnumValueAllowed = false
+    self.isEnumContainerValueAllowed = false
 
     match invokee.kind {
       TypedAstNodeKind.Identifier(name, variable, _, _) => {
@@ -4926,6 +4971,26 @@ pub type Typechecker {
               val returnType = fn.returnType.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
               return Err(TypeError(position: invokeePosition, kind: TypeErrorKind.TypeMismatch([hint], returnType)))
             }
+            continue
+          }
+          resolvedGenerics[name] = ty
+        }
+      }
+    }
+
+    if selfVal |(selfNode, _)| {
+      val instanceKind = match fn.kind {
+        FunctionKind.InstanceMethod(instanceKind, _) => instanceKind
+        else => unreachable("if selfVal passed, then FunctionKind must be InstanceMethod")
+      }
+
+      if instanceKind |instanceKind| {
+        val typeParams = match instanceKind { InstanceKind.Struct(s) => s.typeParams, InstanceKind.Enum(e) => e.typeParams }
+        val template = Type(kind: TypeKind.Instance(instanceKind, typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+        val extractedGenerics = selfNode.ty.extractGenerics(template: template)
+        for (name, ty) in extractedGenerics {
+          if resolvedGenerics[name] |original| {
+            if original != ty unreachable("original != ty") // is this check necessary? i don't think so
             continue
           }
           resolvedGenerics[name] = ty
@@ -5413,7 +5478,10 @@ pub type Typechecker {
     }
 
     val lambdaName = self._nextLambdaName()
-    val fnScope = self.currentScope.makeChild(lambdaName, ScopeKind.Func)
+    val prevScope = self.beginChildScope(lambdaName, ScopeKind.Func)
+    val fnScope = self.currentScope
+    self.currentScope = prevScope
+
     var returnType = retHint ?: Type(kind: TypeKind.Hole)
     if returnType.containsGenerics() {
       // If the return type of a lambda contains generics that have not yet been resolved by the time we get here, then
@@ -5495,8 +5563,7 @@ pub type Typechecker {
         return Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.InvalidTryTarget(typedExpr.ty)))
       }
 
-      val prevScope = self.currentScope
-      self.currentScope = self.currentScope.makeChild("try_else", ScopeKind.Try)
+      val prevScope = self.beginChildScope("try_else", ScopeKind.Try)
 
       val elseBindingPattern = if bindingPattern |pat| {
         // TODO: Emit warning if expression is an Option type, since the binding would always equal `None`

@@ -293,8 +293,8 @@
                   {
                     "required": true,
                     "type": {
-                      "kind": "primitive",
-                      "primitive": "Int"
+                      "kind": "generic",
+                      "name": "T"
                     }
                   },
                   {

@@ -1,6 +1,7 @@
 import Position from "./lexer"
-import LiteralAstNode, BinaryOp from "./parser"
-import TypedAstNodeKind from "./typechecker"
+import LiteralAstNode, AssignOp, BinaryOp, BindingPattern from "./parser"
+// match arms don't support import-based namespacing for enums yet, so enums used in matches are imported by name
+import TypedAstNodeKind, TypedInvokee, FunctionKind, TypeKind, ScopeKind, InstanceKind, VariableAlias, AccessorPathSegment, TypedAssignmentMode from "./typechecker"
 import "./typechecker" as tc
 
 // TODO: move to stdlib
@@ -17,28 +18,52 @@ pub type StringBuilder {
   pub func build(self): String = self.chunks.join("")
 }
 
+pub type Knowns {
+  strTy: CompositeType? = None
+  strInit: IrFunction? = None
+
+  pub func stringType(self): CompositeType = try self.strTy else unreachable("String type expected to be initialized")
+  pub func stringInitializerFn(self): IrFunction = try self.strInit else unreachable("String initializer fn expected to be initialized")
+}
+
 pub type IR {
   pub mainFunction: IrFunction
   pub functions: IrFunction[]
+  pub types: CompositeType[]
+  pub globals: GlobalVariable[]
+  pub knowns: Knowns = Knowns()
 
   pub func render(self, sb: StringBuilder) {
-    self.mainFunction.render(sb)
+    for t in self.types {
+      t.render(sb)
+      sb.writeln()
+    }
+
+    for g in self.globals {
+      g.render(sb)
+      sb.writeln()
+    }
+
     sb.writeln()
+    self.mainFunction.render(sb)
 
     for f in self.functions {
-      f.render(sb)
       sb.writeln()
+      f.render(sb)
     }
   }
 }
 
 pub type IrFunction {
+  pub extern: String? = None
   pub name: String
   pub params: Ident[]
   pub ret: IrType
-  pub block: Instruction[]
+  pub block: (String, Instruction[]) = ("start", [])
 
   pub func render(self, sb: StringBuilder) {
+    if self.extern |name| sb.writeln("@extern($name)")
+
     sb.write("function ")
     sb.write(self.name)
 
@@ -54,7 +79,9 @@ pub type IrFunction {
     self.ret.render(sb)
     sb.writeln()
 
-    for inst in self.block {
+    val (label, block) = self.block
+    sb.writeln("$label:")
+    for inst in block {
       sb.write("  ")
       inst.render(sb)
       sb.writeln()
@@ -68,60 +95,189 @@ pub type Instruction {
 
   pub func render(self, sb: StringBuilder) {
     if self.assignee |a| {
-      sb.write("%").write(a.name).write(" = ")
+      a.render(sb)
+      sb.write(" = ")
     }
 
     self.op.render(sb)
   }
 }
 
+pub enum IdentKind {
+  Anon(idx: Int)
+  Named(name: String)
+}
+
 pub type Ident {
   pub ty: IrType
-  pub name: String
+  pub kind: IdentKind
 
   pub func render(self, sb: StringBuilder) {
     self.ty.render(sb)
-    sb.write(" %").write(self.name)
+    sb.write(" %")
+    match self.kind {
+      IdentKind.Anon(idx) => sb.write("_" + idx)
+      IdentKind.Named(name) => sb.write(name)
+    }
   }
 }
 
 pub enum Value {
+  Unit
   ConstInt(value: Int)
+  ConstBool(value: Bool)
+  ConstString(value: String)
   Ident(ident: Ident)
-
-  pub func getType(self): IrType {
-    match self {
-      Value.ConstInt => IrType.I64
-      Value.Ident(i) => i.ty
-    }
-  }
+  Global(global: GlobalVariable)
 
   pub func render(self, sb: StringBuilder) {
     match self {
+      Value.Unit => {}
       Value.ConstInt(v) => {
         IrType.I64.render(sb)
         sb.write(" ").write(v.toString())
       }
+      Value.ConstBool(b) => {
+        IrType.Bool.render(sb)
+        sb.write(" $b")
+      }
+      Value.ConstString(s) => {
+        sb.write("\"")
+          .write(s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r"))
+          .write("\"")
+      }
       Value.Ident(i) => i.render(sb)
+      Value.Global(g) => {
+        g.ty.render(sb)
+        sb.write(" $").write(g.name)
+      }
     }
   }
 }
 
+pub enum Builtin {
+  Malloc(count: Value, itemTy: IrType? = None)
+  Realloc(ptr: Value, count: Value, itemTy: IrType? = None)
+  Store(ptr: Value, value: Value, itemTy: IrType)
+  Offset(ptr: Value, offset: Value, itemTy: IrType)
+  I64ToString(intVal: Value)
+}
+
 pub enum Operation {
+  NewLocal(ty: IrType, initialValue: Value? = None)
+  ConstInt(int: Int)
+
   Add(left: Value, right: Value)
+  Mul(left: Value, right: Value)
+  Eq(primitive: Bool, negate: Bool, left: Value, right: Value)
+
+  Load(ty: IrType, mem: Value, offset: Int = 0)
+  Store(ty: IrType, value: Value, mem: Value, offset: Int = 0)
+
+  If(ty: IrType, cond: Value, thenBlock: (String, Instruction[], Value?), elseBlock: (String, Instruction[], Value?)? = None)
 
   Call(ret: IrType, fnName: String, args: Value[])
 
   Return(value: Value? = None)
 
+  Builtin(ret: IrType, builtin: Builtin)
+
   pub func render(self, sb: StringBuilder) {
     match self {
+      Operation.NewLocal(ty, initialValue) => {
+        sb.write("local(")
+        ty.render(sb)
+        if initialValue |v| {
+          sb.write(", ")
+          v.render(sb)
+        }
+        sb.write(")")
+      }
+      Operation.ConstInt(int) => {
+        IrType.I64.render(sb)
+        sb.write(" $int")
+      }
       Operation.Add(l, r) => {
         sb.write("add(")
         l.render(sb)
         sb.write(", ")
         r.render(sb)
         sb.write(")")
+      }
+      Operation.Mul(l, r) => {
+        sb.write("mul(")
+        l.render(sb)
+        sb.write(", ")
+        r.render(sb)
+        sb.write(")")
+      }
+      Operation.Eq(_, negate, left, right) => {
+        if negate sb.write("neq(") else sb.write("eq(")
+        left.render(sb)
+        sb.write(", ")
+        right.render(sb)
+        sb.write(")")
+      }
+      Operation.Load(ty, mem, offset) => {
+        sb.write("load(")
+        ty.render(sb)
+        sb.write(", ")
+        mem.render(sb)
+
+        if offset != 0 {
+          sb.write(", $offset")
+        }
+
+        sb.write(")")
+      }
+      Operation.Store(ty, value, mem, offset) => {
+        sb.write("store(")
+        ty.render(sb)
+        sb.write(", ")
+        value.render(sb)
+        sb.write(", ")
+        mem.render(sb)
+
+        if offset != 0 {
+          sb.write(", $offset")
+        }
+
+        sb.write(")")
+      }
+      Operation.If(ty, cond, thenBlock, elseBlock) => {
+        sb.write("if(")
+        cond.render(sb)
+        val (thenLabel, thenInstrs, thenVal) = thenBlock
+        sb.write(", .$thenLabel")
+        if thenVal |v| {
+          sb.write(" (")
+          v.render(sb)
+          sb.write(")")
+        }
+        if elseBlock |(elseLabel, _, elseVal)| {
+          sb.write(", .$elseLabel")
+          if elseVal |v| {
+            sb.write(" (")
+            v.render(sb)
+            sb.write(")")
+          }
+        }
+        sb.writeln(")")
+        sb.writeln(".$thenLabel:")
+        for instr in thenInstrs {
+          sb.write("  ")
+          instr.render(sb)
+          sb.writeln()
+        }
+        if elseBlock |(elseLabel, elseInstrs, _)| {
+          sb.writeln(".$elseLabel:")
+          for instr in elseInstrs {
+            sb.write("  ")
+            instr.render(sb)
+            sb.writeln()
+          }
+        }
+        sb.write("# endif")
       }
       Operation.Call(ret, fnName, args) => {
         sb.write("call(")
@@ -138,6 +294,52 @@ pub enum Operation {
         if v |v| v.render(sb)
         sb.write(")")
       }
+      Operation.Builtin(ret, builtin) => {
+        sb.write("builtin(")
+        ret.render(sb)
+        sb.write(", ")
+        match builtin {
+          Builtin.Malloc(size, itemTy) => {
+            sb.write("malloc, ")
+            size.render(sb)
+            if itemTy |ty| {
+              sb.write(", ")
+              ty.render(sb)
+            }
+          }
+          Builtin.Realloc(ptr, count, itemTy) => {
+            sb.write("realloc, ")
+            ptr.render(sb)
+            sb.write(", ")
+            count.render(sb)
+            if itemTy |ty| {
+              sb.write(", ")
+              ty.render(sb)
+            }
+          }
+          Builtin.Store(ptr, value, itemTy) => {
+            sb.write("ptr_store, ")
+            ptr.render(sb)
+            sb.write(", ")
+            value.render(sb)
+            sb.write(", ")
+            itemTy.render(sb)
+          }
+          Builtin.Offset(ptr, offset, itemTy) => {
+            sb.write("ptr_offset, ")
+            ptr.render(sb)
+            sb.write(", ")
+            offset.render(sb)
+            sb.write(", ")
+            itemTy.render(sb)
+          }
+          Builtin.I64ToString(int) => {
+            sb.write("i64_to_string, ")
+            int.render(sb)
+          }
+        }
+        sb.write(")")
+      }
     }
   }
 }
@@ -145,65 +347,368 @@ pub enum Operation {
 pub enum IrType {
   Unit
   I64
+  Bool
+  Composite(name: String)
+  Ptr
 
   pub func render(self, sb: StringBuilder) {
     match self {
       IrType.Unit => sb.write("unit")
       IrType.I64 => sb.write("i64")
+      IrType.Bool => sb.write("bool")
+      IrType.Composite(name) => sb.write(name)
+      IrType.Ptr => sb.write("ptr")
     }
   }
 }
 
-type CurrentFunctionContext {
+pub type CompositeType {
+  pub name: String
+  pub fields: (String, IrType)[]
+
+  pub func render(self, sb: StringBuilder) {
+    sb.write("type ")
+      .write(self.name)
+      .write(" = struct {")
+    if !self.fields.isEmpty() sb.writeln()
+
+    for (name, ty) in self.fields {
+      sb.write("\n")
+        .write("  ")
+        .write(name)
+        .write(": ")
+      ty.render(sb)
+    }
+    sb.writeln("}")
+  }
+}
+
+pub type GlobalVariable {
+  pub name: String
+  pub ty: IrType
+  pub mutable: Bool
+  pub initialValue: Value? = None
+  pub referenced: Bool = false
+
+  pub func render(self, sb: StringBuilder) {
+    sb.write("global ")
+
+    if self.mutable {
+      sb.write("mutable ")
+    } else {
+      sb.write("const ")
+    }
+
+    self.ty.render(sb)
+    sb.write(" ${self.name}")
+
+    if self.initialValue |v| {
+      sb.write(" = ")
+      v.render(sb)
+    }
+
+    if !self.referenced {
+      sb.write(" # not referenced")
+    }
+  }
+}
+
+type Context {
   fn: IrFunction
+  block: (String, Instruction[])
   locals: Ident[]
   anonLocalIdx: Int = 0
 }
 
+enum CallableToCompile {
+  Function(fn: tc.Function)
+  Initializer(concreteType: ConcreteType)
+}
+
+type FunctionToCompile {
+  callable: CallableToCompile
+  fnName: String
+  paramsNeedingDefaultValue: Bool[]
+  concreteGenerics: Map<String, ConcreteType>
+  methodInstanceType: ConcreteType? = None
+}
+
+type ConcreteType {
+  instanceKind: InstanceKind
+  typeArgs: ConcreteType[] = []
+
+  func toString(self): String {
+    val base = match self.instanceKind {
+      InstanceKind.Struct(s) => s.label.name
+      InstanceKind.Enum(e) => e.label.name
+    }
+
+    val typeArgs = self.typeArgs.map(t => t.toString())
+    if typeArgs.isEmpty() {
+      "ConcreteType($base)"
+    } else {
+      "ConcreteType($base<${typeArgs.join(", ")}>)"
+    }
+  }
+}
+
 pub type Generator {
+  project: tc.Project
   functions: IrFunction[]
-  curFn: CurrentFunctionContext
+  functionsByName: Map<String, IrFunction>
+  curCtx: Context
+  fnQueue: FunctionToCompile[] = []
+  types: Map<String, CompositeType> = {}
+  globals: Map<String, GlobalVariable> = {}
+  knowns: Knowns = Knowns()
 
   pub func generateIR(project: tc.Project): IR {
     val allModules = project.modules.values().sortBy(m => m.id)
 
-    val mainFn = IrFunction(name: "main", params: [], ret: IrType.Unit, block: [])
-    val curFn = CurrentFunctionContext(fn: mainFn, locals: [])
-    val generator = Generator(functions: [], curFn: curFn)
+    val mainFn = IrFunction(name: "main", params: [], ret: IrType.I64)
+    val curCtx = Context(fn: mainFn, block: mainFn.block, locals: [])
+    val generator = Generator(project: project, functions: [], functionsByName: {}, curCtx: curCtx)
 
     for mod in allModules {
-      val modFn = generator.genModule(mod)
-      mainFn.block.push(Instruction(op: Operation.Call(ret: modFn.ret, fnName: modFn.name, args: [])))
+      if generator.genModule(mod) |modFn| {
+        mainFn.block[1].push(Instruction(op: Operation.Call(ret: modFn.ret, fnName: modFn.name, args: [])))
+      }
     }
 
-    mainFn.block.push(Instruction(op: Operation.Return(value: Some(Value.ConstInt(0)))))
+    mainFn.block[1].push(Instruction(op: Operation.Return(value: Some(Value.ConstInt(0)))))
 
-    IR(mainFunction: mainFn, functions: generator.functions)
+    IR(
+      mainFunction: mainFn,
+      functions: generator.functions,
+      types: generator.types.values(),
+      globals: generator.globals.values(),
+      knowns: generator.knowns
+    )
   }
 
-  func genModule(self, mod: tc.TypedModule): IrFunction {
+  func genModule(self, mod: tc.TypedModule): IrFunction? {
     val modFnName = "__mod_${mod.id}"
-    val modFn = IrFunction(name: modFnName, params: [], ret: IrType.Unit, block: [])
-    self.functions.push(modFn)
-    val prevFn = self.enterFunction(modFn)
+    val modFn = IrFunction(name: modFnName, params: [], ret: IrType.Unit)
+    val prevCtx = self.curCtx
+    self.curCtx = Context(fn: modFn, block: modFn.block, locals: [])
 
     for node in mod.code {
-      self.genStatement(node)
+      self.genStatement(node, {})
     }
+    if self.curCtx.fn.block[1].isEmpty() return None
+
+    self.functions.push(modFn)
     self.emit(Instruction(op: Operation.Return()))
 
-    self.curFn = prevFn
+    self.curCtx = prevCtx
 
-    modFn
+    for nextFn in self.fnQueue {
+      self.genFunction(nextFn)
+    }
+
+    Some(modFn)
   }
 
-  func genStatement(self, node: tc.TypedAstNode) {
+  func genFunction(self, ctx: FunctionToCompile) {
+    if self.functionsByName[ctx.fnName] return
+
+    val fn = match ctx.callable {
+      CallableToCompile.Function(fn) => fn
+      CallableToCompile.Initializer(concreteType) => {
+        self.getOrGenStructInitializer(concreteType, ctx.concreteGenerics, ctx.paramsNeedingDefaultValue)
+        return
+      }
+    }
+
+    val retTy = match fn.returnType.kind {
+      TypeKind.PrimitiveUnit => IrType.Unit
+      TypeKind.Generic(name) => {
+        val concreteGeneric = try ctx.concreteGenerics[name] else unreachable("genFunction, no generic")
+        self.getIrTypeForConcreteType(concreteGeneric)
+      }
+      else ty => {
+        val retConcreteType = self.getConcreteTypeFromType(fn.returnType, ctx.concreteGenerics)
+        self.getIrTypeForConcreteType(retConcreteType)
+      }
+    }
+
+    val externName = self.getExternDecName(fn)
+    val irFunc = IrFunction(extern: externName, name: ctx.fnName, params: [], ret: retTy)
+    self.addFunction(ctx.fnName, irFunc)
+    val prevCtx = self.enterFunction(irFunc)
+
+    match fn.kind {
+      FunctionKind.InstanceMethod(instanceKind, _) => {
+        val selfConcreteType = try ctx.methodInstanceType else unreachable("Instance method without instance type")
+        val selfTy = self.getIrTypeForConcreteType(selfConcreteType)
+        val selfParamIdent = Ident(ty: selfTy, kind: IdentKind.Named("self"))
+        irFunc.params.push(selfParamIdent)
+
+        if fn.label.name == "toString" && fn.isGenerated {
+          val inst = try instanceKind else unreachable("generic receiver of toString method")
+          self.genToStringMethodBody(Value.Ident(selfParamIdent), inst)
+          self.curCtx = prevCtx
+          return
+        }
+      }
+    }
+
+    var anyParamNeedsDefault = false
+    for param, idx in fn.params {
+      val paramConcreteType = self.getConcreteTypeFromType(param.ty, ctx.concreteGenerics)
+      val paramTy = self.getIrTypeForConcreteType(paramConcreteType)
+      val paramIdent = Ident(ty: paramTy, kind: IdentKind.Named(param.label.name))
+
+      if param.defaultValue {
+        val paramNeedsDefault = ctx.paramsNeedingDefaultValue[idx] ?: false
+        if paramNeedsDefault {
+          anyParamNeedsDefault = true
+          todo("params with default values")
+        } else {
+          irFunc.params.push(paramIdent)
+        }
+      } else {
+        irFunc.params.push(paramIdent)
+      }
+    }
+
+    if anyParamNeedsDefault {
+      todo()
+    } else {
+      for node, idx in fn.body {
+        if idx == fn.body.length - 1 {
+          if retTy != IrType.Unit {
+            val retVal = self.genExpression(node, ctx.concreteGenerics)
+            self.emit(Instruction(op: Operation.Return(Some(retVal))))
+          } else {
+            self.genStatement(node, ctx.concreteGenerics)
+            self.emit(Instruction(op: Operation.Return()))
+          }
+        } else {
+          self.genStatement(node, ctx.concreteGenerics)
+        }
+      }
+    }
+
+    self.curCtx = prevCtx
+  }
+
+  func getOrGenStructInitializer(self, concreteType: ConcreteType, concreteGenerics: Map<String, ConcreteType>, fieldsNeedingDefaultValue: Bool[] = []): IrFunction {
+    val struct = match concreteType.instanceKind { InstanceKind.Struct(s) => s, else => unreachable("getOrGenStructInitializer called with non-struct") }
+
+    val fnName = self.structInitFnName(concreteType)
+    if self.functionsByName[fnName] |f| return f
+
+    val retTy = self.getIrTypeForConcreteType(concreteType)
+
+    var size = 0
+    var anyFieldNeedsDefault = false
+    val params: Ident[] = []
+    val argsForUnderlying: (Value, IrType, Int)[] = []
+    for field, idx in struct.fields {
+      val fieldConcreteType = self.getConcreteTypeFromType(field.ty, concreteGenerics)
+      val fieldTy = self.getIrTypeForConcreteType(fieldConcreteType)
+      size += 8 // TODO: don't assume 8 byte alignment for all fields
+
+      val fieldVal = if field.initializer |initializerNode| {
+        val fieldNeedsDefault = fieldsNeedingDefaultValue[idx] ?: false
+        if fieldNeedsDefault {
+          anyFieldNeedsDefault = true
+          todo("fields with default values")
+        } else {
+          val ident = Ident(ty: fieldTy, kind: IdentKind.Named(field.name.name))
+          params.push(ident)
+          Value.Ident(ident)
+        }
+      } else {
+        val ident = Ident(ty: fieldTy, kind: IdentKind.Named(field.name.name))
+        params.push(ident)
+        Value.Ident(ident)
+      }
+
+      // TODO: don't assume 8 byte alignment for all fields
+      argsForUnderlying.push((fieldVal, fieldTy, idx * 8))
+    }
+
+    val irFunc = IrFunction(name: fnName, params: params, ret: retTy)
+    self.addFunction(fnName, irFunc)
+    val prevCtx = self.enterFunction(irFunc)
+
+    val ident = Ident(ty: IrType.Ptr, kind: IdentKind.Anon(self.nextAnonLocal()))
+    self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Malloc(Value.ConstInt(size)))))
+    val mem = Value.Ident(ident: ident)
+
+    for (fieldVal, fieldTy, fieldOffset), idx in argsForUnderlying {
+      self.emit(Instruction(op: Operation.Store(ty: fieldTy, value: fieldVal, mem: mem, offset: fieldOffset)))
+    }
+
+    self.emit(Instruction(op: Operation.Return(Some(mem))))
+
+    self.curCtx = prevCtx
+    irFunc
+  }
+
+  func genToStringMethodBody(self, selfVal: Value, instanceKind: tc.InstanceKind) {
+    match instanceKind {
+      InstanceKind.Struct(s) => {
+        if s == self.project.preludeIntStruct {
+          val strTy = self.getIrTypeForConcreteType(ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct), typeArgs: []))
+          val ident = Ident(ty: IrType.I64, kind: IdentKind.Anon(self.nextAnonLocal()))
+          self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: strTy, builtin: Builtin.I64ToString(selfVal))))
+          self.emit(Instruction(op: Operation.Return(Some(Value.Ident(ident)))))
+        }
+      }
+      InstanceKind.Enum(e) => todo()
+    }
+  }
+
+
+  func genStatement(self, node: tc.TypedAstNode, concreteGenerics: Map<String, ConcreteType>) {
     match node.kind {
-      TypedAstNodeKind.If => todo("TypedAstNodeKind.If (${node.token.position})")
+      TypedAstNodeKind.If(isStatement, condNode, condBinding, ifBlock, ifBlockTerminator, elseBlock, elseBlockTerminator) => {
+        if isStatement {
+          val cond = self.genExpression(condNode, concreteGenerics)
+          if self.project.typeIsOption(condNode.ty) todo("optional if-conditions")
+          if condBinding todo("if-expr condition binding")
+
+          if ifBlockTerminator todo("if-expr if block terminator")
+          if elseBlockTerminator todo("if-expr else block terminator")
+
+          if self.valueAsCompileTime(cond) |cond| {
+            val condVal = match cond { Value.ConstBool(b) => b, else => todo("non-boolean if-conditions") }
+            val block = if condVal ifBlock else elseBlock
+            for node, idx in block {
+              // TODO: handle block terminator
+              self.genStatement(node, concreteGenerics)
+            }
+
+            return
+          }
+
+          val ifBody = self.withinBlock("then", () => {
+            for node, idx in ifBlock {
+              self.genStatement(node, concreteGenerics)
+            }
+
+            None
+          })
+          val elseBody = self.withinBlock("else", () => {
+            for node, idx in elseBlock {
+              self.genStatement(node, concreteGenerics)
+            }
+
+            None
+          })
+
+          self.emit(Instruction(op: Operation.If(IrType.Unit, cond, ifBody, Some(elseBody))))
+        } else {
+          self.genExpression(node, concreteGenerics)
+        }
+      }
       TypedAstNodeKind.Match => todo("TypedAstNodeKind.Match (${node.token.position})")
       TypedAstNodeKind.While => todo("TypedAstNodeKind.While (${node.token.position})")
       TypedAstNodeKind.For => todo("TypedAstNodeKind.For (${node.token.position})")
-      TypedAstNodeKind.BindingDeclaration => { /* todo: TypedAstNodeKind.BindingDeclaration */ }
+      TypedAstNodeKind.BindingDeclaration(node) => self.genBindingDeclaration(node, concreteGenerics)
       TypedAstNodeKind.FunctionDeclaration => { /* todo: TypedAstNodeKind.FunctionDeclaration */ }
       TypedAstNodeKind.TypeDeclaration => { /* todo: TypedAstNodeKind.TypeDeclaration */ }
       TypedAstNodeKind.EnumDeclaration => { /* todo: TypedAstNodeKind.EnumDeclaration */ }
@@ -211,71 +716,792 @@ pub type Generator {
       TypedAstNodeKind.Continue => todo("TypedAstNodeKind.Continue (${node.token.position})")
       TypedAstNodeKind.Return => todo("TypedAstNodeKind.Return (${node.token.position})")
       TypedAstNodeKind.Placeholder => unreachable("Placeholder nodes should not be emitted from the typechecker")
-      TypedAstNodeKind.Assignment => todo("TypedAstNodeKind.Assignment (${node.token.position})")
-      else => self.genExpression(node)
+      TypedAstNodeKind.Assignment(mode, op, expr) => self.genAssignment(concreteGenerics, mode, op, expr)
+      else => self.genExpression(node, concreteGenerics)
     }
   }
 
-  func genExpression(self, node: tc.TypedAstNode): Value {
+  func genBindingDeclaration(self, node: tc.TypedBindingDeclarationNode, concreteGenerics: Map<String, ConcreteType>) {
+    val variables = node.variables.keyBy(v => v.label.name)
+    self.genBindingPattern(node.bindingPattern, variables, node.expr, concreteGenerics)
+  }
+
+  func genBindingPattern(self, pattern: BindingPattern, variables: Map<String, tc.Variable>, valueNode: tc.TypedAstNode?, concreteGenerics: Map<String, ConcreteType>) {
+    val name = match pattern {
+      BindingPattern.Variable(label) => label.name
+      BindingPattern.Tuple => todo("genBindingPattern: BindingPattern.Tuple")
+    }
+    val variable = try variables[name] else unreachable("expected binding '$name', but missing from variables")
+
+    if self.variableIsGlobal(variable) |modId| {
+      val global = self.addGlobal(variable, modId, concreteGenerics)
+      if valueNode |node| {
+        val value = self.genExpression(node, concreteGenerics)
+        if self.valueAsCompileTime(value) |v| {
+          global.initialValue = Some(v)
+        } else {
+          self.emit(Instruction(op: Operation.Store(ty: global.ty, value: value, mem: Value.Global(global))))
+        }
+      }
+
+      return
+    }
+
+    val varName = if variable.scope.idxInFn |idx| "_${name}_${idx}" else name
+    val varTy = self.getConcreteTypeFromType(variable.ty, concreteGenerics)
+    val varIrTy = self.getIrTypeForConcreteType(varTy)
+    val ident = Ident(ty: varIrTy, kind: IdentKind.Named(varName))
+    if valueNode |node| {
+      val value = self.genExpression(node, concreteGenerics, if variable.mutable None else Some(varName))
+      match value {
+        Value.Unit => unreachable("values cannot be of type Unit")
+        Value.ConstInt(i) => self.emit(Instruction(assignee: Some(ident), op: Operation.ConstInt(i)))
+        Value.ConstString => self.emit(Instruction(assignee: Some(ident), op: Operation.NewLocal(ty: varIrTy, initialValue: Some(value))))
+        Value.Ident(id) => {
+          if id.kind != ident.kind {
+            self.emit(Instruction(assignee: Some(ident), op: Operation.NewLocal(ty: varIrTy, initialValue: Some(value))))
+          }
+        }
+        Value.Global => {
+          self.emit(Instruction(assignee: Some(ident), op: Operation.NewLocal(ty: varIrTy, initialValue: Some(value))))
+        }
+      }
+    } else {
+      self.emit(Instruction(assignee: Some(ident), op: Operation.NewLocal(ty: varIrTy, initialValue: None)))
+    }
+  }
+
+  func genAssignment(self, concreteGenerics: Map<String, ConcreteType>, mode: TypedAssignmentMode, op: AssignOp, expr: tc.TypedAstNode) {
+    val res = self.genExpression(expr, concreteGenerics)
+
+    match mode {
+      TypedAssignmentMode.Variable => todo("genAssignment: Variable")
+      TypedAssignmentMode.Indexing => todo("genAssignment: Indexing")
+      TypedAssignmentMode.Accessor(head, middle, tail) => {
+        val (ty, mem, offset) = self.followAccessorPath(head, middle, tail, concreteGenerics)
+        self.emit(Instruction(op: Operation.Store(ty: ty, value: res, mem: mem, offset: offset)))
+      }
+    }
+  }
+
+  func genExpression(self, node: tc.TypedAstNode, concreteGenerics: Map<String, ConcreteType>, dst: String? = None): Value {
     val pos = node.token.position
 
     match node.kind {
       TypedAstNodeKind.Literal(lit) => self.genLiteral(pos, lit)
-      TypedAstNodeKind.Binary(left, op, right) => self.genBinary(pos, left, op, right)
-      else => todo("Other expressions ($pos)")
+      TypedAstNodeKind.StringInterpolation => todo("genExpression: StringInterpolation (${node.token})")
+      TypedAstNodeKind.Unary => todo("genExpression: Unary (${node.token})")
+      TypedAstNodeKind.Binary(left, op, right) => self.genBinary(pos, concreteGenerics, dst, left, op, right)
+      TypedAstNodeKind.Grouped(inner) => self.genExpression(inner, {}, dst)
+      TypedAstNodeKind.Identifier(name, variable, fnAliasTypeHint, varImportModule) => self.genIdentifier(pos, concreteGenerics, name, variable, fnAliasTypeHint, varImportModule)
+      TypedAstNodeKind.Accessor(head, middle, tail) => self.genAccessor(head, middle, tail, concreteGenerics, dst)
+      TypedAstNodeKind.Invocation(invokee, args, resolvedGenerics) => {
+        val newConcreteGenerics: Map<String, ConcreteType> = {}
+        for (name, ty) in resolvedGenerics.entries() {
+          val concreteType = self.getConcreteTypeFromType(ty, concreteGenerics)
+          newConcreteGenerics[name] = concreteType
+        }
+        self.genCall(pos, newConcreteGenerics, dst, node.ty, invokee, args)
+      }
+      TypedAstNodeKind.Array(items) => self.genArray(pos, concreteGenerics, dst, node.ty, items)
+      TypedAstNodeKind.Set => todo("genExpression: Set (${node.token})")
+      TypedAstNodeKind.Map => todo("genExpression: Map (${node.token})")
+      TypedAstNodeKind.Tuple => todo("genExpression: Tuple (${node.token})")
+      TypedAstNodeKind.Indexing => todo("genExpression: Indexing (${node.token})")
+      TypedAstNodeKind.Lambda => todo("genExpression: Lambda (${node.token})")
+      TypedAstNodeKind.If(isStatement, condNode, condBinding, ifBlock, ifBlockTerminator, elseBlock, elseBlockTerminator) => {
+        if isStatement unreachable("unexpected if statement")
+
+        val cond = self.genExpression(condNode, concreteGenerics)
+        if self.project.typeIsOption(condNode.ty) todo("optional if-conditions")
+        if condBinding todo("if-expr condition binding")
+
+        if ifBlockTerminator todo("if-expr if block terminator")
+        if elseBlockTerminator todo("if-expr else block terminator")
+
+        if self.valueAsCompileTime(cond) |cond| {
+          val condVal = match cond { Value.ConstBool(b) => b, else => todo("non-boolean if-conditions") }
+          val block = if condVal ifBlock else elseBlock
+          for node, idx in block {
+            // TODO: handle block terminator
+            if idx == block.length - 1 {
+              return self.genExpression(node, concreteGenerics, dst)
+            } else {
+              self.genStatement(node, concreteGenerics)
+            }
+          }
+          unreachable("should have returned above")
+        }
+
+        val ifBody = self.withinBlock("then", () => {
+          for node, idx in ifBlock {
+            // TODO: handle if-block terminator
+            if idx == ifBlock.length - 1 {
+              return Some(self.genExpression(node, concreteGenerics))
+            } else {
+              self.genStatement(node, concreteGenerics)
+            }
+          }
+
+          None
+        })
+        val elseBody = self.withinBlock("else", () => {
+          for node, idx in elseBlock {
+            // TODO: handle else-block terminator
+            if idx == elseBlock.length - 1 {
+              return Some(self.genExpression(node, concreteGenerics))
+            } else {
+              self.genStatement(node, concreteGenerics)
+            }
+          }
+
+          None
+        })
+
+        val resConcreteType = self.getConcreteTypeFromType(node.ty, concreteGenerics)
+        val resIrTy = self.getIrTypeForConcreteType(resConcreteType)
+        val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+        val res = Ident(ty: resIrTy, kind: identKind)
+        self.emit(Instruction(assignee: Some(res), op: Operation.If(resIrTy, cond, ifBody, Some(elseBody))))
+        Value.Ident(res)
+      }
+      else => todo("Other expressions (${node.token})")
     }
   }
 
   func genLiteral(self, pos: Position, lit: LiteralAstNode): Value {
     match lit {
       LiteralAstNode.Int(i) => Value.ConstInt(i)
+      LiteralAstNode.Bool(b) => Value.ConstBool(b)
+      LiteralAstNode.String(s) => {
+        val strConcreteTy = ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct))
+        // Ensure the composite type and struct initializer functions are known, even though they're not used when constructing a string literal
+        self.knowns.strTy = Some(self.getOrAddCompositeType(strConcreteTy))
+        self.knowns.strInit = Some(self.getOrGenStructInitializer(strConcreteTy, {}))
+
+        Value.ConstString(s)
+      }
       else => todo("Other literal kinds ($pos)")
     }
   }
 
-  func genBinary(self, pos: Position, left: tc.TypedAstNode, op: BinaryOp, right: tc.TypedAstNode): Value {
+  func genBinary(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, dst: String?, left: tc.TypedAstNode, op: BinaryOp, right: tc.TypedAstNode): Value {
     match op {
       BinaryOp.Add => {
-        // todo: check left/right type
-        val lval = self.genExpression(left)
-        val rval = self.genExpression(right)
+        val lval = self.genExpression(left, concreteGenerics)
+        val rval = self.genExpression(right, concreteGenerics)
 
-        // todo: comptime constant-folding
-        // match lval {
-        //   Value.ConstInt(l) => {
-        //     match rval {
-        //       Value.ConstInt(r) => {
-        //         return Value.ConstInt(l + r)
-        //       }
-        //     }
-        //   }
-        // }
+        if self.valueAsCompileTime(lval) |lval| {
+          if self.valueAsCompileTime(rval) |rval| {
+            val l = match lval { Value.ConstInt(l) => l, else => todo("genBinary: constant-folding other value types (add)") }
+            val r = match rval { Value.ConstInt(r) => r, else => todo("genBinary: constant-folding other value types (add)") }
 
-        val op = Operation.Add(lval, rval)
-        val ident = Ident(ty: IrType.I64, name: self.nextAnonLocal().toString())
-        self.emit(Instruction(assignee: Some(ident), op: op))
+            return Value.ConstInt(l + r)
+          }
+        }
+
+        val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+        val ident = Ident(ty: IrType.I64, kind: identKind)
+        self.emit(Instruction(assignee: Some(ident), op: Operation.Add(lval, rval)))
 
         Value.Ident(ident: ident)
       }
+      BinaryOp.Sub => todo("genBinary: BinaryOp.Sub")
+      BinaryOp.Mul => {
+        val lval = self.genExpression(left, concreteGenerics)
+        val rval = self.genExpression(right, concreteGenerics)
+
+        if self.valueAsCompileTime(lval) |lval| {
+          if self.valueAsCompileTime(rval) |rval| {
+            val l = match lval { Value.ConstInt(l) => l, else => todo("genBinary: constant-folding other value types (mul)") }
+            val r = match rval { Value.ConstInt(r) => r, else => todo("genBinary: constant-folding other value types (mul)") }
+
+            return Value.ConstInt(l * r)
+          }
+        }
+
+        val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+        val ident = Ident(ty: IrType.I64, kind: identKind)
+        self.emit(Instruction(assignee: Some(ident), op: Operation.Mul(lval, rval)))
+
+        Value.Ident(ident: ident)
+      }
+      BinaryOp.Div => todo("genBinary: BinaryOp.Div")
+      BinaryOp.Mod => todo("genBinary: BinaryOp.Mod")
+      BinaryOp.Pow => todo("genBinary: BinaryOp.Pow")
+      BinaryOp.And => todo("genBinary: BinaryOp.And")
+      BinaryOp.Or => todo("genBinary: BinaryOp.Or")
+      BinaryOp.Xor => todo("genBinary: BinaryOp.Xor")
+      BinaryOp.Coalesce => todo("genBinary: BinaryOp.Coalesce")
+      BinaryOp.Eq => self.genEq(concreteGenerics, left, right, false, dst)
+      BinaryOp.Neq => self.genEq(concreteGenerics, left, right, true, dst)
       else => todo("Other binary operators ($pos)")
     }
   }
 
-  // helpers
+  func genEq(self, concreteGenerics: Map<String, ConcreteType>, left: tc.TypedAstNode, right: tc.TypedAstNode, negate: Bool, dst: String?): Value {
+    val leftConcreteType = self.getConcreteTypeFromType(left.ty, concreteGenerics)
+    val leftIrTy = self.getIrTypeForConcreteType(leftConcreteType)
+    val rightConcreteType = self.getConcreteTypeFromType(right.ty, concreteGenerics)
+    val rightIrTy = self.getIrTypeForConcreteType(rightConcreteType)
+    if leftIrTy != rightIrTy unreachable("equality operators require matching types")
 
-  func enterFunction(self, fn: IrFunction): CurrentFunctionContext {
-    val prevFn = self.curFn
-    val params = fn.params.map(p => Ident(ty: IrType.I64, name: p.name))
-    self.curFn = CurrentFunctionContext(fn: fn, locals: params)
+    val lval = self.genExpression(left, concreteGenerics)
+    val rval = self.genExpression(right, concreteGenerics)
 
-    prevFn
+    if self.valueAsCompileTime(lval) |lval| {
+      if self.valueAsCompileTime(rval) |rval| {
+        val l = match lval { Value.ConstInt(l) => l, else => todo("genBinary: constant-folding other value types (n/eq)") }
+        val r = match rval { Value.ConstInt(r) => r, else => todo("genBinary: constant-folding other value types (n/eq)") }
+
+        return Value.ConstBool(l == r && !negate)
+      }
+    }
+
+    val op = match leftIrTy {
+      IrType.I64 => Operation.Eq(primitive: true, negate: negate, lval, rval)
+      else => todo("n/eq logic for non-i64")
+    }
+
+    val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+    val ident = Ident(ty: IrType.Bool, kind: identKind)
+    self.emit(Instruction(assignee: Some(ident), op: op))
+
+    Value.Ident(ident: ident)
   }
 
-  func emit(self, inst: Instruction) = self.curFn.fn.block.push(inst)
+  func intrinsicArgs1(self, name: String, arguments: tc.TypedAstNode?[]): tc.TypedAstNode {
+    val arg0 = try arguments[0] else unreachable("'$name' has 1 required argument")
+    try arg0 else unreachable("'$name' has 1 required argument")
+  }
+
+  func intrinsicArgs2(self, name: String, arguments: tc.TypedAstNode?[]): (tc.TypedAstNode, tc.TypedAstNode) {
+    val _arg0 = try arguments[0] else unreachable("'$name' has 2 required arguments")
+    val arg0 = try _arg0 else unreachable("'$name' has 2 required arguments")
+
+    val _arg1 = try arguments[1] else unreachable("'$name' has 2 required arguments")
+    val arg1 = try _arg1 else unreachable("'$name' has 2 required arguments")
+
+    (arg0, arg1)
+  }
+
+  func genCall(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, dst: String?, returnType: tc.Type, invokee: tc.TypedInvokee, args: tc.TypedAstNode?[]): Value {
+    val argValues: Value[] = []
+
+    val fnName = match invokee {
+      TypedInvokee.Function(fn) => {
+        if self.getExternDecName(fn) |fnName| {
+          self.enqueueFunction(fn, fnName, [], None, {})
+          fnName
+        } else if self.getIntrinsicDecName(fn) |intrinsicName| {
+          return match intrinsicName {
+            "pointer_malloc" => {
+              val count = self.genExpression(self.intrinsicArgs1("pointer_malloc", args), concreteGenerics)
+              val itemTy = self.getIrTypeForConcreteType(try concreteGenerics["T"] else unreachable("(pointer_malloc) could not resolve T for Pointer<T>"))
+
+              val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+              val ident = Ident(ty: IrType.Ptr, kind: identKind)
+              val builtin = Builtin.Malloc(count: count, itemTy: Some(itemTy))
+              self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: IrType.Ptr, builtin: builtin)))
+              Value.Ident(ident: ident)
+            }
+            "pointer_realloc" => {
+              val (ptr, count) = self.intrinsicArgs2("pointer_realloc", args)
+
+              val itemTy = self.getIrTypeForConcreteType(try concreteGenerics["T"] else unreachable("(pointer_realloc) could not resolve T for Pointer<T>"))
+              val ptrVal = self.genExpression(ptr, concreteGenerics)
+              val countVal = self.genExpression(count, concreteGenerics)
+
+              val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+              val ident = Ident(ty: IrType.Ptr, kind: identKind)
+              val builtin = Builtin.Realloc(ptr: ptrVal, count: countVal, itemTy: Some(itemTy))
+              self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: IrType.Ptr, builtin: builtin)))
+              Value.Ident(ident: ident)
+            }
+            else => todo("Unimplemented static/standalone intrinsic '$intrinsicName'")
+          }
+        } else {
+          // todo: check for closure
+
+          val paramsNeedingDefaultValue = args.map((arg, idx) => {
+            // todo: simplify expression to just `!!fn.params[idx]?.defaultValue && !arg` ?
+            if fn.params[idx] |param| {
+              !!param.defaultValue && !arg
+            } else {
+              false
+            }
+          })
+
+          // TODO: does `concreteGenerics` contain both T and U for `Array<T>#map<U>`??
+          val fnName = self.fnName(None, fn, concreteGenerics, paramsNeedingDefaultValue)
+          self.enqueueFunction(fn, fnName, paramsNeedingDefaultValue, None, concreteGenerics)
+
+          fnName
+        }
+      }
+      TypedInvokee.Method(fn, selfVal, isOptSafe) => {
+        if self.getExternDecName(fn) |fnName| {
+          todo("Unimplemented external method '$fnName'")
+        } else if self.getIntrinsicDecName(fn) |intrinsicName| {
+          return match intrinsicName {
+            "pointer_store" => {
+              val value = self.intrinsicArgs1("pointer_store", args)
+
+              val itemTy = self.getIrTypeForConcreteType(try concreteGenerics["T"] else unreachable("(pointer_store) could not resolve T for Pointer<T>"))
+              val ptrVal = self.genExpression(selfVal, concreteGenerics)
+              val valueVal = self.genExpression(value, concreteGenerics)
+
+              self.emit(Instruction(op: Operation.Builtin(ret: IrType.Unit, builtin: Builtin.Store(ptr: ptrVal, value: valueVal, itemTy: itemTy))))
+              Value.Unit
+            }
+            "pointer_offset" => {
+              val offset = self.intrinsicArgs1("pointer_offset", args)
+
+              val itemTy = self.getIrTypeForConcreteType(try concreteGenerics["T"] else unreachable("(pointer_offset) could not resolve T for Pointer<T>"))
+              val ptrVal = self.genExpression(selfVal, concreteGenerics)
+              val offsetVal = self.genExpression(offset, concreteGenerics)
+
+              val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+              val ident = Ident(ty: IrType.Ptr, kind: identKind)
+              self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Offset(ptr: ptrVal, offset: offsetVal, itemTy: itemTy))))
+              Value.Ident(ident: ident)
+            }
+            else => todo("Unimplemented method intrinsic '$intrinsicName'")
+          }
+        } else {
+          // todo: check for closure
+
+          val paramsNeedingDefaultValue = args.map((arg, idx) => {
+            // todo: simplify expression to just `!!fn.params[idx]?.defaultValue && !arg` ?
+            if fn.params[idx] |param| {
+              !!param.defaultValue && !arg
+            } else {
+              false
+            }
+          })
+
+          val selfConcreteType = self.getConcreteTypeFromType(selfVal.ty, concreteGenerics)
+          val fnName = self.fnName(Some(selfConcreteType), fn, concreteGenerics, paramsNeedingDefaultValue)
+          self.enqueueFunction(fn, fnName, paramsNeedingDefaultValue, Some(selfConcreteType), concreteGenerics)
+
+          argValues.push(self.genExpression(selfVal, concreteGenerics))
+
+          fnName
+        }
+      }
+      TypedInvokee.Struct(s) => {
+        val typeArgs: ConcreteType[] = []
+        val newConcreteGenerics: Map<String, ConcreteType> = {}
+        for tp in s.typeParams {
+          val concreteGeneric = try concreteGenerics[tp] else unreachable("Could not resolve generic '$tp' for struct initializer '${s.label.name}'")
+          typeArgs.push(concreteGeneric)
+          newConcreteGenerics[tp] = concreteGeneric
+        }
+        val concreteType = ConcreteType(instanceKind: InstanceKind.Struct(s), typeArgs: typeArgs)
+
+        val paramsNeedingDefaultValue = args.map((arg, idx) => {
+          // todo: simplify expression to just `!!fn.params[idx]?.defaultValue && !arg` ?
+          if s.fields[idx] |field| {
+            !!field.initializer && !arg
+          } else {
+            false
+          }
+        })
+
+        val fnName = self.structInitFnName(concreteType)
+        self.enqueueInitializer(concreteType, fnName, paramsNeedingDefaultValue, None, newConcreteGenerics)
+
+        fnName
+      }
+      else => todo("other TypedInvokee types")
+    }
+
+    for arg in args {
+      if arg |arg| {
+        argValues.push(self.genExpression(arg, concreteGenerics))
+      }
+    }
+
+    if returnType.kind == tc.TypeKind.PrimitiveUnit {
+      val op = Operation.Call(ret: IrType.Unit, fnName: fnName, args: argValues)
+      self.emit(Instruction(op: op))
+
+      Value.Unit
+    } else {
+      val retConcreteType = self.getConcreteTypeFromType(returnType, concreteGenerics)
+      val retTy = self.getIrTypeForConcreteType(retConcreteType)
+
+      val op = Operation.Call(ret: retTy, fnName: fnName, args: argValues)
+      val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+      val ident = Ident(ty: retTy, kind: identKind)
+      self.emit(Instruction(assignee: Some(ident), op: op))
+
+      Value.Ident(ident: ident)
+    }
+  }
+
+  func genIdentifier(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, name: String, variable: tc.Variable, fnAliasTypeHint: tc.Type?, varImportModule: tc.TypedModule?): Value {
+    val varConcreteType = self.getConcreteTypeFromType(variable.ty, concreteGenerics)
+    val varTy = self.getIrTypeForConcreteType(varConcreteType)
+
+    if variable.isParameter {
+      // todo: handle whether variable is captured
+
+      return Value.Ident(ident: Ident(ty: varTy, kind: IdentKind.Named(name)))
+    }
+
+    match variable.alias {
+      VariableAlias.Function => todo("genIdentifier VariableAlias.Function")
+      else => {
+        if varImportModule |mod| {
+          val globalName = self.globalName(mod.id, variable.label.name)
+          val global = try self.globals[globalName] else unreachable("no such global '$globalName'")
+          global.referenced = true
+
+          Value.Global(global)
+        } else if self.variableIsGlobal(variable) |modId| {
+          val globalName = self.globalName(modId, variable.label.name)
+          val global = try self.globals[globalName] else unreachable("no such global '$globalName'")
+          global.referenced = true
+
+          Value.Global(global)
+        } else if variable.isCaptured {
+          // Note: captured top-level variables are "global" and are handled above; variables handled here are not top-level
+          todo("genIdentifier captured variable")
+        } else if variable.mutable {
+          val varName = if variable.scope.idxInFn |idx| "_${name}_${idx}" else name
+          val slot = Value.Ident(ident: Ident(ty: varTy, kind: IdentKind.Named(varName)))
+          val ident = Ident(ty: varTy, kind: IdentKind.Anon(self.nextAnonLocal()))
+          val op = Operation.Load(ty: varTy, mem: slot)
+          self.emit(Instruction(assignee: Some(ident), op: op))
+
+          Value.Ident(ident)
+        } else {
+          val varName = if variable.scope.idxInFn |idx| "_${name}_${idx}" else name
+          Value.Ident(ident: Ident(ty: varTy, kind: IdentKind.Named(varName)))
+        }
+      }
+    }
+  }
+
+  func followAccessorPath(self, head: tc.TypedAstNode, middle: tc.AccessorPathSegment[], tail: tc.AccessorPathSegment, concreteGenerics: Map<String, ConcreteType>): (IrType, Value, Int) {
+    val segs = middle.concat([tail])
+
+    var (workingVal, concreteType) = match segs[0] {
+      AccessorPathSegment.EnumVariant => todo()
+      else => {
+        val concreteType = self.getConcreteTypeFromType(head.ty, concreteGenerics)
+        val headVal = self.genExpression(head, concreteGenerics)
+
+        (headVal, concreteType)
+      }
+    }
+
+    for seg, idx in segs {
+      match seg {
+        AccessorPathSegment.EnumVariant => todo()
+        AccessorPathSegment.Method => todo()
+        AccessorPathSegment.Field(label, ty, field, isOptSafe) => {
+          if isOptSafe todo()
+
+          match concreteType.instanceKind {
+            InstanceKind.Struct(struct) => {
+              val (f, fieldIdx) = try struct.fields.findIndex(f => f.name.name == field.name.name) else unreachable("no such field '${field.name.name}'")
+              val offset = fieldIdx * 8 // TODO: don't assume 8 byte alignment for all fields
+              val fieldConcreteType = self.getConcreteTypeFromType(f.ty, concreteGenerics)
+              val fieldTy = self.getIrTypeForConcreteType(fieldConcreteType)
+
+              if idx == segs.length - 1 return (fieldTy, workingVal, offset)
+
+              val ident = Ident(ty: fieldTy, kind: IdentKind.Anon(self.nextAnonLocal()))
+              val op = Operation.Load(ty: fieldTy, mem: workingVal, offset: offset)
+              self.emit(Instruction(assignee: Some(ident), op: op))
+
+              workingVal = Value.Ident(ident: ident)
+              concreteType = self.getConcreteTypeFromType(ty, concreteGenerics)
+            }
+            InstanceKind.Enum => todo("enum field accessor")
+          }
+        }
+      }
+    }
+
+    unreachable("followAccessorPath end (${segs.length})")
+  }
+
+  func genAccessor(self, head: tc.TypedAstNode, middle: tc.AccessorPathSegment[], tail: tc.AccessorPathSegment, concreteGenerics: Map<String, ConcreteType>, dst: String?): Value {
+    val (ty, mem, offset) = self.followAccessorPath(head, middle, tail, concreteGenerics)
+
+    val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+    val ident = Ident(ty: ty, kind: identKind)
+    val op = Operation.Load(ty: ty, mem: mem, offset: offset)
+    self.emit(Instruction(assignee: Some(ident), op: op))
+
+    Value.Ident(ident: ident)
+  }
+
+  func genArray(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, dst: String?, arrayTy: tc.Type, items: tc.TypedAstNode[]): Value {
+    val arrayConcreteType = self.getConcreteTypeFromType(arrayTy, concreteGenerics)
+
+    val arrConcreteGenerics = {"T": ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeIntStruct))}
+    val arrayWithCapacityFn = self.getMethodByName(InstanceKind.Struct(self.project.preludeArrayStruct), "withCapacity", staticMethod: true)
+    val arrayWithCapacityFnName = self.fnName(None, arrayWithCapacityFn, arrConcreteGenerics, [])
+    self.enqueueFunction(arrayWithCapacityFn, arrayWithCapacityFnName, [], None, arrConcreteGenerics)
+
+    val sizeVal = Value.ConstInt(items.length.nextPowerOf2())
+    val arrayIrTy = self.getIrTypeForConcreteType(arrayConcreteType)
+    val op = Operation.Call(ret: arrayIrTy, fnName: arrayWithCapacityFnName, args: [sizeVal])
+    val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+    val ident = Ident(ty: arrayIrTy, kind: identKind)
+    self.emit(Instruction(assignee: Some(ident), op: op))
+    val arrVal = Value.Ident(ident: ident)
+
+    val arrayPushFn = self.getMethodByName(InstanceKind.Struct(self.project.preludeArrayStruct), "push", staticMethod: false)
+    val arrayPushFnName = self.fnName(Some(arrayConcreteType), arrayPushFn, arrConcreteGenerics, [])
+    self.enqueueFunction(arrayPushFn, arrayPushFnName, [], Some(arrayConcreteType), arrConcreteGenerics)
+
+    for item in items {
+      val itemVal = self.genExpression(item, arrConcreteGenerics)
+      self.emit(Instruction(op: Operation.Call(ret: IrType.Unit, fnName: arrayPushFnName, args: [arrVal, itemVal])))
+    }
+
+    arrVal
+  }
+
+  // helpers
+
+  func enterFunction(self, fn: IrFunction): Context {
+    val prevCtx = self.curCtx
+    val params = fn.params.map(p => Ident(ty: IrType.I64, kind: p.kind))
+    self.curCtx = Context(fn: fn, block: fn.block, locals: params)
+
+    prevCtx
+  }
+
+  func withinBlock(self, name: String, fn: () => Value?): (String, Instruction[], Value?) {
+    val prevBlock = self.curCtx.block
+
+    val instrs: Instruction[] = []
+    self.curCtx.block = (name, instrs)
+    val finalVal = fn()
+    self.curCtx.block = prevBlock
+
+    (name, instrs, finalVal)
+  }
+
+  func enqueueFunction(self, fn: tc.Function, fnName: String, paramsNeedingDefaultValue: Bool[], methodInstanceType: ConcreteType?, concreteGenerics: Map<String, ConcreteType>) {
+    self.fnQueue.push(FunctionToCompile(callable: CallableToCompile.Function(fn), fnName: fnName, paramsNeedingDefaultValue: paramsNeedingDefaultValue, concreteGenerics: concreteGenerics, methodInstanceType: methodInstanceType))
+  }
+
+  func enqueueInitializer(self, ty: ConcreteType, fnName: String, paramsNeedingDefaultValue: Bool[], methodInstanceType: ConcreteType?, concreteGenerics: Map<String, ConcreteType>) {
+    self.fnQueue.push(FunctionToCompile(callable: CallableToCompile.Initializer(ty), fnName: fnName, paramsNeedingDefaultValue: paramsNeedingDefaultValue, concreteGenerics: concreteGenerics, methodInstanceType: methodInstanceType))
+  }
+
+  func addFunction(self, fnName: String, fn: IrFunction) {
+    self.functions.push(fn)
+    self.functionsByName[fnName] = fn
+  }
+
+  func addGlobal(self, variable: tc.Variable, modId: Int, concreteGenerics: Map<String, ConcreteType>): GlobalVariable {
+    val varConcreteType = self.getConcreteTypeFromType(variable.ty, concreteGenerics)
+    val varTy = self.getIrTypeForConcreteType(varConcreteType)
+
+    val globalName = self.globalName(modId, variable.label.name)
+    val v = GlobalVariable(name: globalName, ty: varTy, mutable: variable.mutable)
+    self.globals[globalName] = v
+
+    v
+  }
+
+  func globalName(self, modId: Int, name: String): String = "_${modId}_$name"
+
+  func typeName(self, ty: ConcreteType, withTypeArgs = true): String {
+    val (id, baseName) = match ty.instanceKind {
+      InstanceKind.Struct(s) => {
+        val (id, _) = try s.scope.findParentModule() else unreachable("could not find parent module for struct '${s.label.name}'")
+
+        (id, s.label.name)
+      }
+      InstanceKind.Enum(e) => {
+        val (id, _) = try e.scope.findParentModule() else unreachable("could not find parent module for enum '${e.label.name}'")
+
+        (id, e.label.name)
+      }
+    }
+
+    val parts = [id.toString(), baseName]
+    if withTypeArgs {
+      for typeArg in ty.typeArgs {
+        parts.push(self.typeName(typeArg))
+      }
+    }
+
+    parts.join("_")
+  }
+
+  func getConcreteTypeFromType(self, ty: tc.Type, concreteGenerics: Map<String, ConcreteType>): ConcreteType {
+    match ty.kind {
+      TypeKind.CouldNotDetermine => unreachable("Encountered CouldNotDetermine type")
+      TypeKind.PrimitiveUnit => unreachable("getConcreteTypeFromType: Unit")
+      TypeKind.PrimitiveInt => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeIntStruct), typeArgs: [])
+      TypeKind.PrimitiveFloat => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeFloatStruct), typeArgs: [])
+      TypeKind.PrimitiveBool => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeBoolStruct), typeArgs: [])
+      TypeKind.PrimitiveChar => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeCharStruct), typeArgs: [])
+      TypeKind.PrimitiveString => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct), typeArgs: [])
+      TypeKind.Never => unreachable("Encountered Never type")
+      TypeKind.Generic(name) => try concreteGenerics[name] else unreachable("getConcreteTypeFromType: generic '$name'")
+      TypeKind.Instance(instanceKind, typeArgs) => {
+        val concreteTypeArgs = typeArgs.map(t => self.getConcreteTypeFromType(t, concreteGenerics))
+        ConcreteType(instanceKind: instanceKind, typeArgs: concreteTypeArgs)
+      }
+      TypeKind.Func(paramTypes, returnType) => todo("TypeKind.Func")
+      TypeKind.Type(type_) => todo("TypeKind.Type")
+      TypeKind.Tuple(types) => todo("TypeKind.Tuple")
+      TypeKind.Hole => todo("TypeKind.Hole")
+    }
+  }
+
+  func fnName(self, methodInstTy: ConcreteType?, fn: tc.Function, concreteGenerics: Map<String, ConcreteType>, paramsNeedingDefaultValue: Bool[] = []): String {
+    val defaultValuesFlag = paramsNeedingDefaultValue.reduce(0, (acc, f) => (acc << 1) || (if f 1 else 0))
+    val prefix = match fn.kind {
+      FunctionKind.Standalone => {
+        val (defModId, _) = try fn.scope.findParentModule() else unreachable("could not find parent module for function '${fn.label.name}'")
+
+        val base = "_${defModId}_${fn.label.name}"
+        if !fn.typeParams.isEmpty() todo("generic functions")
+
+        base
+      }
+      FunctionKind.InstanceMethod => {
+        val instTy = try methodInstTy else unreachable("InstanceMethod without methodInstTy")
+        val typeName = self.typeName(instTy)
+
+        val base = "_${typeName}_${fn.label.name}"
+        if !fn.typeParams.isEmpty() todo("[3] generic instance methods")
+
+        base
+      }
+      FunctionKind.StaticMethod(instanceKind, _) => {
+        val typeName = self.typeName(ConcreteType(instanceKind: instanceKind), withTypeArgs: false)
+
+        val base = ["_${typeName}__${fn.label.name}"]
+        for (_, label) in fn.typeParams {
+          val concreteGeneric = try concreteGenerics[label.name] else unreachable("Could not resolve generic '${label.name}' for function '${fn.label.name}'")
+          base.push(self.typeName(concreteGeneric))
+        }
+
+        base.join("_")
+      }
+    }
+
+    if defaultValuesFlag == 0 {
+      prefix
+    } else {
+      "${prefix}_$defaultValuesFlag"
+    }
+  }
+
+  func structInitFnName(self, ty: ConcreteType): String {
+    val typeName = self.typeName(ty)
+    "_${typeName}__init__"
+  }
+
+  func getIrTypeForConcreteType(self, ty: ConcreteType): IrType {
+    match ty.instanceKind {
+      InstanceKind.Struct(s) => {
+        if s == self.project.preludeIntStruct return IrType.I64
+
+        val t = self.getOrAddCompositeType(ty)
+        IrType.Composite(name: t.name)
+      }
+      InstanceKind.Enum => todo("getIrTypeForConcreteType enums")
+    }
+  }
+
+  func getOrAddCompositeType(self, ty: ConcreteType): CompositeType {
+    val typeName = self.typeName(ty)
+
+    if self.types[typeName] |t| return t
+
+    // TODO
+    // val fields = match instanceKind {
+    //   InstanceKind.Struct(s) => {
+    //     s.fields.map(f => (f.name.name, self.getIrTypeForTcType(f.ty)))
+    //   }
+    //   InstanceKind.Enum => todo("getOrAddCompositeType for enums")
+    // }
+
+    val t = CompositeType(name: typeName, fields: [])
+    self.types[typeName] = t
+
+    t
+  }
+
+  func emit(self, inst: Instruction) = self.curCtx.block[1].push(inst)
+
+  func getMethodByName(self, parent: InstanceKind, name: String, staticMethod = false): tc.Function {
+    val (parentName, methods) = match parent {
+      InstanceKind.Struct(s) => (s.label.name, if staticMethod s.staticMethods else s.instanceMethods)
+      InstanceKind.Enum(e) => (e.label.name, if staticMethod e.staticMethods else e.instanceMethods)
+    }
+
+    try methods.find(m => m.label.name == name) else {
+      val sep = if staticMethod "." else "#"
+      unreachable("$parentName$sep$name must exist")
+    }
+  }
+
+  func variableIsGlobal(self, variable: tc.Variable): Int? {
+    // Top-level variables in a module are only globals if they're captured; otherwise they're treated as locals within the module wrapper function.
+    // Exported variables (which _should_ also be top-level) are necessarily hoisted to global scope.
+    val modId = variable.isGlobal()
+    if variable.isExported {
+      if !modId unreachable("a variable should only be able to be exported if it's at the top-level")
+      return modId
+    }
+
+    if !variable.isCaptured return None
+
+    modId
+  }
+
+  func valueAsCompileTime(self, value: Value): Value? {
+    // A value is said to be known at compile time if it's a constant (int, float, bool, or string), or if it's an immutable global.
+    match value {
+      Value.Unit => None // should be unreachable, but it's ok to return None here
+      Value.ConstInt => Some(value)
+      Value.ConstBool => Some(value)
+      Value.ConstString => Some(value)
+      Value.Ident => None
+      Value.Global(global) => if global.mutable None else global.initialValue
+    }
+  }
 
   func nextAnonLocal(self): Int {
-    val idx = self.curFn.anonLocalIdx
-    self.curFn.anonLocalIdx += 1
+    val idx = self.curCtx.anonLocalIdx
+    self.curCtx.anonLocalIdx += 1
     idx
+  }
+
+  func getExternDecName(self, fn: tc.Function): String? {
+    if fn.decorators.find(dec => dec.label.name == "external") |dec| {
+      match dec.arguments[0] {
+        LiteralAstNode.String(value) => Some(value)
+        _ => unreachable("@external decorator requires 1 string argument for the name")
+      }
+    } else {
+      None
+    }
+  }
+
+  func getIntrinsicDecName(self, fn: tc.Function): String? {
+    if fn.decorators.find(dec => dec.label.name == "intrinsic") |dec| {
+      match dec.arguments[0] {
+        LiteralAstNode.String(value) => Some(value)
+        _ => unreachable("@external decorator requires 1 string argument for the name")
+      }
+    } else {
+      None
+    }
   }
 }

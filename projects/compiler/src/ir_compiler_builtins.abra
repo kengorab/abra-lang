@@ -1,0 +1,22 @@
+pub type BuiltinFunction {
+  pub name: String
+  pub code: String
+}
+
+val builtinI64ToStringCode = "\
+data $_5 = { b \"%lld\", b 0 }\
+\
+function l \$builtin_i64_to_string(l %int, l %lenptr) {\
+@start\
+  %_t0 =l call \$snprintf(l 0, l 0, l $_5, ..., l %int)\
+  %_t1 =l add 1, %_t0\
+  %_t2 =l call \$GC_malloc(l %_t1)\
+  %_t3 =l call \$snprintf(l %_t2, l %_t1, l $_5, ..., l %int)\
+  storel %_t0, %lenptr\
+  ret %_t2\
+}\
+"
+pub val i64ToString = BuiltinFunction(
+  name: "builtin_i64_to_string",
+  code: builtinI64ToStringCode,
+)

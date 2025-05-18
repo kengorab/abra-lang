@@ -390,8 +390,8 @@
                   {
                     "required": true,
                     "type": {
-                      "kind": "primitive",
-                      "primitive": "Int"
+                      "kind": "generic",
+                      "name": "T"
                     }
                   }
                 ],
@@ -400,8 +400,8 @@
                   "struct": { "moduleId": 2, "name": "Array" },
                   "typeParams": [
                     {
-                      "kind": "primitive",
-                      "primitive": "Int"
+                      "kind": "generic",
+                      "name": "T"
                     }
                   ]
                 }
