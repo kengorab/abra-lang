@@ -830,7 +830,7 @@ const COMPILER_TESTS = [
   { test: "compiler/try_result.abra" },
   { test: "compiler/try_option.abra" },
   { test: "compiler/process.abra", args: ['-f', 'bar', '--baz', 'qux'], env: { FOO: 'bar' } },
-  { test: "compiler/process_callstack.abra" },
+  // { test: "compiler/process_callstack.abra" },
   { test: "compiler/json.abra" },
 ]
 

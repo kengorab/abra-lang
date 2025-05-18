@@ -11,7 +11,7 @@ pub func args(): String[] {
 
   val args: String[] = Array.withCapacity(argc)
   for i in range(0, argc) {
-    val str = argv.offset(i).load()
+    val str = argv.loadAt(i)
     val len = libc.strlen(str)
     args.push(String(length: len, _buffer: str))
   }
@@ -55,30 +55,27 @@ pub func uname(): Uname {
   // reach the start of the next string. From that offset, we can determine the size of each field, and
   // extract the remaining fields more efficiently.
   var offset = sysnameLen
-  utsnameBuf = utsnameBuf.offset(offset)
-  while utsnameBuf.load().asInt() == 0 {
-    utsnameBuf = utsnameBuf.offset(1)
-    offset += 1
-  }
+  while utsnameBuf.loadAt(offset).asInt() == 0 { offset += 1 }
+  var cursor = offset
 
   val nodenameLen = libc.strlen(utsnameBuf)
   val nodename = String.withLength(nodenameLen)
-  nodename._buffer.copyFrom(utsnameBuf, nodenameLen)
-  utsnameBuf = utsnameBuf.offset(offset)
+  nodename._buffer.copyFrom2(0, utsnameBuf, cursor, nodenameLen)
+  cursor += sysnameLen
 
   val releaseLen = libc.strlen(utsnameBuf)
   val release = String.withLength(releaseLen)
-  release._buffer.copyFrom(utsnameBuf, releaseLen)
-  utsnameBuf = utsnameBuf.offset(offset)
+  release._buffer.copyFrom2(0, utsnameBuf, cursor, releaseLen)
+  cursor += sysnameLen
 
   val versionLen = libc.strlen(utsnameBuf)
   val version = String.withLength(versionLen)
-  version._buffer.copyFrom(utsnameBuf, versionLen)
-  utsnameBuf = utsnameBuf.offset(offset)
+  version._buffer.copyFrom2(0, utsnameBuf, cursor, versionLen)
+  cursor += sysnameLen
 
   val machineLen = libc.strlen(utsnameBuf)
   val machine = String.withLength(machineLen)
-  machine._buffer.copyFrom(utsnameBuf, machineLen)
+  machine._buffer.copyFrom2(0, utsnameBuf, cursor, machineLen)
 
   val uname = Uname(sysname: sysname, nodename: nodename, release: release, version: version, machine: machine)
   _uname = Some(uname)
@@ -113,7 +110,7 @@ pub func callstack(): StackFrame[] {
 
   val stack = Array.withCapacity<StackFrame>(sp)
   while sp >= 0 {
-    val frame = s.offset(sp).load()
+    val frame = s.loadAt(sp)
 
     val line = frame && 0xffff
 
@@ -151,12 +148,12 @@ func getModuleNames(): String[] {
   var idx = 0
   var len = 0
   while true {
-    val byte = buf.offset(idx).load().asInt()
+    val byte = buf.loadAt(idx).asInt()
     if byte == 0 {
       if len == 0 break
 
       val str = String.withLength(len)
-      str._buffer.copyFrom(buf.offset(idx - len), len)
+      str._buffer.copyFrom2(0, buf, idx - len, len)
       moduleNames.push(str)
 
       idx += 1
@@ -181,12 +178,12 @@ func getFunctionNames(): String[] {
   var idx = 0
   var len = 0
   while true {
-    val byte = buf.offset(idx).load().asInt()
+    val byte = buf.loadAt(idx).asInt()
     if byte == 0 {
       if len == 0 break
 
       val str = String.withLength(len)
-      str._buffer.copyFrom(buf.offset(idx - len), len)
+      str._buffer.copyFrom2(0, buf, idx - len, len)
       functionNames.push(str)
 
       idx += 1
