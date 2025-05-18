@@ -156,7 +156,11 @@ pub type Compiler {
         }
         self.currentFn.block.buildExt(res, false, dst)
       }
-      Operation.Load(ty, mem, offset) => {
+      Operation.Load(ty, mem) => {
+        val ptr = self.irValueToQbeValue(mem)
+        self.currentFn.block.buildLoad(self.irTypeToQbeType(ty), ptr, dst)
+      }
+      Operation.LoadField(ty, mem, _, offset) => {
         val ptr = if offset == 0 {
           self.irValueToQbeValue(mem)
         } else {
@@ -165,7 +169,12 @@ pub type Compiler {
         }
         self.currentFn.block.buildLoad(self.irTypeToQbeType(ty), ptr, dst)
       }
-      Operation.Store(ty, value, mem, offset) => {
+      Operation.Store(ty, value, mem) => {
+        val ptr = self.irValueToQbeValue(mem)
+        val v = self.irValueToQbeValue(value)
+        self.currentFn.block.buildStore(self.irTypeToQbeType(ty), v, ptr)
+      }
+      Operation.StoreField(ty, value, mem, _, offset) => {
         val ptr = if offset == 0 {
           self.irValueToQbeValue(mem)
         } else {
@@ -179,12 +188,13 @@ pub type Compiler {
       Operation.If(ty, cond, thenBlock, elseBlock) => {
         val isStmt = ty == IrType.Unit
         val (thenLabel, thenBody, thenVal) = thenBlock
+        val (elseLabel, elseBody, elseVal) = elseBlock
         val condVal = self.irValueToQbeValue(cond)
 
         val labelThen = self.currentFn.block.addLabel(thenLabel)
         val labelCont = self.currentFn.block.addLabel("cont")
 
-        if elseBlock |(elseLabel, elseBody, elseVal)| {
+        if !elseBody.isEmpty() || !!elseVal {
           val labelElse = self.currentFn.block.addLabel(elseLabel)
 
           self.currentFn.block.buildJnz(condVal, labelThen, labelElse)

@@ -171,10 +171,12 @@ pub enum Operation {
   Mul(left: Value, right: Value)
   Eq(primitive: Bool, negate: Bool, left: Value, right: Value)
 
-  Load(ty: IrType, mem: Value, offset: Int = 0)
-  Store(ty: IrType, value: Value, mem: Value, offset: Int = 0)
+  Load(ty: IrType, mem: Value)
+  LoadField(ty: IrType, mem: Value, name: String, offset: Int)
+  Store(ty: IrType, value: Value, mem: Value)
+  StoreField(ty: IrType, value: Value, mem: Value, name: String, offset: Int)
 
-  If(ty: IrType, cond: Value, thenBlock: (String, Instruction[], Value?), elseBlock: (String, Instruction[], Value?)? = None)
+  If(ty: IrType, cond: Value, thenBlock: (String, Instruction[], Value?), elseBlock: (String, Instruction[], Value?))
 
   Call(ret: IrType, fnName: String, args: Value[])
 
@@ -218,31 +220,37 @@ pub enum Operation {
         right.render(sb)
         sb.write(")")
       }
-      Operation.Load(ty, mem, offset) => {
+      Operation.Load(ty, mem) => {
         sb.write("load(")
         ty.render(sb)
         sb.write(", ")
         mem.render(sb)
-
-        if offset != 0 {
-          sb.write(", $offset")
-        }
-
         sb.write(")")
       }
-      Operation.Store(ty, value, mem, offset) => {
+      Operation.LoadField(ty, mem, name, offset) => {
+        sb.write("load(")
+        ty.render(sb)
+        sb.write(", ")
+        mem.render(sb)
+        sb.write(", $name ($offset))")
+      }
+      Operation.Store(ty, value, mem) => {
         sb.write("store(")
         ty.render(sb)
         sb.write(", ")
         value.render(sb)
         sb.write(", ")
         mem.render(sb)
-
-        if offset != 0 {
-          sb.write(", $offset")
-        }
-
         sb.write(")")
+      }
+      Operation.StoreField(ty, value, mem, name, offset) => {
+        sb.write("store(")
+        ty.render(sb)
+        sb.write(", ")
+        value.render(sb)
+        sb.write(", ")
+        mem.render(sb)
+        sb.write(", $name ($offset))")
       }
       Operation.If(ty, cond, thenBlock, elseBlock) => {
         sb.write("if(")
@@ -254,13 +262,12 @@ pub enum Operation {
           v.render(sb)
           sb.write(")")
         }
-        if elseBlock |(elseLabel, _, elseVal)| {
-          sb.write(", .$elseLabel")
-          if elseVal |v| {
-            sb.write(" (")
-            v.render(sb)
-            sb.write(")")
-          }
+        val (elseLabel, elseInstrs, elseVal) = elseBlock
+        sb.write(", .$elseLabel")
+        if elseVal |v| {
+          sb.write(" (")
+          v.render(sb)
+          sb.write(")")
         }
         sb.writeln(")")
         sb.writeln(".$thenLabel:")
@@ -269,13 +276,11 @@ pub enum Operation {
           instr.render(sb)
           sb.writeln()
         }
-        if elseBlock |(elseLabel, elseInstrs, _)| {
-          sb.writeln(".$elseLabel:")
-          for instr in elseInstrs {
-            sb.write("  ")
-            instr.render(sb)
-            sb.writeln()
-          }
+        sb.writeln(".$elseLabel:")
+        for instr in elseInstrs {
+          sb.write("  ")
+          instr.render(sb)
+          sb.writeln()
         }
         sb.write("# endif")
       }
@@ -604,7 +609,7 @@ pub type Generator {
     var size = 0
     var anyFieldNeedsDefault = false
     val params: Ident[] = []
-    val argsForUnderlying: (Value, IrType, Int)[] = []
+    val argsForUnderlying: (Value, IrType, String, Int)[] = []
     for field, idx in struct.fields {
       val fieldConcreteType = self.getConcreteTypeFromType(field.ty, concreteGenerics)
       val fieldTy = self.getIrTypeForConcreteType(fieldConcreteType)
@@ -627,7 +632,7 @@ pub type Generator {
       }
 
       // TODO: don't assume 8 byte alignment for all fields
-      argsForUnderlying.push((fieldVal, fieldTy, idx * 8))
+      argsForUnderlying.push((fieldVal, fieldTy, field.name.name, idx * 8))
     }
 
     val irFunc = IrFunction(name: fnName, params: params, ret: retTy)
@@ -638,8 +643,8 @@ pub type Generator {
     self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Malloc(Value.ConstInt(size)))))
     val mem = Value.Ident(ident: ident)
 
-    for (fieldVal, fieldTy, fieldOffset), idx in argsForUnderlying {
-      self.emit(Instruction(op: Operation.Store(ty: fieldTy, value: fieldVal, mem: mem, offset: fieldOffset)))
+    for (fieldVal, fieldTy, fieldName, fieldOffset), idx in argsForUnderlying {
+      self.emit(Instruction(op: Operation.StoreField(ty: fieldTy, value: fieldVal, mem: mem, name: fieldName, offset: fieldOffset)))
     }
 
     self.emit(Instruction(op: Operation.Return(Some(mem))))
@@ -700,7 +705,7 @@ pub type Generator {
             None
           })
 
-          self.emit(Instruction(op: Operation.If(IrType.Unit, cond, ifBody, Some(elseBody))))
+          self.emit(Instruction(op: Operation.If(IrType.Unit, cond, ifBody, elseBody)))
         } else {
           self.genExpression(node, concreteGenerics)
         }
@@ -778,8 +783,8 @@ pub type Generator {
       TypedAssignmentMode.Variable => todo("genAssignment: Variable")
       TypedAssignmentMode.Indexing => todo("genAssignment: Indexing")
       TypedAssignmentMode.Accessor(head, middle, tail) => {
-        val (ty, mem, offset) = self.followAccessorPath(head, middle, tail, concreteGenerics)
-        self.emit(Instruction(op: Operation.Store(ty: ty, value: res, mem: mem, offset: offset)))
+        val (ty, mem, fieldName, offset) = self.followAccessorPath(head, middle, tail, concreteGenerics)
+        self.emit(Instruction(op: Operation.StoreField(ty: ty, value: res, mem: mem, name: fieldName, offset: offset)))
       }
     }
   }
@@ -862,7 +867,7 @@ pub type Generator {
         val resIrTy = self.getIrTypeForConcreteType(resConcreteType)
         val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
         val res = Ident(ty: resIrTy, kind: identKind)
-        self.emit(Instruction(assignee: Some(res), op: Operation.If(resIrTy, cond, ifBody, Some(elseBody))))
+        self.emit(Instruction(assignee: Some(res), op: Operation.If(resIrTy, cond, ifBody, elseBody)))
         Value.Ident(res)
       }
       else => todo("Other expressions (${node.token})")
@@ -1184,7 +1189,7 @@ pub type Generator {
     }
   }
 
-  func followAccessorPath(self, head: tc.TypedAstNode, middle: tc.AccessorPathSegment[], tail: tc.AccessorPathSegment, concreteGenerics: Map<String, ConcreteType>): (IrType, Value, Int) {
+  func followAccessorPath(self, head: tc.TypedAstNode, middle: tc.AccessorPathSegment[], tail: tc.AccessorPathSegment, concreteGenerics: Map<String, ConcreteType>): (IrType, Value, String, Int) {
     val segs = middle.concat([tail])
 
     var (workingVal, concreteType) = match segs[0] {
@@ -1211,10 +1216,10 @@ pub type Generator {
               val fieldConcreteType = self.getConcreteTypeFromType(f.ty, concreteGenerics)
               val fieldTy = self.getIrTypeForConcreteType(fieldConcreteType)
 
-              if idx == segs.length - 1 return (fieldTy, workingVal, offset)
+              if idx == segs.length - 1 return (fieldTy, workingVal, f.name.name, offset)
 
               val ident = Ident(ty: fieldTy, kind: IdentKind.Anon(self.nextAnonLocal()))
-              val op = Operation.Load(ty: fieldTy, mem: workingVal, offset: offset)
+              val op = Operation.LoadField(ty: fieldTy, mem: workingVal, name: f.name.name, offset: offset)
               self.emit(Instruction(assignee: Some(ident), op: op))
 
               workingVal = Value.Ident(ident: ident)
@@ -1230,11 +1235,11 @@ pub type Generator {
   }
 
   func genAccessor(self, head: tc.TypedAstNode, middle: tc.AccessorPathSegment[], tail: tc.AccessorPathSegment, concreteGenerics: Map<String, ConcreteType>, dst: String?): Value {
-    val (ty, mem, offset) = self.followAccessorPath(head, middle, tail, concreteGenerics)
+    val (ty, mem, fieldName, offset) = self.followAccessorPath(head, middle, tail, concreteGenerics)
 
     val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
     val ident = Ident(ty: ty, kind: identKind)
-    val op = Operation.Load(ty: ty, mem: mem, offset: offset)
+    val op = Operation.LoadField(ty: ty, mem: mem, name: fieldName, offset: offset)
     self.emit(Instruction(assignee: Some(ident), op: op))
 
     Value.Ident(ident: ident)
