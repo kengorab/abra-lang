@@ -314,9 +314,8 @@ pub type JsonParser {
         match ch {
           '"' => '"'
           '\\' => '\\'
-          // TODO: fix when \b and \f are parsed by the abra lexer
-          'b' => Char.fromInt(0x8) // '\b'
-          'f' => Char.fromInt(0xc) // '\f'
+          'b' => '\b'
+          'f' => '\f'
           'n' => '\n'
           'r' => '\r'
           't' => '\t'
