@@ -67,7 +67,7 @@ pub type Pointer<T> {
   pub func realloc<T>(ptr: Pointer<T>, count: Int): Pointer<T>
 
   @intrinsic("pointer_realloc")
-  pub func realloc(self, count: Int): Pointer<T>
+  pub func realloc2(self, count: Int): Pointer<T>
 
   @intrinsic("pointer_address")
   pub func address(self): Int
