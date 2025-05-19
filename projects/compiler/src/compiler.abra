@@ -2756,22 +2756,22 @@ pub type Compiler {
 
         try self._currentFn.block.buildCall(Callable.Function(self._realloc), [ptrVal, sizeVal], Some("mem")) else |e| return qbeError(e)
       }
-      "pointer_store" => {
-        val (ptr, value) = self._intrinsicArgs2(intrinsicFnName, arguments)
-        val ptrVal = try self._compileExpression(ptr)
-        val valueVal = try self._compileExpression(value)
+      // "pointer_store" => {
+      //   val (ptr, value) = self._intrinsicArgs2(intrinsicFnName, arguments)
+      //   val ptrVal = try self._compileExpression(ptr)
+      //   val valueVal = try self._compileExpression(value)
 
-        val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_store) could not resolve T for Pointer<T>")
-        val innerTySize = try self._pointerSize(innerTy)
-        if innerTySize == 1 {
-          self._currentFn.block.buildStoreB(valueVal, ptrVal)
-        } else {
-          val innerQbeType = try self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None)
-          self._currentFn.block.buildStore(innerQbeType, valueVal, ptrVal)
-        }
+      //   val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_store) could not resolve T for Pointer<T>")
+      //   val innerTySize = try self._pointerSize(innerTy)
+      //   if innerTySize == 1 {
+      //     self._currentFn.block.buildStoreB(valueVal, ptrVal)
+      //   } else {
+      //     val innerQbeType = try self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None)
+      //     self._currentFn.block.buildStore(innerQbeType, valueVal, ptrVal)
+      //   }
 
-        bogusValue
-      }
+      //   bogusValue
+      // }
       "pointer_store_at" => {
         val (ptr, value, offset) = self._intrinsicArgs3(intrinsicFnName, arguments)
         val ptrVal = try self._compileExpression(ptr)
@@ -2793,28 +2793,28 @@ pub type Compiler {
 
         bogusValue
       }
-      "pointer_offset" => {
-        val (ptr, offset) = self._intrinsicArgs2(intrinsicFnName, arguments)
-        val ptrVal = try self._compileExpression(ptr)
-        val offsetVal = try self._compileExpression(offset)
+      // "pointer_offset" => {
+      //   val (ptr, offset) = self._intrinsicArgs2(intrinsicFnName, arguments)
+      //   val ptrVal = try self._compileExpression(ptr)
+      //   val offsetVal = try self._compileExpression(offset)
 
-        val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_offset) could not resolve T for Pointer<T>")
-        val innerTySize = try self._pointerSize(innerTy)
-        val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), offsetVal) else |e| return qbeError(e)
+      //   val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_offset) could not resolve T for Pointer<T>")
+      //   val innerTySize = try self._pointerSize(innerTy)
+      //   val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), offsetVal) else |e| return qbeError(e)
 
-        try self._currentFn.block.buildAdd(sizeVal, ptrVal) else |e| return qbeError(e)
-      }
-      "pointer_load" => {
-        val ptr = self._intrinsicArgs1(intrinsicFnName, arguments)
-        val ptrVal = try self._compileExpression(ptr)
+      //   try self._currentFn.block.buildAdd(sizeVal, ptrVal) else |e| return qbeError(e)
+      // }
+      // "pointer_load" => {
+      //   val ptr = self._intrinsicArgs1(intrinsicFnName, arguments)
+      //   val ptrVal = try self._compileExpression(ptr)
 
-        val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_load) could not resolve T for Pointer<T>")
+      //   val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_load) could not resolve T for Pointer<T>")
 
-        val innerTySize = try self._pointerSize(innerTy)
-        val innerQbeType = if innerTySize == 1 QbeType.U8 else try self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None)
+      //   val innerTySize = try self._pointerSize(innerTy)
+      //   val innerQbeType = if innerTySize == 1 QbeType.U8 else try self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None)
 
-        self._currentFn.block.buildLoad(innerQbeType, ptrVal)
-      }
+      //   self._currentFn.block.buildLoad(innerQbeType, ptrVal)
+      // }
       "pointer_load_at" => {
         val (ptr, offset) = self._intrinsicArgs2(intrinsicFnName, arguments)
         val ptrVal = try self._compileExpression(ptr)
@@ -2831,24 +2831,10 @@ pub type Compiler {
         self._currentFn.block.buildLoad(innerQbeType, mem)
       }
       "pointer_copy_from" => {
-        val (ptr, other, size) = self._intrinsicArgs3(intrinsicFnName, arguments)
-        val ptrVal = try self._compileExpression(ptr)
-        val otherVal = try self._compileExpression(other)
-        val sizeArg = try self._compileExpression(size)
-
-        val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_copy_from) could not resolve T for Pointer<T>")
-        val innerTySize = try self._pointerSize(innerTy)
-        val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), sizeArg) else |e| return qbeError(e)
-
-        self._currentFn.block.buildVoidCall(Callable.Function(self._memcpy), [ptrVal, otherVal, sizeVal])
-
-        bogusValue
-      }
-      "pointer_copy_from_2" => {
-        val (ptr, dstOffset, other, srcOffset, size) = self._intrinsicArgs5(intrinsicFnName, arguments)
+        val (ptr, dstOffset, src, srcOffset, size) = self._intrinsicArgs5(intrinsicFnName, arguments)
         val ptrVal = try self._compileExpression(ptr)
         val dstOffsetVal = try self._compileExpression(dstOffset)
-        val otherVal = try self._compileExpression(other)
+        val srcVal = try self._compileExpression(src)
         val srcOffsetVal = try self._compileExpression(srcOffset)
         val sizeArg = try self._compileExpression(size)
 
@@ -2862,7 +2848,32 @@ pub type Compiler {
         ) else |e| return qbeError(e)
         val srcMem = try self._currentFn.block.buildAdd(
           try self._currentFn.block.buildMul(Value.Int(innerTySize), srcOffsetVal) else |e| return qbeError(e),
-          otherVal
+          srcVal
+        ) else |e| return qbeError(e)
+
+        self._currentFn.block.buildVoidCall(Callable.Function(self._memcpy), [dstMem, srcMem, sizeVal])
+
+        bogusValue
+      }
+      "pointer_copy_from_2" => {
+        val (ptr, dstOffset, src, srcOffset, size) = self._intrinsicArgs5(intrinsicFnName, arguments)
+        val ptrVal = try self._compileExpression(ptr)
+        val dstOffsetVal = try self._compileExpression(dstOffset)
+        val srcVal = try self._compileExpression(src)
+        val srcOffsetVal = try self._compileExpression(srcOffset)
+        val sizeArg = try self._compileExpression(size)
+
+        val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_copy_from) could not resolve T for Pointer<T>")
+        val innerTySize = try self._pointerSize(innerTy)
+        val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), sizeArg) else |e| return qbeError(e)
+
+        val dstMem = try self._currentFn.block.buildAdd(
+          try self._currentFn.block.buildMul(Value.Int(innerTySize), dstOffsetVal) else |e| return qbeError(e),
+          ptrVal
+        ) else |e| return qbeError(e)
+        val srcMem = try self._currentFn.block.buildAdd(
+          try self._currentFn.block.buildMul(Value.Int(innerTySize), srcOffsetVal) else |e| return qbeError(e),
+          srcVal
         ) else |e| return qbeError(e)
 
         self._currentFn.block.buildVoidCall(Callable.Function(self._memcpy), [dstMem, srcMem, sizeVal])
