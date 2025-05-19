@@ -38,18 +38,32 @@
     "position": [7, 1],
     "kind": {
       "name": "Char",
-      "value": "0xa"
+      "value": "0x8"
     }
   },
   {
     "position": [8, 1],
     "kind": {
       "name": "Char",
-      "value": "0x5c"
+      "value": "0xa"
     }
   },
   {
     "position": [9, 1],
+    "kind": {
+      "name": "Char",
+      "value": "0xc"
+    }
+  },
+  {
+    "position": [10, 1],
+    "kind": {
+      "name": "Char",
+      "value": "0x5c"
+    }
+  },
+  {
+    "position": [11, 1],
     "kind": {
       "name": "Char",
       "value": "0xe9"

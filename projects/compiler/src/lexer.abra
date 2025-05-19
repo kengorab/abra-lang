@@ -465,7 +465,9 @@ pub type Lexer {
 
       match ch {
         "0" => 0
+        "b" => 8
         "n" => 10
+        "f" => 12
         "\\" => 92
         "r" => 13
         "t" => 9
@@ -514,7 +516,9 @@ pub type Lexer {
         val ch = self._input[self._cursor]
         val escapedCh = match ch {
           "n" => "\n"
+          "b" => Char.fromInt(0x8).toString()
           "\n" => "\n"
+          "f" => Char.fromInt(0xc).toString()
           "\\" => "\\"
           "r" => "\r"
           "t" => "\t"
