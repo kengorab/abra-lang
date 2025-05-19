@@ -2680,6 +2680,25 @@ pub type Compiler {
     (arg0, arg1, arg2)
   }
 
+  func _intrinsicArgs5(self, name: String, arguments: TypedAstNode?[]): (TypedAstNode, TypedAstNode, TypedAstNode, TypedAstNode, TypedAstNode) {
+    val _arg0 = try arguments[0] else unreachable("'$name' has 5 required arguments")
+    val arg0 = try _arg0 else unreachable("'$name' has 5 required arguments")
+
+    val _arg1 = try arguments[1] else unreachable("'$name' has 5 required arguments")
+    val arg1 = try _arg1 else unreachable("'$name' has 5 required arguments")
+
+    val _arg2 = try arguments[2] else unreachable("'$name' has 5 required arguments")
+    val arg2 = try _arg2 else unreachable("'$name' has 5 required arguments")
+
+    val _arg3 = try arguments[3] else unreachable("'$name' has 5 required arguments")
+    val arg3 = try _arg3 else unreachable("'$name' has 5 required arguments")
+
+    val _arg4 = try arguments[4] else unreachable("'$name' has 5 required arguments")
+    val arg4 = try _arg4 else unreachable("'$name' has 5 required arguments")
+
+    (arg0, arg1, arg2, arg3, arg4)
+  }
+
   func invokeIntrinsicFn(self, dec: Decorator, fn: Function, arguments: TypedAstNode?[]): Result<Value, CompileError> {
     val intrinsicFnName = match dec.arguments[0] {
       LiteralAstNode.String(value) => value
@@ -2690,11 +2709,6 @@ pub type Compiler {
 
     val bogusValue = Value.Ident("bogus", QbeType.F32)
     val res = match intrinsicFnName {
-      "pointer_null" => {
-        try self._currentFn.block.buildAdd(Value.Int(0), Value.Int(0), Some("__pointer_null__")) else |e| return qbeError(e)
-
-        Value.Ident("__pointer_null__", QbeType.Pointer)
-      }
       "pointer_is_null" => {
         val ptr = self._intrinsicArgs1(intrinsicFnName, arguments)
         val ptrVal = try self._compileExpression(ptr)
@@ -2737,55 +2751,64 @@ pub type Compiler {
 
         try self._currentFn.block.buildCall(Callable.Function(self._realloc), [ptrVal, sizeVal], Some("mem")) else |e| return qbeError(e)
       }
-      "pointer_store" => {
-        val (ptr, value) = self._intrinsicArgs2(intrinsicFnName, arguments)
+      "pointer_store_at" => {
+        val (ptr, value, offset) = self._intrinsicArgs3(intrinsicFnName, arguments)
         val ptrVal = try self._compileExpression(ptr)
         val valueVal = try self._compileExpression(value)
+        val offsetVal = try self._compileExpression(offset)
 
         val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_store) could not resolve T for Pointer<T>")
         val innerTySize = try self._pointerSize(innerTy)
+
+        val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), offsetVal) else |e| return qbeError(e)
+        val mem = try self._currentFn.block.buildAdd(sizeVal, ptrVal) else |e| return qbeError(e)
+
         if innerTySize == 1 {
-          self._currentFn.block.buildStoreB(valueVal, ptrVal)
+          self._currentFn.block.buildStoreB(valueVal, mem)
         } else {
           val innerQbeType = try self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None)
-          self._currentFn.block.buildStore(innerQbeType, valueVal, ptrVal)
+          self._currentFn.block.buildStore(innerQbeType, valueVal, mem)
         }
 
         bogusValue
       }
-      "pointer_offset" => {
+      "pointer_load_at" => {
         val (ptr, offset) = self._intrinsicArgs2(intrinsicFnName, arguments)
         val ptrVal = try self._compileExpression(ptr)
         val offsetVal = try self._compileExpression(offset)
-
-        val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_offset) could not resolve T for Pointer<T>")
-        val innerTySize = try self._pointerSize(innerTy)
-        val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), offsetVal) else |e| return qbeError(e)
-
-        try self._currentFn.block.buildAdd(sizeVal, ptrVal) else |e| return qbeError(e)
-      }
-      "pointer_load" => {
-        val ptr = self._intrinsicArgs1(intrinsicFnName, arguments)
-        val ptrVal = try self._compileExpression(ptr)
 
         val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_load) could not resolve T for Pointer<T>")
 
         val innerTySize = try self._pointerSize(innerTy)
         val innerQbeType = if innerTySize == 1 QbeType.U8 else try self._getQbeTypeForTypeExpect(innerTy, "unacceptable type", None)
 
-        self._currentFn.block.buildLoad(innerQbeType, ptrVal)
+        val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), offsetVal) else |e| return qbeError(e)
+        val mem = try self._currentFn.block.buildAdd(sizeVal, ptrVal) else |e| return qbeError(e)
+
+        self._currentFn.block.buildLoad(innerQbeType, mem)
       }
       "pointer_copy_from" => {
-        val (ptr, other, size) = self._intrinsicArgs3(intrinsicFnName, arguments)
+        val (ptr, dstOffset, src, srcOffset, size) = self._intrinsicArgs5(intrinsicFnName, arguments)
         val ptrVal = try self._compileExpression(ptr)
-        val otherVal = try self._compileExpression(other)
+        val dstOffsetVal = try self._compileExpression(dstOffset)
+        val srcVal = try self._compileExpression(src)
+        val srcOffsetVal = try self._compileExpression(srcOffset)
         val sizeArg = try self._compileExpression(size)
 
         val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_copy_from) could not resolve T for Pointer<T>")
         val innerTySize = try self._pointerSize(innerTy)
         val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), sizeArg) else |e| return qbeError(e)
 
-        self._currentFn.block.buildVoidCall(Callable.Function(self._memcpy), [ptrVal, otherVal, sizeVal])
+        val dstMem = try self._currentFn.block.buildAdd(
+          try self._currentFn.block.buildMul(Value.Int(innerTySize), dstOffsetVal) else |e| return qbeError(e),
+          ptrVal
+        ) else |e| return qbeError(e)
+        val srcMem = try self._currentFn.block.buildAdd(
+          try self._currentFn.block.buildMul(Value.Int(innerTySize), srcOffsetVal) else |e| return qbeError(e),
+          srcVal
+        ) else |e| return qbeError(e)
+
+        self._currentFn.block.buildVoidCall(Callable.Function(self._memcpy), [dstMem, srcMem, sizeVal])
 
         bogusValue
       }

@@ -102,13 +102,13 @@ type Int {
     while number != 0 {
       val rem = number % base
       val D = if base == 62 digitsBase62 else digits
-      str._buffer.offset(i).store(D._buffer.offset(rem).load())
+      str._buffer.storeAt(D._buffer.loadAt(rem), i)
       i -= 1
       number = (number / base).asInt()
     }
 
     if isNeg {
-      str._buffer.offset(i).store(Byte.fromInt(45)) // '-'
+      str._buffer.storeAt(Byte.fromInt(45), i)
     }
 
     Some(str)
@@ -175,13 +175,15 @@ type Char {
     val str = String.withLength(byteVals.length)
 
     for b, idx in byteVals {
-      str._buffer.offset(idx).store(b.asByte())
+      str._buffer.storeAt(b.asByte(), idx)
     }
 
     str
   }
 
   pub func asInt(self): Int = intrinsics.charAsInt(self)
+
+  pub func asByte(self): Byte = Byte.fromInt(self.asInt() && 0xFF)
 
   pub func bytes(self): Int[] {
     val value = self.asInt()
@@ -253,25 +255,25 @@ type CharsIterator {
   func _decodeChar(self): Char? {
     if self._i >= self._numBytes return None
 
-    val b1 = self._bytes.offset(self._i).load().asInt()
+    val b1 = self._bytes.loadAt(self._i).asInt()
     self._i += 1
     if b1 < 128 return Some(Char.fromInt(b1))
 
     // Begin multi-byte cases, obtain first continuation byte
     if self._i >= self._numBytes unreachable("invalid utf-8 encoding: continuation byte expected given first byte ${b1.hex()}")
-    val b2 = self._bytes.offset(self._i).load().asInt()
+    val b2 = self._bytes.loadAt(self._i).asInt()
     self._i += 1
 
     // 3-byte case
     if b1 >= 0b11100000 {
       if self._i >= self._numBytes unreachable("invalid utf-8 encoding: continuation byte expected given first byte ${b1.hex()}")
-      val b3 = self._bytes.offset(self._i).load().asInt()
+      val b3 = self._bytes.loadAt(self._i).asInt()
       self._i += 1
 
       // 4-byte case
       if b1 >= 0b11110000 {
         if self._i >= self._numBytes unreachable("invalid utf-8 encoding: continuation byte expected given first byte ${b1.hex()}")
-        val b4 = self._bytes.offset(self._i).load().asInt()
+        val b4 = self._bytes.loadAt(self._i).asInt()
         self._i += 1
 
         val ch = ((b1 && 0b00000111) << 18) || ((b2 && 0b00111111) << 12) || ((b3 && 0b00111111) << 6) || (b4 && 0b00111111)
@@ -305,8 +307,8 @@ type String {
     val str = String.withLength(length)
 
     for i in range(0, length) {
-      val ch = choices._buffer.offset(libc.rand() % choices.length).load()
-      str._buffer.offset(i).store(ch)
+      val ch = choices._buffer.loadAt(libc.rand() % choices.length)
+      str._buffer.storeAt(ch, i)
     }
 
     str
@@ -322,7 +324,7 @@ type String {
 
     val str = String.withLength(bytes.length)
     for b, idx in bytes {
-      str._buffer.offset(idx).store(b.asByte())
+      str._buffer.storeAt(b.asByte(), idx)
     }
 
     str
@@ -331,7 +333,7 @@ type String {
   pub func hash(self): Int {
     var hash = 31 * self.length
     for i in range(0, self.length) {
-      val byte = self._buffer.offset(i).load()
+      val byte = self._buffer.loadAt(i)
       hash = hash + 31 * byte.asInt()
     }
     hash
@@ -341,28 +343,28 @@ type String {
     if self.length != other.length { return false }
 
     for i in range(0, self.length) {
-      val selfCh = self._buffer.offset(i).load().asInt()
-      val otherCh = other._buffer.offset(i).load().asInt()
+      val selfCh = self._buffer.loadAt(i).asInt()
+      val otherCh = other._buffer.loadAt(i).asInt()
       if selfCh != otherCh { return false }
     }
 
     true
   }
 
-  pub func byteAt(self, offset: Int): Byte = self._buffer.offset(offset).load()
+  pub func byteAt(self, offset: Int): Byte = self._buffer.loadAt(offset)
 
   pub func isEmpty(self): Bool = self.length == 0
 
   pub func toLower(self): String {
     val str = String.withLength(self.length)
     for i in range(0, self.length) {
-      val ch = self._buffer.offset(i).load().asInt()
+      val ch = self._buffer.loadAt(i).asInt()
       val lowerCh = if 65 <= ch && ch <= 90 {
         ch + 32
       } else {
         ch
       }
-      str._buffer.offset(i).store(Byte.fromInt(lowerCh))
+      str._buffer.storeAt(Byte.fromInt(lowerCh), i)
     }
 
     str
@@ -371,13 +373,13 @@ type String {
   pub func toUpper(self): String {
     val str = String.withLength(self.length)
     for i in range(0, self.length) {
-      val ch = self._buffer.offset(i).load().asInt()
+      val ch = self._buffer.loadAt(i).asInt()
       val upperCh = if 97 <= ch && ch <= 122 {
         ch - 32
       } else {
         ch
       }
-      str._buffer.offset(i).store(Byte.fromInt(upperCh))
+      str._buffer.storeAt(Byte.fromInt(upperCh), i)
     }
 
     str
@@ -387,7 +389,7 @@ type String {
     // TODO: This method shouldn't be an instance method of String, but we don't have Chars yet so it'll have to do
     if self.length != 1 return false
 
-    val ch = self._buffer.offset(0).load().asInt()
+    val ch = self._buffer.loadAt(0).asInt()
     48 <= ch && ch <= 57
   }
 
@@ -395,7 +397,7 @@ type String {
     // TODO: This method shouldn't be an instance method of String, but we don't have Chars yet so it'll have to do
     if self.length != 1 return false
 
-    val ch = self._buffer.offset(0).load().asInt()
+    val ch = self._buffer.loadAt(0).asInt()
     (65 <= ch && ch <= 90) || (97 <= ch && ch <= 122)
   }
 
@@ -404,7 +406,7 @@ type String {
 
     if self.length != 1 return false
 
-    val ch = self._buffer.offset(0).load().asInt()
+    val ch = self._buffer.loadAt(0).asInt()
     (48 <= ch && ch <= 57) || (65 <= ch && ch <= 90) || (97 <= ch && ch <= 122)
   }
 
@@ -413,7 +415,7 @@ type String {
   pub func trim(self): String {
     var i = 0
     while i < self.length {
-      val char = Char.fromInt(self._buffer.offset(i).load().asInt())
+      val char = Char.fromInt(self._buffer.loadAt(i).asInt())
       if char == ' ' || char == '\n' || char == '\t' || char == '\r' {
         i += 1
       } else {
@@ -423,7 +425,7 @@ type String {
 
     var j = self.length - 1
     while j >= 0 {
-      val char = Char.fromInt(self._buffer.offset(j).load().asInt())
+      val char = Char.fromInt(self._buffer.loadAt(j).asInt())
       if char == ' ' || char == '\n' || char == '\t' || char == '\r' {
         j -= 1
       } else {
@@ -454,12 +456,12 @@ type String {
     var chunkStart = 0
     var i = 0
     while i < self.length {
-      val ch = self._buffer.offset(i).load().asInt()
+      val ch = self._buffer.loadAt(i).asInt()
 
-      val doSplit = if by.length <= self.length - i && ch == by._buffer.offset(0).load().asInt() {
+      val doSplit = if by.length <= self.length - i && ch == by._buffer.loadAt(0).asInt() {
         var j = 0
         while j < by.length {
-          if self._buffer.offset(i + j).load().asInt() != by._buffer.offset(j).load().asInt() {
+          if self._buffer.loadAt(i + j).asInt() != by._buffer.loadAt(j).asInt() {
             break
           }
           j += 1
@@ -512,8 +514,8 @@ type String {
 
     var i = 0
     while i < prefix.length {
-      val selfCh = self._buffer.offset(i).load().asInt()
-      val otherCh = prefix._buffer.offset(i).load().asInt()
+      val selfCh = self._buffer.loadAt(i).asInt()
+      val otherCh = prefix._buffer.loadAt(i).asInt()
       if selfCh != otherCh return false
       i += 1
     }
@@ -528,8 +530,8 @@ type String {
     val selfOffset = self.length - suffix.length
     var i = 0
     while i < suffix.length {
-      val selfCh = self._buffer.offset(selfOffset + i).load().asInt()
-      val otherCh = suffix._buffer.offset(i).load().asInt()
+      val selfCh = self._buffer.loadAt(selfOffset + i).asInt()
+      val otherCh = suffix._buffer.loadAt(i).asInt()
       if selfCh != otherCh return false
       i += 1
     }
@@ -570,18 +572,18 @@ type String {
     var selfCursor = 0
     for idx in replacementIndices {
       if selfCursor < idx {
-        newString._buffer.offset(resCursor).copyFrom(selfBuf.offset(selfCursor), idx - selfCursor)
+        newString._buffer.copyFrom(resCursor, selfBuf, selfCursor , idx - selfCursor)
         resCursor += (idx - selfCursor)
       }
       selfCursor = idx + pattern.length
       if replacement.length != 0 {
-        newString._buffer.offset(resCursor).copyFrom(replacement._buffer, replacement.length)
+        newString._buffer.copyFrom(resCursor, replacement._buffer, 0, replacement.length)
       }
       resCursor += replacement.length
     }
 
     if selfCursor < self.length {
-      newString._buffer.offset(resCursor).copyFrom(selfBuf.offset(selfCursor), self.length - selfCursor)
+      newString._buffer.copyFrom(resCursor, selfBuf, selfCursor, self.length - selfCursor)
     }
 
     newString
@@ -594,7 +596,7 @@ type String {
     if idx >= self.length || idx < 0 { return "" }
 
     val str = String.withLength(1)
-    str._buffer.copyFrom(self._buffer.offset(idx), 1)
+    str._buffer.copyFrom(0, self._buffer, idx, 1)
     str
   }
 
@@ -603,7 +605,7 @@ type String {
     val end = if endIndex > self.length self.length else endIndex
     val length = end - start
     val subString = String.withLength(length)
-    subString._buffer.copyFrom(self._buffer.offset(start), length)
+    subString._buffer.copyFrom(0, self._buffer, start, length)
 
     subString
   }
@@ -613,7 +615,7 @@ type String {
 
     val str = String.withLength(self.length * times)
     for i in range(0, times) {
-      str._buffer.offset(self.length * i).copyFrom(self._buffer, self.length)
+      str._buffer.copyFrom(self.length * i, self._buffer, 0, self.length)
     }
     str
   }
@@ -635,7 +637,7 @@ type ArrayIterator<T> {
 
 type Array<T> {
   pub length: Int
-  _buffer: Pointer<T> = Pointer.null()
+  _buffer: Pointer<T>
   _capacity: Int = 0
 
   pub func withCapacity<T>(initialCapacity: Int): T[] {
@@ -646,7 +648,7 @@ type Array<T> {
   pub func fill<T>(length: Int, value: T): T[] {
     val buffer = Pointer.malloc<T>(length)
     for i in range(0, length) {
-      buffer.offset(i).store(value)
+      buffer.storeAt(value, i)
     }
 
     Array(length: length, _buffer: buffer, _capacity: length)
@@ -656,7 +658,7 @@ type Array<T> {
     val buffer = Pointer.malloc<T>(length)
     for i in range(0, length) {
       val item = fn(i)
-      buffer.offset(i).store(item)
+      buffer.storeAt(item, i)
     }
 
     Array(length: length, _buffer: buffer, _capacity: length)
@@ -669,7 +671,7 @@ type Array<T> {
     var len = 2 // account for '[' and ']'
     var i = 0
     while i < self.length {
-      val item = self._buffer.offset(i).load()
+      val item = self._buffer.loadAt(i)
       val repr = item.toString()
       reprs.push(repr)
       len += repr.length
@@ -681,26 +683,26 @@ type Array<T> {
 
     val str = String.withLength(len)
     var offset = 0
-    str._buffer.offset(offset).store(Byte.fromInt(91)) // '['
+    str._buffer.storeAt('['.asByte(), offset)
     offset += 1
 
     i = 0
     while i < self.length {
-      val repr = reprs._buffer.offset(i).load()
-      str._buffer.offset(offset).copyFrom(repr._buffer, repr.length)
+      val repr = reprs._buffer.loadAt(i)
+      str._buffer.copyFrom(offset, repr._buffer, 0, repr.length)
       offset += repr.length
 
       if i != self.length - 1 {
-        str._buffer.offset(offset).store(Byte.fromInt(44)) // ','
+        str._buffer.storeAt(','.asByte(), offset)
         offset += 1
-        str._buffer.offset(offset).store(Byte.fromInt(32)) // ' '
+        str._buffer.storeAt(' '.asByte(), offset)
         offset += 1
       }
 
       i += 1
     }
 
-    str._buffer.offset(offset).store(Byte.fromInt(93)) // ']'
+    str._buffer.storeAt(']'.asByte(), offset)
 
     str
   }
@@ -708,7 +710,7 @@ type Array<T> {
   pub func hash(self): Int {
     var hash = 31 * self.length
     for i in range(0, self.length) {
-      val item = self._buffer.offset(i).load()
+      val item = self._buffer.loadAt(i)
       hash = hash + 31 * item.hash()
     }
     hash
@@ -718,8 +720,8 @@ type Array<T> {
     if self.length != other.length return false
 
     for i in range(0, self.length) {
-      val selfItem = self._buffer.offset(i).load()
-      val otherItem = other._buffer.offset(i).load()
+      val selfItem = self._buffer.loadAt(i)
+      val otherItem = other._buffer.loadAt(i)
 
       if selfItem != otherItem { return false }
     }
@@ -737,10 +739,10 @@ type Array<T> {
     if self.length == self._capacity {
       self._capacity *= 2
 
-      self._buffer = Pointer.realloc(self._buffer, self._capacity)
+      self._buffer = self._buffer.realloc(self._capacity)
     }
 
-    self._buffer.offset(self.length).store(item)
+    self._buffer.storeAt(item, self.length)
     self.length += 1
   }
 
@@ -749,7 +751,7 @@ type Array<T> {
       None
     } else {
       self.length -= 1
-      Some(self._buffer.offset(self.length).load())
+      Some(self._buffer.loadAt(self.length))
     }
   }
 
@@ -758,10 +760,8 @@ type Array<T> {
 
   pub func concat(self, other: T[]): T[] {
     val newArray: T[] = Array.withCapacity(self.length + other.length)
-    newArray._buffer.copyFrom(self._buffer, self.length)
-    newArray._buffer
-      .offset(self.length)
-      .copyFrom(other._buffer, other.length)
+    newArray._buffer.copyFrom(0, self._buffer, 0, self.length)
+    newArray._buffer.copyFrom(self.length, other._buffer, 0, other.length)
     newArray.length = self.length + other.length
     newArray
   }
@@ -769,7 +769,7 @@ type Array<T> {
   pub func map<U>(self, fn: (T, Int) => U): U[] {
     val newArray: U[] = Array.withCapacity(self.length)
     for i in range(0, self.length) {
-      val item = self._buffer.offset(i).load()
+      val item = self._buffer.loadAt(i)
       val result = fn(item, i)
       newArray.push(result)
     }
@@ -780,7 +780,7 @@ type Array<T> {
   pub func flatMap<U>(self, fn: (T, Int) => U[]): U[] {
     val newArray: U[] = Array.withCapacity(self.length)
     for i in range(0, self.length) {
-      val item = self._buffer.offset(i).load()
+      val item = self._buffer.loadAt(i)
       val result = fn(item, i)
       for resultItem in result {
         newArray.push(resultItem)
@@ -793,7 +793,7 @@ type Array<T> {
   pub func filter(self, fn: (T, Int) => Bool): T[] {
     val newArray: T[] = Array.withCapacity(self.length)
     for i in range(0, self.length) {
-      val item = self._buffer.offset(i).load()
+      val item = self._buffer.loadAt(i)
       if fn(item, i) {
         newArray.push(item)
       }
@@ -805,7 +805,7 @@ type Array<T> {
   pub func reduce<U>(self, initialValue: U, fn: (U, T, Int) => U): U {
     var acc = initialValue
     for i in range(0, self.length) {
-      val item = self._buffer.offset(i).load()
+      val item = self._buffer.loadAt(i)
       acc = fn(acc, item, i)
     }
 
@@ -814,7 +814,7 @@ type Array<T> {
 
   pub func forEach(self, fn: (T, Int) => Unit) {
     for i in range(0, self.length) {
-      val item = self._buffer.offset(i).load()
+      val item = self._buffer.loadAt(i)
       fn(item, i)
     }
   }
@@ -823,7 +823,7 @@ type Array<T> {
     val reprs: String[] = Array.withCapacity(self.length)
     var length = 0
     for i in range(0, self.length) {
-      val item = self._buffer.offset(i).load()
+      val item = self._buffer.loadAt(i)
       val repr = item.toString()
       reprs.push(repr)
       length += repr.length
@@ -835,11 +835,11 @@ type Array<T> {
     val str = String.withLength(length)
     var offset = 0
     for i in range(0, reprs.length) {
-      val repr = reprs._buffer.offset(i).load()
-      str._buffer.offset(offset).copyFrom(repr._buffer, repr.length)
+      val repr = reprs._buffer.loadAt(i)
+      str._buffer.copyFrom(offset, repr._buffer, 0, repr.length)
       offset += repr.length
       if i != reprs.length - 1 {
-        str._buffer.offset(offset).copyFrom(joiner._buffer, joiner.length)
+        str._buffer.copyFrom(offset, joiner._buffer, 0, joiner.length)
         offset += joiner.length
       }
     }
@@ -849,7 +849,7 @@ type Array<T> {
 
   pub func contains(self, item: T): Bool {
     for i in range(0, self.length) {
-      val selfItem = self._buffer.offset(i).load()
+      val selfItem = self._buffer.loadAt(i)
       if selfItem == item return true
     }
 
@@ -858,7 +858,7 @@ type Array<T> {
 
   pub func find(self, fn: (T) => Bool): T? {
     for i in range(0, self.length) {
-      val item = self._buffer.offset(i).load()
+      val item = self._buffer.loadAt(i)
       if fn(item) return Some(item)
     }
 
@@ -867,7 +867,7 @@ type Array<T> {
 
   pub func findIndex(self, fn: (T) => Bool): (T, Int)? {
     for i in range(0, self.length) {
-      val item = self._buffer.offset(i).load()
+      val item = self._buffer.loadAt(i)
       if fn(item) return Some((item, i))
     }
 
@@ -876,7 +876,7 @@ type Array<T> {
 
   pub func any(self, fn: (T) => Bool): Bool {
     for i in range(0, self.length) {
-      val item = self._buffer.offset(i).load()
+      val item = self._buffer.loadAt(i)
       if fn(item) return true
     }
 
@@ -885,7 +885,7 @@ type Array<T> {
 
   pub func all(self, fn: (T) => Bool): Bool {
     for i in range(0, self.length) {
-      val item = self._buffer.offset(i).load()
+      val item = self._buffer.loadAt(i)
       if !fn(item) return false
     }
 
@@ -906,22 +906,22 @@ type Array<T> {
     }
   }
   func _qspartition<T>(items: (Int, T)[], lo: Int, hi: Int): Int {
-    val pivot = items._buffer.offset(lo).load()[0]
+    val pivot = items._buffer.loadAt(lo)[0]
     var i = lo - 1
     var j = hi + 1
 
     while true {
       i += 1
-      while items._buffer.offset(i).load()[0] < pivot { i += 1 }
+      while items._buffer.loadAt(i)[0] < pivot { i += 1 }
 
       j -= 1
-      while items._buffer.offset(j).load()[0] > pivot { j -= 1 }
+      while items._buffer.loadAt(j)[0] > pivot { j -= 1 }
 
       if i >= j return j
 
-      val tmp = items._buffer.offset(i).load()
-      items._buffer.offset(i).store(items._buffer.offset(j).load())
-      items._buffer.offset(j).store(tmp)
+      val tmp = items._buffer.loadAt(i)
+      items._buffer.storeAt(items._buffer.loadAt(j), i)
+      items._buffer.storeAt(tmp, j)
     }
 
     // unreachable, but the typechecker doesn't know that
@@ -934,7 +934,7 @@ type Array<T> {
     val arr: (Int, T)[] = Array.withCapacity(self.length)
     var i = 0
     while i < self.length {
-      val item = self._buffer.offset(i).load()
+      val item = self._buffer.loadAt(i)
       val tuple = (factor * fn(item), item)
       arr.push(tuple)
 
@@ -946,7 +946,7 @@ type Array<T> {
     val res: T[] = Array.withCapacity(self.length)
     i = 0
     while i < self.length {
-      res.push(arr._buffer.offset(i).load()[1])
+      res.push(arr._buffer.loadAt(i)[1])
 
       i += 1
     }
@@ -964,7 +964,7 @@ type Array<T> {
     val map: Map<U, T> = Map.new()
 
     for i in range(0, self.length) {
-      val item = self._buffer.offset(i).load()
+      val item = self._buffer.loadAt(i)
       val key = fn(item)
       map[key] = item
     }
@@ -976,7 +976,7 @@ type Array<T> {
     val map: Map<U, T[]> = Map.new()
 
     for i in range(0, self.length) {
-      val item = self._buffer.offset(i).load()
+      val item = self._buffer.loadAt(i)
       val key = fn(item)
       if map[key] |arr| {
         arr.push(item)
@@ -992,7 +992,7 @@ type Array<T> {
     val set: Set<T> = Set.new()
 
     for i in range(0, self.length) {
-      val item = self._buffer.offset(i).load()
+      val item = self._buffer.loadAt(i)
       set.insert(item)
     }
 
@@ -1004,7 +1004,7 @@ type Array<T> {
     if idx >= self.length || idx < 0 {
       None
     } else {
-      Some(self._buffer.offset(idx).load())
+      Some(self._buffer.loadAt(idx))
     }
   }
 
@@ -1022,7 +1022,7 @@ type Array<T> {
     val length = end - start
     val subArray: T[] = Array.withCapacity(length)
     subArray.length = length
-    subArray._buffer.copyFrom(self._buffer.offset(start), length)
+    subArray._buffer.copyFrom(0, self._buffer, start, length)
 
     subArray
   }
@@ -1033,7 +1033,7 @@ type Array<T> {
       None
     } else {
       val old = self.get(index)
-      self._buffer.offset(idx).store(value)
+      self._buffer.storeAt(value, idx)
       old
     }
   }
