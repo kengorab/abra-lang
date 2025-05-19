@@ -683,7 +683,7 @@ type Array<T> {
 
     val str = String.withLength(len)
     var offset = 0
-    str._buffer.storeAt(Byte.fromInt(91), offset) // '['
+    str._buffer.storeAt('['.asByte(), offset)
     offset += 1
 
     i = 0
@@ -693,16 +693,16 @@ type Array<T> {
       offset += repr.length
 
       if i != self.length - 1 {
-        str._buffer.storeAt(Byte.fromInt(44), offset) // ','
+        str._buffer.storeAt(','.asByte(), offset)
         offset += 1
-        str._buffer.storeAt(Byte.fromInt(32), offset) // ' '
+        str._buffer.storeAt(' '.asByte(), offset)
         offset += 1
       }
 
       i += 1
     }
 
-    str._buffer.storeAt(Byte.fromInt(93), offset) // ']'
+    str._buffer.storeAt(']'.asByte(), offset)
 
     str
   }
@@ -739,8 +739,7 @@ type Array<T> {
     if self.length == self._capacity {
       self._capacity *= 2
 
-      // self._buffer = Pointer.realloc(self._buffer, self._capacity)
-      self._buffer = self._buffer.realloc2(self._capacity)
+      self._buffer = self._buffer.realloc(self._capacity)
     }
 
     self._buffer.storeAt(item, self.length)
