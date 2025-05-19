@@ -61,10 +61,13 @@ pub type Pointer<T> {
   pub func isNullPtr(self): Bool
 
   @intrinsic("pointer_malloc")
-  pub func malloc<T>(count = 1): Pointer<T>
+  pub func malloc<T>(count: Int): Pointer<T>
 
   @intrinsic("pointer_realloc")
   pub func realloc<T>(ptr: Pointer<T>, count: Int): Pointer<T>
+
+  @intrinsic("pointer_realloc")
+  pub func realloc(self, count: Int): Pointer<T>
 
   @intrinsic("pointer_address")
   pub func address(self): Int
