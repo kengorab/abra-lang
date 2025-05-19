@@ -106,7 +106,7 @@ pub func getCurrentWorkingDirectory(): String {
   val len = libc.strlen(buf)
 
   val str = String.withLength(len)
-  str._buffer.copyFrom(buf, len)
+  str._buffer.copyFrom2(0, buf, 0, len)
   str
 }
 
@@ -114,6 +114,6 @@ func _strerror(errno: Int): String {
   val buf = libc.strerror(errno)
   val len = libc.strlen(buf)
   val str = String.withLength(len)
-  str._buffer.copyFrom(buf, len)
+  str._buffer.copyFrom2(0, buf, 0, len)
   str
 }

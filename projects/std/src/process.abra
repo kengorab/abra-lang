@@ -48,12 +48,12 @@ pub func uname(): Uname {
 
   val sysnameLen = libc.strlen(utsnameBuf)
   val sysname = String.withLength(sysnameLen)
-  sysname._buffer.copyFrom(utsnameBuf, sysnameLen)
+  sysname._buffer.copyFrom2(0, utsnameBuf, 0, sysnameLen)
 
   // The utsname struct has 5 fields (6 on some platforms), of constant and equal sizes, but the size of
-  // each field differs per platform. After extracting the first string, skip over the \0 bytes until we
-  // reach the start of the next string. From that offset, we can determine the size of each field, and
-  // extract the remaining fields more efficiently.
+  // each field differs per platform. After extracting the first string, skip over the \0 padding bytes
+  // until we reach the start of the next string. From that offset, we can determine the size of each field,
+  // and extract the remaining fields more efficiently.
   var offset = sysnameLen
   while utsnameBuf.loadAt(offset).asInt() == 0 { offset += 1 }
   var cursor = offset
@@ -207,7 +207,7 @@ type Stdin {
     if nread == 0 return None
 
     val str = String.withLength(nread)
-    str._buffer.copyFrom(self._buf, nread)
+    str._buffer.copyFrom2(0, self._buf, 0, nread)
     return Some(str)
   }
 }
