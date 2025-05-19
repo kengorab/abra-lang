@@ -61,10 +61,13 @@ pub type Pointer<T> {
   pub func isNullPtr(self): Bool
 
   @intrinsic("pointer_malloc")
-  pub func malloc<T>(count = 1): Pointer<T>
+  pub func malloc<T>(count: Int): Pointer<T>
 
   @intrinsic("pointer_realloc")
   pub func realloc<T>(ptr: Pointer<T>, count: Int): Pointer<T>
+
+  @intrinsic("pointer_realloc")
+  pub func realloc2(self, count: Int): Pointer<T>
 
   @intrinsic("pointer_address")
   pub func address(self): Int
@@ -77,7 +80,4 @@ pub type Pointer<T> {
 
   @intrinsic("pointer_copy_from")
   pub func copyFrom(self, dstOffset: Int, srcPtr: Pointer<T>, srcOffset: Int, size: Int)
-
-  @intrinsic("pointer_copy_from_2")
-  pub func copyFrom2(self, dstOffset: Int, srcPtr: Pointer<T>, srcOffset: Int, size: Int)
 }
