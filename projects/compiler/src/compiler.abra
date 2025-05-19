@@ -2817,31 +2817,6 @@ pub type Compiler {
 
         bogusValue
       }
-      "pointer_copy_from_2" => {
-        val (ptr, dstOffset, src, srcOffset, size) = self._intrinsicArgs5(intrinsicFnName, arguments)
-        val ptrVal = try self._compileExpression(ptr)
-        val dstOffsetVal = try self._compileExpression(dstOffset)
-        val srcVal = try self._compileExpression(src)
-        val srcOffsetVal = try self._compileExpression(srcOffset)
-        val sizeArg = try self._compileExpression(size)
-
-        val innerTy = try self._resolvedGenerics.resolveGeneric("T") else unreachable("(pointer_copy_from) could not resolve T for Pointer<T>")
-        val innerTySize = try self._pointerSize(innerTy)
-        val sizeVal = try self._currentFn.block.buildMul(Value.Int(innerTySize), sizeArg) else |e| return qbeError(e)
-
-        val dstMem = try self._currentFn.block.buildAdd(
-          try self._currentFn.block.buildMul(Value.Int(innerTySize), dstOffsetVal) else |e| return qbeError(e),
-          ptrVal
-        ) else |e| return qbeError(e)
-        val srcMem = try self._currentFn.block.buildAdd(
-          try self._currentFn.block.buildMul(Value.Int(innerTySize), srcOffsetVal) else |e| return qbeError(e),
-          srcVal
-        ) else |e| return qbeError(e)
-
-        self._currentFn.block.buildVoidCall(Callable.Function(self._memcpy), [dstMem, srcMem, sizeVal])
-
-        bogusValue
-      }
       "errno" => {
         val errnoFnName = match process.uname().sysname {
           "Linux" => "__errno_location"

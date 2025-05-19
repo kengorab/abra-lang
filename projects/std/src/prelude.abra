@@ -635,7 +635,7 @@ type ArrayIterator<T> {
 
 type Array<T> {
   pub length: Int
-  _buffer: Pointer<T> = Pointer.null()
+  _buffer: Pointer<T>
   _capacity: Int = 0
 
   pub func withCapacity<T>(initialCapacity: Int): T[] {
