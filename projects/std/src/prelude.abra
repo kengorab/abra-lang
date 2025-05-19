@@ -183,6 +183,8 @@ type Char {
 
   pub func asInt(self): Int = intrinsics.charAsInt(self)
 
+  pub func asByte(self): Byte = Byte.fromInt(self.asInt() && 0xFF)
+
   pub func bytes(self): Int[] {
     val value = self.asInt()
 
