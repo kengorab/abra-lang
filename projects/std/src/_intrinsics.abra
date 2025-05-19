@@ -54,9 +54,6 @@ pub type Byte {
 }
 
 pub type Pointer<T> {
-  @intrinsic("pointer_null")
-  pub func null<T>(): Pointer<T>
-
   @intrinsic("pointer_is_null")
   pub func isNullPtr(self): Bool
 

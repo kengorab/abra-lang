@@ -737,7 +737,8 @@ type Array<T> {
     if self.length == self._capacity {
       self._capacity *= 2
 
-      self._buffer = Pointer.realloc(self._buffer, self._capacity)
+      // self._buffer = Pointer.realloc(self._buffer, self._capacity)
+      self._buffer = self._buffer.realloc2(self._capacity)
     }
 
     self._buffer.storeAt(item, self.length)

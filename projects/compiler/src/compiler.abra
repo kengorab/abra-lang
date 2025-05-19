@@ -2709,11 +2709,6 @@ pub type Compiler {
 
     val bogusValue = Value.Ident("bogus", QbeType.F32)
     val res = match intrinsicFnName {
-      "pointer_null" => {
-        try self._currentFn.block.buildAdd(Value.Int(0), Value.Int(0), Some("__pointer_null__")) else |e| return qbeError(e)
-
-        Value.Ident("__pointer_null__", QbeType.Pointer)
-      }
       "pointer_is_null" => {
         val ptr = self._intrinsicArgs1(intrinsicFnName, arguments)
         val ptrVal = try self._compileExpression(ptr)
