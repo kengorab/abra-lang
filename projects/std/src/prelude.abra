@@ -570,18 +570,18 @@ type String {
     var selfCursor = 0
     for idx in replacementIndices {
       if selfCursor < idx {
-        newString._buffer.copyFrom2(resCursor, selfBuf, selfCursor , idx - selfCursor)
+        newString._buffer.copyFrom(resCursor, selfBuf, selfCursor , idx - selfCursor)
         resCursor += (idx - selfCursor)
       }
       selfCursor = idx + pattern.length
       if replacement.length != 0 {
-        newString._buffer.copyFrom2(resCursor, replacement._buffer, 0, replacement.length)
+        newString._buffer.copyFrom(resCursor, replacement._buffer, 0, replacement.length)
       }
       resCursor += replacement.length
     }
 
     if selfCursor < self.length {
-      newString._buffer.copyFrom2(resCursor, selfBuf, selfCursor, self.length - selfCursor)
+      newString._buffer.copyFrom(resCursor, selfBuf, selfCursor, self.length - selfCursor)
     }
 
     newString
@@ -594,7 +594,7 @@ type String {
     if idx >= self.length || idx < 0 { return "" }
 
     val str = String.withLength(1)
-    str._buffer.copyFrom2(0, self._buffer, idx, 1)
+    str._buffer.copyFrom(0, self._buffer, idx, 1)
     str
   }
 
@@ -603,7 +603,7 @@ type String {
     val end = if endIndex > self.length self.length else endIndex
     val length = end - start
     val subString = String.withLength(length)
-    subString._buffer.copyFrom2(0, self._buffer, start, length)
+    subString._buffer.copyFrom(0, self._buffer, start, length)
 
     subString
   }
@@ -613,7 +613,7 @@ type String {
 
     val str = String.withLength(self.length * times)
     for i in range(0, times) {
-      str._buffer.copyFrom2(self.length * i, self._buffer, 0, self.length)
+      str._buffer.copyFrom(self.length * i, self._buffer, 0, self.length)
     }
     str
   }
@@ -687,7 +687,7 @@ type Array<T> {
     i = 0
     while i < self.length {
       val repr = reprs._buffer.loadAt(i)
-      str._buffer.copyFrom2(offset, repr._buffer, 0, repr.length)
+      str._buffer.copyFrom(offset, repr._buffer, 0, repr.length)
       offset += repr.length
 
       if i != self.length - 1 {
@@ -758,8 +758,8 @@ type Array<T> {
 
   pub func concat(self, other: T[]): T[] {
     val newArray: T[] = Array.withCapacity(self.length + other.length)
-    newArray._buffer.copyFrom2(0, self._buffer, 0, self.length)
-    newArray._buffer.copyFrom2(self.length, other._buffer, 0, other.length)
+    newArray._buffer.copyFrom(0, self._buffer, 0, self.length)
+    newArray._buffer.copyFrom(self.length, other._buffer, 0, other.length)
     newArray.length = self.length + other.length
     newArray
   }
@@ -834,10 +834,10 @@ type Array<T> {
     var offset = 0
     for i in range(0, reprs.length) {
       val repr = reprs._buffer.loadAt(i)
-      str._buffer.copyFrom2(offset, repr._buffer, 0, repr.length)
+      str._buffer.copyFrom(offset, repr._buffer, 0, repr.length)
       offset += repr.length
       if i != reprs.length - 1 {
-        str._buffer.copyFrom2(offset, joiner._buffer, 0, joiner.length)
+        str._buffer.copyFrom(offset, joiner._buffer, 0, joiner.length)
         offset += joiner.length
       }
     }
@@ -1020,7 +1020,7 @@ type Array<T> {
     val length = end - start
     val subArray: T[] = Array.withCapacity(length)
     subArray.length = length
-    subArray._buffer.copyFrom2(0, self._buffer, start, length)
+    subArray._buffer.copyFrom(0, self._buffer, start, length)
 
     subArray
   }

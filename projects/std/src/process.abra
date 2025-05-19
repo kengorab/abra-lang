@@ -48,7 +48,7 @@ pub func uname(): Uname {
 
   val sysnameLen = libc.strlen(utsnameBuf)
   val sysname = String.withLength(sysnameLen)
-  sysname._buffer.copyFrom2(0, utsnameBuf, 0, sysnameLen)
+  sysname._buffer.copyFrom(0, utsnameBuf, 0, sysnameLen)
 
   // The utsname struct has 5 fields (6 on some platforms), of constant and equal sizes, but the size of
   // each field differs per platform. After extracting the first string, skip over the \0 padding bytes
@@ -60,22 +60,22 @@ pub func uname(): Uname {
 
   val nodenameLen = libc.strlen(utsnameBuf)
   val nodename = String.withLength(nodenameLen)
-  nodename._buffer.copyFrom2(0, utsnameBuf, cursor, nodenameLen)
+  nodename._buffer.copyFrom(0, utsnameBuf, cursor, nodenameLen)
   cursor += sysnameLen
 
   val releaseLen = libc.strlen(utsnameBuf)
   val release = String.withLength(releaseLen)
-  release._buffer.copyFrom2(0, utsnameBuf, cursor, releaseLen)
+  release._buffer.copyFrom(0, utsnameBuf, cursor, releaseLen)
   cursor += sysnameLen
 
   val versionLen = libc.strlen(utsnameBuf)
   val version = String.withLength(versionLen)
-  version._buffer.copyFrom2(0, utsnameBuf, cursor, versionLen)
+  version._buffer.copyFrom(0, utsnameBuf, cursor, versionLen)
   cursor += sysnameLen
 
   val machineLen = libc.strlen(utsnameBuf)
   val machine = String.withLength(machineLen)
-  machine._buffer.copyFrom2(0, utsnameBuf, cursor, machineLen)
+  machine._buffer.copyFrom(0, utsnameBuf, cursor, machineLen)
 
   val uname = Uname(sysname: sysname, nodename: nodename, release: release, version: version, machine: machine)
   _uname = Some(uname)
@@ -153,7 +153,7 @@ func getModuleNames(): String[] {
       if len == 0 break
 
       val str = String.withLength(len)
-      str._buffer.copyFrom2(0, buf, idx - len, len)
+      str._buffer.copyFrom(0, buf, idx - len, len)
       moduleNames.push(str)
 
       idx += 1
@@ -183,7 +183,7 @@ func getFunctionNames(): String[] {
       if len == 0 break
 
       val str = String.withLength(len)
-      str._buffer.copyFrom2(0, buf, idx - len, len)
+      str._buffer.copyFrom(0, buf, idx - len, len)
       functionNames.push(str)
 
       idx += 1
@@ -207,7 +207,7 @@ type Stdin {
     if nread == 0 return None
 
     val str = String.withLength(nread)
-    str._buffer.copyFrom2(0, self._buf, 0, nread)
+    str._buffer.copyFrom(0, self._buf, 0, nread)
     return Some(str)
   }
 }
