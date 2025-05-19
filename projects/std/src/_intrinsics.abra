@@ -69,23 +69,11 @@ pub type Pointer<T> {
   @intrinsic("pointer_address")
   pub func address(self): Int
 
-  // @intrinsic("pointer_store")
-  // pub func store(self, value: T)
-
   @intrinsic("pointer_store_at")
   pub func storeAt(self, value: T, offset: Int)
 
-  // @intrinsic("pointer_load")
-  // pub func load(self): T
-
   @intrinsic("pointer_load_at")
   pub func loadAt(self, offset: Int): T
-
-  // @intrinsic("pointer_offset")
-  // pub func offset(self, offset: Int): Pointer<T>
-
-  // @intrinsic("pointer_copy_from")
-  // pub func copyFrom(self, other: Pointer<T>, size: Int)
 
   @intrinsic("pointer_copy_from")
   pub func copyFrom(self, dstOffset: Int, srcPtr: Pointer<T>, srcOffset: Int, size: Int)
