@@ -287,25 +287,20 @@ pub type Compiler {
 
             self.callRealloc(ptrVal, sizeVal, dst)
           }
-          Builtin.Store(ptr, value, itemTy) => {
+          Builtin.Store(ptr, value, offset, itemTy) => {
             val ptrVal = self.irValueToQbeValue(ptr)
             val valueVal = self.irValueToQbeValue(value)
-
-            val (size, qbeTy) = self.sizeOfType(itemTy)
-            if size == 1 {
-              self.currentFn.block.buildStoreB(valueVal, ptrVal)
-            } else {
-              self.currentFn.block.buildStore(qbeTy, valueVal, ptrVal)
-            }
-          }
-          Builtin.Offset(ptr, offset, itemTy) => {
-            val ptrVal = self.irValueToQbeValue(ptr)
             val offsetVal = self.irValueToQbeValue(offset)
 
-            val (size, _) = self.sizeOfType(itemTy)
+            val (size, qbeTy) = self.sizeOfType(itemTy)
             val sizeVal = try self.currentFn.block.buildMul(qbe.Value.Int(size), offsetVal, Some(self.nextTemp())) else |e| unreachable(e)
+            val mem = try self.currentFn.block.buildAdd(sizeVal, ptrVal, dst) else |e| unreachable(e)
 
-            try self.currentFn.block.buildAdd(sizeVal, ptrVal, dst) else |e| unreachable(e)
+            if size == 1 {
+              self.currentFn.block.buildStoreB(valueVal, mem)
+            } else {
+              self.currentFn.block.buildStore(qbeTy, valueVal, mem)
+            }
           }
           Builtin.I64ToString(int) => {
             self.builtinI64ToStringUsed = true

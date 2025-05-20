@@ -158,8 +158,7 @@ pub enum Value {
 pub enum Builtin {
   Malloc(count: Value, itemTy: IrType? = None)
   Realloc(ptr: Value, count: Value, itemTy: IrType? = None)
-  Store(ptr: Value, value: Value, itemTy: IrType)
-  Offset(ptr: Value, offset: Value, itemTy: IrType)
+  Store(ptr: Value, value: Value, offset: Value, itemTy: IrType)
   I64ToString(intVal: Value)
 }
 
@@ -322,17 +321,11 @@ pub enum Operation {
               ty.render(sb)
             }
           }
-          Builtin.Store(ptr, value, itemTy) => {
+          Builtin.Store(ptr, value, offset, itemTy) => {
             sb.write("ptr_store, ")
             ptr.render(sb)
             sb.write(", ")
             value.render(sb)
-            sb.write(", ")
-            itemTy.render(sb)
-          }
-          Builtin.Offset(ptr, offset, itemTy) => {
-            sb.write("ptr_offset, ")
-            ptr.render(sb)
             sb.write(", ")
             offset.render(sb)
             sb.write(", ")
@@ -1010,19 +1003,6 @@ pub type Generator {
               self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: IrType.Ptr, builtin: builtin)))
               Value.Ident(ident: ident)
             }
-            "pointer_realloc" => {
-              val (ptr, count) = self.intrinsicArgs2("pointer_realloc", args)
-
-              val itemTy = self.getIrTypeForConcreteType(try concreteGenerics["T"] else unreachable("(pointer_realloc) could not resolve T for Pointer<T>"))
-              val ptrVal = self.genExpression(ptr, concreteGenerics)
-              val countVal = self.genExpression(count, concreteGenerics)
-
-              val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
-              val ident = Ident(ty: IrType.Ptr, kind: identKind)
-              val builtin = Builtin.Realloc(ptr: ptrVal, count: countVal, itemTy: Some(itemTy))
-              self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: IrType.Ptr, builtin: builtin)))
-              Value.Ident(ident: ident)
-            }
             else => todo("Unimplemented static/standalone intrinsic '$intrinsicName'")
           }
         } else {
@@ -1049,27 +1029,29 @@ pub type Generator {
           todo("Unimplemented external method '$fnName'")
         } else if self.getIntrinsicDecName(fn) |intrinsicName| {
           return match intrinsicName {
-            "pointer_store" => {
-              val value = self.intrinsicArgs1("pointer_store", args)
+            "pointer_realloc" => {
+              val count = self.intrinsicArgs1("pointer_realloc", args)
+
+              val itemTy = self.getIrTypeForConcreteType(try concreteGenerics["T"] else unreachable("(pointer_realloc) could not resolve T for Pointer<T>"))
+              val ptrVal = self.genExpression(selfVal, concreteGenerics)
+              val countVal = self.genExpression(count, concreteGenerics)
+
+              val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+              val ident = Ident(ty: IrType.Ptr, kind: identKind)
+              val builtin = Builtin.Realloc(ptr: ptrVal, count: countVal, itemTy: Some(itemTy))
+              self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: IrType.Ptr, builtin: builtin)))
+              Value.Ident(ident: ident)
+            }
+            "pointer_store_at" => {
+              val (value, offset) = self.intrinsicArgs2("pointer_store_at", args)
 
               val itemTy = self.getIrTypeForConcreteType(try concreteGenerics["T"] else unreachable("(pointer_store) could not resolve T for Pointer<T>"))
               val ptrVal = self.genExpression(selfVal, concreteGenerics)
               val valueVal = self.genExpression(value, concreteGenerics)
-
-              self.emit(Instruction(op: Operation.Builtin(ret: IrType.Unit, builtin: Builtin.Store(ptr: ptrVal, value: valueVal, itemTy: itemTy))))
-              Value.Unit
-            }
-            "pointer_offset" => {
-              val offset = self.intrinsicArgs1("pointer_offset", args)
-
-              val itemTy = self.getIrTypeForConcreteType(try concreteGenerics["T"] else unreachable("(pointer_offset) could not resolve T for Pointer<T>"))
-              val ptrVal = self.genExpression(selfVal, concreteGenerics)
               val offsetVal = self.genExpression(offset, concreteGenerics)
 
-              val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
-              val ident = Ident(ty: IrType.Ptr, kind: identKind)
-              self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Offset(ptr: ptrVal, offset: offsetVal, itemTy: itemTy))))
-              Value.Ident(ident: ident)
+              self.emit(Instruction(op: Operation.Builtin(ret: IrType.Unit, builtin: Builtin.Store(ptr: ptrVal, value: valueVal, offset: offsetVal, itemTy: itemTy))))
+              Value.Unit
             }
             else => todo("Unimplemented method intrinsic '$intrinsicName'")
           }

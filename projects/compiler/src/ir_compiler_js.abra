@@ -23,6 +23,15 @@ pub type Compiler {
 
     val compiler = Compiler(ir: ir, sb: sb)
 
+    sb.writeln("export default function(externs) {")
+    sb.write("const { ")
+    for fn in ir.functions {
+      if !fn.extern continue
+      sb.write(fn.name)
+      sb.write(", ")
+    }
+    sb.writeln("} = externs;")
+
     for g in ir.globals {
       compiler.compileGlobal(g)
     }
@@ -37,6 +46,8 @@ pub type Compiler {
       compiler.compileFunction(fn)
       sb.writeln()
     }
+
+    sb.writeln("}")
 
     CompilationResult(sb: sb)
   }
@@ -261,18 +272,14 @@ pub type Compiler {
             self.emitIrValueToJsValue(ptr)
             self.sb.writeln("; // realloc (no-op)")
           }
-          Builtin.Store(ptr, value, itemTy) => {
+          Builtin.Store(ptr, value, offset, itemTy) => {
             self.emitIndent()
             self.emitIrValueToJsValue(ptr)
-            self.sb.write(" = ")
+            self.sb.write("[")
+            self.emitIrValueToJsValue(offset)
+            self.sb.write("] = ")
             self.emitIrValueToJsValue(value)
             self.sb.writeln("; // builtin(ptr_store)")
-          }
-          Builtin.Offset(ptr, offset, itemTy) => {
-            self.emitIndent()
-            self.sb.write("const $dst = ")
-            self.emitIrValueToJsValue(offset)
-            self.sb.writeln("; // builtin(ptr_offset)")
           }
           Builtin.I64ToString(int) => {
             val strInitFn = self.ir.knowns.stringInitializerFn()
