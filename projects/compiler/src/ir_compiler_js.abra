@@ -1,0 +1,333 @@
+import File from "fs"
+import StringBuilder, IR, IrFunction, IrType, Instruction, Operation, Value, IdentKind, GlobalVariable, Builtin from "./ir"
+import ModuleBuilder, QbeType from "./qbe"
+import "./qbe" as qbe
+import i64ToString from "./ir_compiler_builtins"
+
+pub type CompilationResult {
+  sb: StringBuilder
+
+  pub func writeToFile(self, file: File) {
+    file.writeln(self.sb.build())
+  }
+}
+
+pub type Compiler {
+  ir: IR
+  sb: StringBuilder
+  numTemps: Int = 0
+  indentLevel: Int = 0
+
+  pub func compile(ir: IR): CompilationResult {
+    val sb = StringBuilder()
+
+    val compiler = Compiler(ir: ir, sb: sb)
+
+    sb.writeln("export default function(externs) {")
+    sb.write("const { ")
+    for fn in ir.functions {
+      if !fn.extern continue
+      sb.write(fn.name)
+      sb.write(", ")
+    }
+    sb.writeln("} = externs;")
+
+    for g in ir.globals {
+      compiler.compileGlobal(g)
+    }
+    sb.writeln()
+
+    compiler.compileMainFunction(ir.mainFunction)
+    sb.writeln()
+
+    sb.writeln("${ir.mainFunction.name}();")
+
+    for fn in ir.functions {
+      compiler.compileFunction(fn)
+      sb.writeln()
+    }
+
+    sb.writeln("}")
+
+    CompilationResult(sb: sb)
+  }
+
+  func compileGlobal(self, global: GlobalVariable) {
+    if !global.referenced return
+
+    if global.initialValue |init| {
+      self.sb.write("const ${global.name} = ")
+      self.emitIrValueToJsValue(init)
+      self.sb.writeln(";")
+    } else {
+      self.sb.writeln("let ${global.name};")
+    }
+  }
+
+  func compileMainFunction(self, fn: IrFunction) {
+    self.sb
+      .write("function ")
+      .write(fn.name)
+      .writeln("() {")
+
+    self.indentLevel += 1
+    for inst in fn.block[1] {
+      self.compileInstruction(inst)
+    }
+    self.indentLevel -= 1
+
+    self.sb.writeln("}")
+  }
+
+  func compileFunction(self, fn: IrFunction) {
+    if fn.extern return
+
+    self.numTemps = 0
+
+    self.sb
+      .write("function ")
+      .write(fn.name)
+      .write("(")
+    for param, idx in fn.params {
+      val paramName = match param.kind { IdentKind.Named(name) => name, else => unreachable("expected IdentKind.Named for param") }
+      self.sb.write(paramName)
+      if idx != fn.params.length - 1 {
+        self.sb.write(", ")
+      }
+    }
+    self.sb.writeln(") {")
+
+    self.indentLevel += 1
+    for inst in fn.block[1] {
+      self.compileInstruction(inst)
+    }
+    self.indentLevel -= 1
+
+    self.sb.writeln("}")
+  }
+
+  func compileInstruction(self, inst: Instruction) {
+    val dst = match inst.assignee?.kind {
+      IdentKind.Anon(idx) => "_$idx"
+      IdentKind.Named(name) => name
+      else => self.nextTemp()
+    }
+
+    match inst.op {
+      Operation.NewLocal(ty, initialValue) => {
+        self.emitIndent()
+        self.sb.write("let ${dst}")
+        if initialValue |init| {
+          self.sb.write(" = ")
+          self.emitIrValueToJsValue(init)
+        } else {
+        }
+        self.sb.writeln(";")
+      }
+      Operation.ConstInt(int) => {
+        self.emitIndent()
+        self.sb.writeln(int.toString())
+      }
+      Operation.Add(l, r) => {
+        self.emitIndent()
+        self.sb.write("const $dst = ")
+        self.emitIrValueToJsValue(l)
+        self.sb.write(" + ")
+        self.emitIrValueToJsValue(r)
+        self.sb.writeln(";")
+      }
+      Operation.Mul(l, r) => {
+        self.emitIndent()
+        self.sb.write("const $dst = ")
+        self.emitIrValueToJsValue(l)
+        self.sb.write(" * ")
+        self.emitIrValueToJsValue(r)
+        self.sb.writeln(";")
+      }
+      Operation.Eq(primitive, negate, l, r) => {
+        if !primitive todo("non-primitive Eq operation")
+
+        self.emitIndent()
+        self.sb.write("const $dst = ")
+        self.emitIrValueToJsValue(l)
+        if negate {
+          self.sb.write(" !== ")
+        } else {
+          self.sb.write(" === ")
+        }
+        self.emitIrValueToJsValue(r)
+        self.sb.writeln(";")
+      }
+      Operation.Load(ty, mem) => {
+        self.emitIndent()
+        self.sb.write("const $dst = ")
+        self.emitIrValueToJsValue(mem)
+        self.sb.writeln(";")
+      }
+      Operation.LoadField(ty, mem, name, _) => {
+        self.emitIndent()
+        self.sb.write("const $dst = ")
+        self.emitIrValueToJsValue(mem)
+        self.sb.writeln(".$name;")
+      }
+      Operation.Store(ty, value, mem) => {
+        self.emitIndent()
+        self.emitIrValueToJsValue(mem)
+        self.sb.write(" = ")
+        self.emitIrValueToJsValue(value)
+        self.sb.writeln(";")
+      }
+      Operation.StoreField(ty, value, mem, name, _) => {
+        self.emitIndent()
+        self.emitIrValueToJsValue(mem)
+        self.sb.write(".$name = ")
+        self.emitIrValueToJsValue(value)
+        self.sb.writeln(";")
+      }
+      Operation.If(ty, cond, thenBlock, elseBlock) => {
+        val isStmt = ty == IrType.Unit
+        val (thenLabel, thenBody, thenVal) = thenBlock
+        val (elseLabel, elseBody, elseVal) = elseBlock
+
+        if !isStmt {
+          self.emitIndent()
+          self.sb.writeln("let $dst;")
+        }
+
+        self.emitIndent()
+        val condVal = self.irValueToJsValue(cond)
+        self.sb.writeln("if ($condVal) {")
+        self.indentLevel += 1
+        for inst, idx in thenBody {
+          self.compileInstruction(inst)
+        }
+        if thenVal |v| {
+          self.emitIndent()
+          self.sb.write("$dst = ")
+          self.emitIrValueToJsValue(v)
+          self.sb.writeln(";")
+        }
+        self.indentLevel -= 1
+
+        if !elseBody.isEmpty() || !!elseVal {
+          self.emitIndent()
+          self.sb.writeln("} else {")
+
+          self.indentLevel += 1
+          for inst, idx in elseBody {
+            self.compileInstruction(inst)
+          }
+          if elseVal |v| {
+            self.emitIndent()
+            self.sb.write("$dst = ")
+            self.emitIrValueToJsValue(v)
+            self.sb.writeln(";")
+          }
+          self.indentLevel -= 1
+        }
+
+        self.emitIndent()
+        self.sb.writeln("}")
+      }
+      Operation.Call(ret, fnName, args) => {
+        self.emitIndent()
+        if ret != IrType.Unit {
+          self.sb.write("const $dst = ")
+        }
+
+        self.sb.write(fnName)
+          .write("(")
+        for arg, idx in args {
+          self.emitIrValueToJsValue(arg)
+          if idx != args.length - 1 {
+            self.sb.write(", ")
+          }
+        }
+        self.sb.writeln(");")
+      }
+      Operation.Return(value) => {
+        self.emitIndent()
+        self.sb.write("return")
+        if value |v| {
+          self.sb.write(" ")
+          self.emitIrValueToJsValue(v)
+        }
+        self.sb.writeln(";")
+      }
+      Operation.Builtin(ret, builtin) => {
+        match builtin {
+          Builtin.Malloc(count, itemTy) => {
+            self.emitIndent()
+            self.sb.write("const $dst = ")
+            // If no itemTy present then it's a "void*", which can be thought of as an array; if there is a type being malloc'd, then it's an object
+            if !itemTy {
+              self.sb.writeln("{}; // builtin(malloc)")
+            } else {
+              self.sb.writeln("[]; // builtin(malloc)")
+            }
+          }
+          Builtin.Realloc(ptr, count, itemTy) => {
+            self.emitIndent()
+            self.sb.write("const $dst = ")
+            self.emitIrValueToJsValue(ptr)
+            self.sb.writeln("; // realloc (no-op)")
+          }
+          Builtin.Store(ptr, value, offset, itemTy) => {
+            self.emitIndent()
+            self.emitIrValueToJsValue(ptr)
+            self.sb.write("[")
+            self.emitIrValueToJsValue(offset)
+            self.sb.write("] = ")
+            self.emitIrValueToJsValue(value)
+            self.sb.writeln("; // builtin(ptr_store)")
+          }
+          Builtin.I64ToString(int) => {
+            val strInitFn = self.ir.knowns.stringInitializerFn()
+
+            val strTmp = self.nextTemp()
+            self.emitIndent()
+            self.sb.write("const $strTmp = ")
+            self.emitIrValueToJsValue(int)
+            self.sb.writeln(".toString();")
+
+            self.emitIndent()
+            self.sb.writeln("const $dst = ${strInitFn.name}($strTmp.length, $strTmp);")
+          }
+        }
+      }
+    }
+  }
+
+  func nextTemp(self): String {
+    val name = "_t${self.numTemps}"
+    self.numTemps += 1
+    name
+  }
+
+  func emitIndent(self) {
+    self.sb.write("  ".repeat(self.indentLevel))
+  }
+
+  func emitIrValueToJsValue(self, v: Value) {
+    self.sb.write(self.irValueToJsValue(v))
+  }
+
+  func irValueToJsValue(self, v: Value): String {
+    match v {
+      Value.Unit => unreachable("values cannot be of type unit")
+      Value.ConstInt(i) => i.toString()
+      Value.ConstBool(b) => b.toString()
+      Value.ConstString(s) => {
+        val str = s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r")
+        "{ length: ${str.length}, _buffer: \"$str\" }"
+      }
+      Value.Ident(i) => {
+        match i.kind {
+          IdentKind.Anon(idx) => "_$idx"
+          IdentKind.Named(name) => name
+        }
+      }
+      Value.Global(g) => g.name
+    }
+  }
+}

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Example</title>
+
+    <script type="module">
+      import main from './._abra/_main.mjs';
+
+      const stdout = document.getElementById('stdout');
+
+      // The `write` function appends to the #stdout element, and also outputs to the console.
+      // When outputting to the console, make sure to disregard newlines and empty strings, since
+      // `console` methods always append the newline.
+      function write(fd, buf, _count) {
+        stdout.innerHTML += buf
+
+        if (buf.endsWith('\n')) { buf = buf.substring(0, buf.length - 1); }
+        if (!buf.length) return;
+
+        if (fd === 1) {
+          console.log(buf);
+        } else if (fd === 2) {
+          console.err(buf);
+        }
+      }
+
+      main({ write });
+    </script>
+
+</head>
+<body>
+    <h1>Stdout</h1>
+    <pre id="stdout"></pre>
+</body>
+</html>

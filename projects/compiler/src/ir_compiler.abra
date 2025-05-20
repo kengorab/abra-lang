@@ -156,7 +156,11 @@ pub type Compiler {
         }
         self.currentFn.block.buildExt(res, false, dst)
       }
-      Operation.Load(ty, mem, offset) => {
+      Operation.Load(ty, mem) => {
+        val ptr = self.irValueToQbeValue(mem)
+        self.currentFn.block.buildLoad(self.irTypeToQbeType(ty), ptr, dst)
+      }
+      Operation.LoadField(ty, mem, _, offset) => {
         val ptr = if offset == 0 {
           self.irValueToQbeValue(mem)
         } else {
@@ -165,7 +169,12 @@ pub type Compiler {
         }
         self.currentFn.block.buildLoad(self.irTypeToQbeType(ty), ptr, dst)
       }
-      Operation.Store(ty, value, mem, offset) => {
+      Operation.Store(ty, value, mem) => {
+        val ptr = self.irValueToQbeValue(mem)
+        val v = self.irValueToQbeValue(value)
+        self.currentFn.block.buildStore(self.irTypeToQbeType(ty), v, ptr)
+      }
+      Operation.StoreField(ty, value, mem, _, offset) => {
         val ptr = if offset == 0 {
           self.irValueToQbeValue(mem)
         } else {
@@ -179,12 +188,13 @@ pub type Compiler {
       Operation.If(ty, cond, thenBlock, elseBlock) => {
         val isStmt = ty == IrType.Unit
         val (thenLabel, thenBody, thenVal) = thenBlock
+        val (elseLabel, elseBody, elseVal) = elseBlock
         val condVal = self.irValueToQbeValue(cond)
 
         val labelThen = self.currentFn.block.addLabel(thenLabel)
         val labelCont = self.currentFn.block.addLabel("cont")
 
-        if elseBlock |(elseLabel, elseBody, elseVal)| {
+        if !elseBody.isEmpty() || !!elseVal {
           val labelElse = self.currentFn.block.addLabel(elseLabel)
 
           self.currentFn.block.buildJnz(condVal, labelThen, labelElse)
@@ -277,25 +287,20 @@ pub type Compiler {
 
             self.callRealloc(ptrVal, sizeVal, dst)
           }
-          Builtin.Store(ptr, value, itemTy) => {
+          Builtin.Store(ptr, value, offset, itemTy) => {
             val ptrVal = self.irValueToQbeValue(ptr)
             val valueVal = self.irValueToQbeValue(value)
-
-            val (size, qbeTy) = self.sizeOfType(itemTy)
-            if size == 1 {
-              self.currentFn.block.buildStoreB(valueVal, ptrVal)
-            } else {
-              self.currentFn.block.buildStore(qbeTy, valueVal, ptrVal)
-            }
-          }
-          Builtin.Offset(ptr, offset, itemTy) => {
-            val ptrVal = self.irValueToQbeValue(ptr)
             val offsetVal = self.irValueToQbeValue(offset)
 
-            val (size, _) = self.sizeOfType(itemTy)
+            val (size, qbeTy) = self.sizeOfType(itemTy)
             val sizeVal = try self.currentFn.block.buildMul(qbe.Value.Int(size), offsetVal, Some(self.nextTemp())) else |e| unreachable(e)
+            val mem = try self.currentFn.block.buildAdd(sizeVal, ptrVal, dst) else |e| unreachable(e)
 
-            try self.currentFn.block.buildAdd(sizeVal, ptrVal, dst) else |e| unreachable(e)
+            if size == 1 {
+              self.currentFn.block.buildStoreB(valueVal, mem)
+            } else {
+              self.currentFn.block.buildStore(qbeTy, valueVal, mem)
+            }
           }
           Builtin.I64ToString(int) => {
             self.builtinI64ToStringUsed = true
