@@ -136,6 +136,14 @@ pub type Compiler {
         self.emitIrValueToJsValue(r)
         self.sb.writeln(";")
       }
+      Operation.Sub(l, r) => {
+        self.emitIndent()
+        self.sb.write("const $dst = ")
+        self.emitIrValueToJsValue(l)
+        self.sb.write(" - ")
+        self.emitIrValueToJsValue(r)
+        self.sb.writeln(";")
+      }
       Operation.Mul(l, r) => {
         self.emitIndent()
         self.sb.write("const $dst = ")
@@ -155,6 +163,14 @@ pub type Compiler {
         } else {
           self.sb.write(" === ")
         }
+        self.emitIrValueToJsValue(r)
+        self.sb.writeln(";")
+      }
+      Operation.Lt(l, r) => {
+        self.emitIndent()
+        self.sb.write("const $dst = ")
+        self.emitIrValueToJsValue(l)
+        self.sb.write(" < ")
         self.emitIrValueToJsValue(r)
         self.sb.writeln(";")
       }
@@ -186,8 +202,6 @@ pub type Compiler {
       }
       Operation.If(ty, cond, thenBlock, elseBlock) => {
         val isStmt = ty == IrType.Unit
-        val (thenLabel, thenBody, thenVal) = thenBlock
-        val (elseLabel, elseBody, elseVal) = elseBlock
 
         if !isStmt {
           self.emitIndent()
@@ -198,10 +212,10 @@ pub type Compiler {
         val condVal = self.irValueToJsValue(cond)
         self.sb.writeln("if ($condVal) {")
         self.indentLevel += 1
-        for inst, idx in thenBody {
+        for inst, idx in thenBlock.body {
           self.compileInstruction(inst)
         }
-        if thenVal |v| {
+        if thenBlock.result |v| {
           self.emitIndent()
           self.sb.write("$dst = ")
           self.emitIrValueToJsValue(v)
@@ -209,15 +223,15 @@ pub type Compiler {
         }
         self.indentLevel -= 1
 
-        if !elseBody.isEmpty() || !!elseVal {
+        if !elseBlock.body.isEmpty() || !!elseBlock.result {
           self.emitIndent()
           self.sb.writeln("} else {")
 
           self.indentLevel += 1
-          for inst, idx in elseBody {
+          for inst, idx in elseBlock.body {
             self.compileInstruction(inst)
           }
-          if elseVal |v| {
+          if elseBlock.result |v| {
             self.emitIndent()
             self.sb.write("$dst = ")
             self.emitIrValueToJsValue(v)
@@ -225,6 +239,26 @@ pub type Compiler {
           }
           self.indentLevel -= 1
         }
+
+        self.emitIndent()
+        self.sb.writeln("}")
+      }
+      Operation.While(_, cond, body) => {
+        self.emitIndent()
+        self.sb.writeln("while (true) {")
+        self.indentLevel += 1
+        for inst in cond.body {
+          self.compileInstruction(inst)
+        }
+        self.emitIndent()
+        self.sb.write("if (!")
+        self.emitIrValueToJsValue(try cond.result else unreachable())
+        self.sb.writeln(") break;")
+
+        for inst in body.body {
+          self.compileInstruction(inst)
+        }
+        self.indentLevel -= 1
 
         self.emitIndent()
         self.sb.writeln("}")
@@ -266,13 +300,13 @@ pub type Compiler {
               self.sb.writeln("[]; // builtin(malloc)")
             }
           }
-          Builtin.Realloc(ptr, count, itemTy) => {
+          Builtin.Realloc(ptr, count, _) => {
             self.emitIndent()
             self.sb.write("const $dst = ")
             self.emitIrValueToJsValue(ptr)
             self.sb.writeln("; // realloc (no-op)")
           }
-          Builtin.Store(ptr, value, offset, itemTy) => {
+          Builtin.Store(ptr, value, offset, _) => {
             self.emitIndent()
             self.emitIrValueToJsValue(ptr)
             self.sb.write("[")
@@ -281,6 +315,34 @@ pub type Compiler {
             self.emitIrValueToJsValue(value)
             self.sb.writeln("; // builtin(ptr_store)")
           }
+          Builtin.Load(ptr, offset, _) => {
+            self.emitIndent()
+            self.sb.write("const $dst = ")
+            self.emitIrValueToJsValue(ptr)
+            self.sb.write("[")
+            self.emitIrValueToJsValue(offset)
+            self.sb.writeln("]; // builtin(ptr_load)")
+          }
+          Builtin.CopyFrom(dst, dstOffset, src, srcOffset, count, _) => {
+            self.emitIndent()
+            val countVal = self.irValueToJsValue(count)
+            self.sb.writeln("for (let i = 0; i < $countVal; i++) {")
+            self.indentLevel += 1
+
+            self.emitIndent()
+            self.emitIrValueToJsValue(dst)
+            self.sb.write("[")
+            self.emitIrValueToJsValue(dstOffset)
+            self.sb.write(" + i] = ")
+            self.emitIrValueToJsValue(src)
+            self.sb.write("[")
+            self.emitIrValueToJsValue(srcOffset)
+            self.sb.writeln(" + i]; // builtin(copy_from)")
+
+            self.indentLevel -= 1
+            self.emitIndent()
+            self.sb.writeln("}")
+          }
           Builtin.I64ToString(int) => {
             val strInitFn = self.ir.knowns.stringInitializerFn()
 
@@ -288,7 +350,7 @@ pub type Compiler {
             self.emitIndent()
             self.sb.write("const $strTmp = ")
             self.emitIrValueToJsValue(int)
-            self.sb.writeln(".toString();")
+            self.sb.writeln(".toString().split('');")
 
             self.emitIndent()
             self.sb.writeln("const $dst = ${strInitFn.name}($strTmp.length, $strTmp);")
@@ -317,9 +379,10 @@ pub type Compiler {
       Value.Unit => unreachable("values cannot be of type unit")
       Value.ConstInt(i) => i.toString()
       Value.ConstBool(b) => b.toString()
+      Value.ConstChar(c) => "'${Char.fromInt(c).toString()}'"
       Value.ConstString(s) => {
         val str = s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r")
-        "{ length: ${str.length}, _buffer: \"$str\" }"
+        "{ length: ${s.length}, _buffer: \"$str\".split('') }"
       }
       Value.Ident(i) => {
         match i.kind {

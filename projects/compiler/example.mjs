@@ -1,10 +1,11 @@
 import main from './._abra/_main.mjs';
 
-export function write(fd, buf, _count) {
+function write(fd, buf, _count) {
+  const str = buf.join('')
   if (fd === 1) {
-    process.stdout.write(buf);
+    process.stdout.write(str);
   } else if (fd === 2) {
-    process.stderr.write(buf);
+    process.stderr.write(str);
   }
 }
 
