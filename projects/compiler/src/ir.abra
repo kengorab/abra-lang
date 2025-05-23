@@ -317,7 +317,7 @@ pub enum Operation {
           sb.writeln()
         }
         sb.write("while(")
-        cond.result?.render(sb)
+        (try cond.result else unreachable()).render(sb)
         sb.writeln(", .${body.name})")
 
         sb.writeln(".${body.name}:")
@@ -769,7 +769,13 @@ pub type Generator {
       }
       TypedAstNodeKind.Match => todo("TypedAstNodeKind.Match (${node.token.position})")
       TypedAstNodeKind.While(condNode, condBinding, block, terminator) => {
+        // It may be strange to think of the loop condition as a "block", a single expression node could result in many
+        // instructions. All of the condition's instructions will need to be rerun for each iteration of the loop in
+        // order to determine whether the loop should continue, so it's necessary to keep track of those in a manner
+        // separate from the rest of the instructions in the current function (in order to properly set up jump labels
+        // if necessary when compiling the IR to its target).
         val cond = self.withinBlock("while_loop_cond", false, () => Some(self.genExpression(condNode, concreteGenerics)))
+
         if self.project.typeIsOption(condNode.ty) todo("optional while-conditions")
         if condBinding todo("while-expr condition binding")
 
