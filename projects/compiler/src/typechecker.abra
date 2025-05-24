@@ -4984,17 +4984,21 @@ pub type Typechecker {
         else => unreachable("if selfVal passed, then FunctionKind must be InstanceMethod")
       }
 
-      if instanceKind |instanceKind| {
+      // When instanceKind is not present on FunctionKind.InstanceMethod, that means that the method's selfVal is a generic.
+      // In that case, the template from which to extract generics should just be self's type.
+      val template = if instanceKind |instanceKind| {
         val typeParams = match instanceKind { InstanceKind.Struct(s) => s.typeParams, InstanceKind.Enum(e) => e.typeParams }
-        val template = Type(kind: TypeKind.Instance(instanceKind, typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
-        val extractedGenerics = selfNode.ty.extractGenerics(template: template)
-        for (name, ty) in extractedGenerics {
-          if resolvedGenerics[name] |original| {
-            if original != ty unreachable("original != ty") // is this check necessary? i don't think so
-            continue
-          }
-          resolvedGenerics[name] = ty
+        Type(kind: TypeKind.Instance(instanceKind, typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+      } else {
+        selfNode.ty
+      }
+      val extractedGenerics = selfNode.ty.extractGenerics(template: template)
+      for (name, ty) in extractedGenerics {
+        if resolvedGenerics[name] |original| {
+          if original != ty unreachable("original != ty") // is this check necessary? i don't think so
+          continue
         }
+        resolvedGenerics[name] = ty
       }
     }
 

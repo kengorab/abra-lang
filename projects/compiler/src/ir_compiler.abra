@@ -25,6 +25,7 @@ pub type Compiler {
   builtinI64ToStringUsed: Bool = false
   mallocFn: qbe.QbeFunction = qbe.QbeFunction.spec(name: "GC_malloc", returnType: Some(QbeType.Pointer))
   reallocFn: qbe.QbeFunction = qbe.QbeFunction.spec(name: "GC_realloc", returnType: Some(QbeType.Pointer))
+  memcpyFn: qbe.QbeFunction = qbe.QbeFunction.spec(name: "memcpy", returnType: None)
 
   pub func compile(ir: IR): CompilationResult {
     val builder = ModuleBuilder()
@@ -135,6 +136,14 @@ pub type Compiler {
 
         self.currentFn.block.buildAdd(left, right, dst)
       }
+      Operation.Sub(l, r) => {
+        val left = self.irValueToQbeValue(l)
+        val right = self.irValueToQbeValue(r)
+
+        if left.ty() != right.ty() unreachable("Operation.Sub: left.ty (${left.ty}) != right.ty (${right.ty})")
+
+        self.currentFn.block.buildSub(left, right, dst)
+      }
       Operation.Mul(l, r) => {
         val left = self.irValueToQbeValue(l)
         val right = self.irValueToQbeValue(r)
@@ -155,6 +164,14 @@ pub type Compiler {
           try self.currentFn.block.buildCompareEq(left, right, Some(self.nextTemp())) else |e| unreachable(e)
         }
         self.currentFn.block.buildExt(res, false, dst)
+      }
+      Operation.Lt(l, r) => {
+        val left = self.irValueToQbeValue(l)
+        val right = self.irValueToQbeValue(r)
+
+        if left.ty() != right.ty() unreachable("Operation.Lt: left.ty (${left.ty}) != right.ty (${right.ty})")
+
+        self.currentFn.block.buildCompareLt(left, right, dst)
       }
       Operation.Load(ty, mem) => {
         val ptr = self.irValueToQbeValue(mem)
@@ -187,23 +204,24 @@ pub type Compiler {
       }
       Operation.If(ty, cond, thenBlock, elseBlock) => {
         val isStmt = ty == IrType.Unit
-        val (thenLabel, thenBody, thenVal) = thenBlock
-        val (elseLabel, elseBody, elseVal) = elseBlock
         val condVal = self.irValueToQbeValue(cond)
 
-        val labelThen = self.currentFn.block.addLabel(thenLabel)
+        val labelThen = self.currentFn.block.addLabel(thenBlock.name)
         val labelCont = self.currentFn.block.addLabel("cont")
 
-        if !elseBody.isEmpty() || !!elseVal {
-          val labelElse = self.currentFn.block.addLabel(elseLabel)
+        if !elseBlock.body.isEmpty() || !!elseBlock.result {
+          val labelElse = self.currentFn.block.addLabel(elseBlock.name)
 
           self.currentFn.block.buildJnz(condVal, labelThen, labelElse)
           self.currentFn.block.registerLabel(labelThen)
-          for inst in thenBody {
+          for inst in thenBlock.body {
             self.compileInstruction(inst)
           }
-          val thenPhiValue = if thenVal |v| {
+          if !thenBlock.terminates {
             self.currentFn.block.buildJmp(labelCont)
+          }
+
+          val thenPhiValue = if thenBlock.result |v| {
             val label = self.currentFn.block.currentLabel
             val thenVal = self.irValueToQbeValue(v)
             Some((label, thenVal))
@@ -212,11 +230,13 @@ pub type Compiler {
           }
 
           self.currentFn.block.registerLabel(labelElse)
-          for inst in elseBody {
+          for inst in elseBlock.body {
             self.compileInstruction(inst)
           }
-          val elsePhiValue = if elseVal |v| {
+          if !elseBlock.terminates {
             self.currentFn.block.buildJmp(labelCont)
+          }
+          val elsePhiValue = if elseBlock.result |v| {
             val label = self.currentFn.block.currentLabel
             val elseVal = self.irValueToQbeValue(v)
             Some((label, elseVal))
@@ -226,7 +246,7 @@ pub type Compiler {
 
           self.currentFn.block.registerLabel(labelCont)
 
-          if !thenVal && !elseVal {
+          if !thenBlock.result && !elseBlock.result {
             // in if-exprs that are missing both then- and else-values, emit unreachable
             if !isStmt self.currentFn.block.buildHalt()
           } else {
@@ -241,11 +261,37 @@ pub type Compiler {
 
           self.currentFn.block.buildJnz(condVal, labelThen, labelCont)
           self.currentFn.block.registerLabel(labelThen)
-          for inst in thenBody {
+          for inst in thenBlock.body {
             self.compileInstruction(inst)
           }
+          if !thenBlock.terminates {
+            self.currentFn.block.buildJmp(labelCont)
+          }
+
           self.currentFn.block.registerLabel(labelCont)
         }
+      }
+      Operation.While(_, cond, body) => {
+        val labelCond = self.currentFn.block.addLabel("${body.name}_cond")
+        val labelBody = self.currentFn.block.addLabel("${body.name}_body")
+        val labelCont = self.currentFn.block.addLabel("${body.name}_cont")
+
+        self.currentFn.block.registerLabel(labelCond)
+        for inst in cond.body {
+          self.compileInstruction(inst)
+        }
+        val condVal = self.irValueToQbeValue(cond.result)
+        self.currentFn.block.buildJnz(condVal, labelBody, labelCont)
+
+        self.currentFn.block.registerLabel(labelBody)
+        for inst in body.body {
+          self.compileInstruction(inst)
+        }
+        if !body.terminates {
+          self.currentFn.block.buildJmp(labelCond)
+        }
+
+        self.currentFn.block.registerLabel(labelCont)
       }
       Operation.Call(ret, fnName, args) => {
         val argVals = args.map(a => self.irValueToQbeValue(a))
@@ -263,11 +309,22 @@ pub type Compiler {
         }
       }
       Operation.Builtin(ret, builtin) => {
+        val sizeOfType = (irType: IrType) => {
+          match irType {
+            IrType.Unit => unreachable("values cannot be of type unit")
+            IrType.I64 => (8, QbeType.U64)
+            IrType.Bool => (8, QbeType.U64)
+            IrType.Byte => (1, QbeType.U8)
+            IrType.Composite => (8, QbeType.U64)
+            IrType.Ptr => (8, QbeType.U64)
+          }
+        }
+
         match builtin {
           Builtin.Malloc(count, itemTy) => {
             val countVal = self.irValueToQbeValue(count)
             val sizeVal = if itemTy |itemTy| {
-              val (size, _) = self.sizeOfType(itemTy)
+              val (size, _) = sizeOfType(itemTy)
               try self.currentFn.block.buildMul(qbe.Value.Int(size), countVal, Some(self.nextTemp())) else |e| unreachable(e)
             } else {
               countVal
@@ -279,7 +336,7 @@ pub type Compiler {
             val ptrVal = self.irValueToQbeValue(ptr)
             val countVal = self.irValueToQbeValue(count)
             val sizeVal = if itemTy |itemTy| {
-              val (size, _) = self.sizeOfType(itemTy)
+              val (size, _) = sizeOfType(itemTy)
               try self.currentFn.block.buildMul(qbe.Value.Int(size), countVal, Some(self.nextTemp())) else |e| unreachable(e)
             } else {
               countVal
@@ -292,15 +349,51 @@ pub type Compiler {
             val valueVal = self.irValueToQbeValue(value)
             val offsetVal = self.irValueToQbeValue(offset)
 
-            val (size, qbeTy) = self.sizeOfType(itemTy)
+            val (size, qbeTy) = sizeOfType(itemTy)
             val sizeVal = try self.currentFn.block.buildMul(qbe.Value.Int(size), offsetVal, Some(self.nextTemp())) else |e| unreachable(e)
-            val mem = try self.currentFn.block.buildAdd(sizeVal, ptrVal, dst) else |e| unreachable(e)
+            val mem = try self.currentFn.block.buildAdd(sizeVal, ptrVal, Some(self.nextTemp())) else |e| unreachable(e)
 
             if size == 1 {
               self.currentFn.block.buildStoreB(valueVal, mem)
             } else {
               self.currentFn.block.buildStore(qbeTy, valueVal, mem)
             }
+          }
+          Builtin.Load(ptr, offset, itemTy) => {
+            val ptrVal = self.irValueToQbeValue(ptr)
+            val offsetVal = self.irValueToQbeValue(offset)
+
+            val (size, qbeTy) = sizeOfType(itemTy)
+            val sizeVal = try self.currentFn.block.buildMul(qbe.Value.Int(size), offsetVal, Some(self.nextTemp())) else |e| unreachable(e)
+            val mem = try self.currentFn.block.buildAdd(sizeVal, ptrVal, Some(self.nextTemp())) else |e| unreachable(e)
+
+            if size == 1 {
+              todo("Builtin.Load Byte")
+            } else {
+              self.currentFn.block.buildLoad(qbeTy, mem, dst)
+            }
+          }
+          Builtin.CopyFrom(dst, dstOffset, src, srcOffset, count, itemTy) => {
+            val dstVal = self.irValueToQbeValue(dst)
+            val dstOffsetVal = self.irValueToQbeValue(dstOffset)
+            val srcVal = self.irValueToQbeValue(src)
+            val srcOffsetVal = self.irValueToQbeValue(srcOffset)
+            val countVal = self.irValueToQbeValue(count)
+
+            val (size, qbeTy) = sizeOfType(itemTy)
+
+            val dstMem = try self.currentFn.block.buildAdd(
+              try self.currentFn.block.buildMul(qbe.Value.Int(size), dstOffsetVal, Some(self.nextTemp())) else |e| unreachable(e),
+              dstVal,
+              Some(self.nextTemp()),
+            ) else |e| unreachable(e)
+            val srcMem = try self.currentFn.block.buildAdd(
+              try self.currentFn.block.buildMul(qbe.Value.Int(size), srcOffsetVal, Some(self.nextTemp())) else |e| unreachable(e),
+              srcVal,
+              Some(self.nextTemp()),
+            ) else |e| unreachable(e)
+
+            self.currentFn.block.buildVoidCall(qbe.Callable.Function(self.memcpyFn), [dstMem, srcMem, countVal])
           }
           Builtin.I64ToString(int) => {
             self.builtinI64ToStringUsed = true
@@ -322,21 +415,6 @@ pub type Compiler {
     name
   }
 
-  func sizeOfType(self, irType: IrType): (Int, qbe.QbeType) {
-    val qbeTy = self.irTypeToQbeType(irType)
-    val size = match qbeTy {
-      QbeType.U8 => 1      // 'b'
-      QbeType.U16 => 2     // 'h' (should be unreachable)
-      QbeType.U32 => 4     // 'w' (should be unreachable)
-      QbeType.U64 => 8     // 'l'
-      QbeType.Pointer => 8 // 'l'
-      QbeType.F32 => 4     // 's' (should be unreachable)
-      QbeType.F64 => 8     // 'd'
-    }
-
-    (size, qbeTy)
-  }
-
   func irTypeToQbeType(self, irType: IrType): qbe.QbeType {
     match irType {
       IrType.I64 => QbeType.U64
@@ -344,6 +422,7 @@ pub type Compiler {
       IrType.Composite => QbeType.U64 // pointer to GC'd object
       IrType.Ptr => QbeType.U64 // raw pointer
       IrType.Unit => unreachable("values cannot be of type Unit")
+      IrType.Byte => QbeType.U64 // treat bytes as longs when they're ordinary values; but use `loadb`/`storeb`
     }
   }
 
@@ -354,6 +433,7 @@ pub type Compiler {
       Value.Unit => unreachable("values cannot be of type unit")
       Value.ConstInt(i) => qbe.Value.Int(i)
       Value.ConstBool(b) => qbe.Value.Int(if b 1 else 0)
+      Value.ConstChar(c) => qbe.Value.Int(c)
       Value.ConstString(s) => {
         val str = s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r")
         val (dataPtr, data) = self.builder.buildGlobalString(str)

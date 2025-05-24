@@ -125,7 +125,9 @@ pub type Ident {
 pub enum Value {
   Unit
   ConstInt(value: Int)
+  // ConstFloat(value: Float)
   ConstBool(value: Bool)
+  ConstChar(value: Int) // 64-bit repr of char
   ConstString(value: String)
   Ident(ident: Ident)
   Global(global: GlobalVariable)
@@ -140,6 +142,10 @@ pub enum Value {
       Value.ConstBool(b) => {
         IrType.Bool.render(sb)
         sb.write(" $b")
+      }
+      Value.ConstChar(intVal) => {
+        IrType.I64.render(sb)
+        sb.write(" ${Char.fromInt(intVal)}")
       }
       Value.ConstString(s) => {
         sb.write("\"")
@@ -159,7 +165,21 @@ pub enum Builtin {
   Malloc(count: Value, itemTy: IrType? = None)
   Realloc(ptr: Value, count: Value, itemTy: IrType? = None)
   Store(ptr: Value, value: Value, offset: Value, itemTy: IrType)
+  Load(ptr: Value, offset: Value, itemTy: IrType)
+  CopyFrom(dst: Value, dstOffset: Value, src: Value, srcOffset: Value, size: Value, itemTy: IrType)
   I64ToString(intVal: Value)
+}
+
+pub type Block {
+  pub name: String
+  pub body: Instruction[]
+  pub result: Value?
+  pub terminates: Bool
+}
+
+pub type CompoundValue {
+  pub body: Instruction[]
+  pub result: Value
 }
 
 pub enum Operation {
@@ -167,15 +187,18 @@ pub enum Operation {
   ConstInt(int: Int)
 
   Add(left: Value, right: Value)
+  Sub(left: Value, right: Value)
   Mul(left: Value, right: Value)
   Eq(primitive: Bool, negate: Bool, left: Value, right: Value)
+  Lt(left: Value, right: Value)
 
   Load(ty: IrType, mem: Value)
   LoadField(ty: IrType, mem: Value, name: String, offset: Int)
   Store(ty: IrType, value: Value, mem: Value)
   StoreField(ty: IrType, value: Value, mem: Value, name: String, offset: Int)
 
-  If(ty: IrType, cond: Value, thenBlock: (String, Instruction[], Value?), elseBlock: (String, Instruction[], Value?))
+  If(ty: IrType, cond: Value, thenBlock: Block, elseBlock: Block)
+  While(ty: IrType, cond: CompoundValue, body: Block)
 
   Call(ret: IrType, fnName: String, args: Value[])
 
@@ -219,6 +242,13 @@ pub enum Operation {
         right.render(sb)
         sb.write(")")
       }
+      Operation.Lt(left, right) => {
+        sb.write("lt(")
+        left.render(sb)
+        sb.write(", ")
+        right.render(sb)
+        sb.write(")")
+      }
       Operation.Load(ty, mem) => {
         sb.write("load(")
         ty.render(sb)
@@ -254,34 +284,54 @@ pub enum Operation {
       Operation.If(ty, cond, thenBlock, elseBlock) => {
         sb.write("if(")
         cond.render(sb)
-        val (thenLabel, thenInstrs, thenVal) = thenBlock
-        sb.write(", .$thenLabel")
-        if thenVal |v| {
+        sb.write(", .${thenBlock.name}")
+        if thenBlock.result |v| {
           sb.write(" (")
           v.render(sb)
           sb.write(")")
         }
-        val (elseLabel, elseInstrs, elseVal) = elseBlock
-        sb.write(", .$elseLabel")
-        if elseVal |v| {
-          sb.write(" (")
-          v.render(sb)
-          sb.write(")")
+        if !elseBlock.body.isEmpty() {
+          sb.write(", .${elseBlock.name}")
+          if elseBlock.result |v| {
+            sb.write(" (")
+            v.render(sb)
+            sb.write(")")
+          }
         }
         sb.writeln(")")
-        sb.writeln(".$thenLabel:")
-        for instr in thenInstrs {
+
+        sb.writeln(".${thenBlock.name}:")
+        for instr in thenBlock.body {
           sb.write("  ")
           instr.render(sb)
           sb.writeln()
         }
-        sb.writeln(".$elseLabel:")
-        for instr in elseInstrs {
-          sb.write("  ")
-          instr.render(sb)
-          sb.writeln()
+        if !elseBlock.body.isEmpty() {
+          sb.writeln(".${elseBlock.name}:")
+          for instr in elseBlock.body {
+            sb.write("  ")
+            instr.render(sb)
+            sb.writeln()
+          }
         }
         sb.write("# endif")
+      }
+      Operation.While(ty, cond, body) => {
+        for instr in cond.body {
+          instr.render(sb)
+          sb.writeln()
+        }
+        sb.write("while(")
+        cond.result.render(sb)
+        sb.writeln(", .${body.name})")
+
+        sb.writeln(".${body.name}:")
+        for instr in body.body {
+          sb.write("  ")
+          instr.render(sb)
+          sb.writeln()
+        }
+        sb.write("# endwhile")
       }
       Operation.Call(ret, fnName, args) => {
         sb.write("call(")
@@ -331,6 +381,28 @@ pub enum Operation {
             sb.write(", ")
             itemTy.render(sb)
           }
+          Builtin.Load(ptr, offset, itemTy) => {
+            sb.write("ptr_load, ")
+            ptr.render(sb)
+            sb.write(", ")
+            offset.render(sb)
+            sb.write(", ")
+            itemTy.render(sb)
+          }
+          Builtin.CopyFrom(dst, dstOffset, src, srcOffset, size, itemTy) => {
+            sb.write("copy_from, ")
+            dst.render(sb)
+            sb.write(", ")
+            dstOffset.render(sb)
+            sb.write(", ")
+            src.render(sb)
+            sb.write(", ")
+            srcOffset.render(sb)
+            sb.write(", ")
+            size.render(sb)
+            sb.write(", ")
+            itemTy.render(sb)
+          }
           Builtin.I64ToString(int) => {
             sb.write("i64_to_string, ")
             int.render(sb)
@@ -346,6 +418,7 @@ pub enum IrType {
   Unit
   I64
   Bool
+  Byte
   Composite(name: String)
   Ptr
 
@@ -354,6 +427,7 @@ pub enum IrType {
       IrType.Unit => sb.write("unit")
       IrType.I64 => sb.write("i64")
       IrType.Bool => sb.write("bool")
+      IrType.Byte => sb.write("byte")
       IrType.Composite(name) => sb.write(name)
       IrType.Ptr => sb.write("ptr")
     }
@@ -536,15 +610,14 @@ pub type Generator {
     val prevCtx = self.enterFunction(irFunc)
 
     match fn.kind {
-      FunctionKind.InstanceMethod(instanceKind, _) => {
+      FunctionKind.InstanceMethod => {
         val selfConcreteType = try ctx.methodInstanceType else unreachable("Instance method without instance type")
         val selfTy = self.getIrTypeForConcreteType(selfConcreteType)
         val selfParamIdent = Ident(ty: selfTy, kind: IdentKind.Named("self"))
         irFunc.params.push(selfParamIdent)
 
         if fn.label.name == "toString" && fn.isGenerated {
-          val inst = try instanceKind else unreachable("generic receiver of toString method")
-          self.genToStringMethodBody(Value.Ident(selfParamIdent), inst)
+          self.genToStringMethodBody(Value.Ident(selfParamIdent), selfConcreteType)
           self.curCtx = prevCtx
           return
         }
@@ -646,8 +719,8 @@ pub type Generator {
     irFunc
   }
 
-  func genToStringMethodBody(self, selfVal: Value, instanceKind: tc.InstanceKind) {
-    match instanceKind {
+  func genToStringMethodBody(self, selfVal: Value, concreteType: ConcreteType) {
+    match concreteType.instanceKind {
       InstanceKind.Struct(s) => {
         if s == self.project.preludeIntStruct {
           val strTy = self.getIrTypeForConcreteType(ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct), typeArgs: []))
@@ -660,51 +733,71 @@ pub type Generator {
     }
   }
 
-
   func genStatement(self, node: tc.TypedAstNode, concreteGenerics: Map<String, ConcreteType>) {
     match node.kind {
       TypedAstNodeKind.If(isStatement, condNode, condBinding, ifBlock, ifBlockTerminator, elseBlock, elseBlockTerminator) => {
-        if isStatement {
-          val cond = self.genExpression(condNode, concreteGenerics)
-          if self.project.typeIsOption(condNode.ty) todo("optional if-conditions")
-          if condBinding todo("if-expr condition binding")
+        if !isStatement {
+          self.genExpression(node, concreteGenerics)
+          return
+        }
 
-          if ifBlockTerminator todo("if-expr if block terminator")
-          if elseBlockTerminator todo("if-expr else block terminator")
+        val cond = self.genExpression(condNode, concreteGenerics)
+        if self.project.typeIsOption(condNode.ty) todo("optional if-conditions")
+        if condBinding todo("if-expr condition binding")
 
-          if self.valueAsCompileTime(cond) |cond| {
-            val condVal = match cond { Value.ConstBool(b) => b, else => todo("non-boolean if-conditions") }
-            val block = if condVal ifBlock else elseBlock
-            for node, idx in block {
-              // TODO: handle block terminator
-              self.genStatement(node, concreteGenerics)
-            }
-
-            return
+        if self.valueAsCompileTime(cond) |cond| {
+          val condVal = match cond { Value.ConstBool(b) => b, else => todo("non-boolean if-conditions") }
+          val block = if condVal ifBlock else elseBlock
+          for node, idx in block {
+            self.genStatement(node, concreteGenerics)
           }
 
-          val ifBody = self.withinBlock("then", () => {
-            for node, idx in ifBlock {
-              self.genStatement(node, concreteGenerics)
-            }
-
-            None
-          })
-          val elseBody = self.withinBlock("else", () => {
-            for node, idx in elseBlock {
-              self.genStatement(node, concreteGenerics)
-            }
-
-            None
-          })
-
-          self.emit(Instruction(op: Operation.If(IrType.Unit, cond, ifBody, elseBody)))
-        } else {
-          self.genExpression(node, concreteGenerics)
+          return
         }
+
+        val ifBody = self.withinBlock("then", !!ifBlockTerminator, () => {
+          for node, idx in ifBlock {
+            self.genStatement(node, concreteGenerics)
+          }
+
+          None
+        })
+        val elseBody = self.withinBlock("else", !!elseBlockTerminator, () => {
+          for node, idx in elseBlock {
+            self.genStatement(node, concreteGenerics)
+          }
+
+          None
+        })
+
+        self.emit(Instruction(op: Operation.If(IrType.Unit, cond, ifBody, elseBody)))
       }
       TypedAstNodeKind.Match => todo("TypedAstNodeKind.Match (${node.token.position})")
-      TypedAstNodeKind.While => todo("TypedAstNodeKind.While (${node.token.position})")
+      TypedAstNodeKind.While(condNode, condBinding, block, terminator) => {
+        // A single expression node could result in many instructions. All of the condition's instructions will need
+        // to be rerun for each iteration of the loop in order to determine whether the loop should continue, so it's
+        // necessary to keep track of those in a manner separate from the rest of the instructions in the current
+        // function (in order to properly set up jump labels if necessary when compiling the IR to its target).
+        val cond = self.genCompoundValue(() => self.genExpression(condNode, concreteGenerics))
+
+        if self.project.typeIsOption(condNode.ty) todo("optional while-conditions")
+        if condBinding todo("while-expr condition binding")
+
+        if self.valueAsCompileTime(cond.result) |cond| {
+          val condVal = match cond { Value.ConstBool(b) => b, else => todo("non-boolean while-conditions") }
+          if !condVal return
+        }
+
+        val body = self.withinBlock("while_loop", !!terminator, () => {
+          for node, idx in block {
+            self.genStatement(node, concreteGenerics)
+          }
+
+          None
+        })
+
+        self.emit(Instruction(op: Operation.While(IrType.Unit, cond, body)))
+      }
       TypedAstNodeKind.For => todo("TypedAstNodeKind.For (${node.token.position})")
       TypedAstNodeKind.BindingDeclaration(node) => self.genBindingDeclaration(node, concreteGenerics)
       TypedAstNodeKind.FunctionDeclaration => { /* todo: TypedAstNodeKind.FunctionDeclaration */ }
@@ -712,7 +805,15 @@ pub type Generator {
       TypedAstNodeKind.EnumDeclaration => { /* todo: TypedAstNodeKind.EnumDeclaration */ }
       TypedAstNodeKind.Break => todo("TypedAstNodeKind.Break (${node.token.position})")
       TypedAstNodeKind.Continue => todo("TypedAstNodeKind.Continue (${node.token.position})")
-      TypedAstNodeKind.Return => todo("TypedAstNodeKind.Return (${node.token.position})")
+      TypedAstNodeKind.Return(retValExpr) => {
+        val retVal = if retValExpr |expr| {
+          Some(self.genExpression(expr, concreteGenerics))
+        } else {
+          None
+        }
+
+        self.emit(Instruction(op: Operation.Return(retVal)))
+      }
       TypedAstNodeKind.Placeholder => unreachable("Placeholder nodes should not be emitted from the typechecker")
       TypedAstNodeKind.Assignment(mode, op, expr) => self.genAssignment(concreteGenerics, mode, op, expr)
       else => self.genExpression(node, concreteGenerics)
@@ -750,19 +851,11 @@ pub type Generator {
     val varIrTy = self.getIrTypeForConcreteType(varTy)
     val ident = Ident(ty: varIrTy, kind: IdentKind.Named(varName))
     if valueNode |node| {
-      val value = self.genExpression(node, concreteGenerics, if variable.mutable None else Some(varName))
-      match value {
-        Value.Unit => unreachable("values cannot be of type Unit")
-        Value.ConstInt(i) => self.emit(Instruction(assignee: Some(ident), op: Operation.ConstInt(i)))
-        Value.ConstString => self.emit(Instruction(assignee: Some(ident), op: Operation.NewLocal(ty: varIrTy, initialValue: Some(value))))
-        Value.Ident(id) => {
-          if id.kind != ident.kind {
-            self.emit(Instruction(assignee: Some(ident), op: Operation.NewLocal(ty: varIrTy, initialValue: Some(value))))
-          }
-        }
-        Value.Global => {
-          self.emit(Instruction(assignee: Some(ident), op: Operation.NewLocal(ty: varIrTy, initialValue: Some(value))))
-        }
+      if variable.mutable {
+        val value = self.genExpression(node, concreteGenerics, None)
+        self.emit(Instruction(assignee: Some(ident), op: Operation.NewLocal(ty: varIrTy, initialValue: Some(value))))
+      } else {
+        self.genExpression(node, concreteGenerics, Some(varName))
       }
     } else {
       self.emit(Instruction(assignee: Some(ident), op: Operation.NewLocal(ty: varIrTy, initialValue: None)))
@@ -773,7 +866,13 @@ pub type Generator {
     val res = self.genExpression(expr, concreteGenerics)
 
     match mode {
-      TypedAssignmentMode.Variable => todo("genAssignment: Variable")
+      TypedAssignmentMode.Variable(v) => {
+        val varName = if v.scope.idxInFn |idx| "_${v.label.name}_${idx}" else v.label.name
+        val varTy = self.getConcreteTypeFromType(v.ty, concreteGenerics)
+        val varIrTy = self.getIrTypeForConcreteType(varTy)
+        val ident = Ident(ty: varIrTy, kind: IdentKind.Named(varName))
+        self.emit(Instruction(op: Operation.Store(ty: varIrTy, value: res, mem: Value.Ident(ident))))
+      }
       TypedAssignmentMode.Indexing => todo("genAssignment: Indexing")
       TypedAssignmentMode.Accessor(head, middle, tail) => {
         val (ty, mem, fieldName, offset) = self.followAccessorPath(head, middle, tail, concreteGenerics)
@@ -814,15 +913,11 @@ pub type Generator {
         if self.project.typeIsOption(condNode.ty) todo("optional if-conditions")
         if condBinding todo("if-expr condition binding")
 
-        if ifBlockTerminator todo("if-expr if block terminator")
-        if elseBlockTerminator todo("if-expr else block terminator")
-
         if self.valueAsCompileTime(cond) |cond| {
           val condVal = match cond { Value.ConstBool(b) => b, else => todo("non-boolean if-conditions") }
           val block = if condVal ifBlock else elseBlock
           for node, idx in block {
-            // TODO: handle block terminator
-            if idx == block.length - 1 {
+            if idx == block.length - 1 && !ifBlockTerminator {
               return self.genExpression(node, concreteGenerics, dst)
             } else {
               self.genStatement(node, concreteGenerics)
@@ -831,10 +926,9 @@ pub type Generator {
           unreachable("should have returned above")
         }
 
-        val ifBody = self.withinBlock("then", () => {
+        val ifBody = self.withinBlock("then", !!ifBlockTerminator, () => {
           for node, idx in ifBlock {
-            // TODO: handle if-block terminator
-            if idx == ifBlock.length - 1 {
+            if idx == ifBlock.length - 1 && !ifBlockTerminator {
               return Some(self.genExpression(node, concreteGenerics))
             } else {
               self.genStatement(node, concreteGenerics)
@@ -843,10 +937,9 @@ pub type Generator {
 
           None
         })
-        val elseBody = self.withinBlock("else", () => {
+        val elseBody = self.withinBlock("else", !!elseBlockTerminator, () => {
           for node, idx in elseBlock {
-            // TODO: handle else-block terminator
-            if idx == elseBlock.length - 1 {
+            if idx == elseBlock.length - 1 && !elseBlockTerminator {
               return Some(self.genExpression(node, concreteGenerics))
             } else {
               self.genStatement(node, concreteGenerics)
@@ -870,7 +963,9 @@ pub type Generator {
   func genLiteral(self, pos: Position, lit: LiteralAstNode): Value {
     match lit {
       LiteralAstNode.Int(i) => Value.ConstInt(i)
+      LiteralAstNode.Float => todo("genLiteral: LiteralAstNode.Float")
       LiteralAstNode.Bool(b) => Value.ConstBool(b)
+      LiteralAstNode.Char(c) => Value.ConstChar(c)
       LiteralAstNode.String(s) => {
         val strConcreteTy = ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct))
         // Ensure the composite type and struct initializer functions are known, even though they're not used when constructing a string literal
@@ -879,7 +974,6 @@ pub type Generator {
 
         Value.ConstString(s)
       }
-      else => todo("Other literal kinds ($pos)")
     }
   }
 
@@ -904,7 +998,25 @@ pub type Generator {
 
         Value.Ident(ident: ident)
       }
-      BinaryOp.Sub => todo("genBinary: BinaryOp.Sub")
+      BinaryOp.Sub => {
+        val lval = self.genExpression(left, concreteGenerics)
+        val rval = self.genExpression(right, concreteGenerics)
+
+        if self.valueAsCompileTime(lval) |lval| {
+          if self.valueAsCompileTime(rval) |rval| {
+            val l = match lval { Value.ConstInt(l) => l, else => todo("genBinary: constant-folding other value types (sub)") }
+            val r = match rval { Value.ConstInt(r) => r, else => todo("genBinary: constant-folding other value types (sub)") }
+
+            return Value.ConstInt(l - r)
+          }
+        }
+
+        val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+        val ident = Ident(ty: IrType.I64, kind: identKind)
+        self.emit(Instruction(assignee: Some(ident), op: Operation.Sub(lval, rval)))
+
+        Value.Ident(ident: ident)
+      }
       BinaryOp.Mul => {
         val lval = self.genExpression(left, concreteGenerics)
         val rval = self.genExpression(right, concreteGenerics)
@@ -927,13 +1039,36 @@ pub type Generator {
       BinaryOp.Div => todo("genBinary: BinaryOp.Div")
       BinaryOp.Mod => todo("genBinary: BinaryOp.Mod")
       BinaryOp.Pow => todo("genBinary: BinaryOp.Pow")
-      BinaryOp.And => todo("genBinary: BinaryOp.And")
+      BinaryOp.And => todo("genBinary: BinaryOp.And ($pos)")
       BinaryOp.Or => todo("genBinary: BinaryOp.Or")
       BinaryOp.Xor => todo("genBinary: BinaryOp.Xor")
       BinaryOp.Coalesce => todo("genBinary: BinaryOp.Coalesce")
       BinaryOp.Eq => self.genEq(concreteGenerics, left, right, false, dst)
       BinaryOp.Neq => self.genEq(concreteGenerics, left, right, true, dst)
-      else => todo("Other binary operators ($pos)")
+      BinaryOp.LT => {
+        val lval = self.genExpression(left, concreteGenerics)
+        val rval = self.genExpression(right, concreteGenerics)
+
+        if self.valueAsCompileTime(lval) |lval| {
+          if self.valueAsCompileTime(rval) |rval| {
+            val l = match lval { Value.ConstInt(l) => l, else => todo("genBinary: constant-folding other value types (lt)") }
+            val r = match rval { Value.ConstInt(r) => r, else => todo("genBinary: constant-folding other value types (lt)") }
+
+            return Value.ConstBool(l < r)
+          }
+        }
+
+        val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+        val ident = Ident(ty: IrType.I64, kind: identKind)
+        self.emit(Instruction(assignee: Some(ident), op: Operation.Lt(lval, rval)))
+
+        Value.Ident(ident: ident)
+      }
+      BinaryOp.LTE => todo("genBinary: BinaryOp.LTE")
+      BinaryOp.Shl => todo("genBinary: BinaryOp.Shl")
+      BinaryOp.GT => todo("genBinary: BinaryOp.GT")
+      BinaryOp.GTE => todo("genBinary: BinaryOp.GTE")
+      BinaryOp.Shr => todo("genBinary: BinaryOp.Shr")
     }
   }
 
@@ -983,6 +1118,22 @@ pub type Generator {
     (arg0, arg1)
   }
 
+  func intrinsicArgs4(self, name: String, arguments: tc.TypedAstNode?[]): (tc.TypedAstNode, tc.TypedAstNode, tc.TypedAstNode, tc.TypedAstNode) {
+    val _arg0 = try arguments[0] else unreachable("'$name' has 4 required arguments")
+    val arg0 = try _arg0 else unreachable("'$name' has 4 required arguments")
+
+    val _arg1 = try arguments[1] else unreachable("'$name' has 4 required arguments")
+    val arg1 = try _arg1 else unreachable("'$name' has 4 required arguments")
+
+    val _arg2 = try arguments[2] else unreachable("'$name' has 4 required arguments")
+    val arg2 = try _arg2 else unreachable("'$name' has 4 required arguments")
+
+    val _arg3 = try arguments[3] else unreachable("'$name' has 4 required arguments")
+    val arg3 = try _arg3 else unreachable("'$name' has 4 required arguments")
+
+    (arg0, arg1, arg2, arg3)
+  }
+
   func genCall(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, dst: String?, returnType: tc.Type, invokee: tc.TypedInvokee, args: tc.TypedAstNode?[]): Value {
     val argValues: Value[] = []
 
@@ -1002,6 +1153,14 @@ pub type Generator {
               val builtin = Builtin.Malloc(count: count, itemTy: Some(itemTy))
               self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: IrType.Ptr, builtin: builtin)))
               Value.Ident(ident: ident)
+            }
+            "byte_from_int" => {
+              val arg = self.intrinsicArgs1("byte_from_int", args)
+              self.genExpression(arg, concreteGenerics)
+            }
+            "char_as_int" => {
+              val arg = self.intrinsicArgs1("char_as_int", args)
+              self.genExpression(arg, concreteGenerics)
             }
             else => todo("Unimplemented static/standalone intrinsic '$intrinsicName'")
           }
@@ -1030,10 +1189,10 @@ pub type Generator {
         } else if self.getIntrinsicDecName(fn) |intrinsicName| {
           return match intrinsicName {
             "pointer_realloc" => {
+              val ptrVal = self.genExpression(selfVal, concreteGenerics)
               val count = self.intrinsicArgs1("pointer_realloc", args)
 
               val itemTy = self.getIrTypeForConcreteType(try concreteGenerics["T"] else unreachable("(pointer_realloc) could not resolve T for Pointer<T>"))
-              val ptrVal = self.genExpression(selfVal, concreteGenerics)
               val countVal = self.genExpression(count, concreteGenerics)
 
               val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
@@ -1043,14 +1202,41 @@ pub type Generator {
               Value.Ident(ident: ident)
             }
             "pointer_store_at" => {
+              val ptrVal = self.genExpression(selfVal, concreteGenerics)
               val (value, offset) = self.intrinsicArgs2("pointer_store_at", args)
 
               val itemTy = self.getIrTypeForConcreteType(try concreteGenerics["T"] else unreachable("(pointer_store) could not resolve T for Pointer<T>"))
-              val ptrVal = self.genExpression(selfVal, concreteGenerics)
               val valueVal = self.genExpression(value, concreteGenerics)
               val offsetVal = self.genExpression(offset, concreteGenerics)
 
               self.emit(Instruction(op: Operation.Builtin(ret: IrType.Unit, builtin: Builtin.Store(ptr: ptrVal, value: valueVal, offset: offsetVal, itemTy: itemTy))))
+              Value.Unit
+            }
+            "pointer_load_at" => {
+              val ptrVal = self.genExpression(selfVal, concreteGenerics)
+              val offset = self.intrinsicArgs1("pointer_load_at", args)
+
+              val itemTy = self.getIrTypeForConcreteType(try concreteGenerics["T"] else unreachable("(pointer_load) could not resolve T for Pointer<T>"))
+              val offsetVal = self.genExpression(offset, concreteGenerics)
+
+              val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+              val ident = Ident(ty: itemTy, kind: identKind)
+              self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: itemTy, builtin: Builtin.Load(ptr: ptrVal, offset: offsetVal, itemTy: itemTy))))
+              Value.Ident(ident: ident)
+            }
+            "pointer_copy_from" => {
+              val ptrVal = self.genExpression(selfVal, concreteGenerics)
+              val (dstOffset, src, srcOffset, size) = self.intrinsicArgs4("pointer_copy_from", args)
+
+              val dstOffsetVal = self.genExpression(dstOffset, concreteGenerics)
+              val srcVal = self.genExpression(src, concreteGenerics)
+              val srcOffsetVal = self.genExpression(srcOffset, concreteGenerics)
+              val sizeVal = self.genExpression(size, concreteGenerics)
+
+              val itemTy = self.getIrTypeForConcreteType(try concreteGenerics["T"] else unreachable("(pointer_copy_from) could not resolve T for Pointer<T>"))
+
+              val builtin = Builtin.CopyFrom(dst: ptrVal, dstOffset: dstOffsetVal, src: srcVal, srcOffset: srcOffsetVal, size: sizeVal, itemTy: itemTy)
+              self.emit(Instruction(op: Operation.Builtin(ret: IrType.Unit, builtin: builtin)))
               Value.Unit
             }
             else => todo("Unimplemented method intrinsic '$intrinsicName'")
@@ -1265,7 +1451,7 @@ pub type Generator {
     prevCtx
   }
 
-  func withinBlock(self, name: String, fn: () => Value?): (String, Instruction[], Value?) {
+  func withinBlock(self, name: String, terminates: Bool, fn: () => Value?): Block {
     val prevBlock = self.curCtx.block
 
     val instrs: Instruction[] = []
@@ -1273,7 +1459,18 @@ pub type Generator {
     val finalVal = fn()
     self.curCtx.block = prevBlock
 
-    (name, instrs, finalVal)
+    Block(name: name, body: instrs, result: finalVal, terminates: terminates)
+  }
+
+  func genCompoundValue(self, fn: () => Value): CompoundValue {
+    val prevBlock = self.curCtx.block
+
+    val instrs: Instruction[] = []
+    self.curCtx.block = ("_compoundvalue", instrs)
+    val finalVal = fn()
+    self.curCtx.block = prevBlock
+
+    CompoundValue(body: instrs, result: finalVal)
   }
 
   func enqueueFunction(self, fn: tc.Function, fnName: String, paramsNeedingDefaultValue: Bool[], methodInstanceType: ConcreteType?, concreteGenerics: Map<String, ConcreteType>) {
@@ -1398,6 +1595,10 @@ pub type Generator {
       InstanceKind.Struct(s) => {
         if s == self.project.preludeIntStruct return IrType.I64
 
+        if s.builtin == Some(tc.BuiltinModule.Intrinsics) {
+          if s.label.name == "Byte" return IrType.Byte
+        }
+
         val t = self.getOrAddCompositeType(ty)
         IrType.Composite(name: t.name)
       }
@@ -1458,6 +1659,7 @@ pub type Generator {
       Value.Unit => None // should be unreachable, but it's ok to return None here
       Value.ConstInt => Some(value)
       Value.ConstBool => Some(value)
+      Value.ConstChar => Some(value)
       Value.ConstString => Some(value)
       Value.Ident => None
       Value.Global(global) => if global.mutable None else global.initialValue

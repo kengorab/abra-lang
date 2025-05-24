@@ -14,15 +14,16 @@
       // When outputting to the console, make sure to disregard newlines and empty strings, since
       // `console` methods always append the newline.
       function write(fd, buf, _count) {
-        stdout.innerHTML += buf
+        let str = buf.join('')
+        stdout.innerHTML += str
 
-        if (buf.endsWith('\n')) { buf = buf.substring(0, buf.length - 1); }
-        if (!buf.length) return;
+        if (str.endsWith('\n')) { str = str.substring(0, str.length - 1); }
+        if (!str.length) return;
 
         if (fd === 1) {
-          console.log(buf);
+          console.log(str);
         } else if (fd === 2) {
-          console.err(buf);
+          console.err(str);
         }
       }
 

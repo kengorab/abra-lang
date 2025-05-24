@@ -40,10 +40,10 @@
 
 var arr = [1, 2, 3]
 stdoutWriteln(arr.length.toString())
+stdoutWriteln(arr.toString())
 
 arr.push(4)
 arr.push(5)
 arr.push(6)
 stdoutWriteln(arr.length.toString())
-
-// stdoutWriteln(arr.toString())
+stdoutWriteln(arr.toString())
