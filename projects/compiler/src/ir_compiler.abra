@@ -280,7 +280,7 @@ pub type Compiler {
         for inst in cond.body {
           self.compileInstruction(inst)
         }
-        val condVal = self.irValueToQbeValue(try cond.result else unreachable())
+        val condVal = self.irValueToQbeValue(cond.result)
         self.currentFn.block.buildJnz(condVal, labelBody, labelCont)
 
         self.currentFn.block.registerLabel(labelBody)

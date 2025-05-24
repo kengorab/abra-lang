@@ -252,7 +252,7 @@ pub type Compiler {
         }
         self.emitIndent()
         self.sb.write("if (!")
-        self.emitIrValueToJsValue(try cond.result else unreachable())
+        self.emitIrValueToJsValue(cond.result)
         self.sb.writeln(") break;")
 
         for inst in body.body {

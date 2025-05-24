@@ -177,6 +177,11 @@ pub type Block {
   pub terminates: Bool
 }
 
+pub type CompoundValue {
+  pub body: Instruction[]
+  pub result: Value
+}
+
 pub enum Operation {
   NewLocal(ty: IrType, initialValue: Value? = None)
   ConstInt(int: Int)
@@ -193,7 +198,7 @@ pub enum Operation {
   StoreField(ty: IrType, value: Value, mem: Value, name: String, offset: Int)
 
   If(ty: IrType, cond: Value, thenBlock: Block, elseBlock: Block)
-  While(ty: IrType, cond: Block, body: Block)
+  While(ty: IrType, cond: CompoundValue, body: Block)
 
   Call(ret: IrType, fnName: String, args: Value[])
 
@@ -317,7 +322,7 @@ pub enum Operation {
           sb.writeln()
         }
         sb.write("while(")
-        (try cond.result else unreachable()).render(sb)
+        cond.result.render(sb)
         sb.writeln(", .${body.name})")
 
         sb.writeln(".${body.name}:")
@@ -769,17 +774,16 @@ pub type Generator {
       }
       TypedAstNodeKind.Match => todo("TypedAstNodeKind.Match (${node.token.position})")
       TypedAstNodeKind.While(condNode, condBinding, block, terminator) => {
-        // It may be strange to think of the loop condition as a "block", a single expression node could result in many
-        // instructions. All of the condition's instructions will need to be rerun for each iteration of the loop in
-        // order to determine whether the loop should continue, so it's necessary to keep track of those in a manner
-        // separate from the rest of the instructions in the current function (in order to properly set up jump labels
-        // if necessary when compiling the IR to its target).
-        val cond = self.withinBlock("while_loop_cond", false, () => Some(self.genExpression(condNode, concreteGenerics)))
+        // A single expression node could result in many instructions. All of the condition's instructions will need
+        // to be rerun for each iteration of the loop in order to determine whether the loop should continue, so it's
+        // necessary to keep track of those in a manner separate from the rest of the instructions in the current
+        // function (in order to properly set up jump labels if necessary when compiling the IR to its target).
+        val cond = self.genCompoundValue(() => self.genExpression(condNode, concreteGenerics))
 
         if self.project.typeIsOption(condNode.ty) todo("optional while-conditions")
         if condBinding todo("while-expr condition binding")
 
-        if self.valueAsCompileTime(try cond.result else unreachable("while-conditions always result in a value")) |cond| {
+        if self.valueAsCompileTime(cond.result) |cond| {
           val condVal = match cond { Value.ConstBool(b) => b, else => todo("non-boolean while-conditions") }
           if !condVal return
         }
@@ -1456,6 +1460,17 @@ pub type Generator {
     self.curCtx.block = prevBlock
 
     Block(name: name, body: instrs, result: finalVal, terminates: terminates)
+  }
+
+  func genCompoundValue(self, fn: () => Value): CompoundValue {
+    val prevBlock = self.curCtx.block
+
+    val instrs: Instruction[] = []
+    self.curCtx.block = ("_compoundvalue", instrs)
+    val finalVal = fn()
+    self.curCtx.block = prevBlock
+
+    CompoundValue(body: instrs, result: finalVal)
   }
 
   func enqueueFunction(self, fn: tc.Function, fnName: String, paramsNeedingDefaultValue: Bool[], methodInstanceType: ConcreteType?, concreteGenerics: Map<String, ConcreteType>) {
