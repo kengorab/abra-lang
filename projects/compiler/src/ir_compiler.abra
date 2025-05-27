@@ -128,11 +128,22 @@ pub type Compiler {
       Operation.ConstInt(int) => {
         self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(int), dst)
       }
+      Operation.ConstString(str) => {
+        val slot = self.makeConstString(str)
+        try self.currentFn.block.buildAdd(qbe.Value.Int(0), slot, dst) else |e| unreachable(e)
+      }
+      Operation.ConstBool(b) => {
+        if b {
+          self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(1), dst)
+        } else {
+          self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+        }
+      }
       Operation.Add(l, r) => {
         val left = self.irValueToQbeValue(l)
         val right = self.irValueToQbeValue(r)
 
-        if left.ty() != right.ty() unreachable("Operation.Add: left.ty (${left.ty}) != right.ty (${right.ty})")
+        if left.ty() != right.ty() unreachable("Operation.Add: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
         self.currentFn.block.buildAdd(left, right, dst)
       }
@@ -140,7 +151,7 @@ pub type Compiler {
         val left = self.irValueToQbeValue(l)
         val right = self.irValueToQbeValue(r)
 
-        if left.ty() != right.ty() unreachable("Operation.Sub: left.ty (${left.ty}) != right.ty (${right.ty})")
+        if left.ty() != right.ty() unreachable("Operation.Sub: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
         self.currentFn.block.buildSub(left, right, dst)
       }
@@ -148,7 +159,7 @@ pub type Compiler {
         val left = self.irValueToQbeValue(l)
         val right = self.irValueToQbeValue(r)
 
-        if left.ty() != right.ty() unreachable("Operation.Mul: left.ty (${left.ty}) != right.ty (${right.ty})")
+        if left.ty() != right.ty() unreachable("Operation.Mul: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
         self.currentFn.block.buildMul(left, right, dst)
       }
@@ -169,7 +180,7 @@ pub type Compiler {
         val left = self.irValueToQbeValue(l)
         val right = self.irValueToQbeValue(r)
 
-        if left.ty() != right.ty() unreachable("Operation.Lt: left.ty (${left.ty}) != right.ty (${right.ty})")
+        if left.ty() != right.ty() unreachable("Operation.Lt: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
         self.currentFn.block.buildCompareLt(left, right, dst)
       }
@@ -434,15 +445,7 @@ pub type Compiler {
       Value.ConstInt(i) => qbe.Value.Int(i)
       Value.ConstBool(b) => qbe.Value.Int(if b 1 else 0)
       Value.ConstChar(c) => qbe.Value.Int(c)
-      Value.ConstString(s) => {
-        val str = s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r")
-        val (dataPtr, data) = self.builder.buildGlobalString(str)
-        val (slot, _) = self.builder.addData(qbe.QbeData(
-          name: "${data.name}str",
-          kind: qbe.QbeDataKind.Constants([(qbe.QbeType.U64, qbe.Value.Int(s.length)), (qbe.QbeType.Pointer, dataPtr)])
-        ))
-        slot
-      }
+      Value.ConstString(s) => self.makeConstString(s)
       Value.Ident(i) => {
         val ty = self.irTypeToQbeType(i.ty)
         val name = match i.kind {
@@ -455,6 +458,22 @@ pub type Compiler {
         val ty = self.irTypeToQbeType(g.ty)
         self.currentFn.block.buildLoad(ty, qbe.Value.Global(name: g.name, ty: ty), Some(self.nextTemp()))
       }
+    }
+  }
+
+  func makeConstString(self, s: String): qbe.Value {
+    val str = s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r")
+    val (dataPtr, data, newlyAdded) = self.builder.buildGlobalString(str)
+
+    val globalName = "${data.name}str"
+    if newlyAdded {
+      val (slot, _) = self.builder.addData(qbe.QbeData(
+        name: globalName,
+        kind: qbe.QbeDataKind.Constants([(qbe.QbeType.U64, qbe.Value.Int(s.length)), (qbe.QbeType.Pointer, dataPtr)])
+      ))
+      slot
+    } else {
+      qbe.Value.Global(name: globalName, ty: qbe.QbeType.Pointer)
     }
   }
 

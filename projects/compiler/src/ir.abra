@@ -185,6 +185,8 @@ pub type CompoundValue {
 pub enum Operation {
   NewLocal(ty: IrType, initialValue: Value? = None)
   ConstInt(int: Int)
+  ConstBool(b: Bool)
+  ConstString(str: String)
 
   Add(left: Value, right: Value)
   Sub(left: Value, right: Value)
@@ -220,6 +222,13 @@ pub enum Operation {
       Operation.ConstInt(int) => {
         IrType.I64.render(sb)
         sb.write(" $int")
+      }
+      Operation.ConstString(str) => {
+        sb.write("string \"$str\"")
+      }
+      Operation.ConstBool(b) => {
+        IrType.Bool.render(sb)
+        sb.write(" $b")
       }
       Operation.Add(l, r) => {
         sb.write("add(")
@@ -530,7 +539,7 @@ pub type Generator {
   functionsByName: Map<String, IrFunction>
   curCtx: Context
   fnQueue: FunctionToCompile[] = []
-  types: Map<String, CompositeType> = {}
+  types: Map<String, (CompositeType, ConcreteType)> = {}
   globals: Map<String, GlobalVariable> = {}
   knowns: Knowns = Knowns()
 
@@ -540,6 +549,10 @@ pub type Generator {
     val mainFn = IrFunction(name: "main", params: [], ret: IrType.I64)
     val curCtx = Context(fn: mainFn, block: mainFn.block, locals: [])
     val generator = Generator(project: project, functions: [], functionsByName: {}, curCtx: curCtx)
+
+    val strConcreteTy = ConcreteType(instanceKind: InstanceKind.Struct(project.preludeStringStruct))
+    generator.knowns.strTy = Some(generator.getOrAddCompositeType(strConcreteTy))
+    generator.knowns.strInit = Some(generator.getOrGenStructInitializer(strConcreteTy, {}))
 
     for mod in allModules {
       if generator.genModule(mod) |modFn| {
@@ -552,7 +565,7 @@ pub type Generator {
     IR(
       mainFunction: mainFn,
       functions: generator.functions,
-      types: generator.types.values(),
+      types: generator.types.values().map(t => t[0]),
       globals: generator.globals.values(),
       knowns: generator.knowns
     )
@@ -966,14 +979,7 @@ pub type Generator {
       LiteralAstNode.Float => todo("genLiteral: LiteralAstNode.Float")
       LiteralAstNode.Bool(b) => Value.ConstBool(b)
       LiteralAstNode.Char(c) => Value.ConstChar(c)
-      LiteralAstNode.String(s) => {
-        val strConcreteTy = ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct))
-        // Ensure the composite type and struct initializer functions are known, even though they're not used when constructing a string literal
-        self.knowns.strTy = Some(self.getOrAddCompositeType(strConcreteTy))
-        self.knowns.strInit = Some(self.getOrGenStructInitializer(strConcreteTy, {}))
-
-        Value.ConstString(s)
-      }
+      LiteralAstNode.String(s) => Value.ConstString(s)
     }
   }
 
@@ -983,12 +989,59 @@ pub type Generator {
         val lval = self.genExpression(left, concreteGenerics)
         val rval = self.genExpression(right, concreteGenerics)
 
-        if self.valueAsCompileTime(lval) |lval| {
-          if self.valueAsCompileTime(rval) |rval| {
-            val l = match lval { Value.ConstInt(l) => l, else => todo("genBinary: constant-folding other value types (add)") }
-            val r = match rval { Value.ConstInt(r) => r, else => todo("genBinary: constant-folding other value types (add)") }
+        val strTy = IrType.Composite(self.knowns.stringType().name)
+        val lvalTy = self.getValueTy(lval)
+        val rvalTy = self.getValueTy(rval)
+        if lvalTy == strTy || rvalTy == strTy {
+          if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
+            val constStr = match lval {
+              Value.ConstInt(l) => match rval { Value.ConstString(r) => l + r, else => unreachable() }
+              Value.ConstBool(l) => match rval { Value.ConstString(r) => l + r, else => unreachable() }
+              Value.ConstChar(l) => match rval { Value.ConstString(r) => l + r, else => unreachable() }
+              Value.ConstString(l) => match rval {
+                Value.ConstInt(r) => l + r
+                Value.ConstBool(r) => l + r
+                Value.ConstChar(r) => l + r
+                Value.ConstString(r) => l + r
+                else => unreachable()
+              }
+              else => unreachable()
+            }
 
-            return Value.ConstInt(l + r)
+            return if dst |dst| {
+              val ident = Ident(ty: strTy, kind: IdentKind.Named(dst))
+              self.emit(Instruction(assignee: Some(ident), op: Operation.ConstString(constStr)))
+              Value.Ident(ident)
+            } else {
+              Value.ConstString(constStr)
+            }
+          }
+
+          val lStrVal = if lvalTy == strTy { lval } else self.genCallToStringMethod(lval, dst)
+          val rStrVal = if rvalTy == strTy { rval } else self.genCallToStringMethod(rval, dst)
+
+          val strConcreteTy = ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct))
+          val concatFn = self.getMethodByName(strConcreteTy.instanceKind, "concat", staticMethod: false)
+          val concatFnName = self.fnName(Some(strConcreteTy), concatFn, {}, [])
+          self.enqueueFunction(concatFn, concatFnName, [], Some(strConcreteTy), {})
+
+          val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+          val ident = Ident(ty: strTy, kind: identKind)
+          self.emit(Instruction(assignee: Some(ident), op: Operation.Call(ret: strTy, fnName: concatFnName, args: [lStrVal, rStrVal])))
+          return Value.Ident(ident)
+        }
+
+        if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
+          val l = match lval { Value.ConstInt(l) => l, else => todo("genBinary: constant-folding other value types (add)") }
+          val r = match rval { Value.ConstInt(r) => r, else => todo("genBinary: constant-folding other value types (add)") }
+
+          val v = l + r
+          return if dst |dst| {
+            val ident = Ident(ty: IrType.I64, kind: IdentKind.Named(dst))
+            self.emit(Instruction(assignee: Some(ident), op: Operation.ConstInt(v)))
+            Value.Ident(ident)
+          } else {
+            Value.ConstInt(v)
           }
         }
 
@@ -1002,12 +1055,17 @@ pub type Generator {
         val lval = self.genExpression(left, concreteGenerics)
         val rval = self.genExpression(right, concreteGenerics)
 
-        if self.valueAsCompileTime(lval) |lval| {
-          if self.valueAsCompileTime(rval) |rval| {
-            val l = match lval { Value.ConstInt(l) => l, else => todo("genBinary: constant-folding other value types (sub)") }
-            val r = match rval { Value.ConstInt(r) => r, else => todo("genBinary: constant-folding other value types (sub)") }
+        if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
+          val l = match lval { Value.ConstInt(l) => l, else => todo("genBinary: constant-folding other value types (sub)") }
+          val r = match rval { Value.ConstInt(r) => r, else => todo("genBinary: constant-folding other value types (sub)") }
 
-            return Value.ConstInt(l - r)
+          val v = l - r
+          return if dst |dst| {
+            val ident = Ident(ty: IrType.I64, kind: IdentKind.Named(dst))
+            self.emit(Instruction(assignee: Some(ident), op: Operation.ConstInt(v)))
+            Value.Ident(ident)
+          } else {
+            Value.ConstInt(v)
           }
         }
 
@@ -1021,12 +1079,17 @@ pub type Generator {
         val lval = self.genExpression(left, concreteGenerics)
         val rval = self.genExpression(right, concreteGenerics)
 
-        if self.valueAsCompileTime(lval) |lval| {
-          if self.valueAsCompileTime(rval) |rval| {
-            val l = match lval { Value.ConstInt(l) => l, else => todo("genBinary: constant-folding other value types (mul)") }
-            val r = match rval { Value.ConstInt(r) => r, else => todo("genBinary: constant-folding other value types (mul)") }
+        if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
+          val l = match lval { Value.ConstInt(l) => l, else => todo("genBinary: constant-folding other value types (mul)") }
+          val r = match rval { Value.ConstInt(r) => r, else => todo("genBinary: constant-folding other value types (mul)") }
 
-            return Value.ConstInt(l * r)
+          val v = l * r
+          return if dst |dst| {
+            val ident = Ident(ty: IrType.I64, kind: IdentKind.Named(dst))
+            self.emit(Instruction(assignee: Some(ident), op: Operation.ConstInt(v)))
+            Value.Ident(ident)
+          } else {
+            Value.ConstInt(v)
           }
         }
 
@@ -1049,12 +1112,17 @@ pub type Generator {
         val lval = self.genExpression(left, concreteGenerics)
         val rval = self.genExpression(right, concreteGenerics)
 
-        if self.valueAsCompileTime(lval) |lval| {
-          if self.valueAsCompileTime(rval) |rval| {
-            val l = match lval { Value.ConstInt(l) => l, else => todo("genBinary: constant-folding other value types (lt)") }
-            val r = match rval { Value.ConstInt(r) => r, else => todo("genBinary: constant-folding other value types (lt)") }
+        if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
+          val l = match lval { Value.ConstInt(l) => l, else => todo("genBinary: constant-folding other value types (lt)") }
+          val r = match rval { Value.ConstInt(r) => r, else => todo("genBinary: constant-folding other value types (lt)") }
 
-            return Value.ConstBool(l < r)
+          val v = l < r
+          return if dst |dst| {
+            val ident = Ident(ty: IrType.I64, kind: IdentKind.Named(dst))
+            self.emit(Instruction(assignee: Some(ident), op: Operation.ConstBool(v)))
+            Value.Ident(ident)
+          } else {
+            Value.ConstBool(v)
           }
         }
 
@@ -1082,13 +1150,11 @@ pub type Generator {
     val lval = self.genExpression(left, concreteGenerics)
     val rval = self.genExpression(right, concreteGenerics)
 
-    if self.valueAsCompileTime(lval) |lval| {
-      if self.valueAsCompileTime(rval) |rval| {
-        val l = match lval { Value.ConstInt(l) => l, else => todo("genBinary: constant-folding other value types (n/eq)") }
-        val r = match rval { Value.ConstInt(r) => r, else => todo("genBinary: constant-folding other value types (n/eq)") }
+    if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
+      val l = match lval { Value.ConstInt(l) => l, else => todo("genBinary: constant-folding other value types (n/eq)") }
+      val r = match rval { Value.ConstInt(r) => r, else => todo("genBinary: constant-folding other value types (n/eq)") }
 
-        return Value.ConstBool(l == r && !negate)
-      }
+      return Value.ConstBool(l == r && !negate)
     }
 
     val op = match leftIrTy {
@@ -1441,6 +1507,43 @@ pub type Generator {
     arrVal
   }
 
+  // codegen helpers
+
+  func genCallToStringMethod(self, value: Value, dst: String? = None): Value {
+    val strTy = IrType.Composite(self.knowns.stringType().name)
+    val valTy = self.getValueTy(value)
+    val concreteType = match valTy {
+      IrType.Unit => unreachable("values cannot be of type unit")
+      IrType.I64 => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeIntStruct))
+      IrType.Bool => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeBoolStruct))
+      IrType.Byte => todo("Byte#toString()")
+      IrType.Composite(name) => {
+        val (_, concreteTy) = try self.types[name] else unreachable("type '$name' missing from known types")
+        concreteTy
+      }
+      IrType.Ptr => todo("Pointer#toString()")
+    }
+
+    val typeParams = match concreteType.instanceKind {
+      InstanceKind.Struct(s) => s.typeParams
+      InstanceKind.Enum(e) => e.typeParams
+    }
+    val concreteGenerics: Map<String, ConcreteType> = {}
+    for typeParam, idx in typeParams {
+      val concreteGeneric = try concreteType.typeArgs[idx] else unreachable()
+      concreteGenerics[typeParam] = concreteGeneric
+    }
+
+    val toStringFn = self.getMethodByName(concreteType.instanceKind, "toString", staticMethod: false)
+    val toStringFnName = self.fnName(Some(concreteType), toStringFn, concreteGenerics, [])
+    self.enqueueFunction(toStringFn, toStringFnName, [], Some(concreteType), concreteGenerics)
+
+    val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+    val ident = Ident(ty: strTy, kind: identKind)
+    self.emit(Instruction(assignee: Some(ident), op: Operation.Call(ret: strTy, fnName: toStringFnName, args: [value])))
+    Value.Ident(ident)
+  }
+
   // helpers
 
   func enterFunction(self, fn: IrFunction): Context {
@@ -1609,7 +1712,7 @@ pub type Generator {
   func getOrAddCompositeType(self, ty: ConcreteType): CompositeType {
     val typeName = self.typeName(ty)
 
-    if self.types[typeName] |t| return t
+    if self.types[typeName] |(t, _)| return t
 
     // TODO
     // val fields = match instanceKind {
@@ -1620,7 +1723,7 @@ pub type Generator {
     // }
 
     val t = CompositeType(name: typeName, fields: [])
-    self.types[typeName] = t
+    self.types[typeName] = (t, ty)
 
     t
   }
@@ -1663,6 +1766,28 @@ pub type Generator {
       Value.ConstString => Some(value)
       Value.Ident => None
       Value.Global(global) => if global.mutable None else global.initialValue
+    }
+  }
+
+  func valuesAsCompileTime(self, value1: Value, value2: Value): (Value, Value)? {
+    if self.valueAsCompileTime(value1) |v1| {
+      if self.valueAsCompileTime(value2) |v2| {
+        return Some((v1, v2))
+      }
+    }
+
+    None
+  }
+
+  func getValueTy(self, value: Value): IrType {
+    match value {
+      Value.Unit => IrType.Unit
+      Value.ConstInt => IrType.I64
+      Value.ConstBool => IrType.Bool
+      Value.ConstChar => IrType.I64
+      Value.ConstString => IrType.Composite(name: self.knowns.stringType().name)
+      Value.Ident(ident) => ident.ty
+      Value.Global(global) => global.ty
     }
   }
 

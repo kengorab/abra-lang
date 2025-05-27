@@ -259,7 +259,7 @@ pub type Compiler {
       if idx == module.code.length - 1 && node.ty.kind != TypeKind.PrimitiveUnit {
         if value |v| {
           self._currentFn.block.addComment("call `toString` on final expression, and `printf` the String's chars")
-          val (dataPtr, _) = self._builder.buildGlobalString("%s\\n")
+          val (dataPtr, _, _) = self._builder.buildGlobalString("%s\\n")
           val tostringMethod = try self._getOrCompileToStringMethod(node.ty)
 
           val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(node.ty))[0]), true))
@@ -1715,7 +1715,7 @@ pub type Compiler {
       LiteralAstNode.Bool(b) => (Value.Int(if b 1 else 0), Type(kind: TypeKind.PrimitiveBool))
       LiteralAstNode.Char(c) => (Value.IntU64(c), Type(kind: TypeKind.PrimitiveChar))
       LiteralAstNode.String(s) => {
-        val (dataPtr, _) = self._builder.buildGlobalString(s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r"))
+        val (dataPtr, _, _) = self._builder.buildGlobalString(s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r"))
         val instancePtr = try self._constructString(dataPtr, Value.Int(s.length))
         (instancePtr, Type(kind: TypeKind.PrimitiveString))
       }
@@ -2841,7 +2841,7 @@ pub type Compiler {
         val arg = self._intrinsicArgs1(intrinsicFnName, arguments)
         val argVal = try self._compileExpression(arg)
 
-        val (intFmtPtr, _) = self._builder.buildGlobalString("%llu")
+        val (intFmtPtr, _, _) = self._builder.buildGlobalString("%llu")
         val sizeVal = try self._currentFn.block.buildCall(Callable.Function(self._snprintf), [Value.Int(0), Value.Int(0), intFmtPtr, argVal]) else |e| return qbeError(e)
         val mallocSizeVal = try self._currentFn.block.buildAdd(Value.Int(1), sizeVal) else |e| return qbeError(e)
 
@@ -3314,7 +3314,7 @@ pub type Compiler {
         val data: (String, Position, Type)[] = []
 
         if self._isFunctionStruct(struct) {
-          val (str, _) = self._builder.buildGlobalString("<#function>")
+          val (str, _, _) = self._builder.buildGlobalString("<#function>")
           val res = try self._constructString(str, Value.Int(11))
 
           self._currentFn.block.buildReturn(Some(res))
@@ -3355,7 +3355,7 @@ pub type Compiler {
           val variantName = "${enum_.label.name}.${variant.label.name}"
           match variant.kind {
             EnumVariantKind.Constant => {
-              val (variantNameStr, _) = self._builder.buildGlobalString(variantName)
+              val (variantNameStr, _, _) = self._builder.buildGlobalString(variantName)
               val retVal = try self._constructString(variantNameStr, Value.Int(variantName.length))
               self._currentFn.block.buildReturn(Some(retVal))
             }
@@ -3387,7 +3387,7 @@ pub type Compiler {
   }
 
   func _emitToStringLogicForStructuredData(self, prefix: String, selfPtr: Value, data: (String, Position, Type)[]): Result<Value, CompileError> {
-    val (prefixStr, _) = self._builder.buildGlobalString(prefix)
+    val (prefixStr, _, _) = self._builder.buildGlobalString(prefix)
     var len = prefix.length + 2 + (data.length - 1) * 2 // account for '(' and ')', as well as ',' and ' ' between items
     var lenVal = Value.Int(0)
 
@@ -3440,7 +3440,7 @@ pub type Compiler {
 
     for (fieldName, strVal, isString), idx in reprVals {
       if !fieldName.isEmpty() {
-        val (fieldNameStr, _) = self._builder.buildGlobalString(fieldName)
+        val (fieldNameStr, _, _) = self._builder.buildGlobalString(fieldName)
         self._currentFn.block.buildVoidCall(Callable.Function(self._memcpy), [cursor, fieldNameStr, Value.Int(fieldName.length)])
         cursor = try self._currentFn.block.buildAdd(cursor, Value.Int(fieldName.length), Some("str_cursor")) else |e| return qbeError(e)
         self._currentFn.block.addComment("\": \"")
@@ -3497,7 +3497,7 @@ pub type Compiler {
     fnVal.addComment("Int#toString(self): String")
     val selfParam = fnVal.addParameter("self", intTypeQbe)
 
-    val (intFmtPtr, _) = self._builder.buildGlobalString("%lld")
+    val (intFmtPtr, _, _) = self._builder.buildGlobalString("%lld")
     val sizeVal = try fnVal.block.buildCall(Callable.Function(self._snprintf), [Value.Int(0), Value.Int(0), intFmtPtr, selfParam]) else |e| return qbeError(e)
     val mallocSizeVal = try fnVal.block.buildAdd(Value.Int(1), sizeVal) else |e| return qbeError(e)
 
@@ -3529,7 +3529,7 @@ pub type Compiler {
     fnVal.addComment("Float#toString(self): String")
     val selfParam = fnVal.addParameter("self", floatTypeQbe)
 
-    val (floatFmtPtr, _) = self._builder.buildGlobalString("%g")
+    val (floatFmtPtr, _, _) = self._builder.buildGlobalString("%g")
     val sizeVal = try fnVal.block.buildCall(Callable.Function(self._snprintf), [Value.Int(0), Value.Int(0), floatFmtPtr, selfParam]) else |e| return qbeError(e)
     val mallocSizeVal = try fnVal.block.buildAdd(Value.Int(1), sizeVal) else |e| return qbeError(e)
 
@@ -3566,12 +3566,12 @@ pub type Compiler {
     fnVal.block.buildJnz(selfParam, labelIfTrue, labelIfFalse)
 
     fnVal.block.registerLabel(labelIfTrue)
-    val (trueStrData, _) = self._builder.buildGlobalString("true")
+    val (trueStrData, _, _) = self._builder.buildGlobalString("true")
     val trueStr = try self._constructString(trueStrData, Value.Int(4))
     fnVal.block.buildReturn(Some(trueStr))
 
     fnVal.block.registerLabel(labelIfFalse)
-    val (falseStrData, _) = self._builder.buildGlobalString("false")
+    val (falseStrData, _, _) = self._builder.buildGlobalString("false")
     val falseStr = try self._constructString(falseStrData, Value.Int(5))
     fnVal.block.buildReturn(Some(falseStr))
 
