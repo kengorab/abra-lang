@@ -33,15 +33,15 @@ pub type ModuleBuilder {
     fn
   }
 
-  pub func buildGlobalString(self, string: String): (Value, QbeData) {
-    if self._globalStrs[string] |ptr| return ptr
+  pub func buildGlobalString(self, string: String): (Value, QbeData, Bool) {
+    if self._globalStrs[string] |(ptr, data)| return (ptr, data, false)
 
     val dataName = "_${self._data.length}"
     val data = QbeData(name: dataName, align: None, kind: QbeDataKind.String(string))
     val (ptr, _) = self.addData(data)
     self._globalStrs[string] = (ptr, data)
 
-    (ptr, data)
+    (ptr, data, true)
   }
 
   pub func getData(self, name: String): Value? = self._dataByName[name]

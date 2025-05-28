@@ -39,11 +39,25 @@
 // }
 
 var arr = [1, 2, 3]
-stdoutWriteln(arr.length.toString())
-stdoutWriteln(arr.toString())
+stdoutWriteln("" + arr.length)
+stdoutWriteln("" + arr)
+// stdoutWriteln(arr.length.toString())
+// stdoutWriteln(arr.toString())
 
 arr.push(4)
 arr.push(5)
 arr.push(6)
-stdoutWriteln(arr.length.toString())
-stdoutWriteln(arr.toString())
+stdoutWriteln("" + arr.length)
+stdoutWriteln("" + arr)
+// stdoutWriteln(arr.length.toString())
+// stdoutWriteln(arr.toString())
+
+// func f() {
+//   val s = "a" + "b"
+//   val b = 1 < 3
+//   if b {
+//     stdoutWriteln("h")
+//   }
+//   stdoutWriteln(s.toString())
+// }
+// f()

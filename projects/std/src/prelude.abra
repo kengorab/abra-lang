@@ -351,6 +351,14 @@ type String {
     true
   }
 
+  pub func concat(self, other: String): String {
+    val buf = Pointer.malloc<Byte>(self.length + other.length + 1)
+    buf.copyFrom(0, self._buffer, 0, self.length)
+    buf.copyFrom(self.length, other._buffer, 0, other.length)
+
+    String(length: self.length + other.length, _buffer: buf)
+  }
+
   pub func byteAt(self, offset: Int): Byte = self._buffer.loadAt(offset)
 
   pub func isEmpty(self): Bool = self.length == 0
