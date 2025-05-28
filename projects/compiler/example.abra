@@ -38,6 +38,14 @@
 //   stdoutWriteln("false")
 // }
 
+// func n(b: Bool): Bool {
+//   val x = !b
+//   x
+// }
+
+// stdoutWriteln(""+n(true))
+// stdoutWriteln(""+n(false))
+
 var arr = [1, 2, 3]
 stdoutWriteln("" + arr.length)
 stdoutWriteln("" + arr)
@@ -52,12 +60,12 @@ stdoutWriteln("" + arr)
 // stdoutWriteln(arr.length.toString())
 // stdoutWriteln(arr.toString())
 
-// func f() {
-//   val s = "a" + "b"
-//   val b = 1 < 3
-//   if b {
-//     stdoutWriteln("h")
-//   }
-//   stdoutWriteln(s.toString())
-// }
-// f()
+func f() {
+  val s = "a" + "b"
+  val b = 1 < 3
+  if 1 < 3 {
+    stdoutWriteln("h")
+  }
+  stdoutWriteln(s.toString())
+}
+f()

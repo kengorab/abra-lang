@@ -126,7 +126,34 @@ pub type Compiler {
       }
       Operation.ConstInt(int) => {
         self.emitIndent()
-        self.sb.writeln(int.toString())
+        self.sb.write("const $dst = ")
+        self.sb.write(int.toString())
+        self.sb.writeln(";")
+      }
+      Operation.ConstBool(bool) => {
+        self.emitIndent()
+        self.sb.write("const $dst = ")
+        self.sb.write(bool.toString())
+        self.sb.writeln(";")
+      }
+      Operation.ConstString(str) => {
+        self.emitIndent()
+        self.sb.write("const $dst = ")
+        self.sb.write(self.makeConstString(str))
+        self.sb.writeln(";")
+      }
+      Operation.Minus(v) => {
+        self.sb.write("const $dst = ")
+        self.sb.write("-")
+        self.emitIrValueToJsValue(v)
+        self.sb.writeln(";")
+      }
+      Operation.Negate(v) => {
+        self.emitIndent()
+        self.sb.write("const $dst = ")
+        self.sb.write("!")
+        self.emitIrValueToJsValue(v)
+        self.sb.writeln(";")
       }
       Operation.Add(l, r) => {
         self.emitIndent()
@@ -355,6 +382,10 @@ pub type Compiler {
             self.emitIndent()
             self.sb.writeln("const $dst = ${strInitFn.name}($strTmp.length, $strTmp);")
           }
+          Builtin.BoolToString(bool) => {
+            self.emitIndent()
+            self.sb.writeln("const $dst = '$bool';")
+          }
         }
       }
     }
@@ -380,10 +411,7 @@ pub type Compiler {
       Value.ConstInt(i) => i.toString()
       Value.ConstBool(b) => b.toString()
       Value.ConstChar(c) => "'${Char.fromInt(c).toString()}'"
-      Value.ConstString(s) => {
-        val str = s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r")
-        "{ length: ${s.length}, _buffer: \"$str\".split('') }"
-      }
+      Value.ConstString(s) => self.makeConstString(s)
       Value.Ident(i) => {
         match i.kind {
           IdentKind.Anon(idx) => "_$idx"
@@ -392,5 +420,10 @@ pub type Compiler {
       }
       Value.Global(g) => g.name
     }
+  }
+
+  func makeConstString(self, s: String): String {
+    val str = s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r")
+    "{ length: ${s.length}, _buffer: \"$str\".split('') }"
   }
 }

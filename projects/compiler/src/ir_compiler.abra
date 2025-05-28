@@ -128,16 +128,24 @@ pub type Compiler {
       Operation.ConstInt(int) => {
         self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(int), dst)
       }
-      Operation.ConstString(str) => {
-        val slot = self.makeConstString(str)
-        try self.currentFn.block.buildAdd(qbe.Value.Int(0), slot, dst) else |e| unreachable(e)
-      }
       Operation.ConstBool(b) => {
         if b {
           self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(1), dst)
         } else {
           self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
         }
+      }
+      Operation.ConstString(str) => {
+        val slot = self.makeConstString(str)
+        try self.currentFn.block.buildAdd(qbe.Value.Int(0), slot, dst) else |e| unreachable(e)
+      }
+      Operation.Minus(v) => {
+        val value = self.irValueToQbeValue(v)
+        try self.currentFn.block.buildNeg(value, dst) else |e| unreachable(e)
+      }
+      Operation.Negate(v) => {
+        val value = self.irValueToQbeValue(v)
+        try self.currentFn.block.buildXor(value, qbe.Value.Int(1), dst) else |e| unreachable(e)
       }
       Operation.Add(l, r) => {
         val left = self.irValueToQbeValue(l)
@@ -414,6 +422,27 @@ pub type Compiler {
             val mem = try self.currentFn.block.buildCallRaw(i64ToString.name, qbe.QbeType.Pointer, [intVal, lenPtr], Some(self.nextTemp())) else |e| unreachable(e)
             val lenVal = self.currentFn.block.buildLoadL(lenPtr, Some(self.nextTemp()))
             self.constructString(mem, lenVal, dst)
+          }
+          Builtin.BoolToString(bool) => {
+            val boolVal = self.irValueToQbeValue(bool)
+
+            val labelTrue = self.currentFn.block.addLabel("true")
+            val labelFalse = self.currentFn.block.addLabel("false")
+            val labelCont = self.currentFn.block.addLabel("cont")
+            self.currentFn.block.buildJnz(boolVal, labelTrue, labelFalse)
+
+            val phiCases: (qbe.Label, qbe.Value)[] = []
+
+            self.currentFn.block.registerLabel(labelTrue)
+            phiCases.push((labelTrue, self.makeConstString("true")))
+            self.currentFn.block.buildJmp(labelCont)
+
+            self.currentFn.block.registerLabel(labelFalse)
+            phiCases.push((labelFalse, self.makeConstString("false")))
+            self.currentFn.block.buildJmp(labelCont)
+
+            self.currentFn.block.registerLabel(labelCont)
+            try self.currentFn.block.buildPhi(phiCases, dst) else |e| unreachable(e)
           }
         }
       }

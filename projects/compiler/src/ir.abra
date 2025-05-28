@@ -1,5 +1,5 @@
 import Position from "./lexer"
-import LiteralAstNode, AssignOp, BinaryOp, BindingPattern from "./parser"
+import LiteralAstNode, AssignOp, UnaryOp, BinaryOp, BindingPattern from "./parser"
 // match arms don't support import-based namespacing for enums yet, so enums used in matches are imported by name
 import TypedAstNodeKind, TypedInvokee, FunctionKind, TypeKind, ScopeKind, InstanceKind, VariableAlias, AccessorPathSegment, TypedAssignmentMode from "./typechecker"
 import "./typechecker" as tc
@@ -168,6 +168,7 @@ pub enum Builtin {
   Load(ptr: Value, offset: Value, itemTy: IrType)
   CopyFrom(dst: Value, dstOffset: Value, src: Value, srcOffset: Value, size: Value, itemTy: IrType)
   I64ToString(intVal: Value)
+  BoolToString(boolVal: Value)
 }
 
 pub type Block {
@@ -187,6 +188,9 @@ pub enum Operation {
   ConstInt(int: Int)
   ConstBool(b: Bool)
   ConstString(str: String)
+
+  Minus(value: Value)
+  Negate(value: Value)
 
   Add(left: Value, right: Value)
   Sub(left: Value, right: Value)
@@ -229,6 +233,16 @@ pub enum Operation {
       Operation.ConstBool(b) => {
         IrType.Bool.render(sb)
         sb.write(" $b")
+      }
+      Operation.Minus(v) => {
+        sb.write("minus(")
+        v.render(sb)
+        sb.write(")")
+      }
+      Operation.Negate(v) => {
+        sb.write("negate(")
+        v.render(sb)
+        sb.write(")")
       }
       Operation.Add(l, r) => {
         sb.write("add(")
@@ -414,6 +428,10 @@ pub enum Operation {
           }
           Builtin.I64ToString(int) => {
             sb.write("i64_to_string, ")
+            int.render(sb)
+          }
+          Builtin.BoolToString(int) => {
+            sb.write("bool_to_string, ")
             int.render(sb)
           }
         }
@@ -733,13 +751,26 @@ pub type Generator {
   }
 
   func genToStringMethodBody(self, selfVal: Value, concreteType: ConcreteType) {
+    val strTy = IrType.Composite(self.knowns.stringType().name)
+
     match concreteType.instanceKind {
       InstanceKind.Struct(s) => {
-        if s == self.project.preludeIntStruct {
-          val strTy = self.getIrTypeForConcreteType(ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct), typeArgs: []))
-          val ident = Ident(ty: IrType.I64, kind: IdentKind.Anon(self.nextAnonLocal()))
-          self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: strTy, builtin: Builtin.I64ToString(selfVal))))
+        if s == self.project.preludeStringStruct {
+          self.emit(Instruction(op: Operation.Return(Some(selfVal))))
+          return
+        }
+
+        if s == self.project.preludeIntStruct || s == self.project.preludeBoolStruct {
+          val builtin = if s == self.project.preludeIntStruct {
+            Builtin.I64ToString(selfVal)
+          } else if s == self.project.preludeBoolStruct {
+            Builtin.BoolToString(selfVal)
+          } else unreachable()
+
+          val ident = Ident(ty: strTy, kind: IdentKind.Anon(self.nextAnonLocal()))
+          self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: strTy, builtin: builtin)))
           self.emit(Instruction(op: Operation.Return(Some(Value.Ident(ident)))))
+          return
         }
       }
       InstanceKind.Enum(e) => todo()
@@ -900,7 +931,7 @@ pub type Generator {
     match node.kind {
       TypedAstNodeKind.Literal(lit) => self.genLiteral(pos, lit)
       TypedAstNodeKind.StringInterpolation => todo("genExpression: StringInterpolation (${node.token})")
-      TypedAstNodeKind.Unary => todo("genExpression: Unary (${node.token})")
+      TypedAstNodeKind.Unary(op, expr) => self.genUnary(pos, concreteGenerics, dst, expr, op)
       TypedAstNodeKind.Binary(left, op, right) => self.genBinary(pos, concreteGenerics, dst, left, op, right)
       TypedAstNodeKind.Grouped(inner) => self.genExpression(inner, {}, dst)
       TypedAstNodeKind.Identifier(name, variable, fnAliasTypeHint, varImportModule) => self.genIdentifier(pos, concreteGenerics, name, variable, fnAliasTypeHint, varImportModule)
@@ -980,6 +1011,49 @@ pub type Generator {
       LiteralAstNode.Bool(b) => Value.ConstBool(b)
       LiteralAstNode.Char(c) => Value.ConstChar(c)
       LiteralAstNode.String(s) => Value.ConstString(s)
+    }
+  }
+
+  func genUnary(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, dst: String?, expr: tc.TypedAstNode, op: UnaryOp): Value {
+    val exprVal = self.genExpression(expr, concreteGenerics)
+
+    match op {
+      UnaryOp.Minus => {
+        if self.valueAsCompileTime(exprVal) |exprVal| {
+          val v = match exprVal { Value.ConstInt(v) => v, else => todo("genUnary: constant-folding other value types (minus)") }
+          return if dst |dst| {
+            val ident = Ident(ty: IrType.I64, kind: IdentKind.Named(dst))
+            self.emit(Instruction(assignee: Some(ident), op: Operation.ConstInt(-v)))
+            Value.Ident(ident)
+          } else {
+            Value.ConstInt(-v)
+          }
+        }
+
+        val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+        val ident = Ident(ty: IrType.I64, kind: identKind)
+        self.emit(Instruction(assignee: Some(ident), op: Operation.Minus(exprVal)))
+
+        Value.Ident(ident: ident)
+      }
+      UnaryOp.Negate => {
+        if self.valueAsCompileTime(exprVal) |exprVal| {
+          val v = match exprVal { Value.ConstBool(v) => v, else => todo("genUnary: constant-folding other value types (negate)") }
+          return if dst |dst| {
+            val ident = Ident(ty: IrType.Bool, kind: IdentKind.Named(dst))
+            self.emit(Instruction(assignee: Some(ident), op: Operation.ConstBool(!v)))
+            Value.Ident(ident)
+          } else {
+            Value.ConstBool(!v)
+          }
+        }
+
+        val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
+        val ident = Ident(ty: IrType.Bool, kind: identKind)
+        self.emit(Instruction(assignee: Some(ident), op: Operation.Negate(exprVal)))
+
+        Value.Ident(ident: ident)
+      }
     }
   }
 
@@ -1127,7 +1201,7 @@ pub type Generator {
         }
 
         val identKind = if dst |dst| IdentKind.Named(dst) else IdentKind.Anon(self.nextAnonLocal())
-        val ident = Ident(ty: IrType.I64, kind: identKind)
+        val ident = Ident(ty: IrType.Bool, kind: identKind)
         self.emit(Instruction(assignee: Some(ident), op: Operation.Lt(lval, rval)))
 
         Value.Ident(ident: ident)
