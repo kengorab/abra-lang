@@ -72,7 +72,7 @@ func main() {
       process.exit(1)
     }
 
-    val ir = Generator.generateIR(project)
+    val ir = Generator.generateIR(project, foldConstants: true)
 
     val result = Compiler.compile(ir)
     // TODO: right now the code assumes that the output file and directory will exist prior to writing
