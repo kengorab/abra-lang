@@ -69,3 +69,10 @@ func f() {
   stdoutWriteln(s.toString())
 }
 f()
+
+val i1 = 1
+val f1 = 1.1
+val f2 = f1 + 1
+val f3 = f1 + 1.1
+val f4 = i1 + 1
+stdoutWriteln([""+f1,""+ f2,""+ f3,""+ f4].toString())
