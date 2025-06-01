@@ -391,12 +391,12 @@ pub type Compiler {
 
   func irConstToJsValue(self, const: Const): String = match const {
     Const.Int(i) => {
-      // val mask = 0b1111111111100000000000000000000000000000000000000000000000000000
+      // JS can only accurately represent integer literals up to 53 bits; otherwise BigInt is required
       val mask = 0x7ff << 53
       if (i && mask) == 0 {
         i.toString()
       } else {
-        "BigInt(${i.toString()})"
+        "${i}n"
       }
     }
     Const.Float(f) => f.toString()
