@@ -185,6 +185,7 @@ pub enum Builtin {
   Load(ptr: Value, offset: Value, itemTy: IrType)
   CopyFrom(dst: Value, dstOffset: Value, src: Value, srcOffset: Value, size: Value, itemTy: IrType)
   I64ToString(intVal: Value)
+  U64ToString(intVal: Value)
   F64ToString(floatVal: Value)
   BoolToString(boolVal: Value)
 }
@@ -218,8 +219,18 @@ pub enum Operation {
   Div(left: Value, right: Value)
   Mod(left: Value, right: Value)
   Pow(left: Value, right: Value)
+  BitAnd(left: Value, right: Value)
+  BoolAnd(left: Value, right: Value)
+  BitOr(left: Value, right: Value)
+  BoolOr(left: Value, right: Value)
+  Xor(left: Value, right: Value)
   Eq(primitive: Bool, negate: Bool, left: Value, right: Value)
   Lt(left: Value, right: Value)
+  Lte(left: Value, right: Value)
+  Shl(left: Value, right: Value)
+  Gt(left: Value, right: Value)
+  Gte(left: Value, right: Value)
+  Shr(left: Value, right: Value)
 
   Load(ty: IrType, mem: Value)
   LoadField(ty: IrType, mem: Value, name: String, offset: Int)
@@ -310,6 +321,41 @@ pub enum Operation {
         r.render(sb)
         sb.write(")")
       }
+      Operation.BitAnd(l, r) => {
+        sb.write("bitand(")
+        l.render(sb)
+        sb.write(", ")
+        r.render(sb)
+        sb.write(")")
+      }
+      Operation.BoolAnd(l, r) => {
+        sb.write("and(")
+        l.render(sb)
+        sb.write(", ")
+        r.render(sb)
+        sb.write(")")
+      }
+      Operation.BitOr(l, r) => {
+        sb.write("bitor(")
+        l.render(sb)
+        sb.write(", ")
+        r.render(sb)
+        sb.write(")")
+      }
+      Operation.BoolOr(l, r) => {
+        sb.write("or(")
+        l.render(sb)
+        sb.write(", ")
+        r.render(sb)
+        sb.write(")")
+      }
+      Operation.Xor(l, r) => {
+        sb.write("xor(")
+        l.render(sb)
+        sb.write(", ")
+        r.render(sb)
+        sb.write(")")
+      }
       Operation.Eq(_, negate, left, right) => {
         if negate sb.write("neq(") else sb.write("eq(")
         left.render(sb)
@@ -319,6 +365,41 @@ pub enum Operation {
       }
       Operation.Lt(left, right) => {
         sb.write("lt(")
+        left.render(sb)
+        sb.write(", ")
+        right.render(sb)
+        sb.write(")")
+      }
+      Operation.Lte(left, right) => {
+        sb.write("lte(")
+        left.render(sb)
+        sb.write(", ")
+        right.render(sb)
+        sb.write(")")
+      }
+      Operation.Shl(left, right) => {
+        sb.write("shl(")
+        left.render(sb)
+        sb.write(", ")
+        right.render(sb)
+        sb.write(")")
+      }
+      Operation.Gt(left, right) => {
+        sb.write("gt(")
+        left.render(sb)
+        sb.write(", ")
+        right.render(sb)
+        sb.write(")")
+      }
+      Operation.Gte(left, right) => {
+        sb.write("gte(")
+        left.render(sb)
+        sb.write(", ")
+        right.render(sb)
+        sb.write(")")
+      }
+      Operation.Shr(left, right) => {
+        sb.write("shr(")
         left.render(sb)
         sb.write(", ")
         right.render(sb)
@@ -480,6 +561,10 @@ pub enum Operation {
           }
           Builtin.I64ToString(int) => {
             sb.write("i64_to_string, ")
+            int.render(sb)
+          }
+          Builtin.U64ToString(int) => {
+            sb.write("u64_to_string, ")
             int.render(sb)
           }
           Builtin.F64ToString(int) => {
@@ -1288,9 +1373,59 @@ pub type Generator {
 
         self.ssaValue(IrType.F64, Operation.Pow(lval, rval), dst)
       }
-      BinaryOp.And => todo("genBinary: BinaryOp.And ($pos)")
-      BinaryOp.Or => todo("genBinary: BinaryOp.Or")
-      BinaryOp.Xor => todo("genBinary: BinaryOp.Xor")
+      BinaryOp.And => {
+        val lval = self.genExpression(left, concreteGenerics)
+        val rval = self.genExpression(right, concreteGenerics)
+        val lvalTy = self.getValueTy(lval)
+        val rvalTy = self.getValueTy(rval)
+
+        if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
+          val const = match lval {
+            Const.Int(l) => match rval { Const.Int(r) => Const.Int(l && r), else => unreachable("[genBinary bit-and]: unexpected const value ($rval)") }
+            Const.Bool(l) => match rval { Const.Bool(r) => Const.Bool(l && r), else => unreachable("[genBinary bool-and]: unexpected const value ($rval)") }
+            else => unreachable("[genBinary and]: unexpected const value ($lval)")
+          }
+
+          return self.ssaValueComptime(const, dst)
+        }
+
+        if lvalTy == IrType.I64 && rvalTy == IrType.I64 {
+          self.ssaValue(IrType.I64, Operation.BitAnd(lval, rval), dst)
+        } else {
+          self.ssaValue(IrType.Bool, Operation.BoolAnd(lval, rval), dst)
+        }
+      }
+      BinaryOp.Or => {
+        val lval = self.genExpression(left, concreteGenerics)
+        val rval = self.genExpression(right, concreteGenerics)
+        val lvalTy = self.getValueTy(lval)
+        val rvalTy = self.getValueTy(rval)
+
+        if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
+          val const = match lval {
+            Const.Int(l) => match rval { Const.Int(r) => Const.Int(l || r), else => unreachable("[genBinary bit-or]: unexpected const value ($rval)") }
+            Const.Bool(l) => match rval { Const.Bool(r) => Const.Bool(l || r), else => unreachable("[genBinary bool-or]: unexpected const value ($rval)") }
+            else => unreachable("[genBinary or]: unexpected const value ($lval)")
+          }
+
+          return self.ssaValueComptime(const, dst)
+        }
+
+        if lvalTy == IrType.I64 && rvalTy == IrType.I64 {
+          self.ssaValue(IrType.I64, Operation.BitOr(lval, rval), dst)
+        } else {
+          self.ssaValue(IrType.Bool, Operation.BoolOr(lval, rval), dst)
+        }
+      }
+      BinaryOp.Xor => {
+        val lval = self.genExpression(left, concreteGenerics)
+        val rval = self.genExpression(right, concreteGenerics)
+        val lvalTy = self.getValueTy(lval)
+        val rvalTy = self.getValueTy(rval)
+
+        val retTy = if lvalTy == IrType.I64 && rvalTy == IrType.I64 { IrType.I64 } else { IrType.Bool }
+        self.ssaValue(retTy, Operation.Xor(lval, rval), dst)
+      }
       BinaryOp.Coalesce => todo("genBinary: BinaryOp.Coalesce")
       BinaryOp.Eq => self.genEq(concreteGenerics, left, right, false, dst)
       BinaryOp.Neq => self.genEq(concreteGenerics, left, right, true, dst)
@@ -1318,11 +1453,108 @@ pub type Generator {
 
         self.ssaValue(IrType.Bool, Operation.Lt(lval, rval), dst)
       }
-      BinaryOp.LTE => todo("genBinary: BinaryOp.LTE")
-      BinaryOp.Shl => todo("genBinary: BinaryOp.Shl")
-      BinaryOp.GT => todo("genBinary: BinaryOp.GT")
-      BinaryOp.GTE => todo("genBinary: BinaryOp.GTE")
-      BinaryOp.Shr => todo("genBinary: BinaryOp.Shr")
+      BinaryOp.LTE => {
+        val lval = self.genExpression(left, concreteGenerics)
+        val rval = self.genExpression(right, concreteGenerics)
+
+        if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
+          val const = match lval {
+            Const.Int(l) => match rval {
+              Const.Int(r) => Const.Bool(l <= r)
+              Const.Float(r) => Const.Bool(l <= r)
+              else => unreachable("[genBinary lte]: unexpected const value ($rval)")
+            }
+            Const.Float(l) => match rval {
+              Const.Int(r) => Const.Bool(l <= r)
+              Const.Float(r) => Const.Bool(l <= r)
+              else => unreachable("[genBinary lte]: unexpected const value ($rval)")
+            }
+            else => unreachable("[genBinary lte]: unexpected const value ($lval)")
+          }
+
+          return self.ssaValueComptime(const, dst)
+        }
+
+        self.ssaValue(IrType.Bool, Operation.Lte(lval, rval), dst)
+      }
+      BinaryOp.Shl => {
+        val lval = self.genExpression(left, concreteGenerics)
+        val rval = self.genExpression(right, concreteGenerics)
+
+        if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
+          val const = match lval {
+            Const.Int(l) => match rval { Const.Int(r) => Const.Int(l << r), else => unreachable("[genBinary shl]: unexpected const value ($rval)") }
+            else => unreachable("[genBinary shl]: unexpected const value ($lval)")
+          }
+
+          return self.ssaValueComptime(const, dst)
+        }
+
+        self.ssaValue(IrType.Bool, Operation.Shl(lval, rval), dst)
+      }
+      BinaryOp.GT => {
+        val lval = self.genExpression(left, concreteGenerics)
+        val rval = self.genExpression(right, concreteGenerics)
+
+        if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
+          val const = match lval {
+            Const.Int(l) => match rval {
+              Const.Int(r) => Const.Bool(l > r)
+              Const.Float(r) => Const.Bool(l > r)
+              else => unreachable("[genBinary gt]: unexpected const value ($rval)")
+            }
+            Const.Float(l) => match rval {
+              Const.Int(r) => Const.Bool(l > r)
+              Const.Float(r) => Const.Bool(l > r)
+              else => unreachable("[genBinary gt]: unexpected const value ($rval)")
+            }
+            else => unreachable("[genBinary gt]: unexpected const value ($lval)")
+          }
+
+          return self.ssaValueComptime(const, dst)
+        }
+
+        self.ssaValue(IrType.Bool, Operation.Gt(lval, rval), dst)
+      }
+      BinaryOp.GTE => {
+        val lval = self.genExpression(left, concreteGenerics)
+        val rval = self.genExpression(right, concreteGenerics)
+
+        if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
+          val const = match lval {
+            Const.Int(l) => match rval {
+              Const.Int(r) => Const.Bool(l >= r)
+              Const.Float(r) => Const.Bool(l >= r)
+              else => unreachable("[genBinary gte]: unexpected const value ($rval)")
+            }
+            Const.Float(l) => match rval {
+              Const.Int(r) => Const.Bool(l >= r)
+              Const.Float(r) => Const.Bool(l >= r)
+              else => unreachable("[genBinary gte]: unexpected const value ($rval)")
+            }
+            else => unreachable("[genBinary gte]: unexpected const value ($lval)")
+          }
+
+          return self.ssaValueComptime(const, dst)
+        }
+
+        self.ssaValue(IrType.Bool, Operation.Gte(lval, rval), dst)
+      }
+      BinaryOp.Shr => {
+        val lval = self.genExpression(left, concreteGenerics)
+        val rval = self.genExpression(right, concreteGenerics)
+
+        if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
+          val const = match lval {
+            Const.Int(l) => match rval { Const.Int(r) => Const.Int(l >> r), else => unreachable("[genBinary shr]: unexpected const value ($rval)") }
+            else => unreachable("[genBinary shr]: unexpected const value ($lval)")
+          }
+
+          return self.ssaValueComptime(const, dst)
+        }
+
+        self.ssaValue(IrType.Bool, Operation.Shr(lval, rval), dst)
+      }
     }
   }
 
@@ -1338,11 +1570,11 @@ pub type Generator {
 
     if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
       val const = match lval {
-        Const.Int(l) => match rval { Const.Int(r) => Const.Bool(l == r && !negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-        Const.Float(l) => match rval { Const.Float(r) => Const.Bool(l == r && !negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-        Const.Bool(l) => match rval { Const.Bool(r) => Const.Bool(l == r && !negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-        Const.Char(l) => match rval { Const.Char(r) => Const.Bool(l == r && !negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-        Const.String(l) => match rval { Const.String(r) => Const.Bool(l == r && !negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
+        Const.Int(l) => match rval { Const.Int(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
+        Const.Float(l) => match rval { Const.Float(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
+        Const.Bool(l) => match rval { Const.Bool(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
+        Const.Char(l) => match rval { Const.Char(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
+        Const.String(l) => match rval { Const.String(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
       }
 
       return self.ssaValueComptime(const, dst)
@@ -1411,6 +1643,13 @@ pub type Generator {
             "char_as_int" => {
               val arg = self.intrinsicArgs1("char_as_int", args)
               self.genExpression(arg, concreteGenerics, dst)
+            }
+            "u64_to_string" => {
+              val arg = self.intrinsicArgs1("u64_to_string", args)
+              val u64Val = self.genExpression(arg, concreteGenerics, dst)
+
+              val strTy = IrType.Composite(self.knowns.stringType().name)
+              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: strTy, builtin: Builtin.U64ToString(u64Val)), dst)
             }
             else => todo("Unimplemented static/standalone intrinsic '$intrinsicName'")
           }

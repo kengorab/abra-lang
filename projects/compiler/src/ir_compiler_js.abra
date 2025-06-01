@@ -156,12 +156,22 @@ pub type Compiler {
       Operation.Div(l, r) => self.genBinary(dst, "/", l, r)
       Operation.Mod(l, r) => self.genBinary(dst, "%", l, r)
       Operation.Pow(l, r) => self.genBinary(dst, "**", l, r)
+      Operation.BitAnd(l, r) => self.genBinary(dst, "&", l, r)
+      Operation.BoolAnd(l, r) => self.genBinary(dst, "&&", l, r)
+      Operation.BitOr(l, r) => self.genBinary(dst, "|", l, r)
+      Operation.BoolOr(l, r) => self.genBinary(dst, "||", l, r)
+      Operation.Xor(l, r) => self.genBinary(dst, "^", l, r)
       Operation.Eq(primitive, negate, l, r) => {
         if !primitive todo("non-primitive Eq operation")
 
         self.genBinary(dst, if negate "!==" else "===", l, r)
       }
       Operation.Lt(l, r) => self.genBinary(dst, "<", l, r)
+      Operation.Lte(l, r) => self.genBinary(dst, "<=", l, r)
+      Operation.Shl(l, r) => self.genBinary(dst, "<<", l, r)
+      Operation.Gt(l, r) => self.genBinary(dst, ">", l, r)
+      Operation.Gte(l, r) => self.genBinary(dst, ">=", l, r)
+      Operation.Shr(l, r) => self.genBinary(dst, ">>", l, r)
       Operation.Load(ty, mem) => {
         self.sb.write("const $dst = ")
         self.emitIrValueToJsValue(mem)
@@ -329,6 +339,17 @@ pub type Compiler {
             self.emitIndent()
             self.sb.writeln("const $dst = ${strInitFn.name}($strTmp.length, $strTmp);")
           }
+          Builtin.U64ToString(int) => {
+            val strInitFn = self.ir.knowns.stringInitializerFn()
+
+            val strTmp = self.nextTemp()
+            self.sb.write("const $strTmp = BigInt.asUintN(64, BigInt(")
+            self.emitIrValueToJsValue(int)
+            self.sb.writeln(")).toString().split('');")
+
+            self.emitIndent()
+            self.sb.writeln("const $dst = ${strInitFn.name}($strTmp.length, $strTmp);")
+          }
           Builtin.F64ToString(float) => {
             val strInitFn = self.ir.knowns.stringInitializerFn()
 
@@ -341,7 +362,15 @@ pub type Compiler {
             self.sb.writeln("const $dst = ${strInitFn.name}($strTmp.length, $strTmp);")
           }
           Builtin.BoolToString(bool) => {
-            self.sb.writeln("const $dst = '$bool';")
+            val strInitFn = self.ir.knowns.stringInitializerFn()
+
+            val strTmp = self.nextTemp()
+            self.sb.write("const $strTmp = ")
+            self.emitIrValueToJsValue(bool)
+            self.sb.writeln(".toString().split('');")
+
+            self.emitIndent()
+            self.sb.writeln("const $dst = ${strInitFn.name}($strTmp.length, $strTmp);")
           }
         }
       }
@@ -361,7 +390,15 @@ pub type Compiler {
   func emitIrConstToJsValue(self, c: Const) = self.sb.write(self.irConstToJsValue(c))
 
   func irConstToJsValue(self, const: Const): String = match const {
-    Const.Int(i) => i.toString()
+    Const.Int(i) => {
+      // val mask = 0b1111111111100000000000000000000000000000000000000000000000000000
+      val mask = 0x7ff << 53
+      if (i && mask) == 0 {
+        i.toString()
+      } else {
+        "BigInt(${i.toString()})"
+      }
+    }
     Const.Float(f) => f.toString()
     Const.Bool(b) => b.toString()
     Const.Char(c) => "'${Char.fromInt(c).toString()}'"
