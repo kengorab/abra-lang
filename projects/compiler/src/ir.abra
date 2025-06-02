@@ -188,6 +188,11 @@ pub enum Builtin {
   U64ToString(intVal: Value)
   F64ToString(floatVal: Value)
   BoolToString(boolVal: Value)
+  IntAsFloat(intVal: Value)
+  FloatAsInt(floatVal: Value)
+  FloatCeil(floatVal: Value)
+  FloatFloor(floatVal: Value)
+  FloatRound(floatVal: Value)
 }
 
 pub type Block {
@@ -220,10 +225,10 @@ pub enum Operation {
   Mod(left: Value, right: Value)
   Pow(left: Value, right: Value)
   BitAnd(left: Value, right: Value)
-  BoolAnd(left: Value, right: Value)
+  BoolAnd(left: Value, right: CompoundValue)
   BitOr(left: Value, right: Value)
-  BoolOr(left: Value, right: Value)
-  Xor(left: Value, right: Value)
+  BoolOr(left: Value, right: CompoundValue)
+  Xor(bitwise: Bool, left: Value, right: Value)
   Eq(primitive: Bool, negate: Bool, left: Value, right: Value)
   Lt(left: Value, right: Value)
   Lte(left: Value, right: Value)
@@ -329,10 +334,14 @@ pub enum Operation {
         sb.write(")")
       }
       Operation.BoolAnd(l, r) => {
+        for instr in r.body {
+          instr.render(sb)
+          sb.writeln()
+        }
         sb.write("and(")
         l.render(sb)
         sb.write(", ")
-        r.render(sb)
+        r.result.render(sb)
         sb.write(")")
       }
       Operation.BitOr(l, r) => {
@@ -343,13 +352,17 @@ pub enum Operation {
         sb.write(")")
       }
       Operation.BoolOr(l, r) => {
+        for instr in r.body {
+          instr.render(sb)
+          sb.writeln()
+        }
         sb.write("or(")
         l.render(sb)
         sb.write(", ")
-        r.render(sb)
+        r.result.render(sb)
         sb.write(")")
       }
-      Operation.Xor(l, r) => {
+      Operation.Xor(_, l, r) => {
         sb.write("xor(")
         l.render(sb)
         sb.write(", ")
@@ -574,6 +587,26 @@ pub enum Operation {
           Builtin.BoolToString(int) => {
             sb.write("bool_to_string, ")
             int.render(sb)
+          }
+          Builtin.IntAsFloat(float) => {
+            sb.write("int_as_float, ")
+            float.render(sb)
+          }
+          Builtin.FloatAsInt(float) => {
+            sb.write("float_as_int, ")
+            float.render(sb)
+          }
+          Builtin.FloatCeil(float) => {
+            sb.write("float_ceil, ")
+            float.render(sb)
+          }
+          Builtin.FloatFloor(float) => {
+            sb.write("float_floor, ")
+            float.render(sb)
+          }
+          Builtin.FloatRound(float) => {
+            sb.write("float_round, ")
+            float.render(sb)
           }
         }
         sb.write(")")
@@ -1189,7 +1222,7 @@ pub type Generator {
           }
         }
 
-        self.ssaValue(IrType.I64, Operation.Minus(exprVal), dst)
+        self.ssaValue(self.getValueTy(exprVal), Operation.Minus(exprVal), dst)
       }
       UnaryOp.Negate => {
         if self.valueAsCompileTime(exprVal) |exprVal| {
@@ -1375,11 +1408,11 @@ pub type Generator {
       }
       BinaryOp.And => {
         val lval = self.genExpression(left, concreteGenerics)
-        val rval = self.genExpression(right, concreteGenerics)
+        val rval = self.genCompoundValue(() => self.genExpression(right, concreteGenerics))
         val lvalTy = self.getValueTy(lval)
-        val rvalTy = self.getValueTy(rval)
+        val rvalTy = self.getValueTy(rval.result)
 
-        if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
+        if self.valuesAsCompileTime(lval, rval.result) |(lval, rval)| {
           val const = match lval {
             Const.Int(l) => match rval { Const.Int(r) => Const.Int(l && r), else => unreachable("[genBinary bit-and]: unexpected const value ($rval)") }
             Const.Bool(l) => match rval { Const.Bool(r) => Const.Bool(l && r), else => unreachable("[genBinary bool-and]: unexpected const value ($rval)") }
@@ -1390,18 +1423,18 @@ pub type Generator {
         }
 
         if lvalTy == IrType.I64 && rvalTy == IrType.I64 {
-          self.ssaValue(IrType.I64, Operation.BitAnd(lval, rval), dst)
+          self.ssaValue(IrType.I64, Operation.BitAnd(lval, rval.result), dst)
         } else {
           self.ssaValue(IrType.Bool, Operation.BoolAnd(lval, rval), dst)
         }
       }
       BinaryOp.Or => {
         val lval = self.genExpression(left, concreteGenerics)
-        val rval = self.genExpression(right, concreteGenerics)
+        val rval = self.genCompoundValue(() => self.genExpression(right, concreteGenerics))
         val lvalTy = self.getValueTy(lval)
-        val rvalTy = self.getValueTy(rval)
+        val rvalTy = self.getValueTy(rval.result)
 
-        if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
+        if self.valuesAsCompileTime(lval, rval.result) |(lval, rval)| {
           val const = match lval {
             Const.Int(l) => match rval { Const.Int(r) => Const.Int(l || r), else => unreachable("[genBinary bit-or]: unexpected const value ($rval)") }
             Const.Bool(l) => match rval { Const.Bool(r) => Const.Bool(l || r), else => unreachable("[genBinary bool-or]: unexpected const value ($rval)") }
@@ -1412,7 +1445,7 @@ pub type Generator {
         }
 
         if lvalTy == IrType.I64 && rvalTy == IrType.I64 {
-          self.ssaValue(IrType.I64, Operation.BitOr(lval, rval), dst)
+          self.ssaValue(IrType.I64, Operation.BitOr(lval, rval.result), dst)
         } else {
           self.ssaValue(IrType.Bool, Operation.BoolOr(lval, rval), dst)
         }
@@ -1423,8 +1456,9 @@ pub type Generator {
         val lvalTy = self.getValueTy(lval)
         val rvalTy = self.getValueTy(rval)
 
-        val retTy = if lvalTy == IrType.I64 && rvalTy == IrType.I64 { IrType.I64 } else { IrType.Bool }
-        self.ssaValue(retTy, Operation.Xor(lval, rval), dst)
+        val bitwise = lvalTy == IrType.I64 && rvalTy == IrType.I64
+        val retTy = if bitwise { IrType.I64 } else { IrType.Bool }
+        self.ssaValue(retTy, Operation.Xor(bitwise, lval, rval), dst)
       }
       BinaryOp.Coalesce => todo("genBinary: BinaryOp.Coalesce")
       BinaryOp.Eq => self.genEq(concreteGenerics, left, right, false, dst)
@@ -1643,6 +1677,36 @@ pub type Generator {
             "char_as_int" => {
               val arg = self.intrinsicArgs1("char_as_int", args)
               self.genExpression(arg, concreteGenerics, dst)
+            }
+            "int_as_float" => {
+              val arg = self.intrinsicArgs1("int_as_float", args)
+              val intVal = self.genExpression(arg, concreteGenerics, dst)
+
+              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.F64, builtin: Builtin.IntAsFloat(intVal)), dst)
+            }
+            "float_as_int" => {
+              val arg = self.intrinsicArgs1("float_as_int", args)
+              val floatVal = self.genExpression(arg, concreteGenerics, dst)
+
+              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.I64, builtin: Builtin.FloatAsInt(floatVal)), dst)
+            }
+            "float_ceil" => {
+              val arg = self.intrinsicArgs1("float_ceil", args)
+              val floatVal = self.genExpression(arg, concreteGenerics, dst)
+
+              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.I64, builtin: Builtin.FloatCeil(floatVal)), dst)
+            }
+            "float_floor" => {
+              val arg = self.intrinsicArgs1("float_floor", args)
+              val floatVal = self.genExpression(arg, concreteGenerics, dst)
+
+              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.I64, builtin: Builtin.FloatFloor(floatVal)), dst)
+            }
+            "float_round" => {
+              val arg = self.intrinsicArgs1("float_round", args)
+              val floatVal = self.genExpression(arg, concreteGenerics, dst)
+
+              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.I64, builtin: Builtin.FloatRound(floatVal)), dst)
             }
             "u64_to_string" => {
               val arg = self.intrinsicArgs1("u64_to_string", args)

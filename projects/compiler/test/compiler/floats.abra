@@ -120,6 +120,8 @@ printlnBool(17.1 >= 15.1)
 // Float#asInt
 /// Expect: 1
 stdoutWriteln((1.23).asInt().toString())
+/// Expect: 1
+stdoutWriteln((1.78).asInt().toString())
 
 // Float#abs
 /// Expect: 1.23
