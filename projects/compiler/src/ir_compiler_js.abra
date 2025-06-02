@@ -157,10 +157,69 @@ pub type Compiler {
       Operation.Mod(l, r) => self.genBinary(dst, "%", l, r)
       Operation.Pow(l, r) => self.genBinary(dst, "**", l, r)
       Operation.BitAnd(l, r) => self.genBinary(dst, "&", l, r)
-      Operation.BoolAnd(l, r) => self.genBinary(dst, "&&", l, r)
+      Operation.BoolAnd(l, r) => {
+        self.sb.writeln("let $dst;")
+
+        self.emitIndent()
+        val lTmp = self.nextTemp()
+        self.sb.write("const $lTmp = ")
+        self.emitIrValueToJsValue(l)
+        self.sb.writeln(";")
+
+        self.emitIndent()
+        self.sb.writeln("if (!$lTmp)")
+        self.emitIndent()
+        self.sb.writeln("  $dst = false;")
+        self.emitIndent()
+        self.sb.writeln("else {")
+        for inst in r.body {
+          self.emitIndent()
+          self.compileInstruction(inst)
+        }
+        self.sb.write("  $dst = ")
+        self.emitIrValueToJsValue(r.result)
+        self.sb.writeln(";")
+        self.emitIndent()
+        self.sb.writeln("}")
+
+      }
       Operation.BitOr(l, r) => self.genBinary(dst, "|", l, r)
-      Operation.BoolOr(l, r) => self.genBinary(dst, "||", l, r)
-      Operation.Xor(l, r) => self.genBinary(dst, "^", l, r)
+      Operation.BoolOr(l, r) => {
+        self.sb.writeln("let $dst;")
+
+        self.emitIndent()
+        val lTmp = self.nextTemp()
+        self.sb.write("const $lTmp = ")
+        self.emitIrValueToJsValue(l)
+        self.sb.writeln(";")
+
+        self.emitIndent()
+        self.sb.writeln("if ($lTmp)")
+        self.emitIndent()
+        self.sb.writeln("  $dst = true;")
+        self.emitIndent()
+        self.sb.writeln("else {")
+        for inst in r.body {
+          self.emitIndent()
+          self.compileInstruction(inst)
+        }
+        self.sb.write("  $dst = ")
+        self.emitIrValueToJsValue(r.result)
+        self.sb.writeln(";")
+        self.emitIndent()
+        self.sb.writeln("}")
+      }
+      Operation.Xor(bitwise, l, r) => {
+        if bitwise {
+          self.sb.write("const $dst = (")
+        } else {
+          self.sb.write("const $dst = !!(")
+        }
+        self.emitIrValueToJsValue(l)
+        self.sb.write(" ^ ")
+        self.emitIrValueToJsValue(r)
+        self.sb.writeln(");")
+      }
       Operation.Eq(primitive, negate, l, r) => {
         if !primitive todo("non-primitive Eq operation")
 
@@ -353,13 +412,27 @@ pub type Compiler {
           Builtin.F64ToString(float) => {
             val strInitFn = self.ir.knowns.stringInitializerFn()
 
+            val floatVal = self.irValueToJsValue(float)
+
+            self.sb.writeln("let $dst;")
+            self.emitIndent()
+            self.sb.writeln("if ($floatVal === -0) {")
+            self.emitIndent()
+            self.sb.writeln("  $dst = ${self.makeConstString("-0")};")
+            self.emitIndent()
+            self.sb.writeln("} else {")
+
+            self.indentLevel += 1
             val strTmp = self.nextTemp()
-            self.sb.write("const $strTmp = ")
-            self.emitIrValueToJsValue(float)
-            self.sb.writeln(".toFixed(5).replace(/0+$/, '').replace(/\\.$/, '').split('');")
+            self.emitIndent()
+            self.sb.writeln("const $strTmp = $floatVal.toPrecision(6).replace(/0+$/, '').replace(/\\.$/, '').split('');")
 
             self.emitIndent()
-            self.sb.writeln("const $dst = ${strInitFn.name}($strTmp.length, $strTmp);")
+            self.sb.writeln("$dst = ${strInitFn.name}($strTmp.length, $strTmp);")
+            self.indentLevel -= 1
+
+            self.emitIndent()
+            self.sb.writeln("}")
           }
           Builtin.BoolToString(bool) => {
             val strInitFn = self.ir.knowns.stringInitializerFn()
@@ -371,6 +444,31 @@ pub type Compiler {
 
             self.emitIndent()
             self.sb.writeln("const $dst = ${strInitFn.name}($strTmp.length, $strTmp);")
+          }
+          Builtin.IntAsFloat(int) => {
+            self.sb.write("const $dst = ")
+            self.emitIrValueToJsValue(int)
+            self.sb.writeln(";")
+          }
+          Builtin.FloatAsInt(float) => {
+            self.sb.write("const $dst = Math.trunc(")
+            self.emitIrValueToJsValue(float)
+            self.sb.writeln(");")
+          }
+          Builtin.FloatCeil(float) => {
+            self.sb.write("const $dst = Math.ceil(")
+            self.emitIrValueToJsValue(float)
+            self.sb.writeln(");")
+          }
+          Builtin.FloatFloor(float) => {
+            self.sb.write("const $dst = Math.floor(")
+            self.emitIrValueToJsValue(float)
+            self.sb.writeln(");")
+          }
+          Builtin.FloatRound(float) => {
+            self.sb.write("const $dst = Math.round(")
+            self.emitIrValueToJsValue(float)
+            self.sb.writeln(");")
           }
         }
       }

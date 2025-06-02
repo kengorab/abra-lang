@@ -291,7 +291,10 @@ pub type Compiler {
         self.currentFn.block.buildJnz(left, labelThen, labelElse)
 
         self.currentFn.block.registerLabel(labelThen)
-        var right = self.irValueToQbeValue(r)
+        for inst in r.body {
+          self.compileInstruction(inst)
+        }
+        val right = self.irValueToQbeValue(r.result)
         val rightLabel = self.currentFn.block.currentLabel
         self.currentFn.block.buildJmp(labelCont)
 
@@ -301,7 +304,7 @@ pub type Compiler {
         self.currentFn.block.registerLabel(labelCont)
 
         val phiCases = [(rightLabel, right), (labelElse, left)]
-        try self.currentFn.block.buildPhi(phiCases) else |e| unreachable(e)
+        try self.currentFn.block.buildPhi(phiCases, dst) else |e| unreachable(e)
       }
       Operation.BitOr(l, r) => {
         var left = self.irValueToQbeValue(l)
@@ -322,16 +325,19 @@ pub type Compiler {
         self.currentFn.block.buildJmp(labelCont)
 
         self.currentFn.block.registerLabel(labelElse)
-        var right = self.irValueToQbeValue(r)
+        for inst in r.body {
+          self.compileInstruction(inst)
+        }
+        val right = self.irValueToQbeValue(r.result)
         val rightLabel = self.currentFn.block.currentLabel
         self.currentFn.block.buildJmp(labelCont)
 
         self.currentFn.block.registerLabel(labelCont)
 
         val phiCases = [(labelThen, left), (rightLabel, right)]
-        try self.currentFn.block.buildPhi(phiCases) else |e| unreachable(e)
+        try self.currentFn.block.buildPhi(phiCases, dst) else |e| unreachable(e)
       }
-      Operation.Xor(l, r) => {
+      Operation.Xor(_, l, r) => {
         var left = self.irValueToQbeValue(l)
         var right = self.irValueToQbeValue(r)
 
@@ -513,7 +519,7 @@ pub type Compiler {
             if thenPhiValue |(label, v)| phiCases.push((label, v))
             if elsePhiValue |(label, v)| phiCases.push((label, v))
 
-            try self.currentFn.block.buildPhi(phiCases, dst) else |e| unreachable(e)
+            try self.currentFn.block.buildPhi(phiCases, dst) else |e| unreachable("$e ($thenBlock)")
           }
         } else {
           if !isStmt unreachable("must be a statement at this point")
@@ -700,6 +706,34 @@ pub type Compiler {
 
             self.currentFn.block.registerLabel(labelCont)
             try self.currentFn.block.buildPhi(phiCases, dst) else |e| unreachable(e)
+          }
+          Builtin.IntAsFloat(int) => {
+            val intVal = self.irValueToQbeValue(int)
+
+            self.currentFn.block.buildLToF(intVal, true, dst)
+          }
+          Builtin.FloatAsInt(float) => {
+            val floatVal = self.irValueToQbeValue(float)
+
+            self.currentFn.block.buildFToL(floatVal, true, dst)
+          }
+          Builtin.FloatCeil(float) => {
+            val floatVal = self.irValueToQbeValue(float)
+
+            val ceilRes = try self.currentFn.block.buildCallRaw("ceil", QbeType.F64, [floatVal], Some(self.nextTemp())) else |e| unreachable(e)
+            self.currentFn.block.buildFToL(ceilRes, true, dst)
+          }
+          Builtin.FloatFloor(float) => {
+            val floatVal = self.irValueToQbeValue(float)
+
+            val floorRes = try self.currentFn.block.buildCallRaw("floor", QbeType.F64, [floatVal], Some(self.nextTemp())) else |e| unreachable(e)
+            self.currentFn.block.buildFToL(floorRes, true, dst)
+          }
+          Builtin.FloatRound(float) => {
+            val floatVal = self.irValueToQbeValue(float)
+
+            val roundRes = try self.currentFn.block.buildCallRaw("round", QbeType.F64, [floatVal], Some(self.nextTemp())) else |e| unreachable(e)
+            self.currentFn.block.buildFToL(roundRes, true, dst)
           }
         }
       }
