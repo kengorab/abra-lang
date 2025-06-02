@@ -1,18 +1,28 @@
 import File from "fs"
-import IR, IrFunction, IrType, Instruction, Operation, Value, IdentKind, GlobalVariable, Builtin from "./ir"
+import IR, IrFunction, IrType, Instruction, Operation, Value, Const, IdentKind, GlobalVariable, Builtin from "./ir"
 import ModuleBuilder, QbeType from "./qbe"
 import "./qbe" as qbe
-import i64ToString from "./ir_compiler_builtins"
+import i64ToString, u64ToString, f64ToString from "./ir_compiler_builtins"
 
 pub type CompilationResult {
   builder: ModuleBuilder
   builtinI64ToStringUsed: Bool
+  builtinU64ToStringUsed: Bool
+  builtinF64ToStringUsed: Bool
 
   pub func writeToFile(self, file: File) {
     self.builder.writeToFile(file)
 
     if self.builtinI64ToStringUsed {
       file.write(i64ToString.code)
+    }
+
+    if self.builtinU64ToStringUsed {
+      file.write(u64ToString.code)
+    }
+
+    if self.builtinF64ToStringUsed {
+      file.write(f64ToString.code)
     }
   }
 }
@@ -23,6 +33,8 @@ pub type Compiler {
   currentFn: qbe.QbeFunction
   numTemps: Int = 0
   builtinI64ToStringUsed: Bool = false
+  builtinU64ToStringUsed: Bool = false
+  builtinF64ToStringUsed: Bool = false
   mallocFn: qbe.QbeFunction = qbe.QbeFunction.spec(name: "GC_malloc", returnType: Some(QbeType.Pointer))
   reallocFn: qbe.QbeFunction = qbe.QbeFunction.spec(name: "GC_realloc", returnType: Some(QbeType.Pointer))
   memcpyFn: qbe.QbeFunction = qbe.QbeFunction.spec(name: "memcpy", returnType: None)
@@ -48,7 +60,9 @@ pub type Compiler {
 
     CompilationResult(
       builder: builder,
-      builtinI64ToStringUsed: compiler.builtinI64ToStringUsed
+      builtinI64ToStringUsed: compiler.builtinI64ToStringUsed,
+      builtinU64ToStringUsed: compiler.builtinU64ToStringUsed,
+      builtinF64ToStringUsed: compiler.builtinF64ToStringUsed,
     )
   }
 
@@ -57,7 +71,7 @@ pub type Compiler {
 
     val globalTy = self.irTypeToQbeType(global.ty)
     val globalData = if global.initialValue |init| {
-      self.irValueToQbeValue(init)
+      self.irConstToQbeValue(init)
     } else {
       globalTy.zeroValue()
     }
@@ -99,11 +113,7 @@ pub type Compiler {
   }
 
   func compileInstruction(self, inst: Instruction) {
-    val dst = match inst.assignee?.kind {
-      IdentKind.Anon(idx) => Some("_$idx")
-      IdentKind.Named(name) => Some(name)
-      else => None
-    }
+    val dst = inst.assignee?.kind?.name()
 
     match inst.op {
       Operation.NewLocal(ty, initialValue) => {
@@ -128,9 +138,11 @@ pub type Compiler {
       Operation.ConstInt(int) => {
         self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(int), dst)
       }
-      Operation.ConstString(str) => {
-        val slot = self.makeConstString(str)
-        try self.currentFn.block.buildAdd(qbe.Value.Int(0), slot, dst) else |e| unreachable(e)
+      Operation.ConstFloat(float) => {
+        self.currentFn.block.buildAdd(qbe.Value.Float(0.0), qbe.Value.Float(float), dst)
+      }
+      Operation.ConstChar(int) => {
+        self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(int), dst)
       }
       Operation.ConstBool(b) => {
         if b {
@@ -139,29 +151,191 @@ pub type Compiler {
           self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
         }
       }
+      Operation.ConstString(str) => {
+        val slot = self.makeConstString(str)
+        try self.currentFn.block.buildAdd(qbe.Value.Int(0), slot, dst) else |e| unreachable(e)
+      }
+      Operation.Minus(v) => {
+        val value = self.irValueToQbeValue(v)
+        try self.currentFn.block.buildNeg(value, dst) else |e| unreachable(e)
+      }
+      Operation.Negate(v) => {
+        val value = self.irValueToQbeValue(v)
+        try self.currentFn.block.buildXor(value, qbe.Value.Int(1), dst) else |e| unreachable(e)
+      }
       Operation.Add(l, r) => {
-        val left = self.irValueToQbeValue(l)
-        val right = self.irValueToQbeValue(r)
+        var left = self.irValueToQbeValue(l)
+        var right = self.irValueToQbeValue(r)
+
+        if left.ty() == qbe.QbeType.F64 && right.ty() != qbe.QbeType.F64 {
+          right = self.currentFn.block.buildLToF(right, true, Some(self.nextTemp()))
+        } else if left.ty() != qbe.QbeType.F64 && right.ty() == qbe.QbeType.F64 {
+          left = self.currentFn.block.buildLToF(left, true, Some(self.nextTemp()))
+        }
 
         if left.ty() != right.ty() unreachable("Operation.Add: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
         self.currentFn.block.buildAdd(left, right, dst)
       }
       Operation.Sub(l, r) => {
-        val left = self.irValueToQbeValue(l)
-        val right = self.irValueToQbeValue(r)
+        var left = self.irValueToQbeValue(l)
+        var right = self.irValueToQbeValue(r)
+
+        if left.ty() == qbe.QbeType.F64 && right.ty() != qbe.QbeType.F64 {
+          right = self.currentFn.block.buildLToF(right, true, Some(self.nextTemp()))
+        } else if left.ty() != qbe.QbeType.F64 && right.ty() == qbe.QbeType.F64 {
+          left = self.currentFn.block.buildLToF(left, true, Some(self.nextTemp()))
+        }
 
         if left.ty() != right.ty() unreachable("Operation.Sub: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
         self.currentFn.block.buildSub(left, right, dst)
       }
       Operation.Mul(l, r) => {
-        val left = self.irValueToQbeValue(l)
-        val right = self.irValueToQbeValue(r)
+        var left = self.irValueToQbeValue(l)
+        var right = self.irValueToQbeValue(r)
+
+        if left.ty() == qbe.QbeType.F64 && right.ty() != qbe.QbeType.F64 {
+          right = self.currentFn.block.buildLToF(right, true, Some(self.nextTemp()))
+        } else if left.ty() != qbe.QbeType.F64 && right.ty() == qbe.QbeType.F64 {
+          left = self.currentFn.block.buildLToF(left, true, Some(self.nextTemp()))
+        }
 
         if left.ty() != right.ty() unreachable("Operation.Mul: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
         self.currentFn.block.buildMul(left, right, dst)
+      }
+      Operation.Div(l, r) => {
+        var left = self.irValueToQbeValue(l)
+        var right = self.irValueToQbeValue(r)
+
+        if left.ty() != qbe.QbeType.F64 {
+          left = self.currentFn.block.buildLToF(left, true, Some(self.nextTemp()))
+        }
+        if right.ty() != qbe.QbeType.F64 {
+          right = self.currentFn.block.buildLToF(right, true, Some(self.nextTemp()))
+        }
+
+        if left.ty() != right.ty() unreachable("Operation.Div: left.ty (${left.ty()}) != right.ty (${right.ty()})")
+
+        self.currentFn.block.buildDiv(left, right, dst)
+      }
+      Operation.Mod(l, r) => {
+        var left = self.irValueToQbeValue(l)
+        var right = self.irValueToQbeValue(r)
+
+        if left.ty() == qbe.QbeType.U64 && right.ty() == qbe.QbeType.U64 {
+          try self.currentFn.block.buildRem(left, right, dst) else |e| unreachable(e)
+        } else {
+          if left.ty() != qbe.QbeType.F64 {
+            left = self.currentFn.block.buildLToF(left, true, Some(self.nextTemp()))
+          }
+          if right.ty() != qbe.QbeType.F64 {
+            right = self.currentFn.block.buildLToF(right, true, Some(self.nextTemp()))
+          }
+
+          try self.currentFn.block.buildCallRaw("fmod", qbe.QbeType.F64, [left, right], dst) else |e| unreachable(e)
+        }
+      }
+      Operation.Pow(l, r) => {
+        var left = self.irValueToQbeValue(l)
+        var right = self.irValueToQbeValue(r)
+
+        val bothInts = left.ty() == qbe.QbeType.U64 && right.ty() == qbe.QbeType.U64
+        if left.ty() != qbe.QbeType.F64 {
+          left = self.currentFn.block.buildLToF(left, true, Some(self.nextTemp()))
+        }
+        if right.ty() != qbe.QbeType.F64 {
+          right = self.currentFn.block.buildLToF(right, true, Some(self.nextTemp()))
+        }
+
+        if bothInts {
+          try self.currentFn.block.buildCallRaw("pow", qbe.QbeType.F64, [left, right], dst) else |e| unreachable(e)
+        } else {
+          // if a < 0 { -(-a ** b) } else { a ** b }
+          val labelThen = self.currentFn.block.addLabel("fpow_neg")
+          val labelElse = self.currentFn.block.addLabel("fpow_pos")
+          val labelCont = self.currentFn.block.addLabel("fpow_cont")
+          val cond = try self.currentFn.block.buildCompareLt(left, qbe.Value.Float(0.0), Some(self.nextTemp())) else |e| unreachable(e)
+          self.currentFn.block.buildJnz(cond, labelThen, labelElse)
+
+          self.currentFn.block.registerLabel(labelThen)
+          val leftValNeg = try self.currentFn.block.buildMul(left, qbe.Value.Float(-1.0), Some(self.nextTemp())) else |e| unreachable(e)
+          val thenValNeg = try self.currentFn.block.buildCallRaw("pow", QbeType.F64, [leftValNeg, right], Some(self.nextTemp())) else |e| unreachable(e)
+          val thenVal = try self.currentFn.block.buildMul(thenValNeg, qbe.Value.Float(-1.0), Some(self.nextTemp())) else |e| unreachable(e)
+          self.currentFn.block.buildJmp(labelCont)
+
+          self.currentFn.block.registerLabel(labelElse)
+          val elseVal = try self.currentFn.block.buildCallRaw("pow", QbeType.F64, [left, right], Some(self.nextTemp())) else |e| unreachable(e)
+          self.currentFn.block.buildJmp(labelCont)
+
+          self.currentFn.block.registerLabel(labelCont)
+
+          val phiCases = [(labelThen, thenVal), (labelElse, elseVal)]
+          try self.currentFn.block.buildPhi(phiCases, dst) else |e| unreachable(e)
+        }
+      }
+      Operation.BitAnd(l, r) => {
+        var left = self.irValueToQbeValue(l)
+        var right = self.irValueToQbeValue(r)
+
+        try self.currentFn.block.buildAnd(left, right, dst) else |e| unreachable(e)
+      }
+      Operation.BoolAnd(l, r) => {
+        var left = self.irValueToQbeValue(l)
+
+        val labelThen = self.currentFn.block.addLabel("bool_and_then")
+        val labelElse = self.currentFn.block.addLabel("bool_and_else")
+        val labelCont = self.currentFn.block.addLabel("bool_and_cont")
+
+        self.currentFn.block.buildJnz(left, labelThen, labelElse)
+
+        self.currentFn.block.registerLabel(labelThen)
+        var right = self.irValueToQbeValue(r)
+        val rightLabel = self.currentFn.block.currentLabel
+        self.currentFn.block.buildJmp(labelCont)
+
+        self.currentFn.block.registerLabel(labelElse)
+        self.currentFn.block.buildJmp(labelCont)
+
+        self.currentFn.block.registerLabel(labelCont)
+
+        val phiCases = [(rightLabel, right), (labelElse, left)]
+        try self.currentFn.block.buildPhi(phiCases) else |e| unreachable(e)
+      }
+      Operation.BitOr(l, r) => {
+        var left = self.irValueToQbeValue(l)
+        var right = self.irValueToQbeValue(r)
+
+        try self.currentFn.block.buildOr(left, right, dst) else |e| unreachable(e)
+      }
+      Operation.BoolOr(l, r) => {
+        var left = self.irValueToQbeValue(l)
+
+        val labelThen = self.currentFn.block.addLabel("bool_or_then")
+        val labelElse = self.currentFn.block.addLabel("bool_or_else")
+        val labelCont = self.currentFn.block.addLabel("bool_or_cont")
+
+        self.currentFn.block.buildJnz(left, labelThen, labelElse)
+
+        self.currentFn.block.registerLabel(labelThen)
+        self.currentFn.block.buildJmp(labelCont)
+
+        self.currentFn.block.registerLabel(labelElse)
+        var right = self.irValueToQbeValue(r)
+        val rightLabel = self.currentFn.block.currentLabel
+        self.currentFn.block.buildJmp(labelCont)
+
+        self.currentFn.block.registerLabel(labelCont)
+
+        val phiCases = [(labelThen, left), (rightLabel, right)]
+        try self.currentFn.block.buildPhi(phiCases) else |e| unreachable(e)
+      }
+      Operation.Xor(l, r) => {
+        var left = self.irValueToQbeValue(l)
+        var right = self.irValueToQbeValue(r)
+
+        try self.currentFn.block.buildXor(left, right, dst) else |e| unreachable(e)
       }
       Operation.Eq(primitive, negate, l, r) => {
         if !primitive todo("non-primitive Eq operation")
@@ -177,12 +351,76 @@ pub type Compiler {
         self.currentFn.block.buildExt(res, false, dst)
       }
       Operation.Lt(l, r) => {
-        val left = self.irValueToQbeValue(l)
-        val right = self.irValueToQbeValue(r)
+        var left = self.irValueToQbeValue(l)
+        var right = self.irValueToQbeValue(r)
+
+        if left.ty() == qbe.QbeType.F64 && right.ty() != qbe.QbeType.F64 {
+          right = self.currentFn.block.buildLToF(right, true, Some(self.nextTemp()))
+        } else if left.ty() != qbe.QbeType.F64 && right.ty() == qbe.QbeType.F64 {
+          left = self.currentFn.block.buildLToF(left, true, Some(self.nextTemp()))
+        }
 
         if left.ty() != right.ty() unreachable("Operation.Lt: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
         self.currentFn.block.buildCompareLt(left, right, dst)
+      }
+      Operation.Lte(l, r) => {
+        var left = self.irValueToQbeValue(l)
+        var right = self.irValueToQbeValue(r)
+
+        if left.ty() == qbe.QbeType.F64 && right.ty() != qbe.QbeType.F64 {
+          right = self.currentFn.block.buildLToF(right, true, Some(self.nextTemp()))
+        } else if left.ty() != qbe.QbeType.F64 && right.ty() == qbe.QbeType.F64 {
+          left = self.currentFn.block.buildLToF(left, true, Some(self.nextTemp()))
+        }
+
+        if left.ty() != right.ty() unreachable("Operation.Lte: left.ty (${left.ty()}) != right.ty (${right.ty()})")
+
+        self.currentFn.block.buildCompareLte(left, right, dst)
+      }
+      Operation.Shl(l, r) => {
+        var left = self.irValueToQbeValue(l)
+        var right = self.irValueToQbeValue(r)
+
+        if left.ty() != right.ty() unreachable("Operation.Shl: left.ty (${left.ty()}) != right.ty (${right.ty()})")
+
+        self.currentFn.block.buildShl(left, right, dst)
+      }
+      Operation.Gt(l, r) => {
+        var left = self.irValueToQbeValue(l)
+        var right = self.irValueToQbeValue(r)
+
+        if left.ty() == qbe.QbeType.F64 && right.ty() != qbe.QbeType.F64 {
+          right = self.currentFn.block.buildLToF(right, true, Some(self.nextTemp()))
+        } else if left.ty() != qbe.QbeType.F64 && right.ty() == qbe.QbeType.F64 {
+          left = self.currentFn.block.buildLToF(left, true, Some(self.nextTemp()))
+        }
+
+        if left.ty() != right.ty() unreachable("Operation.Lt: left.ty (${left.ty()}) != right.ty (${right.ty()})")
+
+        self.currentFn.block.buildCompareGt(left, right, dst)
+      }
+      Operation.Gte(l, r) => {
+        var left = self.irValueToQbeValue(l)
+        var right = self.irValueToQbeValue(r)
+
+        if left.ty() == qbe.QbeType.F64 && right.ty() != qbe.QbeType.F64 {
+          right = self.currentFn.block.buildLToF(right, true, Some(self.nextTemp()))
+        } else if left.ty() != qbe.QbeType.F64 && right.ty() == qbe.QbeType.F64 {
+          left = self.currentFn.block.buildLToF(left, true, Some(self.nextTemp()))
+        }
+
+        if left.ty() != right.ty() unreachable("Operation.Lte: left.ty (${left.ty()}) != right.ty (${right.ty()})")
+
+        self.currentFn.block.buildCompareGte(left, right, dst)
+      }
+      Operation.Shr(l, r) => {
+        var left = self.irValueToQbeValue(l)
+        var right = self.irValueToQbeValue(r)
+
+        if left.ty() != right.ty() unreachable("Operation.Shr: left.ty (${left.ty()}) != right.ty (${right.ty()})")
+
+        self.currentFn.block.buildShr(left, right, dst)
       }
       Operation.Load(ty, mem) => {
         val ptr = self.irValueToQbeValue(mem)
@@ -198,9 +436,19 @@ pub type Compiler {
         self.currentFn.block.buildLoad(self.irTypeToQbeType(ty), ptr, dst)
       }
       Operation.Store(ty, value, mem) => {
-        val ptr = self.irValueToQbeValue(mem)
         val v = self.irValueToQbeValue(value)
-        self.currentFn.block.buildStore(self.irTypeToQbeType(ty), v, ptr)
+        val qbeTy = self.irTypeToQbeType(ty)
+        match mem {
+          Value.Ident(ident) => {
+            val mem = qbe.Value.Ident(name: ident.kind.name(), ty: qbeTy)
+            self.currentFn.block.buildStore(self.irTypeToQbeType(ty), v, mem)
+          }
+          Value.Global(global) => {
+            val mem = qbe.Value.Global(name: global.name, ty: qbeTy)
+            self.currentFn.block.buildStore(self.irTypeToQbeType(ty), v, mem)
+          }
+          else => unreachable("Storing into non-ident/global")
+        }
       }
       Operation.StoreField(ty, value, mem, _, offset) => {
         val ptr = if offset == 0 {
@@ -320,15 +568,14 @@ pub type Compiler {
         }
       }
       Operation.Builtin(ret, builtin) => {
-        val sizeOfType = (irType: IrType) => {
-          match irType {
-            IrType.Unit => unreachable("values cannot be of type unit")
-            IrType.I64 => (8, QbeType.U64)
-            IrType.Bool => (8, QbeType.U64)
-            IrType.Byte => (1, QbeType.U8)
-            IrType.Composite => (8, QbeType.U64)
-            IrType.Ptr => (8, QbeType.U64)
-          }
+        val sizeOfType = (irType: IrType) => match irType {
+          IrType.Unit => unreachable("values cannot be of type unit")
+          IrType.I64 => (8, QbeType.U64)
+          IrType.F64 => (8, QbeType.F64)
+          IrType.Bool => (8, QbeType.U64)
+          IrType.Byte => (1, QbeType.U8)
+          IrType.Composite => (8, QbeType.U64)
+          IrType.Ptr => (8, QbeType.U64)
         }
 
         match builtin {
@@ -415,6 +662,45 @@ pub type Compiler {
             val lenVal = self.currentFn.block.buildLoadL(lenPtr, Some(self.nextTemp()))
             self.constructString(mem, lenVal, dst)
           }
+          Builtin.U64ToString(int) => {
+            self.builtinU64ToStringUsed = true
+
+            val intVal = self.irValueToQbeValue(int)
+            val lenPtr = self.currentFn.block.buildAlloc8(1, Some("lenptr"))
+            val mem = try self.currentFn.block.buildCallRaw(u64ToString.name, qbe.QbeType.Pointer, [intVal, lenPtr], Some(self.nextTemp())) else |e| unreachable(e)
+            val lenVal = self.currentFn.block.buildLoadL(lenPtr, Some(self.nextTemp()))
+            self.constructString(mem, lenVal, dst)
+          }
+          Builtin.F64ToString(float) => {
+            self.builtinF64ToStringUsed = true
+
+            val floatVal = self.irValueToQbeValue(float)
+            val lenPtr = self.currentFn.block.buildAlloc8(1, Some("lenptr"))
+            val mem = try self.currentFn.block.buildCallRaw(f64ToString.name, qbe.QbeType.Pointer, [floatVal, lenPtr], Some(self.nextTemp())) else |e| unreachable(e)
+            val lenVal = self.currentFn.block.buildLoadL(lenPtr, Some(self.nextTemp()))
+            self.constructString(mem, lenVal, dst)
+          }
+          Builtin.BoolToString(bool) => {
+            val boolVal = self.irValueToQbeValue(bool)
+
+            val labelTrue = self.currentFn.block.addLabel("true")
+            val labelFalse = self.currentFn.block.addLabel("false")
+            val labelCont = self.currentFn.block.addLabel("cont")
+            self.currentFn.block.buildJnz(boolVal, labelTrue, labelFalse)
+
+            val phiCases: (qbe.Label, qbe.Value)[] = []
+
+            self.currentFn.block.registerLabel(labelTrue)
+            phiCases.push((labelTrue, self.makeConstString("true")))
+            self.currentFn.block.buildJmp(labelCont)
+
+            self.currentFn.block.registerLabel(labelFalse)
+            phiCases.push((labelFalse, self.makeConstString("false")))
+            self.currentFn.block.buildJmp(labelCont)
+
+            self.currentFn.block.registerLabel(labelCont)
+            try self.currentFn.block.buildPhi(phiCases, dst) else |e| unreachable(e)
+          }
         }
       }
     }
@@ -429,6 +715,7 @@ pub type Compiler {
   func irTypeToQbeType(self, irType: IrType): qbe.QbeType {
     match irType {
       IrType.I64 => QbeType.U64
+      IrType.F64 => QbeType.F64
       IrType.Bool => QbeType.U64
       IrType.Composite => QbeType.U64 // pointer to GC'd object
       IrType.Ptr => QbeType.U64 // raw pointer
@@ -439,20 +726,21 @@ pub type Compiler {
 
   func irTypeToQbeReturnType(self, irType: IrType): qbe.QbeType? = match irType { IrType.Unit => None, else t => Some(self.irTypeToQbeType(t)) }
 
+  func irConstToQbeValue(self, const: Const): qbe.Value = match const {
+    Const.Int(i) => qbe.Value.Int(i)
+    Const.Float(f) => qbe.Value.Float(f)
+    Const.Bool(b) => qbe.Value.Int(if b 1 else 0)
+    Const.Char(c) => qbe.Value.Int(c)
+    Const.String(s) => self.makeConstString(s)
+  }
+
   func irValueToQbeValue(self, v: Value): qbe.Value {
     match v {
       Value.Unit => unreachable("values cannot be of type unit")
-      Value.ConstInt(i) => qbe.Value.Int(i)
-      Value.ConstBool(b) => qbe.Value.Int(if b 1 else 0)
-      Value.ConstChar(c) => qbe.Value.Int(c)
-      Value.ConstString(s) => self.makeConstString(s)
+      Value.Const(const) => self.irConstToQbeValue(const)
       Value.Ident(i) => {
         val ty = self.irTypeToQbeType(i.ty)
-        val name = match i.kind {
-          IdentKind.Anon(idx) => "_$idx"
-          IdentKind.Named(name) => name
-        }
-        qbe.Value.Ident(name: name, ty: ty)
+        qbe.Value.Ident(name: i.kind.name(), ty: ty)
       }
       Value.Global(g) => {
         val ty = self.irTypeToQbeType(g.ty)

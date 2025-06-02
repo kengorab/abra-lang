@@ -8,15 +8,47 @@ data \$fmt_lld = { b \"%lld\", b 0 }\
 \
 function l \$builtin_i64_to_string(l %int, l %lenptr) {\
 @start\
-  %_t0 =l call \$snprintf(l 0, l 0, l \$fmt_lld, ..., l %int)\
-  %_t1 =l add 1, %_t0\
-  %_t2 =l call \$GC_malloc(l %_t1)\
-  %_t3 =l call \$snprintf(l %_t2, l %_t1, l \$fmt_lld, ..., l %int)\
-  storel %_t0, %lenptr\
-  ret %_t2\
+  %_t0 =l call \$GC_malloc(l 21) # max size of 64 bit signed integer, incl '-' and NULL\
+  %_t1 =l call \$snprintf(l %_t0, l 21, l \$fmt_lld, ..., l %int)\
+  storel %_t1, %lenptr\
+  ret %_t0\
 }\
 "
 pub val i64ToString = BuiltinFunction(
   name: "builtin_i64_to_string",
   code: builtinI64ToStringCode,
+)
+
+val builtinU64ToStringCode = "\
+data \$fmt_llu = { b \"%llu\", b 0 }\
+\
+function l \$builtin_u64_to_string(l %int, l %lenptr) {\
+@start\
+  %_t0 =l call \$GC_malloc(l 26) # max size of 64 bit unsigned integer, incl NULL\
+  %_t1 =l call \$snprintf(l %_t0, l 26, l \$fmt_llu, ..., l %int)\
+  storel %_t1, %lenptr\
+  ret %_t0\
+}\
+"
+pub val u64ToString = BuiltinFunction(
+  name: "builtin_u64_to_string",
+  code: builtinU64ToStringCode,
+)
+
+val builtinF64ToStringCode = "\
+data \$fmt_d = { b \"%g\", b 0 }\
+\
+function l \$builtin_f64_to_string(d %float, l %lenptr) {\
+@start\
+  %_t0 =l call \$snprintf(l 0, l 0, l \$fmt_d, ..., d %float)\
+  %_t1 =l add 1, %_t0\
+  %_t2 =l call \$GC_malloc(l %_t1)\
+  %_t3 =l call \$snprintf(l %_t2, l %_t1, l \$fmt_d, ..., d %float)\
+  storel %_t0, %lenptr\
+  ret %_t2\
+}\
+"
+pub val f64ToString = BuiltinFunction(
+  name: "builtin_f64_to_string",
+  code: builtinF64ToStringCode,
 )
