@@ -1951,30 +1951,43 @@ pub type Generator {
 
   func genArray(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, dst: String?, arrayTy: tc.Type, items: tc.TypedAstNode[]): Value {
     val arrayConcreteType = self.getConcreteTypeFromType(arrayTy, concreteGenerics)
+    val arrayItemConcreteType = try arrayConcreteType.typeArgs[0] else unreachable("ConcreteType for array must have 1 type argument")
 
-    val arrConcreteGenerics = {"T": ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeIntStruct))}
+    val arrayItemIrTy = self.getIrTypeForConcreteType(arrayItemConcreteType)
+    val values = items.map(item => self.genExpression(item, concreteGenerics))
+
+    self.generateArrayWithItems(pos, arrayItemConcreteType, dst, values)
+  }
+
+  // codegen helpers
+
+  func generateArrayWithItems(self, pos: Position, arrayItemConcreteType: ConcreteType, dst: String?, values: Value[]): Value {
+    val arrayConcreteType = ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeArrayStruct), typeArgs: [arrayItemConcreteType])
+    val arrConcreteGenerics = { "T": arrayItemConcreteType } // `T` is the known generic of `Array.withCapacity`
     val arrayWithCapacityFn = self.getMethodByName(InstanceKind.Struct(self.project.preludeArrayStruct), "withCapacity", staticMethod: true)
     val arrayWithCapacityFnName = self.fnName(None, arrayWithCapacityFn, arrConcreteGenerics, [])
     self.enqueueFunction(arrayWithCapacityFn, arrayWithCapacityFnName, [], None, arrConcreteGenerics)
 
-    val sizeVal = Value.Const(Const.Int(items.length.nextPowerOf2()))
+    val sizeVal = Value.Const(Const.Int(values.length.nextPowerOf2()))
     val arrayIrTy = self.getIrTypeForConcreteType(arrayConcreteType)
     val op = Operation.Call(ret: arrayIrTy, fnName: arrayWithCapacityFnName, args: [sizeVal])
     val arrVal = self.ssaValue(arrayIrTy, op, dst)
 
-    val arrayPushFn = self.getMethodByName(InstanceKind.Struct(self.project.preludeArrayStruct), "push", staticMethod: false)
-    val arrayPushFnName = self.fnName(Some(arrayConcreteType), arrayPushFn, arrConcreteGenerics, [])
-    self.enqueueFunction(arrayPushFn, arrayPushFnName, [], Some(arrayConcreteType), arrConcreteGenerics)
+    val (_, lengthFieldIdx) = try self.project.preludeArrayStruct.fields.findIndex(f => f.name.name == "length") else unreachable("no such field 'length'")
+    self.emit(Instruction(op: Operation.StoreField(ty: IrType.I64, value: Value.Const(Const.Int(values.length)), mem: arrVal, name: "length", offset: lengthFieldIdx * 8)))
 
-    for item in items {
-      val itemVal = self.genExpression(item, arrConcreteGenerics)
-      self.emit(Instruction(op: Operation.Call(ret: IrType.Unit, fnName: arrayPushFnName, args: [arrVal, itemVal])))
+    val (_, bufferFieldIdx) = try self.project.preludeArrayStruct.fields.findIndex(f => f.name.name == "_buffer") else unreachable("no such field '_buffer'")
+    val bufferVal = Ident(ty: IrType.Ptr, kind: IdentKind.Anon(self.nextAnonLocal()))
+    self.emit(Instruction(assignee: Some(bufferVal), op: Operation.LoadField(ty: IrType.Ptr, mem: arrVal, name: "_buffer", offset: bufferFieldIdx * 8)))
+
+    val arrayItemIrTy = self.getIrTypeForConcreteType(arrayItemConcreteType)
+    for value, idx in values {
+      val builtin = Builtin.Store(ptr: Value.Ident(bufferVal), value: value, offset: Value.Const(Const.Int(idx)), itemTy: arrayItemIrTy)
+      self.emit(Instruction(op: Operation.Builtin(ret: IrType.Unit, builtin: builtin)))
     }
 
     arrVal
   }
-
-  // codegen helpers
 
   func ssaValueComptime(self, const: Const, name: String?): Value {
     if name |name| {
