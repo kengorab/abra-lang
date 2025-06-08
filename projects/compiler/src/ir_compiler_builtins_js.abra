@@ -1,0 +1,15 @@
+pub type BuiltinFunction {
+  pub name: String
+  pub code: String
+}
+
+val builtinMakeBufFromString = "\
+const \$BUF = (strs, ...exprs) => strs.reduce((acc, str, idx) => { \
+  return acc.concat(str.split('')) \
+    .concat(exprs[idx]?._buffer ?? []) \
+}, []); \
+"
+pub val mkBufFromStr = BuiltinFunction(
+  name: "builtin_make_buf_from_string",
+  code: builtinMakeBufFromString,
+)

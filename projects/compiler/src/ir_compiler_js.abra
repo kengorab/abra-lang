@@ -2,7 +2,7 @@ import File from "fs"
 import StringBuilder, IR, IrFunction, IrType, Instruction, Operation, Value, Const, IdentKind, GlobalVariable, Builtin from "./ir"
 import ModuleBuilder, QbeType from "./qbe"
 import "./qbe" as qbe
-import i64ToString from "./ir_compiler_builtins"
+import mkBufFromStr from "./ir_compiler_builtins_js"
 
 pub type CompilationResult {
   sb: StringBuilder
@@ -31,6 +31,8 @@ pub type Compiler {
       sb.write(", ")
     }
     sb.writeln("} = externs;")
+
+    sb.writeln(mkBufFromStr.code)
 
     for g in ir.globals {
       compiler.compileGlobal(g)
@@ -337,6 +339,27 @@ pub type Compiler {
         }
         self.sb.writeln(";")
       }
+      Operation.StructuredToString(prefix, lenVal, fields) => {
+        val strIrTy = IrType.Composite(self.ir.knowns.stringType().name)
+        val strTemplateLiteralParts = ["`$prefix("]
+
+        for (fieldIrType, fieldName, fieldStrValue), idx in fields {
+          val fieldValue = self.irValueToJsValue(fieldStrValue)
+
+          val fieldPart = if fieldIrType == strIrTy { "\"\${$fieldValue}\"" } else { "\${$fieldValue}" }
+          val sepPart = if idx == fields.length - 1 { ")" } else { ", " }
+          strTemplateLiteralParts.push("$fieldName: $fieldPart$sepPart")
+        }
+        strTemplateLiteralParts.push("`")
+
+        val buf = self.nextTemp()
+        self.sb.writeln("const $buf = \$BUF${strTemplateLiteralParts.join()};")
+
+        val strInitFn = self.ir.knowns.stringInitializerFn()
+        self.emitIndent()
+        val len = self.irValueToJsValue(lenVal)
+        self.sb.writeln("const $dst = ${strInitFn.name}($len, $buf);")
+      }
       Operation.Builtin(ret, builtin) => {
         match builtin {
           Builtin.Malloc(count, itemTy) => {
@@ -505,7 +528,7 @@ pub type Compiler {
 
   func makeConstString(self, s: String): String {
     val str = s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r")
-    "{ length: ${s.length}, _buffer: \"$str\".split('') }"
+    "{ length: ${s.length}, _buffer: \$BUF`$str` }"
   }
 
   func emitIrValueToJsValue(self, v: Value) = self.sb.write(self.irValueToJsValue(v))
