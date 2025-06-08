@@ -249,6 +249,7 @@ pub enum Operation {
 
   Return(value: Value? = None)
 
+  StructuredToString(prefix: String, lenVal: Value, fields: (IrType, String, Value)[])
   Builtin(ret: IrType, builtin: Builtin)
 
   pub func render(self, sb: StringBuilder) {
@@ -515,6 +516,18 @@ pub enum Operation {
       Operation.Return(v) => {
         sb.write("return(")
         if v |v| v.render(sb)
+        sb.write(")")
+      }
+      Operation.StructuredToString(prefix, lenVal, fields) => {
+        sb.write("structured_to_string($prefix, ")
+        lenVal.render(sb)
+
+        for (fieldIrTy, fieldName, fieldToStringVal) in fields {
+          sb.write(", ")
+          fieldIrTy.render(sb)
+          sb.write(" $fieldName ")
+          fieldToStringVal.render(sb)
+        }
         sb.write(")")
       }
       Operation.Builtin(ret, builtin) => {
@@ -821,12 +834,14 @@ pub type Generator {
     self.addFunction(ctx.fnName, irFunc)
     val prevCtx = self.enterFunction(irFunc)
 
+    var selfParam: Value? = None
     match fn.kind {
       FunctionKind.InstanceMethod => {
         val selfConcreteType = try ctx.methodInstanceType else unreachable("Instance method without instance type")
         val selfTy = self.getIrTypeForConcreteType(selfConcreteType)
         val selfParamIdent = Ident(ty: selfTy, kind: IdentKind.Named("self"))
         irFunc.params.push(selfParamIdent)
+        selfParam = Some(Value.Ident(selfParamIdent))
 
         if fn.label.name == "toString" && fn.isGenerated {
           self.genToStringMethodBody(Value.Ident(selfParamIdent), selfConcreteType)
@@ -837,29 +852,43 @@ pub type Generator {
     }
 
     var anyParamNeedsDefault = false
+    val argsForUnderlying = if selfParam |selfParam| [selfParam] else []
     for param, idx in fn.params {
       val paramConcreteType = self.getConcreteTypeFromType(param.ty, ctx.concreteGenerics)
       val paramTy = self.getIrTypeForConcreteType(paramConcreteType)
       val paramIdent = Ident(ty: paramTy, kind: IdentKind.Named(param.label.name))
 
-      if param.defaultValue {
+      val argVal = if param.defaultValue |defaultValue| {
         val paramNeedsDefault = ctx.paramsNeedingDefaultValue[idx] ?: false
         if paramNeedsDefault {
           anyParamNeedsDefault = true
-          todo("params with default values")
+          self.genExpression(defaultValue, ctx.concreteGenerics, Some(param.label.name))
         } else {
           irFunc.params.push(paramIdent)
+          Value.Ident(paramIdent)
         }
       } else {
         irFunc.params.push(paramIdent)
+        Value.Ident(paramIdent)
       }
+      argsForUnderlying.push(argVal)
     }
 
     if anyParamNeedsDefault {
-      todo()
+      val baseFnName = self.fnName(ctx.methodInstanceType, fn, ctx.concreteGenerics, [])
+      self.enqueueFunction(fn, baseFnName, [], ctx.methodInstanceType, ctx.concreteGenerics)
+
+      if retTy == IrType.Unit {
+        self.emit(Instruction(op: Operation.Call(ret: IrType.Unit, fnName: baseFnName, args: argsForUnderlying)))
+        self.emit(Instruction(op: Operation.Return()))
+      } else {
+        val ident = Ident(ty: retTy, kind: IdentKind.Anon(self.nextAnonLocal()))
+        self.emit(Instruction(assignee: Some(ident), op: Operation.Call(ret: retTy, fnName: baseFnName, args: argsForUnderlying)))
+        self.emit(Instruction(op: Operation.Return(Some(Value.Ident(ident)))))
+      }
     } else {
       for node, idx in fn.body {
-        if idx == fn.body.length - 1 {
+        if idx == fn.body.length - 1 && fn.scope.terminator != Some(tc.Terminator.Returning) {
           if retTy != IrType.Unit {
             val retVal = self.genExpression(node, ctx.concreteGenerics)
             self.emit(Instruction(op: Operation.Return(Some(retVal))))
@@ -879,14 +908,17 @@ pub type Generator {
   func getOrGenStructInitializer(self, concreteType: ConcreteType, concreteGenerics: Map<String, ConcreteType>, fieldsNeedingDefaultValue: Bool[] = []): IrFunction {
     val struct = match concreteType.instanceKind { InstanceKind.Struct(s) => s, else => unreachable("getOrGenStructInitializer called with non-struct") }
 
-    val fnName = self.structInitFnName(concreteType)
+    val fnName = self.structInitFnName(concreteType, fieldsNeedingDefaultValue)
     if self.functionsByName[fnName] |f| return f
 
     val retTy = self.getIrTypeForConcreteType(concreteType)
 
+    val irFunc = IrFunction(name: fnName, params: [], ret: retTy)
+    self.addFunction(fnName, irFunc)
+    val prevCtx = self.enterFunction(irFunc)
+
     var size = 0
     var anyFieldNeedsDefault = false
-    val params: Ident[] = []
     val argsForUnderlying: (Value, IrType, String, Int)[] = []
     for field, idx in struct.fields {
       val fieldConcreteType = self.getConcreteTypeFromType(field.ty, concreteGenerics)
@@ -897,15 +929,15 @@ pub type Generator {
         val fieldNeedsDefault = fieldsNeedingDefaultValue[idx] ?: false
         if fieldNeedsDefault {
           anyFieldNeedsDefault = true
-          todo("fields with default values")
+          self.genExpression(initializerNode, concreteGenerics, Some(field.name.name))
         } else {
           val ident = Ident(ty: fieldTy, kind: IdentKind.Named(field.name.name))
-          params.push(ident)
+          irFunc.params.push(ident)
           Value.Ident(ident)
         }
       } else {
         val ident = Ident(ty: fieldTy, kind: IdentKind.Named(field.name.name))
-        params.push(ident)
+        irFunc.params.push(ident)
         Value.Ident(ident)
       }
 
@@ -913,21 +945,28 @@ pub type Generator {
       argsForUnderlying.push((fieldVal, fieldTy, field.name.name, idx * 8))
     }
 
-    val irFunc = IrFunction(name: fnName, params: params, ret: retTy)
-    self.addFunction(fnName, irFunc)
-    val prevCtx = self.enterFunction(irFunc)
+    val retVal = if anyFieldNeedsDefault {
+      val baseFnName = self.structInitFnName(concreteType, [])
+      self.enqueueInitializer(concreteType, baseFnName, [], None, concreteGenerics)
 
-    val ident = Ident(ty: IrType.Ptr, kind: IdentKind.Anon(self.nextAnonLocal()))
-    self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Malloc(Value.Const(Const.Int(size))))))
-    val mem = Value.Ident(ident: ident)
+      val ident = Ident(ty: retTy, kind: IdentKind.Anon(self.nextAnonLocal()))
+      self.emit(Instruction(assignee: Some(ident), op: Operation.Call(ret: retTy, fnName: baseFnName, args: argsForUnderlying.map(a => a[0]))))
+      Value.Ident(ident)
+    } else {
+      val ident = Ident(ty: IrType.Ptr, kind: IdentKind.Anon(self.nextAnonLocal()))
+      self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Malloc(Value.Const(Const.Int(size))))))
+      val mem = Value.Ident(ident: ident)
 
-    for (fieldVal, fieldTy, fieldName, fieldOffset), idx in argsForUnderlying {
-      self.emit(Instruction(op: Operation.StoreField(ty: fieldTy, value: fieldVal, mem: mem, name: fieldName, offset: fieldOffset)))
+      for (fieldVal, fieldTy, fieldName, fieldOffset), idx in argsForUnderlying {
+        self.emit(Instruction(op: Operation.StoreField(ty: fieldTy, value: fieldVal, mem: mem, name: fieldName, offset: fieldOffset)))
+      }
+
+      mem
     }
-
-    self.emit(Instruction(op: Operation.Return(Some(mem))))
+    self.emit(Instruction(op: Operation.Return(Some(retVal))))
 
     self.curCtx = prevCtx
+
     irFunc
   }
 
@@ -955,8 +994,13 @@ pub type Generator {
           self.emit(Instruction(op: Operation.Return(Some(Value.Ident(ident)))))
           return
         }
+
+        val concreteGenerics = self.extractConcreteGenericsFromConcreteType(concreteType)
+        val fields = s.fields.map(f => (f.name.name, f.ty))
+        val res = self.genToStringLogicForStructuredData(concreteGenerics, s.label.name, selfVal, fields)
+        self.emit(Instruction(op: Operation.Return(Some(res))))
       }
-      InstanceKind.Enum(e) => todo()
+      InstanceKind.Enum(e) => todo("genToStringMethodBody: enum")
     }
   }
 
@@ -1720,16 +1764,7 @@ pub type Generator {
         } else {
           // todo: check for closure
 
-          val paramsNeedingDefaultValue = args.map((arg, idx) => {
-            // todo: simplify expression to just `!!fn.params[idx]?.defaultValue && !arg` ?
-            if fn.params[idx] |param| {
-              !!param.defaultValue && !arg
-            } else {
-              false
-            }
-          })
-
-          // TODO: does `concreteGenerics` contain both T and U for `Array<T>#map<U>`??
+          val paramsNeedingDefaultValue = args.map((arg, idx) => !!fn.params[idx]?.defaultValue && !arg)
           val fnName = self.fnName(None, fn, concreteGenerics, paramsNeedingDefaultValue)
           self.enqueueFunction(fn, fnName, paramsNeedingDefaultValue, None, concreteGenerics)
 
@@ -1790,15 +1825,7 @@ pub type Generator {
         } else {
           // todo: check for closure
 
-          val paramsNeedingDefaultValue = args.map((arg, idx) => {
-            // todo: simplify expression to just `!!fn.params[idx]?.defaultValue && !arg` ?
-            if fn.params[idx] |param| {
-              !!param.defaultValue && !arg
-            } else {
-              false
-            }
-          })
-
+          val paramsNeedingDefaultValue = args.map((arg, idx) => !!fn.params[idx]?.defaultValue && !arg)
           val selfConcreteType = self.getConcreteTypeFromType(selfVal.ty, concreteGenerics)
           val fnName = self.fnName(Some(selfConcreteType), fn, concreteGenerics, paramsNeedingDefaultValue)
           self.enqueueFunction(fn, fnName, paramsNeedingDefaultValue, Some(selfConcreteType), concreteGenerics)
@@ -1818,17 +1845,9 @@ pub type Generator {
         }
         val concreteType = ConcreteType(instanceKind: InstanceKind.Struct(s), typeArgs: typeArgs)
 
-        val paramsNeedingDefaultValue = args.map((arg, idx) => {
-          // todo: simplify expression to just `!!fn.params[idx]?.defaultValue && !arg` ?
-          if s.fields[idx] |field| {
-            !!field.initializer && !arg
-          } else {
-            false
-          }
-        })
-
-        val fnName = self.structInitFnName(concreteType)
-        self.enqueueInitializer(concreteType, fnName, paramsNeedingDefaultValue, None, newConcreteGenerics)
+        val fieldsNeedingDefaultValue = args.map((arg, idx) => !!s.fields[idx]?.initializer && !arg)
+        val fnName = self.structInitFnName(concreteType, fieldsNeedingDefaultValue)
+        self.enqueueInitializer(concreteType, fnName, fieldsNeedingDefaultValue, None, newConcreteGenerics)
 
         fnName
       }
@@ -1989,6 +2008,59 @@ pub type Generator {
     arrVal
   }
 
+  func genToStringLogicForStructuredData(self, concreteGenerics: Map<String, ConcreteType>, prefix: String, selfPtr: Value, data: (String, tc.Type)[]): Value {
+    val strTy = self.knowns.stringType()
+    val strIrType = IrType.Composite(strTy.name)
+
+    val prefixStr = Value.Const(Const.String(prefix))
+    var len = prefix.length + 2 + (data.length - 1) * 2 // account for '(' and ')', as well as ',' and ' ' between items. NB: does not include NULL
+    var lenVal = Value.Const(Const.Int(0))
+
+    val reprVals: (IrType, String, Value)[] = []
+    for (itemName, itemType), idx in data {
+      val itemConcreteType = self.getConcreteTypeFromType(itemType, concreteGenerics)
+      val itemIrTy = self.getIrTypeForConcreteType(itemConcreteType)
+      val itemConcreteGenerics = self.extractConcreteGenericsFromConcreteType(itemConcreteType)
+
+      // If the item label is meant to be output, account for the label as well as ':' and ' ' between the label and the value
+      if !itemName.isEmpty() { len += (itemName.length + 2) }
+
+      val toStringFn = self.getMethodByName(itemConcreteType.instanceKind, "toString", staticMethod: false)
+      val toStringFnName = self.fnName(Some(itemConcreteType), toStringFn, itemConcreteGenerics, [])
+      self.enqueueFunction(toStringFn, toStringFnName, [], Some(itemConcreteType), itemConcreteGenerics)
+
+      val itemVal = Ident(ty: itemIrTy, kind: IdentKind.Anon(self.nextAnonLocal()))
+      self.emit(Instruction(assignee: Some(itemVal), op: Operation.LoadField(ty: itemIrTy, mem: selfPtr, name: itemName, offset: idx * 8)))
+
+      val toStringVal = Ident(ty: strIrType, kind: IdentKind.Anon(self.nextAnonLocal()))
+      self.emit(Instruction(assignee: Some(toStringVal), op: Operation.Call(ret: strIrType, fnName: toStringFnName, args: [Value.Ident(itemVal)])))
+
+      val toStringValLen = Ident(ty: IrType.I64, kind: IdentKind.Anon(self.nextAnonLocal()))
+      self.emit(Instruction(assignee: Some(toStringValLen), op: Operation.LoadField(ty: IrType.I64, mem: Value.Ident(toStringVal), name: "length", offset: 0)))
+
+      val newLenVal = Ident(ty: IrType.I64, kind: IdentKind.Anon(self.nextAnonLocal()))
+      self.emit(Instruction(assignee: Some(newLenVal), op: Operation.Add(lenVal, Value.Ident(toStringValLen))))
+      lenVal = Value.Ident(newLenVal)
+
+      if itemIrTy == strIrType {
+        // account for opening and closing " chars
+        val newLenVal = Ident(ty: IrType.I64, kind: IdentKind.Anon(self.nextAnonLocal()))
+        self.emit(Instruction(assignee: Some(newLenVal), op: Operation.Add(lenVal, Value.Const(Const.Int(2)))))
+        lenVal = Value.Ident(newLenVal)
+      }
+
+      reprVals.push((itemIrTy, itemName, Value.Ident(toStringVal)))
+    }
+
+    val totalLen = Ident(ty: IrType.I64, kind: IdentKind.Anon(self.nextAnonLocal()))
+    self.emit(Instruction(assignee: Some(totalLen), op: Operation.Add(lenVal, Value.Const(Const.Int(len)))))
+    val totalLenVal = Value.Ident(totalLen)
+
+    val toStringVal = Ident(ty: strIrType, kind: IdentKind.Anon(self.nextAnonLocal()))
+    self.emit(Instruction(assignee: Some(toStringVal), op: Operation.StructuredToString(prefix: prefix, lenVal: totalLenVal, fields: reprVals)))
+    Value.Ident(toStringVal)
+  }
+
   func ssaValueComptime(self, const: Const, name: String?): Value {
     if name |name| {
       val (op, ty) = match const {
@@ -2034,16 +2106,7 @@ pub type Generator {
       IrType.Ptr => todo("Pointer#toString()")
     }
 
-    val typeParams = match concreteType.instanceKind {
-      InstanceKind.Struct(s) => s.typeParams
-      InstanceKind.Enum(e) => e.typeParams
-    }
-    val concreteGenerics: Map<String, ConcreteType> = {}
-    for typeParam, idx in typeParams {
-      val concreteGeneric = try concreteType.typeArgs[idx] else unreachable()
-      concreteGenerics[typeParam] = concreteGeneric
-    }
-
+    val concreteGenerics = self.extractConcreteGenericsFromConcreteType(concreteType)
     val toStringFn = self.getMethodByName(concreteType.instanceKind, "toString", staticMethod: false)
     val toStringFnName = self.fnName(Some(concreteType), toStringFn, concreteGenerics, [])
     self.enqueueFunction(toStringFn, toStringFnName, [], Some(concreteType), concreteGenerics)
@@ -2160,6 +2223,21 @@ pub type Generator {
     }
   }
 
+  func extractConcreteGenericsFromConcreteType(self, concreteType: ConcreteType): Map<String, ConcreteType> {
+    val typeParams = match concreteType.instanceKind {
+      InstanceKind.Struct(s) => s.typeParams
+      InstanceKind.Enum(e) => e.typeParams
+    }
+
+    val concreteGenerics: Map<String, ConcreteType> = {}
+    for typeParam, idx in typeParams {
+      val concreteGeneric = try concreteType.typeArgs[idx] else unreachable()
+      concreteGenerics[typeParam] = concreteGeneric
+    }
+
+    concreteGenerics
+  }
+
   func fnName(self, methodInstTy: ConcreteType?, fn: tc.Function, concreteGenerics: Map<String, ConcreteType>, paramsNeedingDefaultValue: Bool[] = []): String {
     val defaultValuesFlag = paramsNeedingDefaultValue.reduce(0, (acc, f) => (acc << 1) || (if f 1 else 0))
     val prefix = match fn.kind {
@@ -2175,10 +2253,13 @@ pub type Generator {
         val instTy = try methodInstTy else unreachable("InstanceMethod without methodInstTy")
         val typeName = self.typeName(instTy)
 
-        val base = "_${typeName}_${fn.label.name}"
-        if !fn.typeParams.isEmpty() todo("[3] generic instance methods")
+        val base = ["_${typeName}_${fn.label.name}"]
+        for (_, label) in fn.typeParams {
+          val concreteGeneric = try concreteGenerics[label.name] else unreachable("Could not resolve generic '${label.name}' for function '${fn.label.name}'")
+          base.push(self.typeName(concreteGeneric))
+        }
 
-        base
+        base.join("_")
       }
       FunctionKind.StaticMethod(instanceKind, _) => {
         val typeName = self.typeName(ConcreteType(instanceKind: instanceKind), withTypeArgs: false)
@@ -2200,9 +2281,16 @@ pub type Generator {
     }
   }
 
-  func structInitFnName(self, ty: ConcreteType): String {
+  func structInitFnName(self, ty: ConcreteType, paramsNeedingDefaultValue: Bool[] = []): String {
     val typeName = self.typeName(ty)
-    "_${typeName}__init__"
+    val defaultValuesFlag = paramsNeedingDefaultValue.reduce(0, (acc, f) => (acc << 1) || (if f 1 else 0))
+
+    val prefix = "_${typeName}__init__"
+    if defaultValuesFlag == 0 {
+      prefix
+    } else {
+      "${prefix}_$defaultValuesFlag"
+    }
   }
 
   func getIrTypeForConcreteType(self, ty: ConcreteType): IrType {
@@ -2219,7 +2307,10 @@ pub type Generator {
         val t = self.getOrAddCompositeType(ty)
         IrType.Composite(name: t.name)
       }
-      InstanceKind.Enum => todo("getIrTypeForConcreteType enums")
+      InstanceKind.Enum => {
+        val t = self.getOrAddCompositeType(ty)
+        IrType.Composite(name: t.name)
+      }
     }
   }
 

@@ -573,6 +573,7 @@ pub type Compiler {
           self.currentFn.block.buildReturn()
         }
       }
+      Operation.StructuredToString(prefix, lenVal, fields) => self.compileStructuredToString(prefix, lenVal, fields, dst)
       Operation.Builtin(ret, builtin) => {
         val sizeOfType = (irType: IrType) => match irType {
           IrType.Unit => unreachable("values cannot be of type unit")
@@ -644,20 +645,8 @@ pub type Compiler {
             val srcOffsetVal = self.irValueToQbeValue(srcOffset)
             val countVal = self.irValueToQbeValue(count)
 
-            val (size, qbeTy) = sizeOfType(itemTy)
-
-            val dstMem = try self.currentFn.block.buildAdd(
-              try self.currentFn.block.buildMul(qbe.Value.Int(size), dstOffsetVal, Some(self.nextTemp())) else |e| unreachable(e),
-              dstVal,
-              Some(self.nextTemp()),
-            ) else |e| unreachable(e)
-            val srcMem = try self.currentFn.block.buildAdd(
-              try self.currentFn.block.buildMul(qbe.Value.Int(size), srcOffsetVal, Some(self.nextTemp())) else |e| unreachable(e),
-              srcVal,
-              Some(self.nextTemp()),
-            ) else |e| unreachable(e)
-
-            self.currentFn.block.buildVoidCall(qbe.Callable.Function(self.memcpyFn), [dstMem, srcMem, countVal])
+            val (size, _) = sizeOfType(itemTy)
+            self.compileMemcpy(dstVal, dstOffsetVal, srcVal, srcOffsetVal, countVal, qbe.Value.Int(size))
           }
           Builtin.I64ToString(int) => {
             self.builtinI64ToStringUsed = true
@@ -740,6 +729,70 @@ pub type Compiler {
     }
   }
 
+  func compileStructuredToString(self, prefix: String, lenVal: Value, fields: (IrType, String, Value)[], dst: String?) {
+    val strIrTy = IrType.Composite(self.ir.knowns.stringType().name)
+
+    val lenQbeVal = try self.currentFn.block.buildAdd(qbe.Value.Int(1), self.irValueToQbeValue(lenVal)) else |e| unreachable(e)
+    val buf = self.callMalloc(lenQbeVal, Some(self.nextTemp()))
+
+    val prefixVal = self.makeConstString(prefix)
+    val (prefixLen, prefixBuf) = self.strValGetParts(prefixVal)
+
+    self.compileMemcpy(buf, qbe.Value.Int(0), prefixBuf, qbe.Value.Int(0), prefixLen, qbe.Value.Int(1))
+    var offsetVal = prefixLen
+
+    offsetVal = self._insertCharAt('(', buf, offsetVal)
+
+    for (fieldIrType, fieldName, fieldStrValue), idx in fields {
+      val fieldNameVal = self.makeConstString(fieldName)
+      val (fieldNameLen, fieldNameBuf) = self.strValGetParts(fieldNameVal)
+
+      self.compileMemcpy(buf, offsetVal, fieldNameBuf, qbe.Value.Int(0), fieldNameLen, qbe.Value.Int(1))
+      offsetVal = try self.currentFn.block.buildAdd(offsetVal, fieldNameLen, Some(self.nextTemp())) else |e| unreachable(e)
+
+      offsetVal = self._insertCharAt(':', buf, offsetVal)
+      offsetVal = self._insertCharAt(' ', buf, offsetVal)
+
+      val fieldStrQbeVal = self.irValueToQbeValue(fieldStrValue)
+      val (fieldStrLen, fieldStrBuf) = self.strValGetParts(fieldStrQbeVal)
+      if fieldIrType == strIrTy { offsetVal = self._insertCharAt('"', buf, offsetVal) }
+      self.compileMemcpy(buf, offsetVal, fieldStrBuf, qbe.Value.Int(0), fieldStrLen, qbe.Value.Int(1))
+      offsetVal = try self.currentFn.block.buildAdd(offsetVal, fieldStrLen, Some(self.nextTemp())) else |e| unreachable(e)
+      if fieldIrType == strIrTy { offsetVal = self._insertCharAt('"', buf, offsetVal) }
+
+      if idx != fields.length - 1 {
+        offsetVal = self._insertCharAt(',', buf, offsetVal)
+        offsetVal = self._insertCharAt(' ', buf, offsetVal)
+      }
+    }
+    self._insertCharAt(')', buf, offsetVal)
+
+    self.constructString(buf, lenQbeVal, dst)
+  }
+
+  // helper function, used within `#compileStructuredToString`
+  // TODO: support nested methods for scoping?
+  func _insertCharAt(self, ch: Char, buf: qbe.Value, offsetVal: qbe.Value): qbe.Value {
+    val cursor = try self.currentFn.block.buildAdd(offsetVal, buf, Some(self.nextTemp())) else |e| unreachable(e)
+    self.currentFn.block.buildStoreB(qbe.Value.Int(ch.asInt()), cursor)
+    try self.currentFn.block.buildAdd(offsetVal, qbe.Value.Int(1), Some(self.nextTemp())) else |e| unreachable(e)
+  }
+
+  func compileMemcpy(self, dstPtr: qbe.Value, dstOffset: qbe.Value, srcPtr: qbe.Value, srcOffset: qbe.Value, amount: qbe.Value, itemSize: qbe.Value) {
+    val dstMem = try self.currentFn.block.buildAdd(
+      try self.currentFn.block.buildMul(itemSize, dstOffset, Some(self.nextTemp())) else |e| unreachable(e),
+      dstPtr,
+      Some(self.nextTemp()),
+    ) else |e| unreachable(e)
+    val srcMem = try self.currentFn.block.buildAdd(
+      try self.currentFn.block.buildMul(itemSize, srcOffset, Some(self.nextTemp())) else |e| unreachable(e),
+      srcPtr,
+      Some(self.nextTemp()),
+    ) else |e| unreachable(e)
+
+    self.currentFn.block.buildVoidCall(qbe.Callable.Function(self.memcpyFn), [dstMem, srcMem, amount])
+  }
+
   func nextTemp(self): String {
     val name = "_t${self.numTemps}"
     self.numTemps += 1
@@ -797,6 +850,19 @@ pub type Compiler {
     } else {
       qbe.Value.Global(name: globalName, ty: qbe.QbeType.Pointer)
     }
+  }
+
+  func strValGetParts(self, strVal: qbe.Value): (qbe.Value, qbe.Value) {
+    val strLen = self.currentFn.block.buildLoadL(
+      try self.currentFn.block.buildAdd(qbe.Value.Int(0), strVal, Some(self.nextTemp())) else |e| unreachable(e),
+      Some(self.nextTemp()),
+    )
+    val strBuf = self.currentFn.block.buildLoadL(
+      try self.currentFn.block.buildAdd(qbe.Value.Int(8), strVal, Some(self.nextTemp())) else |e| unreachable(e),
+      Some(self.nextTemp()),
+    )
+
+    (strLen, strBuf)
   }
 
   func constructString(self, ptrVal: qbe.Value, lenVal: qbe.Value, dst: String? = None): qbe.Value {
