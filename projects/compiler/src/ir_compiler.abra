@@ -1,5 +1,5 @@
 import File from "fs"
-import IR, IrFunction, IrType, Instruction, Operation, Value, Const, IdentKind, GlobalVariable, Builtin from "./ir"
+import IR, IrFunction, IrType, Instruction, Operation, Ident, Value, Const, IdentKind, GlobalVariable, Builtin from "./ir"
 import ModuleBuilder, QbeType from "./qbe"
 import "./qbe" as qbe
 import i64ToString, u64ToString, f64ToString from "./ir_compiler_builtins"
@@ -573,6 +573,34 @@ pub type Compiler {
           self.currentFn.block.buildReturn()
         }
       }
+      Operation.OptionNone => {
+        self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+      }
+      Operation.OptionSome(innerTy, value) => {
+        val qbeVal = self.irValueToQbeValue(value)
+        if innerTy == IrType.I64 {
+          val mem = self.callMalloc(qbe.Value.Int(8), dst)
+          self.currentFn.block.buildStoreL(qbeVal, mem)
+        } else if innerTy == IrType.F64 {
+          self.currentFn.block.buildAdd(qbe.Value.Float(0.0), qbeVal, dst)
+        } else {
+          self.currentFn.block.buildAdd(qbe.Value.Int(0), qbeVal, dst)
+        }
+      }
+      Operation.OptionIsNone(value) => {
+        val qbeVal = self.irValueToQbeValue(value)
+        self.currentFn.block.buildCompareEq(qbe.Value.Int(0), qbeVal, dst)
+      }
+      Operation.OptionUnwrap(innerTy, value) => {
+        val qbeVal = self.irValueToQbeValue(value)
+        if innerTy == IrType.I64 {
+          self.currentFn.block.buildLoadL(qbeVal, dst)
+        } else if innerTy == IrType.F64 {
+          self.currentFn.block.buildAdd(qbe.Value.Float(0.0), qbeVal, dst)
+        } else {
+          self.currentFn.block.buildAdd(qbe.Value.Int(0), qbeVal, dst)
+        }
+      }
       Operation.StructuredToString(prefix, lenVal, fields) => self.compileStructuredToString(prefix, lenVal, fields, dst)
       Operation.Builtin(ret, builtin) => {
         val sizeOfType = (irType: IrType) => match irType {
@@ -729,10 +757,10 @@ pub type Compiler {
     }
   }
 
-  func compileStructuredToString(self, prefix: String, lenVal: Value, fields: (IrType, String, Value)[], dst: String?) {
+  func compileStructuredToString(self, prefix: String, lenVal: Value, fields: (IrType, String, Value)[], dst: String?): qbe.Value {
     val strIrTy = IrType.Composite(self.ir.knowns.stringType().name)
 
-    val lenQbeVal = try self.currentFn.block.buildAdd(qbe.Value.Int(1), self.irValueToQbeValue(lenVal)) else |e| unreachable(e)
+    val lenQbeVal = try self.currentFn.block.buildAdd(qbe.Value.Int(1), self.irValueToQbeValue(lenVal), Some(self.nextTemp())) else |e| unreachable(e)
     val buf = self.callMalloc(lenQbeVal, Some(self.nextTemp()))
 
     val prefixVal = self.makeConstString(prefix)

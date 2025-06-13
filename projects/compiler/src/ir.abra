@@ -1,7 +1,7 @@
 import Position from "./lexer"
-import LiteralAstNode, AssignOp, UnaryOp, BinaryOp, BindingPattern from "./parser"
+import Label, LiteralAstNode, AssignOp, UnaryOp, BinaryOp, BindingPattern from "./parser"
 // match arms don't support import-based namespacing for enums yet, so enums used in matches are imported by name
-import TypedAstNodeKind, TypedInvokee, FunctionKind, TypeKind, ScopeKind, InstanceKind, VariableAlias, AccessorPathSegment, TypedAssignmentMode from "./typechecker"
+import TypedAstNodeKind, TypedInvokee, FunctionKind, TypeKind, ScopeKind, InstanceKind, EnumVariantKind, VariableAlias, AccessorPathSegment, TypedAssignmentMode from "./typechecker"
 import "./typechecker" as tc
 
 // TODO: move to stdlib
@@ -249,6 +249,10 @@ pub enum Operation {
 
   Return(value: Value? = None)
 
+  OptionNone(innerTy: IrType)
+  OptionSome(innerTy: IrType, value: Value)
+  OptionIsNone(value: Value)
+  OptionUnwrap(innerTy: IrType, value: Value)
   StructuredToString(prefix: String, lenVal: Value, fields: (IrType, String, Value)[])
   Builtin(ret: IrType, builtin: Builtin)
 
@@ -518,6 +522,30 @@ pub enum Operation {
         if v |v| v.render(sb)
         sb.write(")")
       }
+      Operation.OptionNone(innerTy) => {
+        sb.write("option_none(")
+        innerTy.render(sb)
+        sb.write(")")
+      }
+      Operation.OptionSome(innerTy, value) => {
+        sb.write("option_some(")
+        innerTy.render(sb)
+        sb.write(", ")
+        value.render(sb)
+        sb.write(")")
+      }
+      Operation.OptionIsNone(value) => {
+        sb.write("option_is_none(")
+        value.render(sb)
+        sb.write(")")
+      }
+      Operation.OptionUnwrap(innerTy, value) => {
+        sb.write("option_unwrap(")
+        innerTy.render(sb)
+        sb.write(", ")
+        value.render(sb)
+        sb.write(")")
+      }
       Operation.StructuredToString(prefix, lenVal, fields) => {
         sb.write("structured_to_string($prefix, ")
         lenVal.render(sb)
@@ -715,6 +743,7 @@ type Context {
 enum CallableToCompile {
   Function(fn: tc.Function)
   Initializer(concreteType: ConcreteType)
+  EnumVariant(concreteType: ConcreteType, variant: tc.TypedEnumVariant)
 }
 
 type FunctionToCompile {
@@ -764,7 +793,7 @@ pub type Generator {
 
     val strConcreteTy = ConcreteType(instanceKind: InstanceKind.Struct(project.preludeStringStruct))
     generator.knowns.strTy = Some(generator.getOrAddCompositeType(strConcreteTy))
-    generator.knowns.strInit = Some(generator.getOrGenStructInitializer(strConcreteTy, {}))
+    generator.knowns.strInit = Some(generator.getOrGenInitializerFn(strConcreteTy, None, {}))
 
     for mod in allModules {
       if generator.genModule(mod) |modFn| {
@@ -812,7 +841,11 @@ pub type Generator {
     val fn = match ctx.callable {
       CallableToCompile.Function(fn) => fn
       CallableToCompile.Initializer(concreteType) => {
-        self.getOrGenStructInitializer(concreteType, ctx.concreteGenerics, ctx.paramsNeedingDefaultValue)
+        self.getOrGenInitializerFn(concreteType, None, ctx.concreteGenerics, ctx.paramsNeedingDefaultValue)
+        return
+      }
+      CallableToCompile.EnumVariant(concreteType, variant) => {
+        self.getOrGenInitializerFn(concreteType, Some(variant), ctx.concreteGenerics, ctx.paramsNeedingDefaultValue)
         return
       }
     }
@@ -882,9 +915,8 @@ pub type Generator {
         self.emit(Instruction(op: Operation.Call(ret: IrType.Unit, fnName: baseFnName, args: argsForUnderlying)))
         self.emit(Instruction(op: Operation.Return()))
       } else {
-        val ident = Ident(ty: retTy, kind: IdentKind.Anon(self.nextAnonLocal()))
-        self.emit(Instruction(assignee: Some(ident), op: Operation.Call(ret: retTy, fnName: baseFnName, args: argsForUnderlying)))
-        self.emit(Instruction(op: Operation.Return(Some(Value.Ident(ident)))))
+        val ident = self.ssaValue(retTy, Operation.Call(ret: retTy, fnName: baseFnName, args: argsForUnderlying), None)
+        self.emit(Instruction(op: Operation.Return(Some(ident))))
       }
     } else {
       for node, idx in fn.body {
@@ -905,22 +937,37 @@ pub type Generator {
     self.curCtx = prevCtx
   }
 
-  func getOrGenStructInitializer(self, concreteType: ConcreteType, concreteGenerics: Map<String, ConcreteType>, fieldsNeedingDefaultValue: Bool[] = []): IrFunction {
-    val struct = match concreteType.instanceKind { InstanceKind.Struct(s) => s, else => unreachable("getOrGenStructInitializer called with non-struct") }
+  func getOrGenInitializerFn(self, concreteType: ConcreteType, enumVariant: tc.TypedEnumVariant?, concreteGenerics: Map<String, ConcreteType>, fieldsNeedingDefaultValue: Bool[] = []): IrFunction {
+    val (fnName, fields, initialSize, enumVariantIdx) = match concreteType.instanceKind {
+      InstanceKind.Struct(s) => {
+        val fnName = self.structInitFnName(concreteType, fieldsNeedingDefaultValue)
 
-    val fnName = self.structInitFnName(concreteType, fieldsNeedingDefaultValue)
+        (fnName, s.fields, 0, None)
+      }
+      InstanceKind.Enum(e) => {
+        val variant = try enumVariant else unreachable()
+        val fields = match variant.kind {
+          EnumVariantKind.Constant => unreachable()
+          EnumVariantKind.Container(fields) => fields
+        }
+        val fnName = self.enumVariantInitFnName(concreteType, variant, fieldsNeedingDefaultValue)
+        val (_, variantIdx) = try e.variants.findIndex(v => v.label.name == variant.label.name) else unreachable("${e.label.name}.${variant.label.name} must exist")
+
+        (fnName, fields, 8, Some(variantIdx))
+      }
+    }
+
     if self.functionsByName[fnName] |f| return f
 
     val retTy = self.getIrTypeForConcreteType(concreteType)
-
     val irFunc = IrFunction(name: fnName, params: [], ret: retTy)
     self.addFunction(fnName, irFunc)
     val prevCtx = self.enterFunction(irFunc)
 
-    var size = 0
+    var size = initialSize
     var anyFieldNeedsDefault = false
     val argsForUnderlying: (Value, IrType, String, Int)[] = []
-    for field, idx in struct.fields {
+    for field, idx in fields {
       val fieldConcreteType = self.getConcreteTypeFromType(field.ty, concreteGenerics)
       val fieldTy = self.getIrTypeForConcreteType(fieldConcreteType)
       size += 8 // TODO: don't assume 8 byte alignment for all fields
@@ -946,16 +993,23 @@ pub type Generator {
     }
 
     val retVal = if anyFieldNeedsDefault {
-      val baseFnName = self.structInitFnName(concreteType, [])
-      self.enqueueInitializer(concreteType, baseFnName, [], None, concreteGenerics)
+      val baseFnName = if enumVariant |variant| {
+        val baseFnName = self.enumVariantInitFnName(concreteType, variant, [])
+        self.enqueueInitializer(concreteType, Some(variant), baseFnName, [], None, concreteGenerics)
+        baseFnName
+      } else {
+        val baseFnName = self.structInitFnName(concreteType, [])
+        self.enqueueInitializer(concreteType, None, baseFnName, [], None, concreteGenerics)
+        baseFnName
+      }
 
-      val ident = Ident(ty: retTy, kind: IdentKind.Anon(self.nextAnonLocal()))
-      self.emit(Instruction(assignee: Some(ident), op: Operation.Call(ret: retTy, fnName: baseFnName, args: argsForUnderlying.map(a => a[0]))))
-      Value.Ident(ident)
+      self.ssaValue(retTy, Operation.Call(ret: retTy, fnName: baseFnName, args: argsForUnderlying.map(a => a[0])), None)
     } else {
-      val ident = Ident(ty: IrType.Ptr, kind: IdentKind.Anon(self.nextAnonLocal()))
-      self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Malloc(Value.Const(Const.Int(size))))))
-      val mem = Value.Ident(ident: ident)
+      val mem = self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Malloc(Value.Const(Const.Int(size)))), None)
+
+      if enumVariantIdx |enumVariantIdx| {
+        self.emit(Instruction(op: Operation.StoreField(ty: IrType.I64, value: Value.Const(Const.Int(enumVariantIdx)), mem: mem, name: "\$idx", offset: 0)))
+      }
 
       for (fieldVal, fieldTy, fieldName, fieldOffset), idx in argsForUnderlying {
         self.emit(Instruction(op: Operation.StoreField(ty: fieldTy, value: fieldVal, mem: mem, name: fieldName, offset: fieldOffset)))
@@ -973,6 +1027,7 @@ pub type Generator {
   func genToStringMethodBody(self, selfVal: Value, concreteType: ConcreteType) {
     val strTy = IrType.Composite(self.knowns.stringType().name)
 
+    val newConcreteGenerics = self.extractConcreteGenericsFromConcreteType(concreteType)
     match concreteType.instanceKind {
       InstanceKind.Struct(s) => {
         if s == self.project.preludeStringStruct {
@@ -989,18 +1044,44 @@ pub type Generator {
             Builtin.BoolToString(selfVal)
           } else unreachable()
 
-          val ident = Ident(ty: strTy, kind: IdentKind.Anon(self.nextAnonLocal()))
-          self.emit(Instruction(assignee: Some(ident), op: Operation.Builtin(ret: strTy, builtin: builtin)))
-          self.emit(Instruction(op: Operation.Return(Some(Value.Ident(ident)))))
+          val ident = self.ssaValue(strTy, Operation.Builtin(ret: strTy, builtin: builtin), None)
+          self.emit(Instruction(op: Operation.Return(Some(ident))))
           return
         }
 
-        val concreteGenerics = self.extractConcreteGenericsFromConcreteType(concreteType)
-        val fields = s.fields.map(f => (f.name.name, f.ty))
-        val res = self.genToStringLogicForStructuredData(concreteGenerics, s.label.name, selfVal, fields)
+        val fields = s.fields.map((f, idx) => {
+          val fieldConcreteType = self.getConcreteTypeFromType(f.ty, newConcreteGenerics)
+          val fieldIrType = self.getIrTypeForConcreteType(fieldConcreteType)
+
+          val itemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: selfVal, name: f.name.name, offset: idx * 8), None)
+          (f.name.name, fieldConcreteType, itemVal)
+        })
+        val res = self.genToStringLogicForStructuredData(s.label.name, fields)
         self.emit(Instruction(op: Operation.Return(Some(res))))
       }
-      InstanceKind.Enum(e) => todo("genToStringMethodBody: enum")
+      InstanceKind.Enum(e) => {
+        if e == self.project.preludeOptionEnum {
+          val typeArg = try concreteType.typeArgs[0] else unreachable()
+          val typeArgIrType = self.getIrTypeForConcreteType(typeArg)
+
+          val isNoneBlock = self.withinBlock("is_none", false, () => {
+            val none = self.ssaValue(strTy, Operation.ConstString("Option.None"), None)
+            Some(none)
+          })
+          val isSomeBlock = self.withinBlock("is_some", false, () => {
+            val some = self.ssaValue(typeArgIrType, Operation.OptionUnwrap(typeArgIrType, selfVal), None)
+            val res = self.genToStringLogicForStructuredData("Option.Some", [("value", typeArg, some)])
+
+            Some(res)
+          })
+
+          val cond = self.ssaValue(IrType.Bool, Operation.OptionIsNone(selfVal), None)
+          val ident = self.ssaValue(strTy, Operation.If(strTy, cond, isNoneBlock, isSomeBlock), None)
+          self.emit(Instruction(op: Operation.Return(Some(ident))))
+        } else {
+          todo("genToStringMethodBody: enum")
+        }
+      }
     }
   }
 
@@ -1160,10 +1241,7 @@ pub type Generator {
         }
       }
       TypedAssignmentMode.Indexing => todo("genAssignment: Indexing")
-      TypedAssignmentMode.Accessor(head, middle, tail) => {
-        val (ty, mem, fieldName, offset) = self.followAccessorPath(head, middle, tail, concreteGenerics)
-        self.emit(Instruction(op: Operation.StoreField(ty: ty, value: res, mem: mem, name: fieldName, offset: offset)))
-      }
+      TypedAssignmentMode.Accessor(head, middle, tail) => self.followAccessorPath(head, middle, tail, concreteGenerics, None, Some(res))
     }
   }
 
@@ -1177,7 +1255,7 @@ pub type Generator {
       TypedAstNodeKind.Binary(left, op, right) => self.genBinary(pos, concreteGenerics, dst, left, op, right)
       TypedAstNodeKind.Grouped(inner) => self.genExpression(inner, {}, dst)
       TypedAstNodeKind.Identifier(name, variable, fnAliasTypeHint, varImportModule) => self.genIdentifier(pos, concreteGenerics, dst, name, variable, fnAliasTypeHint, varImportModule)
-      TypedAstNodeKind.Accessor(head, middle, tail) => self.genAccessor(head, middle, tail, concreteGenerics, dst)
+      TypedAstNodeKind.Accessor(head, middle, tail) => self.followAccessorPath(head, middle, tail, concreteGenerics, dst)
       TypedAstNodeKind.Invocation(invokee, args, resolvedGenerics) => {
         val newConcreteGenerics: Map<String, ConcreteType> = {}
         for (name, ty) in resolvedGenerics.entries() {
@@ -1847,7 +1925,40 @@ pub type Generator {
 
         val fieldsNeedingDefaultValue = args.map((arg, idx) => !!s.fields[idx]?.initializer && !arg)
         val fnName = self.structInitFnName(concreteType, fieldsNeedingDefaultValue)
-        self.enqueueInitializer(concreteType, fnName, fieldsNeedingDefaultValue, None, newConcreteGenerics)
+        self.enqueueInitializer(concreteType, None, fnName, fieldsNeedingDefaultValue, None, newConcreteGenerics)
+
+        fnName
+      }
+      TypedInvokee.EnumVariant(enum_, variant) => {
+        val typeArgs: ConcreteType[] = []
+        val newConcreteGenerics: Map<String, ConcreteType> = {}
+        for tp in enum_.typeParams {
+          val concreteGeneric = try concreteGenerics[tp] else unreachable("Could not resolve generic '$tp' for struct initializer '${enum_.label.name}'")
+          typeArgs.push(concreteGeneric)
+          newConcreteGenerics[tp] = concreteGeneric
+        }
+        val concreteType = ConcreteType(instanceKind: InstanceKind.Enum(enum_), typeArgs: typeArgs)
+
+        if enum_ == self.project.preludeOptionEnum {
+          if variant.label.name != "Some" unreachable()
+
+          val arg = try try args[0] else unreachable() else unreachable() // ew lol
+          val argVal = self.genExpression(arg, concreteGenerics)
+
+          val irType = self.getIrTypeForConcreteType(concreteType)
+          val typeArg = try concreteType.typeArgs[0] else unreachable()
+          val typeArgIrType = self.getIrTypeForConcreteType(typeArg)
+          return self.ssaValue(irType, Operation.OptionSome(typeArgIrType, argVal), dst)
+        }
+
+        val fields = match variant.kind {
+          EnumVariantKind.Constant => unreachable("cannot invoke constant enum variant")
+          EnumVariantKind.Container(fields) => fields
+        }
+
+        val fieldsNeedingDefaultValue = args.map((arg, idx) => !!fields[idx]?.initializer && !arg)
+        val fnName = self.enumVariantInitFnName(concreteType, variant, fieldsNeedingDefaultValue)
+        self.enqueueInitializer(concreteType, Some(variant), fnName, fieldsNeedingDefaultValue, None, newConcreteGenerics)
 
         fnName
       }
@@ -1921,11 +2032,34 @@ pub type Generator {
     }
   }
 
-  func followAccessorPath(self, head: tc.TypedAstNode, middle: tc.AccessorPathSegment[], tail: tc.AccessorPathSegment, concreteGenerics: Map<String, ConcreteType>): (IrType, Value, String, Int) {
+  func followAccessorPath(self, head: tc.TypedAstNode, middle: tc.AccessorPathSegment[], tail: tc.AccessorPathSegment, concreteGenerics: Map<String, ConcreteType>, dst: String?, storeVal: Value? = None): Value {
     val segs = middle.concat([tail])
 
     var (workingVal, concreteType) = match segs[0] {
-      AccessorPathSegment.EnumVariant => todo()
+      AccessorPathSegment.EnumVariant(label, ty, enum_, variant) => {
+        match variant.kind {
+          EnumVariantKind.Container => unreachable("non-constant enum variant missing instantation")
+          _ => {}
+        }
+
+        val concreteType = self.getConcreteTypeFromType(ty, concreteGenerics)
+        val (_, variantIdx) = try enum_.variants.findIndex(v => v.label.name == variant.label.name) else unreachable("${enum_.label.name}.${variant.label.name} must exist")
+        val variantVal = if enum_ == self.project.preludeOptionEnum {
+          if variant.label.name != "None" unreachable()
+
+          val irType = self.getIrTypeForConcreteType(concreteType)
+          val typeArg = try concreteType.typeArgs[0] else unreachable()
+          val typeArgIrType = self.getIrTypeForConcreteType(typeArg)
+          self.ssaValue(irType, Operation.OptionNone(typeArgIrType), dst)
+        } else {
+          val global = self.getOrAddConstEnumVariant(concreteType, variant, variantIdx)
+          global.initialValue = Some(Const.Int(variantIdx))
+          global.referenced = true
+          Value.Global(global)
+        }
+
+        (variantVal, concreteType)
+      }
       else => {
         val concreteType = self.getConcreteTypeFromType(head.ty, concreteGenerics)
         val headVal = self.genExpression(head, concreteGenerics)
@@ -1934,10 +2068,18 @@ pub type Generator {
       }
     }
 
+    var resVal = Value.Unit
+
     for seg, idx in segs {
       match seg {
-        AccessorPathSegment.EnumVariant => todo()
-        AccessorPathSegment.Method => todo()
+        AccessorPathSegment.EnumVariant => {
+          if idx != segs.length - 1 unreachable("enum variant must be in first position")
+          if storeVal |res| unreachable("cannot store into enum variant")
+
+          resVal = workingVal
+          break
+        }
+        AccessorPathSegment.Method => todo("followAccessorPath: methods")
         AccessorPathSegment.Field(label, ty, field, isOptSafe) => {
           if isOptSafe todo()
 
@@ -1948,7 +2090,15 @@ pub type Generator {
               val fieldConcreteType = self.getConcreteTypeFromType(f.ty, concreteGenerics)
               val fieldTy = self.getIrTypeForConcreteType(fieldConcreteType)
 
-              if idx == segs.length - 1 return (fieldTy, workingVal, f.name.name, offset)
+              if idx == segs.length - 1 {
+                resVal = if storeVal |res| {
+                  self.emit(Instruction(op: Operation.StoreField(ty: fieldTy, value: res, mem: workingVal, name: f.name.name, offset: offset)))
+                  Value.Unit
+                } else {
+                  self.ssaValue(fieldTy, Operation.LoadField(ty: fieldTy, mem: workingVal, name: f.name.name, offset: offset), dst)
+                }
+                break
+              }
 
               workingVal = self.ssaValue(fieldTy, Operation.LoadField(ty: fieldTy, mem: workingVal, name: f.name.name, offset: offset), None)
               concreteType = self.getConcreteTypeFromType(ty, concreteGenerics)
@@ -1959,13 +2109,7 @@ pub type Generator {
       }
     }
 
-    unreachable("followAccessorPath end (${segs.length})")
-  }
-
-  func genAccessor(self, head: tc.TypedAstNode, middle: tc.AccessorPathSegment[], tail: tc.AccessorPathSegment, concreteGenerics: Map<String, ConcreteType>, dst: String?): Value {
-    val (ty, mem, fieldName, offset) = self.followAccessorPath(head, middle, tail, concreteGenerics)
-
-    self.ssaValue(ty, Operation.LoadField(ty: ty, mem: mem, name: fieldName, offset: offset), dst)
+    resVal
   }
 
   func genArray(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, dst: String?, arrayTy: tc.Type, items: tc.TypedAstNode[]): Value {
@@ -1996,69 +2140,51 @@ pub type Generator {
     self.emit(Instruction(op: Operation.StoreField(ty: IrType.I64, value: Value.Const(Const.Int(values.length)), mem: arrVal, name: "length", offset: lengthFieldIdx * 8)))
 
     val (_, bufferFieldIdx) = try self.project.preludeArrayStruct.fields.findIndex(f => f.name.name == "_buffer") else unreachable("no such field '_buffer'")
-    val bufferVal = Ident(ty: IrType.Ptr, kind: IdentKind.Anon(self.nextAnonLocal()))
-    self.emit(Instruction(assignee: Some(bufferVal), op: Operation.LoadField(ty: IrType.Ptr, mem: arrVal, name: "_buffer", offset: bufferFieldIdx * 8)))
+    val bufferVal = self.ssaValue(IrType.Ptr, Operation.LoadField(ty: IrType.Ptr, mem: arrVal, name: "_buffer", offset: bufferFieldIdx * 8), None)
 
     val arrayItemIrTy = self.getIrTypeForConcreteType(arrayItemConcreteType)
     for value, idx in values {
-      val builtin = Builtin.Store(ptr: Value.Ident(bufferVal), value: value, offset: Value.Const(Const.Int(idx)), itemTy: arrayItemIrTy)
+      val builtin = Builtin.Store(ptr: bufferVal, value: value, offset: Value.Const(Const.Int(idx)), itemTy: arrayItemIrTy)
       self.emit(Instruction(op: Operation.Builtin(ret: IrType.Unit, builtin: builtin)))
     }
 
     arrVal
   }
 
-  func genToStringLogicForStructuredData(self, concreteGenerics: Map<String, ConcreteType>, prefix: String, selfPtr: Value, data: (String, tc.Type)[]): Value {
+  func genToStringLogicForStructuredData(self, prefix: String, data: (String, ConcreteType, Value)[]): Value {
     val strTy = self.knowns.stringType()
     val strIrType = IrType.Composite(strTy.name)
 
     val prefixStr = Value.Const(Const.String(prefix))
-    var len = prefix.length + 2 + (data.length - 1) * 2 // account for '(' and ')', as well as ',' and ' ' between items. NB: does not include NULL
+    var knownConstLen = prefix.length + 2 + (data.length - 1) * 2 // account for '(' and ')', as well as ',' and ' ' between items. NB: does not include NULL
     var lenVal = Value.Const(Const.Int(0))
 
     val reprVals: (IrType, String, Value)[] = []
-    for (itemName, itemType), idx in data {
-      val itemConcreteType = self.getConcreteTypeFromType(itemType, concreteGenerics)
+    for (itemName, itemConcreteType, itemVal), idx in data {
       val itemIrTy = self.getIrTypeForConcreteType(itemConcreteType)
       val itemConcreteGenerics = self.extractConcreteGenericsFromConcreteType(itemConcreteType)
 
       // If the item label is meant to be output, account for the label as well as ':' and ' ' between the label and the value
-      if !itemName.isEmpty() { len += (itemName.length + 2) }
+      if !itemName.isEmpty() { knownConstLen += (itemName.length + 2) }
 
       val toStringFn = self.getMethodByName(itemConcreteType.instanceKind, "toString", staticMethod: false)
       val toStringFnName = self.fnName(Some(itemConcreteType), toStringFn, itemConcreteGenerics, [])
       self.enqueueFunction(toStringFn, toStringFnName, [], Some(itemConcreteType), itemConcreteGenerics)
 
-      val itemVal = Ident(ty: itemIrTy, kind: IdentKind.Anon(self.nextAnonLocal()))
-      self.emit(Instruction(assignee: Some(itemVal), op: Operation.LoadField(ty: itemIrTy, mem: selfPtr, name: itemName, offset: idx * 8)))
-
-      val toStringVal = Ident(ty: strIrType, kind: IdentKind.Anon(self.nextAnonLocal()))
-      self.emit(Instruction(assignee: Some(toStringVal), op: Operation.Call(ret: strIrType, fnName: toStringFnName, args: [Value.Ident(itemVal)])))
-
-      val toStringValLen = Ident(ty: IrType.I64, kind: IdentKind.Anon(self.nextAnonLocal()))
-      self.emit(Instruction(assignee: Some(toStringValLen), op: Operation.LoadField(ty: IrType.I64, mem: Value.Ident(toStringVal), name: "length", offset: 0)))
-
-      val newLenVal = Ident(ty: IrType.I64, kind: IdentKind.Anon(self.nextAnonLocal()))
-      self.emit(Instruction(assignee: Some(newLenVal), op: Operation.Add(lenVal, Value.Ident(toStringValLen))))
-      lenVal = Value.Ident(newLenVal)
+      val toStringVal = self.ssaValue(strIrType, Operation.Call(ret: strIrType, fnName: toStringFnName, args: [itemVal]), None)
+      val toStringValLen = self.ssaValue(IrType.I64, Operation.LoadField(ty: IrType.I64, mem: toStringVal, name: "length", offset: 0), None)
+      lenVal = self.ssaValue(IrType.I64, Operation.Add(lenVal, toStringValLen), None)
 
       if itemIrTy == strIrType {
         // account for opening and closing " chars
-        val newLenVal = Ident(ty: IrType.I64, kind: IdentKind.Anon(self.nextAnonLocal()))
-        self.emit(Instruction(assignee: Some(newLenVal), op: Operation.Add(lenVal, Value.Const(Const.Int(2)))))
-        lenVal = Value.Ident(newLenVal)
+        lenVal = self.ssaValue(IrType.I64, Operation.Add(lenVal, Value.Const(Const.Int(2))), None)
       }
 
-      reprVals.push((itemIrTy, itemName, Value.Ident(toStringVal)))
+      reprVals.push((itemIrTy, itemName, toStringVal))
     }
 
-    val totalLen = Ident(ty: IrType.I64, kind: IdentKind.Anon(self.nextAnonLocal()))
-    self.emit(Instruction(assignee: Some(totalLen), op: Operation.Add(lenVal, Value.Const(Const.Int(len)))))
-    val totalLenVal = Value.Ident(totalLen)
-
-    val toStringVal = Ident(ty: strIrType, kind: IdentKind.Anon(self.nextAnonLocal()))
-    self.emit(Instruction(assignee: Some(toStringVal), op: Operation.StructuredToString(prefix: prefix, lenVal: totalLenVal, fields: reprVals)))
-    Value.Ident(toStringVal)
+    val totalLenVal = self.ssaValue(IrType.I64, Operation.Add(lenVal, Value.Const(Const.Int(knownConstLen))), None)
+    self.ssaValue(strIrType, Operation.StructuredToString(prefix: prefix, lenVal: totalLenVal, fields: reprVals), None)
   }
 
   func ssaValueComptime(self, const: Const, name: String?): Value {
@@ -2073,10 +2199,7 @@ pub type Generator {
           (Operation.ConstString(value), strTy)
         }
       }
-      val ident = Ident(ty: ty, kind: IdentKind.Named(name), compileTimeValue: Some(const))
-      self.emit(Instruction(assignee: Some(ident), op: op))
-
-      Value.Ident(ident: ident)
+      self.ssaValue(ty, op, Some(name))
     } else {
       Value.Const(const)
     }
@@ -2151,8 +2274,12 @@ pub type Generator {
     self.fnQueue.push(FunctionToCompile(callable: CallableToCompile.Function(fn), fnName: fnName, paramsNeedingDefaultValue: paramsNeedingDefaultValue, concreteGenerics: concreteGenerics, methodInstanceType: methodInstanceType))
   }
 
-  func enqueueInitializer(self, ty: ConcreteType, fnName: String, paramsNeedingDefaultValue: Bool[], methodInstanceType: ConcreteType?, concreteGenerics: Map<String, ConcreteType>) {
-    self.fnQueue.push(FunctionToCompile(callable: CallableToCompile.Initializer(ty), fnName: fnName, paramsNeedingDefaultValue: paramsNeedingDefaultValue, concreteGenerics: concreteGenerics, methodInstanceType: methodInstanceType))
+  func enqueueInitializer(self, ty: ConcreteType, enumVariant: tc.TypedEnumVariant?, fnName: String, paramsNeedingDefaultValue: Bool[], methodInstanceType: ConcreteType?, concreteGenerics: Map<String, ConcreteType>) {
+    if enumVariant |variant| {
+      self.fnQueue.push(FunctionToCompile(callable: CallableToCompile.EnumVariant(ty, variant), fnName: fnName, paramsNeedingDefaultValue: paramsNeedingDefaultValue, concreteGenerics: concreteGenerics, methodInstanceType: methodInstanceType))
+    } else {
+      self.fnQueue.push(FunctionToCompile(callable: CallableToCompile.Initializer(ty), fnName: fnName, paramsNeedingDefaultValue: paramsNeedingDefaultValue, concreteGenerics: concreteGenerics, methodInstanceType: methodInstanceType))
+    }
   }
 
   func addFunction(self, fnName: String, fn: IrFunction) {
@@ -2160,11 +2287,26 @@ pub type Generator {
     self.functionsByName[fnName] = fn
   }
 
+  func getOrAddConstEnumVariant(self, concreteType: ConcreteType, variant: tc.TypedEnumVariant, variantIdx: Int): GlobalVariable {
+    val typeName = self.typeName(concreteType, withTypeArgs: true)
+    val globalName = "${typeName}_${variant.label.name}"
+    if self.globals[globalName] |g| return g
+
+    val ty = self.getIrTypeForConcreteType(concreteType)
+
+    val v = GlobalVariable(name: globalName, ty: ty, mutable: false)
+    self.globals[globalName] = v
+
+    v
+  }
+
   func addGlobal(self, variable: tc.Variable, modId: Int, concreteGenerics: Map<String, ConcreteType>): GlobalVariable {
+    val globalName = self.globalName(modId, variable.label.name)
+    if self.globals[globalName] |g| return g
+
     val varConcreteType = self.getConcreteTypeFromType(variable.ty, concreteGenerics)
     val varTy = self.getIrTypeForConcreteType(varConcreteType)
 
-    val globalName = self.globalName(modId, variable.label.name)
     val v = GlobalVariable(name: globalName, ty: varTy, mutable: variable.mutable)
     self.globals[globalName] = v
 
@@ -2286,6 +2428,18 @@ pub type Generator {
     val defaultValuesFlag = paramsNeedingDefaultValue.reduce(0, (acc, f) => (acc << 1) || (if f 1 else 0))
 
     val prefix = "_${typeName}__init__"
+    if defaultValuesFlag == 0 {
+      prefix
+    } else {
+      "${prefix}_$defaultValuesFlag"
+    }
+  }
+
+  func enumVariantInitFnName(self, ty: ConcreteType, variant: tc.TypedEnumVariant, paramsNeedingDefaultValue: Bool[] = []): String {
+    val typeName = self.typeName(ty)
+    val defaultValuesFlag = paramsNeedingDefaultValue.reduce(0, (acc, f) => (acc << 1) || (if f 1 else 0))
+
+    val prefix = "_${typeName}__${variant.label.name}"
     if defaultValuesFlag == 0 {
       prefix
     } else {
