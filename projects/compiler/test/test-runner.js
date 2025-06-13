@@ -2,9 +2,10 @@ const childProcess = require('child_process')
 const fs = require('fs/promises')
 
 class TestRunner {
-  constructor(runnerName, harnessPath) {
+  constructor(runnerName, harnessPath, isJsTarget = false) {
     this.runnerName = runnerName
     this.harnessPath = harnessPath
+    this.isJsTarget = isJsTarget
   }
 
   async runTests(tests) {
@@ -62,9 +63,27 @@ class TestRunner {
   async _runCompilerTest(bin, testFile, args = [], env = {}) {
     const testFilePath = `${__dirname}/${testFile}`
 
+    async function buildAndRunTestBin(testFilePath, compilerBin, args, env, isJsTarget) {
+      const testPathSegs = testFilePath.split('/')
+      const testName = testPathSegs[testPathSegs.length - 1].replace('.abra', '')
+
+      if (isJsTarget) {
+        await fs.writeFile(`${process.cwd()}/._abra/${testName}.mjs`, '', { encoding: 'utf-8' })
+        let jsHarness = await fs.readFile(`${process.cwd()}/example.mjs`).then(buf => buf.toString())
+        jsHarness = jsHarness.replace('._abra/_main.mjs', `${testName}.mjs`)
+        await fs.writeFile(`${process.cwd()}/._abra/${testName}_harness.mjs`, jsHarness, { encoding: 'utf-8' })
+
+        await runCommand(compilerBin, [testFilePath, testName])
+        return runCommand('node', [`${process.cwd()}/._abra/${testName}_harness.mjs`, ...args], env)
+      } else {
+        await runCommand('abra', ['build', '-o', testName, testFilePath], { COMPILER_BIN: compilerBin })
+        return runCommand(`${process.cwd()}/._abra/${testName}`, args, env)
+      }
+    }
+
     try {
       const [actual, expectedOutput] = await Promise.all([
-        runCommand('abra', [testFilePath, ...args], { COMPILER_BIN: bin, ...env }),
+        buildAndRunTestBin(testFilePath, bin, args, env, this.isJsTarget),
         fs.readFile(testFilePath, { encoding: 'utf8' }),
       ])
 

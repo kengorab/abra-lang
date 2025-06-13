@@ -830,8 +830,32 @@ const COMPILER_TESTS = [
   { test: "compiler/try_result.abra" },
   { test: "compiler/try_option.abra" },
   { test: "compiler/process.abra", args: ['-f', 'bar', '--baz', 'qux'], env: { FOO: 'bar' } },
-  // { test: "compiler/process_callstack.abra" },
+  { test: "compiler/process_callstack.abra" },
   { test: "compiler/json.abra" },
+]
+
+const IR_COMPILER_TESTS = [
+  { test: "compiler/ints.abra" },
+  { test: "compiler/floats.abra" },
+  { test: "compiler/bools.abra" },
+  // { test: "compiler/chars.abra" },
+  // { test: "compiler/strings.abra" },
+  // { test: "compiler/arrays.abra" },
+  // { test: "compiler/functions.abra" },
+  // { test: "compiler/optionals.abra" },
+  // { test: "compiler/ifs.abra" },
+  // { test: "compiler/loops.abra" },
+  // { test: "compiler/types.abra" },
+  // { test: "compiler/enums.abra" },
+  // { test: "compiler/tuples.abra" },
+  // { test: "compiler/maps.abra" },
+  // { test: "compiler/sets.abra" },
+  // { test: "compiler/match.abra" },
+  // { test: "compiler/try_result.abra" },
+  // { test: "compiler/try_option.abra" },
+  // { test: "compiler/process.abra", args: ['-f', 'bar', '--baz', 'qux'], env: { FOO: 'bar' } },
+  // { test: "compiler/process_callstack.abra" },
+  // { test: "compiler/json.abra" },
 ]
 
 async function main() {
@@ -840,27 +864,30 @@ async function main() {
   let numErr = 0
   let numTests = 0
 
-  const lexerPath = `${__dirname}/../src/lexer.test.abra`
-  const parserPath = `${__dirname}/../src/parser.test.abra`
-  const typecheckerPath = `${__dirname}/../src/typechecker.test.abra`
-  const compilerPath = `${__dirname}/../src/compiler.test.abra`
-
   const runners = [
     {
-      runner: new TestRunner('lexer_test', lexerPath),
+      runner: new TestRunner('lexer_test', `${__dirname}/../src/lexer.test.abra`),
       tests: LEXER_TESTS,
     },
     {
-      runner: new TestRunner('parser_test', parserPath),
+      runner: new TestRunner('parser_test', `${__dirname}/../src/parser.test.abra`),
       tests: PARSER_TESTS,
     },
     {
-      runner: new TestRunner('typechecker_test', typecheckerPath),
+      runner: new TestRunner('typechecker_test', `${__dirname}/../src/typechecker.test.abra`),
       tests: TYPECHECKER_TESTS,
     },
     {
-      runner: new TestRunner('compiler_test', compilerPath),
+      runner: new TestRunner('compiler_test', `${__dirname}/../src/compiler.test.abra`),
       tests: COMPILER_TESTS,
+    },
+    {
+      runner: new TestRunner('native_ir_compiler_test', `${__dirname}/../src/ir_compiler.test.abra`),
+      tests: IR_COMPILER_TESTS,
+    },
+    {
+      runner: new TestRunner('js_ir_compiler_test', `${__dirname}/../src/ir_compiler_js.test.abra`, true),
+      tests: IR_COMPILER_TESTS,
     },
   ]
 
