@@ -339,6 +339,24 @@ pub type Compiler {
         }
         self.sb.writeln(";")
       }
+      Operation.OptionNone => {
+        self.sb.writeln("const $dst = null;")
+      }
+      Operation.OptionSome(_, value) => {
+        self.sb.write("const $dst = ")
+        self.emitIrValueToJsValue(value)
+        self.sb.writeln(";")
+      }
+      Operation.OptionIsNone(value) => {
+        self.sb.write("const $dst = ")
+        self.emitIrValueToJsValue(value)
+        self.sb.writeln(" === null;")
+      }
+      Operation.OptionUnwrap(_, value) => {
+        self.sb.write("const $dst = ")
+        self.emitIrValueToJsValue(value)
+        self.sb.writeln(";")
+      }
       Operation.StructuredToString(prefix, lenVal, fields) => {
         val strIrTy = IrType.Composite(self.ir.knowns.stringType().name)
         val strTemplateLiteralParts = ["`$prefix("]

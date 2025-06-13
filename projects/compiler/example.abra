@@ -1,3 +1,9 @@
 val r = range(0, 4)
-// stdoutWriteln(""+r)
 stdoutWriteln(""+r)
+stdoutWriteln(""+r.next())
+stdoutWriteln(""+r.next())
+stdoutWriteln(""+r.next())
+stdoutWriteln(""+r.next())
+stdoutWriteln(""+r.next())
+
+stdoutWriteln(""+Some("asdf"))
