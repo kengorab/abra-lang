@@ -1250,7 +1250,7 @@ pub type Generator {
 
     match node.kind {
       TypedAstNodeKind.Literal(lit) => self.genLiteral(pos, lit, dst)
-      TypedAstNodeKind.StringInterpolation => todo("genExpression: StringInterpolation (${node.token})")
+      TypedAstNodeKind.StringInterpolation(exprs) => self.genStringInterpolation(pos, concreteGenerics, exprs, dst)
       TypedAstNodeKind.Unary(op, expr) => self.genUnary(pos, concreteGenerics, dst, expr, op)
       TypedAstNodeKind.Binary(left, op, right) => self.genBinary(pos, concreteGenerics, dst, left, op, right)
       TypedAstNodeKind.Grouped(inner) => self.genExpression(inner, {}, dst)
@@ -1329,6 +1329,61 @@ pub type Generator {
       LiteralAstNode.Char(c) => self.ssaValueComptime(Const.Char(c), dst)
       LiteralAstNode.String(s) => self.ssaValueComptime(Const.String(s), dst)
     }
+  }
+
+  func genStringInterpolation(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, exprs: tc.TypedAstNode[], dst: String?): Value {
+    val strIrTy = IrType.Composite(self.knowns.stringType().name)
+
+    var allComptime = true
+    val comptimeStrings: String[] = []
+    val exprVals: Value[] = []
+    for expr in exprs {
+      val exprVal = self.genExpression(expr, concreteGenerics)
+      if allComptime {
+        if self.valueAsCompileTime(exprVal) |exprVal| {
+          val str = match exprVal {
+            Const.Int(i) => i.toString()
+            Const.Float(f) => f.toString()
+            Const.Bool(b) => b.toString()
+            Const.Char(c) => Char.fromInt(c).toString()
+            Const.String(s) => s
+          }
+          comptimeStrings.push(str)
+        } else {
+          allComptime = false
+        }
+      }
+      exprVals.push(exprVal)
+    }
+
+    if allComptime return Value.Const(Const.String(comptimeStrings.join()))
+
+    val toStringVals: (Value, Value)[] = []
+    var totalLenVal = Value.Const(Const.Int(1)) // account for \0
+    for exprVal in exprVals {
+      val toStringVal = if self.getValueTy(exprVal) == strIrTy { exprVal } else self.genCallToStringMethod(exprVal)
+
+      if exprVals.length == 1 return toStringVal
+
+      val strLenVal = self.ssaValue(IrType.I64, Operation.LoadField(ty: IrType.I64, mem: toStringVal, name: "length", offset: 0), None)
+      val strBufVal = self.ssaValue(IrType.Ptr, Operation.LoadField(ty: IrType.Ptr, mem: toStringVal, name: "_buffer", offset: 8), None)
+      toStringVals.push((strLenVal, strBufVal))
+
+      totalLenVal = self.ssaValue(IrType.I64, Operation.Add(totalLenVal, strLenVal), None)
+    }
+
+    val totalBufVal = self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Malloc(count: totalLenVal, itemTy: Some(IrType.Byte))), None)
+    var cursor = Value.Const(Const.Int(0))
+    for (strLenVal, strBufVal) in toStringVals {
+      val builtin = Builtin.CopyFrom(dst: totalBufVal, dstOffset: cursor, src: strBufVal, srcOffset: Value.Const(Const.Int(0)), size: strLenVal, itemTy: IrType.Byte)
+      self.emit(Instruction(op: Operation.Builtin(ret: IrType.Unit, builtin: builtin)))
+
+      cursor = self.ssaValue(IrType.I64, Operation.Add(cursor, strLenVal), None)
+    }
+
+    val strInitFn = self.knowns.stringInitializerFn()
+
+    self.ssaValue(strIrTy, Operation.Call(ret: strIrTy, fnName: strInitFn.name, args: [totalLenVal, totalBufVal]), dst)
   }
 
   func genUnary(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, dst: String?, expr: tc.TypedAstNode, op: UnaryOp): Value {
@@ -2199,7 +2254,10 @@ pub type Generator {
           (Operation.ConstString(value), strTy)
         }
       }
-      self.ssaValue(ty, op, Some(name))
+      val ident = Ident(ty: ty, kind: IdentKind.Named(name), compileTimeValue: Some(const))
+      self.emit(Instruction(assignee: Some(ident), op: op))
+
+      Value.Ident(ident: ident)
     } else {
       Value.Const(const)
     }
