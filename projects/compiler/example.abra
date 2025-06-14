@@ -1,9 +1,14 @@
 val r = range(0, 4)
-stdoutWriteln(""+r)
-stdoutWriteln(""+r.next())
-stdoutWriteln(""+r.next())
-stdoutWriteln(""+r.next())
-stdoutWriteln(""+r.next())
-stdoutWriteln(""+r.next())
+// stdoutWriteln(""+r)
+// stdoutWriteln(""+r.next())
+// stdoutWriteln(""+r.next())
+// stdoutWriteln(""+r.next())
+// stdoutWriteln(""+r.next())
+// stdoutWriteln(""+r.next())
 
-stdoutWriteln(""+Some("asdf"))
+// stdoutWriteln(""+Some("asdf"))
+// val i = 123
+// val i = 123
+val s = "asdf"
+stdoutWriteln(":$s:")
+stdoutWriteln(":$r:")
