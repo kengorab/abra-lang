@@ -32,6 +32,7 @@ pub type Compiler {
   builder: ModuleBuilder
   currentFn: qbe.QbeFunction
   numTemps: Int = 0
+  loopStack: (/* start: */ qbe.Label, /* end: */ qbe.Label)[] = []
   builtinI64ToStringUsed: Bool = false
   builtinU64ToStringUsed: Bool = false
   builtinF64ToStringUsed: Bool = false
@@ -368,7 +369,8 @@ pub type Compiler {
 
         if left.ty() != right.ty() unreachable("Operation.Lt: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
-        self.currentFn.block.buildCompareLt(left, right, dst)
+        val res = try self.currentFn.block.buildCompareLt(left, right, Some(self.nextTemp())) else |e| unreachable(e)
+        self.currentFn.block.buildExt(res, false, dst)
       }
       Operation.Lte(l, r) => {
         var left = self.irValueToQbeValue(l)
@@ -382,7 +384,8 @@ pub type Compiler {
 
         if left.ty() != right.ty() unreachable("Operation.Lte: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
-        self.currentFn.block.buildCompareLte(left, right, dst)
+        val res = try self.currentFn.block.buildCompareLte(left, right, Some(self.nextTemp())) else |e| unreachable(e)
+        self.currentFn.block.buildExt(res, false, dst)
       }
       Operation.Shl(l, r) => {
         var left = self.irValueToQbeValue(l)
@@ -404,7 +407,8 @@ pub type Compiler {
 
         if left.ty() != right.ty() unreachable("Operation.Lt: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
-        self.currentFn.block.buildCompareGt(left, right, dst)
+        val res = try self.currentFn.block.buildCompareGt(left, right, Some(self.nextTemp())) else |e| unreachable(e)
+        self.currentFn.block.buildExt(res, false, dst)
       }
       Operation.Gte(l, r) => {
         var left = self.irValueToQbeValue(l)
@@ -418,7 +422,8 @@ pub type Compiler {
 
         if left.ty() != right.ty() unreachable("Operation.Lte: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
-        self.currentFn.block.buildCompareGte(left, right, dst)
+        val res = try self.currentFn.block.buildCompareGte(left, right, Some(self.nextTemp())) else |e| unreachable(e)
+        self.currentFn.block.buildExt(res, false, dst)
       }
       Operation.Shr(l, r) => {
         var left = self.irValueToQbeValue(l)
@@ -541,6 +546,8 @@ pub type Compiler {
         val labelBody = self.currentFn.block.addLabel("${body.name}_body")
         val labelCont = self.currentFn.block.addLabel("${body.name}_cont")
 
+        self.loopStack.push((labelCond, labelCont))
+
         self.currentFn.block.registerLabel(labelCond)
         for inst in cond.body {
           self.compileInstruction(inst)
@@ -557,6 +564,8 @@ pub type Compiler {
         }
 
         self.currentFn.block.registerLabel(labelCont)
+
+        self.loopStack.pop()
       }
       Operation.Call(ret, fnName, args) => {
         val argVals = args.map(a => self.irValueToQbeValue(a))
@@ -564,6 +573,13 @@ pub type Compiler {
           try self.currentFn.block.buildCallRaw(fnName, ret, argVals, dst) else |e| unreachable(e)
         } else {
           self.currentFn.block.buildVoidCallRaw(fnName, argVals)
+        }
+      }
+      Operation.Continue => {
+        if self.loopStack[-1] |(loopStartLabel, _)| {
+          self.currentFn.block.buildJmp(loopStartLabel)
+        } else {
+          unreachable("cannot have a continue statement outside of a loop")
         }
       }
       Operation.Return(value) => {
@@ -589,7 +605,8 @@ pub type Compiler {
       }
       Operation.OptionIsNone(value) => {
         val qbeVal = self.irValueToQbeValue(value)
-        self.currentFn.block.buildCompareEq(qbe.Value.Int(0), qbeVal, dst)
+        val res = try self.currentFn.block.buildCompareEq(qbe.Value.Int(0), qbeVal, Some(self.nextTemp())) else |e| unreachable(e)
+        self.currentFn.block.buildExt(res, false, dst)
       }
       Operation.OptionUnwrap(innerTy, value) => {
         val qbeVal = self.irValueToQbeValue(value)
@@ -751,6 +768,9 @@ pub type Compiler {
 
             val roundRes = try self.currentFn.block.buildCallRaw("round", QbeType.F64, [floatVal], Some(self.nextTemp())) else |e| unreachable(e)
             self.currentFn.block.buildFToL(roundRes, true, dst)
+          }
+          Builtin.Uninitialized => {
+            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
           }
         }
       }

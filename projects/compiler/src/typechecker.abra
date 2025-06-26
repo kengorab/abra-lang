@@ -675,7 +675,7 @@ pub enum InstanceKind {
   Struct(struct: Struct)
   Enum(enum_: Enum)
 
-  func asInstanceType(self): Type {
+  pub func asInstanceType(self): Type {
     match self {
       InstanceKind.Struct(s) => s.asInstanceType()
       InstanceKind.Enum(e) => e.asInstanceType()

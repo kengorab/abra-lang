@@ -1,4 +1,4 @@
-val r = range(0, 4)
+// val r = range(0, 4)
 // stdoutWriteln(""+r)
 // stdoutWriteln(""+r.next())
 // stdoutWriteln(""+r.next())
@@ -9,6 +9,10 @@ val r = range(0, 4)
 // stdoutWriteln(""+Some("asdf"))
 // val i = 123
 // val i = 123
-val s = "asdf"
-stdoutWriteln(":$s:")
-stdoutWriteln(":$r:")
+// val s = "asdf"
+// stdoutWriteln(":$s:")
+// stdoutWriteln(":$r:")
+
+// val m = { a: 1, "b": 2 }
+val m: Map<String, Int> = {}
+stdoutWriteln(""+m.size)
