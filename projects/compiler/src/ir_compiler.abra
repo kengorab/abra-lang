@@ -344,9 +344,7 @@ pub type Compiler {
 
         try self.currentFn.block.buildXor(left, right, dst) else |e| unreachable(e)
       }
-      Operation.Eq(primitive, negate, l, r) => {
-        if !primitive todo("non-primitive Eq operation")
-
+      Operation.Eq(negate, l, r) => {
         val left = self.irValueToQbeValue(l)
         val right = self.irValueToQbeValue(r)
 

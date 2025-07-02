@@ -231,7 +231,7 @@ pub enum Operation {
   BitOr(left: Value, right: Value)
   BoolOr(left: Value, right: CompoundValue)
   Xor(bitwise: Bool, left: Value, right: Value)
-  Eq(primitive: Bool, negate: Bool, left: Value, right: Value)
+  Eq(negate: Bool, left: Value, right: Value)
   Lt(left: Value, right: Value)
   Lte(left: Value, right: Value)
   Shl(left: Value, right: Value)
@@ -379,7 +379,7 @@ pub enum Operation {
         r.render(sb)
         sb.write(")")
       }
-      Operation.Eq(_, negate, left, right) => {
+      Operation.Eq(negate, left, right) => {
         if negate sb.write("neq(") else sb.write("eq(")
         left.render(sb)
         sb.write(", ")
@@ -1116,7 +1116,7 @@ pub type Generator {
     match concreteType.instanceKind {
       InstanceKind.Struct(s) => {
         if s == self.project.preludeIntStruct || s == self.project.preludeFloatStruct || s == self.project.preludeBoolStruct {
-          val ident = self.ssaValue(IrType.Bool, Operation.Eq(primitive: true, negate: false, left: selfVal, right: otherVal), None)
+          val ident = self.ssaValue(IrType.Bool, Operation.Eq(negate: false, left: selfVal, right: otherVal), None)
           self.emit(Instruction(op: Operation.Return(Some(ident))))
           return
         }
@@ -1965,7 +1965,7 @@ pub type Generator {
 
     val irTy = self.getIrTypeForConcreteType(concreteType)
     val op = if irTy == IrType.I64 || irTy == IrType.F64 || irTy == IrType.Bool || irTy == IrType.Byte {
-      Operation.Eq(primitive: true, negate: negate, left, right)
+      Operation.Eq(negate: negate, left, right)
     } else {
       val newConcreteGenerics = self.extractConcreteGenericsFromConcreteType(concreteType)
       val eqFn = self.getMethodByName(concreteType.instanceKind, "eq", staticMethod: false)

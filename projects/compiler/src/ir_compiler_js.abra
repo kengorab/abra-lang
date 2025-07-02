@@ -222,11 +222,7 @@ pub type Compiler {
         self.emitIrValueToJsValue(r)
         self.sb.writeln(");")
       }
-      Operation.Eq(primitive, negate, l, r) => {
-        if !primitive todo("non-primitive Eq operation")
-
-        self.genBinary(dst, if negate "!==" else "===", l, r)
-      }
+      Operation.Eq(negate, l, r) => self.genBinary(dst, if negate "!==" else "===", l, r)
       Operation.Lt(l, r) => self.genBinary(dst, "<", l, r)
       Operation.Lte(l, r) => self.genBinary(dst, "<=", l, r)
       Operation.Shl(l, r) => self.genBinary(dst, "<<", l, r)

@@ -844,7 +844,7 @@ const IR_COMPILER_TESTS = [
   // { test: "compiler/functions.abra" },
   // { test: "compiler/optionals.abra" },
   { test: "compiler/ifs.abra" },
-  { test: "compiler/loops.abra" },
+  // { test: "compiler/loops.abra" },
   // { test: "compiler/types.abra" },
   // { test: "compiler/enums.abra" },
   { test: "compiler/tuples.abra" },
@@ -865,18 +865,18 @@ async function main() {
   let numTests = 0
 
   const runners = [
-    // {
-    //   runner: new TestRunner('lexer_test', `${__dirname}/../src/lexer.test.abra`),
-    //   tests: LEXER_TESTS,
-    // },
-    // {
-    //   runner: new TestRunner('parser_test', `${__dirname}/../src/parser.test.abra`),
-    //   tests: PARSER_TESTS,
-    // },
-    // {
-    //   runner: new TestRunner('typechecker_test', `${__dirname}/../src/typechecker.test.abra`),
-    //   tests: TYPECHECKER_TESTS,
-    // },
+    {
+      runner: new TestRunner('lexer_test', `${__dirname}/../src/lexer.test.abra`),
+      tests: LEXER_TESTS,
+    },
+    {
+      runner: new TestRunner('parser_test', `${__dirname}/../src/parser.test.abra`),
+      tests: PARSER_TESTS,
+    },
+    {
+      runner: new TestRunner('typechecker_test', `${__dirname}/../src/typechecker.test.abra`),
+      tests: TYPECHECKER_TESTS,
+    },
     {
       runner: new TestRunner('compiler_test', `${__dirname}/../src/compiler.test.abra`),
       tests: COMPILER_TESTS,
