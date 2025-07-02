@@ -2,7 +2,7 @@ import File from "fs"
 import StringBuilder, IR, IrFunction, IrType, Instruction, Operation, Value, Const, IdentKind, GlobalVariable, Builtin from "./ir"
 import ModuleBuilder, QbeType from "./qbe"
 import "./qbe" as qbe
-import mkBufFromStr from "./ir_compiler_builtins_js"
+import builtins from "./ir_compiler_builtins_js"
 
 pub type CompilationResult {
   sb: StringBuilder
@@ -32,7 +32,7 @@ pub type Compiler {
     }
     sb.writeln("} = externs;")
 
-    sb.writeln(mkBufFromStr.code)
+    sb.writeln(builtins)
 
     for g in ir.globals {
       compiler.compileGlobal(g)
@@ -297,15 +297,14 @@ pub type Compiler {
         self.emitIndent()
         self.sb.writeln("}")
       }
-      Operation.While(_, cond, body) => {
+      Operation.WhileLoopStart => {
         self.sb.writeln("while (true) {")
         self.indentLevel += 1
-        for inst in cond.body {
-          self.compileInstruction(inst)
-        }
+      }
+      Operation.While(cond, body) => {
         self.emitIndent()
         self.sb.write("if (!")
-        self.emitIrValueToJsValue(cond.result)
+        self.emitIrValueToJsValue(cond)
         self.sb.writeln(") break;")
 
         for inst in body.body {
@@ -331,6 +330,8 @@ pub type Compiler {
         }
         self.sb.writeln(");")
       }
+      Operation.Break => self.sb.writeln("break;")
+      Operation.Continue => self.sb.writeln("continue;")
       Operation.Return(value) => {
         self.sb.write("return")
         if value |v| {
@@ -366,12 +367,16 @@ pub type Compiler {
 
           val fieldPart = if fieldIrType == strIrTy { "\"\${$fieldValue}\"" } else { "\${$fieldValue}" }
           val sepPart = if idx == fields.length - 1 { ")" } else { ", " }
-          strTemplateLiteralParts.push("$fieldName: $fieldPart$sepPart")
+          if fieldName.isEmpty() {
+            strTemplateLiteralParts.push("$fieldPart$sepPart")
+          } else {
+            strTemplateLiteralParts.push("$fieldName: $fieldPart$sepPart")
+          }
         }
         strTemplateLiteralParts.push("`")
 
         val buf = self.nextTemp()
-        self.sb.writeln("const $buf = \$BUF${strTemplateLiteralParts.join()};")
+        self.sb.writeln("const $buf = \$interp${strTemplateLiteralParts.join()};")
 
         val strInitFn = self.ir.knowns.stringInitializerFn()
         self.emitIndent()
@@ -382,12 +387,18 @@ pub type Compiler {
         match builtin {
           Builtin.Malloc(count, itemTy) => {
             self.sb.write("const $dst = ")
-            // If no itemTy present then it's a "void*", which can be thought of as an array; if there is a type being malloc'd, then it's an object
-            if !itemTy {
-              self.sb.writeln("{}; // builtin(malloc)")
-            } else {
-              self.sb.writeln("[]; // builtin(malloc)")
+            // If there's no type being malloc'd, then it can be modeled as an object. If the type is Byte then it's
+            // modeled as a Uint8Array; otherwise it's just a simple array.
+            match itemTy {
+              None => self.sb.write("{};")
+              IrType.Byte => {
+                self.sb.write("new Uint8Array(")
+                self.emitIrValueToJsValue(count)
+                self.sb.write(");")
+              }
+              else => self.sb.write("[];")
             }
+            self.sb.writeln(" // builtin(malloc)")
           }
           Builtin.Realloc(ptr, count, _) => {
             self.sb.write("const $dst = ")
@@ -432,9 +443,9 @@ pub type Compiler {
             val strInitFn = self.ir.knowns.stringInitializerFn()
 
             val strTmp = self.nextTemp()
-            self.sb.write("const $strTmp = ")
+            self.sb.write("const $strTmp = \$te.encode(")
             self.emitIrValueToJsValue(int)
-            self.sb.writeln(".toString().split('');")
+            self.sb.writeln(".toString());")
 
             self.emitIndent()
             self.sb.writeln("const $dst = ${strInitFn.name}($strTmp.length, $strTmp);")
@@ -443,9 +454,9 @@ pub type Compiler {
             val strInitFn = self.ir.knowns.stringInitializerFn()
 
             val strTmp = self.nextTemp()
-            self.sb.write("const $strTmp = BigInt.asUintN(64, BigInt(")
+            self.sb.write("const $strTmp = \$te.encode(BigInt.asUintN(64, BigInt(")
             self.emitIrValueToJsValue(int)
-            self.sb.writeln(")).toString().split('');")
+            self.sb.writeln(")).toString());")
 
             self.emitIndent()
             self.sb.writeln("const $dst = ${strInitFn.name}($strTmp.length, $strTmp);")
@@ -466,7 +477,7 @@ pub type Compiler {
             self.indentLevel += 1
             val strTmp = self.nextTemp()
             self.emitIndent()
-            self.sb.writeln("const $strTmp = $floatVal.toPrecision(6).replace(/0+$/, '').replace(/\\.$/, '').split('');")
+            self.sb.writeln("const $strTmp = \$te.encode($floatVal.toPrecision(6).replace(/0+$/, '').replace(/\\.$/, ''));")
 
             self.emitIndent()
             self.sb.writeln("$dst = ${strInitFn.name}($strTmp.length, $strTmp);")
@@ -479,9 +490,9 @@ pub type Compiler {
             val strInitFn = self.ir.knowns.stringInitializerFn()
 
             val strTmp = self.nextTemp()
-            self.sb.write("const $strTmp = ")
+            self.sb.write("const $strTmp = \$te.encode(")
             self.emitIrValueToJsValue(bool)
-            self.sb.writeln(".toString().split('');")
+            self.sb.writeln(".toString());")
 
             self.emitIndent()
             self.sb.writeln("const $dst = ${strInitFn.name}($strTmp.length, $strTmp);")
@@ -540,13 +551,13 @@ pub type Compiler {
     }
     Const.Float(f) => f.toString()
     Const.Bool(b) => b.toString()
-    Const.Char(c) => "'${Char.fromInt(c).toString()}'"
+    Const.Char(c) => c.toString()
     Const.String(s) => self.makeConstString(s)
   }
 
   func makeConstString(self, s: String): String {
     val str = s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r")
-    "{ length: ${s.length}, _buffer: \$BUF`$str` }"
+    "\$mkstr(${s.length}, \"$str\")"
   }
 
   func emitIrValueToJsValue(self, v: Value) = self.sb.write(self.irValueToJsValue(v))

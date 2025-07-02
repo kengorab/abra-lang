@@ -13,6 +13,34 @@
 // stdoutWriteln(":$s:")
 // stdoutWriteln(":$r:")
 
-// val m = { a: 1, "b": 2 }
-val m: Map<String, Int> = {}
-stdoutWriteln(""+m.size)
+val m = { a: 1, "b": 2 }
+// val m: Map<String, Int> = {}
+stdoutWriteln(""+m)
+
+// func makeTuple(a: String, b: Int): (String, Int) = (a, b)
+
+// val (x, y) = makeTuple("hello", 24)
+// stdoutWriteln(""+x+y)
+
+// var s = Some(makeTuple("hello", 24))
+// if s |(a, b)| {
+//   stdoutWriteln(""+a+b)
+// }
+
+// var i = 0
+// while s |(a, b)| {
+//   stdoutWriteln(""+a+b)
+
+//   if i == 1 {
+//     s = None
+//   }
+//   i += 1
+// }
+
+// // func foo() {
+// //   while s |(a, b)| {
+// //     stdoutWriteln(""+a+b)
+// //     return
+// //   }
+// // }
+// // foo()

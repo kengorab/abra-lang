@@ -41,14 +41,6 @@ val d = if false { Some(123) } else { None }
 /// Expect: Option.None
 stdoutWriteln(d.toString())
 
-///// Expect: 123
-//stdoutWriteln(if true { 123 })
-//
-///// Expect: None
-//stdoutWriteln(if false { 123 })
-
-///// Expect: None
-//stdoutWriteln(if true { None } else { 1 + 2 }) // TODO: Make this work
 /// Expect: Option.Some(value: 3)
 stdoutWriteln((if true { Some(1 + 2) } else { None }).toString())
 
@@ -60,16 +52,14 @@ stdoutWriteln((if arr[0] |item| { item + 100 } else { 0 }).toString())
 stdoutWriteln((if arr[5] |item| { item + 100 } else { 0 }).toString())
 
 // Destructuring condition binding as tuple
-(() => {
-  val pairs = [("a", 1), ("b", 2)]
-  // Statement
-  if pairs[0] |(k, v)| {
-    /// Expect: a 1
-    stdoutWriteln("$k $v")
-  }
+val pairs = [("a", 1), ("b", 2)]
+// Statement
+if pairs[0] |(k, v)| {
+  /// Expect: a 1
+  stdoutWriteln("$k $v")
+}
 
-  // Expression
-  val x = if pairs[0] |(k, v)| k.length + v else 0
-  /// Expect: 2
-  stdoutWriteln(x.toString())
-})()
+// Expression
+val x = if pairs[0] |(k, v)| k.length + v else 0
+/// Expect: 2
+stdoutWriteln(x.toString())
