@@ -1,7 +1,7 @@
 func printlnInt(i: Int) = stdoutWriteln(i.toString())
 
 // Basic test (catch-all case)
-(() => {
+if true {
   /// Expect: here
   match "abc" {
     _ => stdoutWriteln("here")
@@ -12,10 +12,10 @@ func printlnInt(i: Int) = stdoutWriteln(i.toString())
   match "abc" {
     else => stdoutWriteln("here")
   }
-})()
+}
 
 // Testing constant cases
-(() => {
+if true {
   /// Expect: case 1: 1
   /// Expect: case 2: 2
   /// Expect: case 3: 34
@@ -65,10 +65,10 @@ func printlnInt(i: Int) = stdoutWriteln(i.toString())
   // TODO: remove this, lambda is unhappy to have a for-loop be the last statement for some reason
   /// Expect: done
   stdoutWriteln("done")
-})()
+}
 
 // Testing option type
-(() => {
+if true {
   val arr = [1, 2, 3, 4]
 
   /// Expect: found a number
@@ -173,7 +173,7 @@ func printlnInt(i: Int) = stdoutWriteln(i.toString())
 //     1 => stdoutWriteln(15)
 //     _ => stdoutWriteln(100)
 //   }
-})()
+}
 
 // With enums
 
@@ -184,7 +184,7 @@ enum Color {
   RGB(r: Int, g: Int, b: Int)
 }
 
-(() => {
+if true {
   val colors = [Color.Red, Color.Blue, Color.Green, Color.RGB(r: 1, g: 2, b: 3)]
   /// Expect: red
   /// Expect: blue
@@ -244,10 +244,10 @@ enum Color {
 //   }
 //   /// Expect: Color.RGB(r: 1, g: 2, b: 100)
 //   stdoutWriteln(c)
-})()
+}
 
 // Testing match as expression
-(() => {
+if true {
   val arr = [1, 2, 3, 4]
   val x = match arr[1] {
     None => -1
@@ -262,7 +262,7 @@ enum Color {
   }
   /// Expect: -1
   printlnInt(y)
-})()
+}
 
 // Testing terminator in block
 

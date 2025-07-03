@@ -10,7 +10,7 @@ pub func args(): String[] {
   val argv = intrinsics.argv()
 
   val args: String[] = Array.withCapacity(argc)
-  for i in range(0, argc) {
+  for i in 0:argc {
     val str = argv.loadAt(i)
     val len = libc.strlen(str)
     args.push(String(length: len, _buffer: str))

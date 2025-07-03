@@ -22,11 +22,9 @@ stdoutWriteln(quad[3][0].toString())
 // stdoutWriteln(quad.hash() == (1, "two", ["three"], (2, 3)).hash())
 
 // == operator
-(() => {
-  val t1 = (1, "abc", [true, false])
+val t1 = (1, "abc", [true, false])
 
-  /// Expect: true
-  printlnBool(t1 == (1, "abc", [true, false]))
-  /// Expect: true
-  printlnBool((1, "two", [3]) == (1, "tw" + "o", [2 + 1]))
-})()
+/// Expect: true
+printlnBool(t1 == (1, "abc", [true, false]))
+/// Expect: true
+printlnBool((1, "two", [3]) == (1, "tw" + "o", [2 + 1]))

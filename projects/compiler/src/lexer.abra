@@ -221,7 +221,7 @@ pub type LexerError {
     if contents.lines()[position.line - 1] |line| {
       val len = position.col - 1 + cursorLength
       val cursor = Array.fill(len, " ")
-      for i in range(len - cursorLength, len) {
+      for i in (len - cursorLength):len {
         cursor[i] = "^"
       }
       "  |  $line\n     ${cursor.join()}"
@@ -625,7 +625,7 @@ pub type Lexer {
     self._advance() // consume 'u'
 
     var value = 0
-    for i in range(0, 4) {
+    for i in 0:4 {
       if self._cursor + i >= self._input.length {
         val escSeq = "\\u${self._input[self._cursor:self._cursor + i]}"
         return Err(LexerError(position: startPos, kind: LexerErrorKind.UnsupportedEscapeSequence(seq: escSeq, isUnicode: true)))

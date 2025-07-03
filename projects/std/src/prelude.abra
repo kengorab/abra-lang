@@ -306,7 +306,7 @@ type String {
 
     val str = String.withLength(length)
 
-    for i in range(0, length) {
+    for i in 0:length {
       val ch = choices._buffer.loadAt(libc.rand() % choices.length)
       str._buffer.storeAt(ch, i)
     }
@@ -332,7 +332,7 @@ type String {
 
   pub func hash(self): Int {
     var hash = 31 * self.length
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val byte = self._buffer.loadAt(i)
       hash = hash + 31 * byte.asInt()
     }
@@ -342,7 +342,7 @@ type String {
   pub func eq(self, other: String): Bool {
     if self.length != other.length { return false }
 
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val selfCh = self._buffer.loadAt(i).asInt()
       val otherCh = other._buffer.loadAt(i).asInt()
       if selfCh != otherCh { return false }
@@ -365,7 +365,7 @@ type String {
 
   pub func toLower(self): String {
     val str = String.withLength(self.length)
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val ch = self._buffer.loadAt(i).asInt()
       val lowerCh = if 65 <= ch && ch <= 90 {
         ch + 32
@@ -380,7 +380,7 @@ type String {
 
   pub func toUpper(self): String {
     val str = String.withLength(self.length)
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val ch = self._buffer.loadAt(i).asInt()
       val upperCh = if 97 <= ch && ch <= 122 {
         ch - 32
@@ -622,7 +622,7 @@ type String {
     if times <= 0 return ""
 
     val str = String.withLength(self.length * times)
-    for i in range(0, times) {
+    for i in 0:times {
       str._buffer.copyFrom(self.length * i, self._buffer, 0, self.length)
     }
     str
@@ -655,7 +655,7 @@ type Array<T> {
 
   pub func fill<T>(length: Int, value: T): T[] {
     val buffer = Pointer.malloc<T>(length)
-    for i in range(0, length) {
+    for i in 0:length {
       buffer.storeAt(value, i)
     }
 
@@ -664,7 +664,7 @@ type Array<T> {
 
   pub func fillBy<T>(length: Int, fn: (Int) => T): T[] {
     val buffer = Pointer.malloc<T>(length)
-    for i in range(0, length) {
+    for i in 0:length {
       val item = fn(i)
       buffer.storeAt(item, i)
     }
@@ -717,7 +717,7 @@ type Array<T> {
 
   pub func hash(self): Int {
     var hash = 31 * self.length
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val item = self._buffer.loadAt(i)
       hash = hash + 31 * item.hash()
     }
@@ -727,7 +727,7 @@ type Array<T> {
   pub func eq(self, other: Array<T>): Bool {
     if self.length != other.length return false
 
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val selfItem = self._buffer.loadAt(i)
       val otherItem = other._buffer.loadAt(i)
 
@@ -776,7 +776,7 @@ type Array<T> {
 
   pub func map<U>(self, fn: (T, Int) => U): U[] {
     val newArray: U[] = Array.withCapacity(self.length)
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val item = self._buffer.loadAt(i)
       val result = fn(item, i)
       newArray.push(result)
@@ -787,7 +787,7 @@ type Array<T> {
 
   pub func flatMap<U>(self, fn: (T, Int) => U[]): U[] {
     val newArray: U[] = Array.withCapacity(self.length)
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val item = self._buffer.loadAt(i)
       val result = fn(item, i)
       for resultItem in result {
@@ -800,7 +800,7 @@ type Array<T> {
 
   pub func filter(self, fn: (T, Int) => Bool): T[] {
     val newArray: T[] = Array.withCapacity(self.length)
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val item = self._buffer.loadAt(i)
       if fn(item, i) {
         newArray.push(item)
@@ -812,7 +812,7 @@ type Array<T> {
 
   pub func reduce<U>(self, initialValue: U, fn: (U, T, Int) => U): U {
     var acc = initialValue
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val item = self._buffer.loadAt(i)
       acc = fn(acc, item, i)
     }
@@ -821,7 +821,7 @@ type Array<T> {
   }
 
   pub func forEach(self, fn: (T, Int) => Unit) {
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val item = self._buffer.loadAt(i)
       fn(item, i)
     }
@@ -830,7 +830,7 @@ type Array<T> {
   pub func join(self, joiner = ""): String {
     val reprs: String[] = Array.withCapacity(self.length)
     var length = 0
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val item = self._buffer.loadAt(i)
       val repr = item.toString()
       reprs.push(repr)
@@ -842,7 +842,7 @@ type Array<T> {
 
     val str = String.withLength(length)
     var offset = 0
-    for i in range(0, reprs.length) {
+    for i in 0:reprs.length {
       val repr = reprs._buffer.loadAt(i)
       str._buffer.copyFrom(offset, repr._buffer, 0, repr.length)
       offset += repr.length
@@ -856,7 +856,7 @@ type Array<T> {
   }
 
   pub func contains(self, item: T): Bool {
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val selfItem = self._buffer.loadAt(i)
       if selfItem == item return true
     }
@@ -865,7 +865,7 @@ type Array<T> {
   }
 
   pub func find(self, fn: (T) => Bool): T? {
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val item = self._buffer.loadAt(i)
       if fn(item) return Some(item)
     }
@@ -874,7 +874,7 @@ type Array<T> {
   }
 
   pub func findIndex(self, fn: (T) => Bool): (T, Int)? {
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val item = self._buffer.loadAt(i)
       if fn(item) return Some((item, i))
     }
@@ -883,7 +883,7 @@ type Array<T> {
   }
 
   pub func any(self, fn: (T) => Bool): Bool {
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val item = self._buffer.loadAt(i)
       if fn(item) return true
     }
@@ -892,7 +892,7 @@ type Array<T> {
   }
 
   pub func all(self, fn: (T) => Bool): Bool {
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val item = self._buffer.loadAt(i)
       if !fn(item) return false
     }
@@ -971,7 +971,7 @@ type Array<T> {
   pub func keyBy<U>(self, fn: (T) => U): Map<U, T> {
     val map: Map<U, T> = Map.new()
 
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val item = self._buffer.loadAt(i)
       val key = fn(item)
       map[key] = item
@@ -983,7 +983,7 @@ type Array<T> {
   pub func indexBy<U>(self, fn: (T) => U): Map<U, T[]> {
     val map: Map<U, T[]> = Map.new()
 
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val item = self._buffer.loadAt(i)
       val key = fn(item)
       if map[key] |arr| {
@@ -999,7 +999,7 @@ type Array<T> {
   pub func asSet(self): Set<T> {
     val set: Set<T> = Set.new()
 
-    for i in range(0, self.length) {
+    for i in 0:self.length {
       val item = self._buffer.loadAt(i)
       set.insert(item)
     }
@@ -1240,7 +1240,7 @@ type Map<K, V> {
     }
 
     val entries: MapEntry<K, V>[] = Array.withCapacity(capacity)
-    for _ in range(0, capacity) {
+    for _ in 0:capacity {
       entries.push(MapEntry.empty())
     }
 
@@ -1259,7 +1259,7 @@ type Map<K, V> {
     if self.isEmpty() return "{}"
 
     val reprs: String[] = Array.withCapacity(self.size)
-    for i in range(0, self._entries.length) {
+    for i in 0:self._entries.length {
       if self._entries[i] |bucket| {
         if bucket._empty continue
 
@@ -1278,7 +1278,7 @@ type Map<K, V> {
   pub func eq(self, other: Map<K, V>): Bool {
     if self.size != other.size return false
 
-    for i in range(0, self._entries.length) {
+    for i in 0:self._entries.length {
       if self._entries[i] |bucket| {
         if bucket._empty continue
 
@@ -1303,7 +1303,7 @@ type Map<K, V> {
   pub func isEmpty(self): Bool = self.size == 0
 
   pub func forEach(self, fn: (K, V) => Unit) {
-    for i in range(0, self._entries.length) {
+    for i in 0:self._entries.length {
       if self._entries[i] |bucket| {
         if bucket._empty continue
 
@@ -1353,7 +1353,7 @@ type Map<K, V> {
 
   pub func mapValues<U>(self, fn: (K, V) => U): Map<K, U> {
     val newMap: Map<K, U> = Map.new()
-    for i in range(0, self._entries.length) {
+    for i in 0:self._entries.length {
       if self._entries[i] |bucket| {
         if bucket._empty continue
 
@@ -1417,7 +1417,7 @@ type Map<K, V> {
     val newCapacity = self._capacity * 2
 
     val newEntries: MapEntry<K, V>[] = Array.withCapacity(newCapacity)
-    for _ in range(0, newCapacity) {
+    for _ in 0:newCapacity {
       newEntries.push(MapEntry.empty())
     }
 

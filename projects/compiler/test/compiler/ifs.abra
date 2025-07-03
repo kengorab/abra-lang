@@ -60,16 +60,14 @@ stdoutWriteln((if arr[0] |item| { item + 100 } else { 0 }).toString())
 stdoutWriteln((if arr[5] |item| { item + 100 } else { 0 }).toString())
 
 // Destructuring condition binding as tuple
-(() => {
-  val pairs = [("a", 1), ("b", 2)]
-  // Statement
-  if pairs[0] |(k, v)| {
-    /// Expect: a 1
-    stdoutWriteln("$k $v")
-  }
+val pairs = [("a", 1), ("b", 2)]
+// Statement
+if pairs[0] |(k, v)| {
+  /// Expect: a 1
+  stdoutWriteln("$k $v")
+}
 
-  // Expression
-  val x = if pairs[0] |(k, v)| k.length + v else 0
-  /// Expect: 2
-  stdoutWriteln(x.toString())
-})()
+// Expression
+val x = if pairs[0] |(k, v)| k.length + v else 0
+/// Expect: 2
+stdoutWriteln(x.toString())

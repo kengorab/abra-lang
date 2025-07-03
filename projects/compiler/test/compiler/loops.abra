@@ -1,7 +1,7 @@
 func printlnInt(i: Int) = stdoutWriteln(i.toString())
 
 // While-loops
-(() => {
+if true {
   var i = 0
   while i < 3 {
     printlnInt(i)
@@ -12,10 +12,10 @@ func printlnInt(i: Int) = stdoutWriteln(i.toString())
   /// Expect: 2
   /// Expect: done
   stdoutWriteln("done")
-})()
+}
 
 // Condition bindings
-(() => {
+if true {
   val arr = [1, 2, 3]
   var n = 0
   while arr[n] |item| {
@@ -27,10 +27,10 @@ func printlnInt(i: Int) = stdoutWriteln(i.toString())
   /// Expect: 103
   /// Expect: done
   stdoutWriteln("done")
-})()
+}
 
 // Destructuring condition binding as tuple
-(() => {
+if true {
   val arr = [("a", 1), ("bc", 2)]
   var n = 0
   while arr[n] |(k, v)| {
@@ -41,10 +41,10 @@ func printlnInt(i: Int) = stdoutWriteln(i.toString())
   /// Expect: 104
   /// Expect: done
   stdoutWriteln("done")
-})()
+}
 
 // Control flow within loops
-(() => {
+if true {
   /// Expect: first loop
   /// Expect: done
   while true {
@@ -67,11 +67,11 @@ func printlnInt(i: Int) = stdoutWriteln(i.toString())
     x += 1
   }
   stdoutWriteln("done")
-})()
+}
 
 // For-loops
 
-(() => {
+if true {
   /// Expect: a
   /// Expect: b
   /// Expect: c
@@ -133,10 +133,10 @@ func printlnInt(i: Int) = stdoutWriteln(i.toString())
 
   /// Expect: done
   stdoutWriteln("done")
-})()
+}
 
 // Destructuring iteratee binding as tuple
-(() => {
+if true {
   val arr = [("a", 1), ("bc", 2)]
   for (k, v) in arr {
     printlnInt(100 + k.length + v)
@@ -145,10 +145,10 @@ func printlnInt(i: Int) = stdoutWriteln(i.toString())
   /// Expect: 104
   /// Expect: done
   stdoutWriteln("done")
-})()
+}
 
 // Iterating over `Iterator` type
-(() => {
+if true {
   /// Expect: 0
   /// Expect: 2
   /// Expect: 4
@@ -157,4 +157,4 @@ func printlnInt(i: Int) = stdoutWriteln(i.toString())
     printlnInt(i)
   }
   stdoutWriteln("done")
-})()
+}
