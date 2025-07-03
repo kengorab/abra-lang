@@ -206,6 +206,246 @@
           }
         ]
       }
+    },
+    {
+      "token": {
+        "position": [9, 1],
+        "kind": {
+          "name": "For"
+        }
+      },
+      "kind": {
+        "name": "for",
+        "itemPattern": {
+          "kind": "variable",
+          "label": { "name": "i", "position": [9, 5] }
+        },
+        "indexPattern": {
+          "kind": "variable",
+          "label": { "name": "idx", "position": [9, 8] }
+        },
+        "iterator": {
+          "start": {
+            "token": {
+              "position": [9, 15],
+              "kind": {
+                "name": "Int",
+                "value": 0
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "int",
+              "value": 0
+            }
+          },
+          "end": {
+            "token": {
+              "position": [9, 17],
+              "kind": {
+                "name": "Int",
+                "value": 3
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "int",
+              "value": 3
+            }
+          }
+        },
+        "block": [
+          {
+            "token": {
+              "position": [10, 3],
+              "kind": {
+                "name": "Val"
+              }
+            },
+            "kind": {
+              "name": "bindingDecl",
+              "decorators": [],
+              "pubToken": null,
+              "bindingPattern": {
+                "kind": "variable",
+                "label": { "name": "x", "position": [10, 7] }
+              },
+              "typeAnnotation": null,
+              "expr": {
+                "token": {
+                  "position": [10, 13],
+                  "kind": {
+                    "name": "Plus"
+                  }
+                },
+                "kind": {
+                  "name": "binary",
+                  "op": "BinaryOp.Add",
+                  "left": {
+                    "token": {
+                      "position": [10, 11],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "i"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "i"
+                    }
+                  },
+                  "right": {
+                    "token": {
+                      "position": [10, 15],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "idx"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "idx"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "token": {
+        "position": [13, 1],
+        "kind": {
+          "name": "For"
+        }
+      },
+      "kind": {
+        "name": "for",
+        "itemPattern": {
+          "kind": "variable",
+          "label": { "name": "i", "position": [13, 5] }
+        },
+        "indexPattern": {
+          "kind": "variable",
+          "label": { "name": "idx", "position": [13, 8] }
+        },
+        "iterator": {
+          "start": {
+            "token": {
+              "position": [13, 15],
+              "kind": {
+                "name": "Int",
+                "value": 0
+              }
+            },
+            "kind": {
+              "name": "literal",
+              "type": "int",
+              "value": 0
+            }
+          },
+          "end": {
+            "token": {
+              "position": [13, 18],
+              "kind": {
+                "name": "Plus"
+              }
+            },
+            "kind": {
+              "name": "binary",
+              "op": "BinaryOp.Add",
+              "left": {
+                "token": {
+                  "position": [13, 17],
+                  "kind": {
+                    "name": "Int",
+                    "value": 1
+                  }
+                },
+                "kind": {
+                  "name": "literal",
+                  "type": "int",
+                  "value": 1
+                }
+              },
+              "right": {
+                "token": {
+                  "position": [13, 19],
+                  "kind": {
+                    "name": "Int",
+                    "value": 3
+                  }
+                },
+                "kind": {
+                  "name": "literal",
+                  "type": "int",
+                  "value": 3
+                }
+              }
+            }
+          }
+        },
+        "block": [
+          {
+            "token": {
+              "position": [14, 3],
+              "kind": {
+                "name": "Val"
+              }
+            },
+            "kind": {
+              "name": "bindingDecl",
+              "decorators": [],
+              "pubToken": null,
+              "bindingPattern": {
+                "kind": "variable",
+                "label": { "name": "x", "position": [14, 7] }
+              },
+              "typeAnnotation": null,
+              "expr": {
+                "token": {
+                  "position": [14, 13],
+                  "kind": {
+                    "name": "Plus"
+                  }
+                },
+                "kind": {
+                  "name": "binary",
+                  "op": "BinaryOp.Add",
+                  "left": {
+                    "token": {
+                      "position": [14, 11],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "i"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "i"
+                    }
+                  },
+                  "right": {
+                    "token": {
+                      "position": [14, 15],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "idx"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "idx"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
     }
   ]
 }

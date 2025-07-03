@@ -1,0 +1,162 @@
+{
+  "id": 3,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [1, 1],
+        "kind": {
+          "name": "For"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "for",
+        "iterator": {
+          "start": {
+            "token": {
+              "position": [1, 15],
+              "kind": {
+                "name": "Int",
+                "value": 0
+              }
+            },
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            },
+            "node": {
+              "kind": "literal",
+              "value": 0
+            }
+          },
+          "end": {
+            "token": {
+              "position": [1, 17],
+              "kind": {
+                "name": "Int",
+                "value": 4
+              }
+            },
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            },
+            "node": {
+              "kind": "literal",
+              "value": 4
+            }
+          }
+        },
+        "itemBindingPattern": {
+          "bindingPattern": {
+            "kind": "variable",
+            "label": { "name": "x", "position": [1, 5] }
+          },
+          "variables": [
+            {
+              "label": { "name": "x", "position": [1, 5] },
+              "mutable": false,
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            }
+          ]
+        },
+        "indexBinding": {
+          "label": { "name": "idx", "position": [1, 8] },
+          "mutable": false,
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          }
+        },
+        "block": [
+          {
+            "token": {
+              "position": [2, 3],
+              "kind": {
+                "name": "Val"
+              }
+            },
+            "type": {
+              "kind": "primitive",
+              "primitive": "Unit"
+            },
+            "node": {
+              "kind": "bindingDeclaration",
+              "pattern": {
+                "kind": "variable",
+                "label": { "name": "_", "position": [2, 7] }
+              },
+              "variables": [
+                {
+                  "label": { "name": "_", "position": [2, 7] },
+                  "mutable": false,
+                  "type": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                }
+              ],
+              "expr": {
+                "token": {
+                  "position": [2, 18],
+                  "kind": {
+                    "name": "Plus"
+                  }
+                },
+                "type": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                },
+                "node": {
+                  "kind": "binary",
+                  "op": "BinaryOp.Add",
+                  "left": {
+                    "token": {
+                      "position": [2, 16],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "x"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "x"
+                    }
+                  },
+                  "right": {
+                    "token": {
+                      "position": [2, 20],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "idx"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "idx"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

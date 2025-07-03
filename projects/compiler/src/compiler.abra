@@ -2,7 +2,7 @@ import "fs" as fs
 import "process" as process
 import Position from "./lexer"
 import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern, IndexingMode from "./parser"
-import Project, TypedModule, Scope, ScopeKind, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, InstanceKind, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCase, TypedMatchCaseKind, BuiltinModule, Variable, Terminator from "./typechecker"
+import Project, TypedModule, Scope, ScopeKind, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, InstanceKind, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCase, TypedMatchCaseKind, BuiltinModule, Variable, Terminator, TypedForIterKind from "./typechecker"
 import ModuleBuilder, Block, QbeType, Dest, QbeFunction, Value, Label, Callable, QbeData, QbeDataKind, Var from "./qbe"
 
 type CompilationError {
@@ -158,6 +158,11 @@ type CallframeContext {
   callee: String? // callee is None when the callee is an expression
 }
 
+type LoopBounds {
+  continueLabel: Label
+  breakLabel: Label
+}
+
 pub type Compiler {
   _project: Project
   _builder: ModuleBuilder
@@ -172,7 +177,7 @@ pub type Compiler {
   _functionNames: Map<String, Int> = {}
   _fnNamesPtr: Value
   _resolvedGenerics: ResolvedGenerics = ResolvedGenerics()
-  _loopStack: (/* loopStart: */ Label, /* loopEnd: */ Label)[] = []
+  _loopStack: LoopBounds[] = []
   // cached things
   _printf: QbeFunction = QbeFunction.spec(name: "printf", returnType: None, parameters: [], variadicIdx: Some(1))
   _snprintf: QbeFunction = QbeFunction.spec(name: "snprintf", returnType: Some(QbeType.U64), parameters: [], variadicIdx: Some(3))
@@ -344,7 +349,7 @@ pub type Compiler {
         val loopBodyLabel = self._currentFn.block.addLabel("while_loop_body")
         val loopEndLabel = self._currentFn.block.addLabel("while_loop_end")
 
-        self._loopStack.push((loopStartLabel, loopEndLabel))
+        self._loopStack.push(LoopBounds(continueLabel: loopStartLabel, breakLabel: loopEndLabel))
 
         self._currentFn.block.registerLabel(loopStartLabel)
         val condVal = try self._compileExpression(cond)
@@ -383,7 +388,62 @@ pub type Compiler {
 
         Ok(None)
       }
-      TypedAstNodeKind.For(typedIterator, itemBindingPattern, indexBinding, block) => {
+      TypedAstNodeKind.For(typedForIterKind, itemBindingPattern, indexBinding, block) => {
+        val (iterateePattern, iterateeBindingVars) = itemBindingPattern
+
+        val forLabelPrefix = "for_${node.token.position.line}_${node.token.position.col}"
+        val loopStartLabel = self._currentFn.block.addLabel("${forLabelPrefix}_loop_start")
+        val loopBodyLabel = self._currentFn.block.addLabel("${forLabelPrefix}_loop_body")
+        val loopTailLabel = self._currentFn.block.addLabel("${forLabelPrefix}_loop_tail")
+        val loopEndLabel = self._currentFn.block.addLabel("${forLabelPrefix}_loop_end")
+
+        self._loopStack.push(LoopBounds(continueLabel: loopTailLabel, breakLabel: loopEndLabel))
+
+        val indexBindingSlot = if indexBinding |bindingVar| {
+          val slotName = self._currentFn.block.addVar(variableToVar(bindingVar))
+          val slot = self._buildStackAllocForQbeType(QbeType.U64, Some(slotName))
+          self._currentFn.block.buildStoreL(Value.Int(0), slot)
+          Some(slot)
+        } else {
+          None
+        }
+
+        val typedIterator = match typedForIterKind {
+          TypedForIterKind.Expr(typedIterator) => typedIterator
+          TypedForIterKind.Range(start, end) => {
+            val iterateeVar = try iterateeBindingVars[0] else unreachable("There should always be an iteratee binding variable")
+            val iterateeBindingSlot = self._buildStackAllocForQbeType(QbeType.U64, Some(self._currentFn.block.addVar(variableToVar(iterateeVar))))
+            val rangeStartVal = try self._compileExpression(start)
+            self._currentFn.block.buildStoreL(rangeStartVal, iterateeBindingSlot)
+
+            self._currentFn.block.registerLabel(loopStartLabel)
+            val rangeEndVal = try self._compileExpression(end)
+            val iterateeVal = self._currentFn.block.buildLoadL(iterateeBindingSlot)
+            val cond = try self._currentFn.block.buildCompareLt(iterateeVal, rangeEndVal) else |e| return qbeError(e)
+            self._currentFn.block.buildJnz(cond, loopBodyLabel, loopEndLabel)
+
+            self._currentFn.block.registerLabel(loopBodyLabel)
+
+            for node in block {
+              try self._compileStatement(node)
+            }
+
+            self._currentFn.block.registerLabel(loopTailLabel)
+            val iterateeIncVal = try self._currentFn.block.buildAdd(Value.Int(1), iterateeVal) else |e| return qbeError(e)
+            self._currentFn.block.buildStoreL(iterateeIncVal, iterateeBindingSlot)
+            if indexBindingSlot |idxSlot| {
+              val idxVal = self._currentFn.block.buildLoadL(idxSlot)
+              val idxIncrVal = try self._currentFn.block.buildAdd(Value.Int(1), idxVal) else |e| return qbeError(e)
+              self._currentFn.block.buildStoreL(idxIncrVal, idxSlot)
+            }
+            self._currentFn.block.buildJmp(loopStartLabel)
+
+            self._currentFn.block.registerLabel(loopEndLabel)
+            self._loopStack.pop()
+            return Ok(None)
+          }
+        }
+
         val (instTy, typeArgs) = try self._getInstanceTypeForType(typedIterator.ty)
 
         val (iterVal, iterTy, nextFn, popAdditionalResolvedGenericsLayer) = match instTy {
@@ -468,24 +528,7 @@ pub type Compiler {
         self._resolvedGenerics.popLayer()
         if popAdditionalResolvedGenericsLayer self._resolvedGenerics.popLayer()
 
-        val forLabelPrefix = "for_${node.token.position.line}_${node.token.position.col}"
-        val loopStartLabel = self._currentFn.block.addLabel("${forLabelPrefix}_loop_start")
-        val loopBodyLabel = self._currentFn.block.addLabel("${forLabelPrefix}_loop_body")
-        val loopEndLabel = self._currentFn.block.addLabel("${forLabelPrefix}_loop_end")
-
-        self._loopStack.push((loopStartLabel, loopEndLabel))
-
-        val indexBindingSlot = if indexBinding |bindingVar| {
-          val slotName = self._currentFn.block.addVar(variableToVar(bindingVar))
-          val slot = self._buildStackAllocForQbeType(QbeType.U64, Some(slotName))
-          self._currentFn.block.buildStoreL(Value.Int(-1), slot)
-          Some(slot)
-        } else {
-          None
-        }
-
         self._currentFn.block.registerLabel(loopStartLabel)
-        val (iterateePattern, iterateeBindingVars) = itemBindingPattern
         val iterateeBindingVariables = iterateeBindingVars.keyBy(v => v.label.name)
         self._currentFn.block.addComment("for-loop (${node.token.position.line}, ${node.token.position.col}) next() ret value")
         val fnName = self._functionName(nextFn.label.name, nextFn.kind)
@@ -498,21 +541,20 @@ pub type Compiler {
         self._currentFn.block.registerLabel(loopBodyLabel)
         val optInnerValue = try self._emitOptValueGetValue(nextItemQbeTy, nextRet)
         try self._compileBindingPattern(iterateePattern, iterateeBindingVariables, Some(optInnerValue))
+
+        for node in block {
+          try self._compileStatement(node)
+        }
+        self._currentFn.block.registerLabel(loopTailLabel)
         if indexBindingSlot |idxSlot| {
           val idxVal = self._currentFn.block.buildLoadL(idxSlot)
           val idxIncrVal = try self._currentFn.block.buildAdd(Value.Int(1), idxVal) else |e| return qbeError(e)
           self._currentFn.block.buildStoreL(idxIncrVal, idxSlot)
         }
-
-        for node in block {
-          try self._compileStatement(node)
-        }
         self._currentFn.block.buildJmp(loopStartLabel)
 
         self._currentFn.block.registerLabel(loopEndLabel)
-
         self._loopStack.pop()
-
         Ok(None)
       }
       TypedAstNodeKind.BindingDeclaration(bindingDeclNode) => {
@@ -558,8 +600,8 @@ pub type Compiler {
       }
       TypedAstNodeKind.EnumDeclaration => Ok(None)
       TypedAstNodeKind.Break => {
-        if self._loopStack[-1] |(_, loopEndLabel)| {
-          self._currentFn.block.buildJmp(loopEndLabel)
+        if self._loopStack[-1] |loop| {
+          self._currentFn.block.buildJmp(loop.breakLabel)
 
           Ok(None)
         } else {
@@ -567,8 +609,8 @@ pub type Compiler {
         }
       }
       TypedAstNodeKind.Continue => {
-        if self._loopStack[-1] |(loopStartLabel, _)| {
-          self._currentFn.block.buildJmp(loopStartLabel)
+        if self._loopStack[-1] |loop| {
+          self._currentFn.block.buildJmp(loop.continueLabel)
 
           Ok(None)
         } else {

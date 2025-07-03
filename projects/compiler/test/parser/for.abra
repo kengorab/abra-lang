@@ -5,3 +5,11 @@ for s in ["a", "b"] {
 for s, idx in arr {
   val x = s + idx
 }
+
+for i, idx in 0:3 {
+  val x = i + idx
+}
+
+for i, idx in 0:1+3 {
+  val x = i + idx
+}
