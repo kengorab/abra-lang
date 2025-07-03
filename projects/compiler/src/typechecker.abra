@@ -1,7 +1,7 @@
 import "fs" as fs
 import getAbsolutePath, resolveRelativePath from "./utils"
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
-import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode, ImportKind, DecoratorNode, LambdaNode, MatchCase, MatchCaseKind from "./parser"
+import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode, ImportKind, DecoratorNode, LambdaNode, MatchCase, MatchCaseKind, ForIterKind from "./parser"
 
 enum TokenizeAndParseError {
   ReadFileError(path: String)
@@ -864,6 +864,11 @@ type TypedTryElseClause {
   pub terminator: Terminator?
 }
 
+pub enum TypedForIterKind {
+  Expr(expr: TypedAstNode)
+  Range(startExpr: TypedAstNode, endExpr: TypedAstNode)
+}
+
 pub enum TypedAstNodeKind {
   Literal(value: LiteralAstNode)
   StringInterpolation(exprs: TypedAstNode[])
@@ -884,7 +889,7 @@ pub enum TypedAstNodeKind {
   Match(isStatement: Bool, expr: TypedAstNode, cases: TypedMatchCase[])
   Try(typedExpr: TypedAstNode, typedElseClause: TypedTryElseClause?)
   While(typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, block: TypedAstNode[], terminator: Terminator?)
-  For(typedIterator: TypedAstNode, itemBinding: (BindingPattern, Variable[]), indexBinding: Variable?, block: TypedAstNode[])
+  For(typedForIterKind: TypedForIterKind, itemBinding: (BindingPattern, Variable[]), indexBinding: Variable?, block: TypedAstNode[])
   BindingDeclaration(node: TypedBindingDeclarationNode)
   FunctionDeclaration(fn: Function)
   TypeDeclaration(struct: Struct)
@@ -1458,7 +1463,7 @@ type TypeError {
     if contents.lines()[position.line - 1] |line| {
       val len = position.col - 1 + cursorLength
       val cursor = Array.fill(len, " ")
-      for i in range(len - cursorLength, len) {
+      for i in (len - cursorLength):len {
         cursor[i] = "^"
       }
       "  |  $line\n     ${cursor.join()}"
@@ -1733,7 +1738,7 @@ pub type Typechecker {
     }
 
     val types: Type[] = []
-    for i in range(0, num) {
+    for i in 0:num {
       val typeIdent = try typeArguments.get(i) else unreachable("verified above that typeArguments.length == num")
       val ty = try self.resolveTypeIdentifier(typeIdent)
       types.push(ty)
@@ -3396,7 +3401,7 @@ pub type Typechecker {
     val res = match node.kind {
       AstNodeKind.Assignment(expr, op, mode) => self._typecheckAssignment(token, expr, op, mode)
       AstNodeKind.While(condition, conditionBinding, block) => self._typecheckWhile(token, condition, conditionBinding, block)
-      AstNodeKind.For(itemPattern, indexPattern, iterator, block) => self._typecheckFor(token, itemPattern, indexPattern, iterator, block)
+      AstNodeKind.For(itemPattern, indexPattern, subject, block) => self.typecheckFor(token, itemPattern, indexPattern, subject, block)
       AstNodeKind.BindingDeclaration(node) => self.typecheckBindingDeclaration(token, node)
       AstNodeKind.Break => self._typecheckBreak(token)
       AstNodeKind.Continue => self._typecheckContinue(token)
@@ -3704,7 +3709,7 @@ pub type Typechecker {
     }
   }
 
-  func _typeIsIterable(self, ty: Type): Type? {
+  func typeIsIterable(self, ty: Type): Type? {
     match ty.kind {
       TypeKind.Instance(instanceKind, generics) => {
         val instanceMethods = match instanceKind {
@@ -3746,13 +3751,31 @@ pub type Typechecker {
     }
   }
 
-  func _typecheckFor(self, token: Token, itemPattern: BindingPattern, indexPattern: BindingPattern?, iterator: AstNode, block: AstNode[]): Result<TypedAstNode, TypeError> {
-    val typedIterator = try self._typecheckExpression(iterator, None)
-    val itemType = try self._typeIsIterable(typedIterator.ty) else {
-      return Err(TypeError(position: typedIterator.token.position, kind: TypeErrorKind.IllegalControlFlowType(ty: typedIterator.ty, purpose: "for")))
-    }
-    if itemType.kind == TypeKind.Hole {
-      return Err(TypeError(position: typedIterator.token.position, kind: TypeErrorKind.IllegalControlFlowType(ty: typedIterator.ty, purpose: "for")))
+  func typecheckFor(self, token: Token, itemPattern: BindingPattern, indexPattern: BindingPattern?, subject: ForIterKind, block: AstNode[]): Result<TypedAstNode, TypeError> {
+    val (typedForIterKind, itemType) = match subject {
+      ForIterKind.Expr(iterator) => {
+        val typedIterator = try self._typecheckExpression(iterator, None)
+        val itemType = try self.typeIsIterable(typedIterator.ty) else {
+          return Err(TypeError(position: typedIterator.token.position, kind: TypeErrorKind.IllegalControlFlowType(ty: typedIterator.ty, purpose: "for")))
+        }
+        if itemType.kind == TypeKind.Hole {
+          return Err(TypeError(position: typedIterator.token.position, kind: TypeErrorKind.IllegalControlFlowType(ty: typedIterator.ty, purpose: "for")))
+        }
+        (TypedForIterKind.Expr(typedIterator), itemType)
+      }
+      ForIterKind.Range(start, end) => {
+        val intType = Type(kind: TypeKind.PrimitiveInt)
+        val typedStart = try self._typecheckExpression(start, Some(intType))
+        if !self._typeSatisfiesRequired(ty: typedStart.ty, required: intType) {
+          self.currentModule.addTypeError(TypeError(position: typedStart.token.position, kind: TypeErrorKind.TypeMismatch([intType], typedStart.ty)))
+        }
+        val typedEnd = try self._typecheckExpression(end, Some(intType))
+        if !self._typeSatisfiesRequired(ty: typedEnd.ty, required: intType) {
+          self.currentModule.addTypeError(TypeError(position: typedEnd.token.position, kind: TypeErrorKind.TypeMismatch([intType], typedEnd.ty)))
+        }
+
+        (TypedForIterKind.Range(startExpr: typedStart, endExpr: typedEnd), intType)
+      }
     }
 
     val prevScope = self.beginChildScope("for", ScopeKind.For)
@@ -3779,7 +3802,7 @@ pub type Typechecker {
       self.currentScope.terminator = terminator
     }
 
-    val kind = TypedAstNodeKind.For(typedIterator, (itemPattern, variables), indexBinding, typedNodes)
+    val kind = TypedAstNodeKind.For(typedForIterKind, (itemPattern, variables), indexBinding, typedNodes)
     Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: kind))
   }
 

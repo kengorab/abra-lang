@@ -1,5 +1,5 @@
 import LiteralAstNode, IndexingMode from "./parser"
-import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, FunctionKind, Scope, Struct, Enum, InstanceKind, AccessorPathSegment, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export, TypedMatchCaseKind from "./typechecker"
+import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, FunctionKind, Scope, Struct, Enum, InstanceKind, AccessorPathSegment, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export, TypedMatchCaseKind, TypedForIterKind from "./typechecker"
 import printTokenAsJson, printLabelAsJson, printBindingPatternAsJson from "./test_utils"
 
 pub type Jsonifier {
@@ -742,11 +742,26 @@ pub type Jsonifier {
         self.array(block, n => self.printNode(n))
         stdoutWriteln()
       }
-      TypedAstNodeKind.For(iterator, itemBindingPattern, indexBinding, block) => {
+      TypedAstNodeKind.For(typedForIterKind, itemBindingPattern, indexBinding, block) => {
         self.println("\"kind\": \"for\",")
 
         self.print("\"iterator\": ")
-        self.printNode(iterator)
+        match typedForIterKind {
+          TypedForIterKind.Expr(iterator) => self.printNode(iterator)
+          TypedForIterKind.Range(start, end) => {
+            stdoutWriteln("{")
+            self.indentInc()
+            self.print("\"start\": ")
+            self.printNode(start)
+            stdoutWriteln(",")
+            self.print("\"end\": ")
+            self.printNode(end)
+            stdoutWriteln()
+            // self.println(",")
+            self.indentDec()
+            self.print("}")
+          }
+        }
         stdoutWriteln(",")
 
         self.println("\"itemBindingPattern\": {")

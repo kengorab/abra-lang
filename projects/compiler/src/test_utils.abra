@@ -1,5 +1,5 @@
 import Token, TokenKind, StringInterpolationChunk from "./lexer"
-import Label, ImportKind, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode, BindingPattern, MatchCaseKind, DecoratorNode, EnumVariant from "./parser"
+import Label, ImportKind, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode, BindingPattern, MatchCaseKind, DecoratorNode, EnumVariant, ForIterKind from "./parser"
 
 pub func printTokenAsJson(token: Token, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
@@ -789,7 +789,18 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         stdoutWrite(",\n$fieldsIndent\"indexPattern\": null")
       }
       stdoutWrite(",\n$fieldsIndent\"iterator\": ")
-      printAstNodeAsJson(iterator, 0, currentIndentLevel + 1)
+      match iterator {
+        ForIterKind.Expr(expr) => {
+          printAstNodeAsJson(expr, 0, currentIndentLevel + 1)
+        }
+        ForIterKind.Range(start, end) => {
+          stdoutWrite("{\n$fieldsIndent  \"start\": ")
+          printAstNodeAsJson(start, 0, currentIndentLevel + 2)
+          stdoutWrite(",\n$fieldsIndent  \"end\": ")
+          printAstNodeAsJson(end, 0, currentIndentLevel + 2)
+          stdoutWrite("\n$fieldsIndent}")
+        }
+      }
       if block.isEmpty() {
         stdoutWriteln(",\n$fieldsIndent\"block\": []")
       } else {

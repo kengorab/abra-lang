@@ -1,23 +1,11 @@
 func printlnBool(b: Bool) = stdoutWriteln(b.toString())
 
-// // Test raw string construction
-// (() => {
-//   val s = String.withLength(3)
-//   s._buffer.offset(0).store(Byte.fromInt(65))
-//   s._buffer.offset(1).store(Byte.fromInt(66))
-//   s._buffer.offset(2).store(Byte.fromInt(67))
-//   /// Expect: ABC
-//   stdoutWriteln(s)
-//   /// Expect: false
-//   stdoutWriteln(s.isEmpty())
-// })()
-
 // Test literal construction
 /// Expect: hello
 stdoutWriteln("hello")
 
 // + operator
-(() => {
+if true {
   /// Expect: helloworld
   stdoutWriteln("hello" + "world")
   /// Expect: hello12
@@ -36,10 +24,10 @@ stdoutWriteln("hello")
   stdoutWriteln("hello" + [1, 2, 3])
   /// Expect: [1, 2, 3]hello
   stdoutWriteln([1, 2, 3] + "hello")
-})()
+}
 
 // == operator (also String#eq)
-(() => {
+if true {
   val s1 = "string"
   /// Expect: true
   printlnBool(s1 == s1)
@@ -50,17 +38,17 @@ stdoutWriteln("hello")
   printlnBool(s1 != s1)
   /// Expect: true
   printlnBool(s1 != "string!")
-})()
+}
 
 // Interpolation
-(() => {
+if true {
   val array = [1, 2, 3]
   /// Expect: length of [1, 2, 3] is 3
   stdoutWriteln("length of $array is ${array.length}")
-})()
+}
 
 // String#replaceAll(pattern: String, replacement: String)
-(() => {
+if true {
   /// Expect: LLaaLLa
   stdoutWriteln("laala".replaceAll("l", "LL"))
 
@@ -96,10 +84,10 @@ stdoutWriteln("hello")
 
   // /// Expect: "hello"
   // stdoutWriteln("\"hello\"".replaceAll("\"", "\\\""))
-})()
+}
 
 // String#chars
-(() => {
+if true {
   val chars = "hello".chars()
   /// Expect: h 0
   /// Expect: e 1
@@ -112,10 +100,10 @@ stdoutWriteln("hello")
 
   /// Expect: done
   stdoutWriteln("done")
-})()
+}
 
 // Indexing (also String#get(index: Int))
-(() => {
+if true {
   val s1 = "abc"
 
   /// Expect: |  a b c a b c  |
@@ -131,10 +119,10 @@ stdoutWriteln("hello")
 
   /// Expect:   end
   stdoutWriteln("${s2[5]} ${s2[-6]} end")
-})()
+}
 
 // Range indexing (also String#getRange(startIndex: Int, endIndex: Int))
-(() => {
+if true {
   val s = "hello"
 
   /// Expect: ell ell
@@ -154,10 +142,10 @@ stdoutWriteln("hello")
 
   /// Expect: ello h
   stdoutWriteln("${s[a:]} ${s[:a]}")
-})()
+}
 
 // String#hash
-(() => {
+if true {
   val empty = ""
   /// Expect: true
   printlnBool(empty.hash() == "".hash())
@@ -165,10 +153,10 @@ stdoutWriteln("hello")
   val nonEmpty = "hello"
   /// Expect: true
   printlnBool(nonEmpty.hash() == "hello".hash())
-})()
+}
 
 // String#isEmpty
-(() => {
+if true {
   val empty = ""
   /// Expect: true
   stdoutWriteln(empty.isEmpty().toString())
@@ -176,26 +164,26 @@ stdoutWriteln("hello")
   val nonEmpty = "hello"
   /// Expect: false
   stdoutWriteln(nonEmpty.isEmpty().toString())
-})()
+}
 
 // String#toLower
-(() => {
+if true {
   /// Expect: ||
   stdoutWriteln("|" + "".toLower() + "|")
   /// Expect: -hello!
   stdoutWriteln("-hElLo!".toLower())
-})()
+}
 
 // String#toUpper
-(() => {
+if true {
   /// Expect: ||
   stdoutWriteln("|" + "".toUpper() + "|")
   /// Expect: -HELLO!
   stdoutWriteln("-hElLo!".toUpper())
-})()
+}
 
 // String#split
-(() => {
+if true {
   /// Expect: [a, s, d, f]
   stdoutWriteln("a s d f".split(by: " ").toString())
 
@@ -210,10 +198,10 @@ stdoutWriteln("hello")
 
   /// Expect: [asdf]
   stdoutWriteln("asdf".split("qwer").toString())
-})()
+}
 
 // String#lines
-(() => {
+if true {
   /// Expect: [a s d f]
   stdoutWriteln("a s d f".lines().toString())
 
@@ -222,10 +210,10 @@ stdoutWriteln("hello")
 
   /// Expect: [a, s, d, f]
   stdoutWriteln("a\ns\nd\nf".lines().toString())
-})()
+}
 
 // String#startsWith
-(() => {
+if true {
   /// Expect: true
   stdoutWriteln("".startsWith("").toString())
   /// Expect: true
@@ -238,10 +226,10 @@ stdoutWriteln("hello")
   stdoutWriteln("hello".startsWith("hex").toString())
   /// Expect: false
   stdoutWriteln("hello".startsWith("hhello").toString())
-})()
+}
 
 // String#endsWith
-(() => {
+if true {
   /// Expect: true
   stdoutWriteln("".endsWith("").toString())
   /// Expect: true
@@ -254,10 +242,10 @@ stdoutWriteln("hello")
   stdoutWriteln("hello".endsWith("lo!").toString())
   /// Expect: false
   stdoutWriteln("hello".endsWith("hhello").toString())
-})()
+}
 
 // String#repeat
-(() => {
+if true {
   /// Expect: ||
   stdoutWriteln("|" + "abc".repeat(0) + "|")
 
@@ -266,4 +254,4 @@ stdoutWriteln("hello")
 
   /// Expect: abcabcabc
   stdoutWriteln("abc".repeat(3))
-})()
+}
