@@ -253,6 +253,11 @@ pub type DecoratorNode {
   pub arguments: InvocationArgument[]
 }
 
+pub enum ForIterKind {
+  Expr(expr: AstNode)
+  Range(startExpr: AstNode, endExpr: AstNode)
+}
+
 pub enum AstNodeKind {
   Literal(value: LiteralAstNode)
   StringInterpolation(chunks: AstNode[])
@@ -273,7 +278,7 @@ pub enum AstNodeKind {
   Match(expr: AstNode, cases: MatchCase[])
   Try(expr: AstNode, elseClause: (Token, BindingPattern?, AstNode[])?)
   While(condition: AstNode, conditionBinding: BindingPattern?, block: AstNode[])
-  For(itemPattern: BindingPattern, indexPattern: BindingPattern?, iterator: AstNode, block: AstNode[])
+  For(itemPattern: BindingPattern, indexPattern: BindingPattern?, iterator: ForIterKind, block: AstNode[])
   BindingDeclaration(value: BindingDeclarationNode)
   FunctionDeclaration(value: FunctionDeclarationNode)
   TypeDeclaration(value: TypeDeclarationNode)
@@ -1553,11 +1558,20 @@ pub type Parser {
 
     try self._expectNextTokenKind(TokenKind.In)
 
-    val iterator = try self._parseExpression()
+    val itExpr = try self._parseExpression()
+    nextToken = try self._expectPeek()
+    val iterKind = if nextToken.kind == TokenKind.Colon {
+      try self._expectNext() // consume ':' token
+      val rangeEndExpr = try self._parseExpression()
+
+      ForIterKind.Range(startExpr: itExpr, endExpr: rangeEndExpr)
+    } else {
+      ForIterKind.Expr(itExpr)
+    }
 
     val block = try self._parseBlockOrSingleExpression(allowTerminators: true)
 
-    Ok(AstNode(token: token, kind: AstNodeKind.For(itemPattern, indexPattern, iterator, block)))
+    Ok(AstNode(token: token, kind: AstNodeKind.For(itemPattern, indexPattern, iterKind, block)))
   }
 
   func _parseBreak(self): Result<AstNode, ParseError> {

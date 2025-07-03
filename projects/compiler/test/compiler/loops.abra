@@ -71,7 +71,6 @@ func printlnInt(i: Int) = stdoutWriteln(i.toString())
 
 // For-loops
 
-// No index var
 (() => {
   /// Expect: a
   /// Expect: b
@@ -89,24 +88,50 @@ func printlnInt(i: Int) = stdoutWriteln(i.toString())
 
   /// Expect: a 0
   /// Expect: b 1
-  /// Expect: done
   for ch, idx in ["a", "b", "c"] {
     stdoutWriteln("$ch $idx")
     if ch == "b" {
       break
     }
   }
-  stdoutWriteln("done")
 
   /// Expect: a 0
   /// Expect: c 2
-  /// Expect: done
   for ch, idx in ["a", "b", "c"] {
     if ch == "b" {
       continue
     }
     stdoutWriteln("$ch $idx")
   }
+
+  /// Expect: 0
+  /// Expect: 1
+  /// Expect: 2
+  for i in 0:3 {
+    stdoutWriteln("$i")
+  }
+
+  /// Expect: 0 0
+  /// Expect: 1 1
+  /// Expect: 2 2
+  for i, idx in 0:1+2 {
+    stdoutWriteln("$i $idx")
+  }
+
+  /// Expect: 0 0
+  for i, idx in 0:1+2 {
+    if i == 1 break
+    stdoutWriteln("$i $idx")
+  }
+
+  /// Expect: 0 0
+  /// Expect: 2 2
+  for i, idx in 0:1+2 {
+    if i == 1 continue
+    stdoutWriteln("$i $idx")
+  }
+
+  /// Expect: done
   stdoutWriteln("done")
 })()
 

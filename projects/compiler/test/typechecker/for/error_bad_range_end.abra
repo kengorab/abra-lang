@@ -1,0 +1,3 @@
+for x in 0:"a" {
+  val _: Int = x
+}

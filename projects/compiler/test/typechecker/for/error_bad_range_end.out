@@ -1,0 +1,6 @@
+Error at %FILE_NAME%:1:12
+Type mismatch
+  |  for x in 0:"a" {
+                ^
+Expected: Int
+but instead found: String
