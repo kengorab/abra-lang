@@ -49,7 +49,7 @@ func main() {
     val input = if chunk.startsWith(contentLengthHeader) {
       val chars = chunk.chars()
       // skip content-length header
-      for _ in 0:(contentLengthHeader.length) chars.next()
+      for _ in 0:contentLengthHeader.length chars.next()
       var offset = contentLengthHeader.length
 
       // parse content-length as integer (can assume ascii encoding)
