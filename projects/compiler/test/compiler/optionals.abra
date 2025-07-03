@@ -26,7 +26,7 @@ type Foo {
 // Workaround because optionals technically don't have _any_ directly-callable methods
 func hash<T>(t: T): Int = t.hash()
 // Hashes
-(() => {
+if true {
   val i: Int? = None
   /// Expect: 1
   stdoutWriteln(hash(i).toString())
@@ -34,10 +34,10 @@ func hash<T>(t: T): Int = t.hash()
   val x = Some(17)
   /// Expect: false
   printlnBool(hash(x) == (17).hash())
-})()
+}
 
 // == operator
-(() => {
+if true {
   // Test with primitive
   val i1: Int? = None
   val i2 = Some(17)
@@ -63,10 +63,10 @@ func hash<T>(t: T): Int = t.hash()
   printlnBool(s2 == s4)
   /// Expect: true
   printlnBool(s2 == s3)
-})()
+}
 
 // Coalescing (?:)
-(() => {
+if true {
   val i1: Int? = None
   /// Expect: 17
   stdoutWriteln((i1 ?: 17).toString())
@@ -74,7 +74,7 @@ func hash<T>(t: T): Int = t.hash()
   val i2 = Some(value: 9)
   /// Expect: 9
   stdoutWriteln((i2 ?: 17).toString())
-})()
+}
 
 val xyz = "abc"
 type TestOptChainingMethodInvocation {
@@ -83,7 +83,7 @@ type TestOptChainingMethodInvocation {
 }
 
 // Optional-chaining accessor
-(() => {
+if true {
   val arr = ["a", "b", "c", "d"]
 
 //   // Getting field of known-non-None value
@@ -128,7 +128,7 @@ type TestOptChainingMethodInvocation {
   val t4 = Some(TestOptChainingMethodInvocation())
   /// Expect: Option.Some(value: 3)
   stdoutWriteln(t4?.closure().toString())
-})()
+}
 
 // Negate operator
 val someInt = Some(123)
@@ -151,10 +151,10 @@ enum Color {
   Green
   Blue
 }
-(() => {
+if true {
   val colors = [Color.Red, Color.Green, Color.Blue]
   /// Expect: Option.None
   stdoutWriteln(colors[3]?.toString().toString())
   /// Expect: Option.Some(value: "Color.Blue")
   stdoutWriteln(colors[2]?.toString().toString())
-})()
+}

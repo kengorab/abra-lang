@@ -6,7 +6,7 @@ type Person {
 }
 
 // Test raw construction of set
-(() => {
+if true {
   val set: Set<Int> = Set.new()
   set.insert(1)
   set.insert(2)
@@ -17,10 +17,10 @@ type Person {
   stdoutWriteln(set.size.toString())
   /// Expect: #{1, 2, 3}
   stdoutWriteln(set.toString())
-})()
+}
 
 // Test set literal construction
-(() => {
+if true {
   // Primitives
   val set1 = #{1, 2, 3, 3}
 
@@ -40,10 +40,10 @@ type Person {
   stdoutWriteln(set2.size.toString())
   /// Expect: #{Person(name: "Goo", age: 102), Person(name: "Foo", age: 100), Person(name: "Boo", age: 101)}
   stdoutWriteln(set2.toString())
-})()
+}
 
 // == operator (also Set#eq)
-(() => {
+if true {
   val set = #{1, 2, 3}
 
   /// Expect: true
@@ -52,10 +52,10 @@ type Person {
   printlnBool(#{[1, 2], [3, 4]} == #{[3, 4], [1, 2]})
   /// Expect: false
   printlnBool(set == #{1, 2, 3, 4})
-})()
+}
 
 // Set#isEmpty
-(() => {
+if true {
   val set: Set<Int> = #{}
   /// Expect: true
   stdoutWriteln(set.isEmpty().toString())
@@ -63,10 +63,10 @@ type Person {
   set.insert(1)
   /// Expect: false
   stdoutWriteln(set.isEmpty().toString())
-})()
+}
 
 // Set#iterator
-(() => {
+if true {
   val s = #{"a", "b", "a", "c"}
   val iter = s.iterator()
   /// Expect: Option.Some(value: "c")
@@ -79,7 +79,7 @@ type Person {
   stdoutWriteln(iter.next().toString())
   /// Expect: Option.None
   stdoutWriteln(iter.next().toString())
-})()
+}
 
 // For-loops
 /// Expect: c 0
@@ -90,7 +90,7 @@ for ch, idx in #{"a", "b", "c"} {
 }
 
 // Set#contains
-(() => {
+if true {
   val set: Set<Int> = #{}
   /// Expect: false
   stdoutWriteln(set.contains(1).toString())
@@ -100,65 +100,65 @@ for ch, idx in #{"a", "b", "c"} {
   stdoutWriteln(set.contains(1).toString())
   /// Expect: false
   stdoutWriteln(set.contains(12).toString())
-})()
+}
 
 // Set#forEach
-(() => {
+if true {
   val set = #{1, 17, 0, 16}
   /// Expect: 0
   /// Expect: 16
   /// Expect: 1
   /// Expect: 17
   set.forEach(i => stdoutWriteln(i.toString()))
-})()
+}
 
 // Set#map
-(() => {
+if true {
   val set = #{1, 17, 0, 16}
   /// Expect: [0, 0, 1, 1]
   stdoutWriteln(set.map(i => i % 16).toString())
-})()
+}
 
 // Set#filter
-(() => {
+if true {
   val set = #{1, 17, 0, 16}
   /// Expect: #{16, 17}
   stdoutWriteln(set.filter(i => i >= 16).toString())
-})()
+}
 
 // Set#asArray
-(() => {
+if true {
   val set1 = #{0, 1, 1, 2, 3, 3, 4}
   /// Expect: [0, 1, 2, 3, 4]
   stdoutWriteln(set1.asArray().toString())
-})()
+}
 
 // Set#union
-(() => {
+if true {
   val evens = #{0, 2, 4, 6}
   val odds = #{1, 3, 5, 7}
   /// Expect: #{0, 1, 2, 3, 4, 5, 6, 7}
   stdoutWriteln(evens.union(odds).toString())
   /// Expect: #{0, 1, 2, 3, 4, 5, 6, 7}
   stdoutWriteln(odds.union(evens).toString())
-})()
+}
 
 // Set#difference
-(() => {
+if true {
   val set1 = #{1, 2, 3, 4}
   val set2 = #{0, 2, 3, 5}
   /// Expect: #{1, 4}
   stdoutWriteln(set1.difference(set2).toString())
   /// Expect: #{0, 5}
   stdoutWriteln(set2.difference(set1).toString())
-})()
+}
 
 // Set#intersection
-(() => {
+if true {
   val set1 = #{1, 2, 3, 4}
   val set2 = #{0, 2, 3, 5}
   /// Expect: #{2, 3}
   stdoutWriteln(set1.intersection(set2).toString())
   /// Expect: #{2, 3}
   stdoutWriteln(set2.intersection(set1).toString())
-})()
+}

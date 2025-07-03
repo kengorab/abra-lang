@@ -1463,7 +1463,7 @@ type TypeError {
     if contents.lines()[position.line - 1] |line| {
       val len = position.col - 1 + cursorLength
       val cursor = Array.fill(len, " ")
-      for i in range(len - cursorLength, len) {
+      for i in (len - cursorLength):len {
         cursor[i] = "^"
       }
       "  |  $line\n     ${cursor.join()}"
@@ -1738,7 +1738,7 @@ pub type Typechecker {
     }
 
     val types: Type[] = []
-    for i in range(0, num) {
+    for i in 0:num {
       val typeIdent = try typeArguments.get(i) else unreachable("verified above that typeArguments.length == num")
       val ty = try self.resolveTypeIdentifier(typeIdent)
       types.push(ty)

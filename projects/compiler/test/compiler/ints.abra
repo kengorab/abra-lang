@@ -105,8 +105,8 @@ printlnBool(17 >= 18.0)
 /// Expect: true
 printlnBool(17 >= 15.1)
 
-// // Int#unsignedToString
-// (() => {
+// Int#unsignedToString
+if true {
   val i1 = 118
   /// Expect: 118
   stdoutWriteln(i1.toString())
@@ -119,7 +119,7 @@ printlnBool(17 >= 15.1)
   /// Expect: 9223372039002259456
   stdoutWriteln(i2.unsignedToString())
 
-//   val i3 = 0b1000000000000000000000000000000010000000000000000000000000000000
-//   /// Expect: -9223372034707292160 9223372039002259456
-//   stdoutWriteln(i3.toString(), i3.unsignedToString())
-// })()
+  //val i3 = 0b1000000000000000000000000000000010000000000000000000000000000000
+  ///// Expect: -9223372034707292160 9223372039002259456
+  //stdoutWriteln(i3.toString(), i3.unsignedToString())
+}
