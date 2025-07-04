@@ -199,7 +199,7 @@ pub type Scope {
   pub kind: ScopeKind = ScopeKind.Root
   pub parent: Scope? = None
   pub terminator: Terminator? = None
-  pub idxInFn: Int? = None
+  pub idxInFn: Int = 0
   numLambdas: Int = 0
 
   pub func bogus(name = ""): Scope {
@@ -209,7 +209,7 @@ pub type Scope {
 
   pub func eq(self, other: Scope): Bool = self.name == other.name
 
-  pub func makeChild(self, name: String, kind: ScopeKind, idxInFn: Int? = None): Scope =
+  pub func makeChild(self, name: String, kind: ScopeKind, idxInFn: Int = 0): Scope =
     Scope(name: "${self.name}::$name", kind: kind, parent: Some(self), idxInFn: idxInFn)
 
   func contains(self, other: Scope): Bool {
@@ -889,7 +889,7 @@ pub enum TypedAstNodeKind {
   Match(isStatement: Bool, expr: TypedAstNode, cases: TypedMatchCase[])
   Try(typedExpr: TypedAstNode, typedElseClause: TypedTryElseClause?)
   While(typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, block: TypedAstNode[], terminator: Terminator?)
-  For(typedForIterKind: TypedForIterKind, itemBinding: (BindingPattern, Variable[]), indexBinding: Variable?, block: TypedAstNode[])
+  For(typedForIterKind: TypedForIterKind, itemBinding: (BindingPattern, Variable[]), indexBinding: Variable?, block: TypedAstNode[], terminator: Terminator?)
   BindingDeclaration(node: TypedBindingDeclarationNode)
   FunctionDeclaration(fn: Function)
   TypeDeclaration(struct: Struct)
@@ -1592,6 +1592,7 @@ pub type Typechecker {
   isStructOrEnumValueAllowed: Bool = false
   isEnumContainerValueAllowed: Bool = false
   numLambdas: Int = 0
+  numRootLevelScopes: Int = 0
   typecheckingBuiltin: BuiltinModule? = None
   pub lspMode: Bool = false
   identsByLine: Map<Int, (Int, Int, IdentifierMeta)[]> = {}
@@ -2221,9 +2222,12 @@ pub type Typechecker {
 
   func beginChildScope(self, name: String, kind: ScopeKind): Scope {
     val newScope = self.currentScope.makeChild(name, kind)
-    if self.currentFunction |f| {
+    newScope.idxInFn = if self.currentFunction |f| {
       f.numScopes += 1
-      newScope.idxInFn = Some(f.numScopes)
+      f.numScopes
+    } else {
+      self.numRootLevelScopes += 1
+      self.numRootLevelScopes
     }
     val prevScope = self.currentScope
     self.currentScope = newScope
@@ -3802,7 +3806,7 @@ pub type Typechecker {
       self.currentScope.terminator = terminator
     }
 
-    val kind = TypedAstNodeKind.For(typedForIterKind, (itemPattern, variables), indexBinding, typedNodes)
+    val kind = TypedAstNodeKind.For(typedForIterKind, (itemPattern, variables), indexBinding, typedNodes, terminator)
     Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: kind))
   }
 

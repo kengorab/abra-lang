@@ -311,6 +311,36 @@ pub type Compiler {
         self.emitIndent()
         self.sb.writeln("}")
       }
+      Operation.ForRanged(start, end, iteratee, idx, body) => {
+        self.sb.write("for (let ${iteratee.kind.name()} = ")
+        self.emitIrValueToJsValue(start)
+        if idx |idx| {
+          self.sb.write(", ${idx.kind.name()} = 0")
+        }
+
+        self.sb.write(";; ${iteratee.kind.name()} += 1")
+        if idx |idx| {
+          self.sb.write(", ${idx.kind.name()} += 1")
+        }
+        self.sb.writeln(") {")
+        self.indentLevel += 1
+
+        for inst in end.body {
+          self.compileInstruction(inst)
+        }
+
+        self.emitIndent()
+        self.sb.write("if (${iteratee.kind.name()} >= ")
+        self.emitIrValueToJsValue(end.result)
+        self.sb.writeln(") break;")
+
+        for inst in body.body {
+          self.compileInstruction(inst)
+        }
+
+        self.indentLevel -= 1
+        self.sb.writeln("}")
+      }
       Operation.Call(ret, fnName, args) => {
         if ret != IrType.Unit {
           self.sb.write("const $dst = ")

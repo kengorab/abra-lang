@@ -833,7 +833,7 @@ const COMPILER_TESTS = [
   { test: "compiler/try_result.abra" },
   { test: "compiler/try_option.abra" },
   { test: "compiler/process.abra", args: ['-f', 'bar', '--baz', 'qux'], env: { FOO: 'bar' } },
-  // { test: "compiler/process_callstack.abra" },
+  { test: "compiler/process_callstack.abra" },
   { test: "compiler/json.abra" },
 ]
 
@@ -847,7 +847,7 @@ const IR_COMPILER_TESTS = [
   // { test: "compiler/functions.abra" },
   // { test: "compiler/optionals.abra" },
   { test: "compiler/ifs.abra" },
-  // { test: "compiler/loops.abra" },
+  { test: "compiler/loops.abra" },
   // { test: "compiler/types.abra" },
   // { test: "compiler/enums.abra" },
   { test: "compiler/tuples.abra" },

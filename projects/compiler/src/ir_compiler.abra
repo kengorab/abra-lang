@@ -566,6 +566,59 @@ pub type Compiler {
 
         self.loopStack.pop()
       }
+      Operation.ForRanged(start, end, iteratee, idx, body) => {
+        val labelCond = self.currentFn.block.addLabel("${body.name}_cond")
+        val labelBody = self.currentFn.block.addLabel("${body.name}_body")
+        val labelInc = self.currentFn.block.addLabel("${body.name}_inc")
+        val labelCont = self.currentFn.block.addLabel("${body.name}_cont")
+
+        self.loopStack.push((labelInc, labelCont))
+
+        val itSlot = self.currentFn.block.buildAlloc8(1, Some(iteratee.kind.name()))
+        val startVal = self.irValueToQbeValue(start)
+        self.currentFn.block.buildStoreL(startVal, itSlot)
+
+        val idxSlot = if idx |idx| {
+          val slot = self.currentFn.block.buildAlloc8(1, Some(idx.kind.name()))
+          self.currentFn.block.buildStoreL(qbe.Value.Int(0), slot)
+          Some(slot)
+        } else {
+          None
+        }
+
+        self.currentFn.block.registerLabel(labelCond)
+        val itVal = self.currentFn.block.buildLoadL(itSlot)
+        for inst in end.body {
+          self.compileInstruction(inst)
+        }
+        val endVal = self.irValueToQbeValue(end.result)
+        val condVal = try self.currentFn.block.buildCompareLt(itVal, endVal, Some(self.nextTemp())) else |e| unreachable(e)
+        self.currentFn.block.buildJnz(condVal, labelBody, labelCont)
+
+        self.currentFn.block.registerLabel(labelBody)
+        for inst in body.body {
+          self.compileInstruction(inst)
+        }
+        if !body.terminates {
+          self.currentFn.block.registerLabel(labelInc)
+
+          val itVal = self.currentFn.block.buildLoadL(itSlot)
+          val itPlusOne = try self.currentFn.block.buildAdd(qbe.Value.Int(1), itVal, Some(self.nextTemp())) else |e| unreachable(e)
+          self.currentFn.block.buildStoreL(itPlusOne, itSlot)
+
+          if idxSlot |idxSlot| {
+            val idxVal = self.currentFn.block.buildLoadL(idxSlot)
+            val idxPlusOne = try self.currentFn.block.buildAdd(qbe.Value.Int(1), idxVal, Some(self.nextTemp())) else |e| unreachable(e)
+            self.currentFn.block.buildStoreL(idxPlusOne, idxSlot)
+          }
+
+          self.currentFn.block.buildJmp(labelCond)
+        }
+
+        self.currentFn.block.registerLabel(labelCont)
+
+        self.loopStack.pop()
+      }
       Operation.Call(ret, fnName, args) => {
         val argVals = args.map(a => self.irValueToQbeValue(a))
         if self.irTypeToQbeReturnType(ret) |ret| {

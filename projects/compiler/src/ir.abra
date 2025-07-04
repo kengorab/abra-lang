@@ -2,7 +2,7 @@ import "process" as process
 import Position from "./lexer"
 import Label, LiteralAstNode, AssignOp, UnaryOp, BinaryOp, BindingPattern, IndexingMode from "./parser"
 // match arms don't support import-based namespacing for enums yet, so enums used in matches are imported by name
-import TypedAstNodeKind, TypedInvokee, FunctionKind, TypeKind, ScopeKind, InstanceKind, EnumVariantKind, VariableAlias, AccessorPathSegment, TypedAssignmentMode, TypedIndexingNode from "./typechecker"
+import TypedAstNodeKind, TypedInvokee, FunctionKind, TypeKind, ScopeKind, InstanceKind, EnumVariantKind, VariableAlias, AccessorPathSegment, TypedAssignmentMode, TypedIndexingNode, TypedForIterKind from "./typechecker"
 import "./typechecker" as tc
 
 // TODO: move to stdlib
@@ -247,6 +247,7 @@ pub enum Operation {
   If(ty: IrType, cond: Value, thenBlock: Block, elseBlock: Block)
   WhileLoopStart(name: String)
   While(cond: Value, body: Block)
+  ForRanged(start: Value, end: CompoundValue, iteratee: Ident, idx: Ident?, body: Block)
 
   Call(ret: IrType, fnName: String, args: Value[])
 
@@ -508,6 +509,32 @@ pub enum Operation {
           sb.writeln()
         }
         sb.write("# endwhile")
+      }
+      Operation.ForRanged(start, end, iteratee, idx, body) => {
+        sb.writeln("# forstart")
+        for inst in end.body {
+          inst.render(sb)
+          sb.writeln()
+        }
+        sb.write("  for(" )
+        iteratee.render(sb)
+        sb.write(" = ")
+        start.render(sb)
+        if idx |idx| {
+          sb.write("; (")
+          idx.render(sb)
+          sb.write(")")
+        }
+        sb.write(", ${iteratee.kind.name()} < ")
+        end.result.render(sb)
+        sb.writeln(", .${body.name})")
+        sb.writeln(".${body.name}:")
+        for instr in body.body {
+          sb.write("  ")
+          instr.render(sb)
+          sb.writeln()
+        }
+        sb.write("# endfor")
       }
       Operation.Call(ret, fnName, args) => {
         sb.write("call(")
@@ -1213,7 +1240,7 @@ pub type Generator {
 
         self.emit(Instruction(op: Operation.While(cond: cond, body: body)))
       }
-      TypedAstNodeKind.For => todo("TypedAstNodeKind.For (${node.token.position})")
+      TypedAstNodeKind.For(typedForIterKind, itemBinding, indexBinding, block, terminator) => self.genForLoop(concreteGenerics, typedForIterKind, itemBinding, indexBinding, block, terminator)
       TypedAstNodeKind.BindingDeclaration(node) => self.genBindingDeclaration(node, concreteGenerics)
       TypedAstNodeKind.FunctionDeclaration => { /* todo: TypedAstNodeKind.FunctionDeclaration */ }
       TypedAstNodeKind.TypeDeclaration => { /* todo: TypedAstNodeKind.TypeDeclaration */ }
@@ -1232,6 +1259,44 @@ pub type Generator {
       TypedAstNodeKind.Placeholder => unreachable("Placeholder nodes should not be emitted from the typechecker")
       TypedAstNodeKind.Assignment(mode, op, expr) => self.genAssignment(pos, concreteGenerics, mode, op, expr)
       else => self.genExpression(node, concreteGenerics)
+    }
+  }
+
+  func genForLoop(self, concreteGenerics: Map<String, ConcreteType>, typedForIterKind: tc.TypedForIterKind, itemBinding: (BindingPattern, tc.Variable[]), indexBinding: tc.Variable?, block: tc.TypedAstNode[], terminator: tc.Terminator?) {
+    match typedForIterKind {
+      TypedForIterKind.Expr => todo()
+      TypedForIterKind.Range(start, end) => {
+        val (iterateePattern, iterateeBindingVars) = itemBinding
+        val iterateeVar = try iterateeBindingVars[0] else unreachable("There should always be an iteratee binding variable")
+        iterateeVar.mutable = true // TODO: this is kinda gross, should probably be fixed in the typechecker
+        val itVarName = self.varName(iterateeVar)
+
+        val startValue = self.genExpression(start, concreteGenerics)
+        val itVar = Ident(ty: IrType.I64, kind: IdentKind.Named(itVarName))
+        self.curCtx.locals[itVarName] = Value.Ident(itVar)
+
+        val idxVar = if indexBinding |idxBindingVar| {
+          idxBindingVar.mutable = true  // TODO: this is kinda gross, should probably be fixed in the typechecker
+          val varName = self.varName(idxBindingVar)
+          val idxVal = Ident(ty: IrType.I64, kind: IdentKind.Named(varName))
+          self.curCtx.locals[varName] = Value.Ident(idxVal)
+          Some(idxVal)
+        } else {
+          None
+        }
+
+        val endValue = self.genCompoundValue(() => self.genExpression(end, concreteGenerics))
+
+        val body = self.withinBlock("for_loop", !!terminator, () => {
+          for node, idx in block {
+            self.genStatement(node, concreteGenerics)
+          }
+
+          None
+        })
+
+        self.emit(Instruction(op: Operation.ForRanged(start: startValue, end: endValue, iteratee: itVar, idx: idxVar, body: body)))
+      }
     }
   }
 
@@ -1278,7 +1343,7 @@ pub type Generator {
       return
     }
 
-    val varName = if variable.scope.idxInFn |idx| "_${name}_${idx}" else name
+    val varName = self.varName(variable)
     val varTy = self.getConcreteTypeFromType(variable.ty, concreteGenerics)
     val varIrTy = self.getIrTypeForConcreteType(varTy)
     val ident = if value |(value, _)| {
@@ -1330,7 +1395,7 @@ pub type Generator {
           val global = self.getGlobal(globalName, pos)
           self.emit(Instruction(op: Operation.Store(ty: varIrTy, value: res, mem: Value.Global(global))))
         } else {
-          val varName = if v.scope.idxInFn |idx| "_${v.label.name}_${idx}" else v.label.name
+          val varName = self.varName(v)
           val ident = self.curCtx.getLocal(varName, pos)
           self.emit(Instruction(op: Operation.Store(ty: varIrTy, value: res, mem: ident)))
         }
@@ -2289,14 +2354,12 @@ pub type Generator {
           // Note: captured top-level variables are "global" and are handled above; variables handled here are not top-level
           todo("genIdentifier captured variable")
         } else if variable.mutable {
-          val varName = if variable.scope.idxInFn |idx| "_${name}_${idx}" else name
+          val varName = self.varName(variable)
           val slot = self.curCtx.getLocal(varName, pos)
-          // val slot = Value.Ident(ident)
           self.ssaValue(varTy, Operation.Load(ty: varTy, mem: slot), dst)
         } else {
-          val varName = if variable.scope.idxInFn |idx| "_${name}_${idx}" else name
+          val varName = self.varName(variable)
           self.curCtx.getLocal(varName, pos)
-          // Value.Ident(ident)
         }
       }
     }
@@ -2658,6 +2721,12 @@ pub type Generator {
   }
 
   // helpers
+
+  func varName(self, variable: tc.Variable): String {
+    val name = variable.label.name
+    val idx = variable.scope.idxInFn
+    "_${name}_${idx}"
+  }
 
   func enterFunction(self, fn: IrFunction): Context {
     val prevCtx = self.curCtx
