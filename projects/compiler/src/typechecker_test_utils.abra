@@ -742,7 +742,7 @@ pub type Jsonifier {
         self.array(block, n => self.printNode(n))
         stdoutWriteln()
       }
-      TypedAstNodeKind.For(typedForIterKind, itemBindingPattern, indexBinding, block) => {
+      TypedAstNodeKind.For(typedForIterKind, itemBindingPattern, indexBinding, block, _) => {
         self.println("\"kind\": \"for\",")
 
         self.print("\"iterator\": ")
