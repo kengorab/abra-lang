@@ -602,12 +602,12 @@ pub type Compiler {
         if !body.terminates {
           self.currentFn.block.registerLabel(labelInc)
 
-          val itVal = self.currentFn.block.buildLoadL(itSlot)
+          val itVal = self.currentFn.block.buildLoadL(itSlot, Some(self.nextTemp()))
           val itPlusOne = try self.currentFn.block.buildAdd(qbe.Value.Int(1), itVal, Some(self.nextTemp())) else |e| unreachable(e)
           self.currentFn.block.buildStoreL(itPlusOne, itSlot)
 
           if idxSlot |idxSlot| {
-            val idxVal = self.currentFn.block.buildLoadL(idxSlot)
+            val idxVal = self.currentFn.block.buildLoadL(idxSlot, Some(self.nextTemp()))
             val idxPlusOne = try self.currentFn.block.buildAdd(qbe.Value.Int(1), idxVal, Some(self.nextTemp())) else |e| unreachable(e)
             self.currentFn.block.buildStoreL(idxPlusOne, idxSlot)
           }

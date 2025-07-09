@@ -1221,7 +1221,7 @@ pub type Generator {
         self.emit(Instruction(op: Operation.WhileLoopStart(loopName)))
 
         val condBindingVal = self.genExpression(condNode, concreteGenerics)
-        val cond = if optInnerTy |innerTy| {
+        val cond = if optInnerTy {
           val optIsNone = self.ssaValue(IrType.Bool, Operation.OptionIsNone(condBindingVal), None)
           self.ssaValue(IrType.Bool, Operation.Negate(optIsNone), None)
         } else {
@@ -1240,7 +1240,7 @@ pub type Generator {
 
         self.emit(Instruction(op: Operation.While(cond: cond, body: body)))
       }
-      TypedAstNodeKind.For(typedForIterKind, itemBinding, indexBinding, block, terminator) => self.genForLoop(concreteGenerics, typedForIterKind, itemBinding, indexBinding, block, terminator)
+      TypedAstNodeKind.For(typedForIterKind, itemBinding, indexBinding, block, terminator) => self.genForLoop(pos, concreteGenerics, typedForIterKind, itemBinding, indexBinding, block, terminator)
       TypedAstNodeKind.BindingDeclaration(node) => self.genBindingDeclaration(node, concreteGenerics)
       TypedAstNodeKind.FunctionDeclaration => { /* todo: TypedAstNodeKind.FunctionDeclaration */ }
       TypedAstNodeKind.TypeDeclaration => { /* todo: TypedAstNodeKind.TypeDeclaration */ }
@@ -1262,9 +1262,122 @@ pub type Generator {
     }
   }
 
-  func genForLoop(self, concreteGenerics: Map<String, ConcreteType>, typedForIterKind: tc.TypedForIterKind, itemBinding: (BindingPattern, tc.Variable[]), indexBinding: tc.Variable?, block: tc.TypedAstNode[], terminator: tc.Terminator?) {
+  func genForLoop(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, typedForIterKind: tc.TypedForIterKind, itemBinding: (BindingPattern, tc.Variable[]), indexBinding: tc.Variable?, block: tc.TypedAstNode[], terminator: tc.Terminator?) {
     match typedForIterKind {
-      TypedForIterKind.Expr => todo()
+      TypedForIterKind.Expr(expr) => {
+        val exprVal = self.genExpression(expr, concreteGenerics)
+        val exprConcreteType = self.getConcreteTypeFromType(expr.ty, concreteGenerics)
+        var isMap = false
+
+        val (iterVal, iterConcreteType) = if exprConcreteType.instanceKind == InstanceKind.Struct(self.project.preludeArrayStruct) {
+          val arrItemConcreteType = try exprConcreteType.typeArgs[0] else unreachable("ConcreteType for array must have 1 type argument")
+          val arrConcreteGenerics = { "T": arrItemConcreteType } // `T` is the known generic of `Array#iterator`
+
+          val arrayIteratorFn = self.getMethodByName(InstanceKind.Struct(self.project.preludeArrayStruct), "iterator", staticMethod: false)
+          val arrayIteratorFnName = self.fnName(Some(exprConcreteType), arrayIteratorFn, arrConcreteGenerics, [])
+          self.enqueueFunction(arrayIteratorFn, arrayIteratorFnName, [], Some(exprConcreteType), arrConcreteGenerics)
+
+          val iterConcreteType = self.getConcreteTypeFromType(arrayIteratorFn.returnType, arrConcreteGenerics)
+          val iterIrType = self.getIrTypeForConcreteType(iterConcreteType)
+          val iterVal = self.ssaValue(iterIrType, Operation.Call(ret: iterIrType, fnName: arrayIteratorFnName, args: [exprVal]), None)
+
+          (iterVal, iterConcreteType)
+        } else if exprConcreteType.instanceKind == InstanceKind.Struct(self.project.preludeSetStruct) {
+          val setItemConcreteType = try exprConcreteType.typeArgs[0] else unreachable("ConcreteType for set must have 1 type argument")
+          val setConcreteGenerics = { "T": setItemConcreteType } // `T` is the known generic of `Set#iterator`
+
+          val setIteratorFn = self.getMethodByName(InstanceKind.Struct(self.project.preludeSetStruct), "iterator", staticMethod: false)
+          val setIteratorFnName = self.fnName(Some(exprConcreteType), setIteratorFn, setConcreteGenerics, [])
+          self.enqueueFunction(setIteratorFn, setIteratorFnName, [], Some(exprConcreteType), setConcreteGenerics)
+
+          val iterConcreteType = self.getConcreteTypeFromType(setIteratorFn.returnType, setConcreteGenerics)
+          val iterIrType = self.getIrTypeForConcreteType(iterConcreteType)
+          val iterVal = self.ssaValue(iterIrType, Operation.Call(ret: iterIrType, fnName: setIteratorFnName, args: [exprVal]), None)
+
+          (iterVal, iterConcreteType)
+        } else if exprConcreteType.instanceKind == InstanceKind.Struct(self.project.preludeMapStruct) {
+          isMap = true
+          val mapKeyConcreteType = try exprConcreteType.typeArgs[0] else unreachable("ConcreteType for map must have 2 type arguments")
+          val mapValConcreteType = try exprConcreteType.typeArgs[1] else unreachable("ConcreteType for map must have 2 type arguments")
+          val mapConcreteGenerics = { "K": mapKeyConcreteType, "V": mapValConcreteType } // `K` and `V` are the known generics of `Map#iterator`
+
+          val mapIteratorFn = self.getMethodByName(InstanceKind.Struct(self.project.preludeMapStruct), "iterator", staticMethod: false)
+          val mapIteratorFnName = self.fnName(Some(exprConcreteType), mapIteratorFn, mapConcreteGenerics, [])
+          self.enqueueFunction(mapIteratorFn, mapIteratorFnName, [], Some(exprConcreteType), mapConcreteGenerics)
+
+          val iterConcreteType = self.getConcreteTypeFromType(mapIteratorFn.returnType, mapConcreteGenerics)
+          val iterIrType = self.getIrTypeForConcreteType(iterConcreteType)
+          val iterVal = self.ssaValue(iterIrType, Operation.Call(ret: iterIrType, fnName: mapIteratorFnName, args: [exprVal]), None)
+
+          (iterVal, iterConcreteType)
+        } else {
+          (exprVal, exprConcreteType)
+        }
+
+        val iterConcreteGenerics = self.extractConcreteGenericsFromConcreteType(iterConcreteType)
+
+        val nextFn = self.getMethodByName(iterConcreteType.instanceKind, "next", staticMethod: false)
+        val nextFnName = self.fnName(Some(iterConcreteType), nextFn, iterConcreteGenerics, [])
+        self.enqueueFunction(nextFn, nextFnName, [], Some(iterConcreteType), iterConcreteGenerics)
+
+        val nextFnRetConcreteTy = self.getConcreteTypeFromType(nextFn.returnType, iterConcreteGenerics)
+        val nextFnRetIrTy = self.getIrTypeForConcreteType(nextFnRetConcreteTy)
+        val nextFnRetInnerTy = try self.project.typeIsOption(nextFn.returnType) else unreachable("next() must return T?")
+        val nextFnRetInnerConcreteTy = self.getConcreteTypeFromType(nextFnRetInnerTy, iterConcreteGenerics)
+        val nextFnRetInnerIrTy = self.getIrTypeForConcreteType(nextFnRetInnerConcreteTy)
+
+        val idxSlot = if indexBinding |idxVariable| {
+          idxVariable.mutable = true  // TODO: this is kinda gross, should probably be fixed in the typechecker
+          val varName = self.varName(idxVariable)
+          val idxSlot = self.ssaValue(IrType.I64, Operation.NewLocal(ty: IrType.I64, initialValue: Some(Value.Const(Const.Int(-1)))), Some(varName))
+          self.curCtx.locals[varName] = idxSlot
+          Some(idxSlot)
+        } else {
+          None
+        }
+
+        val loopName = "for_loop"
+        self.emit(Instruction(op: Operation.WhileLoopStart(loopName)))
+
+        val variable = try itemBinding[1][0] else unreachable()
+        val condBindingVal = self.ssaValue(nextFnRetIrTy, Operation.Call(ret: nextFnRetIrTy, fnName: nextFnName, args: [iterVal]), None)
+
+        val optIsNone = self.ssaValue(IrType.Bool, Operation.OptionIsNone(condBindingVal), None)
+        val cond = self.ssaValue(IrType.Bool, Operation.Negate(optIsNone), None)
+
+        val body = self.withinBlock(loopName, !!terminator, () => {
+          val (pattern, vars) = itemBinding
+          val variables = vars.keyBy(v => v.label.name)
+          val nextFnRetInnerConcreteGenerics = if isMap {
+            // When iterating over a map, the values will be of type `(K, V)`. Tuples are represented as an ad-hoc struct
+            // during IR generation but they're a special TypeKind during typechecking. This means that, for a Map<String, Int>,
+            // the concrete generics _should_ be { A: String, B: Int } but instead we need to provide { K: String, V: Int }; the
+            // ad-hoc type parameters A and B of the Tuple are unknown to the typechecker, which expects K and V. It's a little
+            // unfortunate, but it's a price to pay for convenience of having special Tuple representation during typechecking.
+            iterConcreteGenerics
+          } else {
+            self.extractConcreteGenericsFromConcreteType(nextFnRetInnerConcreteTy)
+          }
+
+          val nextVal = self.ssaValue(nextFnRetInnerIrTy, Operation.OptionUnwrap(nextFnRetInnerIrTy, condBindingVal), None)
+
+          self.genBindingPattern(pattern, variables, Some((nextVal, nextFnRetInnerConcreteTy)), nextFnRetInnerConcreteGenerics)
+
+          if idxSlot |idxSlot| {
+            val idxValue = self.ssaValue(IrType.I64, Operation.Load(ty: IrType.I64, mem: idxSlot), None)
+            val idxInc = self.ssaValue(IrType.I64, Operation.Add(Value.Const(Const.Int(1)), idxValue), None)
+            self.emit(Instruction(op: Operation.Store(ty: IrType.I64, value: idxInc, mem: idxSlot)))
+          }
+
+          for node, idx in block {
+            self.genStatement(node, concreteGenerics)
+          }
+
+          None
+        })
+
+        self.emit(Instruction(op: Operation.While(cond: cond, body: body)))
+      }
       TypedForIterKind.Range(start, end) => {
         val (iterateePattern, iterateeBindingVars) = itemBinding
         val iterateeVar = try iterateeBindingVars[0] else unreachable("There should always be an iteratee binding variable")
@@ -1636,7 +1749,11 @@ pub type Generator {
           }
         }
 
-        self.ssaValue(IrType.Bool, Operation.Negate(exprVal), dst)
+        if self.project.typeIsOption(expr.ty) {
+          self.ssaValue(IrType.Bool, Operation.OptionIsNone(exprVal), dst)
+        } else {
+          self.ssaValue(IrType.Bool, Operation.Negate(exprVal), dst)
+        }
       }
     }
   }

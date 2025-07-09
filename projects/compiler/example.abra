@@ -13,8 +13,24 @@
 // stdoutWriteln(":$s:")
 // stdoutWriteln(":$r:")
 
-for i, idx in 1:6 {
-  stdoutWriteln("$i $idx")
+// val arr = [("a", 1), ("b", 2), ("c", 3)]
+
+// for (a, b), idx in arr {
+//   stdoutWriteln("$a, $b, $idx")
+// }
+
+// for ch, idx in { a: 1, b: 2, c: 3 } {
+//   stdoutWriteln("$ch $idx")
+// }
+
+val s = "asdf"
+stdoutWriteln(""+s.length)
+
+var a: String? = None
+while s.length < 5 && !a {
+  stdoutWriteln("here")
+
+  a = Some("foo")
 }
 
 // val m = { a: 1, "b": 2 }

@@ -548,6 +548,9 @@ pub type Compiler {
             self.emitIrValueToJsValue(float)
             self.sb.writeln(");")
           }
+          Builtin.Uninitialized => {
+            self.sb.writeln("const $dst = undefined;")
+          }
         }
       }
     }
@@ -567,12 +570,12 @@ pub type Compiler {
 
   func irConstToJsValue(self, const: Const): String = match const {
     Const.Int(i) => {
-      // JS can only accurately represent integer literals up to 53 bits; otherwise BigInt is required
-      val mask = 0x7ff << 53
-      if (i && mask) == 0 {
-        i.toString()
-      } else {
+      // JS can only accurately represent integer literals up to 53 bits; otherwise BigInt is required (see `Number.MAX_SAFE_INTEGER` in JS)
+      val jsMaxSafeInteger = (1 << 53) + 1
+      if i.abs() > jsMaxSafeInteger {
         "${i}n"
+      } else {
+        i.toString()
       }
     }
     Const.Float(f) => f.toString()
