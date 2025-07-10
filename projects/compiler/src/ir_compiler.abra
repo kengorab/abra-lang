@@ -32,6 +32,7 @@ pub type Compiler {
   builder: ModuleBuilder
   currentFn: qbe.QbeFunction
   numTemps: Int = 0
+  loopStack: (/* start: */ qbe.Label, /* end: */ qbe.Label)[] = []
   builtinI64ToStringUsed: Bool = false
   builtinU64ToStringUsed: Bool = false
   builtinF64ToStringUsed: Bool = false
@@ -175,7 +176,7 @@ pub type Compiler {
 
         if left.ty() != right.ty() unreachable("Operation.Add: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
-        self.currentFn.block.buildAdd(left, right, dst)
+        try self.currentFn.block.buildAdd(left, right, dst) else |e| unreachable(e)
       }
       Operation.Sub(l, r) => {
         var left = self.irValueToQbeValue(l)
@@ -189,7 +190,7 @@ pub type Compiler {
 
         if left.ty() != right.ty() unreachable("Operation.Sub: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
-        self.currentFn.block.buildSub(left, right, dst)
+        try self.currentFn.block.buildSub(left, right, dst) else |e| unreachable(e)
       }
       Operation.Mul(l, r) => {
         var left = self.irValueToQbeValue(l)
@@ -203,7 +204,7 @@ pub type Compiler {
 
         if left.ty() != right.ty() unreachable("Operation.Mul: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
-        self.currentFn.block.buildMul(left, right, dst)
+        try self.currentFn.block.buildMul(left, right, dst) else |e| unreachable(e)
       }
       Operation.Div(l, r) => {
         var left = self.irValueToQbeValue(l)
@@ -218,7 +219,7 @@ pub type Compiler {
 
         if left.ty() != right.ty() unreachable("Operation.Div: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
-        self.currentFn.block.buildDiv(left, right, dst)
+        try self.currentFn.block.buildDiv(left, right, dst) else |e| unreachable(e)
       }
       Operation.Mod(l, r) => {
         var left = self.irValueToQbeValue(l)
@@ -343,9 +344,7 @@ pub type Compiler {
 
         try self.currentFn.block.buildXor(left, right, dst) else |e| unreachable(e)
       }
-      Operation.Eq(primitive, negate, l, r) => {
-        if !primitive todo("non-primitive Eq operation")
-
+      Operation.Eq(negate, l, r) => {
         val left = self.irValueToQbeValue(l)
         val right = self.irValueToQbeValue(r)
 
@@ -368,7 +367,8 @@ pub type Compiler {
 
         if left.ty() != right.ty() unreachable("Operation.Lt: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
-        self.currentFn.block.buildCompareLt(left, right, dst)
+        val res = try self.currentFn.block.buildCompareLt(left, right, Some(self.nextTemp())) else |e| unreachable(e)
+        self.currentFn.block.buildExt(res, false, dst)
       }
       Operation.Lte(l, r) => {
         var left = self.irValueToQbeValue(l)
@@ -382,7 +382,8 @@ pub type Compiler {
 
         if left.ty() != right.ty() unreachable("Operation.Lte: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
-        self.currentFn.block.buildCompareLte(left, right, dst)
+        val res = try self.currentFn.block.buildCompareLte(left, right, Some(self.nextTemp())) else |e| unreachable(e)
+        self.currentFn.block.buildExt(res, false, dst)
       }
       Operation.Shl(l, r) => {
         var left = self.irValueToQbeValue(l)
@@ -404,7 +405,8 @@ pub type Compiler {
 
         if left.ty() != right.ty() unreachable("Operation.Lt: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
-        self.currentFn.block.buildCompareGt(left, right, dst)
+        val res = try self.currentFn.block.buildCompareGt(left, right, Some(self.nextTemp())) else |e| unreachable(e)
+        self.currentFn.block.buildExt(res, false, dst)
       }
       Operation.Gte(l, r) => {
         var left = self.irValueToQbeValue(l)
@@ -418,7 +420,8 @@ pub type Compiler {
 
         if left.ty() != right.ty() unreachable("Operation.Lte: left.ty (${left.ty()}) != right.ty (${right.ty()})")
 
-        self.currentFn.block.buildCompareGte(left, right, dst)
+        val res = try self.currentFn.block.buildCompareGte(left, right, Some(self.nextTemp())) else |e| unreachable(e)
+        self.currentFn.block.buildExt(res, false, dst)
       }
       Operation.Shr(l, r) => {
         var left = self.irValueToQbeValue(l)
@@ -536,16 +539,19 @@ pub type Compiler {
           self.currentFn.block.registerLabel(labelCont)
         }
       }
-      Operation.While(_, cond, body) => {
-        val labelCond = self.currentFn.block.addLabel("${body.name}_cond")
+      Operation.WhileLoopStart(name) => {
+        val labelCond = self.currentFn.block.addLabel("${name}_cond")
+        self.loopStack.push((labelCond, labelCond))
+        self.currentFn.block.registerLabel(labelCond)
+      }
+      Operation.While(cond, body) => {
+        val labelCond = if self.loopStack.pop() |(loopStartLabel, _)| loopStartLabel else unreachable("unexpected empty loop stack")
         val labelBody = self.currentFn.block.addLabel("${body.name}_body")
         val labelCont = self.currentFn.block.addLabel("${body.name}_cont")
 
-        self.currentFn.block.registerLabel(labelCond)
-        for inst in cond.body {
-          self.compileInstruction(inst)
-        }
-        val condVal = self.irValueToQbeValue(cond.result)
+        self.loopStack.push((labelCond, labelCont))
+
+        val condVal = self.irValueToQbeValue(cond)
         self.currentFn.block.buildJnz(condVal, labelBody, labelCont)
 
         self.currentFn.block.registerLabel(labelBody)
@@ -557,6 +563,61 @@ pub type Compiler {
         }
 
         self.currentFn.block.registerLabel(labelCont)
+
+        self.loopStack.pop()
+      }
+      Operation.ForRanged(start, end, iteratee, idx, body) => {
+        val labelCond = self.currentFn.block.addLabel("${body.name}_cond")
+        val labelBody = self.currentFn.block.addLabel("${body.name}_body")
+        val labelInc = self.currentFn.block.addLabel("${body.name}_inc")
+        val labelCont = self.currentFn.block.addLabel("${body.name}_cont")
+
+        self.loopStack.push((labelInc, labelCont))
+
+        val itSlot = self.currentFn.block.buildAlloc8(1, Some(iteratee.kind.name()))
+        val startVal = self.irValueToQbeValue(start)
+        self.currentFn.block.buildStoreL(startVal, itSlot)
+
+        val idxSlot = if idx |idx| {
+          val slot = self.currentFn.block.buildAlloc8(1, Some(idx.kind.name()))
+          self.currentFn.block.buildStoreL(qbe.Value.Int(0), slot)
+          Some(slot)
+        } else {
+          None
+        }
+
+        self.currentFn.block.registerLabel(labelCond)
+        val itVal = self.currentFn.block.buildLoadL(itSlot)
+        for inst in end.body {
+          self.compileInstruction(inst)
+        }
+        val endVal = self.irValueToQbeValue(end.result)
+        val condVal = try self.currentFn.block.buildCompareLt(itVal, endVal, Some(self.nextTemp())) else |e| unreachable(e)
+        self.currentFn.block.buildJnz(condVal, labelBody, labelCont)
+
+        self.currentFn.block.registerLabel(labelBody)
+        for inst in body.body {
+          self.compileInstruction(inst)
+        }
+        if !body.terminates {
+          self.currentFn.block.registerLabel(labelInc)
+
+          val itVal = self.currentFn.block.buildLoadL(itSlot, Some(self.nextTemp()))
+          val itPlusOne = try self.currentFn.block.buildAdd(qbe.Value.Int(1), itVal, Some(self.nextTemp())) else |e| unreachable(e)
+          self.currentFn.block.buildStoreL(itPlusOne, itSlot)
+
+          if idxSlot |idxSlot| {
+            val idxVal = self.currentFn.block.buildLoadL(idxSlot, Some(self.nextTemp()))
+            val idxPlusOne = try self.currentFn.block.buildAdd(qbe.Value.Int(1), idxVal, Some(self.nextTemp())) else |e| unreachable(e)
+            self.currentFn.block.buildStoreL(idxPlusOne, idxSlot)
+          }
+
+          self.currentFn.block.buildJmp(labelCond)
+        }
+
+        self.currentFn.block.registerLabel(labelCont)
+
+        self.loopStack.pop()
       }
       Operation.Call(ret, fnName, args) => {
         val argVals = args.map(a => self.irValueToQbeValue(a))
@@ -564,6 +625,22 @@ pub type Compiler {
           try self.currentFn.block.buildCallRaw(fnName, ret, argVals, dst) else |e| unreachable(e)
         } else {
           self.currentFn.block.buildVoidCallRaw(fnName, argVals)
+        }
+      }
+      Operation.Break => {
+        if self.loopStack[-1] |(_, loopEndLabel)| {
+          self.currentFn.block.buildJmp(loopEndLabel)
+
+          Ok(None)
+        } else {
+          unreachable("cannot have a break statement outside of a loop")
+        }
+      }
+      Operation.Continue => {
+        if self.loopStack[-1] |(loopStartLabel, _)| {
+          self.currentFn.block.buildJmp(loopStartLabel)
+        } else {
+          unreachable("cannot have a continue statement outside of a loop")
         }
       }
       Operation.Return(value) => {
@@ -589,7 +666,8 @@ pub type Compiler {
       }
       Operation.OptionIsNone(value) => {
         val qbeVal = self.irValueToQbeValue(value)
-        self.currentFn.block.buildCompareEq(qbe.Value.Int(0), qbeVal, dst)
+        val res = try self.currentFn.block.buildCompareEq(qbe.Value.Int(0), qbeVal, Some(self.nextTemp())) else |e| unreachable(e)
+        self.currentFn.block.buildExt(res, false, dst)
       }
       Operation.OptionUnwrap(innerTy, value) => {
         val qbeVal = self.irValueToQbeValue(value)
@@ -661,7 +739,7 @@ pub type Compiler {
             val mem = try self.currentFn.block.buildAdd(sizeVal, ptrVal, Some(self.nextTemp())) else |e| unreachable(e)
 
             if size == 1 {
-              todo("Builtin.Load Byte")
+              self.currentFn.block.buildLoadB(mem, dst)
             } else {
               self.currentFn.block.buildLoad(qbeTy, mem, dst)
             }
@@ -752,6 +830,9 @@ pub type Compiler {
             val roundRes = try self.currentFn.block.buildCallRaw("round", QbeType.F64, [floatVal], Some(self.nextTemp())) else |e| unreachable(e)
             self.currentFn.block.buildFToL(roundRes, true, dst)
           }
+          Builtin.Uninitialized => {
+            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+          }
         }
       }
     }
@@ -760,8 +841,9 @@ pub type Compiler {
   func compileStructuredToString(self, prefix: String, lenVal: Value, fields: (IrType, String, Value)[], dst: String?): qbe.Value {
     val strIrTy = IrType.Composite(self.ir.knowns.stringType().name)
 
-    val lenQbeVal = try self.currentFn.block.buildAdd(qbe.Value.Int(1), self.irValueToQbeValue(lenVal), Some(self.nextTemp())) else |e| unreachable(e)
-    val buf = self.callMalloc(lenQbeVal, Some(self.nextTemp()))
+    val lenQbeVal = self.irValueToQbeValue(lenVal)
+    val lenPlusOneQbeVal = try self.currentFn.block.buildAdd(qbe.Value.Int(1), lenQbeVal, Some(self.nextTemp())) else |e| unreachable(e)
+    val buf = self.callMalloc(lenPlusOneQbeVal, Some(self.nextTemp()))
 
     val prefixVal = self.makeConstString(prefix)
     val (prefixLen, prefixBuf) = self.strValGetParts(prefixVal)
@@ -778,8 +860,10 @@ pub type Compiler {
       self.compileMemcpy(buf, offsetVal, fieldNameBuf, qbe.Value.Int(0), fieldNameLen, qbe.Value.Int(1))
       offsetVal = try self.currentFn.block.buildAdd(offsetVal, fieldNameLen, Some(self.nextTemp())) else |e| unreachable(e)
 
-      offsetVal = self._insertCharAt(':', buf, offsetVal)
-      offsetVal = self._insertCharAt(' ', buf, offsetVal)
+      if !fieldName.isEmpty() {
+        offsetVal = self._insertCharAt(':', buf, offsetVal)
+        offsetVal = self._insertCharAt(' ', buf, offsetVal)
+      }
 
       val fieldStrQbeVal = self.irValueToQbeValue(fieldStrValue)
       val (fieldStrLen, fieldStrBuf) = self.strValGetParts(fieldStrQbeVal)

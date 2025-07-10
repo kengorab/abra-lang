@@ -1,6 +1,7 @@
 func printlnInt(i: Int) = stdoutWriteln(i.toString())
 
 // While-loops
+
 if true {
   var i = 0
   while i < 3 {
@@ -71,39 +72,8 @@ if true {
 
 // For-loops
 
+// Ranged for-loops
 if true {
-  /// Expect: a
-  /// Expect: b
-  /// Expect: c
-  for ch in ["a", "b", "c"] {
-    stdoutWriteln(ch)
-  }
-
-  /// Expect: a 0
-  /// Expect: b 1
-  /// Expect: c 2
-  for ch, idx in ["a", "b", "c"] {
-    stdoutWriteln("$ch $idx")
-  }
-
-  /// Expect: a 0
-  /// Expect: b 1
-  for ch, idx in ["a", "b", "c"] {
-    stdoutWriteln("$ch $idx")
-    if ch == "b" {
-      break
-    }
-  }
-
-  /// Expect: a 0
-  /// Expect: c 2
-  for ch, idx in ["a", "b", "c"] {
-    if ch == "b" {
-      continue
-    }
-    stdoutWriteln("$ch $idx")
-  }
-
   /// Expect: 0
   /// Expect: 1
   /// Expect: 2
@@ -157,4 +127,53 @@ if true {
     printlnInt(i)
   }
   stdoutWriteln("done")
+}
+
+// Iterating over Array, Set, Map
+if true {
+  /// Expect: a
+  /// Expect: b
+  /// Expect: c
+  for ch in ["a", "b", "c"] {
+    stdoutWriteln(ch)
+  }
+
+  /// Expect: a 0
+  /// Expect: b 1
+  /// Expect: c 2
+  for ch, idx in ["a", "b", "c"] {
+    stdoutWriteln("$ch $idx")
+  }
+
+  /// Expect: a 0
+  /// Expect: b 1
+  for ch, idx in ["a", "b", "c"] {
+    stdoutWriteln("$ch $idx")
+    if ch == "b" {
+      break
+    }
+  }
+
+  /// Expect: a 0
+  /// Expect: c 2
+  for ch, idx in ["a", "b", "c"] {
+    if ch == "b" {
+      continue
+    }
+    stdoutWriteln("$ch $idx")
+  }
+
+  // /// Expect: c 0
+  // /// Expect: b 1
+  // /// Expect: a 2
+  // for ch, idx in #{"a", "b", "c"} {
+  //   stdoutWriteln("$ch $idx")
+  // }
+
+  /// Expect: ("c", 3) 0
+  /// Expect: ("b", 2) 1
+  /// Expect: ("a", 1) 2
+  for ch, idx in { a: 1, b: 2, c: 3 } {
+    stdoutWriteln("$ch $idx")
+  }
 }

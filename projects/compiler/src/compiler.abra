@@ -388,7 +388,7 @@ pub type Compiler {
 
         Ok(None)
       }
-      TypedAstNodeKind.For(typedForIterKind, itemBindingPattern, indexBinding, block) => {
+      TypedAstNodeKind.For(typedForIterKind, itemBindingPattern, indexBinding, block, _) => {
         val (iterateePattern, iterateeBindingVars) = itemBindingPattern
 
         val forLabelPrefix = "for_${node.token.position.line}_${node.token.position.col}"

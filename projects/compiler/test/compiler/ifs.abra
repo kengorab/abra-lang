@@ -41,14 +41,6 @@ val d = if false { Some(123) } else { None }
 /// Expect: Option.None
 stdoutWriteln(d.toString())
 
-///// Expect: 123
-//stdoutWriteln(if true { 123 })
-//
-///// Expect: None
-//stdoutWriteln(if false { 123 })
-
-///// Expect: None
-//stdoutWriteln(if true { None } else { 1 + 2 }) // TODO: Make this work
 /// Expect: Option.Some(value: 3)
 stdoutWriteln((if true { Some(1 + 2) } else { None }).toString())
 
