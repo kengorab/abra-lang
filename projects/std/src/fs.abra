@@ -55,6 +55,34 @@ pub type File {
   accessMode: AccessMode
   path: String
 
+  // Opens a file in read-only mode.
+  pub func open(path: String): Result<File, FileIOError> {
+    val accessMode = AccessMode.ReadOnly
+    val oflag = accessMode._toUnderlying()
+    val fd = libc.open(path._buffer, oflag, 0)
+    if fd == -1 {
+      val errMsg = _strerror(libc.errno())
+      return Err(error: FileIOError.CouldNotOpen(message: "Could not open '$path' for reading: $errMsg"))
+    }
+
+    Ok(File(_fd: fd, accessMode: accessMode, path: path))
+  }
+
+  // Opens a file in write-only mode; will create a file if none exists, and will truncate it if it does.
+  pub func create(path: String): Result<File, FileIOError> {
+    val accessMode = AccessMode.WriteOnly
+    var oflag = accessMode._toUnderlying() || libc.O_CREAT || libc.O_TRUNC
+
+    val mode = 420 // 420 is 0644, but octal numbers aren't supported yet...
+    val fd = libc.open(path._buffer, oflag, mode)
+    if fd == -1 {
+      val errMsg = _strerror(libc.errno())
+      return Err(error: FileIOError.CouldNotOpen(message: "Could not open '$path' for writing: $errMsg"))
+    }
+
+    Ok(File(_fd: fd, accessMode: accessMode, path: path))
+  }
+
   pub func close(self): Result<Int, FileIOError> {
     if libc.close(self._fd) == -1 {
       val errMsg = _strerror(libc.errno())
@@ -75,6 +103,7 @@ pub type File {
   }
 }
 
+// TODO: replace with File.open
 pub func openFile(path: String, accessMode: AccessMode): Result<File, FileIOError> {
   val oflag = accessMode._toUnderlying()
   val fd = libc.open(path._buffer, oflag, 0)
@@ -86,6 +115,7 @@ pub func openFile(path: String, accessMode: AccessMode): Result<File, FileIOErro
   Ok(File(_fd: fd, accessMode: accessMode, path: path))
 }
 
+// TODO: replace with File.create
 pub func createFile(path: String, accessMode: AccessMode): Result<File, FileIOError> {
   var oflag = accessMode._toUnderlying() || libc.O_CREAT
 

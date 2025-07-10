@@ -2,6 +2,26 @@ import Pointer, Byte, intrinsic from "./_intrinsics"
 
 pub decorator external { name: String }
 
+pub func NULL<T>(): Pointer<T> = Pointer.null()
+
+pub val EFAULT = 14
+pub val EMFILE = 24
+pub val ENFILE = 23
+@external("pipe")
+pub func pipe(fds: Pointer<Int>): Int
+
+@external("dup2")
+pub func dup2(fd1: Int, fd2: Int): Int
+
+@external("wait")
+pub func wait(status: Pointer<Int>): Int
+
+@external("fork") 
+pub func fork(): Int
+
+@external("execvp") 
+pub func execvp(file: Pointer<Byte>, args: Pointer<Pointer<Byte>>): Int
+
 @external("getenv")
 pub func getenv(name: Pointer<Byte>): Pointer<Byte>
 
@@ -15,6 +35,7 @@ pub val O_RDONLY = 0
 pub val O_WRONLY = 1
 pub val O_RDWR   = 2
 pub val O_CREAT  = 512
+pub val O_TRUNC  = 1024
 
 @external("open")
 pub func open(pathname: Pointer<Byte>, flags: Int, mode: Int): Int
@@ -53,8 +74,34 @@ pub func strlen(s: Pointer<Byte>): Int
 @external("uname")
 pub func uname(utsnameBuf: Pointer<Byte>): Int
 
+@external("umask")
+pub func umask(cmask: Int): Int
+
 @external("rand")
 pub func rand(): Int
 
+@external("sleep")
+pub func sleep(secs: Int): Unit
+
+@external("fchmod")
+pub func fchmod(fildes: Int, mode: Int): Int
+
+@external("time")
+pub func time(seed: Int): Int
+
 @external("exit")
 pub func exit(status: Int): Unit
+
+func WSTATUS(status: Int): Int = status && 0x7f
+
+// #define WIFEXITED(x)    (_WSTATUS(x) == 0)
+pub func WIFEXITED(status: Int): Bool = WSTATUS(status) == 0
+
+// #define WEXITSTATUS(x)  ((_W_INT(x) >> 8) & 0x000000ff)
+pub func WEXITSTATUS(status: Int): Int = (status >> 8) && 0xff
+
+// #define WIFSIGNALED(x)  (_WSTATUS(x) != _WSTOPPED && _WSTATUS(x) != 0)
+pub func WIFSIGNALED(status: Int): Bool = WSTATUS(status) != 0x7f && WSTATUS(status) != 0
+
+// #define WTERMSIG(x)     (_WSTATUS(x))
+pub func WTERMSIG(status: Int): Int = WSTATUS(status)

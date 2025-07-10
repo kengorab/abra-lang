@@ -1,0 +1,67 @@
+import "libc" as libc
+import Pointer, Byte from "./_intrinsics"
+
+pub enum MakePipeError {
+  BadAddress(message: String)
+  TooManyOpenFiles(message: String)
+  SystemFileTableFull(message: String)
+  Unknown(message: String)
+}
+
+// TODO: create dedicated reader/writer types rather than passing around file descriptors
+pub type Pipe {
+  pub writerFd: Int
+  pub readerFd: Int
+}
+
+pub func makePipe(): Result<Pipe, MakePipeError> {
+  val pipefds = Pointer.malloc<Int>(1) 
+  if libc.pipe(pipefds) == -1 {
+    val errno = libc.errno()
+    val msg = strerror(errno)
+    val err = if errno == libc.EFAULT {
+      MakePipeError.BadAddress(message: msg)
+    } else if errno == libc.EMFILE {
+      MakePipeError.TooManyOpenFiles(message: msg)
+    } else if errno == libc.ENFILE {
+      MakePipeError.SystemFileTableFull(message: msg)
+    } else {
+      MakePipeError.Unknown(message: msg)
+    }
+
+    return Err(err)
+  }
+
+  val pipefdsVal = pipefds.loadAt(0)
+  val pipeFdWrite = pipefdsVal >> 32
+  val pipeFdRead = pipefdsVal && ((1 << 32) - 1)
+
+  Ok(Pipe(writerFd: pipeFdWrite, readerFd: pipeFdRead))
+}
+
+func strerror(errno: Int): String {
+  val buf = libc.strerror(errno)
+  val len = libc.strlen(buf)
+  val str = String.withLength(len)
+  str._buffer.copyFrom(0, buf, 0, len)
+  str
+}
+
+pub type BufferedReader {
+  fd: Int
+  bufSize: Int = 1024
+
+  pub func readAllToString(self): Result<String, Int> {
+    val readBuffer: String[] = []
+    val buf = Pointer.malloc<Byte>(self.bufSize)
+    while true {
+      val bytesRead = libc.read(self.fd, buf, self.bufSize) // todo: handle error
+      if bytesRead == -1 unreachable(strerror(libc.errno()))
+
+      readBuffer.push(String(length: bytesRead, _buffer: buf))
+      if bytesRead < self.bufSize break
+    }
+
+    Ok(readBuffer.join())
+  }
+}

@@ -1,0 +1,124 @@
+import "process" as process
+import "fs" as fs
+import "libc" as libc
+import Path from "path"
+import ModuleLoader, Project, Typechecker, TypedModule from "../../compiler/src/typechecker"
+import Compiler from "../../compiler/src/compiler"
+
+pub type BuildCmd {
+  pub outputFile: String?
+  pub run: Bool
+  pub inputFile: String
+  pub programArguments: String[]
+}
+
+func typecheck(stdRoot: String, filePath: Path): Project {
+  val moduleLoader = ModuleLoader(stdRoot: stdRoot)
+  val project = Project()
+  val typechecker = Typechecker(moduleLoader: moduleLoader, project: project)
+
+  typechecker.typecheckEntrypoint(filePath.asString())
+
+  val readFileErrors: String[] = []
+  val errorMessages: String[] = []
+  for mod in project.modules.values().sortBy(m => -m.id) {
+    if mod.readFileError {
+      readFileErrors.push(mod.name)
+      continue
+    }
+
+    val contents = try moduleLoader.loadFileContents(mod.name) else {
+      // Any unreadable modules should have had the `readFileError` field set, which is checked above
+      unreachable("Could not read file '${mod.name}'")
+    }
+
+    for err in mod.lexParseErrors {
+      errorMessages.push(err.getMessage(mod.name, contents))
+    }
+
+    for err in mod.typeErrors {
+      errorMessages.push(err.getMessage(mod.name, contents))
+    }
+  }
+
+  if !errorMessages.isEmpty() {
+    for msg, idx in errorMessages {
+      stdoutWriteln(msg)
+      if idx != errorMessages.length - 1 stdoutWriteln("") // spacer
+    }
+    process.exit(1)
+  } else if !readFileErrors.isEmpty() {
+    for path, idx in readFileErrors {
+      stdoutWriteln("Could not read file '$path'")
+      if idx != readFileErrors.length - 1 stdoutWriteln("") // spacer
+    }
+    process.exit(1)
+  }
+
+  project
+}
+
+pub func build(cmd: BuildCmd) {
+  val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {
+    stdoutWriteln("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
+    process.exit(1)
+  }
+
+  val inputPath = Path.fromString(cmd.inputFile)
+  val project = typecheck(abraStdRoot, inputPath)
+
+  val builder = try Compiler.compile(project) else |e| {
+    stdoutWriteln(e.getMessage())
+    process.exit(1)
+  }
+
+  val cwd = fs.getCurrentWorkingDirectory()
+  val dotAbraDir = "$cwd/._abra"
+  val outFileName = cmd.outputFile ?: (try inputPath.segments[-1] else unreachable()).replaceAll(".abra", "") //"_main"
+
+  val ssaOutPath = "$dotAbraDir/$outFileName.ssa"
+  val ssaOutFile = try fs.File.create(ssaOutPath) else |e| {
+    stdoutWriteln(e.toString())
+    process.exit(1)
+  }
+
+  builder.writeToFile(ssaOutFile)
+  ssaOutFile.close()
+
+  val objOutPath = "$dotAbraDir/$outFileName.s"
+  val qbeCmdRes = process.Command(program: "qbe")
+    .addArg("-o").addArg(objOutPath)
+    .addArg(ssaOutPath)
+    .execAndCaptureOutput()
+  if !qbeCmdRes.status.isSuccess() {
+    stdoutWriteln("qbe error:")
+    stdoutWriteln(qbeCmdRes.stderr)
+    process.exit(1)
+  }
+
+  val execOutPath = "$dotAbraDir/$outFileName"
+  val clangCmdRes = process.Command(program: "clang")
+    .addArg("/Users/kengorab/.abra/include/libgc.a")
+    .addArg(objOutPath)
+    .addArg("-o").addArg(execOutPath)
+    .addArg("-lm")
+    .addArg("-Wno-override-module")
+    .addArg("-Wl,-w")
+    .execAndCaptureOutput()
+  if !clangCmdRes.status.isSuccess() {
+    stdoutWriteln("clang error:")
+    stdoutWriteln(clangCmdRes.stderr)
+    process.exit(1)
+  }
+
+  if cmd.run {
+    val runCmdRes = process.Command(program: execOutPath, arguments: cmd.programArguments)
+      .execAndCaptureOutput()
+    if !runCmdRes.status.isSuccess() {
+      stdoutWriteln(runCmdRes.stderr)
+      process.exit(1)
+    }
+
+    stdoutWriteln(runCmdRes.stdout)
+  }
+}

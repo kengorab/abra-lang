@@ -1,0 +1,241 @@
+data $__argc = { l 0 }
+data $__argv = { l 0 }
+data $__callstack = { z 8192 }
+data $__callstackp = { l 0 }
+data $__modnames = { b "/Users/kennethg/.abra/std/_intrinsics.abra", b 0, b "/Users/kennethg/.abra/std/libc.abra", b 0, b "/Users/kennethg/.abra/std/prelude.abra", b 0, b "/Users/kennethg/Desktop/abra-lang/projects/compiler/example.abra", b 0, b 0 }
+data $__fnnames = { b "stdoutWrite", b 0, b "String.toString", b 0, b "stdoutWriteln", b 0, b 0 }
+data $mod1_EFAULT.slot = { l 0 }
+data $mod1_EMFILE.slot = { l 0 }
+data $mod1_ENFILE.slot = { l 0 }
+data $mod1_O_RDONLY.slot = { l 0 }
+data $mod1_O_WRONLY.slot = { l 0 }
+data $mod1_O_RDWR.slot = { l 0 }
+data $mod1_O_CREAT.slot = { l 0 }
+data $mod1_SEEK_SET.slot = { l 0 }
+data $mod1_SEEK_CUR.slot = { l 0 }
+data $mod1_SEEK_END.slot = { l 0 }
+data $mod1_STDIN_FILENO.slot = { l 0 }
+data $mod1_STDOUT_FILENO.slot = { l 0 }
+data $mod1_STDERR_FILENO.slot = { l 0 }
+data $mod1_PATH_MAX.slot = { l 0 }
+data $_20 = { b "asdf", b 0 }
+data $_21 = { b "\n", b 0 }
+data $_22 = { b ":", b 0 }
+
+# main entrypoint function
+export function w $main(l %argc, l %argv) {
+@start
+  storel %argc, $__argc
+  storel %argv, $__argv
+  %_0 =l call $time(l 0)
+  call $srand(l %_0)
+  call $GC_init()
+  call $..module_0()
+  call $..module_1()
+  call $..module_2()
+  call $..module_3()
+  ret 0
+}
+
+# /Users/kennethg/.abra/std/_intrinsics.abra
+function  $..module_0() {
+@start
+  ret 
+}
+
+# /Users/kennethg/.abra/std/libc.abra
+function  $..module_1() {
+@start
+  storel 14, $mod1_EFAULT.slot
+  storel 24, $mod1_EMFILE.slot
+  storel 23, $mod1_ENFILE.slot
+  storel 0, $mod1_O_RDONLY.slot
+  storel 1, $mod1_O_WRONLY.slot
+  storel 2, $mod1_O_RDWR.slot
+  storel 512, $mod1_O_CREAT.slot
+  storel 0, $mod1_SEEK_SET.slot
+  storel 1, $mod1_SEEK_CUR.slot
+  storel 2, $mod1_SEEK_END.slot
+  storel 0, $mod1_STDIN_FILENO.slot
+  storel 1, $mod1_STDOUT_FILENO.slot
+  storel 2, $mod1_STDERR_FILENO.slot
+  storel 4096, $mod1_PATH_MAX.slot
+  ret 
+}
+
+# /Users/kennethg/.abra/std/prelude.abra
+function  $..module_2() {
+@start
+  ret 
+}
+
+# /Users/kennethg/Desktop/abra-lang/projects/compiler/example.abra
+function  $..module_3() {
+@start
+  %_0 =l call $.2.String.init(l 4, l $_20)
+  %s.0.slot =l alloc8 1
+  storel %_0, %s.0.slot
+  # begin string interpolation...
+  %_1 =l call $.2.String.init(l 1, l $_22)
+  # begin __callstack push...
+  %_2 =l loadl $__callstackp
+  %_3 =l add %_2, $__callstack
+  storel 8590196749, %_3
+  %_4 =l add 8, %_2
+  storel %_4, $__callstackp
+  # ...__callstack push end
+  %_5 =l call $.2.String..toString(l %_1)
+  # begin __callstack pop...
+  %_6 =l loadl $__callstackp
+  %_7 =l sub %_6, 8
+  storel %_7, $__callstackp
+  # ...__callstack pop end
+  %_8 =l loadl %_5
+  %_9 =l add 0, %_8
+  %_10 =l loadl %s.0.slot
+  # begin __callstack push...
+  %_11 =l loadl $__callstackp
+  %_12 =l add %_11, $__callstack
+  storel 8590196749, %_12
+  %_13 =l add 8, %_11
+  storel %_13, $__callstackp
+  # ...__callstack push end
+  %_14 =l call $.2.String..toString(l %_10)
+  # begin __callstack pop...
+  %_15 =l loadl $__callstackp
+  %_16 =l sub %_15, 8
+  storel %_16, $__callstackp
+  # ...__callstack pop end
+  %_17 =l loadl %_14
+  %_18 =l add %_9, %_17
+  %_19 =l call $.2.String.init(l 1, l $_22)
+  # begin __callstack push...
+  %_20 =l loadl $__callstackp
+  %_21 =l add %_20, $__callstack
+  storel 8590196749, %_21
+  %_22 =l add 8, %_20
+  storel %_22, $__callstackp
+  # ...__callstack push end
+  %_23 =l call $.2.String..toString(l %_19)
+  # begin __callstack pop...
+  %_24 =l loadl $__callstackp
+  %_25 =l sub %_24, 8
+  storel %_25, $__callstackp
+  # ...__callstack pop end
+  %_26 =l loadl %_23
+  %_27 =l add %_18, %_26
+  %_28 =l call $.2.String..withLength(l %_27)
+  %_29 =l add 8, %_28
+  %_30 =l loadl %_29
+  %_31 =l loadl %_5
+  %_32 =l add 8, %_5
+  %_33 =l loadl %_32
+  call $memcpy(l %_30, l %_33, l %_31)
+  %_34 =l add %_30, %_31
+  %_35 =l loadl %_14
+  %_36 =l add 8, %_14
+  %_37 =l loadl %_36
+  call $memcpy(l %_34, l %_37, l %_35)
+  %_38 =l add %_34, %_35
+  %_39 =l loadl %_23
+  %_40 =l add 8, %_23
+  %_41 =l loadl %_40
+  call $memcpy(l %_38, l %_41, l %_39)
+  %_42 =l add %_38, %_39
+  # ...string interpolation end
+  # begin __callstack push...
+  %_43 =l loadl $__callstackp
+  %_44 =l add %_43, $__callstack
+  storel 12885164045, %_44
+  %_45 =l add 8, %_43
+  storel %_45, $__callstackp
+  # ...__callstack push end
+  call $.stdoutWriteln(l %_28)
+  # begin __callstack pop...
+  %_46 =l loadl $__callstackp
+  %_47 =l sub %_46, 8
+  storel %_47, $__callstackp
+  # ...__callstack pop end
+  ret 
+}
+
+# type String {
+#   length: Int
+#   _buffer: Pointer<Byte>
+# }
+function l $.2.String.init(l %length, l %_buffer) {
+@start
+  %struct.mem =l call $GC_malloc(l 16)
+  %mem_offset_length =l add 0, %struct.mem
+  storel %length, %mem_offset_length
+  %mem_offset__buffer =l add 8, %struct.mem
+  storel %_buffer, %mem_offset__buffer
+  ret %struct.mem
+}
+
+# stdoutWriteln(str: String)
+function  $.stdoutWriteln(l %str) {
+@start
+  # begin __callstack push...
+  %_0 =l loadl $__callstackp
+  %_1 =l add %_0, $__callstack
+  storel 4295163916, %_1
+  %_2 =l add 8, %_0
+  storel %_2, $__callstackp
+  # ...__callstack push end
+  call $.stdoutWrite(l %str)
+  # begin __callstack pop...
+  %_3 =l loadl $__callstackp
+  %_4 =l sub %_3, 8
+  storel %_4, $__callstackp
+  # ...__callstack pop end
+  %_5 =l call $.2.String.init(l 1, l $_21)
+  # begin __callstack push...
+  %_6 =l loadl $__callstackp
+  %_7 =l add %_6, $__callstack
+  storel 4295163917, %_7
+  %_8 =l add 8, %_6
+  storel %_8, $__callstackp
+  # ...__callstack push end
+  call $.stdoutWrite(l %_5)
+  # begin __callstack pop...
+  %_9 =l loadl $__callstackp
+  %_10 =l sub %_9, 8
+  storel %_10, $__callstackp
+  # ...__callstack pop end
+  ret 
+}
+
+# stdoutWrite(str: String)
+function  $.stdoutWrite(l %str) {
+@start
+  # %str: String
+  %_0 =l loadl $mod1_STDOUT_FILENO.slot
+  %_1 =l add 8, %str
+  # %str: String
+  # %_2: %str._buffer
+  %_2 =l loadl %_1
+  %_3 =l add 0, %str
+  # %_4: %str.length
+  %_4 =l loadl %_3
+  %_5 =l call $write(l %_0, l %_2, l %_4)
+  ret 
+}
+
+# String#toString(self): String
+function l $.2.String..toString(l %self) {
+@start
+  ret %self
+}
+
+# String.withLength(length: Int): String
+function l $.2.String..withLength(l %length) {
+@start
+  # begin pointer_malloc...
+  %_0 =l add %length, 1
+  %_1 =l mul 1, %_0
+  %ptr.mem =l call $GC_malloc(l %_1)
+  # ...pointer_malloc end
+  %_2 =l call $.2.String.init(l %length, l %ptr.mem)
+  ret %_2
+}
