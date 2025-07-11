@@ -8,6 +8,8 @@ const LEXER_TESTS = [
   { test: "lexer/ints_error_invalid_hex_eof.abra", assertions: "lexer/ints_error_invalid_hex_eof.out" },
   { test: "lexer/ints_error_invalid_binary_first.abra", assertions: "lexer/ints_error_invalid_binary_first.out" },
   { test: "lexer/ints_error_invalid_binary_eof.abra", assertions: "lexer/ints_error_invalid_binary_eof.out" },
+  { test: "lexer/ints_error_invalid_octal_first.abra", assertions: "lexer/ints_error_invalid_octal_first.out" },
+  { test: "lexer/ints_error_invalid_octal_eof.abra", assertions: "lexer/ints_error_invalid_octal_eof.out" },
   // Floats
   { test: "lexer/floats.abra", assertions: "lexer/floats.out.json" },
   { test: "lexer/floats_error_extra_period.abra", assertions: "lexer/floats_error_extra_period.out" },
