@@ -156,5 +156,26 @@
       "name": "Ident",
       "value": "a"
     }
+  },
+  {
+    "position": [10, 1],
+    "kind": {
+      "name": "Int",
+      "value": 420
+    }
+  },
+  {
+    "position": [10, 7],
+    "kind": {
+      "name": "Int",
+      "value": 36
+    }
+  },
+  {
+    "position": [10, 13],
+    "kind": {
+      "name": "Int",
+      "value": 7
+    }
   }
 ]

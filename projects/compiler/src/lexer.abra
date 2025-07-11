@@ -347,65 +347,58 @@ pub type Lexer {
     default
   }
 
+  func parseIntLiteral(self, base: Int): Int? {
+    var num = 0
+    var isFirstChar = true
+    while self._cursor < self._input.length {
+      val ch = self._input.byteAt(self._cursor).asInt()
+      val v = if base == 10 {
+        if '0'.asInt() <= ch && ch <= '9'.asInt() { ch - '0'.asInt() } else break
+      } else if base == 16 {
+        if '0'.asInt() <= ch && ch <= '9'.asInt() {
+          ch - '0'.asInt()
+        } else if 'a'.asInt() <= ch && ch <= 'f'.asInt() {
+          ch - 'a'.asInt() + 10
+        } else if 'A'.asInt() <= ch && ch <= 'F'.asInt() {
+          ch - 'A'.asInt() + 10
+        } else {
+          break
+        }
+      } else if base == 8 {
+        if '0'.asInt() <= ch && ch <= '7'.asInt() { ch - '0'.asInt() } else break
+      } else if base == 2 {
+        if '0'.asInt() <= ch && ch <= '1'.asInt() { ch - '0'.asInt() } else break
+      } else {
+        0
+      }
+
+      isFirstChar = false
+      num = (num * base) + v
+      self._advance()
+    }
+
+    if isFirstChar None else Some(num)
+  }
+
   func _tokenizeInteger(self, startPos: Position): Result<Token, LexerError> {
     val ch = self._input[self._cursor]
+    var base = 10
     if ch == "0" {
       if self._input[self._cursor + 1] == "x" {
         self._advance() // consume 'x'
         self._advance() // move to next
 
-        var isFirstChar = true
-        var num = 0
-        while self._cursor < self._input.length {
-          val ch = self._input.byteAt(self._cursor).asInt()
-          val v = try valueIfValidHexDigit(ch) else break
-
-          num = (num << 4) + v
-          isFirstChar = false
-
-          self._advance()
-        }
-
-        if isFirstChar {
-          val kind = if self._cursor < self._input.length {
-            val char = self._input[self._cursor]
-            LexerErrorKind.UnexpectedChar(char)
-          } else {
-            LexerErrorKind.UnexpectedEof
-          }
-
-          return Err(LexerError(position: self._curPos(), kind: kind))
-        }
-
-        return Ok(Token(position: startPos, kind: TokenKind.Int(num)))
+        base = 16
       } else if self._input[self._cursor + 1] == "b" {
         self._advance() // consume 'b'
         self._advance() // move to next
 
-        var isFirstChar = true
-        var num = 0
-        while self._cursor < self._input.length {
-          val ch = self._input.byteAt(self._cursor).asInt()
-          val v = if ch == 48 || ch == 49 { ch - 48 } else break
+        base = 2
+      } else if self._input[self._cursor + 1] == "o" {
+        self._advance() // consume 'o'
+        self._advance() // move to next
 
-          num = (num << 1) + v
-          isFirstChar = false
-
-          self._advance()
-        }
-
-        if isFirstChar {
-          val kind = if self._cursor < self._input.length {
-            val char = self._input[self._cursor]
-            LexerErrorKind.UnexpectedChar(char)
-          } else {
-            LexerErrorKind.UnexpectedEof
-          }
-
-          return Err(LexerError(position: self._curPos(), kind: kind))
-        }
-
-        return Ok(Token(position: startPos, kind: TokenKind.Int(num)))
+        base = 8
       } else if self._input[self._cursor + 1].isDigit() {
         self._advance()
         val char = self._input[self._cursor]
@@ -413,15 +406,14 @@ pub type Lexer {
       }
     }
 
-    // ord('0') = 48
-    var num = ch.byteAt(0).asInt() - 48
-    self._advance()
-    while self._input[self._cursor].isDigit() {
-      num *= 10
-      num += self._input.byteAt(self._cursor).asInt() - 48
-      self._advance()
+    val num = try self.parseIntLiteral(base) else {
+      val kind = if self._cursor < self._input.length {
+        LexerErrorKind.UnexpectedChar(self._input[self._cursor])
+      } else {
+        LexerErrorKind.UnexpectedEof
+      }
+      return Err(LexerError(position: self._curPos(), kind: kind))
     }
-
     if self._input[self._cursor] == "." && self._input[self._cursor + 1].isDigit() {
       return self._tokenizeFloat(startPos: startPos, wholeNumber: num)
     }
@@ -522,7 +514,6 @@ pub type Lexer {
           "\\" => "\\"
           "r" => "\r"
           "t" => "\t"
-          // "\'" => "\'"
           "\"" => "\""
           "$" => "$"
           "u" => {
