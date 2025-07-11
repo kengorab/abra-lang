@@ -291,7 +291,7 @@ type CharsIterator {
 
 type String {
   pub length: Int
-  _buffer: Pointer<Byte>
+  pub _buffer: Pointer<Byte>
 
   pub func withLength(length: Int): String {
     // Allocate length + 1 bytes; each String ends in a \0 byte. Even though we know the length, and memory-based
@@ -420,7 +420,7 @@ type String {
 
   pub func padLeft(self, totalSize: Int, padding = " "): String = todo("String#padLeft")
 
-  pub func trim(self): String {
+  func getTrimStartOffset(self): Int {
     var i = 0
     while i < self.length {
       val char = Char.fromInt(self._buffer.loadAt(i).asInt())
@@ -431,21 +431,26 @@ type String {
       }
     }
 
-    var j = self.length - 1
-    while j >= 0 {
-      val char = Char.fromInt(self._buffer.loadAt(j).asInt())
+    i
+  }
+
+  func getTrimEndOffset(self): Int {
+    var i = self.length - 1
+    while i >= 0 {
+      val char = Char.fromInt(self._buffer.loadAt(i).asInt())
       if char == ' ' || char == '\n' || char == '\t' || char == '\r' {
-        j -= 1
+        i -= 1
       } else {
         break
       }
     }
 
-    self.getRange(i, j + 1)
+    i + 1
   }
 
-  pub func trimStart(self, pattern = ""): String = todo("String#trimStart")
-  pub func trimEnd(self, pattern = ""): String = todo("String#trimEnd")
+  pub func trim(self): String = self.getRange(self.getTrimStartOffset(), self.getTrimEndOffset())
+  pub func trimStart(self, pattern = ""): String = self.getRange(self.getTrimStartOffset(), self.length)
+  pub func trimEnd(self, pattern = ""): String = self.getRange(0, self.getTrimEndOffset())
 
   pub func split(self, by = ""): String[] {
     if by.isEmpty() {
@@ -645,7 +650,7 @@ type ArrayIterator<T> {
 
 type Array<T> {
   pub length: Int
-  _buffer: Pointer<T>
+  pub _buffer: Pointer<T>
   _capacity: Int = 0
 
   pub func withCapacity<T>(initialCapacity: Int): T[] {

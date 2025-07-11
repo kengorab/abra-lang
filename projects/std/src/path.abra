@@ -1,0 +1,32 @@
+import "fs" as fs
+
+pub type Path {
+  pub segments: String[]
+
+  pub func fromString(fileName: String): Path {
+    val parts = if fileName[0] == "/" {
+      fileName.split("/")
+    } else {
+      val cwd = fs.getCurrentWorkingDirectory()
+      val path = cwd + "/" + fileName
+      path.split("/")
+    }
+
+    val segments: String[] = []
+    for part in parts {
+      if part.isEmpty() || part == "." continue
+      if part == ".." {
+        segments.pop()
+        continue
+      }
+
+      segments.push(part)
+    }
+
+    Path(segments: segments)
+  }
+
+  pub func asString(self): String {
+    "/${self.segments.join("/")}"
+  }
+}

@@ -2782,6 +2782,9 @@ pub type Compiler {
 
         try self._callMalloc(sizeVal, Some("ptr.mem"))
       }
+      "pointer_null" => {
+        try self._currentFn.block.buildAdd(Value.Int(0), Value.Int(0)) else |e| return qbeError(e)
+      }
       "pointer_realloc" => {
         val (ptr, count) = self._intrinsicArgs2(intrinsicFnName, arguments)
         val ptrVal = try self._compileExpression(ptr)
@@ -2949,6 +2952,12 @@ pub type Compiler {
       }
       "functionnames" => {
         try self._currentFn.block.buildAdd(Value.Int(0), self._fnNamesPtr) else |e| return qbeError(e)
+      }
+      "pointer_address" => {
+        val arg = self._intrinsicArgs1(intrinsicFnName, arguments)
+        val argVal = try self._compileExpression(arg)
+
+        try self._currentFn.block.buildAdd(Value.Int(0), argVal) else |e| return qbeError(e)
       }
       _ => unreachable("unsupported intrinsic '$intrinsicFnName'")
     }

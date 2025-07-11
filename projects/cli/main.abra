@@ -1,0 +1,136 @@
+import "process" as process
+import BuildCmd, build from "./cmd/build"
+
+enum SubcommandParseError {
+  NoCommand
+  MissingRequiredValue(name: String, subcommand: String? = None)
+  MissingRequiredPositionalArg(name: String, subcommand: String? = None)
+  UnknownFlag(name: String, subcommand: String? = None)
+}
+
+type DefaultCmd {
+  inputFile: String
+  programArguments: String[]
+}
+
+enum Subcommand {
+  Help
+  Build(inner: BuildCmd)
+  Default(inner: DefaultCmd)
+
+  func printUsage() {
+    stdoutWriteln("USAGE")
+    stdoutWriteln("  abra <file-path> [<program-args>...]")
+    stdoutWriteln("  abra [subcommand]")
+    stdoutWriteln()
+    stdoutWriteln("DEFAULT MODE              Compiles and runs abra source file")
+    stdoutWriteln("  USAGE")
+    stdoutWriteln("    abra <file-path> [<program-args>...]")
+    stdoutWriteln("  ARGS")
+    stdoutWriteln("    <file-path>           Path to the abra root source file to build and run")
+    stdoutWriteln("    <program-args>...     Arguments to pass to the built abra program when running")
+    stdoutWriteln()
+    stdoutWriteln("SUBCOMMANDS")
+    stdoutWriteln("  help/-h                 Prints this usage info")
+    stdoutWriteln("    USAGE")
+    stdoutWriteln("      abra help")
+    stdoutWriteln("      abra -h")
+    stdoutWriteln()
+    stdoutWriteln("  build                   Compiles the abra source file to selected target")
+    stdoutWriteln("    USAGE")
+    stdoutWriteln("      abra build [OPTIONS] <input-path> [<program-args>...]")
+    stdoutWriteln("    OPTIONS")
+    stdoutWriteln("      -r/--run            Run after building, forwarding <program-args>")
+    stdoutWriteln("      -o <out-path>       Where the built artifact should be placed")
+    stdoutWriteln("    ARGS")
+    stdoutWriteln("      <file-path>         Path to the abra root source file to build")
+    stdoutWriteln("      <program-args>...   Arguments to pass to the built abra program if [-r/--run] is passed;")
+    stdoutWriteln("                          will be discarded if [-r/--run] is not passed")
+  }
+
+  func parse(programArguments: String[]): Result<Subcommand, SubcommandParseError> {
+    val args = programArguments.iterator()
+
+    val progName = try args.next() else unreachable("prog name is always first arg")
+
+    val subcommand = try args.next() else return Err(SubcommandParseError.NoCommand)
+    match subcommand {
+      "help" => Ok(Subcommand.Help)
+      "-h" => Ok(Subcommand.Help)
+      "build" => {
+        var outputFile: String? = None
+        var run = false
+        var inputFileArg: String? = None
+
+        while true {
+          match args.next() {
+            "-o" => {
+              val dir = try args.next() else return Err(SubcommandParseError.MissingRequiredValue("-o", Some("build")))
+              outputFile = Some(dir)
+            }
+            "-r" => run = true
+            "--run" => run = true
+            None => break
+            else arg => {
+              if arg.startsWith("-") return Err(SubcommandParseError.UnknownFlag(arg, Some("build")))
+
+              inputFileArg = Some(arg)
+              break
+            }
+          }
+        }
+        val inputFile = try inputFileArg else return Err(SubcommandParseError.MissingRequiredPositionalArg("input file", Some("build")))
+
+        val programArgs: String[] = []
+        while args.next() |arg| programArgs.push(arg)
+
+        val cmd = BuildCmd(outputFile: outputFile, run: run, inputFile: inputFile, programArguments: programArgs)
+        Ok(Subcommand.Build(cmd))
+      }
+      else arg => {
+        if arg.startsWith("-") return Err(SubcommandParseError.UnknownFlag(arg))
+
+        val programArgs: String[] = []
+        while args.next() |arg| programArgs.push(arg)
+
+        val cmd = DefaultCmd(inputFile: arg, programArguments: programArgs)
+        Ok(Subcommand.Default(cmd))
+      }
+    }
+  }
+}
+
+func handleDefault(cmd: DefaultCmd) {
+  
+}
+
+func main() {
+  val cmd = try Subcommand.parse(process.args()) else |err| {
+    var msg = match err {
+      SubcommandParseError.NoCommand => "no command given"
+      SubcommandParseError.MissingRequiredValue(name, cmd) => {
+        val suffix = if cmd |cmd| " for command '$cmd'" else ""
+        "value required for option '$name'$suffix"
+      }
+      SubcommandParseError.MissingRequiredPositionalArg(name, cmd) => {
+        val suffix = if cmd |cmd| " for command '$cmd'" else ""
+        "value required for positional argument '$name'$suffix"
+      }
+      SubcommandParseError.UnknownFlag(name, cmd) => {
+        val suffix = if cmd |cmd| " for command '$cmd'" else ""
+        "unknown flag '$name'$suffix"
+      }
+    }
+    stdoutWriteln("Error: $msg\n")
+
+    Subcommand.printUsage()
+    process.exit(1)
+  }
+
+  match cmd {
+    Subcommand.Help => Subcommand.printUsage()
+    Subcommand.Build(cmd) => build(cmd)
+    Subcommand.Default(cmd) => handleDefault(cmd)
+  }
+}
+main()
