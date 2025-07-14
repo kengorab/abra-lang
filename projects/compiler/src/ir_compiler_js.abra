@@ -341,6 +341,9 @@ pub type Compiler {
         self.indentLevel -= 1
         self.sb.writeln("}")
       }
+      Operation.FunctionPointer(fnName) => {
+        self.sb.writeln("const $dst = $fnName;")
+      }
       Operation.Call(ret, fnName, args) => {
         if ret != IrType.Unit {
           self.sb.write("const $dst = ")
@@ -348,6 +351,21 @@ pub type Compiler {
 
         self.sb.write(fnName)
           .write("(")
+        for arg, idx in args {
+          self.emitIrValueToJsValue(arg)
+          if idx != args.length - 1 {
+            self.sb.write(", ")
+          }
+        }
+        self.sb.writeln(");")
+      }
+      Operation.CallValue(ret, fn, args) => {
+        if ret != IrType.Unit {
+          self.sb.write("const $dst = ")
+        }
+
+        self.emitIrValueToJsValue(fn)
+        self.sb.write("(")
         for arg, idx in args {
           self.emitIrValueToJsValue(arg)
           if idx != args.length - 1 {
@@ -547,6 +565,17 @@ pub type Compiler {
             self.sb.write("const $dst = Math.round(")
             self.emitIrValueToJsValue(float)
             self.sb.writeln(");")
+          }
+          Builtin.FloatBitsToInt(float) => {
+            val floatArray = self.nextTemp()
+            self.sb.writeln("const $floatArray = new Float32Array(1);")
+            val intArray = self.nextTemp()
+            self.sb.writeln("const $intArray = new Uint32Array($floatArray.buffer);")
+            self.sb.write("$floatArray[0] = ")
+            self.emitIrValueToJsValue(float)
+            self.sb.writeln(";")
+
+            self.sb.writeln("const $dst = $intArray[0];")
           }
           Builtin.Uninitialized => {
             self.sb.writeln("const $dst = undefined;")

@@ -1,66 +1,9 @@
-// val r = range(0, 4)
-// stdoutWriteln(""+r)
-// stdoutWriteln(""+r.next())
-// stdoutWriteln(""+r.next())
-// stdoutWriteln(""+r.next())
-// stdoutWriteln(""+r.next())
-// stdoutWriteln(""+r.next())
+// val arr = [1, 2, 3]
+// val arr2 = arr.map((x) => x + 1)
 
-// stdoutWriteln(""+Some("asdf"))
-// val i = 123
-// val i = 123
-// val s = "asdf"
-// stdoutWriteln(":$s:")
-// stdoutWriteln(":$r:")
+// stdoutWriteln(""+arr2)
 
-// val arr = [("a", 1), ("b", 2), ("c", 3)]
-
-// for (a, b), idx in arr {
-//   stdoutWriteln("$a, $b, $idx")
-// }
-
-// for ch, idx in { a: 1, b: 2, c: 3 } {
-//   stdoutWriteln("$ch $idx")
-// }
-
-val s = "asdf"
-stdoutWriteln(""+s.length)
-
-var a: String? = None
-while s.length < 5 && !a {
-  stdoutWriteln("here")
-
-  a = Some("foo")
+val chars = "£".chars()
+for ch in chars {
+  stdoutWriteln(""+ch.asInt())
 }
-
-// val m = { a: 1, "b": 2 }
-// // val m: Map<String, Int> = {}
-// stdoutWriteln(""+m)
-
-// func makeTuple(a: String, b: Int): (String, Int) = (a, b)
-
-// val (x, y) = makeTuple("hello", 24)
-// stdoutWriteln(""+x+y)
-
-// var s = Some(makeTuple("hello", 24))
-// if s |(a, b)| {
-//   stdoutWriteln(""+a+b)
-// }
-
-// var i = 0
-// while s |(a, b)| {
-//   stdoutWriteln(""+a+b)
-
-//   if i == 1 {
-//     s = None
-//   }
-//   i += 1
-// }
-
-// // func foo() {
-// //   while s |(a, b)| {
-// //     stdoutWriteln(""+a+b)
-// //     return
-// //   }
-// // }
-// // foo()
