@@ -194,6 +194,7 @@ pub enum Builtin {
   FloatCeil(floatVal: Value)
   FloatFloor(floatVal: Value)
   FloatRound(floatVal: Value)
+  FloatBitsToInt(floatVal: Value)
   Uninitialized
 }
 
@@ -249,7 +250,9 @@ pub enum Operation {
   While(cond: Value, body: Block)
   ForRanged(start: Value, end: CompoundValue, iteratee: Ident, idx: Ident?, body: Block)
 
+  FunctionPointer(fnName: String)
   Call(ret: IrType, fnName: String, args: Value[])
+  CallValue(ret: IrType, fnVal: Value, args: Value[])
 
   Break
   Continue
@@ -536,10 +539,24 @@ pub enum Operation {
         }
         sb.write("# endfor")
       }
+      Operation.FunctionPointer(fnName) => {
+        sb.write("fn_ptr($fnName)")
+      }
       Operation.Call(ret, fnName, args) => {
         sb.write("call(")
         ret.render(sb)
         sb.write(", ").write(fnName)
+        for arg, idx in args {
+          sb.write(", ")
+          arg.render(sb)
+        }
+        sb.write(")")
+      }
+      Operation.CallValue(ret, fnVal, args) => {
+        sb.write("call(")
+        ret.render(sb)
+        sb.write(", ")
+        fnVal.render(sb)
         for arg, idx in args {
           sb.write(", ")
           arg.render(sb)
@@ -680,6 +697,10 @@ pub enum Operation {
             sb.write("float_round, ")
             float.render(sb)
           }
+          Builtin.FloatBitsToInt(float) => {
+            sb.write("float_bits_to_int, ")
+            float.render(sb)
+          }
           Builtin.Uninitialized => {
             sb.write("uninitialized")
           }
@@ -786,6 +807,7 @@ type FunctionToCompile {
   paramsNeedingDefaultValue: Bool[]
   concreteGenerics: Map<String, ConcreteType>
   methodInstanceType: ConcreteType? = None
+  paramsToDiscard: ConcreteType[] = []
 }
 
 type ConcreteType {
@@ -818,6 +840,7 @@ pub type Generator {
   globals: Map<String, GlobalVariable> = {}
   knowns: Knowns = Knowns()
   tupleStructs: Map<String, tc.Struct> = {}
+  functionStructs: Map<String, tc.Struct> = {}
 
   pub func generateIR(project: tc.Project, foldConstants: Bool = true): IR {
     val allModules = project.modules.values().sortBy(m => m.id)
@@ -902,15 +925,15 @@ pub type Generator {
     self.addFunction(ctx.fnName, irFunc)
     val prevCtx = self.enterFunction(irFunc)
 
-    var selfParam: Value? = None
-    match fn.kind {
+    val selfParam = match fn.kind {
       FunctionKind.InstanceMethod => {
         val selfConcreteType = try ctx.methodInstanceType else unreachable("Instance method without instance type")
         val selfTy = self.getIrTypeForConcreteType(selfConcreteType)
         val selfParamIdent = Ident(ty: selfTy, kind: IdentKind.Named("self"))
         irFunc.params.push(selfParamIdent)
-        selfParam = Some(Value.Ident(selfParamIdent))
+        Some(Value.Ident(selfParamIdent))
       }
+      else => None
     }
 
     var anyParamNeedsDefault = false
@@ -936,6 +959,12 @@ pub type Generator {
       argsForUnderlying.push(argVal)
     }
 
+    for paramConcreteType, idx in ctx.paramsToDiscard {
+      val paramTy = self.getIrTypeForConcreteType(paramConcreteType)
+      val paramIdent = Ident(ty: paramTy, kind: IdentKind.Named("_discard_${idx}_"))
+      irFunc.params.push(paramIdent)
+    }
+
     match fn.kind {
       FunctionKind.InstanceMethod => {
         val selfConcreteType = try ctx.methodInstanceType else unreachable("Instance method without instance type")
@@ -953,10 +982,16 @@ pub type Generator {
           self.curCtx = prevCtx
           return
         }
+
+        if fn.label.name == "hash" && fn.isGenerated {
+          self.genHashMethodBody(selfParam, selfConcreteType)
+          self.curCtx = prevCtx
+          return
+        }
       }
     }
 
-    if anyParamNeedsDefault {
+    if anyParamNeedsDefault || !ctx.paramsToDiscard.isEmpty() {
       val baseFnName = self.fnName(ctx.methodInstanceType, fn, ctx.concreteGenerics, [])
       self.enqueueFunction(fn, baseFnName, [], ctx.methodInstanceType, ctx.concreteGenerics)
 
@@ -1161,6 +1196,26 @@ pub type Generator {
         self.emit(Instruction(op: Operation.Return(Some(res))))
       }
       InstanceKind.Enum => todo("genEqMethodBody: enum")
+    }
+  }
+
+  func genHashMethodBody(self, selfVal: Value, concreteType: ConcreteType) {
+    val newConcreteGenerics = self.extractConcreteGenericsFromConcreteType(concreteType)
+    match concreteType.instanceKind {
+      InstanceKind.Struct(s) => {
+        if s == self.project.preludeIntStruct || s == self.project.preludeBoolStruct || s == self.project.preludeCharStruct {
+          self.emit(Instruction(op: Operation.Return(Some(selfVal))))
+          return
+        }
+        if s == self.project.preludeFloatStruct {
+          val ident = self.ssaValue(IrType.I64, Operation.Builtin(IrType.I64, Builtin.FloatBitsToInt(selfVal)), None)
+          self.emit(Instruction(op: Operation.Return(Some(ident))))
+          return
+        }
+
+        todo("genHashMethodBody: non-primitives")
+      }
+      InstanceKind.Enum => todo("genHashMethodBody: enum")
     }
   }
 
@@ -1601,7 +1656,7 @@ pub type Generator {
         self.genCall(pos, concreteGenerics, newConcreteGenerics, dst, invokee, args)
       }
       TypedAstNodeKind.Indexing(node) => self.genIndexing(pos, concreteGenerics, dst, node)
-      TypedAstNodeKind.Lambda => todo("genExpression: Lambda (${node.token})")
+      TypedAstNodeKind.Lambda(fn, typeHint) => self.genLambda(concreteGenerics, fn, typeHint, dst)
       TypedAstNodeKind.If(isStatement, condNode, condBinding, ifBlock, ifBlockTerminator, elseBlock, elseBlockTerminator) => {
         if isStatement unreachable("unexpected if statement")
 
@@ -1656,6 +1711,7 @@ pub type Generator {
         val resIrTy = self.getIrTypeForConcreteType(resConcreteType)
         self.ssaValue(resIrTy, Operation.If(resIrTy, condVal, ifBody, elseBody), dst)
       }
+      TypedAstNodeKind.Try(expr, elseClause) => self.genTry(concreteGenerics, expr, elseClause, dst)
       else => todo("Other expressions (${node.token})")
     }
   }
@@ -1943,10 +1999,8 @@ pub type Generator {
           return self.ssaValueComptime(const, dst)
         }
 
-        if lvalTy == IrType.I64 && rvalTy == IrType.I64 {
-          for inst in rval.body {
-            self.emit(inst)
-          }
+        if (lvalTy == IrType.I64 || lvalTy == IrType.Byte) && (rvalTy == IrType.I64 || rvalTy == IrType.Byte) {
+          for inst in rval.body self.emit(inst)
           self.ssaValue(IrType.I64, Operation.BitAnd(lval, rval.result), dst)
         } else {
           self.ssaValue(IrType.Bool, Operation.BoolAnd(lval, rval), dst)
@@ -1968,10 +2022,8 @@ pub type Generator {
           return self.ssaValueComptime(const, dst)
         }
 
-        if lvalTy == IrType.I64 && rvalTy == IrType.I64 {
-          for inst in rval.body {
-            self.emit(inst)
-          }
+        if (lvalTy == IrType.I64 || lvalTy == IrType.Byte) && (rvalTy == IrType.I64 || rvalTy == IrType.Byte) {
+          for inst in rval.body self.emit(inst)
           self.ssaValue(IrType.I64, Operation.BitOr(lval, rval.result), dst)
         } else {
           self.ssaValue(IrType.Bool, Operation.BoolOr(lval, rval), dst)
@@ -1987,7 +2039,24 @@ pub type Generator {
         val retTy = if bitwise { IrType.I64 } else { IrType.Bool }
         self.ssaValue(retTy, Operation.Xor(bitwise, lval, rval), dst)
       }
-      BinaryOp.Coalesce => todo("genBinary: BinaryOp.Coalesce")
+      BinaryOp.Coalesce => {
+        val innerType = try self.project.typeIsOption(left.ty) else unreachable("type of coalesce operator must be Optional")
+        val innerConcreteType = self.getConcreteTypeFromType(innerType, concreteGenerics)
+        val innerTy = self.getIrTypeForConcreteType(innerConcreteType)
+
+        val lval = self.genExpression(left, concreteGenerics)
+        val condVal = self.ssaValue(IrType.Bool, Operation.OptionIsNone(lval), None)
+
+        val ifBody = self.withinBlock("coalesce_fail", false, () => {
+          val rval = self.genExpression(left, concreteGenerics)
+          Some(rval)
+        })
+        val elseBody = self.withinBlock("coalesce_pass", false, () => {
+          Some(self.ssaValue(innerTy, Operation.OptionUnwrap(innerTy, lval), None))
+        })
+
+        self.ssaValue(innerTy, Operation.If(innerTy, condVal, ifBody, elseBody), dst)
+      }
       BinaryOp.Eq => self.genEq(concreteGenerics, left, right, false, dst)
       BinaryOp.Neq => self.genEq(concreteGenerics, left, right, true, dst)
       BinaryOp.LT => {
@@ -2051,7 +2120,7 @@ pub type Generator {
           return self.ssaValueComptime(const, dst)
         }
 
-        self.ssaValue(IrType.Bool, Operation.Shl(lval, rval), dst)
+        self.ssaValue(IrType.I64, Operation.Shl(lval, rval), dst)
       }
       BinaryOp.GT => {
         val lval = self.genExpression(left, concreteGenerics)
@@ -2114,7 +2183,7 @@ pub type Generator {
           return self.ssaValueComptime(const, dst)
         }
 
-        self.ssaValue(IrType.Bool, Operation.Shr(lval, rval), dst)
+        self.ssaValue(IrType.I64, Operation.Shr(lval, rval), dst)
       }
     }
   }
@@ -2224,6 +2293,10 @@ pub type Generator {
             }
             "char_as_int" => {
               val arg = self.intrinsicArgs1("char_as_int", args)
+              self.genExpression(arg, innerConcreteGenerics, dst)
+            }
+            "int_as_char" => {
+              val arg = self.intrinsicArgs1("int_as_char", args)
               self.genExpression(arg, innerConcreteGenerics, dst)
             }
             "int_as_float" => {
@@ -2415,7 +2488,30 @@ pub type Generator {
 
         (fnName, Some(concreteType))
       }
-      else => todo("other TypedInvokee types")
+      TypedInvokee.Expr(e) => {
+        val fnVal = self.genExpression(e, concreteGenerics)
+        val returnType = match e.ty.kind {
+          TypeKind.Func(_, returnType) => if returnType.kind == tc.TypeKind.PrimitiveUnit None else Some(self.getConcreteTypeFromType(returnType, concreteGenerics))
+          else => unreachable()
+        }
+
+        for arg in args {
+          if arg |arg| {
+            argValues.push(self.genExpression(arg, concreteGenerics))
+          }
+        }
+
+        return if returnType |concreteReturnType| {
+          val retTy = self.getIrTypeForConcreteType(concreteReturnType)
+
+          self.ssaValue(retTy, Operation.CallValue(ret: retTy, fnVal: fnVal, args: argValues), dst)
+        } else {
+          val op = Operation.CallValue(ret: IrType.Unit, fnVal: fnVal, args: argValues)
+          self.emit(Instruction(op: op))
+
+          Value.Unit
+        }
+      }
     }
 
     for arg in args {
@@ -2709,7 +2805,88 @@ pub type Generator {
     }
   }
 
+  func genLambda(self, concreteGenerics: Map<String, ConcreteType>, fn: tc.Function, typeHint: tc.Type?, dst: String?): Value {
+    if fn.isClosure() todo("closure lambdas")
+
+    val targetParamTypes = if typeHint |hint| {
+      val paramTypes = match hint.kind {
+        TypeKind.Func(paramTypes, _) => Some(paramTypes)
+        // If the function value is being treated as a Hole, then no param type info needs to be known later anyway
+        TypeKind.Hole => None
+        _ => unreachable("typeKind must be TypeKind.Func")
+      }
+      paramTypes
+    } else {
+      None
+    }
+
+    self.genFunctionValue(concreteGenerics, fn, targetParamTypes, dst)
+  }
+
+  func genTry(self, concreteGenerics: Map<String, ConcreteType>, expr: tc.TypedAstNode, elseClause: tc.TypedTryElseClause?, dst: String?): Value {
+    if elseClause todo("genTry: else blocks")
+
+    val v = self.genExpression(expr, concreteGenerics)
+    if self.project.typeIsOption(expr.ty) |innerType| {
+      val innerConcreteType = self.getConcreteTypeFromType(innerType, concreteGenerics)
+      val innerTy = self.getIrTypeForConcreteType(innerConcreteType)
+      val condVal = self.ssaValue(IrType.Bool, Operation.OptionIsNone(v), None)
+
+      val ifBody = self.withinBlock("try_fail", true, () => {
+        self.emit(Instruction(op: Operation.Return(Some(v))))
+        None
+      })
+      val elseBody = self.withinBlock("try_pass", false, () => {
+        Some(self.ssaValue(innerTy, Operation.OptionUnwrap(innerTy, v), None))
+      })
+
+      self.ssaValue(innerTy, Operation.If(innerTy, condVal, ifBody, elseBody), dst)
+    } else {
+      todo("genTry: result type")
+    }
+  }
+
   // codegen helpers
+
+  func genFunctionValue(self, concreteGenerics: Map<String, ConcreteType>, fn: tc.Function, targetParamTypes: (tc.Type, Bool)[]?, dst: String?): Value {
+    val concreteParamTypes = if targetParamTypes |paramTypes| {
+      paramTypes.filter(_p => _p[1]).map(_p => self.getConcreteTypeFromType(_p[0], concreteGenerics))
+    } else {
+      fn.params.filter(p => !p.defaultValue).map(p => self.getConcreteTypeFromType(p.ty, concreteGenerics))
+    }
+    val targetArity = concreteParamTypes.length
+
+    val fnName = if targetArity == fn.params.length {
+      val fnName = self.fnName(None, fn, concreteGenerics, [])
+      self.enqueueFunction(fn, fnName, [], None, concreteGenerics)
+      fnName
+    } else if targetArity < fn.params.length {
+      val targetParamTypes = targetParamTypes ?: []
+      val paramsNeedingDefaultValue = fn.params.map((param, idx) => {
+        if targetParamTypes[idx] {
+          false
+        } else {
+          if !param.defaultValue unreachable("creating fn val for fn '${fn.label}' with arity $targetArity param '${param.label.name}' to be optional")
+          true
+        }
+      })
+      val fnName = self.fnName(None, fn, concreteGenerics, paramsNeedingDefaultValue)
+      self.enqueueFunction(fn, fnName, paramsNeedingDefaultValue, None, concreteGenerics)
+      fnName
+    } else {
+      val toDiscard = concreteParamTypes[fn.params.length:]
+      val fnName = self.fnName(None, fn, concreteGenerics, [], !toDiscard.isEmpty())
+      self.enqueueFunction(fn, fnName, [], None, concreteGenerics, toDiscard)
+
+      fnName
+    }
+
+    if !fn.isClosure() {
+      self.ssaValue(IrType.Ptr, Operation.FunctionPointer(fnName: fnName), dst)
+    } else {
+      todo()
+    }
+  }
 
   func generateArrayWithItems(self, pos: Position, arrayItemConcreteType: ConcreteType, dst: String?, values: Value[]): Value {
     val arrayConcreteType = ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeArrayStruct), typeArgs: [arrayItemConcreteType])
@@ -2876,8 +3053,8 @@ pub type Generator {
     CompoundValue(body: instrs, result: finalVal)
   }
 
-  func enqueueFunction(self, fn: tc.Function, fnName: String, paramsNeedingDefaultValue: Bool[], methodInstanceType: ConcreteType?, concreteGenerics: Map<String, ConcreteType>) {
-    self.fnQueue.push(FunctionToCompile(callable: CallableToCompile.Function(fn), fnName: fnName, paramsNeedingDefaultValue: paramsNeedingDefaultValue, concreteGenerics: concreteGenerics, methodInstanceType: methodInstanceType))
+  func enqueueFunction(self, fn: tc.Function, fnName: String, paramsNeedingDefaultValue: Bool[], methodInstanceType: ConcreteType?, concreteGenerics: Map<String, ConcreteType>, paramsToDiscard: ConcreteType[] = []) {
+    self.fnQueue.push(FunctionToCompile(callable: CallableToCompile.Function(fn), fnName: fnName, paramsNeedingDefaultValue: paramsNeedingDefaultValue, concreteGenerics: concreteGenerics, methodInstanceType: methodInstanceType, paramsToDiscard: paramsToDiscard))
   }
 
   func enqueueInitializer(self, ty: ConcreteType, enumVariant: tc.TypedEnumVariant?, fnName: String, paramsNeedingDefaultValue: Bool[], methodInstanceType: ConcreteType?, concreteGenerics: Map<String, ConcreteType>) {
@@ -2955,6 +3132,17 @@ pub type Generator {
 
   func isTupleStruct(self, struct: tc.Struct): Bool = if self.tupleStructs[struct.label.name] |s| s == struct else false
 
+  func functionStruct(self, arity: Int, returns: Bool): tc.Struct {
+    val name = if returns "Function${arity + 1}" else "UFunction${arity}"
+
+    self.functionStructs.getOrInsert(name, () => {
+      val dummyModuleId = 0
+      val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      val typeParams = (if returns { ["Ret"] } else []).concat(alphabet[:arity].split(""))
+      tc.Struct.makeDummy(moduleId: dummyModuleId, name: name, typeParams: typeParams, fields: [])
+    })
+  }
+
   func getConcreteTypeFromType(self, ty: tc.Type, concreteGenerics: Map<String, ConcreteType>): ConcreteType {
     match ty.kind {
       TypeKind.CouldNotDetermine => unreachable("Encountered CouldNotDetermine type")
@@ -2973,7 +3161,19 @@ pub type Generator {
         val concreteTypeArgs = typeArgs.map(t => self.getConcreteTypeFromType(t, concreteGenerics))
         ConcreteType(instanceKind: instanceKind, typeArgs: concreteTypeArgs)
       }
-      TypeKind.Func(paramTypes, returnType) => todo("TypeKind.Func")
+      TypeKind.Func(paramTypes, returnType) => {
+        val returns = returnType.kind == tc.TypeKind.PrimitiveUnit
+        val struct = self.functionStruct(paramTypes.length, returns)
+        val concreteTypeArgs: ConcreteType[] = []
+        if returns {
+          concreteTypeArgs.push(self.getConcreteTypeFromType(returnType, concreteGenerics))
+        }
+        for (t, _) in paramTypes {
+          concreteTypeArgs.push(self.getConcreteTypeFromType(t, concreteGenerics))
+        }
+
+        ConcreteType(instanceKind: InstanceKind.Struct(struct), typeArgs: concreteTypeArgs)
+      }
       TypeKind.Type(type_) => todo("TypeKind.Type")
       TypeKind.Tuple(types) => {
         val struct = self.tupleStruct(types.length)
@@ -3000,47 +3200,34 @@ pub type Generator {
     concreteGenerics
   }
 
-  func fnName(self, methodInstTy: ConcreteType?, fn: tc.Function, concreteGenerics: Map<String, ConcreteType>, paramsNeedingDefaultValue: Bool[] = []): String {
+  func fnName(self, methodInstTy: ConcreteType?, fn: tc.Function, concreteGenerics: Map<String, ConcreteType>, paramsNeedingDefaultValue: Bool[] = [], discard = false): String {
     val defaultValuesFlag = paramsNeedingDefaultValue.reduce(0, (acc, f) => (acc << 1) || (if f 1 else 0))
-    val prefix = match fn.kind {
+    val base = match fn.kind {
       FunctionKind.Standalone => {
         val (defModId, _) = try fn.scope.findParentModule() else unreachable("could not find parent module for function '${fn.label.name}'")
-
-        val base = "_${defModId}_${fn.label.name}"
-        if !fn.typeParams.isEmpty() todo("generic functions")
-
-        base
+        "_${defModId}_"
       }
       FunctionKind.InstanceMethod => {
-        val instTy = try methodInstTy else unreachable("InstanceMethod without methodInstTy")
-        val typeName = self.typeName(instTy)
-
-        val base = ["_${typeName}_${fn.label.name}"]
-        for (_, label) in fn.typeParams {
-          val concreteGeneric = try concreteGenerics[label.name] else unreachable("Could not resolve generic '${label.name}' for function '${fn.label.name}'")
-          base.push(self.typeName(concreteGeneric))
-        }
-
-        base.join("_")
+        val typeName = self.typeName(try methodInstTy else unreachable("InstanceMethod without methodInstTy"))
+        "_${typeName}_"
       }
       FunctionKind.StaticMethod(instanceKind, _) => {
         val typeName = self.typeName(ConcreteType(instanceKind: instanceKind), withTypeArgs: false)
-
-        val base = ["_${typeName}__${fn.label.name}"]
-        for (_, label) in fn.typeParams {
-          val concreteGeneric = try concreteGenerics[label.name] else unreachable("Could not resolve generic '${label.name}' for function '${fn.label.name}'")
-          base.push(self.typeName(concreteGeneric))
-        }
-
-        base.join("_")
+        "_${typeName}__"
       }
     }
 
-    if defaultValuesFlag == 0 {
-      prefix
-    } else {
-      "${prefix}_$defaultValuesFlag"
+    val parts = ["${base}${fn.label.name}"]
+
+    for (_, label) in fn.typeParams {
+      val concreteGeneric = try concreteGenerics[label.name] else unreachable("Could not resolve generic '${label.name}' for function '${fn.label.name}'")
+      parts.push(self.typeName(concreteGeneric))
     }
+
+    if defaultValuesFlag != 0 parts.push("$defaultValuesFlag")
+    if discard parts.push("discard")
+
+    parts.join("_")
   }
 
   func structInitFnName(self, ty: ConcreteType, paramsNeedingDefaultValue: Bool[] = []): String {

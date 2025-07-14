@@ -587,7 +587,7 @@ pub type Compiler {
         }
 
         self.currentFn.block.registerLabel(labelCond)
-        val itVal = self.currentFn.block.buildLoadL(itSlot)
+        val itVal = self.currentFn.block.buildLoadL(itSlot, Some(self.nextTemp()))
         for inst in end.body {
           self.compileInstruction(inst)
         }
@@ -619,12 +619,45 @@ pub type Compiler {
 
         self.loopStack.pop()
       }
+      Operation.FunctionPointer(fnName) => {
+        val shl = try self.currentFn.block.buildShl(qbe.Value.Global(fnName, qbe.QbeType.Pointer), qbe.Value.Int(1), dst) else |e| unreachable(e)
+        try self.currentFn.block.buildOr(shl, qbe.Value.Int(1), dst) else |e| unreachable(e)
+      }
       Operation.Call(ret, fnName, args) => {
         val argVals = args.map(a => self.irValueToQbeValue(a))
         if self.irTypeToQbeReturnType(ret) |ret| {
           try self.currentFn.block.buildCallRaw(fnName, ret, argVals, dst) else |e| unreachable(e)
         } else {
           self.currentFn.block.buildVoidCallRaw(fnName, argVals)
+        }
+      }
+      Operation.CallValue(ret, fn, args) => {
+        val argVals = args.map(a => self.irValueToQbeValue(a))
+        val fnValQbe = self.irValueToQbeValue(fn)
+
+        val isFnPtrCond = try self.currentFn.block.buildAnd(fnValQbe, qbe.Value.Int(1), Some(self.nextTemp())) else |e| unreachable(e)
+        val labelTrue = self.currentFn.block.addLabel("fn_is_raw_ptr")
+        val labelFalse = self.currentFn.block.addLabel("fn_is_closure")
+        val labelCont = self.currentFn.block.addLabel("fn_cont")
+        self.currentFn.block.buildJnz(isFnPtrCond, labelTrue, labelFalse)
+
+        val phiCases: (qbe.Label, qbe.Value)[] = []
+
+        self.currentFn.block.registerLabel(labelTrue)
+        val shr = try self.currentFn.block.buildShr(fnValQbe, qbe.Value.Int(1), Some(self.nextTemp())) else |e| unreachable(e)
+        phiCases.push((labelTrue, shr))
+        self.currentFn.block.buildJmp(labelCont)
+
+        self.currentFn.block.registerLabel(labelFalse)
+        self.currentFn.block.buildHalt()
+
+        self.currentFn.block.registerLabel(labelCont)
+        val fnVal = try self.currentFn.block.buildPhi(phiCases, Some(self.nextTemp())) else |e| unreachable(e)
+
+        if self.irTypeToQbeReturnType(ret) |ret| {
+          try self.currentFn.block.buildCall(qbe.Callable.Value(fnVal, Some(ret)), argVals, dst) else |e| unreachable(e)
+        } else {
+          self.currentFn.block.buildVoidCall(qbe.Callable.Value(fnVal, None), argVals)
         }
       }
       Operation.Break => {
@@ -829,6 +862,11 @@ pub type Compiler {
 
             val roundRes = try self.currentFn.block.buildCallRaw("round", QbeType.F64, [floatVal], Some(self.nextTemp())) else |e| unreachable(e)
             self.currentFn.block.buildFToL(roundRes, true, dst)
+          }
+          Builtin.FloatBitsToInt(float) => {
+            val floatVal = self.irValueToQbeValue(float)
+
+            self.currentFn.block.buildCastD(floatVal, dst)
           }
           Builtin.Uninitialized => {
             self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)

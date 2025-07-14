@@ -857,7 +857,7 @@ pub type TypedMatchCase {
   pub terminator: Terminator?
 }
 
-type TypedTryElseClause {
+pub type TypedTryElseClause {
   pub pattern: (BindingPattern, Variable[])?
   pub errorType: Type
   pub block: TypedAstNode[]
