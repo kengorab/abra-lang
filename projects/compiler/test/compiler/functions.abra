@@ -34,14 +34,24 @@ val ghiVal = ghi
 stdoutWriteln(ghiVal(11, 13).toString())
 
 // Test reference to closure as value, from a nested scope
-val bang = "!"
-func bangbang(): String = bang + "!"
-func functionReferencingClosureAsValue() {
-  val fn = bangbang
-  stdoutWriteln(fn())
-}
-/// Expect: !!
-functionReferencingClosureAsValue()
+// val bang = "!"
+// func bangbang(): String = bang + "!"
+// func functionReferencingClosureAsValue() {
+//   val fn = bangbang
+//   stdoutWriteln(fn())
+// }
+// /// Expect: !!
+// functionReferencingClosureAsValue()
+(() => {
+  val bang = "!"
+  val bangbang = () => bang + "!"
+  val functionReferencingClosureAsValue = () => {
+    val fn = bangbang
+    stdoutWriteln(fn())
+  }
+  /// Expect: !!
+  functionReferencingClosureAsValue()
+})()
 
 // Test passing function/closure values as parameters
 

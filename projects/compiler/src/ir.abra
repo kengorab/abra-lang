@@ -61,6 +61,7 @@ pub type IrFunction {
   pub params: Ident[]
   pub ret: IrType
   pub block: (String, Instruction[]) = ("start", [])
+  pub isClosure: Bool
 
   pub func render(self, sb: StringBuilder) {
     if self.extern |name| sb.writeln("@extern($name)")
@@ -210,8 +211,12 @@ pub type CompoundValue {
   pub result: Value
 }
 
+pub enum ClosureEnvLocation {
+  Passthrough
+}
+
 pub enum Operation {
-  NewLocal(ty: IrType, initialValue: Value? = None)
+  NewLocal(ty: IrType, captured: Bool, initialValue: Value? = None)
   ConstInt(int: Int)
   ConstFloat(float: Float)
   ConstBool(b: Bool)
@@ -240,9 +245,12 @@ pub enum Operation {
   Gte(left: Value, right: Value)
   Shr(left: Value, right: Value)
 
-  Load(ty: IrType, mem: Value)
+  LoadVar(ty: IrType, ident: Ident)
+  LoadCapturedVar(ty: IrType, name: String, idx: (Int, Bool)?, deref: Bool)
   LoadField(ty: IrType, mem: Value, name: String, offset: Int)
-  Store(ty: IrType, value: Value, mem: Value)
+  StoreVar(ty: IrType, value: Value, ident: Ident)
+  StoreCapturedVar(ty: IrType, value: Value, name: String, idx: Int?)
+  StoreGlobal(ty: IrType, value: Value, global: GlobalVariable)
   StoreField(ty: IrType, value: Value, mem: Value, name: String, offset: Int)
 
   If(ty: IrType, cond: Value, thenBlock: Block, elseBlock: Block)
@@ -251,7 +259,8 @@ pub enum Operation {
   ForRanged(start: Value, end: CompoundValue, iteratee: Ident, idx: Ident?, body: Block)
 
   FunctionPointer(fnName: String)
-  Call(ret: IrType, fnName: String, args: Value[])
+  CreateClosure(fnName: String, captures: Value[])
+  Call(ret: IrType, fnName: String, args: Value[], envLocation: ClosureEnvLocation? = None)
   CallValue(ret: IrType, fnVal: Value, args: Value[])
 
   Break
@@ -267,9 +276,12 @@ pub enum Operation {
 
   pub func render(self, sb: StringBuilder) {
     match self {
-      Operation.NewLocal(ty, initialValue) => {
+      Operation.NewLocal(ty, captured, initialValue) => {
         sb.write("local(")
         ty.render(sb)
+        if captured {
+          sb.write(" (captured)")
+        }
         if initialValue |v| {
           sb.write(", ")
           v.render(sb)
@@ -432,11 +444,26 @@ pub enum Operation {
         right.render(sb)
         sb.write(")")
       }
-      Operation.Load(ty, mem) => {
-        sb.write("load(")
+      Operation.LoadVar(ty, mem) => {
+        sb.write("load_var(")
         ty.render(sb)
         sb.write(", ")
         mem.render(sb)
+        sb.write(")")
+      }
+      Operation.LoadCapturedVar(ty, name, _ctx, deref) => {
+        sb.write("load_captured_var(")
+        ty.render(sb)
+        sb.write(", $name")
+        if _ctx |(idx, mutable)| {
+          if mutable {
+            sb.write(" (mutable)")
+          }
+          sb.write(", $idx")
+        }
+        if deref {
+          sb.write(", deref")
+        }
         sb.write(")")
       }
       Operation.LoadField(ty, mem, name, offset) => {
@@ -446,13 +473,29 @@ pub enum Operation {
         mem.render(sb)
         sb.write(", $name ($offset))")
       }
-      Operation.Store(ty, value, mem) => {
-        sb.write("store(")
+      Operation.StoreVar(ty, value, ident) => {
+        sb.write("store_var(")
         ty.render(sb)
         sb.write(", ")
         value.render(sb)
         sb.write(", ")
-        mem.render(sb)
+        ident.render(sb)
+        sb.write(")")
+      }
+      Operation.StoreCapturedVar(ty, value, name, idx) => {
+        sb.write("store_captured_var(")
+        ty.render(sb)
+        sb.write(", ")
+        value.render(sb)
+        sb.write(", $name, ${idx ?: -1})")
+      }
+      Operation.StoreGlobal(ty, value, global) => {
+        sb.write("store_var(")
+        ty.render(sb)
+        sb.write(", ")
+        value.render(sb)
+        sb.write(", ")
+        global.render(sb)
         sb.write(")")
       }
       Operation.StoreField(ty, value, mem, name, offset) => {
@@ -542,7 +585,15 @@ pub enum Operation {
       Operation.FunctionPointer(fnName) => {
         sb.write("fn_ptr($fnName)")
       }
-      Operation.Call(ret, fnName, args) => {
+      Operation.CreateClosure(fnName, captures) => {
+        sb.write("create_closure($fnName, [")
+        for c, idx in captures {
+          c.render(sb)
+          if idx != captures.length - 1 { sb.write(", ") }
+        }
+        sb.write(")")
+      }
+      Operation.Call(ret, fnName, args, _) => {
         sb.write("call(")
         ret.render(sb)
         sb.write(", ").write(fnName)
@@ -786,6 +837,7 @@ pub type GlobalVariable {
 
 type Context {
   fn: IrFunction
+  typedFn: tc.Function?
   block: (String, Instruction[])
   locals: Map<String, Value> = {}
   anonLocalIdx: Int = 0
@@ -845,8 +897,8 @@ pub type Generator {
   pub func generateIR(project: tc.Project, foldConstants: Bool = true): IR {
     val allModules = project.modules.values().sortBy(m => m.id)
 
-    val mainFn = IrFunction(name: "main", params: [], ret: IrType.I64)
-    val curCtx = Context(fn: mainFn, block: mainFn.block)
+    val mainFn = IrFunction(name: "main", params: [], ret: IrType.I64, isClosure: false)
+    val curCtx = Context(fn: mainFn, typedFn: None, block: mainFn.block)
     val generator = Generator(project: project, functions: [], functionsByName: {}, curCtx: curCtx, foldConstants: foldConstants)
 
     val strConcreteTy = ConcreteType(instanceKind: InstanceKind.Struct(project.preludeStringStruct))
@@ -872,9 +924,9 @@ pub type Generator {
 
   func genModule(self, mod: tc.TypedModule): IrFunction? {
     val modFnName = "__mod_${mod.id}"
-    val modFn = IrFunction(name: modFnName, params: [], ret: IrType.Unit)
+    val modFn = IrFunction(name: modFnName, params: [], ret: IrType.Unit, isClosure: false)
     val prevCtx = self.curCtx
-    self.curCtx = Context(fn: modFn, block: modFn.block)
+    self.curCtx = Context(fn: modFn, typedFn: None, block: modFn.block)
 
     for node in mod.code {
       self.genStatement(node, {})
@@ -921,9 +973,10 @@ pub type Generator {
     }
 
     val externName = self.getExternDecName(fn)
-    val irFunc = IrFunction(extern: externName, name: ctx.fnName, params: [], ret: retTy)
+    val isClosure = fn.isClosure()
+    val irFunc = IrFunction(extern: externName, name: ctx.fnName, params: [], ret: retTy, isClosure: isClosure)
     self.addFunction(ctx.fnName, irFunc)
-    val prevCtx = self.enterFunction(irFunc)
+    val prevCtx = self.enterFunction(irFunc, Some(fn))
 
     val selfParam = match fn.kind {
       FunctionKind.InstanceMethod => {
@@ -995,11 +1048,17 @@ pub type Generator {
       val baseFnName = self.fnName(ctx.methodInstanceType, fn, ctx.concreteGenerics, [])
       self.enqueueFunction(fn, baseFnName, [], ctx.methodInstanceType, ctx.concreteGenerics)
 
+      val closureEnvLoc = if isClosure {
+        Some(ClosureEnvLocation.Passthrough)
+      } else {
+        None
+      }
+
       if retTy == IrType.Unit {
-        self.emit(Instruction(op: Operation.Call(ret: IrType.Unit, fnName: baseFnName, args: argsForUnderlying)))
+        self.emit(Instruction(op: Operation.Call(ret: IrType.Unit, fnName: baseFnName, args: argsForUnderlying, envLocation: closureEnvLoc)))
         self.emit(Instruction(op: Operation.Return()))
       } else {
-        val ident = self.ssaValue(retTy, Operation.Call(ret: retTy, fnName: baseFnName, args: argsForUnderlying), None)
+        val ident = self.ssaValue(retTy, Operation.Call(ret: retTy, fnName: baseFnName, args: argsForUnderlying, envLocation: closureEnvLoc), None)
         self.emit(Instruction(op: Operation.Return(Some(ident))))
       }
     } else {
@@ -1044,9 +1103,9 @@ pub type Generator {
     if self.functionsByName[fnName] |f| return f
 
     val retTy = self.getIrTypeForConcreteType(concreteType)
-    val irFunc = IrFunction(name: fnName, params: [], ret: retTy)
+    val irFunc = IrFunction(name: fnName, params: [], ret: retTy, isClosure: false)
     self.addFunction(fnName, irFunc)
-    val prevCtx = self.enterFunction(irFunc)
+    val prevCtx = self.enterFunction(irFunc, None)
 
     var size = initialSize
     var anyFieldNeedsDefault = false
@@ -1384,9 +1443,9 @@ pub type Generator {
         val idxSlot = if indexBinding |idxVariable| {
           idxVariable.mutable = true  // TODO: this is kinda gross, should probably be fixed in the typechecker
           val varName = self.varName(idxVariable)
-          val idxSlot = self.ssaValue(IrType.I64, Operation.NewLocal(ty: IrType.I64, initialValue: Some(Value.Const(Const.Int(-1)))), Some(varName))
+          val idxSlot = self.ssaValue(IrType.I64, Operation.NewLocal(ty: IrType.I64, captured: false, initialValue: Some(Value.Const(Const.Int(-1)))), Some(varName))
           self.curCtx.locals[varName] = idxSlot
-          Some(idxSlot)
+          match idxSlot { Value.Ident(i) => Some(i), else => unreachable("ssaValue returns Ident") }
         } else {
           None
         }
@@ -1419,9 +1478,9 @@ pub type Generator {
           self.genBindingPattern(pattern, variables, Some((nextVal, nextFnRetInnerConcreteTy)), nextFnRetInnerConcreteGenerics)
 
           if idxSlot |idxSlot| {
-            val idxValue = self.ssaValue(IrType.I64, Operation.Load(ty: IrType.I64, mem: idxSlot), None)
+            val idxValue = self.ssaValue(IrType.I64, Operation.LoadVar(ty: IrType.I64, ident: idxSlot), None)
             val idxInc = self.ssaValue(IrType.I64, Operation.Add(Value.Const(Const.Int(1)), idxValue), None)
-            self.emit(Instruction(op: Operation.Store(ty: IrType.I64, value: idxInc, mem: idxSlot)))
+            self.emit(Instruction(op: Operation.StoreVar(ty: IrType.I64, value: idxInc, ident: idxSlot)))
           }
 
           for node, idx in block {
@@ -1504,7 +1563,7 @@ pub type Generator {
         if self.valueAsCompileTime(value) |v| {
           global.initialValue = Some(v)
         } else {
-          self.emit(Instruction(op: Operation.Store(ty: global.ty, value: value, mem: Value.Global(global))))
+          self.emit(Instruction(op: Operation.StoreGlobal(ty: global.ty, value: value, global: global)))
         }
       }
 
@@ -1516,12 +1575,12 @@ pub type Generator {
     val varIrTy = self.getIrTypeForConcreteType(varTy)
     val ident = if value |(value, _)| {
       if variable.mutable {
-        self.ssaValue(varIrTy, Operation.NewLocal(ty: varIrTy, initialValue: Some(value)), Some(varName))
+        self.ssaValue(varIrTy, Operation.NewLocal(ty: varIrTy, captured: variable.isCaptured, initialValue: Some(value)), Some(varName))
       } else {
         value
       }
     } else {
-      self.ssaValue(varIrTy, Operation.NewLocal(ty: varIrTy, initialValue: None), Some(varName))
+      self.ssaValue(varIrTy, Operation.NewLocal(ty: varIrTy, captured: variable.isCaptured, initialValue: None), Some(varName))
     }
 
     self.curCtx.locals[varName] = ident
@@ -1561,11 +1620,14 @@ pub type Generator {
         if self.variableIsGlobal(v) |modId| {
           val globalName = self.globalName(modId, v.label.name)
           val global = self.getGlobal(globalName, pos)
-          self.emit(Instruction(op: Operation.Store(ty: varIrTy, value: res, mem: Value.Global(global))))
+          self.emit(Instruction(op: Operation.StoreGlobal(ty: varIrTy, value: res, global: global)))
+        } else if v.isCaptured {
+          self.genStoreCapturedVar(concreteGenerics, v, res)
         } else {
           val varName = self.varName(v)
-          val ident = self.curCtx.getLocal(varName, pos)
-          self.emit(Instruction(op: Operation.Store(ty: varIrTy, value: res, mem: ident)))
+          val local = self.curCtx.getLocal(varName, pos)
+          val ident = match local { Value.Ident(i) => i, else => unreachable("expected ident for local '$varName'") }
+          self.emit(Instruction(op: Operation.StoreVar(ty: varIrTy, value: res, ident: ident)))
         }
       }
       TypedAssignmentMode.Indexing(mode) => {
@@ -2543,7 +2605,39 @@ pub type Generator {
     }
 
     match variable.alias {
-      VariableAlias.Function => todo("genIdentifier VariableAlias.Function")
+      VariableAlias.Function(fn) => {
+        // val targetParamTypes = if fnAliasTypeHint |hint| {
+        //   val paramTypes = match hint.kind {
+        //     TypeKind.Func(paramTypes, _) => paramTypes
+        //     // If the function value is being treated as a Hole, then no param type info needs to be known later anyway
+        //     TypeKind.Hole => []
+        //     _ => unreachable("fnAliasTypeKind must be TypeKind.Func")
+        //   }
+        //   paramTypes
+        // } else {
+        //   []
+        // }
+        // val paramsNeedingDefaultValue = fn.params.map((param, idx) => {
+        //   if targetParamTypes[idx] {
+        //     false
+        //   } else {
+        //     if !param.defaultValue unreachable("creating fn val for fn '${fn.label}' with arity param '${param.label.name}' to be optional")
+        //     true
+        //   }
+        // })
+        val fnName = self.fnName(None, fn, concreteGenerics, [])
+        stdoutWriteln("referenced as value: $fnName")
+
+        // todo()
+
+        //       // val capturesMem = if !fn.isClosure() None else {
+        //       //   val mem = try self._getCapturesArrForClosure(fn)
+        //       //   Some(mem)
+        //       // }
+
+        //       // self._compileFunctionValue(node.token.position, fn, targetParamTypes, capturesMem, None)
+        todo("genIdentifier VariableAlias.Function")
+      }
       else => {
         if varImportModule |mod| {
           val globalName = self.globalName(mod.id, variable.label.name)
@@ -2565,17 +2659,59 @@ pub type Generator {
           }
         } else if variable.isCaptured {
           // Note: captured top-level variables are "global" and are handled above; variables handled here are not top-level
-          todo("genIdentifier captured variable")
+          self.genLoadCapturedVar(pos, concreteGenerics, variable, deref: true)
         } else if variable.mutable {
           val varName = self.varName(variable)
-          val slot = self.curCtx.getLocal(varName, pos)
-          self.ssaValue(varTy, Operation.Load(ty: varTy, mem: slot), dst)
+          val local = self.curCtx.getLocal(varName, pos)
+          val ident = match local { Value.Ident(i) => i, else => unreachable("expected ident for local '$varName'") }
+          self.ssaValue(varTy, Operation.LoadVar(ty: varTy, ident: ident), dst)
         } else {
           val varName = self.varName(variable)
           self.curCtx.getLocal(varName, pos)
         }
       }
     }
+  }
+
+  func genLoadCapturedVar(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, variable: tc.Variable, deref: Bool): Value {
+    val varConcreteType = self.getConcreteTypeFromType(variable.ty, concreteGenerics)
+    val varTy = self.getIrTypeForConcreteType(varConcreteType)
+    val varName = self.varName(variable)
+
+    if self.curCtx.typedFn |fn| {
+      for v, idx in fn.captures {
+        if v.label.name == variable.label.name {
+          return self.ssaValue(varTy, Operation.LoadCapturedVar(ty: varTy, name: varName, idx: Some((idx, variable.mutable)), deref: deref), None)
+        }
+      }
+    }
+
+    if variable.isParameter {
+      return self.curCtx.getLocal(varName, pos)
+    }
+
+    if variable.mutable {
+      self.ssaValue(varTy, Operation.LoadCapturedVar(ty: varTy, name: varName, idx: None, deref: deref), None)
+    } else {
+      self.curCtx.getLocal(varName, pos)
+    }
+  }
+
+  func genStoreCapturedVar(self, concreteGenerics: Map<String, ConcreteType>, variable: tc.Variable, value: Value) {
+    val varConcreteType = self.getConcreteTypeFromType(variable.ty, concreteGenerics)
+    val varTy = self.getIrTypeForConcreteType(varConcreteType)
+    val varName = self.varName(variable)
+
+    if self.curCtx.typedFn |fn| {
+      for v, idx in fn.captures {
+        if v.label.name == variable.label.name {
+          self.emit(Instruction(op: Operation.StoreCapturedVar(ty: varTy, value: value, name: varName, idx: Some(idx))))
+          return
+        }
+      }
+    }
+
+    self.emit(Instruction(op: Operation.StoreCapturedVar(ty: varTy, value: value, name: varName, idx: None)))
   }
 
   func followAccessorPath(self, head: tc.TypedAstNode, middle: tc.AccessorPathSegment[], tail: tc.AccessorPathSegment, concreteGenerics: Map<String, ConcreteType>, dst: String?, storeVal: Value? = None): Value {
@@ -2806,8 +2942,6 @@ pub type Generator {
   }
 
   func genLambda(self, concreteGenerics: Map<String, ConcreteType>, fn: tc.Function, typeHint: tc.Type?, dst: String?): Value {
-    if fn.isClosure() todo("closure lambdas")
-
     val targetParamTypes = if typeHint |hint| {
       val paramTypes = match hint.kind {
         TypeKind.Func(paramTypes, _) => Some(paramTypes)
@@ -2820,7 +2954,17 @@ pub type Generator {
       None
     }
 
-    self.genFunctionValue(concreteGenerics, fn, targetParamTypes, dst)
+    val captures = if fn.isClosure() {
+      val captures: Value[] = []
+      for variable in fn.captures {
+        captures.push(self.genLoadCapturedVar(variable.label.position, concreteGenerics, variable, deref: false))
+      }
+      Some(captures)
+    } else {
+      None
+    }
+
+    self.genFunctionValue(concreteGenerics, fn, targetParamTypes, dst, captures)
   }
 
   func genTry(self, concreteGenerics: Map<String, ConcreteType>, expr: tc.TypedAstNode, elseClause: tc.TypedTryElseClause?, dst: String?): Value {
@@ -2848,7 +2992,7 @@ pub type Generator {
 
   // codegen helpers
 
-  func genFunctionValue(self, concreteGenerics: Map<String, ConcreteType>, fn: tc.Function, targetParamTypes: (tc.Type, Bool)[]?, dst: String?): Value {
+  func genFunctionValue(self, concreteGenerics: Map<String, ConcreteType>, fn: tc.Function, targetParamTypes: (tc.Type, Bool)[]?, dst: String?, captures: Value[]?): Value {
     val concreteParamTypes = if targetParamTypes |paramTypes| {
       paramTypes.filter(_p => _p[1]).map(_p => self.getConcreteTypeFromType(_p[0], concreteGenerics))
     } else {
@@ -2861,9 +3005,8 @@ pub type Generator {
       self.enqueueFunction(fn, fnName, [], None, concreteGenerics)
       fnName
     } else if targetArity < fn.params.length {
-      val targetParamTypes = targetParamTypes ?: []
       val paramsNeedingDefaultValue = fn.params.map((param, idx) => {
-        if targetParamTypes[idx] {
+        if concreteParamTypes[idx] {
           false
         } else {
           if !param.defaultValue unreachable("creating fn val for fn '${fn.label}' with arity $targetArity param '${param.label.name}' to be optional")
@@ -2881,10 +3024,10 @@ pub type Generator {
       fnName
     }
 
-    if !fn.isClosure() {
-      self.ssaValue(IrType.Ptr, Operation.FunctionPointer(fnName: fnName), dst)
+    if captures |captures| {
+      self.ssaValue(IrType.Ptr, Operation.CreateClosure(fnName: fnName, captures: captures), dst)
     } else {
-      todo()
+      self.ssaValue(IrType.Ptr, Operation.FunctionPointer(fnName: fnName), dst)
     }
   }
 
@@ -3022,11 +3165,11 @@ pub type Generator {
     "_${name}_${idx}"
   }
 
-  func enterFunction(self, fn: IrFunction): Context {
+  func enterFunction(self, fn: IrFunction, typedFn: tc.Function?): Context {
     val prevCtx = self.curCtx
     val params = fn.params.map(p => Ident(ty: IrType.I64, kind: p.kind))
     val locals = Map.fromPairs(fn.params.map(p => (p.kind.name(), Value.Ident(p))))
-    self.curCtx = Context(fn: fn, block: fn.block, locals: locals)
+    self.curCtx = Context(fn: fn, typedFn: typedFn, block: fn.block, locals: locals)
 
     prevCtx
   }
@@ -3162,7 +3305,7 @@ pub type Generator {
         ConcreteType(instanceKind: instanceKind, typeArgs: concreteTypeArgs)
       }
       TypeKind.Func(paramTypes, returnType) => {
-        val returns = returnType.kind == tc.TypeKind.PrimitiveUnit
+        val returns = returnType.kind != tc.TypeKind.PrimitiveUnit
         val struct = self.functionStruct(paramTypes.length, returns)
         val concreteTypeArgs: ConcreteType[] = []
         if returns {

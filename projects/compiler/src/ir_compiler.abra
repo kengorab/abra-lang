@@ -1,5 +1,5 @@
 import File from "fs"
-import IR, IrFunction, IrType, Instruction, Operation, Ident, Value, Const, IdentKind, GlobalVariable, Builtin from "./ir"
+import IR, IrFunction, IrType, Instruction, Operation, Ident, Value, Const, IdentKind, GlobalVariable, Builtin, ClosureEnvLocation from "./ir"
 import ModuleBuilder, QbeType from "./qbe"
 import "./qbe" as qbe
 import i64ToString, u64ToString, f64ToString from "./ir_compiler_builtins"
@@ -31,6 +31,7 @@ pub type Compiler {
   ir: IR
   builder: ModuleBuilder
   currentFn: qbe.QbeFunction
+  currentFnEnv: qbe.Value? = None
   numTemps: Int = 0
   loopStack: (/* start: */ qbe.Label, /* end: */ qbe.Label)[] = []
   builtinI64ToStringUsed: Bool = false
@@ -99,6 +100,9 @@ pub type Compiler {
 
     val returnType = self.irTypeToQbeReturnType(fn.ret)
     val f = self.builder.buildFunction(name: fn.name, returnType: returnType)
+    if fn.isClosure {
+      self.currentFnEnv = Some(f.addEnv())
+    }
     self.currentFn = f
     self.numTemps = 0
 
@@ -117,18 +121,34 @@ pub type Compiler {
     val dst = inst.assignee?.kind?.name()
 
     match inst.op {
-      Operation.NewLocal(ty, initialValue) => {
+      Operation.NewLocal(ty, captured, initialValue) => {
         if !dst unreachable("Operation.NewLocal requires a destination")
 
         val qbeTy = self.irTypeToQbeType(ty)
-        val slot = match qbeTy {
-          QbeType.U8 => self.currentFn.block.buildAlloc8(1, dst)      // 'b'
-          QbeType.U16 => self.currentFn.block.buildAlloc4(1, dst)     // 'h' (should be unreachable)
-          QbeType.U32 => self.currentFn.block.buildAlloc4(1, dst)     // 'w' (should be unreachable)
-          QbeType.U64 => self.currentFn.block.buildAlloc8(1, dst)     // 'l'
-          QbeType.Pointer => self.currentFn.block.buildAlloc8(1, dst) // 'l'
-          QbeType.F32 => self.currentFn.block.buildAlloc4(1, dst)     // 's' (should be unreachable)
-          QbeType.F64 => self.currentFn.block.buildAlloc8(1, dst)     // 'd'
+        val slot = if captured {
+          val size = match qbeTy {
+            QbeType.U8 => 8      // 'b'
+            QbeType.U16 => 4     // 'h' (should be unreachable)
+            QbeType.U32 => 4     // 'w' (should be unreachable)
+            QbeType.U64 => 8     // 'l'
+            QbeType.Pointer => 8 // 'l'
+            QbeType.F32 => 4     // 's' (should be unreachable)
+            QbeType.F64 => 8     // 'd'
+          }
+          val mem = self.callMalloc(qbe.Value.Int(size), Some(self.nextTemp()))
+          val slot = self.currentFn.block.buildAlloc8(1, dst)
+          self.currentFn.block.buildStoreL(mem, slot)
+          mem
+        } else {
+          match qbeTy {
+            QbeType.U8 => self.currentFn.block.buildAlloc8(1, dst)      // 'b'
+            QbeType.U16 => self.currentFn.block.buildAlloc4(1, dst)     // 'h' (should be unreachable)
+            QbeType.U32 => self.currentFn.block.buildAlloc4(1, dst)     // 'w' (should be unreachable)
+            QbeType.U64 => self.currentFn.block.buildAlloc8(1, dst)     // 'l'
+            QbeType.Pointer => self.currentFn.block.buildAlloc8(1, dst) // 'l'
+            QbeType.F32 => self.currentFn.block.buildAlloc4(1, dst)     // 's' (should be unreachable)
+            QbeType.F64 => self.currentFn.block.buildAlloc8(1, dst)     // 'd'
+          }
         }
 
         if initialValue |initialValue| {
@@ -431,9 +451,35 @@ pub type Compiler {
 
         self.currentFn.block.buildShr(left, right, dst)
       }
-      Operation.Load(ty, mem) => {
-        val ptr = self.irValueToQbeValue(mem)
+      Operation.LoadVar(ty, ident) => {
+        val ptr = qbe.Value.Ident(name: ident.kind.name(), ty: self.irTypeToQbeType(ident.ty))
         self.currentFn.block.buildLoad(self.irTypeToQbeType(ty), ptr, dst)
+      }
+      Operation.LoadCapturedVar(ty, name, fnCtx, deref) => {
+        val varTy = self.irTypeToQbeType(ty)
+        if fnCtx |(idx, mutable)| {
+          val env = try self.currentFnEnv else unreachable("Operation.LoadCapturedVar('$name'): no env for current function '${self.currentFn.name}'")
+          val captureSlot = try self.currentFn.block.buildAdd(qbe.Value.Int((idx + 1) * 8), env, Some(self.nextTemp())) else |e| unreachable(e)
+
+          if mutable {
+            if deref {
+              val varPtr = self.currentFn.block.buildLoadL(captureSlot, Some(self.nextTemp()))
+              self.currentFn.block.buildLoad(varTy, varPtr, dst)
+            } else {
+              self.currentFn.block.buildLoadL(captureSlot, dst)
+            }
+          } else {
+            self.currentFn.block.buildLoad(varTy, captureSlot, dst)
+          }
+        } else {
+          val varIdent = qbe.Value.Ident(name: name, ty: varTy)
+          if deref {
+            val varPtr = self.currentFn.block.buildLoad(qbe.QbeType.Pointer, varIdent, Some(self.nextTemp()))
+            self.currentFn.block.buildLoad(varTy, varPtr, dst)
+          } else {
+            self.currentFn.block.buildLoad(varTy, varIdent, dst)
+          }
+        }
       }
       Operation.LoadField(ty, mem, _, offset) => {
         val ptr = if offset == 0 {
@@ -444,20 +490,32 @@ pub type Compiler {
         }
         self.currentFn.block.buildLoad(self.irTypeToQbeType(ty), ptr, dst)
       }
-      Operation.Store(ty, value, mem) => {
+      Operation.StoreVar(ty, value, ident) => {
         val v = self.irValueToQbeValue(value)
         val qbeTy = self.irTypeToQbeType(ty)
-        match mem {
-          Value.Ident(ident) => {
-            val mem = qbe.Value.Ident(name: ident.kind.name(), ty: qbeTy)
-            self.currentFn.block.buildStore(self.irTypeToQbeType(ty), v, mem)
-          }
-          Value.Global(global) => {
-            val mem = qbe.Value.Global(name: global.name, ty: qbeTy)
-            self.currentFn.block.buildStore(self.irTypeToQbeType(ty), v, mem)
-          }
-          else => unreachable("Storing into non-ident/global")
+        val mem = qbe.Value.Ident(name: ident.kind.name(), ty: qbeTy)
+        self.currentFn.block.buildStore(self.irTypeToQbeType(ty), v, mem)
+      }
+      Operation.StoreCapturedVar(ty, value, name, idx) => {
+        val varTy = self.irTypeToQbeType(ty)
+        val v = self.irValueToQbeValue(value)
+        if idx |idx| {
+          val env = try self.currentFnEnv else unreachable("Operation.StoreCapturedVar('$name'): no env for current function '${self.currentFn.name}'")
+          val captureSlot = try self.currentFn.block.buildAdd(qbe.Value.Int((idx + 1) * 8), env, Some(self.nextTemp())) else |e| unreachable(e)
+
+          val varPtr = self.currentFn.block.buildLoadL(captureSlot, Some(self.nextTemp()))
+          self.currentFn.block.buildStore(varTy, v, varPtr)
+        } else {
+          val ptr = qbe.Value.Ident(name: name, ty: varTy)
+          val varPtr = self.currentFn.block.buildLoadL(ptr, Some(self.nextTemp()))
+          self.currentFn.block.buildStore(varTy, v, varPtr)
         }
+      }
+      Operation.StoreGlobal(ty, value, global) => {
+        val v = self.irValueToQbeValue(value)
+        val qbeTy = self.irTypeToQbeType(ty)
+        val mem = qbe.Value.Global(name: global.name, ty: qbeTy)
+        self.currentFn.block.buildStore(self.irTypeToQbeType(ty), v, mem)
       }
       Operation.StoreField(ty, value, mem, _, offset) => {
         val ptr = if offset == 0 {
@@ -620,15 +678,31 @@ pub type Compiler {
         self.loopStack.pop()
       }
       Operation.FunctionPointer(fnName) => {
-        val shl = try self.currentFn.block.buildShl(qbe.Value.Global(fnName, qbe.QbeType.Pointer), qbe.Value.Int(1), dst) else |e| unreachable(e)
+        val shl = try self.currentFn.block.buildShl(qbe.Value.Global(fnName, qbe.QbeType.Pointer), qbe.Value.Int(1), Some(self.nextTemp())) else |e| unreachable(e)
         try self.currentFn.block.buildOr(shl, qbe.Value.Int(1), dst) else |e| unreachable(e)
       }
-      Operation.Call(ret, fnName, args) => {
+      Operation.CreateClosure(fnName, captures) => {
+        val closureMem = self.callMalloc(qbe.Value.Int((captures.length + 1) * 8), dst)
+        self.currentFn.block.buildStoreL(qbe.Value.Global(fnName, qbe.QbeType.Pointer), closureMem)
+        for capture, idx in captures {
+          val cursor = try self.currentFn.block.buildAdd(qbe.Value.Int((idx + 1) * 8), closureMem, Some(self.nextTemp())) else |e| unreachable(e)
+          val captureVal = self.irValueToQbeValue(capture)
+          self.currentFn.block.buildStore(captureVal.ty(), captureVal, cursor)
+        }
+      }
+      Operation.Call(ret, fnName, args, envLocation) => {
+        val env = match envLocation {
+          None => None
+          ClosureEnvLocation.Passthrough => {
+            val env = try self.currentFn.env else unreachable("fn '$fnName' defined with passthrough closure env location, but no env declared in scope")
+            Some(env)
+          }
+        }
         val argVals = args.map(a => self.irValueToQbeValue(a))
         if self.irTypeToQbeReturnType(ret) |ret| {
-          try self.currentFn.block.buildCallRaw(fnName, ret, argVals, dst) else |e| unreachable(e)
+          try self.currentFn.block.buildCallRaw(fnName, ret, argVals, dst, env) else |e| unreachable(e)
         } else {
-          self.currentFn.block.buildVoidCallRaw(fnName, argVals)
+          self.currentFn.block.buildVoidCallRaw(fnName, argVals, env)
         }
       }
       Operation.CallValue(ret, fn, args) => {
@@ -643,21 +717,30 @@ pub type Compiler {
 
         val phiCases: (qbe.Label, qbe.Value)[] = []
 
+        val retTy = self.irTypeToQbeReturnType(ret)
         self.currentFn.block.registerLabel(labelTrue)
-        val shr = try self.currentFn.block.buildShr(fnValQbe, qbe.Value.Int(1), Some(self.nextTemp())) else |e| unreachable(e)
-        phiCases.push((labelTrue, shr))
+        val fnPtr = try self.currentFn.block.buildShr(fnValQbe, qbe.Value.Int(1), Some(self.nextTemp())) else |e| unreachable(e)
+        if retTy |ret| {
+          val fnPtrResult = try self.currentFn.block.buildCall(qbe.Callable.Value(fnPtr, Some(ret)), argVals, Some(self.nextTemp())) else |e| unreachable(e)
+          phiCases.push((labelTrue, fnPtrResult))
+        } else {
+          self.currentFn.block.buildVoidCall(qbe.Callable.Value(fnPtr, None), argVals)
+        }
         self.currentFn.block.buildJmp(labelCont)
 
         self.currentFn.block.registerLabel(labelFalse)
-        self.currentFn.block.buildHalt()
+        val closureFnPtr = self.currentFn.block.buildLoadL(fnValQbe, Some(self.nextTemp()))
+        if retTy |ret| {
+          val closureResult = try self.currentFn.block.buildCall(qbe.Callable.Value(closureFnPtr, Some(ret)), argVals, Some(self.nextTemp()), Some(fnValQbe)) else |e| unreachable(e)
+          phiCases.push((labelFalse, closureResult))
+        } else {
+          self.currentFn.block.buildVoidCall(qbe.Callable.Value(closureFnPtr, None), argVals, Some(fnValQbe))
+        }
+        self.currentFn.block.buildJmp(labelCont)
 
         self.currentFn.block.registerLabel(labelCont)
-        val fnVal = try self.currentFn.block.buildPhi(phiCases, Some(self.nextTemp())) else |e| unreachable(e)
-
-        if self.irTypeToQbeReturnType(ret) |ret| {
-          try self.currentFn.block.buildCall(qbe.Callable.Value(fnVal, Some(ret)), argVals, dst) else |e| unreachable(e)
-        } else {
-          self.currentFn.block.buildVoidCall(qbe.Callable.Value(fnVal, None), argVals)
+        if retTy {
+          try self.currentFn.block.buildPhi(phiCases, dst) else |e| unreachable(e)
         }
       }
       Operation.Break => {

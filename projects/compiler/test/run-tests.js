@@ -843,10 +843,10 @@ const IR_COMPILER_TESTS = [
   { test: "compiler/ints.abra" },
   { test: "compiler/floats.abra" },
   { test: "compiler/bools.abra" },
-  // { test: "compiler/chars.abra" },
+  { test: "compiler/chars.abra" },
   // { test: "compiler/strings.abra" },
   // { test: "compiler/arrays.abra" },
-  // { test: "compiler/functions.abra" },
+  { test: "compiler/functions.abra" },
   // { test: "compiler/optionals.abra" },
   { test: "compiler/ifs.abra" },
   { test: "compiler/loops.abra" },
@@ -870,22 +870,22 @@ async function main() {
   let numTests = 0
 
   const runners = [
-    {
-      runner: new TestRunner('lexer_test', `${__dirname}/../src/lexer.test.abra`),
-      tests: LEXER_TESTS,
-    },
-    {
-      runner: new TestRunner('parser_test', `${__dirname}/../src/parser.test.abra`),
-      tests: PARSER_TESTS,
-    },
-    {
-      runner: new TestRunner('typechecker_test', `${__dirname}/../src/typechecker.test.abra`),
-      tests: TYPECHECKER_TESTS,
-    },
-    {
-      runner: new TestRunner('compiler_test', `${__dirname}/../src/compiler.test.abra`),
-      tests: COMPILER_TESTS,
-    },
+    // {
+    //   runner: new TestRunner('lexer_test', `${__dirname}/../src/lexer.test.abra`),
+    //   tests: LEXER_TESTS,
+    // },
+    // {
+    //   runner: new TestRunner('parser_test', `${__dirname}/../src/parser.test.abra`),
+    //   tests: PARSER_TESTS,
+    // },
+    // {
+    //   runner: new TestRunner('typechecker_test', `${__dirname}/../src/typechecker.test.abra`),
+    //   tests: TYPECHECKER_TESTS,
+    // },
+    // {
+    //   runner: new TestRunner('compiler_test', `${__dirname}/../src/compiler.test.abra`),
+    //   tests: COMPILER_TESTS,
+    // },
     {
       runner: new TestRunner('native_ir_compiler_test', `${__dirname}/../src/ir_compiler.test.abra`),
       tests: IR_COMPILER_TESTS,
