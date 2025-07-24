@@ -2,10 +2,10 @@ const childProcess = require('child_process')
 const fs = require('fs/promises')
 
 class TestRunner {
-  constructor(runnerName, harnessPath, isJsTarget = false) {
+  constructor(runnerName, harnessPath, { target = 'native' } = {}) {
     this.runnerName = runnerName
     this.harnessPath = harnessPath
-    this.isJsTarget = isJsTarget
+    this.target = target
   }
 
   async runTests(tests) {
@@ -63,27 +63,31 @@ class TestRunner {
   async _runCompilerTest(bin, testFile, args = [], env = {}) {
     const testFilePath = `${__dirname}/${testFile}`
 
-    async function buildAndRunTestBin(testFilePath, compilerBin, args, env, isJsTarget) {
+    async function buildAndRunTestBin(testFilePath, compilerBin, args, env, target) {
       const testPathSegs = testFilePath.split('/')
       const testName = testPathSegs[testPathSegs.length - 1].replace('.abra', '')
 
-      if (isJsTarget) {
+      if (target === 'js') {
         await fs.writeFile(`${process.cwd()}/._abra/${testName}.mjs`, '', { encoding: 'utf-8' })
-        let jsHarness = await fs.readFile(`${process.cwd()}/example.mjs`).then(buf => buf.toString())
-        jsHarness = jsHarness.replace('._abra/_main.mjs', `${testName}.mjs`)
+        const jsHarness = await fs.readFile(`${process.cwd()}/example.mjs`)
+          .then(buf => buf.toString().replace('._abra/_main.mjs', `${testName}.mjs`))
         await fs.writeFile(`${process.cwd()}/._abra/${testName}_harness.mjs`, jsHarness, { encoding: 'utf-8' })
 
         await runCommand(compilerBin, [testFilePath, testName])
         return runCommand('node', [`${process.cwd()}/._abra/${testName}_harness.mjs`, ...args], env)
-      } else {
+      } else if (target === 'vm') {
+        return runCommand(compilerBin, [testFilePath])
+      } else if (target === 'native') {
         await runCommand('abra', ['build', '-o', testName, testFilePath], { COMPILER_BIN: compilerBin })
         return runCommand(`${process.cwd()}/._abra/${testName}`, args, env)
+      } else {
+        throw new Error(`Unsupported target ${target}`)
       }
     }
 
     try {
       const [actual, expectedOutput] = await Promise.all([
-        buildAndRunTestBin(testFilePath, bin, args, env, this.isJsTarget),
+        buildAndRunTestBin(testFilePath, bin, args, env, this.target),
         fs.readFile(testFilePath, { encoding: 'utf8' }),
       ])
 

@@ -91,7 +91,7 @@ pub type Compiler {
       .write(fn.name)
       .write("(")
     for param, idx in fn.params {
-      val paramName = match param.kind { IdentKind.Named(name) => name, else => unreachable("expected IdentKind.Named for param") }
+      val paramName = match param.kind { IdentKind.Named(name, _) => name, else => unreachable("expected IdentKind.Named for param") }
       self.sb.write(paramName)
       if idx != fn.params.length - 1 {
         self.sb.write(", ")

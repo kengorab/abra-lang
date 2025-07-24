@@ -887,11 +887,15 @@ async function main() {
     //   tests: COMPILER_TESTS,
     // },
     {
-      runner: new TestRunner('native_ir_compiler_test', `${__dirname}/../src/ir_compiler.test.abra`),
+      runner: new TestRunner('vm_test', `${__dirname}/../src/ir_vm.test.abra`, { target: 'vm' }),
       tests: IR_COMPILER_TESTS,
     },
     {
-      runner: new TestRunner('js_ir_compiler_test', `${__dirname}/../src/ir_compiler_js.test.abra`, true),
+      runner: new TestRunner('native_ir_compiler_test', `${__dirname}/../src/ir_compiler.test.abra`, { target: 'native' }),
+      tests: IR_COMPILER_TESTS,
+    },
+    {
+      runner: new TestRunner('js_ir_compiler_test', `${__dirname}/../src/ir_compiler_js.test.abra`, { target: 'js' }),
       tests: IR_COMPILER_TESTS,
     },
   ]
