@@ -2785,6 +2785,24 @@ pub type Compiler {
       "pointer_null" => {
         try self._currentFn.block.buildAdd(Value.Int(0), Value.Int(0)) else |e| return qbeError(e)
       }
+      "pointer_reinterpret" => {
+        val ptr = self._intrinsicArgs1(intrinsicFnName, arguments)
+        val ptrVal = try self._compileExpression(ptr)
+
+        try self._currentFn.block.buildAdd(Value.Int(0), ptrVal) else |e| return qbeError(e)
+      }
+      "pointer_addressof" => {
+        val ptr = self._intrinsicArgs1(intrinsicFnName, arguments)
+        val ptrVal = try self._compileExpression(ptr)
+
+        try self._currentFn.block.buildAdd(Value.Int(0), ptrVal) else |e| return qbeError(e)
+      }
+      "pointer_fromint" => {
+        val ptr = self._intrinsicArgs1(intrinsicFnName, arguments)
+        val ptrVal = try self._compileExpression(ptr)
+
+        try self._currentFn.block.buildAdd(Value.Int(0), ptrVal) else |e| return qbeError(e)
+      }
       "pointer_realloc" => {
         val (ptr, count) = self._intrinsicArgs2(intrinsicFnName, arguments)
         val ptrVal = try self._compileExpression(ptr)
