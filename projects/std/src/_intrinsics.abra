@@ -60,6 +60,15 @@ pub type Pointer<T> {
   @intrinsic("pointer_null")
   pub func null<T>(): Pointer<T>
 
+  @intrinsic("pointer_reinterpret")
+  pub func reinterpret<T, U>(orig: Pointer<T>): Pointer<U>
+
+  @intrinsic("pointer_addressof")
+  pub func addressOf<T>(obj: T): Pointer<Byte>
+
+  @intrinsic("pointer_fromint")
+  pub func fromInt<T>(int: Int): Pointer<T>
+
   @intrinsic("pointer_is_null")
   pub func isNullPtr(self): Bool
 
@@ -74,6 +83,8 @@ pub type Pointer<T> {
 
   @intrinsic("pointer_load_at")
   pub func loadAt(self, offset: Int): T
+
+  pub func deref(self): T = self.loadAt(offset: 0)
 
   @intrinsic("pointer_copy_from")
   pub func copyFrom(self, dstOffset: Int, srcPtr: Pointer<T>, srcOffset: Int, size: Int)

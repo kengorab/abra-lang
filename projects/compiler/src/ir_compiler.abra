@@ -104,7 +104,7 @@ pub type Compiler {
 
     for param in fn.params {
       val ty = self.irTypeToQbeType(param.ty)
-      val paramName = match param.kind { IdentKind.Named(name) => name, else => unreachable("expected IdentKind.Named for param") }
+      val paramName = match param.kind { IdentKind.Named(name, _) => name, else => unreachable("expected IdentKind.Named for param") }
       f.addParameter(paramName, ty)
     }
 

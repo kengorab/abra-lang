@@ -1,0 +1,647 @@
+import "process" as process
+import "./ir" as ir
+import Value, Const, Operation, Builtin, IdentKind, IrType from "./ir"
+import Pointer, Byte from "_intrinsics"
+import "libc" as libc
+
+pub enum VmValue {
+  Undefined
+  Int(int: Int)
+  Float(float: Float)
+  Bool(bool: Bool)
+  ConstString(str: String)
+  Pointer(ptr: Pointer<Byte>)
+
+  func expectInt(self, message: String): Int = match self { VmValue.Int(i) => i, else v => unreachable("expected int value but got '$v' ($message)") }
+  func expectFloat(self, message: String): Float = match self { VmValue.Float(f) => f, else v => unreachable("expected float value but got '$v' ($message)") }
+  func expectBool(self, message: String): Bool = match self { VmValue.Bool(b) => b, else v => unreachable("expected bool value but got '$v' ($message)") }
+  func expectPointer(self, message: String): Pointer<Byte> = match self { VmValue.Pointer(p) => p, else v => unreachable("expected pointer value but got '$v' ($message)") }
+}
+
+pub func unmarshallString(value: VmValue): Result<String, String> {
+  val ptr = match value {
+    VmValue.Undefined => return Err("Could not unmarshall value of undefined to String")
+    VmValue.Int => return Err("Could not unmarshall value of int to String")
+    VmValue.Float => return Err("Could not unmarshall value of float to String")
+    VmValue.Bool => return Err("Could not unmarshall value of bool to String")
+    VmValue.ConstString(str) => return Ok(str)
+    VmValue.Pointer(ptr) => ptr
+  }
+
+  val addr = ptr.address()
+  val length = Pointer.fromInt<Int>(addr + 0).deref()
+  val buffer = Pointer.fromInt<Pointer<Byte>>(addr + 8).deref()
+
+  Ok(String(length: length, _buffer: buffer))
+}
+
+enum ControlFlag {
+  Empty
+  Return
+  Break
+  Continue
+}
+
+pub type VM {
+  pub ir: ir.IR
+  locals: VmValue[] = []
+  returnValue: VmValue = VmValue.Undefined
+  flag: ControlFlag = ControlFlag.Empty
+  whileLoopCond: ir.Instruction[]? = None
+  curFnName: String = ""
+
+  pub func evalIR(intermediateRepresentation: ir.IR): VmValue {
+    val vm = VM(ir: intermediateRepresentation)
+    vm.evalFunctionCall(intermediateRepresentation.mainFunction, [])
+  }
+
+  pub func evalFunctionCall(self, fn: ir.IrFunction, args: VmValue[]): VmValue {
+    if fn.extern |name| {
+      self.callExtern(name, args)
+    } else {
+      self.flag = ControlFlag.Empty
+
+      val oldLocals = self.locals
+      self.locals = Array.fill(fn.numLocals, VmValue.Undefined)
+      val oldFnName = self.curFnName
+      self.curFnName = fn.name
+
+      for param, idx in fn.params {
+        val arg = try args[idx] else unreachable("incorrect arity, expected param at idx $idx for function '${fn.name}'")
+        self.store(param, arg)
+      }
+
+      for inst in fn.block[1] {
+        self.evalInstruction(inst)
+        if self.flag == ControlFlag.Return {
+          self.flag = ControlFlag.Empty
+          break
+        }
+      }
+
+      self.locals = oldLocals
+      self.curFnName = oldFnName
+    }
+
+    self.returnValue
+  }
+
+  func store(self, ident: ir.Ident, value: VmValue) {
+    match ident.kind {
+      IdentKind.Named(_, idx) => self.locals[idx] = value
+      IdentKind.Anon(idx) => self.locals[idx] = value
+    }
+  }
+
+  func load(self, ident: ir.Ident): VmValue {
+    val v = match ident.kind {
+      IdentKind.Named(_, idx) => self.locals[idx]
+      IdentKind.Anon(idx) => self.locals[idx]
+    }
+    try v else unreachable("expected value for ident '$ident'")
+  }
+
+  func irValueToVmValue(self, value: ir.Value): VmValue {
+    match value {
+      Value.Unit => unreachable("unit is invalid value")
+      Value.Const(const) => match const {
+        Const.Int(i) => VmValue.Int(i)
+        Const.Float(f) => VmValue.Float(f)
+        Const.Bool(b) => VmValue.Bool(b)
+        Const.Char(i) => VmValue.Int(i) // char is represented as its i64 value
+        Const.String(s) => VmValue.ConstString(s)
+      }
+      Value.Ident(ident) => self.load(ident)
+      Value.Global(g) => todo("irValueToVmValue: Value.Global")
+    }
+  }
+
+  func expectAssignee(self, inst: ir.Instruction): ir.Ident = try inst.assignee else unreachable("assignee expected")
+
+  func evalBinary(
+    self,
+    left: ir.Value,
+    right: ir.Value,
+    iifn: (Int, Int) => VmValue,
+    iffn: (Int, Float) => VmValue,
+    fifn: (Float, Int) => VmValue,
+    fffn: (Float, Float) => VmValue,
+  ): VmValue {
+    val l = self.irValueToVmValue(left)
+    val r = self.irValueToVmValue(right)
+    match l {
+      VmValue.Int(l) => match r { VmValue.Int(r) => iifn(l, r), VmValue.Float(r) => iffn(l, r), else v => unreachable("unexpected right value: $v") }
+      VmValue.Float(l) => match r { VmValue.Int(r) => fifn(l, r), VmValue.Float(r) => fffn(l, r), else v => unreachable("unexpected right value: $v") }
+      else v => unreachable("unexpected left value: $v")
+    }
+  }
+
+  func evalInstruction(self, inst: ir.Instruction) {
+    if self.whileLoopCond |instrs| {
+      match inst.op {
+        Operation.While => {}
+        else => {
+          instrs.push(inst)
+          return
+        }
+      }
+    }
+
+    // stdoutWriteln("[EVAL(${self.curFnName})]: ${inst.op}")
+    match inst.op {
+      Operation.NewLocal(ty, initialValue) => {
+        val init = try initialValue else todo("empty initialValue")
+        val value = self.irValueToVmValue(init)
+        self.store(self.expectAssignee(inst), value)
+      }
+      Operation.ConstInt(int) => self.store(self.expectAssignee(inst), VmValue.Int(int))
+      Operation.ConstFloat(float) => self.store(self.expectAssignee(inst), VmValue.Float(float))
+      Operation.ConstBool(bool) => self.store(self.expectAssignee(inst), VmValue.Bool(bool))
+      Operation.ConstChar(intVal) => todo("Operation.ConstChar")
+      Operation.ConstString(str) => self.store(self.expectAssignee(inst), VmValue.ConstString(str))
+      Operation.Minus(value) => {
+        val v = self.irValueToVmValue(value)
+        val res = match v { VmValue.Int(i) => VmValue.Int(-i), VmValue.Float(f) => VmValue.Float(-f), else v => unreachable("unexpected left value: $v") }
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.Negate(value) => {
+        val res = match self.irValueToVmValue(value) { VmValue.Bool(b) => VmValue.Bool(!b), else v => unreachable("unexpected left value: $v") }
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.Add(left, right) => {
+        val res = self.evalBinary(left, right, (l, r) => VmValue.Int(l + r), (l, r) => VmValue.Float(l + r), (l, r) => VmValue.Float(l + r), (l, r) => VmValue.Float(l + r))
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.Sub(left, right) => {
+        val res = self.evalBinary(left, right, (l, r) => VmValue.Int(l - r), (l, r) => VmValue.Float(l - r), (l, r) => VmValue.Float(l - r), (l, r) => VmValue.Float(l - r))
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.Mul(left, right) => {
+        val res = self.evalBinary(left, right, (l, r) => VmValue.Int(l * r), (l, r) => VmValue.Float(l * r), (l, r) => VmValue.Float(l * r), (l, r) => VmValue.Float(l * r))
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.Div(left, right) => {
+        val res = self.evalBinary(left, right, (l, r) => VmValue.Float(l / r), (l, r) => VmValue.Float(l / r), (l, r) => VmValue.Float(l / r), (l, r) => VmValue.Float(l / r))
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.Mod(left, right) => {
+        val res = self.evalBinary(left, right, (l, r) => VmValue.Int(l % r), (l, r) => VmValue.Float(l % r), (l, r) => VmValue.Float(l % r), (l, r) => VmValue.Float(l % r))
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.Pow(left, right) => {
+        val res = self.evalBinary(left, right, (l, r) => VmValue.Float(l ** r), (l, r) => VmValue.Float(l ** r), (l, r) => VmValue.Float(l ** r), (l, r) => VmValue.Float(l ** r))
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.BitAnd(left, right) => {
+        val l = self.irValueToVmValue(left).expectInt("BitAnd left value")
+        val r = self.irValueToVmValue(right).expectInt("BitAnd right value")
+        self.store(self.expectAssignee(inst), VmValue.Int(l && r))
+      }
+      Operation.BoolAnd(left, right) => {
+        val leftVal = self.irValueToVmValue(left)
+        val res = if !leftVal.expectBool("BoolAnd left value") {
+          leftVal
+        } else {
+          for inst in right.body {
+            self.evalInstruction(inst)
+            if self.flag != ControlFlag.Empty return
+          }
+          self.irValueToVmValue(right.result)
+        }
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.BitOr(left, right) => {
+        val l = self.irValueToVmValue(left).expectInt("BitOr left value")
+        val r = self.irValueToVmValue(right).expectInt("BitOr right value")
+        self.store(self.expectAssignee(inst), VmValue.Int(l || r))
+      }
+      Operation.BoolOr(left, right) => {
+        val leftVal = self.irValueToVmValue(left)
+        val res = if leftVal.expectBool("BoolOr left value") {
+          leftVal
+        } else {
+          for inst in right.body {
+            self.evalInstruction(inst)
+            if self.flag != ControlFlag.Empty return
+          }
+          self.irValueToVmValue(right.result)
+        }
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.Xor(_, left, right) => {
+        val l = self.irValueToVmValue(left)
+        val r = self.irValueToVmValue(right)
+
+        val res = match l {
+          VmValue.Int(l) => match r { VmValue.Int(r) => VmValue.Int(l ^ r), else v => unreachable("unexpected right value: $v") }
+          VmValue.Bool(l) => match r { VmValue.Bool(r) => VmValue.Bool(l ^ r), else v => unreachable("unexpected right value: $v") }
+          else v => unreachable("unexpected left value: $v")
+        }
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.Eq(negate, left, right) => {
+        val l = self.irValueToVmValue(left)
+        val r = self.irValueToVmValue(right)
+
+        val res = match l {
+          VmValue.Int(l) => match r { VmValue.Int(r) => VmValue.Bool(if negate l != r else l == r), else v => unreachable("unexpected right value: $v") }
+          VmValue.Bool(l) => match r { VmValue.Bool(r) => VmValue.Bool(if negate l != r else l == r), else v => unreachable("unexpected right value: $v") }
+          VmValue.Float(l) => match r { VmValue.Float(r) => VmValue.Bool(if negate l != r else l == r), else v => unreachable("unexpected right value: $v") }
+          else v => unreachable("unexpected left value: $v")
+        }
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.Lt(left, right) => {
+        val res = self.evalBinary(left, right, (l, r) => VmValue.Bool(l < r), (l, r) => VmValue.Bool(l < r), (l, r) => VmValue.Bool(l < r), (l, r) => VmValue.Bool(l < r))
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.Lte(left, right) => {
+        val res = self.evalBinary(left, right, (l, r) => VmValue.Bool(l <= r), (l, r) => VmValue.Bool(l <= r), (l, r) => VmValue.Bool(l <= r), (l, r) => VmValue.Bool(l <= r))
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.Shl(left, right) => {
+        val l = self.irValueToVmValue(left).expectInt("Shl left value")
+        val r = self.irValueToVmValue(right).expectInt("Shl right value")
+        self.store(self.expectAssignee(inst), VmValue.Int(l << r))
+      }
+      Operation.Gt(left, right) => {
+        val res = self.evalBinary(left, right, (l, r) => VmValue.Bool(l > r), (l, r) => VmValue.Bool(l > r), (l, r) => VmValue.Bool(l > r), (l, r) => VmValue.Bool(l > r))
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.Gte(left, right) => {
+        val res = self.evalBinary(left, right, (l, r) => VmValue.Bool(l >= r), (l, r) => VmValue.Bool(l >= r), (l, r) => VmValue.Bool(l >= r), (l, r) => VmValue.Bool(l >= r))
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.Shr(left, right) => {
+        val l = self.irValueToVmValue(left).expectInt("Shr left value")
+        val r = self.irValueToVmValue(right).expectInt("Shr right value")
+        self.store(self.expectAssignee(inst), VmValue.Int(l >> r))
+      }
+      Operation.Load(ty, mem) => {
+        val value = match mem {
+          Value.Unit => unreachable("values cannot be of type unit")
+          Value.Const => unreachable("cannot load from const value")
+          Value.Ident(i) => self.load(i)
+          Value.Global(g) => todo("loading global")
+        }
+        self.store(self.expectAssignee(inst), value)
+      }
+      Operation.LoadField(ty, mem, name, offset) => {
+        val value = match self.irValueToVmValue(mem) {
+          VmValue.Undefined => unreachable("subject of loadfield undefined")
+          VmValue.Int => unreachable("cannot load field '$name' of int")
+          VmValue.Float => unreachable("cannot load field '$name' of float")
+          VmValue.Bool => unreachable("cannot load field '$name' of bool")
+          VmValue.ConstString(s) => match name {
+            "length" => VmValue.Int(s.length)
+            "_buffer" => VmValue.Pointer(s._buffer)
+            else => unreachable("no other fields for strings")
+          }
+          VmValue.Pointer(pointer) => {
+            match ty {
+              IrType.Unit => unreachable("values cannot be of type unit")
+              IrType.I64 => VmValue.Int(Pointer.fromInt<Int>(pointer.address() + offset).deref())
+              IrType.F64 => VmValue.Float(Pointer.fromInt<Float>(pointer.address() + offset).deref())
+              IrType.Bool => VmValue.Bool(Pointer.fromInt<Int>(pointer.address() + offset).deref() == 1)
+              IrType.Byte => todo("LoadField: byte")
+              IrType.Composite => VmValue.Pointer(Pointer.fromInt<Pointer<Byte>>(pointer.address() + offset).deref())
+              IrType.Ptr => VmValue.Pointer(Pointer.fromInt<Pointer<Byte>>(pointer.address() + offset).deref())
+            }
+          }
+        }
+        self.store(self.expectAssignee(inst), value)
+      }
+      Operation.Store(ty, value, mem) => {
+        val v = self.irValueToVmValue(value)
+        match mem {
+          Value.Unit => unreachable("values cannot be of type unit")
+          Value.Const => unreachable("cannot store into const value")
+          Value.Ident(i) => self.store(i, v)
+          Value.Global(g) => todo("storing global")
+        }
+      }
+      Operation.StoreField(ty, value, mem, name, offsetBytes) => {
+        val pointer = self.irValueToVmValue(mem).expectPointer("StoreField mem")
+
+        // StoreField's offset is in bytes, but Pointer<T>#storeAt computes offset w.r.t. T's size
+        val offset = offsetBytes >> 3
+
+        match self.irValueToVmValue(value) {
+          VmValue.Undefined => unreachable("cannot store undefined")
+          VmValue.Int(int) => Pointer.reinterpret<Byte, Int>(pointer).storeAt(int, offset)
+          VmValue.Float(float) => Pointer.reinterpret<Byte, Float>(pointer).storeAt(float, offset)
+          VmValue.Bool(b) => Pointer.reinterpret<Byte, Int>(pointer).storeAt(if b 1 else 0, offset)
+          VmValue.ConstString(str) => {
+            val addr = Pointer.addressOf(str).address()
+            Pointer.reinterpret<Byte, Int>(pointer).storeAt(addr, offset)
+          }
+          VmValue.Pointer(ptr) => Pointer.reinterpret<Byte, Int>(pointer).storeAt(ptr.address(), offset)
+        }
+      }
+      Operation.If(ty, cond, thenBlock, elseBlock) => {
+        if self.irValueToVmValue(cond).expectBool("If condition") {
+          for inst in thenBlock.body {
+            self.evalInstruction(inst)
+            if self.flag != ControlFlag.Empty return
+          }
+          if thenBlock.result |res| {
+            self.store(self.expectAssignee(inst), self.irValueToVmValue(res))
+          }
+        } else {
+          for inst in elseBlock.body {
+            self.evalInstruction(inst)
+            if self.flag != ControlFlag.Empty return
+          }
+          if elseBlock.result |res| {
+            self.store(self.expectAssignee(inst), self.irValueToVmValue(res))
+          }
+        }
+      }
+      Operation.WhileLoopStart => self.whileLoopCond = Some([])
+      Operation.While(cond, body) => {
+        val condInstrs = try self.whileLoopCond else unreachable("reached While operation without preceeding WhileLoopStart")
+        self.whileLoopCond = None // reset
+
+        while true {
+          for inst in condInstrs {
+            self.evalInstruction(inst)
+            if self.flag != ControlFlag.Empty return
+          }
+          val condVal = self.irValueToVmValue(cond).expectBool("While condition")
+          if !condVal break
+
+          for inst in body.body {
+            self.evalInstruction(inst)
+
+            match self.flag {
+              // no-op
+              ControlFlag.Empty => {}
+              // return out of `evalInstruction` and keep the flag set; `evalFunctionCall` will then bail too
+              ControlFlag.Return => return
+              // reset the control flag and return out of `evalInstruction`
+              ControlFlag.Break => {
+                self.flag = ControlFlag.Empty
+                return
+              }
+              // reset the control flag and exit out of the body; the outer `while` loop will then run again
+              ControlFlag.Continue => {
+                self.flag = ControlFlag.Empty
+                break
+              }
+            }
+          }
+        }
+      }
+      Operation.ForRanged(start, end, iteratee, idx, body) => {
+        val startVal = self.irValueToVmValue(start).expectInt("ForRanged start value")
+        self.store(iteratee, VmValue.Int(startVal - 1))
+        if idx |idx| self.store(idx, VmValue.Int(-1)) 
+
+        while true {
+          for inst in end.body {
+            self.evalInstruction(inst)
+            if self.flag != ControlFlag.Empty return
+          }
+          val it = self.load(iteratee).expectInt("ForRanged iteratee value")
+          self.store(iteratee, VmValue.Int(it + 1))
+          if idx |idx| {
+            val idxIntVal = self.load(idx).expectInt("ForRanged idx value")
+            self.store(idx, VmValue.Int(idxIntVal + 1)) 
+          }
+
+          val endValInt = self.irValueToVmValue(end.result).expectInt("ForRanged end value")
+          if (it + 1) >= endValInt break
+
+          for inst in body.body {
+            self.evalInstruction(inst)
+
+            match self.flag {
+              // no-op
+              ControlFlag.Empty => {}
+              // return out of `evalInstruction` and keep the flag set; `evalFunctionCall` will then bail too
+              ControlFlag.Return => return
+              // reset the control flag and return out of `evalInstruction`
+              ControlFlag.Break => {
+                self.flag = ControlFlag.Empty
+                return
+              }
+              // reset the control flag and exit out of the body; the outer `while` loop will then run again
+              ControlFlag.Continue => {
+                self.flag = ControlFlag.Empty
+                break
+              }
+            }
+          }
+        }
+      }
+      Operation.Call(ret, fnName, args) => {
+        val fn = try self.ir.functions.find(fn => fn.name == fnName) else unreachable("could not find function '$fnName' in IR")
+
+        val callArgs: VmValue[] = []
+        for arg in args {
+          callArgs.push(self.irValueToVmValue(arg))
+        }
+
+        val res = self.evalFunctionCall(fn, callArgs)
+        if inst.assignee |assignee| {
+          self.store(assignee, res)
+        }
+      }
+      Operation.Break => self.flag = ControlFlag.Break
+      Operation.Continue => self.flag = ControlFlag.Continue
+      Operation.Return(value) => {
+        self.returnValue = if value |value| self.irValueToVmValue(value) else VmValue.Undefined
+        self.flag = ControlFlag.Return
+      }
+      Operation.OptionNone(innerTy) => self.store(self.expectAssignee(inst), VmValue.Pointer(Pointer.fromInt<Byte>(0)))
+      Operation.OptionSome(innerTy, value) => {
+        val v = self.irValueToVmValue(value)
+        val res = if innerTy == IrType.I64 {
+          val ptr = Pointer.malloc<Int>(1)
+          ptr.storeAt(v.expectInt("OptionSome int value"), 0)
+          VmValue.Pointer(Pointer.reinterpret(ptr))
+        } else {
+          v
+        }
+        self.store(self.expectAssignee(inst), res)
+      }
+      Operation.OptionIsNone(value) => {
+        val isNone = match self.irValueToVmValue(value) { VmValue.Pointer(p) => p.address() == 0, else => false }
+        self.store(self.expectAssignee(inst), VmValue.Bool(isNone))
+      }
+      Operation.OptionUnwrap(innerTy, value) => {
+        val v = match innerTy {
+          IrType.Unit => unreachable("values cannot be of type unit")
+          IrType.I64 => {
+            val ptr = self.irValueToVmValue(value).expectPointer("OptionUnwrap int value")
+            if ptr.address() == 0 unreachable("unwrapped None")
+
+            val int = Pointer.reinterpret<Byte, Int>(ptr).deref()
+            VmValue.Int(int)
+          }
+          else => {
+            val v = self.irValueToVmValue(value)
+            if v.expectPointer("OptionUnwrap non-int value").address() == 0 unreachable("unwrapped None")
+            v
+          }
+        }
+        self.store(self.expectAssignee(inst), v)
+      }
+      Operation.StructuredToString(prefix, _, fields) => {
+        val strIrTy = IrType.Composite(self.ir.knowns.stringType().name)
+        val fieldReprs: String[] = []
+        for (fieldIrTy, fieldName, fieldStr), idx in fields {
+          val fieldStrVal = self.irValueToVmValue(fieldStr)
+          val fieldRepr = try unmarshallString(fieldStrVal) else unreachable("could not obtain string value from fieldStr $fieldStrVal")
+
+          val fieldReprFmt = if fieldIrTy == strIrTy "\"$fieldRepr\"" else fieldRepr
+          val repr = "${if fieldName.isEmpty() "" else "$fieldName: "}$fieldReprFmt"
+          fieldReprs.push(repr)
+        }
+
+        val repr = "$prefix(${fieldReprs.join(", ")})"
+        self.store(self.expectAssignee(inst), VmValue.ConstString(repr))
+      }
+      Operation.Builtin(ret, builtin) => {
+        match builtin {
+          Builtin.Malloc(count, itemTy) => {
+            val countVal = self.irValueToVmValue(count).expectInt("Builtin.Malloc count")
+            val itemSize = if !itemTy || itemTy == Some(IrType.Byte) 1 else 8
+            val numBytes = countVal * itemSize
+            val ptr = Pointer.malloc<Byte>(numBytes)
+            self.store(self.expectAssignee(inst), VmValue.Pointer(ptr))
+          }
+          Builtin.Realloc(ptr, count, itemTy) => todo("Builtin.Realloc")
+          Builtin.Store(ptr, value, offset, itemTy) => {
+            val pointer = self.irValueToVmValue(ptr).expectPointer("Builtin.Store ptr")
+            val offsetVal = self.irValueToVmValue(offset).expectInt("Builtin.Store offset")
+
+            val v = self.irValueToVmValue(value)
+            match itemTy {
+              IrType.Unit => unreachable("values cannot be of type unit")
+              IrType.I64 => {
+                val int = v.expectInt("Builtin.Store i64")
+                Pointer.reinterpret<Byte, Int>(pointer).storeAt(int, offsetVal)
+              }
+              IrType.F64 => todo("Builtin.Store: f64")
+              IrType.Bool => {
+                val bool = v.expectBool("Builtin.Store bool")
+                Pointer.reinterpret<Byte, Int>(pointer).storeAt(if bool 1 else 0, offsetVal)
+              }
+              IrType.Byte => {
+                val int = v.expectInt("Builtin.Store byte")
+                Pointer.reinterpret<Byte, Byte>(pointer).storeAt(int.asByte(), offsetVal)
+              }
+              IrType.Composite(name) => {
+                val ptr = match v { 
+                  VmValue.Pointer(p) => p
+                  VmValue.ConstString(s) => Pointer.addressOf(s)
+                  else => unreachable("itemTy is composite but value not ptr: '$v'")
+                }
+                Pointer.reinterpret<Byte, Int>(pointer).storeAt(ptr.address(), offsetVal)
+              }
+              IrType.Ptr => todo("Builtin.Store: ptr")
+            }
+          }
+          Builtin.Load(ptr, offset, itemTy) => {
+            val pointer = self.irValueToVmValue(ptr).expectPointer("Builtin.Load ptr")
+            val offsetVal = self.irValueToVmValue(offset).expectInt("Builtin.Load offset")
+
+            match itemTy {
+              IrType.Unit => unreachable("values cannot be of type unit")
+              IrType.I64 => {
+                val int = Pointer.reinterpret<Byte, Int>(pointer).loadAt(offsetVal)
+                self.store(self.expectAssignee(inst), VmValue.Int(int))
+              }
+              IrType.F64 => todo("Builtin.Load: f64")
+              IrType.Bool => {
+                val int = Pointer.reinterpret<Byte, Int>(pointer).loadAt(offsetVal)
+                self.store(self.expectAssignee(inst), VmValue.Bool(int == 1))
+              }
+              IrType.Byte => {
+                val int = pointer.loadAt(offsetVal).asInt()
+                self.store(self.expectAssignee(inst), VmValue.Int(int))
+              }
+              IrType.Composite(name) => {
+                val ptr = Pointer.reinterpret<Byte, Pointer<Byte>>(pointer).loadAt(offsetVal)
+                self.store(self.expectAssignee(inst), VmValue.Pointer(ptr))
+              }
+              IrType.Ptr => todo("Builtin.Load: ptr")
+            }
+          }
+          Builtin.CopyFrom(dst, dstOffset, src, srcOffset, size, itemTy) => {
+            val dstVal = self.irValueToVmValue(dst).expectPointer("Builtin.CopyFrom dst")
+            val dstOffsetVal = self.irValueToVmValue(dstOffset).expectInt("Builtin.CopyFrom dstOffset")
+            val srcVal = self.irValueToVmValue(src).expectPointer("Builtin.CopyFrom src")
+            val srcOffsetVal = self.irValueToVmValue(srcOffset).expectInt("Builtin.CopyFrom srcOffset")
+            val sizeVal = self.irValueToVmValue(size).expectInt("Builtin.CopyFrom size")
+
+            match itemTy {
+              IrType.Unit => unreachable("values cannot be of type unit")
+              IrType.Byte => dstVal.copyFrom(dstOffsetVal, srcVal, srcOffsetVal, sizeVal)
+              else v => todo("CopyFrom: $v")
+            }
+          }
+          Builtin.I64ToString(int) => {
+            val intVal = self.irValueToVmValue(int).expectInt("I64ToString")
+            self.store(self.expectAssignee(inst), VmValue.ConstString(intVal.toString()))
+          }
+          Builtin.U64ToString(int) => {
+            val intVal = self.irValueToVmValue(int).expectInt("U64ToString")
+            self.store(self.expectAssignee(inst), VmValue.ConstString(intVal.unsignedToString()))
+          }
+          Builtin.F64ToString(float) => {
+            val floatVal = self.irValueToVmValue(float).expectFloat("F64ToString")
+            self.store(self.expectAssignee(inst), VmValue.ConstString(floatVal.toString()))
+          }
+          Builtin.BoolToString(bool) => {
+            val boolVal = self.irValueToVmValue(bool).expectBool("BoolToString")
+            self.store(self.expectAssignee(inst), VmValue.ConstString(boolVal.toString()))
+          }
+          Builtin.IntAsFloat(int) => {
+            val intVal = self.irValueToVmValue(int).expectInt("IntAsFloat")
+            self.store(self.expectAssignee(inst), VmValue.Float(intVal.asFloat()))
+          }
+          Builtin.FloatAsInt(float) => {
+            val floatVal = self.irValueToVmValue(float).expectFloat("FloatAsInt")
+            self.store(self.expectAssignee(inst), VmValue.Int(floatVal.asInt()))
+          }
+          Builtin.FloatCeil(float) => {
+            val floatVal = self.irValueToVmValue(float).expectFloat("FloatCeil")
+            self.store(self.expectAssignee(inst), VmValue.Int(floatVal.ceil()))
+          }
+          Builtin.FloatFloor(float) => {
+            val floatVal = self.irValueToVmValue(float).expectFloat("FloatFloor")
+            self.store(self.expectAssignee(inst), VmValue.Int(floatVal.floor()))
+          }
+          Builtin.FloatRound(float) => {
+            val floatVal = self.irValueToVmValue(float).expectFloat("FloatRound")
+            self.store(self.expectAssignee(inst), VmValue.Int(floatVal.round()))
+          }
+          Builtin.Uninitialized => self.store(self.expectAssignee(inst), VmValue.Int(0))
+        }
+      }
+    }
+  }
+
+  func callExtern(self, name: String, args: VmValue[]) {
+    match name {
+      "write" => self.externWrite(args)
+      else => todo("callExtern: '$name'")
+    }
+  }
+
+  pub func externWrite(self, args: VmValue[]) {
+    val arg0 = try args[0] else unreachable("write(fd: Int, buf: Pointer<Byte>, count: Int)")
+    val fd = arg0.expectInt("externWrite fd")
+
+    val arg1 = try args[1] else unreachable("write(fd: Int, buf: Pointer<Byte>, count: Int)")
+    val buf = arg1.expectPointer("externWrite buf")
+
+    val arg2 = try args[2] else unreachable("write(fd: Int, buf: Pointer<Byte>, count: Int)")
+    val count = arg2.expectInt("externWrite count")
+
+    val res = libc.write(fd, buf, count)
+    self.returnValue = VmValue.Int(res)
+  }
+}

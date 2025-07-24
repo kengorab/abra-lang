@@ -61,6 +61,7 @@ pub type IrFunction {
   pub params: Ident[]
   pub ret: IrType
   pub block: (String, Instruction[]) = ("start", [])
+  pub numLocals: Int
 
   pub func render(self, sb: StringBuilder) {
     if self.extern |name| sb.writeln("@extern($name)")
@@ -106,11 +107,11 @@ pub type Instruction {
 
 pub enum IdentKind {
   Anon(idx: Int)
-  Named(name: String)
+  Named(name: String, idx: Int)
 
   pub func name(self): String = match self {
     IdentKind.Anon(idx) => "_$idx"
-    IdentKind.Named(name) => name
+    IdentKind.Named(name, _) => name
   }
 }
 
@@ -788,10 +789,28 @@ type Context {
   fn: IrFunction
   block: (String, Instruction[])
   locals: Map<String, Value> = {}
-  anonLocalIdx: Int = 0
+  numLocals: Int = 0
 
   func getLocal(self, name: String, pos: Position): Value {
     try self.locals[name] else unreachable("failed to find variable '$name' ($pos)")
+  }
+
+  func addLocal(self, ty: IrType, name: String?): Ident {
+    if name |name| {
+      if self.locals[name] |v| {
+        match v { Value.Ident(i) => i, else v => unreachable("addLocal: expected '$name' to be an ident, but was $v") }
+      } else {
+        val idx = self.numLocals
+        self.numLocals += 1
+        val ident = Ident(ty: ty, kind: IdentKind.Named(name, idx))
+        self.locals[name] = Value.Ident(ident)
+        ident
+      }
+    } else {
+      val idx = self.numLocals
+      self.numLocals += 1
+      Ident(ty: ty, kind: IdentKind.Anon(idx))
+    }
   }
 }
 
@@ -845,7 +864,7 @@ pub type Generator {
   pub func generateIR(project: tc.Project, foldConstants: Bool = true): IR {
     val allModules = project.modules.values().sortBy(m => m.id)
 
-    val mainFn = IrFunction(name: "main", params: [], ret: IrType.I64)
+    val mainFn = IrFunction(name: "main", params: [], ret: IrType.I64, numLocals: 0)
     val curCtx = Context(fn: mainFn, block: mainFn.block)
     val generator = Generator(project: project, functions: [], functionsByName: {}, curCtx: curCtx, foldConstants: foldConstants)
 
@@ -855,7 +874,7 @@ pub type Generator {
 
     for mod in allModules {
       if generator.genModule(mod) |modFn| {
-        mainFn.block[1].push(Instruction(op: Operation.Call(ret: modFn.ret, fnName: modFn.name, args: [])))
+        mainFn.block[1].push(Instruction(op: Operation.Call(ret: IrType.Unit, fnName: modFn.name, args: [])))
       }
     }
 
@@ -872,7 +891,7 @@ pub type Generator {
 
   func genModule(self, mod: tc.TypedModule): IrFunction? {
     val modFnName = "__mod_${mod.id}"
-    val modFn = IrFunction(name: modFnName, params: [], ret: IrType.Unit)
+    val modFn = IrFunction(name: modFnName, params: [], ret: IrType.Unit, numLocals: 0)
     val prevCtx = self.curCtx
     self.curCtx = Context(fn: modFn, block: modFn.block)
 
@@ -884,6 +903,7 @@ pub type Generator {
     self.functions.push(modFn)
     self.emit(Instruction(op: Operation.Return()))
 
+    modFn.numLocals = self.curCtx.numLocals
     self.curCtx = prevCtx
 
     for nextFn in self.fnQueue {
@@ -921,7 +941,7 @@ pub type Generator {
     }
 
     val externName = self.getExternDecName(fn)
-    val irFunc = IrFunction(extern: externName, name: ctx.fnName, params: [], ret: retTy)
+    val irFunc = IrFunction(extern: externName, name: ctx.fnName, params: [], ret: retTy, numLocals: 0)
     self.addFunction(ctx.fnName, irFunc)
     val prevCtx = self.enterFunction(irFunc)
 
@@ -929,7 +949,7 @@ pub type Generator {
       FunctionKind.InstanceMethod => {
         val selfConcreteType = try ctx.methodInstanceType else unreachable("Instance method without instance type")
         val selfTy = self.getIrTypeForConcreteType(selfConcreteType)
-        val selfParamIdent = Ident(ty: selfTy, kind: IdentKind.Named("self"))
+        val selfParamIdent = self.curCtx.addLocal(selfTy, Some("self"))
         irFunc.params.push(selfParamIdent)
         Some(Value.Ident(selfParamIdent))
       }
@@ -941,7 +961,7 @@ pub type Generator {
     for param, idx in fn.params {
       val paramConcreteType = self.getConcreteTypeFromType(param.ty, ctx.concreteGenerics)
       val paramTy = self.getIrTypeForConcreteType(paramConcreteType)
-      val paramIdent = Ident(ty: paramTy, kind: IdentKind.Named(param.label.name))
+      val paramIdent = self.curCtx.addLocal(paramTy, Some(param.label.name))
 
       val argVal = if param.defaultValue |defaultValue| {
         val paramNeedsDefault = ctx.paramsNeedingDefaultValue[idx] ?: false
@@ -961,7 +981,7 @@ pub type Generator {
 
     for paramConcreteType, idx in ctx.paramsToDiscard {
       val paramTy = self.getIrTypeForConcreteType(paramConcreteType)
-      val paramIdent = Ident(ty: paramTy, kind: IdentKind.Named("_discard_${idx}_"))
+      val paramIdent = self.curCtx.addLocal(paramTy, Some("_discard_${idx}_"))
       irFunc.params.push(paramIdent)
     }
 
@@ -972,6 +992,7 @@ pub type Generator {
 
         if fn.label.name == "toString" && fn.isGenerated {
           self.genToStringMethodBody(selfParam, selfConcreteType)
+          irFunc.numLocals = self.curCtx.numLocals
           self.curCtx = prevCtx
           return
         }
@@ -979,6 +1000,7 @@ pub type Generator {
         if fn.label.name == "eq" && fn.isGenerated {
           val otherParam = try argsForUnderlying[1] else unreachable()
           self.genEqMethodBody(selfParam, otherParam, selfConcreteType)
+          irFunc.numLocals = self.curCtx.numLocals
           self.curCtx = prevCtx
           return
         }
@@ -1018,6 +1040,7 @@ pub type Generator {
       }
     }
 
+    irFunc.numLocals = self.curCtx.numLocals
     self.curCtx = prevCtx
   }
 
@@ -1044,7 +1067,7 @@ pub type Generator {
     if self.functionsByName[fnName] |f| return f
 
     val retTy = self.getIrTypeForConcreteType(concreteType)
-    val irFunc = IrFunction(name: fnName, params: [], ret: retTy)
+    val irFunc = IrFunction(name: fnName, params: [], ret: retTy, numLocals: 0)
     self.addFunction(fnName, irFunc)
     val prevCtx = self.enterFunction(irFunc)
 
@@ -1062,12 +1085,12 @@ pub type Generator {
           anyFieldNeedsDefault = true
           self.genExpression(initializerNode, concreteGenerics, Some(field.name.name))
         } else {
-          val ident = Ident(ty: fieldTy, kind: IdentKind.Named(field.name.name))
+          val ident = self.curCtx.addLocal(fieldTy, Some(field.name.name))
           irFunc.params.push(ident)
           Value.Ident(ident)
         }
       } else {
-        val ident = Ident(ty: fieldTy, kind: IdentKind.Named(field.name.name))
+        val ident = self.curCtx.addLocal(fieldTy, Some(field.name.name))
         irFunc.params.push(ident)
         Value.Ident(ident)
       }
@@ -1096,13 +1119,14 @@ pub type Generator {
       }
 
       for (fieldVal, fieldTy, fieldName, fieldOffset), idx in argsForUnderlying {
-        self.emit(Instruction(op: Operation.StoreField(ty: fieldTy, value: fieldVal, mem: mem, name: fieldName, offset: fieldOffset)))
+        self.emit(Instruction(op: Operation.StoreField(ty: fieldTy, value: fieldVal, mem: mem, name: fieldName, offset: fieldOffset))) // todo: shouldn't this start at offset 1 (since offset 0 above is $idx)?
       }
 
       mem
     }
     self.emit(Instruction(op: Operation.Return(Some(retVal))))
 
+    irFunc.numLocals = self.curCtx.numLocals
     self.curCtx = prevCtx
 
     irFunc
@@ -1440,14 +1464,12 @@ pub type Generator {
         val itVarName = self.varName(iterateeVar)
 
         val startValue = self.genExpression(start, concreteGenerics)
-        val itVar = Ident(ty: IrType.I64, kind: IdentKind.Named(itVarName))
-        self.curCtx.locals[itVarName] = Value.Ident(itVar)
+        val itVar = self.curCtx.addLocal(IrType.I64, Some(itVarName))
 
         val idxVar = if indexBinding |idxBindingVar| {
           idxBindingVar.mutable = true  // TODO: this is kinda gross, should probably be fixed in the typechecker
           val varName = self.varName(idxBindingVar)
-          val idxVal = Ident(ty: IrType.I64, kind: IdentKind.Named(varName))
-          self.curCtx.locals[varName] = Value.Ident(idxVal)
+          val idxVal = self.curCtx.addLocal(IrType.I64, Some(varName))
           Some(idxVal)
         } else {
           None
@@ -2539,7 +2561,7 @@ pub type Generator {
     if variable.isParameter {
       // todo: handle whether variable is captured
 
-      return Value.Ident(ident: Ident(ty: varTy, kind: IdentKind.Named(name)))
+      return Value.Ident(self.curCtx.addLocal(varTy, Some(name)))
     }
 
     match variable.alias {
@@ -2973,21 +2995,17 @@ pub type Generator {
           (Operation.ConstString(value), strTy)
         }
       }
-      val ident = Ident(ty: ty, kind: IdentKind.Named(name), compileTimeValue: Some(const))
-      self.emit(Instruction(assignee: Some(ident), op: op))
 
-      Value.Ident(ident: ident)
+      self.ssaValue(ty, op, Some(name))
     } else {
       Value.Const(const)
     }
   }
 
   func ssaValue(self, ty: IrType, op: Operation, name: String?): Value {
-    val identKind = if name |name| IdentKind.Named(name) else IdentKind.Anon(self.nextAnonLocal())
-    val ident = Ident(ty: ty, kind: identKind)
+    val ident = self.curCtx.addLocal(ty, name)
     self.emit(Instruction(assignee: Some(ident), op: op))
-
-    Value.Ident(ident: ident)
+    Value.Ident(ident)
   }
 
   func genCallToStringMethod(self, value: Value, dst: String? = None): Value {
@@ -3357,12 +3375,6 @@ pub type Generator {
       Value.Ident(ident) => ident.ty
       Value.Global(global) => global.ty
     }
-  }
-
-  func nextAnonLocal(self): Int {
-    val idx = self.curCtx.anonLocalIdx
-    self.curCtx.anonLocalIdx += 1
-    idx
   }
 
   func getExternDecName(self, fn: tc.Function): String? {
