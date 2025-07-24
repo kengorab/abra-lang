@@ -628,11 +628,11 @@ pub type Block {
     Ok(local)
   }
 
-  pub func buildCallRaw(self, fnName: String, returnType: QbeType, arguments: Value[], dst: String? = None): Result<Value, String> {
+  pub func buildCallRaw(self, fnName: String, returnType: QbeType, arguments: Value[], dst: String? = None, env: Value? = None): Result<Value, String> {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, returnType)
 
-    self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: returnType)), fn: Value.Global(fnName, QbeType.Pointer), args: arguments, env: None))
+    self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: returnType)), fn: Value.Global(fnName, QbeType.Pointer), args: arguments, env: env))
 
     Ok(local)
   }
@@ -653,8 +653,8 @@ pub type Block {
     }
   }
 
-  pub func buildVoidCallRaw(self, fnName: String, arguments: Value[]) {
-    self.append(Instruction.Call(dst: None, fn: Value.Global(fnName, QbeType.Pointer), args: arguments, env: None))
+  pub func buildVoidCallRaw(self, fnName: String, arguments: Value[], env: Value? = None) {
+    self.append(Instruction.Call(dst: None, fn: Value.Global(fnName, QbeType.Pointer), args: arguments, env: env))
   }
 
   pub func buildPhi(self, cases: (Label, Value)[], dst: String? = None): Result<Value, String> {
