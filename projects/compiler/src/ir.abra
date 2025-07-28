@@ -216,6 +216,11 @@ pub enum ClosureEnvLocation {
   Passthrough
 }
 
+pub enum CaptureSource {
+  WithinCapturingFn(idx: Int, name: String, mutable: Bool)
+  OutsideFn(ident: Ident)
+}
+
 pub enum Operation {
   NewLocal(ty: IrType, captured: Bool, initialValue: Value? = None)
   ConstInt(int: Int)
@@ -247,10 +252,10 @@ pub enum Operation {
   Shr(left: Value, right: Value)
 
   LoadVar(ty: IrType, ident: Ident)
-  LoadCapturedVar(ty: IrType, name: String, idx: (Int, Bool)?, deref: Bool)
+  LoadCapturedVar(ty: IrType, src: CaptureSource, deref: Bool)
   LoadField(ty: IrType, mem: Value, name: String, offset: Int)
   StoreVar(ty: IrType, value: Value, ident: Ident)
-  StoreCapturedVar(ty: IrType, value: Value, name: String, idx: Int?)
+  StoreCapturedVar(ty: IrType, value: Value, src: CaptureSource)
   StoreGlobal(ty: IrType, value: Value, global: GlobalVariable)
   StoreField(ty: IrType, value: Value, mem: Value, name: String, offset: Int)
 
@@ -452,15 +457,21 @@ pub enum Operation {
         mem.render(sb)
         sb.write(")")
       }
-      Operation.LoadCapturedVar(ty, name, _ctx, deref) => {
+      Operation.LoadCapturedVar(ty, src, deref) => {
         sb.write("load_captured_var(")
         ty.render(sb)
-        sb.write(", $name")
-        if _ctx |(idx, mutable)| {
-          if mutable {
-            sb.write(" (mutable)")
+        sb.write(", ")
+        match src {
+          CaptureSource.WithinCapturingFn(idx, name, mutable) => {
+            sb.write("$idx ($name")
+            if mutable {
+              sb.write(" (mutable)")
+            }
+            sb.write(")")
           }
-          sb.write(", $idx")
+          CaptureSource.OutsideFn(ident) => {
+            ident.render(sb)
+          }
         }
         if deref {
           sb.write(", deref")
@@ -483,12 +494,20 @@ pub enum Operation {
         ident.render(sb)
         sb.write(")")
       }
-      Operation.StoreCapturedVar(ty, value, name, idx) => {
+      Operation.StoreCapturedVar(ty, value, src) => {
         sb.write("store_captured_var(")
         ty.render(sb)
         sb.write(", ")
         value.render(sb)
-        sb.write(", $name, ${idx ?: -1})")
+        match src {
+          CaptureSource.WithinCapturingFn(idx, name, _) => {
+            sb.write("$idx ($name)")
+          }
+          CaptureSource.OutsideFn(ident) => {
+            ident.render(sb)
+          }
+        }
+        sb.write(")")
       }
       Operation.StoreGlobal(ty, value, global) => {
         sb.write("store_var(")
@@ -900,6 +919,9 @@ type ConcreteType {
   }
 }
 
+// All values placed into heap-allocated memory must be aligned on 8-byte boundaries, in order to satisfy bdwgc
+val ALIGNMENT = 8
+
 pub type Generator {
   project: tc.Project
   functions: IrFunction[]
@@ -1060,6 +1082,7 @@ pub type Generator {
 
         if fn.label.name == "hash" && fn.isGenerated {
           self.genHashMethodBody(selfParam, selfConcreteType)
+          irFunc.numLocals = self.curCtx.numLocals
           self.curCtx = prevCtx
           return
         }
@@ -1136,7 +1159,7 @@ pub type Generator {
     for field, idx in fields {
       val fieldConcreteType = self.getConcreteTypeFromType(field.ty, concreteGenerics)
       val fieldTy = self.getIrTypeForConcreteType(fieldConcreteType)
-      size += 8 // TODO: don't assume 8 byte alignment for all fields
+      size += ALIGNMENT
 
       val fieldVal = if field.initializer |initializerNode| {
         val fieldNeedsDefault = fieldsNeedingDefaultValue[idx] ?: false
@@ -1154,8 +1177,7 @@ pub type Generator {
         Value.Ident(ident)
       }
 
-      // TODO: don't assume 8 byte alignment for all fields
-      argsForUnderlying.push((fieldVal, fieldTy, field.name.name, idx * 8))
+      argsForUnderlying.push((fieldVal, fieldTy, field.name.name, idx * ALIGNMENT))
     }
 
     val retVal = if anyFieldNeedsDefault {
@@ -1221,7 +1243,7 @@ pub type Generator {
           val fieldConcreteType = self.getConcreteTypeFromType(f.ty, newConcreteGenerics)
           val fieldIrType = self.getIrTypeForConcreteType(fieldConcreteType)
 
-          val itemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: selfVal, name: f.name.name, offset: idx * 8), None)
+          val itemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: selfVal, name: f.name.name, offset: idx * ALIGNMENT), None)
           val itemLabel = if isTupleStruct "" else f.name.name
           (itemLabel, fieldConcreteType, itemVal)
         })
@@ -1270,8 +1292,8 @@ pub type Generator {
           val fieldConcreteType = self.getConcreteTypeFromType(f.ty, newConcreteGenerics)
           val fieldIrType = self.getIrTypeForConcreteType(fieldConcreteType)
 
-          val selfItemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: selfVal, name: f.name.name, offset: idx * 8), None)
-          val otherItemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: otherVal, name: f.name.name, offset: idx * 8), None)
+          val selfItemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: selfVal, name: f.name.name, offset: idx * ALIGNMENT), None)
+          val otherItemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: otherVal, name: f.name.name, offset: idx * ALIGNMENT), None)
           (fieldConcreteType, selfItemVal, otherItemVal)
         })
 
@@ -1569,7 +1591,7 @@ pub type Generator {
         for pat, idx in pats {
           val itemTy = try valueTy.typeArgs[idx] else unreachable()
           val itemIrTy = self.getIrTypeForConcreteType(itemTy)
-          val itemVal = self.ssaValue(itemIrTy, Operation.LoadField(ty: itemIrTy, mem: value, name: "__$idx", offset: idx * 8), None)
+          val itemVal = self.ssaValue(itemIrTy, Operation.LoadField(ty: itemIrTy, mem: value, name: "__$idx", offset: idx * ALIGNMENT), None)
 
           self.genBindingPattern(pat, variables, Some((itemVal, itemTy)), concreteGenerics)
         }
@@ -1644,7 +1666,7 @@ pub type Generator {
           val global = self.getGlobal(globalName, pos)
           self.emit(Instruction(op: Operation.StoreGlobal(ty: varIrTy, value: res, global: global)))
         } else if v.isCaptured {
-          self.genStoreCapturedVar(concreteGenerics, v, res)
+          self.genStoreCapturedVar(pos, concreteGenerics, v, res)
         } else {
           val varName = self.varName(v)
           val local = self.curCtx.getLocal(varName, pos)
@@ -1791,6 +1813,11 @@ pub type Generator {
           None
         })
 
+        if !!ifBlockTerminator && !!elseBlockTerminator {
+          self.emit(Instruction(op: Operation.If(IrType.Unit, condVal, ifBody, elseBody)))
+          return Value.Unit
+        }
+
         val resConcreteType = self.getConcreteTypeFromType(node.ty, concreteGenerics)
         val resIrTy = self.getIrTypeForConcreteType(resConcreteType)
         self.ssaValue(resIrTy, Operation.If(resIrTy, condVal, ifBody, elseBody), dst)
@@ -1815,9 +1842,11 @@ pub type Generator {
 
     var allComptime = true
     val comptimeStrings: String[] = []
-    val exprVals: Value[] = []
+    val exprVals: (Value, ConcreteType)[] = []
     for expr in exprs {
       val exprVal = self.genExpression(expr, concreteGenerics)
+      val concreteType = self.getConcreteTypeFromType(expr.ty, concreteGenerics)
+
       if allComptime {
         if self.valueAsCompileTime(exprVal) |exprVal| {
           val str = match exprVal {
@@ -1832,20 +1861,25 @@ pub type Generator {
           allComptime = false
         }
       }
-      exprVals.push(exprVal)
+
+      exprVals.push((exprVal, concreteType))
     }
 
     if allComptime return Value.Const(Const.String(comptimeStrings.join()))
 
     val toStringVals: (Value, Value)[] = []
     var totalLenVal = Value.Const(Const.Int(0))
-    for exprVal in exprVals {
-      val toStringVal = if self.getValueTy(exprVal) == strIrTy { exprVal } else self.genCallToStringMethod(exprVal)
+    for (exprVal, concreteType) in exprVals {
+      val toStringVal = if self.getValueTy(exprVal) == strIrTy {
+        exprVal
+      } else {
+        self.genCallToStringMethod(exprVal, concreteType)
+      }
 
       if exprVals.length == 1 return toStringVal
 
-      val strLenVal = self.ssaValue(IrType.I64, Operation.LoadField(ty: IrType.I64, mem: toStringVal, name: "length", offset: 0), None)
-      val strBufVal = self.ssaValue(IrType.Ptr, Operation.LoadField(ty: IrType.Ptr, mem: toStringVal, name: "_buffer", offset: 8), None)
+      val strLenVal = self.ssaValue(IrType.I64, Operation.LoadField(ty: IrType.I64, mem: toStringVal, name: "length", offset: 0 * ALIGNMENT), None)
+      val strBufVal = self.ssaValue(IrType.Ptr, Operation.LoadField(ty: IrType.Ptr, mem: toStringVal, name: "_buffer", offset: 1 * ALIGNMENT), None)
       toStringVals.push((strLenVal, strBufVal))
 
       totalLenVal = self.ssaValue(IrType.I64, Operation.Add(totalLenVal, strLenVal), None)
@@ -1926,8 +1960,9 @@ pub type Generator {
             return self.ssaValueComptime(Const.String(constStr), dst)
           }
 
-          val lStrVal = if lvalTy == strTy { lval } else self.genCallToStringMethod(lval, dst)
-          val rStrVal = if rvalTy == strTy { rval } else self.genCallToStringMethod(rval, dst)
+          val concreteType = self.getConcreteTypeFromType(left.ty, concreteGenerics)
+          val lStrVal = if lvalTy == strTy { lval } else self.genCallToStringMethod(lval, concreteType, dst)
+          val rStrVal = if rvalTy == strTy { rval } else self.genCallToStringMethod(rval, concreteType, dst)
 
           val strConcreteTy = ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct))
           val concatFn = self.getMethodByName(strConcreteTy.instanceKind, "concat", staticMethod: false)
@@ -2621,45 +2656,15 @@ pub type Generator {
     val varTy = self.getIrTypeForConcreteType(varConcreteType)
 
     if variable.isParameter {
-      // todo: handle whether variable is captured
+      if variable.isCaptured {
+        return self.genLoadCapturedVar(pos, concreteGenerics, variable, deref: true)
+      }
 
       return Value.Ident(self.curCtx.addLocal(varTy, Some(name)))
     }
 
     match variable.alias {
-      VariableAlias.Function(fn) => {
-        // val targetParamTypes = if fnAliasTypeHint |hint| {
-        //   val paramTypes = match hint.kind {
-        //     TypeKind.Func(paramTypes, _) => paramTypes
-        //     // If the function value is being treated as a Hole, then no param type info needs to be known later anyway
-        //     TypeKind.Hole => []
-        //     _ => unreachable("fnAliasTypeKind must be TypeKind.Func")
-        //   }
-        //   paramTypes
-        // } else {
-        //   []
-        // }
-        // val paramsNeedingDefaultValue = fn.params.map((param, idx) => {
-        //   if targetParamTypes[idx] {
-        //     false
-        //   } else {
-        //     if !param.defaultValue unreachable("creating fn val for fn '${fn.label}' with arity param '${param.label.name}' to be optional")
-        //     true
-        //   }
-        // })
-        val fnName = self.fnName(None, fn, concreteGenerics, [])
-        stdoutWriteln("referenced as value: $fnName")
-
-        // todo()
-
-        //       // val capturesMem = if !fn.isClosure() None else {
-        //       //   val mem = try self._getCapturesArrForClosure(fn)
-        //       //   Some(mem)
-        //       // }
-
-        //       // self._compileFunctionValue(node.token.position, fn, targetParamTypes, capturesMem, None)
-        todo("genIdentifier VariableAlias.Function")
-      }
+      VariableAlias.Function(fn) => todo("genIdentifier VariableAlias.Function")
       else => {
         if varImportModule |mod| {
           val globalName = self.globalName(mod.id, variable.label.name)
@@ -2703,23 +2708,27 @@ pub type Generator {
     if self.curCtx.typedFn |fn| {
       for v, idx in fn.captures {
         if v.label.name == variable.label.name {
-          return self.ssaValue(varTy, Operation.LoadCapturedVar(ty: varTy, name: varName, idx: Some((idx, variable.mutable)), deref: deref), None)
+          val src = CaptureSource.WithinCapturingFn(idx: idx, name: varName, mutable: variable.mutable)
+          return self.ssaValue(varTy, Operation.LoadCapturedVar(ty: varTy, src: src, deref: deref), None)
         }
       }
     }
 
     if variable.isParameter {
-      return self.curCtx.getLocal(varName, pos)
+      return self.curCtx.getLocal(variable.label.name, pos)
     }
 
+    val local = self.curCtx.getLocal(varName, pos)
     if variable.mutable {
-      self.ssaValue(varTy, Operation.LoadCapturedVar(ty: varTy, name: varName, idx: None, deref: deref), None)
+      val ident = match local { Value.Ident(i) => i, else v => unreachable("expected ident but got '$v'") }
+      val src = CaptureSource.OutsideFn(ident: ident)
+      self.ssaValue(varTy, Operation.LoadCapturedVar(ty: varTy, src: src, deref: deref), None)
     } else {
-      self.curCtx.getLocal(varName, pos)
+      local
     }
   }
 
-  func genStoreCapturedVar(self, concreteGenerics: Map<String, ConcreteType>, variable: tc.Variable, value: Value) {
+  func genStoreCapturedVar(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, variable: tc.Variable, value: Value) {
     val varConcreteType = self.getConcreteTypeFromType(variable.ty, concreteGenerics)
     val varTy = self.getIrTypeForConcreteType(varConcreteType)
     val varName = self.varName(variable)
@@ -2727,13 +2736,16 @@ pub type Generator {
     if self.curCtx.typedFn |fn| {
       for v, idx in fn.captures {
         if v.label.name == variable.label.name {
-          self.emit(Instruction(op: Operation.StoreCapturedVar(ty: varTy, value: value, name: varName, idx: Some(idx))))
+          val src = CaptureSource.WithinCapturingFn(idx: idx, name: varName, mutable: true)
+          self.emit(Instruction(op: Operation.StoreCapturedVar(ty: varTy, value: value, src: src)))
           return
         }
       }
     }
 
-    self.emit(Instruction(op: Operation.StoreCapturedVar(ty: varTy, value: value, name: varName, idx: None)))
+    val ident = match self.curCtx.getLocal(varName, pos) { Value.Ident(i) => i, else v => unreachable("expected ident but got '$v'") }
+    val src = CaptureSource.OutsideFn(ident: ident)
+    self.emit(Instruction(op: Operation.StoreCapturedVar(ty: varTy, value: value, src: src)))
   }
 
   func followAccessorPath(self, head: tc.TypedAstNode, middle: tc.AccessorPathSegment[], tail: tc.AccessorPathSegment, concreteGenerics: Map<String, ConcreteType>, dst: String?, storeVal: Value? = None): Value {
@@ -2790,8 +2802,9 @@ pub type Generator {
           match concreteType.instanceKind {
             InstanceKind.Struct(struct) => {
               val (f, fieldIdx) = try struct.fields.findIndex(f => f.name.name == field.name.name) else unreachable("no such field '${field.name.name}'")
-              val offset = fieldIdx * 8 // TODO: don't assume 8 byte alignment for all fields
-              val fieldConcreteType = self.getConcreteTypeFromType(f.ty, concreteGenerics)
+              val offset = fieldIdx * ALIGNMENT
+              val newConcreteGenerics = self.extractConcreteGenericsFromConcreteType(concreteType)
+              val fieldConcreteType = self.getConcreteTypeFromType(f.ty, newConcreteGenerics)
               val fieldTy = self.getIrTypeForConcreteType(fieldConcreteType)
 
               if idx == segs.length - 1 {
@@ -2805,7 +2818,7 @@ pub type Generator {
               }
 
               workingVal = self.ssaValue(fieldTy, Operation.LoadField(ty: fieldTy, mem: workingVal, name: f.name.name, offset: offset), None)
-              concreteType = self.getConcreteTypeFromType(ty, concreteGenerics)
+              concreteType = self.getConcreteTypeFromType(ty, newConcreteGenerics)
             }
             InstanceKind.Enum => todo("enum field accessor")
           }
@@ -2958,7 +2971,7 @@ pub type Generator {
         val fieldConcreteType = try tupleConcreteType.typeArgs[idx] else unreachable("Tuple of size ${tupleConcreteType.typeArgs.length} must have an index $idx")
         val fieldIrType = self.getIrTypeForConcreteType(fieldConcreteType)
 
-        self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: tupleVal, name: "__$idx", offset: idx * 8), dst)
+        self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: tupleVal, name: "__$idx", offset: idx * ALIGNMENT), dst)
       }
     }
   }
@@ -3066,10 +3079,10 @@ pub type Generator {
     val arrVal = self.ssaValue(arrayIrTy, op, dst)
 
     val (_, lengthFieldIdx) = try self.project.preludeArrayStruct.fields.findIndex(f => f.name.name == "length") else unreachable("no such field 'length'")
-    self.emit(Instruction(op: Operation.StoreField(ty: IrType.I64, value: Value.Const(Const.Int(values.length)), mem: arrVal, name: "length", offset: lengthFieldIdx * 8)))
+    self.emit(Instruction(op: Operation.StoreField(ty: IrType.I64, value: Value.Const(Const.Int(values.length)), mem: arrVal, name: "length", offset: lengthFieldIdx * ALIGNMENT)))
 
     val (_, bufferFieldIdx) = try self.project.preludeArrayStruct.fields.findIndex(f => f.name.name == "_buffer") else unreachable("no such field '_buffer'")
-    val bufferVal = self.ssaValue(IrType.Ptr, Operation.LoadField(ty: IrType.Ptr, mem: arrVal, name: "_buffer", offset: bufferFieldIdx * 8), None)
+    val bufferVal = self.ssaValue(IrType.Ptr, Operation.LoadField(ty: IrType.Ptr, mem: arrVal, name: "_buffer", offset: bufferFieldIdx * ALIGNMENT), None)
 
     val arrayItemIrTy = self.getIrTypeForConcreteType(arrayItemConcreteType)
     for value, idx in values {
@@ -3151,21 +3164,8 @@ pub type Generator {
     Value.Ident(ident)
   }
 
-  func genCallToStringMethod(self, value: Value, dst: String? = None): Value {
+  func genCallToStringMethod(self, value: Value, concreteType: ConcreteType, dst: String? = None): Value {
     val strTy = IrType.Composite(self.knowns.stringType().name)
-    val valTy = self.getValueTy(value)
-    val concreteType = match valTy {
-      IrType.Unit => unreachable("values cannot be of type unit")
-      IrType.I64 => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeIntStruct))
-      IrType.F64 => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeFloatStruct))
-      IrType.Bool => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeBoolStruct))
-      IrType.Byte => todo("Byte#toString()")
-      IrType.Composite(name) => {
-        val (_, concreteTy) = try self.types[name] else unreachable("type '$name' missing from known types")
-        concreteTy
-      }
-      IrType.Ptr => todo("Pointer#toString()")
-    }
 
     val concreteGenerics = self.extractConcreteGenericsFromConcreteType(concreteType)
     val toStringFn = self.getMethodByName(concreteType.instanceKind, "toString", staticMethod: false)
@@ -3421,6 +3421,7 @@ pub type Generator {
         if s == self.project.preludeIntStruct return IrType.I64
         if s == self.project.preludeFloatStruct return IrType.F64
         if s == self.project.preludeBoolStruct return IrType.Bool
+        if s == self.project.preludeCharStruct return IrType.I64
 
         if s.builtin == Some(tc.BuiltinModule.Intrinsics) {
           if s.label.name == "Byte" return IrType.Byte

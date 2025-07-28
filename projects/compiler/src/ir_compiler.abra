@@ -1,5 +1,5 @@
 import File from "fs"
-import IR, IrFunction, IrType, Instruction, Operation, Ident, Value, Const, IdentKind, GlobalVariable, Builtin, ClosureEnvLocation from "./ir"
+import IR, IrFunction, IrType, Instruction, Operation, Ident, Value, Const, IdentKind, GlobalVariable, Builtin, ClosureEnvLocation, CaptureSource from "./ir"
 import ModuleBuilder, QbeType from "./qbe"
 import "./qbe" as qbe
 import i64ToString, u64ToString, f64ToString from "./ir_compiler_builtins"
@@ -455,29 +455,32 @@ pub type Compiler {
         val ptr = qbe.Value.Ident(name: ident.kind.name(), ty: self.irTypeToQbeType(ident.ty))
         self.currentFn.block.buildLoad(self.irTypeToQbeType(ty), ptr, dst)
       }
-      Operation.LoadCapturedVar(ty, name, fnCtx, deref) => {
+      Operation.LoadCapturedVar(ty, src, deref) => {
         val varTy = self.irTypeToQbeType(ty)
-        if fnCtx |(idx, mutable)| {
-          val env = try self.currentFnEnv else unreachable("Operation.LoadCapturedVar('$name'): no env for current function '${self.currentFn.name}'")
-          val captureSlot = try self.currentFn.block.buildAdd(qbe.Value.Int((idx + 1) * 8), env, Some(self.nextTemp())) else |e| unreachable(e)
+        match src {
+          CaptureSource.WithinCapturingFn(idx, name, mutable) => {
+            val env = try self.currentFnEnv else unreachable("Operation.LoadCapturedVar(idx: $idx, name: '$name'): no env for current function '${self.currentFn.name}'")
+            val captureSlot = try self.currentFn.block.buildAdd(qbe.Value.Int((idx + 1) * 8), env, Some(self.nextTemp())) else |e| unreachable(e)
 
-          if mutable {
+            if mutable {
+              if deref {
+                val varPtr = self.currentFn.block.buildLoadL(captureSlot, Some(self.nextTemp()))
+                self.currentFn.block.buildLoad(varTy, varPtr, dst)
+              } else {
+                self.currentFn.block.buildLoadL(captureSlot, dst)
+              }
+            } else {
+              self.currentFn.block.buildLoad(varTy, captureSlot, dst)
+            }
+          }
+          CaptureSource.OutsideFn(ident) => {
+            val varIdent = qbe.Value.Ident(name: ident.kind.name(), ty: varTy)
             if deref {
-              val varPtr = self.currentFn.block.buildLoadL(captureSlot, Some(self.nextTemp()))
+              val varPtr = self.currentFn.block.buildLoad(qbe.QbeType.Pointer, varIdent, Some(self.nextTemp()))
               self.currentFn.block.buildLoad(varTy, varPtr, dst)
             } else {
-              self.currentFn.block.buildLoadL(captureSlot, dst)
+              self.currentFn.block.buildLoad(varTy, varIdent, dst)
             }
-          } else {
-            self.currentFn.block.buildLoad(varTy, captureSlot, dst)
-          }
-        } else {
-          val varIdent = qbe.Value.Ident(name: name, ty: varTy)
-          if deref {
-            val varPtr = self.currentFn.block.buildLoad(qbe.QbeType.Pointer, varIdent, Some(self.nextTemp()))
-            self.currentFn.block.buildLoad(varTy, varPtr, dst)
-          } else {
-            self.currentFn.block.buildLoad(varTy, varIdent, dst)
           }
         }
       }
@@ -496,19 +499,22 @@ pub type Compiler {
         val mem = qbe.Value.Ident(name: ident.kind.name(), ty: qbeTy)
         self.currentFn.block.buildStore(self.irTypeToQbeType(ty), v, mem)
       }
-      Operation.StoreCapturedVar(ty, value, name, idx) => {
+      Operation.StoreCapturedVar(ty, value, src) => {
         val varTy = self.irTypeToQbeType(ty)
         val v = self.irValueToQbeValue(value)
-        if idx |idx| {
-          val env = try self.currentFnEnv else unreachable("Operation.StoreCapturedVar('$name'): no env for current function '${self.currentFn.name}'")
-          val captureSlot = try self.currentFn.block.buildAdd(qbe.Value.Int((idx + 1) * 8), env, Some(self.nextTemp())) else |e| unreachable(e)
+        match src {
+          CaptureSource.WithinCapturingFn(idx, name, _) => {
+            val env = try self.currentFnEnv else unreachable("Operation.StoreCapturedVar(idx: $idx, name: '$name'): no env for current function '${self.currentFn.name}'")
+            val captureSlot = try self.currentFn.block.buildAdd(qbe.Value.Int((idx + 1) * 8), env, Some(self.nextTemp())) else |e| unreachable(e)
 
-          val varPtr = self.currentFn.block.buildLoadL(captureSlot, Some(self.nextTemp()))
-          self.currentFn.block.buildStore(varTy, v, varPtr)
-        } else {
-          val ptr = qbe.Value.Ident(name: name, ty: varTy)
-          val varPtr = self.currentFn.block.buildLoadL(ptr, Some(self.nextTemp()))
-          self.currentFn.block.buildStore(varTy, v, varPtr)
+            val varPtr = self.currentFn.block.buildLoadL(captureSlot, Some(self.nextTemp()))
+            self.currentFn.block.buildStore(varTy, v, varPtr)
+          }
+          CaptureSource.OutsideFn(ident) => {
+            val ptr = qbe.Value.Ident(name: ident.kind.name(), ty: varTy)
+            val varPtr = self.currentFn.block.buildLoadL(ptr, Some(self.nextTemp()))
+            self.currentFn.block.buildStore(varTy, v, varPtr)
+          }
         }
       }
       Operation.StoreGlobal(ty, value, global) => {

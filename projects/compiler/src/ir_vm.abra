@@ -1,8 +1,12 @@
 import "process" as process
 import "./ir" as ir
-import Value, Const, Operation, Builtin, IdentKind, IrType from "./ir"
+import Value, Const, Operation, Builtin, IdentKind, IrType, ClosureEnvLocation, CaptureSource from "./ir"
 import Pointer, Byte from "_intrinsics"
 import "libc" as libc
+
+type CapturedValue {
+  inner: VmValue
+}
 
 pub enum VmValue {
   Undefined
@@ -11,11 +15,15 @@ pub enum VmValue {
   Bool(bool: Bool)
   ConstString(str: String)
   Pointer(ptr: Pointer<Byte>)
+  Function(fn: ir.IrFunction, captures: VmValue[])
+  Capture(inner: CapturedValue)
 
   func expectInt(self, message: String): Int = match self { VmValue.Int(i) => i, else v => unreachable("expected int value but got '$v' ($message)") }
   func expectFloat(self, message: String): Float = match self { VmValue.Float(f) => f, else v => unreachable("expected float value but got '$v' ($message)") }
   func expectBool(self, message: String): Bool = match self { VmValue.Bool(b) => b, else v => unreachable("expected bool value but got '$v' ($message)") }
   func expectPointer(self, message: String): Pointer<Byte> = match self { VmValue.Pointer(p) => p, else v => unreachable("expected pointer value but got '$v' ($message)") }
+  func expectFunction(self, message: String): (ir.IrFunction, VmValue[]) = match self { VmValue.Function(f, c) => (f, c), else v => unreachable("expected function value but got '$v' ($message)") }
+  func expectCapture(self, message: String): CapturedValue = match self { VmValue.Capture(inner) => inner, else v => unreachable("expected captured value but got '$v' ($message)") }
 }
 
 pub func unmarshallString(value: VmValue): Result<String, String> {
@@ -26,6 +34,8 @@ pub func unmarshallString(value: VmValue): Result<String, String> {
     VmValue.Bool => return Err("Could not unmarshall value of bool to String")
     VmValue.ConstString(str) => return Ok(str)
     VmValue.Pointer(ptr) => ptr
+    VmValue.Function => return Err("Could not unmarshall value of function to String")
+    VmValue.Capture => return Err("Could not unmarshall captured value to String")
   }
 
   val addr = ptr.address()
@@ -45,6 +55,7 @@ enum ControlFlag {
 pub type VM {
   pub ir: ir.IR
   locals: VmValue[] = []
+  captures: VmValue[] = []
   returnValue: VmValue = VmValue.Undefined
   flag: ControlFlag = ControlFlag.Empty
   whileLoopCond: ir.Instruction[]? = None
@@ -55,7 +66,7 @@ pub type VM {
     vm.evalFunctionCall(intermediateRepresentation.mainFunction, [])
   }
 
-  pub func evalFunctionCall(self, fn: ir.IrFunction, args: VmValue[]): VmValue {
+  pub func evalFunctionCall(self, fn: ir.IrFunction, args: VmValue[], captures: VmValue[] = []): VmValue {
     if fn.extern |name| {
       self.callExtern(name, args)
     } else {
@@ -65,6 +76,8 @@ pub type VM {
       self.locals = Array.fill(fn.numLocals, VmValue.Undefined)
       val oldFnName = self.curFnName
       self.curFnName = fn.name
+      val oldCaptures = self.captures
+      self.captures = captures
 
       for param, idx in fn.params {
         val arg = try args[idx] else unreachable("incorrect arity, expected param at idx $idx for function '${fn.name}'")
@@ -81,6 +94,7 @@ pub type VM {
 
       self.locals = oldLocals
       self.curFnName = oldFnName
+      self.captures = oldCaptures
     }
 
     self.returnValue
@@ -98,7 +112,7 @@ pub type VM {
       IdentKind.Named(_, idx) => self.locals[idx]
       IdentKind.Anon(idx) => self.locals[idx]
     }
-    try v else unreachable("expected value for ident '$ident'")
+    try v else unreachable("(${self.curFnName}: expected value for ident '$ident'")
   }
 
   func irValueToVmValue(self, value: ir.Value): VmValue {
@@ -149,10 +163,14 @@ pub type VM {
 
     // stdoutWriteln("[EVAL(${self.curFnName})]: ${inst.op}")
     match inst.op {
-      Operation.NewLocal(ty, initialValue) => {
+      Operation.NewLocal(ty, isCaptured, initialValue) => {
         val init = try initialValue else todo("empty initialValue")
         val value = self.irValueToVmValue(init)
-        self.store(self.expectAssignee(inst), value)
+        if isCaptured {
+          self.store(self.expectAssignee(inst), VmValue.Capture(CapturedValue(inner: value)))
+        } else {
+          self.store(self.expectAssignee(inst), value)
+        }
       }
       Operation.ConstInt(int) => self.store(self.expectAssignee(inst), VmValue.Int(int))
       Operation.ConstFloat(float) => self.store(self.expectAssignee(inst), VmValue.Float(float))
@@ -277,12 +295,34 @@ pub type VM {
         val r = self.irValueToVmValue(right).expectInt("Shr right value")
         self.store(self.expectAssignee(inst), VmValue.Int(l >> r))
       }
-      Operation.Load(ty, mem) => {
-        val value = match mem {
-          Value.Unit => unreachable("values cannot be of type unit")
-          Value.Const => unreachable("cannot load from const value")
-          Value.Ident(i) => self.load(i)
-          Value.Global(g) => todo("loading global")
+      Operation.LoadVar(ty, ident) => {
+        self.store(self.expectAssignee(inst), self.load(ident))
+      }
+      Operation.LoadCapturedVar(ty, src, deref) => {
+        val value = match src {
+          CaptureSource.WithinCapturingFn(idx, name, mutable) => {
+            val capture = try self.captures[idx] else unreachable("expected capture at idx $idx (name: '$name')")
+
+            if mutable {
+              if deref {
+                val inner = capture.expectCapture("Operation.LoadCapturedVar(WithinCapturingFn)")
+                inner.inner
+              } else {
+                capture
+              }
+            } else {
+              capture
+            }
+          }
+          CaptureSource.OutsideFn(ident) => {
+            val capture = self.load(ident)
+            if deref {
+              val inner = capture.expectCapture("Operation.LoadCapturedVar(OutsideFn)")
+              inner.inner
+            } else {
+              capture
+            }
+          }
         }
         self.store(self.expectAssignee(inst), value)
       }
@@ -308,18 +348,27 @@ pub type VM {
               IrType.Ptr => VmValue.Pointer(Pointer.fromInt<Pointer<Byte>>(pointer.address() + offset).deref())
             }
           }
+          VmValue.Function => todo("Operation.LoadField: Function")
+          VmValue.Capture => todo("cannot load field '$name' from captured value (must deref first)")
         }
         self.store(self.expectAssignee(inst), value)
       }
-      Operation.Store(ty, value, mem) => {
-        val v = self.irValueToVmValue(value)
-        match mem {
-          Value.Unit => unreachable("values cannot be of type unit")
-          Value.Const => unreachable("cannot store into const value")
-          Value.Ident(i) => self.store(i, v)
-          Value.Global(g) => todo("storing global")
-        }
+      Operation.StoreVar(_, value, ident) => {
+        self.store(ident, self.irValueToVmValue(value))
       }
+      Operation.StoreCapturedVar(ty, value, src) => {
+        val capture = match src {
+          CaptureSource.WithinCapturingFn(idx, name, _) => {
+            val capture = try self.captures[idx] else unreachable("expected capture at idx $idx (name: '$name'), cannot store captured value")
+            capture.expectCapture("Operation.StoreCapturedVar(WithinCapturingFn)")
+          }
+          CaptureSource.OutsideFn(ident) => {
+            self.load(ident).expectCapture("Operation.StoreCapturedVar(OutsideFn)")
+          }
+        }
+        capture.inner = self.irValueToVmValue(value)
+      }
+      Operation.StoreGlobal(ty, value, global) => todo("Operation.StoreGlobal")
       Operation.StoreField(ty, value, mem, name, offsetBytes) => {
         val pointer = self.irValueToVmValue(mem).expectPointer("StoreField mem")
 
@@ -336,6 +385,13 @@ pub type VM {
             Pointer.reinterpret<Byte, Int>(pointer).storeAt(addr, offset)
           }
           VmValue.Pointer(ptr) => Pointer.reinterpret<Byte, Int>(pointer).storeAt(ptr.address(), offset)
+          VmValue.Function v => {
+            val mem = Pointer.malloc<Int>(1)
+            mem.storeAt(Pointer.addressOf(v).address(), 0) // todo: ew
+
+            Pointer.reinterpret<Byte, Int>(pointer).storeAt(Pointer.addressOf(mem).address(), offset)
+          }
+          VmValue.Capture => unreachable("captures should have been deref'd before storefield")
         }
       }
       Operation.If(ty, cond, thenBlock, elseBlock) => {
@@ -395,7 +451,7 @@ pub type VM {
       Operation.ForRanged(start, end, iteratee, idx, body) => {
         val startVal = self.irValueToVmValue(start).expectInt("ForRanged start value")
         self.store(iteratee, VmValue.Int(startVal - 1))
-        if idx |idx| self.store(idx, VmValue.Int(-1)) 
+        if idx |idx| self.store(idx, VmValue.Int(-1))
 
         while true {
           for inst in end.body {
@@ -406,7 +462,7 @@ pub type VM {
           self.store(iteratee, VmValue.Int(it + 1))
           if idx |idx| {
             val idxIntVal = self.load(idx).expectInt("ForRanged idx value")
-            self.store(idx, VmValue.Int(idxIntVal + 1)) 
+            self.store(idx, VmValue.Int(idxIntVal + 1))
           }
 
           val endValInt = self.irValueToVmValue(end.result).expectInt("ForRanged end value")
@@ -434,7 +490,20 @@ pub type VM {
           }
         }
       }
-      Operation.Call(ret, fnName, args) => {
+      Operation.FunctionPointer(fnName) => {
+        val fn = try self.ir.functions.find(fn => fn.name == fnName) else unreachable("could not find function '$fnName' in IR")
+
+        self.store(self.expectAssignee(inst), VmValue.Function(fn, []))
+      }
+      Operation.CreateClosure(fnName, captures) => {
+        val fn = try self.ir.functions.find(fn => fn.name == fnName) else unreachable("could not find function '$fnName' in IR")
+        val captureVals: VmValue[] = []
+        for c in captures {
+          captureVals.push(self.irValueToVmValue(c))
+        }
+        self.store(self.expectAssignee(inst), VmValue.Function(fn, captureVals))
+      }
+      Operation.Call(ret, fnName, args, envLocation) => {
         val fn = try self.ir.functions.find(fn => fn.name == fnName) else unreachable("could not find function '$fnName' in IR")
 
         val callArgs: VmValue[] = []
@@ -442,7 +511,30 @@ pub type VM {
           callArgs.push(self.irValueToVmValue(arg))
         }
 
-        val res = self.evalFunctionCall(fn, callArgs)
+        val res = match envLocation {
+          None => self.evalFunctionCall(fn, callArgs)
+          ClosureEnvLocation.Passthrough => self.evalFunctionCall(fn, callArgs, self.captures)
+        }
+        if inst.assignee |assignee| {
+          self.store(assignee, res)
+        }
+      }
+      Operation.CallValue(ret, subject, args) => {
+        val (fn, captures) = match self.irValueToVmValue(subject) {
+          VmValue.Function(fn, captures) => (fn, captures)
+          VmValue.Pointer(ptr) => {
+            val value = Pointer.fromInt<VmValue>(ptr.address()).deref() // todo: ew
+            value.expectFunction("Operation.CallValue subject")
+          }
+          else => unreachable("Operation.CallValue subject")
+        }
+
+        val callArgs: VmValue[] = []
+        for arg in args {
+          callArgs.push(self.irValueToVmValue(arg))
+        }
+
+        val res = self.evalFunctionCall(fn, callArgs, captures)
         if inst.assignee |assignee| {
           self.store(assignee, res)
         }
@@ -511,7 +603,14 @@ pub type VM {
             val ptr = Pointer.malloc<Byte>(numBytes)
             self.store(self.expectAssignee(inst), VmValue.Pointer(ptr))
           }
-          Builtin.Realloc(ptr, count, itemTy) => todo("Builtin.Realloc")
+          Builtin.Realloc(ptr, count, itemTy) => {
+            val ptrVal = self.irValueToVmValue(ptr).expectPointer("Builtin.Realloc ptr")
+            val countVal = self.irValueToVmValue(count).expectInt("Builtin.Realloc count")
+            val itemSize = if !itemTy || itemTy == Some(IrType.Byte) 1 else 8
+            val numBytes = countVal * itemSize
+            val res = ptrVal.realloc(numBytes)
+            self.store(self.expectAssignee(inst), VmValue.Pointer(res))
+          }
           Builtin.Store(ptr, value, offset, itemTy) => {
             val pointer = self.irValueToVmValue(ptr).expectPointer("Builtin.Store ptr")
             val offsetVal = self.irValueToVmValue(offset).expectInt("Builtin.Store offset")
@@ -523,7 +622,10 @@ pub type VM {
                 val int = v.expectInt("Builtin.Store i64")
                 Pointer.reinterpret<Byte, Int>(pointer).storeAt(int, offsetVal)
               }
-              IrType.F64 => todo("Builtin.Store: f64")
+              IrType.F64 => {
+                val float = v.expectFloat("Builtin.Store f64")
+                Pointer.reinterpret<Byte, Float>(pointer).storeAt(float, offsetVal)
+              }
               IrType.Bool => {
                 val bool = v.expectBool("Builtin.Store bool")
                 Pointer.reinterpret<Byte, Int>(pointer).storeAt(if bool 1 else 0, offsetVal)
@@ -532,8 +634,8 @@ pub type VM {
                 val int = v.expectInt("Builtin.Store byte")
                 Pointer.reinterpret<Byte, Byte>(pointer).storeAt(int.asByte(), offsetVal)
               }
-              IrType.Composite(name) => {
-                val ptr = match v { 
+              IrType.Composite => {
+                val ptr = match v {
                   VmValue.Pointer(p) => p
                   VmValue.ConstString(s) => Pointer.addressOf(s)
                   else => unreachable("itemTy is composite but value not ptr: '$v'")
@@ -553,7 +655,10 @@ pub type VM {
                 val int = Pointer.reinterpret<Byte, Int>(pointer).loadAt(offsetVal)
                 self.store(self.expectAssignee(inst), VmValue.Int(int))
               }
-              IrType.F64 => todo("Builtin.Load: f64")
+              IrType.F64 => {
+                val float = Pointer.reinterpret<Byte, Float>(pointer).loadAt(offsetVal)
+                self.store(self.expectAssignee(inst), VmValue.Float(float))
+              }
               IrType.Bool => {
                 val int = Pointer.reinterpret<Byte, Int>(pointer).loadAt(offsetVal)
                 self.store(self.expectAssignee(inst), VmValue.Bool(int == 1))
@@ -562,7 +667,7 @@ pub type VM {
                 val int = pointer.loadAt(offsetVal).asInt()
                 self.store(self.expectAssignee(inst), VmValue.Int(int))
               }
-              IrType.Composite(name) => {
+              IrType.Composite => {
                 val ptr = Pointer.reinterpret<Byte, Pointer<Byte>>(pointer).loadAt(offsetVal)
                 self.store(self.expectAssignee(inst), VmValue.Pointer(ptr))
               }

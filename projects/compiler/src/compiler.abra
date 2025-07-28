@@ -2207,9 +2207,8 @@ pub type Compiler {
         try self._getOrCompileFunction(fn)
       }
     } else if targetArity < fn.params.length {
-      val targetParamTypes = targetParamTypes ?: []
       val paramsNeedingDefaultValue = fn.params.map((param, idx) => {
-        if targetParamTypes[idx] {
+        if fnValParamTypes[idx] {
           false
         } else {
           if !param.defaultValue unreachable("creating fn val for fn '${fn.label}' with arity $targetArity param '${param.label.name}' to be optional (at $position)")
