@@ -1,5 +1,5 @@
 import File from "fs"
-import StringBuilder, IR, IrFunction, IrType, Instruction, Operation, Value, Const, IdentKind, GlobalVariable, Builtin from "./ir"
+import StringBuilder, IR, IrFunction, IrType, Instruction, Operation, Value, Const, Ident, IdentKind, GlobalVariable, Builtin, CaptureSource, ClosureEnvLocation from "./ir"
 import ModuleBuilder, QbeType from "./qbe"
 import "./qbe" as qbe
 import builtins from "./ir_compiler_builtins_js"
@@ -86,10 +86,11 @@ pub type Compiler {
 
     self.numTemps = 0
 
-    self.sb
-      .write("function ")
-      .write(fn.name)
-      .write("(")
+    self.sb.write("function ${fn.name}(")
+    if fn.isClosure {
+      self.sb.write("__env__")
+      if !fn.params.isEmpty() self.sb.write(", ")
+    }
     for param, idx in fn.params {
       val paramName = match param.kind { IdentKind.Named(name, _) => name, else => unreachable("expected IdentKind.Named for param") }
       self.sb.write(paramName)
@@ -128,12 +129,19 @@ pub type Compiler {
     self.emitIndent()
 
     match inst.op {
-      Operation.NewLocal(ty, initialValue) => {
+      Operation.NewLocal(ty, isCaptured, initialValue) => {
         self.sb.write("let $dst")
         if initialValue |init| {
           self.sb.write(" = ")
-          self.emitIrValueToJsValue(init)
+          if isCaptured {
+            self.sb.write("{\$:")
+            self.emitIrValueToJsValue(init)
+            self.sb.write("}")
+          } else {
+            self.emitIrValueToJsValue(init)
+          }
         } else {
+          // no initial value to emit
         }
         self.sb.writeln(";")
       }
@@ -229,18 +237,53 @@ pub type Compiler {
       Operation.Gt(l, r) => self.genBinary(dst, ">", l, r)
       Operation.Gte(l, r) => self.genBinary(dst, ">=", l, r)
       Operation.Shr(l, r) => self.genBinary(dst, ">>", l, r)
-      Operation.Load(ty, mem) => {
-        self.sb.write("const $dst = ")
-        self.emitIrValueToJsValue(mem)
-        self.sb.writeln(";")
+      Operation.LoadVar(ty, ident) => {
+        self.sb.writeln("const $dst = ${ident.kind.name()};")
+      }
+      Operation.LoadCapturedVar(ty, src, deref) => {
+        match src {
+          CaptureSource.WithinCapturingFn(idx, _, mutable) => {
+            if mutable {
+              if deref {
+                self.sb.writeln("const {\$:$dst} = __env__[$idx];")
+              } else {
+                self.sb.writeln("const $dst = __env__[$idx];")
+              }
+            } else {
+              self.sb.writeln("const $dst = __env__[$idx];")
+            }
+          }
+          CaptureSource.OutsideFn(ident) => {
+            if deref {
+              self.sb.writeln("const {\$:$dst} = ${ident.kind.name()};")
+            } else {
+              self.sb.writeln("const $dst = ${ident.kind.name()};")
+            }
+          }
+        }
       }
       Operation.LoadField(ty, mem, name, _) => {
         self.sb.write("const $dst = ")
         self.emitIrValueToJsValue(mem)
         self.sb.writeln(".$name;")
       }
-      Operation.Store(ty, value, mem) => {
-        self.emitIrValueToJsValue(mem)
+      Operation.StoreVar(ty, value, ident) => {
+        self.sb.write(ident.kind.name())
+        self.sb.write(" = ")
+        self.emitIrValueToJsValue(value)
+        self.sb.writeln(";")
+      }
+      Operation.StoreCapturedVar(ty, value, src) => {
+        val name = match src {
+          CaptureSource.WithinCapturingFn(idx, _, _) => "__env__[$idx]"
+          CaptureSource.OutsideFn(ident) => ident.kind.name()
+        }
+        self.sb.write("$name.\$ = ")
+        self.emitIrValueToJsValue(value)
+        self.sb.writeln(";")
+      }
+      Operation.StoreGlobal(ty, value, global) => {
+        self.sb.write(global.name)
         self.sb.write(" = ")
         self.emitIrValueToJsValue(value)
         self.sb.writeln(";")
@@ -344,13 +387,31 @@ pub type Compiler {
       Operation.FunctionPointer(fnName) => {
         self.sb.writeln("const $dst = $fnName;")
       }
-      Operation.Call(ret, fnName, args) => {
+      Operation.CreateClosure(fnName, captures) => {
+        self.sb.write("const $dst = (...args) => $fnName([")
+        for c, idx in captures {
+          self.emitIrValueToJsValue(c)
+          if idx != captures.length - 1 {
+            self.sb.write(", ")
+          }
+        }
+        self.sb.writeln("], ...args);")
+      }
+      Operation.Call(ret, fnName, args, envLocation) => {
         if ret != IrType.Unit {
           self.sb.write("const $dst = ")
         }
 
-        self.sb.write(fnName)
-          .write("(")
+        self.sb.write("$fnName(")
+        match envLocation {
+          None => {}
+          ClosureEnvLocation.Passthrough => {
+            self.sb.write("__env__")
+            if !args.isEmpty() {
+              self.sb.write(", ")
+            }
+          }
+        }
         for arg, idx in args {
           self.emitIrValueToJsValue(arg)
           if idx != args.length - 1 {
@@ -624,12 +685,7 @@ pub type Compiler {
     match v {
       Value.Unit => unreachable("values cannot be of type unit")
       Value.Const(const) => self.irConstToJsValue(const)
-      Value.Ident(i) => {
-        match i.kind {
-          IdentKind.Anon(idx) => "_$idx"
-          IdentKind.Named(name, _) => name
-        }
-      }
+      Value.Ident(i) => i.kind.name()
       Value.Global(g) => g.name
     }
   }

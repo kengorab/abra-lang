@@ -4923,7 +4923,7 @@ pub type Typechecker {
 
   func _typecheckInvocationOfExpression(self, token: Token, invokeeExpr: TypedAstNode, exprPos: Position, invocationNode: InvocationAstNode): Result<TypedAstNode, TypeError> {
     val (paramTypes, returnType) = match invokeeExpr.ty.kind {
-      TypeKind.Func(paramTypes, returnType) => (paramTypes.map(p => p[0]), returnType)
+      TypeKind.Func(paramTypes, returnType) => (paramTypes.filter(p => p[1]).map(p => p[0]), returnType)
       _ => return Err(TypeError(position: exprPos, kind: TypeErrorKind.IllegalCallableType(invokeeExpr.ty)))
     }
 
@@ -5510,8 +5510,7 @@ pub type Typechecker {
 
     val lambdaName = self._nextLambdaName()
     val prevScope = self.beginChildScope(lambdaName, ScopeKind.Func)
-    val fnScope = self.currentScope
-    self.currentScope = prevScope
+    val prevFn = self.currentFunction
 
     var returnType = retHint ?: Type(kind: TypeKind.Hole)
     if returnType.containsGenerics() {
@@ -5522,14 +5521,16 @@ pub type Typechecker {
     }
     val fn = Function(
       label: Label(name: lambdaName, position: token.position),
-      scope: fnScope,
+      scope: self.currentScope,
       kind: FunctionKind.Standalone,
       returnType: returnType,
       isLambda: true,
     )
 
+    self.currentFunction = Some(fn)
     val paramsNeedingRevisit = try self.typecheckFunctionPass2(fn: fn, allowSelf: false, params: node.params, paramHints: paramHints)
     try self.typecheckFunctionPass3(fn: fn, allowSelf: false, params: node.params, body: node.body, paramsNeedingRevisit: paramsNeedingRevisit)
+    self.currentFunction = prevFn
 
     if fn.isClosure() {
       if self.currentFunction |currentFn| {
@@ -5549,6 +5550,7 @@ pub type Typechecker {
     }
 
     val lambdaTy = fn.getType()
+    self.currentScope = prevScope
 
     Ok(TypedAstNode(token: token, ty: lambdaTy, kind: TypedAstNodeKind.Lambda(fn, typeHint)))
   }

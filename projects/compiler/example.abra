@@ -1,9 +1,14 @@
-// val arr = [1, 2, 3]
-// val arr2 = arr.map((x) => x + 1)
-
-// stdoutWriteln(""+arr2)
-
-val chars = "£".chars()
-for ch in chars {
-  stdoutWriteln(""+ch.asInt())
-}
+(() => {
+  var capturedFloat = 1.1
+  val closure1 = (one: Int) => {
+    capturedFloat += 1.1
+    val x = capturedFloat + one
+    x
+  }
+  /// Expect: 1.1
+  stdoutWriteln(capturedFloat.toString())
+  /// Expect: 3.2
+  stdoutWriteln(closure1(1).toString())
+  /// Expect: 2.2
+  stdoutWriteln(capturedFloat.toString())
+})()
