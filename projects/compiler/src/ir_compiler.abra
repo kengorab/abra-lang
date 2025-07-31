@@ -802,7 +802,7 @@ pub type Compiler {
         }
       }
       Operation.StructuredToString(prefix, lenVal, fields) => self.compileStructuredToString(prefix, lenVal, fields, dst)
-      Operation.Builtin(ret, builtin) => {
+      Operation.Builtin(_, builtin) => {
         val sizeOfType = (irType: IrType) => match irType {
           IrType.Unit => unreachable("values cannot be of type unit")
           IrType.I64 => (8, QbeType.U64)
@@ -816,12 +816,8 @@ pub type Compiler {
         match builtin {
           Builtin.Malloc(count, itemTy) => {
             val countVal = self.irValueToQbeValue(count)
-            val sizeVal = if itemTy |itemTy| {
-              val (size, _) = sizeOfType(itemTy)
-              try self.currentFn.block.buildMul(qbe.Value.Int(size), countVal, Some(self.nextTemp())) else |e| unreachable(e)
-            } else {
-              countVal
-            }
+            val (size, _) = sizeOfType(itemTy)
+            val sizeVal = try self.currentFn.block.buildMul(qbe.Value.Int(size), countVal, Some(self.nextTemp())) else |e| unreachable(e)
 
             self.callMalloc(sizeVal, dst)
           }
