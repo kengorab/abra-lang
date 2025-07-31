@@ -182,7 +182,7 @@ pub enum Value {
 }
 
 pub enum Builtin {
-  Malloc(count: Value, itemTy: IrType? = None)
+  Malloc(count: Value, itemTy: IrType)
   Realloc(ptr: Value, count: Value, itemTy: IrType? = None)
   Store(ptr: Value, value: Value, offset: Value, itemTy: IrType)
   Load(ptr: Value, offset: Value, itemTy: IrType)
@@ -685,10 +685,8 @@ pub enum Operation {
           Builtin.Malloc(size, itemTy) => {
             sb.write("malloc, ")
             size.render(sb)
-            if itemTy |ty| {
-              sb.write(", ")
-              ty.render(sb)
-            }
+            sb.write(", ")
+            itemTy.render(sb)
           }
           Builtin.Realloc(ptr, count, itemTy) => {
             sb.write("realloc, ")
@@ -1148,8 +1146,8 @@ pub type Generator {
 
     if self.functionsByName[fnName] |f| return f
 
-    val retTy = self.getIrTypeForConcreteType(concreteType)
-    val irFunc = IrFunction(name: fnName, params: [], ret: retTy, isClosure: false, numLocals: 0)
+    val initializedTy = self.getIrTypeForConcreteType(concreteType)
+    val irFunc = IrFunction(name: fnName, params: [], ret: initializedTy, isClosure: false, numLocals: 0)
     self.addFunction(fnName, irFunc)
     val prevCtx = self.enterFunction(irFunc, None)
 
@@ -1191,9 +1189,9 @@ pub type Generator {
         baseFnName
       }
 
-      self.ssaValue(retTy, Operation.Call(ret: retTy, fnName: baseFnName, args: argsForUnderlying.map(a => a[0])), None)
+      self.ssaValue(initializedTy, Operation.Call(ret: initializedTy, fnName: baseFnName, args: argsForUnderlying.map(a => a[0])), None)
     } else {
-      val mem = self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Malloc(Value.Const(Const.Int(size)))), None)
+      val mem = self.ssaValue(initializedTy, Operation.Builtin(ret: initializedTy, builtin: Builtin.Malloc(count: Value.Const(Const.Int(size)), itemTy: IrType.Byte)), None)
 
       if enumVariantIdx |enumVariantIdx| {
         self.emit(Instruction(op: Operation.StoreField(ty: IrType.I64, value: Value.Const(Const.Int(enumVariantIdx)), mem: mem, name: "\$idx", offset: 0)))
@@ -1886,7 +1884,7 @@ pub type Generator {
     }
 
     val lenPlusOneVal = self.ssaValue(IrType.I64, Operation.Add(Value.Const(Const.Int(1)), totalLenVal), None) // account for NULL
-    val totalBufVal = self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Malloc(count: lenPlusOneVal, itemTy: Some(IrType.Byte))), None)
+    val totalBufVal = self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Malloc(count: lenPlusOneVal, itemTy: IrType.Byte)), None)
     var cursor = Value.Const(Const.Int(0))
     for (strLenVal, strBufVal) in toStringVals {
       val builtin = Builtin.CopyFrom(dst: totalBufVal, dstOffset: cursor, src: strBufVal, srcOffset: Value.Const(Const.Int(0)), size: strLenVal, itemTy: IrType.Byte)
@@ -2404,7 +2402,7 @@ pub type Generator {
               val count = self.genExpression(self.intrinsicArgs1("pointer_malloc", args), innerConcreteGenerics)
               val itemTy = self.getIrTypeForConcreteType(try innerConcreteGenerics["T"] else unreachable("(pointer_malloc) could not resolve T for Pointer<T>"))
 
-              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Malloc(count: count, itemTy: Some(itemTy))), dst)
+              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Malloc(count: count, itemTy: itemTy)), dst)
             }
             "byte_from_int" => {
               val arg = self.intrinsicArgs1("byte_from_int", args)
@@ -2422,42 +2420,42 @@ pub type Generator {
               val arg = self.intrinsicArgs1("int_as_float", args)
               val intVal = self.genExpression(arg, innerConcreteGenerics, dst)
 
-              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.F64, builtin: Builtin.IntAsFloat(intVal)), dst)
+              self.ssaValue(IrType.F64, Operation.Builtin(ret: IrType.F64, builtin: Builtin.IntAsFloat(intVal)), dst)
             }
             "float_as_int" => {
               val arg = self.intrinsicArgs1("float_as_int", args)
               val floatVal = self.genExpression(arg, innerConcreteGenerics, dst)
 
-              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.I64, builtin: Builtin.FloatAsInt(floatVal)), dst)
+              self.ssaValue(IrType.I64, Operation.Builtin(ret: IrType.I64, builtin: Builtin.FloatAsInt(floatVal)), dst)
             }
             "float_ceil" => {
               val arg = self.intrinsicArgs1("float_ceil", args)
               val floatVal = self.genExpression(arg, innerConcreteGenerics, dst)
 
-              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.I64, builtin: Builtin.FloatCeil(floatVal)), dst)
+              self.ssaValue(IrType.I64, Operation.Builtin(ret: IrType.I64, builtin: Builtin.FloatCeil(floatVal)), dst)
             }
             "float_floor" => {
               val arg = self.intrinsicArgs1("float_floor", args)
               val floatVal = self.genExpression(arg, innerConcreteGenerics, dst)
 
-              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.I64, builtin: Builtin.FloatFloor(floatVal)), dst)
+              self.ssaValue(IrType.I64, Operation.Builtin(ret: IrType.I64, builtin: Builtin.FloatFloor(floatVal)), dst)
             }
             "float_round" => {
               val arg = self.intrinsicArgs1("float_round", args)
               val floatVal = self.genExpression(arg, innerConcreteGenerics, dst)
 
-              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.I64, builtin: Builtin.FloatRound(floatVal)), dst)
+              self.ssaValue(IrType.I64, Operation.Builtin(ret: IrType.I64, builtin: Builtin.FloatRound(floatVal)), dst)
             }
             "u64_to_string" => {
               val arg = self.intrinsicArgs1("u64_to_string", args)
               val u64Val = self.genExpression(arg, innerConcreteGenerics, dst)
 
               val strTy = IrType.Composite(self.knowns.stringType().name)
-              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: strTy, builtin: Builtin.U64ToString(u64Val)), dst)
+              self.ssaValue(strTy, Operation.Builtin(ret: strTy, builtin: Builtin.U64ToString(u64Val)), dst)
             }
             "uninitialized" => {
               val innerTy = self.getIrTypeForConcreteType(try innerConcreteGenerics["T"] else unreachable("(pointer_malloc) could not resolve T for Pointer<T>"))
-              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: innerTy, builtin: Builtin.Uninitialized), dst)
+              self.ssaValue(innerTy, Operation.Builtin(ret: innerTy, builtin: Builtin.Uninitialized), dst)
             }
             else => todo("Unimplemented static/standalone intrinsic '$intrinsicName'")
           }

@@ -494,14 +494,18 @@ pub type Compiler {
             self.sb.write("const $dst = ")
             // If there's no type being malloc'd, then it can be modeled as an object. If the type is Byte then it's
             // modeled as a Uint8Array; otherwise it's just a simple array.
-            match itemTy {
-              None => self.sb.write("{};")
-              IrType.Byte => {
-                self.sb.write("new Uint8Array(")
-                self.emitIrValueToJsValue(count)
-                self.sb.write(");")
+            match ret {
+              IrType.Composite => {
+                self.sb.write("{};")
               }
-              else => self.sb.write("[];")
+              else => match itemTy {
+                IrType.Byte => {
+                  self.sb.write("new Uint8Array(")
+                  self.emitIrValueToJsValue(count)
+                  self.sb.write(");")
+                }
+                else => self.sb.write("[];")
+              }
             }
             self.sb.writeln(" // builtin(malloc)")
           }

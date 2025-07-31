@@ -1,14 +1,24 @@
+// type Person {
+//   name: String
+//   age: Int
+// }
+
+// val me = Person(name: "Ken", age: 33)
+// stdoutWriteln(me.toString())
+
 (() => {
-  var capturedFloat = 1.1
-  val closure1 = (one: Int) => {
-    capturedFloat += 1.1
-    val x = capturedFloat + one
-    x
+  val capturedArray = [1, 2, 3]
+  val closure2 = (zero = 0) => {
+    capturedArray.pop()
+    capturedArray.length + zero
   }
-  /// Expect: 1.1
-  stdoutWriteln(capturedFloat.toString())
-  /// Expect: 3.2
-  stdoutWriteln(closure1(1).toString())
-  /// Expect: 2.2
-  stdoutWriteln(capturedFloat.toString())
+  /// Expect: [1, 2, 3]
+  stdoutWriteln(capturedArray.toString())
+  /// Expect: 2
+  stdoutWriteln(closure2().toString())
+  /// Expect: [1, 2]
+  stdoutWriteln(capturedArray.toString())
+  capturedArray.push(3)
+  /// Expect: [1, 2, 3]
+  stdoutWriteln(capturedArray.toString())
 })()
