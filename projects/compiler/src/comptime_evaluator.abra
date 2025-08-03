@@ -1,0 +1,96 @@
+import Pointer, Byte from "_intrinsics"
+import Lexer from "./lexer"
+import Parser, AstNode, LiteralAstNode from "./parser"
+import Project, Function, Struct, Type, TypedAstNode, TypedAstNodeKind, InstanceKind from "./typechecker"
+import Generator, ConcreteType from "./ir"
+import VM, VmValue, Instance, VmFunction, unmarshallString from "./ir_vm"
+import InjectedCode from "../example2"
+
+func stringifyTypedNode(node: TypedAstNode): String {
+  match node.kind {
+    TypedAstNodeKind.Literal(lit) => match lit {
+      LiteralAstNode.String(s) => "\"$s\""
+      else => todo("stringify: other literal kinds")
+    }
+    TypedAstNodeKind.Identifier(name, _, _, _) => name
+    else => todo("stringify: other TypedAstNodeKinds")
+  }
+}
+
+func marshallTypedAstNodeToExpression(node: TypedAstNode): VmValue {
+  VmValue.Instance(Instance(
+    name: "Expression",
+    fields: [
+      /* stringifyFn */ VmValue.Function(VmFunction.HostSupplied(() => VmValue.ConstString(stringifyTypedNode(node))))
+    ]
+  ))
+}
+
+func unmarshallInjectedCode(value: VmValue): Result<InjectedCode, String> {
+  val instance = value.expectInstance("value should be an instance")
+  if !instance.name.endsWith("_InjectedCode") return Err("cannot unmarshall instance of type '${instance.name}' as InjectedCode")
+
+  val chunksValue = instance.expectField(0).expectInstance("InjectedCode chunks is String[]")
+  val chunksLength = chunksValue.expectField(0).expectInt("Array field 0 is length")
+  val chunksItems = chunksValue.expectField(1).expectPointer("Array field 1 is buffer")
+  val chunks: String[] = []
+  for i in 0:chunksLength {
+    val chunkValue = Pointer.reinterpret<Byte, VmValue>(chunksItems).loadAt(i)
+    val chunk = try unmarshallString(chunkValue)
+    chunks.push(chunk)
+  }
+
+  Ok(InjectedCode(chunks: chunks))
+}
+
+pub type ComptimeFunctionEvaluator {
+  project: Project
+  gen: Generator
+
+  pub func init(project: Project): ComptimeFunctionEvaluator {
+    val gen = Generator.init(project, foldConstants: true)
+    ComptimeFunctionEvaluator(project: project, gen: gen)
+  }
+
+  pub func eval(self, fn: Function, arguments: TypedAstNode?[], resolvedGenerics: Map<String, Type>): Result<AstNode, String> {
+    self.gen.generate()
+
+    val irFn = self.gen.genTcFunction(fn, resolvedGenerics)
+    for f in self.gen.fnQueue {
+      // todo: fix
+      if f.fnName == "meta_stringify" {
+        f.concreteGenerics["T"] = ConcreteType(instanceKind: InstanceKind.Struct(Struct.makeDummy(0, "Bogus")))
+      }
+      self.gen.genFunction(f)
+    }
+
+    val vm = VM(ir: self.gen.getIR())
+    vm.registerExtern("meta_stringify", (args) => {
+      val arg0 = try args[0] else unreachable("stringify has 1 required argument")
+      val exprInstance = arg0.expectInstance("stringify param 1")
+      val stringifyFn = exprInstance.expectField(0).expectFunction("Expression stringifyFn field")
+      val fn = match stringifyFn { VmFunction.HostSupplied(f) => f, else => unreachable("Expression stringifyFn field as function") }
+
+      fn([])
+    })
+
+    // todo: fix (of course)
+    val arg0 = try try arguments[0] else return Err("expected argument") else return Err("expected argument")
+    val res = vm.evalFunctionCall(irFn, [marshallTypedAstNodeToExpression(arg0)])
+    val injectedCode = try unmarshallInjectedCode(res)
+    val srcStr = injectedCode.chunks.join()
+
+    val parsedModule = match Lexer.tokenize(srcStr) {
+      Ok(tokens) => {
+        match Parser.parse(tokens) {
+          Ok(parsedModule) => parsedModule
+          Err(error) => return Err("parser error: $error")
+        }
+      }
+      Err(error) => return Err("lexer error: $error")
+    }
+
+    val first = try parsedModule.nodes[0] else return Err("empty parsed nodes")
+    Ok(first)
+  }
+}

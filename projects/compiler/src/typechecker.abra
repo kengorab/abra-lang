@@ -745,6 +745,7 @@ pub type Function {
   pub captures: Variable[] = []
   pub capturedClosures: Function[] = []
   numScopes: Int = 0
+  pub isMacro: Bool = false
 
   pub func generated(
     scope: Scope,
@@ -1584,6 +1585,7 @@ type ParamDefaultValueContext {
 pub type Typechecker {
   pub moduleLoader: ModuleLoader
   pub project: Project
+  pub comptimeFuncEvaluator: (Function, TypedAstNode?[], Map<String, Type>) => Result<AstNode, String>
   currentModule: TypedModule = TypedModule.bogus()
   currentScope: Scope = Scope(name: "\$root")
   currentTypeDecl: InstanceKind? = None
@@ -2392,7 +2394,7 @@ pub type Typechecker {
 
         m
       } else {
-        val childTypechecker = Typechecker(moduleLoader: self.moduleLoader, project: self.project)
+        val childTypechecker = Typechecker(moduleLoader: self.moduleLoader, project: self.project, comptimeFuncEvaluator: self.comptimeFuncEvaluator)
         childTypechecker._typecheckModule(importPathAbs)
       }
 
@@ -2698,6 +2700,10 @@ pub type Typechecker {
     if hasReturnValue && body.isEmpty() {
       if !fn.decorators.find(dec => dec.label.name == "intrinsic" || dec.label.name == "external")
         return Err(TypeError(position: fn.label.position, kind: TypeErrorKind.ReturnTypeMismatch(Some(fn.label.name), fn.returnType, None)))
+    }
+
+    if fn.decorators.find(dec => dec.label.name == "macro") {
+      fn.isMacro = true
     }
 
     for param, idx in fn.params {
@@ -5188,6 +5194,14 @@ pub type Typechecker {
 
         return Err(TypeError(position: token.position, kind: errorKind))
       }
+    }
+
+    // If the function being invoked is a macro, and we're not currently inside a macro, invoke the macro function at compile-time
+    if fn.isMacro && !(if self.currentFunction |f| f.isMacro else false) {
+      // todo: ensure function has no typechecker errors! failure to do so will result in WEIRD UNEXPECTED errors when calling _typecheckExpression below!
+      val node = try self.comptimeFuncEvaluator(fn, typedArguments, resolvedGenerics) else |e| unreachable("comptimeFuncEvaluator: $e")
+
+      return self._typecheckExpression(node, None)
     }
 
     val returnType = if fn.decorators.find(d => d.label.name == "noreturn") {

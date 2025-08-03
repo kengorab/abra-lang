@@ -8,12 +8,17 @@ type CapturedValue {
   inner: VmValue
 }
 
-type Instance {
-  name: String
-  fields: VmValue[]
+pub type Instance {
+  pub name: String
+  pub fields: VmValue[]
 
-  func set(self, idx: Int, value: VmValue) { self.fields[idx] = value }
-  func expectField(self, idx: Int): VmValue = try self.fields[idx] else unreachable("expected instance of type '${self.name}' to have a field at idx $idx, but was missing")
+  pub func set(self, idx: Int, value: VmValue) { self.fields[idx] = value }
+  pub func expectField(self, idx: Int): VmValue = try self.fields[idx] else unreachable("expected instance of type '${self.name}' to have a field at idx $idx, but was missing")
+}
+
+pub enum VmFunction {
+  Runtime(fn: ir.IrFunction, captures: VmValue[])
+  HostSupplied(fn: (VmValue[]) => VmValue)
 }
 
 pub enum VmValue {
@@ -25,16 +30,16 @@ pub enum VmValue {
   ConstString(str: String)
   Pointer(ptr: Pointer<Byte>)
   Instance(instance: Instance)
-  Function(fn: ir.IrFunction, captures: VmValue[])
+  Function(fn: VmFunction)
   Capture(inner: CapturedValue)
 
-  func expectInt(self, message: String): Int = match self { VmValue.Int(i) => i, else v => unreachable("expected int value but got '$v' ($message)") }
-  func expectFloat(self, message: String): Float = match self { VmValue.Float(f) => f, else v => unreachable("expected float value but got '$v' ($message)") }
-  func expectBool(self, message: String): Bool = match self { VmValue.Bool(b) => b, else v => unreachable("expected bool value but got '$v' ($message)") }
-  func expectPointer(self, message: String): Pointer<Byte> = match self { VmValue.Pointer(p) => p, else v => unreachable("expected pointer value but got '$v' ($message)") }
-  func expectInstance(self, message: String): Instance = match self { VmValue.Instance(i) => i, else v => unreachable("expected instance value but got '$v' ($message)") }
-  func expectFunction(self, message: String): (ir.IrFunction, VmValue[]) = match self { VmValue.Function(f, c) => (f, c), else v => unreachable("expected function value but got '$v' ($message)") }
-  func expectCapture(self, message: String): CapturedValue = match self { VmValue.Capture(inner) => inner, else v => unreachable("expected captured value but got '$v' ($message)") }
+  pub func expectInt(self, message: String): Int = match self { VmValue.Int(i) => i, else v => unreachable("expected int value but got '$v' ($message)") }
+  pub func expectFloat(self, message: String): Float = match self { VmValue.Float(f) => f, else v => unreachable("expected float value but got '$v' ($message)") }
+  pub func expectBool(self, message: String): Bool = match self { VmValue.Bool(b) => b, else v => unreachable("expected bool value but got '$v' ($message)") }
+  pub func expectPointer(self, message: String): Pointer<Byte> = match self { VmValue.Pointer(p) => p, else v => unreachable("expected pointer value but got '$v' ($message)") }
+  pub func expectInstance(self, message: String): Instance = match self { VmValue.Instance(i) => i, else v => unreachable("expected instance value but got '$v' ($message)") }
+  pub func expectFunction(self, message: String): VmFunction = match self { VmValue.Function(f) => f, else v => unreachable("expected function value but got '$v' ($message)") }
+  pub func expectCapture(self, message: String): CapturedValue = match self { VmValue.Capture(inner) => inner, else v => unreachable("expected captured value but got '$v' ($message)") }
 }
 
 pub func unmarshallString(value: VmValue): Result<String, String> {
@@ -68,6 +73,7 @@ enum ControlFlag {
 
 pub type VM {
   pub ir: ir.IR
+  externs: Map<String, (VmValue[]) => VmValue> = {}
   locals: VmValue[] = []
   captures: VmValue[] = []
   returnValue: VmValue = VmValue.Undefined
@@ -78,6 +84,10 @@ pub type VM {
   pub func evalIR(intermediateRepresentation: ir.IR): VmValue {
     val vm = VM(ir: intermediateRepresentation)
     vm.evalFunctionCall(intermediateRepresentation.mainFunction, [])
+  }
+
+  pub func registerExtern(self, name: String, fn: (VmValue[]) => VmValue) {
+    self.externs[name] = fn
   }
 
   pub func evalFunctionCall(self, fn: ir.IrFunction, args: VmValue[], captures: VmValue[] = []): VmValue {
@@ -478,7 +488,7 @@ pub type VM {
       Operation.FunctionPointer(fnName) => {
         val fn = try self.ir.functions.find(fn => fn.name == fnName) else unreachable("could not find function '$fnName' in IR")
 
-        self.store(self.expectAssignee(inst), VmValue.Function(fn, []))
+        self.store(self.expectAssignee(inst), VmValue.Function(VmFunction.Runtime(fn: fn, captures: [])))
       }
       Operation.CreateClosure(fnName, captures) => {
         val fn = try self.ir.functions.find(fn => fn.name == fnName) else unreachable("could not find function '$fnName' in IR")
@@ -486,7 +496,7 @@ pub type VM {
         for c in captures {
           captureVals.push(self.irValueToVmValue(c))
         }
-        self.store(self.expectAssignee(inst), VmValue.Function(fn, captureVals))
+        self.store(self.expectAssignee(inst), VmValue.Function(VmFunction.Runtime(fn: fn, captures: captureVals)))
       }
       Operation.Call(ret, fnName, args, envLocation) => {
         val fn = try self.ir.functions.find(fn => fn.name == fnName) else unreachable("could not find function '$fnName' in IR")
@@ -505,14 +515,17 @@ pub type VM {
         }
       }
       Operation.CallValue(ret, subject, args) => {
-        val (fn, captures) = self.irValueToVmValue(subject).expectFunction("Operation.CallValue subject")
+        val fn = self.irValueToVmValue(subject).expectFunction("Operation.CallValue subject")
 
         val callArgs: VmValue[] = []
         for arg in args {
           callArgs.push(self.irValueToVmValue(arg))
         }
 
-        val res = self.evalFunctionCall(fn, callArgs, captures)
+        val res = match fn {
+          VmFunction.Runtime(fn, captures) => self.evalFunctionCall(fn, callArgs, captures)
+          VmFunction.HostSupplied(fn) => fn(callArgs)
+        }
         if inst.assignee |assignee| {
           self.store(assignee, res)
         }
@@ -701,7 +714,13 @@ pub type VM {
   func callExtern(self, name: String, args: VmValue[]) {
     match name {
       "write" => self.externWrite(args)
-      else => todo("callExtern: '$name'")
+      else => {
+        if self.externs[name] |fn| {
+          self.returnValue = fn(args)
+        } else {
+          todo("callExtern: '$name'")
+        }
+      }
     }
   }
 

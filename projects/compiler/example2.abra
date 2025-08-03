@@ -1,1 +1,22 @@
-pub func foo(): Int = 123
+// this is sort of the future `meta.abra` file
+import external from "libc"
+
+pub decorator macro { }
+
+pub type InjectedCode {
+  pub chunks: String[] = []
+
+  pub func new(): InjectedCode = InjectedCode()
+
+  pub func append(self, str: String) {
+    self.chunks.push(str)
+  }
+}
+
+pub type Expression {
+  stringifyFn: () => String
+}
+
+@macro
+@external("meta_stringify") // weird that it comes from libc, but we'll fix it
+pub func stringify<T>(expr: T): String
