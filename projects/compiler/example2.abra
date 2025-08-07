@@ -19,4 +19,4 @@ pub type Expression {
 
 @macro
 @external("meta_stringify") // weird that it comes from libc, but we'll fix it
-pub func stringify<T>(expr: T): String
+pub func stringify(expr: Expression): String

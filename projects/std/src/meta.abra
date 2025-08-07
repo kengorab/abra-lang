@@ -1,0 +1,30 @@
+pub decorator macro { }
+decorator macrouseonly { }
+decorator external { name: String }
+
+pub type InjectedCode {
+  pub chunks: String[] = []
+  pub imports: Map<String, String> = {}
+
+  pub func new(): InjectedCode = InjectedCode()
+
+  pub func addImport(self, module: String): String {
+    if self.imports[module] |alias| return alias
+
+    val alias = "_${String.random(24)}"
+    self.imports[module] = alias
+    alias
+  }
+
+  pub func append(self, str: String) {
+    self.chunks.push(str)
+  }
+}
+
+pub type Expr {
+  stringifyFn: () => String
+}
+
+@macrouseonly
+@external("meta_stringify")
+pub func stringify(expr: Expr): String

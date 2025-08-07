@@ -1,22 +1,64 @@
-import macro, stringify, InjectedCode from "./example2"
+import macro, stringify, InjectedCode, Expr from "meta"
 
 @macro
-func debug<T>(value: T): InjectedCode {
-    val c = InjectedCode.new()
+func debug(value: Expr): InjectedCode {
+  val c = InjectedCode.new()
+  val str = stringify(value)
+
+  c.append("(if true {\n")
+  c.append("  val exp = $str\n")
+  c.append("  stdoutWriteln(\"$str = \$$str\")\n")
+  c.append("  exp")
+  c.append("} else { unreachable(\"will get optimized away\") })")
+
+  c
+}
+
+@macro
+func println(*values: Expr[]): InjectedCode {
+  val c = InjectedCode.new()
+
+  c.append("if true {")
+  for value, idx in values {
     val str = stringify(value)
+    c.append("stdoutWrite($str.toString())")
 
-    c.append("(")
-    c.append("if true {\n")
-    c.append("  val exp = $str\n")
-    c.append("  stdoutWriteln(\"$str = \$$str\")\n")
-    c.append("  exp")
-    c.append("} else unreachable(\"will get optimized away\")")
-    c.append(")")
+    if idx != values.length - 1 {
+      c.append("stdoutWrite(\" \")")
+    }
+  }
 
-    c
+  c.append("stdoutWriteln()")
+  c.append("}")
+
+  c
+}
+
+@macro
+func assert(value: Expr): InjectedCode {
+  val c = InjectedCode.new()
+  val processMod = c.addImport("process")
+  val str = stringify(value)
+
+  c.append("if !($str) {")
+  c.append("  println(\"Failed assertion: $str\")")
+  // todo: fix this - this doesn't work properly unless the `process` module is evaluated prior to the module in which this macro is invoked
+  // c.append("  stdoutWriteln($processMod.getStackTrace())")
+  c.append("  $processMod.exit(1)")
+  c.append("}")
+
+  c
 }
 
 val x = 123
 val y = 456
 val z = debug(x) + debug(y)
-stdoutWriteln("z: $z")
+println("z: $z", "a", x)
+
+func foo() {
+  val arr = [1, 2]
+  val v = arr.length > 4
+  assert(v)
+}
+foo()
+println("afterwards")

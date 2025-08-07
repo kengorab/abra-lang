@@ -1086,7 +1086,12 @@ pub type Generator {
     var anyParamNeedsDefault = false
     val argsForUnderlying = if selfParam |selfParam| [selfParam] else []
     for param, idx in fn.params {
-      val paramConcreteType = self.getConcreteTypeFromType(param.ty, ctx.concreteGenerics)
+      val paramConcreteType = if param.isVariadic {
+        val inner = self.getConcreteTypeFromType(param.ty, ctx.concreteGenerics)
+        ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeArrayStruct), typeArgs: [inner])
+      } else {
+        self.getConcreteTypeFromType(param.ty, ctx.concreteGenerics)
+      }
       val paramTy = self.getIrTypeForConcreteType(paramConcreteType)
       val paramIdent = self.curCtx.addLocal(paramTy, Some(param.label.name))
 
@@ -2014,9 +2019,18 @@ pub type Generator {
             return self.ssaValueComptime(Const.String(constStr), dst)
           }
 
-          val concreteType = self.getConcreteTypeFromType(left.ty, concreteGenerics)
-          val lStrVal = if lvalTy == strTy { lval } else self.genCallToStringMethod(lval, concreteType, dst)
-          val rStrVal = if rvalTy == strTy { rval } else self.genCallToStringMethod(rval, concreteType, dst)
+          val lStrVal = if lvalTy == strTy {
+            lval
+          } else {
+            val leftConcreteType = self.getConcreteTypeFromType(left.ty, concreteGenerics)
+            self.genCallToStringMethod(lval, leftConcreteType, dst)
+          }
+          val rStrVal = if rvalTy == strTy {
+            rval
+          } else {
+            val rightConcreteType = self.getConcreteTypeFromType(right.ty, concreteGenerics)
+            self.genCallToStringMethod(rval, rightConcreteType, dst)
+          }
 
           val strConcreteTy = ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct))
           val concatFn = self.getMethodByName(strConcreteTy.instanceKind, "concat", staticMethod: false)
@@ -3360,7 +3374,10 @@ pub type Generator {
 
   func getConcreteTypeFromType(self, ty: tc.Type, concreteGenerics: Map<String, ConcreteType>): ConcreteType {
     match ty.kind {
-      TypeKind.CouldNotDetermine => unreachable("Encountered CouldNotDetermine type")
+      TypeKind.CouldNotDetermine => {
+        stdoutWriteln(process.getStackTrace())
+        unreachable("Encountered CouldNotDetermine type")
+      }
       TypeKind.PrimitiveUnit => unreachable("getConcreteTypeFromType: Unit")
       TypeKind.PrimitiveInt => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeIntStruct), typeArgs: [])
       TypeKind.PrimitiveFloat => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeFloatStruct), typeArgs: [])

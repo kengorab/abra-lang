@@ -238,6 +238,7 @@ pub type Scope {
 pub enum BuiltinModule {
   Prelude
   Intrinsics
+  Meta
 }
 
 pub type Field {
@@ -351,6 +352,8 @@ pub type Project {
   pub preludeSetStruct: Struct = Struct(moduleId: 0, label: Label(name: "Set", position: Position.bogus()), scope: Scope(name: "Set"), typeParams: ["T"])
   pub preludeOptionEnum: Enum = Enum(moduleId: 0, label: Label(name: "Option", position: Position.bogus()), scope: Scope(name: "Option"), typeParams: ["T"])
   pub preludeResultEnum: Enum = Enum(moduleId: 0, label: Label(name: "Result", position: Position.bogus()), scope: Scope(name: "Result"), typeParams: ["V", "E"])
+  pub metaExprStruct: Struct = Struct(moduleId: 0, label: Label(name: "Expr", position: Position.bogus()), scope: Scope(name: "Expr"))
+  pub metaInjectedCodeStruct: Struct = Struct(moduleId: 0, label: Label(name: "InjectedCode", position: Position.bogus()), scope: Scope(name: "InjectedCode"))
 
   pub func typesAreEquivalent(self, ty: Type, other: Type): Bool {
     if other.kind == TypeKind.CouldNotDetermine return true
@@ -1585,7 +1588,7 @@ type ParamDefaultValueContext {
 pub type Typechecker {
   pub moduleLoader: ModuleLoader
   pub project: Project
-  pub comptimeFuncEvaluator: (Function, TypedAstNode?[], Map<String, Type>) => Result<AstNode, String>
+  pub comptimeFuncEvaluator: (Function, TypedAstNode?[], Map<String, Type>) => Result<ParsedModule, String>
   currentModule: TypedModule = TypedModule.bogus()
   currentScope: Scope = Scope(name: "\$root")
   currentTypeDecl: InstanceKind? = None
@@ -2345,6 +2348,8 @@ pub type Typechecker {
       Some(BuiltinModule.Prelude)
     } else if modulePathAbs == self.moduleLoader.stdRoot + "/_intrinsics.abra" {
       Some(BuiltinModule.Intrinsics)
+    } else if modulePathAbs == self.moduleLoader.stdRoot + "/meta.abra" {
+      Some(BuiltinModule.Meta)
     } else {
       None
     }
@@ -2372,48 +2377,8 @@ pub type Typechecker {
       return mod
     }
 
-    val imports: (TypedModule, ImportNode)[] = []
-    for importNode in parsedModule.imports {
-      var importNodePath = importNode.moduleName.name
-      val isRelativeImport = importNodePath.startsWith(".")
-      if !importNodePath.endsWith(".abra") importNodePath += ".abra"
-
-      val importPathAbs = if !isRelativeImport {
-        self.moduleLoader.stdRoot + "/" + importNodePath
-      } else {
-        self.moduleLoader.resolvePath(modulePath: importNodePath, relativeTo: Some(modulePathAbs))
-      }
-
-      val typedImportModule = if self.project.modules[importPathAbs] |m| {
-        if !m.complete {
-          // If a module attempts to import a module that is not yet complete, then we've found a circular dependency.
-          // Flag that imported module since it's the module whose imports began the cycle.
-          m.startsCircDep = true
-          return mod // TODO: recover from this error? i'm not sure we can
-        }
-
-        m
-      } else {
-        val childTypechecker = Typechecker(moduleLoader: self.moduleLoader, project: self.project, comptimeFuncEvaluator: self.comptimeFuncEvaluator)
-        childTypechecker._typecheckModule(importPathAbs)
-      }
-
-      if typedImportModule.readFileError {
-        val kind = if isRelativeImport {
-          TypeErrorKind.UnknownModule(importPathAbs, true)
-        } else {
-          TypeErrorKind.UnknownModule(importNode.moduleName.name, false)
-        }
-
-        mod.addTypeError(TypeError(position: importNode.moduleName.position, kind: kind))
-      } else if mod.startsCircDep {
-        // If the imported module can be read but the current module has been flagged as having started a circular
-        // dependency, we need to add that error to the current module so it can be surfaced.
-        mod.addTypeError(TypeError(position: importNode.moduleName.position, kind: TypeErrorKind.CircularDependency))
-      }
-
-      imports.push((typedImportModule, importNode))
-    }
+    // A None return value here means we saw a circular dependency, and we need to bail
+    val imports = try self.processImports(modulePathAbs, parsedModule) else return mod
 
     val moduleId = self.project.modules.values().filter(m => m.id != -1).length
     val moduleScope = if self.typecheckingBuiltin == Some(BuiltinModule.Prelude) {
@@ -3135,6 +3100,54 @@ pub type Typechecker {
     Ok(0)
   }
 
+  func processImports(self, modulePathAbs: String, parsedModule: ParsedModule): (TypedModule, ImportNode)[]? {
+    val imports: (TypedModule, ImportNode)[] = []
+    for importNode in parsedModule.imports {
+      var importNodePath = importNode.moduleName.name
+      val isRelativeImport = importNodePath.startsWith(".")
+      if !importNodePath.endsWith(".abra") importNodePath += ".abra"
+
+      val importPathAbs = if !isRelativeImport {
+        self.moduleLoader.stdRoot + "/" + importNodePath
+      } else {
+        self.moduleLoader.resolvePath(modulePath: importNodePath, relativeTo: Some(modulePathAbs))
+      }
+
+      val typedImportModule = if self.project.modules[importPathAbs] |m| {
+        if !m.complete {
+          // If a module attempts to import a module that is not yet complete, then we've found a circular dependency.
+          // Flag that imported module since it's the module whose imports began the cycle.
+          m.startsCircDep = true
+          // returning None here means we saw a circular dependency. can we recover from this error? i don't think so
+          return None
+        }
+
+        m
+      } else {
+        val childTypechecker = Typechecker(moduleLoader: self.moduleLoader, project: self.project, comptimeFuncEvaluator: self.comptimeFuncEvaluator)
+        childTypechecker._typecheckModule(importPathAbs)
+      }
+
+      if typedImportModule.readFileError {
+        val kind = if isRelativeImport {
+          TypeErrorKind.UnknownModule(importPathAbs, true)
+        } else {
+          TypeErrorKind.UnknownModule(importNode.moduleName.name, false)
+        }
+
+        self.currentModule.addTypeError(TypeError(position: importNode.moduleName.position, kind: kind))
+      } else if self.currentModule.startsCircDep {
+        // If the imported module can be read but the current module has been flagged as having started a circular
+        // dependency, we need to add that error to the current module so it can be surfaced.
+        self.currentModule.addTypeError(TypeError(position: importNode.moduleName.position, kind: TypeErrorKind.CircularDependency))
+      }
+
+      imports.push((typedImportModule, importNode))
+    }
+
+    Some(imports)
+  }
+
   func _typecheckImport(self, mod: TypedModule, node: ImportNode): TypeError[] {
     val importedModule = self.currentModule.imports.getOrInsert(mod.name, () => ImportedModule())
 
@@ -3194,7 +3207,6 @@ pub type Typechecker {
 
     // --- Pass 1 for types, enums, and functions
 
-    val typecheckingPrelude = self.typecheckingBuiltin == Some(BuiltinModule.Prelude)
     val structsPass1: (Struct?, TypeDeclarationNode)[] = []
     val decoratorStructs: (Struct, TypeDeclarationNode)[] = []
     for node in typeDecls {
@@ -3203,17 +3215,24 @@ pub type Typechecker {
         structsPass1.push((None, node))
         continue
       }
-      if typecheckingPrelude {
-        match struct.label.name {
-          "Int" => self.project.preludeIntStruct = struct
-          "Float" => self.project.preludeFloatStruct = struct
-          "Bool" => self.project.preludeBoolStruct = struct
-          "Char" => self.project.preludeCharStruct = struct
-          "String" => self.project.preludeStringStruct = struct
-          "Array" => self.project.preludeArrayStruct = struct
-          "Set" => self.project.preludeSetStruct = struct
-          "Map" => self.project.preludeMapStruct = struct
-          _ => {}
+      match self.typecheckingBuiltin {
+        BuiltinModule.Prelude => {
+          match struct.label.name {
+            "Int" => self.project.preludeIntStruct = struct
+            "Float" => self.project.preludeFloatStruct = struct
+            "Bool" => self.project.preludeBoolStruct = struct
+            "Char" => self.project.preludeCharStruct = struct
+            "String" => self.project.preludeStringStruct = struct
+            "Array" => self.project.preludeArrayStruct = struct
+            "Set" => self.project.preludeSetStruct = struct
+            "Map" => self.project.preludeMapStruct = struct
+          }
+        }
+        BuiltinModule.Meta => {
+          match struct.label.name {
+            "Expr" => self.project.metaExprStruct = struct
+            "InjectedCode" => self.project.metaInjectedCodeStruct = struct
+          }
         }
       }
       structsPass1.push((Some(struct), node))
@@ -3230,11 +3249,12 @@ pub type Typechecker {
         enumsPass1.push((None, node))
         continue
       }
-      if typecheckingPrelude {
-        match enum_.label.name {
-          "Option" => self.project.preludeOptionEnum = enum_
-          "Result" => self.project.preludeResultEnum = enum_
-          _ => {}
+      match self.typecheckingBuiltin {
+        BuiltinModule.Prelude => {
+          match enum_.label.name {
+            "Option" => self.project.preludeOptionEnum = enum_
+            "Result" => self.project.preludeResultEnum = enum_
+          }
         }
       }
       enumsPass1.push((Some(enum_), node))
@@ -5108,6 +5128,8 @@ pub type Typechecker {
       }
 
       val (typedArg, paramType) = if param.ty.containsGenerics() {
+        if fn.isMacro todo("macro functions with generics")
+
         var paramType = paramTy.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: genericsInScope)
 
         val typedArg = try self._typecheckExpression(arg.value, Some(paramType))
@@ -5142,11 +5164,17 @@ pub type Typechecker {
         paramType = paramTy.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: genericsInScope)
         (typedArg, paramType)
       } else {
-        val typedArg = try self._typecheckExpression(arg.value, Some(paramTy))
+        val typeHint = if fn.isMacro None else Some(paramTy)
+        val typedArg = try self._typecheckExpression(arg.value, typeHint)
         (typedArg, paramTy)
       }
-      if !self._typeSatisfiesRequired(ty: typedArg.ty, required: paramType) {
-        return Err(TypeError(position: typedArg.token.position, kind: TypeErrorKind.ParameterTypeMismatch(Some(param.label.name), paramType, typedArg.ty)))
+
+      if fn.isMacro && paramType == Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.metaExprStruct), [])) {
+        // allow expressions of any type to be passed to macros, if the argument is of known type `meta.Expr`
+      } else {
+        if !self._typeSatisfiesRequired(ty: typedArg.ty, required: paramType) {
+          return Err(TypeError(position: typedArg.token.position, kind: TypeErrorKind.ParameterTypeMismatch(Some(param.label.name), paramType, typedArg.ty)))
+        }
       }
 
       if variadicParam {
@@ -5196,12 +5224,28 @@ pub type Typechecker {
       }
     }
 
-    // If the function being invoked is a macro, and we're not currently inside a macro, invoke the macro function at compile-time
-    if fn.isMacro && !(if self.currentFunction |f| f.isMacro else false) {
+    // If the function being invoked is a macro, invoke the function at compile-time and typecheck its returned node as if it were present in the original source
+    // todo: ensure any errors (lexer/parser/typechecker) which are present in the generated code are reported w.r.t. the macro invocation site
+    if fn.isMacro {
       // todo: ensure function has no typechecker errors! failure to do so will result in WEIRD UNEXPECTED errors when calling _typecheckExpression below!
-      val node = try self.comptimeFuncEvaluator(fn, typedArguments, resolvedGenerics) else |e| unreachable("comptimeFuncEvaluator: $e")
+      val parsedModule = try self.comptimeFuncEvaluator(fn, typedArguments, resolvedGenerics) else |e| unreachable("comptimeFuncEvaluator: $e")
 
-      return self._typecheckExpression(node, None)
+      // todo: fix
+      val imports = try self.processImports("process", parsedModule) else unreachable("circular dependency detected after macro evaluation")
+      for (typedImportModule, importNode) in imports {
+        val errors = self._typecheckImport(typedImportModule, importNode)
+        for err in errors {
+          self.currentModule.addTypeError(err)
+        }
+      }
+
+      for node, idx in parsedModule.nodes {
+        val res = self.typecheckStatement(node, None)
+        if idx == parsedModule.nodes.length - 1 return Ok(res)
+      }
+
+      // todo: somehow allow this
+      unreachable("an empty list of nodes was returned")
     }
 
     val returnType = if fn.decorators.find(d => d.label.name == "noreturn") {

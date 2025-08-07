@@ -1,10 +1,10 @@
 import Pointer, Byte from "_intrinsics"
-import Lexer from "./lexer"
-import Parser, AstNode, LiteralAstNode from "./parser"
+import Lexer, Token, TokenKind, Position from "./lexer"
+import Parser, ParsedModule, AstNode, LiteralAstNode, ImportNode, ImportKind, Label from "./parser"
 import Project, Function, Struct, Type, TypedAstNode, TypedAstNodeKind, InstanceKind from "./typechecker"
-import Generator, ConcreteType from "./ir"
+import Generator, ConcreteType, StringBuilder from "./ir"
 import VM, VmValue, Instance, VmFunction, unmarshallString from "./ir_vm"
-import InjectedCode from "../example2"
+import InjectedCode from "meta"
 
 func stringifyTypedNode(node: TypedAstNode): String {
   match node.kind {
@@ -12,16 +12,51 @@ func stringifyTypedNode(node: TypedAstNode): String {
       LiteralAstNode.String(s) => "\"$s\""
       else => todo("stringify: other literal kinds")
     }
+    TypedAstNodeKind.StringInterpolation(chunks) => {
+      val chunkStrs = ["\""]
+      for chunk in chunks {
+        match chunk.kind {
+          TypedAstNodeKind.Literal(lit) => match lit {
+            LiteralAstNode.String(s) => {
+              chunkStrs.push(s)
+              continue
+            }
+          }
+        }
+        chunkStrs.push("\${")
+        chunkStrs.push(stringifyTypedNode(chunk))
+        chunkStrs.push("}")
+      }
+      chunkStrs.push("\"")
+      chunkStrs.join()
+    }
     TypedAstNodeKind.Identifier(name, _, _, _) => name
     else => todo("stringify: other TypedAstNodeKinds")
   }
 }
 
-func marshallTypedAstNodeToExpression(node: TypedAstNode): VmValue {
+func marshallTypedAstNodeToExpr(node: TypedAstNode): VmValue {
   VmValue.Instance(Instance(
-    name: "Expression",
+    name: "Expr",
     fields: [
       /* stringifyFn */ VmValue.Function(VmFunction.HostSupplied(() => VmValue.ConstString(stringifyTypedNode(node))))
+    ]
+  ))
+}
+
+func marshallArrayNodeToArray(items: TypedAstNode[]): VmValue {
+  val bufPtr = Pointer.malloc<VmValue>(items.length)
+  for item, idx in items {
+    val marshalledExpr = marshallTypedAstNodeToExpr(item)
+    bufPtr.storeAt(marshalledExpr, idx)
+  }
+
+  VmValue.Instance(Instance(
+    name: "Array",
+    fields: [
+      /* length */ VmValue.Int(items.length),
+      /* _buffer */ VmValue.Pointer(Pointer.reinterpret(bufPtr)),
+      /* _capacity */ VmValue.Int(items.length)
     ]
   ))
 }
@@ -40,7 +75,31 @@ func unmarshallInjectedCode(value: VmValue): Result<InjectedCode, String> {
     chunks.push(chunk)
   }
 
-  Ok(InjectedCode(chunks: chunks))
+  val imports: Map<String, String> = {}
+  val importsValue = instance.expectField(1).expectInstance("InjectedCode imports is Map<String, String>")
+  val importsSize = importsValue.expectField(0).expectInt("Map field 0 is size")
+  if importsSize != 0 {
+    val importsEntries = importsValue.expectField(1).expectInstance("Map field 1 is _entries (MapEntry<String, String>[])")
+    val importsEntriesLength = importsEntries.expectField(0).expectInt("Array field 0 is length")
+    val importsEntriesItems = importsEntries.expectField(1).expectPointer("Array field 1 is buffer")
+    for i in 0:importsEntriesLength {
+      var next = Pointer.reinterpret<Byte, VmValue>(importsEntriesItems).loadAt(i)
+
+      while next != VmValue.OptionNone {
+        val entry = next.expectInstance("MapEntry is instance")
+        val entryIsEmpty = entry.expectField(3).expectBool("MapEntry field 3 is _empty")
+        if entryIsEmpty break
+
+        val entryKey = try unmarshallString(entry.expectField(0))
+        val entryValue = try unmarshallString(entry.expectField(1))
+        imports[entryKey] = entryValue
+
+        next = entry.expectField(2)
+      }
+    }
+  }
+
+  Ok(InjectedCode(chunks: chunks, imports: imports))
 }
 
 pub type ComptimeFunctionEvaluator {
@@ -52,31 +111,38 @@ pub type ComptimeFunctionEvaluator {
     ComptimeFunctionEvaluator(project: project, gen: gen)
   }
 
-  pub func eval(self, fn: Function, arguments: TypedAstNode?[], resolvedGenerics: Map<String, Type>): Result<AstNode, String> {
+  pub func eval(self, fn: Function, arguments: TypedAstNode?[], resolvedGenerics: Map<String, Type>): Result<ParsedModule, String> {
     self.gen.generate()
 
     val irFn = self.gen.genTcFunction(fn, resolvedGenerics)
-    for f in self.gen.fnQueue {
-      // todo: fix
-      if f.fnName == "meta_stringify" {
-        f.concreteGenerics["T"] = ConcreteType(instanceKind: InstanceKind.Struct(Struct.makeDummy(0, "Bogus")))
-      }
-      self.gen.genFunction(f)
-    }
+    // process function queue to generate IR for any functions discovered above
+    for f in self.gen.fnQueue { self.gen.genFunction(f) }
 
-    val vm = VM(ir: self.gen.getIR())
+    val ir = self.gen.getIR()
+    val vm = VM(ir: ir)
+
     vm.registerExtern("meta_stringify", (args) => {
       val arg0 = try args[0] else unreachable("stringify has 1 required argument")
       val exprInstance = arg0.expectInstance("stringify param 1")
-      val stringifyFn = exprInstance.expectField(0).expectFunction("Expression stringifyFn field")
-      val fn = match stringifyFn { VmFunction.HostSupplied(f) => f, else => unreachable("Expression stringifyFn field as function") }
+      val stringifyFn = exprInstance.expectField(0).expectFunction("Expr stringifyFn field")
+      val fn = match stringifyFn { VmFunction.HostSupplied(f) => f, else => unreachable("Expr stringifyFn field as function") }
 
       fn([])
     })
 
-    // todo: fix (of course)
-    val arg0 = try try arguments[0] else return Err("expected argument") else return Err("expected argument")
-    val res = vm.evalFunctionCall(irFn, [marshallTypedAstNodeToExpression(arg0)])
+    val marshalledArgs: VmValue[] = []
+    for argument, idx in arguments {
+      val arg = try argument else todo("macros: optional arguments")
+      val param = try fn.params[idx] else unreachable("")
+      val marshalledArg = if param.isVariadic {
+        val items = match arg.kind { TypedAstNodeKind.Array(items) => items, else => unreachable("variadic arguments are pre-wrapped in Array") }
+        marshallArrayNodeToArray(items)
+      } else {
+        marshallTypedAstNodeToExpr(arg)
+      }
+      marshalledArgs.push(marshalledArg)
+    }
+    val res = vm.evalFunctionCall(irFn, marshalledArgs)
     val injectedCode = try unmarshallInjectedCode(res)
     val srcStr = injectedCode.chunks.join()
 
@@ -90,7 +156,14 @@ pub type ComptimeFunctionEvaluator {
       Err(error) => return Err("lexer error: $error")
     }
 
-    val first = try parsedModule.nodes[0] else return Err("empty parsed nodes")
-    Ok(first)
+    for (mod, alias) in injectedCode.imports {
+      parsedModule.imports.push(ImportNode(
+        token: Token(position: Position(line: -1, col: -1), kind: TokenKind.Import),
+        kind: ImportKind.Alias(Label(name: alias, position: Position(line: -1, col: -1))),
+        moduleName: Label(name: mod, position: Position(line: -1, col: -1)),
+      ))
+    }
+
+    Ok(parsedModule)
   }
 }
