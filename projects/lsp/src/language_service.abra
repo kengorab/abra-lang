@@ -4,6 +4,7 @@ import log from "./log"
 import Label from "../../compiler/src/parser"
 import TypedModule, ModuleLoader, Project, Typechecker, LexerOrParseError, IdentifierMeta, IdentifierKindMeta, IdentifierMetaModule from "../../compiler/src/typechecker"
 import RequestMessage, NotificationMessage, ResponseMessage, ResponseResult, ResponseError, ResponseErrorCode, ServerCapabilities, TextDocumentSyncOptions, TextDocumentSyncKind, SaveOptions, ServerInfo, TextDocumentItem, TextDocumentIdentifier, VersionedTextDocumentIdentifier, TextDocumentContentChangeEvent, Diagnostic, DiagnosticSeverity, Position, Range, MarkupContent, MarkupKind, DocumentSymbol, SymbolKind from "./lsp_spec"
+import ComptimeFunctionEvaluator from "../../compiler/src/comptime_evaluator"
 
 pub val contentLengthHeader = "Content-Length: "
 pub val bogusMessageId = -999
@@ -368,7 +369,14 @@ pub type AbraLanguageService {
     // todo: what happens if it's not a `file://` uri?
     val filePath = uri.replaceAll("file://", "")
 
-    val typechecker = Typechecker(moduleLoader: self._moduleLoader, project: self._project, lspMode: true)
+    val comptimeFuncEvaluator = ComptimeFunctionEvaluator.init(self._project)
+
+    val typechecker = Typechecker(
+      moduleLoader: self._moduleLoader,
+      project: self._project,
+      comptimeFuncEvaluator: comptimeFuncEvaluator.eval,
+      lspMode: true,
+    )
     typechecker.typecheckEntrypoint(filePath)
 
     val mod = try self._project.modules[filePath] else return []

@@ -14,8 +14,9 @@
 import "fs" as fs
 import "process" as process
 import getAbsolutePath from "./utils"
-import ModuleLoader, Project, Typechecker, TypedModule from "./typechecker"
+import ModuleLoader, Project, Typechecker from "./typechecker"
 import Compiler from "./compiler"
+import ComptimeFunctionEvaluator from "./comptime_evaluator"
 
 func main() {
   val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {
@@ -31,8 +32,13 @@ func main() {
 
     val moduleLoader = ModuleLoader(stdRoot: abraStdRoot)
     val project = Project()
-    val typechecker = Typechecker(moduleLoader: moduleLoader, project: project)
+    val comptimeFuncEvaluator = ComptimeFunctionEvaluator.init(project)
 
+    val typechecker = Typechecker(
+      moduleLoader: moduleLoader,
+      project: project,
+      comptimeFuncEvaluator: comptimeFuncEvaluator.eval,
+    )
     typechecker.typecheckEntrypoint(filePathAbs)
 
     val readFileErrors: String[] = []

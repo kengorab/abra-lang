@@ -883,24 +883,24 @@ type Context {
   }
 }
 
-enum CallableToCompile {
+pub enum CallableToCompile {
   Function(fn: tc.Function)
   Initializer(concreteType: ConcreteType)
   EnumVariant(concreteType: ConcreteType, variant: tc.TypedEnumVariant)
 }
 
-type FunctionToCompile {
-  callable: CallableToCompile
-  fnName: String
-  paramsNeedingDefaultValue: Bool[]
-  concreteGenerics: Map<String, ConcreteType>
-  methodInstanceType: ConcreteType? = None
-  paramsToDiscard: ConcreteType[] = []
+pub type FunctionToCompile {
+  pub callable: CallableToCompile
+  pub fnName: String
+  pub paramsNeedingDefaultValue: Bool[]
+  pub concreteGenerics: Map<String, ConcreteType>
+  pub methodInstanceType: ConcreteType? = None
+  pub paramsToDiscard: ConcreteType[] = []
 }
 
-type ConcreteType {
-  instanceKind: InstanceKind
-  typeArgs: ConcreteType[] = []
+pub type ConcreteType {
+  pub instanceKind: InstanceKind
+  pub typeArgs: ConcreteType[] = []
 
   func toString(self): String {
     val base = match self.instanceKind {
@@ -922,43 +922,83 @@ val ALIGNMENT = 8
 
 pub type Generator {
   project: tc.Project
+  mainFn: IrFunction
   functions: IrFunction[]
   functionsByName: Map<String, IrFunction>
   curCtx: Context
   foldConstants: Bool
-  fnQueue: FunctionToCompile[] = []
+  pub fnQueue: FunctionToCompile[] = []
   types: Map<String, (CompositeType, ConcreteType)> = {}
   globals: Map<String, GlobalVariable> = {}
   knowns: Knowns = Knowns()
   tupleStructs: Map<String, tc.Struct> = {}
   functionStructs: Map<String, tc.Struct> = {}
 
-  pub func generateIR(project: tc.Project, foldConstants: Bool = true): IR {
+  pub func init(project: tc.Project, foldConstants = true): Generator {
     val allModules = project.modules.values().sortBy(m => m.id)
 
     val mainFn = IrFunction(name: "main", params: [], ret: IrType.I64, isClosure: false, numLocals: 0)
     val curCtx = Context(fn: mainFn, typedFn: None, block: mainFn.block)
-    val generator = Generator(project: project, functions: [], functionsByName: {}, curCtx: curCtx, foldConstants: foldConstants)
+    Generator(project: project, mainFn: mainFn, functions: [], functionsByName: {}, curCtx: curCtx, foldConstants: foldConstants)
+  }
 
-    val strConcreteTy = ConcreteType(instanceKind: InstanceKind.Struct(project.preludeStringStruct))
-    generator.knowns.strTy = Some(generator.getOrAddCompositeType(strConcreteTy))
-    generator.knowns.strInit = Some(generator.getOrGenInitializerFn(strConcreteTy, None, {}))
+  pub func generate(self) {
+    val strConcreteTy = ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct))
+    self.knowns.strTy = Some(self.getOrAddCompositeType(strConcreteTy))
+    self.knowns.strInit = Some(self.getOrGenInitializerFn(strConcreteTy, None, {}))
+
+    val allModules = self.project.modules.values().sortBy(m => m.id)
 
     for mod in allModules {
-      if generator.genModule(mod) |modFn| {
-        mainFn.block[1].push(Instruction(op: Operation.Call(ret: IrType.Unit, fnName: modFn.name, args: [])))
+      if self.genModule(mod) |modFn| {
+        self.mainFn.block[1].push(Instruction(op: Operation.Call(ret: IrType.Unit, fnName: modFn.name, args: [])))
       }
     }
 
-    mainFn.block[1].push(Instruction(op: Operation.Return(value: Some(Value.Const(Const.Int(0))))))
+    self.mainFn.block[1].push(Instruction(op: Operation.Return(value: Some(Value.Const(Const.Int(0))))))
+  }
 
+  pub func getIR(self): IR {
     IR(
-      mainFunction: mainFn,
-      functions: generator.functions,
-      types: generator.types.values().map(t => t[0]),
-      globals: generator.globals.values(),
-      knowns: generator.knowns
+      mainFunction: self.mainFn,
+      functions: self.functions,
+      types: self.types.values().map(t => t[0]),
+      globals: self.globals.values(),
+      knowns: self.knowns
     )
+  }
+
+  pub func generateIR(project: tc.Project, foldConstants: Bool = true): IR {
+    // val allModules = project.modules.values().sortBy(m => m.id)
+
+    // val mainFn = IrFunction(name: "main", params: [], ret: IrType.I64, isClosure: false, numLocals: 0)
+    // val curCtx = Context(fn: mainFn, typedFn: None, block: mainFn.block)
+    // val generator = Generator(project: project, functions: [], functionsByName: {}, curCtx: curCtx, foldConstants: foldConstants)
+
+    // val strConcreteTy = ConcreteType(instanceKind: InstanceKind.Struct(project.preludeStringStruct))
+    // generator.knowns.strTy = Some(generator.getOrAddCompositeType(strConcreteTy))
+    // generator.knowns.strInit = Some(generator.getOrGenInitializerFn(strConcreteTy, None, {}))
+    val generator = Generator.init(project, foldConstants)
+    // val allModules = project.modules.values().sortBy(m => m.id)
+    // val mainFn = generator.curCtx.fn
+
+    // for mod in allModules {
+    //   if generator.genModule(mod) |modFn| {
+    //     mainFn.block[1].push(Instruction(op: Operation.Call(ret: IrType.Unit, fnName: modFn.name, args: [])))
+    //   }
+    // }
+
+    // mainFn.block[1].push(Instruction(op: Operation.Return(value: Some(Value.Const(Const.Int(0))))))
+    generator.generate()
+    generator.getIR()
+
+    // IR(
+    //   mainFunction: mainFn,
+    //   functions: generator.functions,
+    //   types: generator.types.values().map(t => t[0]),
+    //   globals: generator.globals.values(),
+    //   knowns: generator.knowns
+    // )
   }
 
   func genModule(self, mod: tc.TypedModule): IrFunction? {
@@ -985,18 +1025,32 @@ pub type Generator {
     Some(modFn)
   }
 
-  func genFunction(self, ctx: FunctionToCompile) {
-    if self.functionsByName[ctx.fnName] return
+  pub func genTcFunction(self, fn: tc.Function, resolvedGenerics: Map<String, tc.Type>): IrFunction {
+    val concreteGenerics: Map<String, ConcreteType> = {}
+    for (name, ty) in resolvedGenerics.entries() {
+      val concreteType = self.getConcreteTypeFromType(ty, {})
+      concreteGenerics[name] = concreteType
+    }
+
+    val fnName = self.fnName(None, fn, concreteGenerics)
+    self.genFunction(FunctionToCompile(
+      callable: CallableToCompile.Function(fn),
+      fnName: fnName,
+      paramsNeedingDefaultValue: [],
+      concreteGenerics: concreteGenerics,
+    ))
+  }
+
+  pub func genFunction(self, ctx: FunctionToCompile): IrFunction {
+    if self.functionsByName[ctx.fnName] |f| return f
 
     val fn = match ctx.callable {
       CallableToCompile.Function(fn) => fn
       CallableToCompile.Initializer(concreteType) => {
-        self.getOrGenInitializerFn(concreteType, None, ctx.concreteGenerics, ctx.paramsNeedingDefaultValue)
-        return
+        return self.getOrGenInitializerFn(concreteType, None, ctx.concreteGenerics, ctx.paramsNeedingDefaultValue)
       }
       CallableToCompile.EnumVariant(concreteType, variant) => {
-        self.getOrGenInitializerFn(concreteType, Some(variant), ctx.concreteGenerics, ctx.paramsNeedingDefaultValue)
-        return
+        return self.getOrGenInitializerFn(concreteType, Some(variant), ctx.concreteGenerics, ctx.paramsNeedingDefaultValue)
       }
     }
 
@@ -1032,7 +1086,12 @@ pub type Generator {
     var anyParamNeedsDefault = false
     val argsForUnderlying = if selfParam |selfParam| [selfParam] else []
     for param, idx in fn.params {
-      val paramConcreteType = self.getConcreteTypeFromType(param.ty, ctx.concreteGenerics)
+      val paramConcreteType = if param.isVariadic {
+        val inner = self.getConcreteTypeFromType(param.ty, ctx.concreteGenerics)
+        ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeArrayStruct), typeArgs: [inner])
+      } else {
+        self.getConcreteTypeFromType(param.ty, ctx.concreteGenerics)
+      }
       val paramTy = self.getIrTypeForConcreteType(paramConcreteType)
       val paramIdent = self.curCtx.addLocal(paramTy, Some(param.label.name))
 
@@ -1067,7 +1126,7 @@ pub type Generator {
           self.genToStringMethodBody(selfParam, selfConcreteType)
           irFunc.numLocals = self.curCtx.numLocals
           self.curCtx = prevCtx
-          return
+          return irFunc
         }
 
         if fn.label.name == "eq" && fn.isGenerated {
@@ -1075,14 +1134,14 @@ pub type Generator {
           self.genEqMethodBody(selfParam, otherParam, selfConcreteType)
           irFunc.numLocals = self.curCtx.numLocals
           self.curCtx = prevCtx
-          return
+          return irFunc
         }
 
         if fn.label.name == "hash" && fn.isGenerated {
           self.genHashMethodBody(selfParam, selfConcreteType)
           irFunc.numLocals = self.curCtx.numLocals
           self.curCtx = prevCtx
-          return
+          return irFunc
         }
       }
     }
@@ -1122,6 +1181,8 @@ pub type Generator {
 
     irFunc.numLocals = self.curCtx.numLocals
     self.curCtx = prevCtx
+
+    irFunc
   }
 
   func getOrGenInitializerFn(self, concreteType: ConcreteType, enumVariant: tc.TypedEnumVariant?, concreteGenerics: Map<String, ConcreteType>, fieldsNeedingDefaultValue: Bool[] = []): IrFunction {
@@ -1958,9 +2019,18 @@ pub type Generator {
             return self.ssaValueComptime(Const.String(constStr), dst)
           }
 
-          val concreteType = self.getConcreteTypeFromType(left.ty, concreteGenerics)
-          val lStrVal = if lvalTy == strTy { lval } else self.genCallToStringMethod(lval, concreteType, dst)
-          val rStrVal = if rvalTy == strTy { rval } else self.genCallToStringMethod(rval, concreteType, dst)
+          val lStrVal = if lvalTy == strTy {
+            lval
+          } else {
+            val leftConcreteType = self.getConcreteTypeFromType(left.ty, concreteGenerics)
+            self.genCallToStringMethod(lval, leftConcreteType, dst)
+          }
+          val rStrVal = if rvalTy == strTy {
+            rval
+          } else {
+            val rightConcreteType = self.getConcreteTypeFromType(right.ty, concreteGenerics)
+            self.genCallToStringMethod(rval, rightConcreteType, dst)
+          }
 
           val strConcreteTy = ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct))
           val concatFn = self.getMethodByName(strConcreteTy.instanceKind, "concat", staticMethod: false)
@@ -3304,7 +3374,10 @@ pub type Generator {
 
   func getConcreteTypeFromType(self, ty: tc.Type, concreteGenerics: Map<String, ConcreteType>): ConcreteType {
     match ty.kind {
-      TypeKind.CouldNotDetermine => unreachable("Encountered CouldNotDetermine type")
+      TypeKind.CouldNotDetermine => {
+        stdoutWriteln(process.getStackTrace())
+        unreachable("Encountered CouldNotDetermine type")
+      }
       TypeKind.PrimitiveUnit => unreachable("getConcreteTypeFromType: Unit")
       TypeKind.PrimitiveInt => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeIntStruct), typeArgs: [])
       TypeKind.PrimitiveFloat => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeFloatStruct), typeArgs: [])

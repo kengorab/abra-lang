@@ -17,6 +17,7 @@ import getAbsolutePath from "./utils"
 import ModuleLoader, Project, Typechecker, TypedModule from "./typechecker"
 import Generator, StringBuilder from "./ir"
 import VM, VmValue, unmarshallString from "./ir_vm"
+import ComptimeFunctionEvaluator from "./comptime_evaluator"
 
 func main() {
   val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {
@@ -32,7 +33,8 @@ func main() {
 
     val moduleLoader = ModuleLoader(stdRoot: abraStdRoot)
     val project = Project()
-    val typechecker = Typechecker(moduleLoader: moduleLoader, project: project)
+    val comptimeFuncEvaluator = ComptimeFunctionEvaluator.init(project)
+    val typechecker = Typechecker(moduleLoader: moduleLoader, project: project, comptimeFuncEvaluator: comptimeFuncEvaluator.eval)
 
     typechecker.typecheckEntrypoint(filePathAbs)
 
@@ -74,7 +76,7 @@ func main() {
 
     val ir = Generator.generateIR(project, foldConstants: true)
     VM.evalIR(ir)
-    
+
     // val fn = try ir.functions.find(f => f.name.endsWith("shout")) else unreachable()
     // val res = VM(ir: ir).evalFunctionCall(fn, [])
     // val str = try unmarshallString(res) else |e| unreachable(e)
