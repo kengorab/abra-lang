@@ -42,8 +42,7 @@ func assert(value: Expr): InjectedCode {
 
   c.append("if !($str) {")
   c.append("  println(\"Failed assertion: $str\")")
-  // todo: fix this - this doesn't work properly unless the `process` module is evaluated prior to the module in which this macro is invoked
-  // c.append("  stdoutWriteln($processMod.getStackTrace())")
+  c.append("  stdoutWriteln($processMod.getStackTrace())")
   c.append("  $processMod.exit(1)")
   c.append("}")
 

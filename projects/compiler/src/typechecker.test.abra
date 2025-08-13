@@ -26,6 +26,17 @@ func verifyStdModule(modulesSortedById: TypedModule[], expectedId: Int, name: St
   true
 }
 
+pub func reverse<T>(arr: T[]): T[] {
+  val res = Array.withCapacity<T>(arr.length)
+  var i = arr.length - 1
+  while i >= 0 {
+    res.push(arr._buffer.loadAt(i))
+    i -= 1
+  }
+
+  res
+}
+
 func main() {
   val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {
     stdoutWriteln("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
@@ -46,10 +57,12 @@ func main() {
     val typechecker = Typechecker(moduleLoader: moduleLoader, project: project, comptimeFuncEvaluator: comptimeFuncEvaluator.eval)
     typechecker.typecheckEntrypoint(filePathAbs)
 
+    val allModules = project.sortedModules()
+
     if !printModulesOnError {
       val readFileErrors: String[] = []
       val errorMessages: String[] = []
-      for mod in project.modules.values().sortBy(m => -m.id) {
+      for mod in reverse(allModules) {
         if mod.readFileError {
           readFileErrors.push(mod.name)
           continue
@@ -85,8 +98,6 @@ func main() {
         return
       }
     }
-
-    val allModules = project.modules.values().sortBy(m => m.id)
 
     if !verifyStdModule(allModules, 0, "_intrinsics") return
     if !verifyStdModule(allModules, 1, "libc") return

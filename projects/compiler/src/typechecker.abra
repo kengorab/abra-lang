@@ -113,6 +113,7 @@ pub type TypedModule {
   pub name: String
   pub code: TypedAstNode[]
   pub rootScope: Scope
+  pub isEntry: Bool = false
   complete: Bool = false
   imports: Map<String, ImportedModule> = {}
   pub exports: Map<String, Export> = {}
@@ -341,7 +342,7 @@ enum Instantiatable {
 
 pub type Project {
   pub modules: Map<String, TypedModule> = {}
-  pub preludeScope: Scope = Scope.bogus()
+  pub preludeModule: TypedModule = TypedModule.bogus()
   pub preludeIntStruct: Struct = Struct(moduleId: 0, label: Label(name: "Int", position: Position.bogus()), scope: Scope(name: "Int"))
   pub preludeFloatStruct: Struct = Struct(moduleId: 0, label: Label(name: "Float", position: Position.bogus()), scope: Scope(name: "Float"))
   pub preludeBoolStruct: Struct = Struct(moduleId: 0, label: Label(name: "Bool", position: Position.bogus()), scope: Scope(name: "Bool"))
@@ -460,6 +461,34 @@ pub type Project {
       }
       _ => None
     }
+  }
+
+  pub func sortedModules(self): TypedModule[] {
+    val modules = self.modules.values()
+    val entry = try modules.find(m => m.isEntry) else {
+      return self.modules.values().sortBy(m => m.id)
+    }
+
+    val visited: Set<Int> = #{}
+    val result: TypedModule[] = Array.withCapacity(modules.length)
+    self.dfs(self.preludeModule, visited, result)
+    self.dfs(entry, visited, result)
+
+    result
+  }
+
+  func dfs(self, mod: TypedModule, visited: Set<Int>, result: TypedModule[]) {
+    if visited.contains(mod.id) return
+    visited.insert(mod.id)
+
+    for (importedModName, _) in mod.imports {
+      val importedMod = try self.modules[importedModName] else unreachable("import '$importedModName' expected to exist")
+      if !visited.contains(importedMod.id) {
+        self.dfs(importedMod, visited, result)
+      }
+    }
+
+    result.push(mod)
   }
 }
 
@@ -1639,7 +1668,8 @@ pub type Typechecker {
       }
     }
 
-    self._typecheckModule(modulePathAbs)
+    val mod = self._typecheckModule(modulePathAbs)
+    mod.isEntry = true
   }
 
   func _verifyNameUniqueInScope(self, label: Label, scope: Scope): TypeError? {
@@ -1804,7 +1834,7 @@ pub type Typechecker {
           scope = sc.parent
         }
 
-        for ty in self.project.preludeScope.types {
+        for ty in self.project.preludeModule.rootScope.types {
           match ty.kind {
             TypeKind.Generic(genericName) => if name == genericName return Some((ty, None))
             TypeKind.Type(instanceKind) => {
@@ -2036,7 +2066,7 @@ pub type Typechecker {
       }
     }
 
-    for v in self.project.preludeScope.variables {
+    for v in self.project.preludeModule.rootScope.variables {
       if v.label.name == ident {
         if !v.alias && fnBarrierBreached {
           v.isCaptured = true
@@ -2242,7 +2272,7 @@ pub type Typechecker {
   // Start LSP helpers
 
   func _addLSPIdentForStruct(self, position: Position, struct: Struct, importMod: TypedModule?) {
-    val defMod = if struct.scope.parent == Some(self.project.preludeScope) {
+    val defMod = if struct.scope.parent == Some(self.project.preludeModule.rootScope) {
       IdentifierMetaModule.Prelude
     } else {
       IdentifierMetaModule.Module(importMod?.name ?: self.currentModule.name)
@@ -2258,7 +2288,7 @@ pub type Typechecker {
   }
 
   func _addLSPIdentForEnum(self, position: Position, enum_: Enum, importMod: TypedModule?) {
-    val defMod = if enum_.scope.parent == Some(self.project.preludeScope) {
+    val defMod = if enum_.scope.parent == Some(self.project.preludeModule.rootScope) {
       IdentifierMetaModule.Prelude
     } else {
       IdentifierMetaModule.Module(importMod?.name ?: self.currentModule.name)
@@ -2274,7 +2304,7 @@ pub type Typechecker {
   }
 
   func _addLSPIdentForEnumVariant(self, position: Position, enum_: Enum, variant: TypedEnumVariant) {
-    val definitionModule = if enum_.scope.parent == Some(self.project.preludeScope) {
+    val definitionModule = if enum_.scope.parent == Some(self.project.preludeModule.rootScope) {
       IdentifierMetaModule.Prelude
     } else {
       match enum_.scope.parent?.kind {
@@ -2326,7 +2356,7 @@ pub type Typechecker {
       InstanceKind.Enum(enum_) => enum_.scope
     }
 
-    val mod = if scope.parent == Some(self.project.preludeScope) {
+    val mod = if scope.parent == Some(self.project.preludeModule.rootScope) {
       IdentifierMetaModule.Prelude
     } else {
       match scope.parent?.kind {
@@ -2344,7 +2374,6 @@ pub type Typechecker {
     if self.project.modules[modulePathAbs] |mod| return mod
 
     self.typecheckingBuiltin = if modulePathAbs == self.moduleLoader.stdRoot + "/prelude.abra" {
-      self.project.preludeScope = self.currentScope.makeChild("module_prelude", ScopeKind.Module(id: -1, name: modulePathAbs))
       Some(BuiltinModule.Prelude)
     } else if modulePathAbs == self.moduleLoader.stdRoot + "/_intrinsics.abra" {
       Some(BuiltinModule.Intrinsics)
@@ -2360,6 +2389,10 @@ pub type Typechecker {
     val mod = TypedModule(id: -1, name: modulePathAbs, code: [], rootScope: Scope.bogus())
     self.currentModule = mod
     self.project.modules[modulePathAbs] = mod
+    if self.typecheckingBuiltin == Some(BuiltinModule.Prelude) {
+      self.project.preludeModule = mod
+      self.project.preludeModule.rootScope = self.currentScope.makeChild("module_prelude", ScopeKind.Module(id: -1, name: modulePathAbs))
+    }
 
     val parsedModule = try self.moduleLoader.tokenizeAndParse(modulePathAbs) else |e| {
       match e {
@@ -2378,12 +2411,12 @@ pub type Typechecker {
     }
 
     // A None return value here means we saw a circular dependency, and we need to bail
-    val imports = try self.processImports(modulePathAbs, parsedModule) else return mod
+    val imports = try self.processImports(Some(modulePathAbs), parsedModule) else return mod
 
     val moduleId = self.project.modules.values().filter(m => m.id != -1).length
     val moduleScope = if self.typecheckingBuiltin == Some(BuiltinModule.Prelude) {
-      self.project.preludeScope.kind = ScopeKind.Module(id: moduleId, name: modulePathAbs)
-      self.project.preludeScope
+      self.project.preludeModule.rootScope.kind = ScopeKind.Module(id: moduleId, name: modulePathAbs)
+      self.project.preludeModule.rootScope
     } else {
       self.currentScope.makeChild("module_$moduleId", ScopeKind.Module(id: moduleId, name: modulePathAbs))
     }
@@ -3100,7 +3133,7 @@ pub type Typechecker {
     Ok(0)
   }
 
-  func processImports(self, modulePathAbs: String, parsedModule: ParsedModule): (TypedModule, ImportNode)[]? {
+  func processImports(self, modulePathAbs: String?, parsedModule: ParsedModule): (TypedModule, ImportNode)[]? {
     val imports: (TypedModule, ImportNode)[] = []
     for importNode in parsedModule.imports {
       var importNodePath = importNode.moduleName.name
@@ -3110,7 +3143,9 @@ pub type Typechecker {
       val importPathAbs = if !isRelativeImport {
         self.moduleLoader.stdRoot + "/" + importNodePath
       } else {
-        self.moduleLoader.resolvePath(modulePath: importNodePath, relativeTo: Some(modulePathAbs))
+        if !modulePathAbs unreachable("missing absolute path for non-relative import '$importNodePath'")
+
+        self.moduleLoader.resolvePath(modulePath: importNodePath, relativeTo: modulePathAbs)
       }
 
       val typedImportModule = if self.project.modules[importPathAbs] |m| {
@@ -4541,7 +4576,7 @@ pub type Typechecker {
         VariableAlias.Enum(_enum) => IdentifierKindMeta.Type(isEnum: true, typeParams: _enum.typeParams)
       }
 
-      val defMod = if variable.scope == self.project.preludeScope {
+      val defMod = if variable.scope == self.project.preludeModule.rootScope {
         IdentifierMetaModule.Prelude
       } else {
         IdentifierMetaModule.Module(varImportMod?.name ?: self.currentModule.name)
@@ -4569,7 +4604,7 @@ pub type Typechecker {
       TypeKind.PrimitiveString => return self.resolveAccessorPathSegment(Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.preludeStringStruct), [])), label, None, isInvocation, optSafe)
       TypeKind.Never => None
       TypeKind.Generic => {
-        val scope = self.project.preludeScope.makeChild("T", ScopeKind.Type)
+        val scope = self.project.preludeModule.rootScope.makeChild("T", ScopeKind.Type)
         val method = if label.name == "toString" {
           Some(Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(None, true)))
         } else if label.name == "hash" {
@@ -5230,8 +5265,8 @@ pub type Typechecker {
       // todo: ensure function has no typechecker errors! failure to do so will result in WEIRD UNEXPECTED errors when calling _typecheckExpression below!
       val parsedModule = try self.comptimeFuncEvaluator(fn, typedArguments, resolvedGenerics) else |e| unreachable("comptimeFuncEvaluator: $e")
 
-      // todo: fix
-      val imports = try self.processImports("process", parsedModule) else unreachable("circular dependency detected after macro evaluation")
+      // todo: properly handle circular dependencies
+      val imports = try self.processImports(None, parsedModule) else unreachable("circular dependency detected after macro evaluation")
       for (typedImportModule, importNode) in imports {
         val errors = self._typecheckImport(typedImportModule, importNode)
         for err in errors {
