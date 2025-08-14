@@ -1052,7 +1052,17 @@ type Array<T> {
   }
 
   pub func update(self, index: Int, updater: (T) => T) = todo("Array#update")
-  pub func reversed(self): T[] = todo("Array#reversed")
+
+  pub func reversed(self): T[] {
+    val res = Array.withCapacity<T>(self.length)
+    var i = self.length - 1
+    while i >= 0 {
+      res.push(self._buffer.loadAt(i))
+      i -= 1
+    }
+
+    res
+  }
 }
 
 type SetIterator<T> {

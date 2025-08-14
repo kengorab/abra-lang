@@ -204,7 +204,7 @@ pub type Compiler {
     val (callstack, _) = builder.addData(QbeData(name: "__callstack", kind: QbeDataKind.Zeros(size: 1024 * 8)))
     val (callstackPtr, _) = builder.addData(QbeData(name: "__callstackp", kind: QbeDataKind.Constants([(QbeType.U64, Value.Int(0))])))
 
-    val allModules = project.modules.values().sortBy(m => m.id)
+    val allModules = project.sortedModules()
     val (moduleNamesPtr, _) = builder.addData(QbeData(name: "__modnames", kind: QbeDataKind.Strings(allModules.map(m => m.name))))
 
     val (fnNamesPtr, fnNamesIdx) = builder.addData(QbeData(name: "__fnnames", kind: QbeDataKind.Strings([])))

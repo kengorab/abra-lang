@@ -2,58 +2,60 @@ import macro, stringify, InjectedCode, Expr from "meta"
 
 @macro
 func debug(value: Expr): InjectedCode {
-  val c = InjectedCode.new()
-  val str = stringify(value)
-
-  c.append("(if true {\n")
-  c.append("  val exp = $str\n")
-  c.append("  stdoutWriteln(\"$str = \$$str\")\n")
-  c.append("  exp")
-  c.append("} else { unreachable(\"will get optimized away\") })")
-
-  c
+  InjectedCode.new()
+    .append("(if true {")
+    .append("  val exp = ").appendExpr(value)
+    .append("  stdoutWriteln(\"").appendExpr(value).append(" = \$").appendExpr(value).append("\")")
+    .append("  exp")
+    .append("} else { unreachable(\"will get optimized away\") })")
 }
 
 @macro
 func println(*values: Expr[]): InjectedCode {
-  val c = InjectedCode.new()
+  if values.isEmpty() {
+    return InjectedCode.new()
+      .append("stdoutWriteln()")
+  }
 
+  if values.length == 1 {
+    val value = if values[0] |v| v else unreachable("length is 1")
+    return InjectedCode.new()
+      .append("stdoutWriteln(").appendExpr(value).append(".toString())")
+  }
+
+  val c = InjectedCode.new()
   c.append("if true {")
   for value, idx in values {
-    val str = stringify(value)
-    c.append("stdoutWrite($str.toString())")
+    val isLast = idx == values.length - 1
 
-    if idx != values.length - 1 {
+    val fn = if isLast "stdoutWriteln(" else "stdoutWrite("
+    c.append(fn).appendExpr(value).append(".toString())")
+
+    if !isLast {
       c.append("stdoutWrite(\" \")")
     }
   }
 
-  c.append("stdoutWriteln()")
   c.append("}")
-
-  c
 }
 
 @macro
 func assert(value: Expr): InjectedCode {
   val c = InjectedCode.new()
   val processMod = c.addImport("process")
-  val str = stringify(value)
 
-  c.append("if !($str) {")
-  c.append("  println(\"Failed assertion: $str\")")
-  // todo: fix this - this doesn't work properly unless the `process` module is evaluated prior to the module in which this macro is invoked
-  // c.append("  stdoutWriteln($processMod.getStackTrace())")
-  c.append("  $processMod.exit(1)")
-  c.append("}")
-
-  c
+  c.append("if !(").appendExpr(value).append(") {")
+    .append("  println(\"Failed assertion: ").appendExpr(value).append("\")")
+    .append("  stdoutWriteln($processMod.getStackTrace())")
+    .append("  $processMod.exit(1)")
+    .append("}")
 }
 
 val x = 123
 val y = 456
 val z = debug(x) + debug(y)
 println("z: $z", "a", x)
+println("${stringify(x)} = $x")
 
 func foo() {
   val arr = [1, 2]

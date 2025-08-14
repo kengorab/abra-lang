@@ -1,6 +1,4 @@
 pub decorator macro { }
-decorator macrouseonly { }
-decorator external { name: String }
 
 pub type InjectedCode {
   pub chunks: String[] = []
@@ -16,15 +14,24 @@ pub type InjectedCode {
     alias
   }
 
-  pub func append(self, str: String) {
+  pub func append(self, str: String): InjectedCode {
     self.chunks.push(str)
+    self
+  }
+
+  pub func appendExpr(self, expr: Expr): InjectedCode {
+    self.chunks.push(expr.stringify())
+    self
   }
 }
 
 pub type Expr {
-  stringifyFn: () => String
+  stringify: () => String
 }
 
-@macrouseonly
-@external("meta_stringify")
-pub func stringify(expr: Expr): String
+@macro
+pub func stringify(expr: Expr): InjectedCode =
+  InjectedCode.new()
+    .append("\"")
+    .appendExpr(expr)
+    .append("\"")
