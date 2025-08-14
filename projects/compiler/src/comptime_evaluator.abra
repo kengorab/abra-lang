@@ -63,7 +63,7 @@ func marshallArrayNodeToArray(items: TypedAstNode[]): VmValue {
 
 func unmarshallInjectedCode(value: VmValue): Result<InjectedCode, String> {
   val instance = value.expectInstance("value should be an instance")
-  if !instance.name.endsWith("_InjectedCode") return Err("cannot unmarshall instance of type '${instance.name}' as InjectedCode")
+  if !instance.name.endsWith("InjectedCode") return Err("cannot unmarshall instance of type '${instance.name}' as InjectedCode")
 
   val chunksValue = instance.expectField(0).expectInstance("InjectedCode chunks is String[]")
   val chunksLength = chunksValue.expectField(0).expectInt("Array field 0 is length")
@@ -119,16 +119,12 @@ pub type ComptimeFunctionEvaluator {
     for f in self.gen.fnQueue { self.gen.genFunction(f) }
 
     val ir = self.gen.getIR()
+
+    // val sb = StringBuilder()
+    // ir.render(sb)
+    // stdoutWriteln(sb.build())
+
     val vm = VM(ir: ir)
-
-    vm.registerExtern("meta_stringify", (args) => {
-      val arg0 = try args[0] else unreachable("stringify has 1 required argument")
-      val exprInstance = arg0.expectInstance("stringify param 1")
-      val stringifyFn = exprInstance.expectField(0).expectFunction("Expr stringifyFn field")
-      val fn = match stringifyFn { VmFunction.HostSupplied(f) => f, else => unreachable("Expr stringifyFn field as function") }
-
-      fn([])
-    })
 
     val marshalledArgs: VmValue[] = []
     for argument, idx in arguments {

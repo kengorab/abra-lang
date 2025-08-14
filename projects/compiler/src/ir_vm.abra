@@ -86,10 +86,6 @@ pub type VM {
     vm.evalFunctionCall(intermediateRepresentation.mainFunction, [])
   }
 
-  pub func registerExtern(self, name: String, fn: (VmValue[]) => VmValue) {
-    self.externs[name] = fn
-  }
-
   pub func evalFunctionCall(self, fn: ir.IrFunction, args: VmValue[], captures: VmValue[] = []): VmValue {
     if fn.extern |name| {
       self.callExtern(name, args)
