@@ -1,0 +1,7 @@
+import macro, InjectedCode from "meta"
+
+@macro
+func one(): InjectedCode = InjectedCode.new().append("123")
+
+val x = one() + one()
+val _: Int = x

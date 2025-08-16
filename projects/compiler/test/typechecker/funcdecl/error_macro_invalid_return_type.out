@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:4:6
+Invalid return type for @macro function
+  |  func uhOh(): Int = 1234
+          ^
+Macros must return an instance of 'meta.InjectedCode'

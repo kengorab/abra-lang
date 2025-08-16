@@ -1,0 +1,4 @@
+import macro, InjectedCode from "meta"
+
+@macro
+func uhOh(val1: Int[]): InjectedCode = todo()
