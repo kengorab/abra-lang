@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:4:11
+Invalid parameter type for @macro function
+  |  func uhOh(val1: Int[]): InjectedCode = todo()
+               ^
+Macro parameters must be of type 'meta.Expr'

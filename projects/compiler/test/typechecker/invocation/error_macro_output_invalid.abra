@@ -1,0 +1,6 @@
+import macro, InjectedCode from "meta"
+
+@macro
+func valid(): InjectedCode = InjectedCode.new().append("123")
+
+val x = valid() + true

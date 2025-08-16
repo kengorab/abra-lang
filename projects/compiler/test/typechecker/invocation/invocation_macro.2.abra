@@ -1,0 +1,21 @@
+import macro, Expr, InjectedCode from "meta"
+
+@macro
+func makeTuple(*values: Expr[]): InjectedCode {
+  val c = InjectedCode.new()
+    .append("(")
+  for v, idx in values {
+    c.appendExpr(v)
+    if idx != values.length {
+      c.append(", ")
+    }
+  }
+
+  c.append(")")
+}
+
+val t1 = makeTuple(1, "two", false)
+val _: (Int, String, Bool) = t1
+
+val t2 = makeTuple(1, "two", false, 4)
+val _: (Int, String, Bool, Int) = t2

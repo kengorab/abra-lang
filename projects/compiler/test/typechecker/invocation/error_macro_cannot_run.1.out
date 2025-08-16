@@ -1,0 +1,12 @@
+Error at %FILE_NAME%:5:16
+Type mismatch
+  |    val _: Int = "123"
+                    ^
+Expected: Int
+but instead found: String
+
+Error at %FILE_NAME%:9:13
+Macro 'uhOh' cannot produce valid code at this invocation site
+  |  val x = uhOh() + 1
+                 ^
+The module in which the macro is defined has errors

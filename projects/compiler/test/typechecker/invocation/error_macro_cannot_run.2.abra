@@ -1,0 +1,10 @@
+import macro, InjectedCode from "meta"
+
+val _: Int = "123"
+
+@macro
+func uhOh(): InjectedCode {
+  InjectedCode.new().append("123")
+}
+
+val x = uhOh() + 1

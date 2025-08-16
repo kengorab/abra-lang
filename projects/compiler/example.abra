@@ -1,60 +1,9 @@
-import macro, stringify, InjectedCode, Expr from "meta"
-
-@macro
-func debug(value: Expr): InjectedCode {
-  InjectedCode.new()
-    .append("(if true {")
-    .append("  val exp = ").appendExpr(value)
-    .append("  stdoutWriteln(\"").appendExpr(value).append(" = \$").appendExpr(value).append("\")")
-    .append("  exp")
-    .append("} else { unreachable(\"will get optimized away\") })")
-}
-
-@macro
-func println(*values: Expr[]): InjectedCode {
-  if values.isEmpty() {
-    return InjectedCode.new()
-      .append("stdoutWriteln()")
-  }
-
-  if values.length == 1 {
-    val value = if values[0] |v| v else unreachable("length is 1")
-    return InjectedCode.new()
-      .append("stdoutWriteln(").appendExpr(value).append(".toString())")
-  }
-
-  val c = InjectedCode.new()
-  c.append("if true {")
-  for value, idx in values {
-    val isLast = idx == values.length - 1
-
-    val fn = if isLast "stdoutWriteln(" else "stdoutWrite("
-    c.append(fn).appendExpr(value).append(".toString())")
-
-    if !isLast {
-      c.append("stdoutWrite(\" \")")
-    }
-  }
-
-  c.append("}")
-}
-
-@macro
-func assert(value: Expr): InjectedCode {
-  val c = InjectedCode.new()
-  val processMod = c.addImport("process")
-
-  c.append("if !(").appendExpr(value).append(") {")
-    .append("  println(\"Failed assertion: ").appendExpr(value).append("\")")
-    .append("  stdoutWriteln($processMod.getStackTrace())")
-    .append("  $processMod.exit(1)")
-    .append("}")
-}
+import stringify from "meta"
+import debug, println, assert from "./example2"
 
 val x = 123
-val y = 456
-val z = debug(x) + debug(y)
-println("z: $z", "a", x)
+val y = debug(x) + 1
+println("y: $y", "a", x)
 println("${stringify(x)} = $x")
 
 func foo() {

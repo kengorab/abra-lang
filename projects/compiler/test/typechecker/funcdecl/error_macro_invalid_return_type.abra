@@ -1,0 +1,4 @@
+import macro from "meta"
+
+@macro
+func uhOh(): Int = 1234
