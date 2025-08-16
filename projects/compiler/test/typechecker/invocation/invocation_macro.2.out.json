@@ -1,6 +1,6 @@
 {
   "id": 4,
-  "name": "/Users/kengorab/Desktop/abra-lang/projects/compiler/test/typechecker/invocation/invocation_macro.2.abra",
+  "name": "%FILE_NAME%",
   "code": [
     {
       "token": {
