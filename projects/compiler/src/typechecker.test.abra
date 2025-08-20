@@ -102,9 +102,10 @@ func main() {
     if !verifyStdModule(allModules, 0, "_intrinsics") return
     if !verifyStdModule(allModules, 1, "libc") return
     if !verifyStdModule(allModules, 2, "prelude") return
+    val filteredModules = allModules[3:].filter(m => !m.name.endsWith("/meta.abra"))
 
     Jsonifier(allowPlaceholderNodes: printModulesOnError)
-      .printModules(allModules[3:])
+      .printModules(filteredModules)
   } else {
     stdoutWriteln("Missing required argument <file-name>")
   }

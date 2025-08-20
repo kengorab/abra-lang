@@ -1,14 +1,54 @@
 import Pointer, Byte from "_intrinsics"
-import Lexer, Token, TokenKind, Position from "./lexer"
-import Parser, ParsedModule, AstNode, LiteralAstNode, ImportNode, ImportKind, Label from "./parser"
+import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
+import Parser, ParseError, ParsedModule, AstNode, LiteralAstNode, ImportNode, ImportKind, Label from "./parser"
 import Project, Function, Struct, Type, TypedAstNode, TypedAstNodeKind, InstanceKind from "./typechecker"
-import Generator, ConcreteType, StringBuilder from "./ir"
+import Generator from "./ir"
 import VM, VmValue, Instance, VmFunction, unmarshallString from "./ir_vm"
 import InjectedCode from "meta"
+
+pub type ComptimeFunctionEvaluator {
+  project: Project
+  gen: Generator
+
+  pub func init(project: Project): ComptimeFunctionEvaluator {
+    val gen = Generator.init(project, foldConstants: true)
+    ComptimeFunctionEvaluator(project: project, gen: gen)
+  }
+
+  pub func eval(self, fn: Function, arguments: TypedAstNode?[], resolvedGenerics: Map<String, Type>): Result<InjectedCode, String> {
+    self.gen.generate()
+
+    val irFn = self.gen.genTcFunction(fn, resolvedGenerics)
+    // process function queue to generate IR for any functions discovered above
+    for f in self.gen.fnQueue { self.gen.genFunction(f) }
+
+    val ir = self.gen.getIR()
+    val vm = VM(ir: ir)
+
+    val marshalledArgs: VmValue[] = []
+    for argument, idx in arguments {
+      val arg = try argument else todo("macros: optional arguments")
+      val param = try fn.params[idx] else unreachable("")
+      val marshalledArg = if param.isVariadic {
+        val items = match arg.kind { TypedAstNodeKind.Array(items) => items, else => unreachable("variadic arguments are pre-wrapped in Array") }
+        marshallArrayNodeToArray(items)
+      } else {
+        marshallTypedAstNodeToExpr(arg)
+      }
+      marshalledArgs.push(marshalledArg)
+    }
+    val res = vm.evalFunctionCall(irFn, marshalledArgs)
+
+    unmarshallInjectedCode(res)
+  }
+}
 
 func stringifyTypedNode(node: TypedAstNode): String {
   match node.kind {
     TypedAstNodeKind.Literal(lit) => match lit {
+      LiteralAstNode.Int(i) => "$i"
+      LiteralAstNode.Float(f) => "$f"
+      LiteralAstNode.Bool(b) => "$b"
       LiteralAstNode.String(s) => "\"$s\""
       else => todo("stringify: other literal kinds")
     }
@@ -100,66 +140,4 @@ func unmarshallInjectedCode(value: VmValue): Result<InjectedCode, String> {
   }
 
   Ok(InjectedCode(chunks: chunks, imports: imports))
-}
-
-pub type ComptimeFunctionEvaluator {
-  project: Project
-  gen: Generator
-
-  pub func init(project: Project): ComptimeFunctionEvaluator {
-    val gen = Generator.init(project, foldConstants: true)
-    ComptimeFunctionEvaluator(project: project, gen: gen)
-  }
-
-  pub func eval(self, fn: Function, arguments: TypedAstNode?[], resolvedGenerics: Map<String, Type>): Result<ParsedModule, String> {
-    self.gen.generate()
-
-    val irFn = self.gen.genTcFunction(fn, resolvedGenerics)
-    // process function queue to generate IR for any functions discovered above
-    for f in self.gen.fnQueue { self.gen.genFunction(f) }
-
-    val ir = self.gen.getIR()
-
-    // val sb = StringBuilder()
-    // ir.render(sb)
-    // stdoutWriteln(sb.build())
-
-    val vm = VM(ir: ir)
-
-    val marshalledArgs: VmValue[] = []
-    for argument, idx in arguments {
-      val arg = try argument else todo("macros: optional arguments")
-      val param = try fn.params[idx] else unreachable("")
-      val marshalledArg = if param.isVariadic {
-        val items = match arg.kind { TypedAstNodeKind.Array(items) => items, else => unreachable("variadic arguments are pre-wrapped in Array") }
-        marshallArrayNodeToArray(items)
-      } else {
-        marshallTypedAstNodeToExpr(arg)
-      }
-      marshalledArgs.push(marshalledArg)
-    }
-    val res = vm.evalFunctionCall(irFn, marshalledArgs)
-    val injectedCode = try unmarshallInjectedCode(res)
-    val srcStr = injectedCode.chunks.join()
-
-    val parsedModule = match Lexer.tokenize(srcStr) {
-      Ok(tokens) => {
-        match Parser.parse(tokens) {
-          Ok(parsedModule) => parsedModule
-          Err(error) => return Err("parser error: $error")
-        }
-      }
-      Err(error) => return Err("lexer error: $error")
-    }
-
-    for (mod, alias) in injectedCode.imports {
-      parsedModule.imports.push(ImportNode(
-        token: Token(position: Position(line: -1, col: -1), kind: TokenKind.Import),
-        kind: ImportKind.Alias(Label(name: alias, position: Position(line: -1, col: -1))),
-        moduleName: Label(name: mod, position: Position(line: -1, col: -1)),
-      ))
-    }
-
-    Ok(parsedModule)
-  }
 }

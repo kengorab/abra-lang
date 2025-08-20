@@ -1,0 +1,52 @@
+import macro, InjectedCode, Expr from "meta"
+
+@macro
+pub func debug(value: Expr): InjectedCode {
+  InjectedCode.new()
+    .append("(if true {")
+    .append("  val exp = ").appendExpr(value)
+    .append("  stdoutWriteln(\"").appendExpr(value).append(" = \$").appendExpr(value).append("\")")
+    .append("  exp")
+    .append("} else { unreachable(\"will get optimized away\") })")
+}
+
+@macro
+pub func println(foo: String, *values: Expr[]): InjectedCode {
+  if values.isEmpty() {
+    return InjectedCode.new()
+      .append("stdoutWriteln()")
+  }
+
+  if values.length == 1 {
+    val value = if values[0] |v| v else unreachable("length is 1")
+    return InjectedCode.new()
+      .append("stdoutWriteln(").appendExpr(value).append(".toString())")
+  }
+
+  val c = InjectedCode.new()
+  c.append("if true {")
+  for value, idx in values {
+    val isLast = idx == values.length - 1
+
+    val fn = if isLast "stdoutWriteln(" else "stdoutWrite("
+    c.append(fn).appendExpr(value).append(".toString())")
+
+    if !isLast {
+      c.append("stdoutWrite(\" \")")
+    }
+  }
+
+  c.append("}")
+}
+
+@macro
+pub func assert(value: Expr): InjectedCode {
+  val c = InjectedCode.new()
+  val processMod = c.addImport("process")
+
+  c.append("if !(").appendExpr(value).append(") {")
+    .append("  println(\"Failed assertion: ").appendExpr(value).append("\")")
+    .append("  stdoutWriteln($processMod.getStackTrace())")
+    .append("  $processMod.exit(1)")
+    .append("}")
+}

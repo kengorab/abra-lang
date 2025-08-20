@@ -1,0 +1,250 @@
+{
+  "id": 4,
+  "name": "%FILE_NAME%",
+  "code": [
+    {
+      "token": {
+        "position": [4, 1],
+        "kind": {
+          "name": "Func"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "functionDeclaration",
+        "function": {
+          "label": { "name": "one", "position": [4, 6] },
+          "scope": {
+            "name": "$root::module_4::one",
+            "variables": [],
+            "functions": [],
+            "types": []
+          },
+          "kind": "FunctionKind.Standalone",
+          "typeParameters": [],
+          "parameters": [],
+          "returnType": {
+            "kind": "instance",
+            "struct": { "moduleId": 3, "name": "InjectedCode" },
+            "typeParams": []
+          },
+          "body": [
+            {
+              "token": {
+                "position": [4, 53],
+                "kind": {
+                  "name": "LParen"
+                }
+              },
+              "type": {
+                "kind": "instance",
+                "struct": { "moduleId": 3, "name": "InjectedCode" },
+                "typeParams": []
+              },
+              "node": {
+                "kind": "invocation",
+                "invokee": {
+                  "method": "append",
+                  "type": {
+                    "kind": "function",
+                    "parameters": [
+                      {
+                        "required": true,
+                        "type": {
+                          "kind": "primitive",
+                          "primitive": "String"
+                        }
+                      }
+                    ],
+                    "returnType": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 3, "name": "InjectedCode" },
+                      "typeParams": []
+                    }
+                  },
+                  "isOptSafe": false,
+                  "self": {
+                    "token": {
+                      "position": [4, 44],
+                      "kind": {
+                        "name": "LParen"
+                      }
+                    },
+                    "type": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 3, "name": "InjectedCode" },
+                      "typeParams": []
+                    },
+                    "node": {
+                      "kind": "invocation",
+                      "invokee": {
+                        "function": "new",
+                        "type": {
+                          "kind": "function",
+                          "parameters": [],
+                          "returnType": {
+                            "kind": "instance",
+                            "struct": { "moduleId": 3, "name": "InjectedCode" },
+                            "typeParams": []
+                          }
+                        }
+                      },
+                      "arguments": []
+                    }
+                  }
+                },
+                "arguments": [
+                  {
+                    "token": {
+                      "position": [4, 54],
+                      "kind": {
+                        "name": "String",
+                        "value": "123"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "String"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": "123"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [6, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "x", "position": [6, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "x", "position": [6, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [6, 15],
+            "kind": {
+              "name": "Plus"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "binary",
+            "op": "BinaryOp.Add",
+            "left": {
+              "token": {
+                "position": [1, 1],
+                "kind": {
+                  "name": "Int",
+                  "value": 123
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 123
+              }
+            },
+            "right": {
+              "token": {
+                "position": [1, 1],
+                "kind": {
+                  "name": "Int",
+                  "value": 123
+                }
+              },
+              "type": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "node": {
+                "kind": "literal",
+                "value": 123
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [7, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [7, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [7, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [7, 14],
+            "kind": {
+              "name": "Ident",
+              "value": "x"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "identifier",
+            "name": "x"
+          }
+        }
+      }
+    }
+  ]
+}
