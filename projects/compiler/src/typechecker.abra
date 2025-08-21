@@ -2422,16 +2422,16 @@ pub type Typechecker {
       None
     }
 
+    val scope = self.currentScope.makeChild("module_tmp", ScopeKind.Module(id: -1, name: modulePathAbs))
+    val mod = TypedModule(id: -1, name: modulePathAbs, code: [], rootScope: scope)
+    if self.typecheckingBuiltin == Some(BuiltinModule.Prelude) {
+      self.project.preludeModule = mod
+    }
     // Insert module with placeholder scope and moduleId. These values will be filled in after typechecking
     // this module's imports; this ensures that sorting the final list of modules by id results in a resolved
     // dependency graph.
-    val mod = TypedModule(id: -1, name: modulePathAbs, code: [], rootScope: Scope.bogus())
     self.currentModule = mod
     self.project.modules[modulePathAbs] = mod
-    if self.typecheckingBuiltin == Some(BuiltinModule.Prelude) {
-      self.project.preludeModule = mod
-      self.project.preludeModule.rootScope = self.currentScope.makeChild("module_prelude", ScopeKind.Module(id: -1, name: modulePathAbs))
-    }
 
     val parsedModule = try self.moduleLoader.tokenizeAndParse(modulePathAbs) else |e| {
       match e {
@@ -2453,16 +2453,11 @@ pub type Typechecker {
     val imports = try self.processImports(Some(modulePathAbs), parsedModule) else return mod
 
     val moduleId = self.project.modules.values().filter(m => m.id != -1).length
-    val moduleScope = if self.typecheckingBuiltin == Some(BuiltinModule.Prelude) {
-      self.project.preludeModule.rootScope.kind = ScopeKind.Module(id: moduleId, name: modulePathAbs)
-      self.project.preludeModule.rootScope
-    } else {
-      self.currentScope.makeChild("module_$moduleId", ScopeKind.Module(id: moduleId, name: modulePathAbs))
-    }
-    val prevScope = self.currentScope
-    self.currentScope = moduleScope
     mod.id = moduleId
-    mod.rootScope = moduleScope
+    mod.rootScope.kind = ScopeKind.Module(id: moduleId, name: modulePathAbs)
+    mod.rootScope.name = mod.rootScope.name.replaceAll("module_tmp", "module_$moduleId")
+    val prevScope = self.currentScope
+    self.currentScope = mod.rootScope
 
     for (typedImportModule, importNode) in imports {
       val errors = self._typecheckImport(typedImportModule, importNode)
