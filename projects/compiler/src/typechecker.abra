@@ -5132,7 +5132,10 @@ pub type Typechecker {
       val extractedGenerics = selfNode.ty.extractGenerics(template: template)
       for (name, ty) in extractedGenerics {
         if resolvedGenerics[name] |original| {
-          if original != ty unreachable("original != ty") // is this check necessary? i don't think so
+          if original != ty {
+            val returnType = fn.returnType.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
+            return Err(TypeError(position: invokeePosition, kind: TypeErrorKind.TypeMismatch([selfNode.ty], returnType)))
+          }
           continue
         }
         resolvedGenerics[name] = ty
