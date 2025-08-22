@@ -3691,6 +3691,7 @@ pub type Typechecker {
         val typedLhs = try self.typecheckIndexing(token, targetExpr, IndexingMode.Single(indexExpr), None)
         val typedIndexingNode = match typedLhs.kind {
           TypedAstNodeKind.Indexing(node) => node
+          TypedAstNodeKind.Placeholder => return Ok(typedLhs)
           _ => unreachable("typecheckIndexing returned unexpected TypedAstNodeKind")
         }
         val assignmentTy = self._typeIsOption(typedLhs.ty) ?: typedLhs.ty
@@ -3731,6 +3732,7 @@ pub type Typechecker {
             if varImportMod return Err(TypeError(position: pos, kind: TypeErrorKind.IllegalAssignment(kind: "member", name: name, reason: IllegalAssignmentReason.Import)))
             unreachable("typecheckAccessor returned unexpected TypedAstNodeKind")
           }
+          TypedAstNodeKind.Placeholder => return Ok(typedLhs)
           _ => unreachable("typecheckAccessor returned unexpected TypedAstNodeKind")
         }
 
