@@ -21,7 +21,9 @@
             "name": "$root::module_3::foo1",
             "variables": [],
             "functions": [],
-            "types": []
+            "structs": [],
+            "enums": [],
+            "generics": []
           },
           "kind": "FunctionKind.Standalone",
           "typeParameters": [],
@@ -82,7 +84,9 @@
             "name": "$root::module_3::foo2",
             "variables": [],
             "functions": [],
-            "types": []
+            "structs": [],
+            "enums": [],
+            "generics": []
           },
           "kind": "FunctionKind.Standalone",
           "typeParameters": [],
@@ -278,7 +282,9 @@
             "name": "$root::module_3::foo3",
             "variables": [],
             "functions": [],
-            "types": []
+            "structs": [],
+            "enums": [],
+            "generics": []
           },
           "kind": "FunctionKind.Standalone",
           "typeParameters": [],
@@ -474,7 +480,9 @@
             "name": "$root::module_3::foo4",
             "variables": [],
             "functions": [],
-            "types": []
+            "structs": [],
+            "enums": [],
+            "generics": []
           },
           "kind": "FunctionKind.Standalone",
           "typeParameters": [],
@@ -700,7 +708,9 @@
             "name": "$root::module_3::foo5",
             "variables": [],
             "functions": [],
-            "types": []
+            "structs": [],
+            "enums": [],
+            "generics": []
           },
           "kind": "FunctionKind.Standalone",
           "typeParameters": [],

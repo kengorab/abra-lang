@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "%FILE_NAME%",
+  "name": "/Users/kengorab/Desktop/abra-lang/projects/compiler/test/typechecker/funcdecl/default_param_value_call.7.abra",
   "code": [
     {
       "token": {
@@ -38,7 +38,9 @@
               }
             ],
             "functions": [],
-            "types": []
+            "structs": [],
+            "enums": [],
+            "generics": []
           },
           "kind": "FunctionKind.Standalone",
           "typeParameters": [],
@@ -222,7 +224,9 @@
               }
             ],
             "functions": [],
-            "types": []
+            "structs": [],
+            "enums": [],
+            "generics": []
           },
           "kind": "FunctionKind.Standalone",
           "typeParameters": [],
@@ -414,12 +418,9 @@
               }
             ],
             "functions": [],
-            "types": [
-              {
-                "kind": "generic",
-                "name": "T"
-              }
-            ]
+            "structs": [],
+            "enums": [],
+            "generics": ["T"]
           },
           "kind": "FunctionKind.Standalone",
           "typeParameters": [

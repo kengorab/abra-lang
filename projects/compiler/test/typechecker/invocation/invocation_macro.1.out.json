@@ -21,7 +21,9 @@
             "name": "$root::module_4::one",
             "variables": [],
             "functions": [],
-            "types": []
+            "structs": [],
+            "enums": [],
+            "generics": []
           },
           "kind": "FunctionKind.Standalone",
           "typeParameters": [],

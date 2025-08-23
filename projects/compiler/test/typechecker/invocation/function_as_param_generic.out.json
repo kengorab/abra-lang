@@ -50,16 +50,9 @@
               }
             ],
             "functions": [],
-            "types": [
-              {
-                "kind": "generic",
-                "name": "T"
-              },
-              {
-                "kind": "generic",
-                "name": "U"
-              }
-            ]
+            "structs": [],
+            "enums": [],
+            "generics": ["T", "U"]
           },
           "kind": "FunctionKind.Standalone",
           "typeParameters": [
@@ -201,7 +194,9 @@
             "name": "$root::module_3::negativeOne",
             "variables": [],
             "functions": [],
-            "types": []
+            "structs": [],
+            "enums": [],
+            "generics": []
           },
           "kind": "FunctionKind.Standalone",
           "typeParameters": [],
@@ -444,7 +439,9 @@
               }
             ],
             "functions": [],
-            "types": []
+            "structs": [],
+            "enums": [],
+            "generics": []
           },
           "kind": "FunctionKind.Standalone",
           "typeParameters": [],

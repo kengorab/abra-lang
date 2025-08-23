@@ -21,7 +21,9 @@
             "name": "$root::module_3::implicitReturn",
             "variables": [],
             "functions": [],
-            "types": []
+            "structs": [],
+            "enums": [],
+            "generics": []
           },
           "kind": "FunctionKind.Standalone",
           "typeParameters": [],
@@ -258,7 +260,9 @@
             "name": "$root::module_3::explicitReturn",
             "variables": [],
             "functions": [],
-            "types": []
+            "structs": [],
+            "enums": [],
+            "generics": []
           },
           "kind": "FunctionKind.Standalone",
           "typeParameters": [],

@@ -103,7 +103,9 @@
                   }
                 ],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "kind": "FunctionKind.Standalone",
               "typeParameters": [],
@@ -289,7 +291,9 @@
                   }
                 ],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "kind": "FunctionKind.Standalone",
               "typeParameters": [],
@@ -465,7 +469,9 @@
                   }
                 ],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "kind": "FunctionKind.Standalone",
               "typeParameters": [],
@@ -704,7 +710,9 @@
                   }
                 ],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "kind": "FunctionKind.Standalone",
               "typeParameters": [],
@@ -890,7 +898,9 @@
                   }
                 ],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "kind": "FunctionKind.Standalone",
               "typeParameters": [],
@@ -1057,7 +1067,9 @@
                 "name": "$root::module_3::lambda_3_6",
                 "variables": [],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "kind": "FunctionKind.Standalone",
               "typeParameters": [],
@@ -1179,7 +1191,9 @@
                 "name": "$root::module_3::lambda_3_7",
                 "variables": [],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "kind": "FunctionKind.Standalone",
               "typeParameters": [],
@@ -1337,7 +1351,9 @@
                 "name": "$root::module_3::lambda_3_8",
                 "variables": [],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "kind": "FunctionKind.Standalone",
               "typeParameters": [],

@@ -979,8 +979,16 @@ pub type Jsonifier {
     self.array(scope.functions, f => self.printFunc(f))
     stdoutWriteln(",")
 
-    self.print("\"types\": ")
-    self.array(scope.types, t => self.printType(t))
+    self.print("\"structs\": ")
+    self.array(scope.structs, s => self.printStruct(struct: s, abridged: true))
+    stdoutWriteln(",")
+
+    self.print("\"enums\": ")
+    self.array(scope.enums, e => self.printEnum(enum_: e, abridged: true))
+    stdoutWriteln(",")
+
+    val generics = scope.generics.map(g => "\"$g\"")
+    self.print("\"generics\": $generics")
     stdoutWriteln()
 
     self.indentDec()

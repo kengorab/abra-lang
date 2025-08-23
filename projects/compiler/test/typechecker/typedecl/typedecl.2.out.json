@@ -88,7 +88,9 @@
                 "name": "$root::module_3::Foo::toString",
                 "variables": [],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "isGenerated": true,
               "kind": "FunctionKind.InstanceMethod",
@@ -107,7 +109,9 @@
                 "name": "$root::module_3::Foo::hash",
                 "variables": [],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "isGenerated": true,
               "kind": "FunctionKind.InstanceMethod",
@@ -126,7 +130,9 @@
                 "name": "$root::module_3::Foo::eq",
                 "variables": [],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "isGenerated": true,
               "kind": "FunctionKind.InstanceMethod",
@@ -174,7 +180,9 @@
                   }
                 ],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "kind": "FunctionKind.InstanceMethod",
               "isPublic": false,
@@ -299,7 +307,9 @@
               }
             ],
             "functions": [],
-            "types": []
+            "structs": [],
+            "enums": [],
+            "generics": []
           },
           "kind": "FunctionKind.Standalone",
           "typeParameters": [],

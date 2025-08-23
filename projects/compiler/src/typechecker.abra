@@ -195,7 +195,7 @@ pub type Scope {
   pub name: String
   pub variables: Variable[] = []
   pub functions: Function[] = []
-  pub types: Type[] = []
+  pub generics: String[] = []
   pub structs: Struct[] = []
   pub enums: Enum[] = []
   pub kind: ScopeKind = ScopeKind.Root
@@ -234,6 +234,14 @@ pub type Scope {
     }
 
     None
+  }
+
+  pub func walkAncestry(self, fn: (Scope) => Unit) {
+    var sc = Some(self)
+    while sc |s| {
+      fn(s)
+      sc = s.parent
+    }
   }
 }
 
@@ -1764,8 +1772,6 @@ pub type Typechecker {
 
   func addStructToScope(self, struct: Struct, isExported: Bool, scope = self.currentScope): Result<Int, TypeError> {
     val structTy = Type(kind: TypeKind.Type(type_: InstanceKind.Struct(struct)))
-    self.currentScope.types.push(structTy)
-
     val variable = Variable(label: struct.label, scope: scope, mutable: false, ty: structTy, alias: Some(VariableAlias.Struct(struct)))
     try self.addVariableToScope(variable)
 
@@ -1781,8 +1787,6 @@ pub type Typechecker {
 
   func addEnumToScope(self, enum_: Enum, isExported: Bool, scope = self.currentScope): Result<Int, TypeError> {
     val enumTy = Type(kind: TypeKind.Type(type_: InstanceKind.Enum(enum_)))
-    self.currentScope.types.push(enumTy)
-
     val variable = Variable(label: enum_.label, scope: scope, mutable: false, ty: enumTy, alias: Some(VariableAlias.Enum(enum_)))
     try self.addVariableToScope(variable)
 
@@ -1858,32 +1862,23 @@ pub type Typechecker {
       _ => {
         var scope = Some(self.currentScope)
         while scope |sc| {
-          for ty in sc.types {
-            match ty.kind {
-              TypeKind.Generic(genericName) => if name == genericName return Some((ty, None))
-              TypeKind.Type(instanceKind) => {
-                match instanceKind {
-                  InstanceKind.Struct(struct) => if name == struct.label.name return Some((ty, None))
-                  InstanceKind.Enum(enum_) => if name == enum_.label.name return Some((ty, None))
-                }
-              }
-              _ => continue
-            }
+          for generic in sc.generics {
+            if name == generic return Some((Type(kind: TypeKind.Generic(name)), None))
+          }
+          for struct in sc.structs {
+            if name == struct.label.name return Some((Type(kind: TypeKind.Type(InstanceKind.Struct(struct))), None))
+          }
+          for enum_ in sc.enums {
+            if name == enum_.label.name return Some((Type(kind: TypeKind.Type(InstanceKind.Enum(enum_))), None))
           }
           scope = sc.parent
         }
 
-        for ty in self.project.preludeModule.rootScope.types {
-          match ty.kind {
-            TypeKind.Generic(genericName) => if name == genericName return Some((ty, None))
-            TypeKind.Type(instanceKind) => {
-              match instanceKind {
-                InstanceKind.Struct(struct) => if name == struct.label.name return Some((ty, None))
-                InstanceKind.Enum(enum_) => if name == enum_.label.name return Some((ty, None))
-              }
-            }
-            _ => continue
-          }
+        for struct in self.project.preludeModule.rootScope.structs {
+          if name == struct.label.name return Some((Type(kind: TypeKind.Type(InstanceKind.Struct(struct))), None))
+        }
+        for enum_ in self.project.preludeModule.rootScope.enums {
+          if name == enum_.label.name return Some((Type(kind: TypeKind.Type(InstanceKind.Enum(enum_))), None))
         }
 
         for (moduleName, importedModule) in self.currentModule.imports {
@@ -2227,34 +2222,6 @@ pub type Typechecker {
     }
   }
 
-  func _genericsInScope(self): Set<String> {
-    val genericsInScope: Set<String> = #{}
-    if self.currentFunction |fn| {
-      for (ty, _) in fn.typeParams {
-        match ty.kind {
-          TypeKind.Generic(name) => genericsInScope.insert(name)
-          _ => unreachable("typeParam.kind != TypeKind.Generic")
-        }
-      }
-
-      match fn.kind {
-        FunctionKind.InstanceMethod(typeDecl, _) => {
-          val genericNames = match typeDecl {
-            InstanceKind.Struct(struct) => struct.typeParams,
-            InstanceKind.Enum(enum_) => enum_.typeParams,
-            None => []
-          }
-          for name in genericNames {
-            genericsInScope.insert(name)
-          }
-        }
-        _ => {}
-      }
-    }
-
-    genericsInScope
-  }
-
   func _typeAsInstance1(self, ty: Type, struct: Struct): Type? {
     match ty.kind {
       TypeKind.Instance(s, generics) => if s == InstanceKind.Struct(struct) { generics[0] } else None
@@ -2543,7 +2510,7 @@ pub type Typechecker {
         seenTypeParams[label.name] = label
 
         val generic = Type(kind: TypeKind.Generic(label.name))
-        self.currentScope.types.push(generic)
+        self.currentScope.generics.push(label.name)
         typeParams.push((generic, label))
       }
     }
@@ -2839,7 +2806,7 @@ pub type Typechecker {
       } else {
         seenTypeParams[label.name] = label
 
-        self.currentScope.types.push(Type(kind: TypeKind.Generic(label.name)))
+        self.currentScope.generics.push(label.name)
         typeParams.push(label.name)
       }
     }
@@ -3042,7 +3009,7 @@ pub type Typechecker {
       } else {
         seenTypeParams[label.name] = label
 
-        self.currentScope.types.push(Type(kind: TypeKind.Generic(label.name)))
+        self.currentScope.generics.push(label.name)
         typeParams.push(label.name)
       }
     }
@@ -5153,7 +5120,11 @@ pub type Typechecker {
       return Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Placeholder))
     }
 
-    val genericsInScope = self._genericsInScope()
+    val genericsInScope: Set<String> = #{}
+    self.currentScope.walkAncestry(s => {
+      for g in s.generics genericsInScope.insert(g)
+    })
+
     var hasBegunOptionalParams = false
     var variadicParam: (TypedFunctionParam, Int)? = None
     val variadicArgs: TypedAstNode[] = []

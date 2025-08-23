@@ -50,12 +50,9 @@
               }
             ],
             "functions": [],
-            "types": [
-              {
-                "kind": "generic",
-                "name": "T"
-              }
-            ]
+            "structs": [],
+            "enums": [],
+            "generics": ["T"]
           },
           "kind": "FunctionKind.Standalone",
           "typeParameters": [

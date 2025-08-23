@@ -1264,7 +1264,9 @@
                 "name": "$root::module_3::Color::toString",
                 "variables": [],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "isGenerated": true,
               "kind": "FunctionKind.InstanceMethod",
@@ -1283,7 +1285,9 @@
                 "name": "$root::module_3::Color::hash",
                 "variables": [],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "isGenerated": true,
               "kind": "FunctionKind.InstanceMethod",
@@ -1302,7 +1306,9 @@
                 "name": "$root::module_3::Color::eq",
                 "variables": [],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "isGenerated": true,
               "kind": "FunctionKind.InstanceMethod",
@@ -1905,7 +1911,9 @@
                 "name": "$root::module_3::Color2::toString",
                 "variables": [],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "isGenerated": true,
               "kind": "FunctionKind.InstanceMethod",
@@ -1924,7 +1932,9 @@
                 "name": "$root::module_3::Color2::hash",
                 "variables": [],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "isGenerated": true,
               "kind": "FunctionKind.InstanceMethod",
@@ -1943,7 +1953,9 @@
                 "name": "$root::module_3::Color2::eq",
                 "variables": [],
                 "functions": [],
-                "types": []
+                "structs": [],
+                "enums": [],
+                "generics": []
               },
               "isGenerated": true,
               "kind": "FunctionKind.InstanceMethod",
