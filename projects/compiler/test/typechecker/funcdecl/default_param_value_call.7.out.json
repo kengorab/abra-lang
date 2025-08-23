@@ -1,6 +1,6 @@
 {
   "id": 3,
-  "name": "/Users/kengorab/Desktop/abra-lang/projects/compiler/test/typechecker/funcdecl/default_param_value_call.7.abra",
+  "name": "%FILE_NAME%",
   "code": [
     {
       "token": {
