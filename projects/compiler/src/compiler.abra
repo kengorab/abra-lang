@@ -215,7 +215,7 @@ pub type Compiler {
 
     mainFn.block.buildVoidCallRaw("GC_init", [])
 
-    val dummyMod = TypedModule(id: -1, name: "dummy", code: [], rootScope: Scope.bogus())
+    val dummyMod = TypedModule.bogus()
     val compiler = Compiler(_project: project, _builder: builder, _currentModule: dummyMod, _currentFn: mainFn, _currentFunction: None, _currentNode: None, _argcPtr: argcPtr, _argvPtr: argvPtr, _callstack: (callstack, callstackPtr), _moduleNamesPtr: moduleNamesPtr, _fnNamesPtr: fnNamesPtr)
 
     for mod in allModules {

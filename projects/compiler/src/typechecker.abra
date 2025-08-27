@@ -109,13 +109,27 @@ pub type IdentifierMeta {
   pub definitionPosition: (IdentifierMetaModule, Position)? = None
 }
 
+type Declarations {
+  funcDecls: (Function?, Int[])[] = []
+  structDecls: (Struct?, Map<Label, Int[]>)[] = []
+  enumDecls: (Enum?, Map<Label, Int[]>)[] = []
+}
+
+enum TypedModuleState {
+  NotStarted
+  DeclarationsGathered
+  Complete
+}
+
 pub type TypedModule {
   pub id: Int
   pub name: String
   pub code: TypedAstNode[]
   pub rootScope: Scope
-  pub isEntry: Bool = false
-  complete: Bool = false
+  parsedModule: ParsedModule
+  decls: Declarations
+  isEntry: Bool = false
+  state: TypedModuleState = TypedModuleState.NotStarted
   imports: Map<String, ImportedModule> = {}
   pub exports: Map<String, Export> = {}
   pub identsByLine: Map<Int, (Int, Int, IdentifierMeta)[]> = {}
@@ -124,7 +138,10 @@ pub type TypedModule {
   pub lexParseErrors: LexerOrParseError[] = []
   pub typeErrors: TypeError[] = []
 
-  func bogus(): TypedModule = TypedModule(id: -1, name: "bogus", code: [], rootScope: Scope.bogus())
+  pub func bogus(): TypedModule {
+    val parsedModule = ParsedModule(imports: [], nodes: [])
+    TypedModule(id: -1, name: "bogus", code: [], rootScope: Scope.bogus(), parsedModule: parsedModule, decls: Declarations())
+  }
 
   func addTypeError(self, err: TypeError) {
     self.typeErrors.push(err)
@@ -293,6 +310,18 @@ pub type Struct {
     struct
   }
 
+  func memberwiseCopy(target: Struct, source: Struct) {
+    target.moduleId = source.moduleId
+    target.label = source.label
+    target.scope = source.scope
+    target.typeParams = source.typeParams
+    target.fields = source.fields
+    target.instanceMethods = source.instanceMethods
+    target.staticMethods = source.staticMethods
+    target.builtin = source.builtin
+    target.isDecoratorType = source.isDecoratorType
+  }
+
   // Override toString method since default implementation recurses infinitely (scope -> variables -> TypeKind.Struct)
   pub func toString(self): String = "Struct(moduleId: ${self.moduleId}, label: ${self.label}, ...)"
 
@@ -327,6 +356,17 @@ pub type Enum {
   pub instanceMethods: Function[] = []
   pub staticMethods: Function[] = []
   builtin: BuiltinModule? = None
+
+  func memberwiseCopy(target: Enum, source: Enum) {
+    target.moduleId = source.moduleId
+    target.label = source.label
+    target.scope = source.scope
+    target.typeParams = source.typeParams
+    target.variants = source.variants
+    target.instanceMethods = source.instanceMethods
+    target.staticMethods = source.staticMethods
+    target.builtin = source.builtin
+  }
 
   func toString(self): String = "Enum(moduleId: ${self.moduleId}, label: ${self.label})"
 
@@ -1685,7 +1725,7 @@ pub type Typechecker {
     if !self.project.modules[preludeModulePathAbs] {
       val lspMode = self.lspMode
       self.lspMode = false
-      self._typecheckModule(preludeModulePathAbs)
+      self.typecheckModuleDeclarations(preludeModulePathAbs)
       self.lspMode = lspMode
 
       for (_, mod) in self.project.modules {
@@ -1715,8 +1755,12 @@ pub type Typechecker {
       }
     }
 
-    val mod = self._typecheckModule(modulePathAbs)
+    val mod = self.typecheckModuleDeclarations(modulePathAbs)
     mod.isEntry = true
+
+    for m in self.project.sortedModules() {
+      self.typecheckModuleDefinitions(m)
+    }
   }
 
   func _verifyNameUniqueInScope(self, label: Label, scope: Scope): TypeError? {
@@ -2278,7 +2322,7 @@ pub type Typechecker {
   // Start LSP helpers
 
   func _addLSPIdentForStruct(self, position: Position, struct: Struct, importMod: TypedModule?) {
-    val defMod = if struct.scope.parent == Some(self.project.preludeModule.rootScope) {
+    val defMod = if struct.builtin == Some(BuiltinModule.Prelude) {
       IdentifierMetaModule.Prelude
     } else {
       IdentifierMetaModule.Module(importMod?.name ?: self.currentModule.name)
@@ -2294,7 +2338,7 @@ pub type Typechecker {
   }
 
   func _addLSPIdentForEnum(self, position: Position, enum_: Enum, importMod: TypedModule?) {
-    val defMod = if enum_.scope.parent == Some(self.project.preludeModule.rootScope) {
+    val defMod = if enum_.builtin == Some(BuiltinModule.Prelude) {
       IdentifierMetaModule.Prelude
     } else {
       IdentifierMetaModule.Module(importMod?.name ?: self.currentModule.name)
@@ -2310,7 +2354,7 @@ pub type Typechecker {
   }
 
   func _addLSPIdentForEnumVariant(self, position: Position, enum_: Enum, variant: TypedEnumVariant) {
-    val definitionModule = if enum_.scope.parent == Some(self.project.preludeModule.rootScope) {
+    val definitionModule = if enum_.builtin == Some(BuiltinModule.Prelude) {
       IdentifierMetaModule.Prelude
     } else {
       match enum_.scope.parent?.kind {
@@ -2376,36 +2420,20 @@ pub type Typechecker {
 
   // End LSP helpers
 
-  func _typecheckModule(self, modulePathAbs: String): TypedModule {
+  func typecheckModuleDeclarations(self, modulePathAbs: String): TypedModule {
     if self.project.modules[modulePathAbs] |mod| return mod
 
-    self.typecheckingBuiltin = if modulePathAbs == self.moduleLoader.stdRoot + "/prelude.abra" {
-      Some(BuiltinModule.Prelude)
-    } else if modulePathAbs == self.moduleLoader.stdRoot + "/_intrinsics.abra" {
-      Some(BuiltinModule.Intrinsics)
-    } else if modulePathAbs == self.moduleLoader.stdRoot + "/meta.abra" {
-      Some(BuiltinModule.Meta)
-    } else {
-      None
-    }
-
-    val scope = self.currentScope.makeChild("module_tmp", ScopeKind.Module(id: -1, name: modulePathAbs))
-    val mod = TypedModule(id: -1, name: modulePathAbs, code: [], rootScope: scope)
-    if self.typecheckingBuiltin == Some(BuiltinModule.Prelude) {
-      self.project.preludeModule = mod
-    }
-    // Insert module with placeholder scope and moduleId. These values will be filled in after typechecking
-    // this module's imports; this ensures that sorting the final list of modules by id results in a resolved
-    // dependency graph.
-    self.currentModule = mod
-    self.project.modules[modulePathAbs] = mod
-
     val parsedModule = try self.moduleLoader.tokenizeAndParse(modulePathAbs) else |e| {
+      val scope = self.currentScope.makeChild("module_tmp", ScopeKind.Module(id: -1, name: modulePathAbs))
+      val bogusParsedModule = ParsedModule(imports: [], nodes: [])
+      val decls = Declarations()
+      val mod = TypedModule(id: -1, name: modulePathAbs, code: [], rootScope: scope, parsedModule: bogusParsedModule, decls: decls)
+      self.project.modules[modulePathAbs] = mod
       match e {
         TokenizeAndParseError.ReadFileError => {
           // Mark the module as having an reading error, and also as complete since it's gone as far as it can go
           mod.readFileError = true
-          mod.complete = true
+          mod.state = TypedModuleState.Complete
         }
         TokenizeAndParseError.LexerError(inner) => mod.lexParseErrors.push(LexerOrParseError.LexerError(inner))
         TokenizeAndParseError.ParseError(inner) => mod.lexParseErrors.push(LexerOrParseError.ParseError(inner))
@@ -2416,8 +2444,29 @@ pub type Typechecker {
       return mod
     }
 
+    // todo: should be possible to move all this initialization down to below the call to `typecheckDeclarationsInImportedModules`, would clean up a lot of these setup calls (just need to sort out the circ dep error reporting)
+    self.typecheckingBuiltin = if modulePathAbs == self.moduleLoader.stdRoot + "/prelude.abra" {
+      Some(BuiltinModule.Prelude)
+    } else if modulePathAbs == self.moduleLoader.stdRoot + "/_intrinsics.abra" {
+      Some(BuiltinModule.Intrinsics)
+    } else if modulePathAbs == self.moduleLoader.stdRoot + "/meta.abra" {
+      Some(BuiltinModule.Meta)
+    } else {
+      None
+    }
+    val scope = self.currentScope.makeChild("module_tmp", ScopeKind.Module(id: -1, name: modulePathAbs))
+    val mod = TypedModule(id: -1, name: modulePathAbs, code: [], rootScope: scope, parsedModule: parsedModule, decls: Declarations())
+    if self.typecheckingBuiltin == Some(BuiltinModule.Prelude) {
+      self.project.preludeModule = mod
+    }
+    // Insert module with placeholder scope and moduleId. These values will be filled in after typechecking
+    // this module's imports; this ensures that sorting the final list of modules by id results in a resolved
+    // dependency graph.
+    self.currentModule = mod
+    self.project.modules[modulePathAbs] = mod
+
     // An Err return value here means we saw a circular dependency, and we need to bail
-    val imports = try self.processImports(Some(modulePathAbs), parsedModule) else return mod
+    val imports = try self.typecheckDeclarationsInImportedModules(Some(modulePathAbs), parsedModule) else return mod
 
     val moduleId = self.project.modules.values().filter(m => m.id != -1).length
     mod.id = moduleId
@@ -2433,19 +2482,27 @@ pub type Typechecker {
       }
     }
 
-    match self.typecheckBlock(parsedModule.nodes) {
-      Ok(v) => mod.code = v
-      Err(e) => mod.addTypeError(e)
-    }
+    self.typecheckDeclarations(parsedModule.nodes)
 
     self.currentScope = prevScope
-    mod.complete = true
+    mod.state = TypedModuleState.DeclarationsGathered
     mod.identsByLine = self.identsByLine
     if self.typecheckingBuiltin {
       self.typecheckingBuiltin = None
     }
 
     mod
+  }
+
+  func typecheckModuleDefinitions(self, mod: TypedModule) {
+    self.currentModule = mod
+    val prevScope = self.currentScope
+    self.currentScope = mod.rootScope
+
+    self.currentModule.code = self.typecheckDefinitions()
+    self.currentModule.state = TypedModuleState.Complete
+
+    self.currentScope = prevScope
   }
 
   func typecheckDecoratorNode(self, dec: DecoratorNode): Result<Decorator, TypeError> {
@@ -2782,7 +2839,7 @@ pub type Typechecker {
     Ok(0)
   }
 
-  func typecheckStructPass1(self, node: TypeDeclarationNode): Result<Struct, TypeError> {
+  func typecheckStructPass1(self, node: TypeDeclarationNode, predefined: Struct?): Result<Struct, TypeError> {
     val isPublic = if node.pubToken |pubToken| {
       // If not in a valid export scope, report error and treat it as if not marked `pub`
       if self.ensureValidExportScope(pubToken) |err| {
@@ -2815,8 +2872,13 @@ pub type Typechecker {
 
     val currentModuleId = self.currentModule.id
     val struct = Struct(moduleId: currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, builtin: self.typecheckingBuiltin)
-    try self.addStructToScope(struct, isPublic)
+    if predefined |predefined| {
+      Struct.memberwiseCopy(target: predefined, struct)
+      try self.addStructToScope(predefined, isPublic)
+      return Ok(predefined)
+    }
 
+    try self.addStructToScope(struct, isPublic)
     Ok(struct)
   }
 
@@ -2975,7 +3037,8 @@ pub type Typechecker {
         unreachable("method not visited in prior pass")
       }
 
-      val toRevisit = try paramsNeedingRevisit[fnLabel] else unreachable("params improperly visited in prior pass")
+      // if params improperly visited in prior pass, we can't proceed here
+      val toRevisit = try paramsNeedingRevisit[fnLabel] else continue
       try self.typecheckFunctionPass3(fn: fn, allowSelf: true, params: funcDeclNode.params, body: funcDeclNode.body, paramsNeedingRevisit: toRevisit)
     }
 
@@ -2985,7 +3048,7 @@ pub type Typechecker {
     Ok(0)
   }
 
-  func typecheckEnumPass1(self, node: EnumDeclarationNode): Result<Enum, TypeError> {
+  func typecheckEnumPass1(self, node: EnumDeclarationNode, predefined: Enum?): Result<Enum, TypeError> {
     val isPublic = if node.pubToken |pubToken| {
       // If not in a valid export scope, report error and treat it as if not marked `pub`
       if self.ensureValidExportScope(pubToken) |err| {
@@ -3018,8 +3081,13 @@ pub type Typechecker {
 
     val currentModuleId = self.currentModule.id
     val enum_ = Enum(moduleId: currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, builtin: self.typecheckingBuiltin)
-    try self.addEnumToScope(enum_, isPublic)
+    if predefined |predefined| {
+      Enum.memberwiseCopy(target: predefined, source: enum_)
+      try self.addEnumToScope(predefined, isPublic)
+      return Ok(predefined)
+    }
 
+    try self.addEnumToScope(enum_, isPublic)
     Ok(enum_)
   }
 
@@ -3034,7 +3102,8 @@ pub type Typechecker {
     for variant, idx in node.variants {
       val variantLabel = match variant { EnumVariant.Constant(label) => label, EnumVariant.Container(label, _) => label }
       if seenVariants[variantLabel.name] |original| {
-        return Err(TypeError(position: variantLabel.position, kind: TypeErrorKind.DuplicateName(original)))
+        self.currentModule.addTypeError(TypeError(position: variantLabel.position, kind: TypeErrorKind.DuplicateName(original)))
+        continue
       }
       seenVariants[variantLabel.name] = variantLabel
 
@@ -3049,7 +3118,8 @@ pub type Typechecker {
           val seenFields: Map<String, Label> = {}
           for field in fields {
             if seenFields[field.name.name] |original| {
-              return Err(TypeError(position: field.name.position, kind: TypeErrorKind.DuplicateName(original)))
+              self.currentModule.addTypeError(TypeError(position: field.name.position, kind: TypeErrorKind.DuplicateName(original)))
+              continue
             }
             seenFields[field.name.name] = field.name
 
@@ -3136,7 +3206,8 @@ pub type Typechecker {
         unreachable("method not visited in prior pass")
       }
 
-      val toRevisit = try paramsNeedingRevisit[fnLabel] else unreachable("params improperly visited in prior pass")
+      // if params improperly visited in prior pass, we can't proceed here
+      val toRevisit = try paramsNeedingRevisit[fnLabel] else continue
       try self.typecheckFunctionPass3(fn: fn, allowSelf: true, params: funcDeclNode.params, body: funcDeclNode.body, paramsNeedingRevisit: toRevisit)
     }
 
@@ -3146,7 +3217,7 @@ pub type Typechecker {
     Ok(0)
   }
 
-  func processImports(self, modulePathAbs: String?, parsedModule: ParsedModule): Result<(TypedModule, ImportNode)[], Position> {
+  func typecheckDeclarationsInImportedModules(self, modulePathAbs: String?, parsedModule: ParsedModule): Result<(TypedModule, ImportNode)[], Position> {
     val imports: (TypedModule, ImportNode)[] = []
     for importNode in parsedModule.imports {
       var importNodePath = importNode.moduleName.name
@@ -3162,7 +3233,7 @@ pub type Typechecker {
       }
 
       val typedImportModule = if self.project.modules[importPathAbs] |m| {
-        if !m.complete {
+        if m.state == TypedModuleState.NotStarted {
           // If a module attempts to import a module that is not yet complete, then we've found a circular dependency.
           // Flag that imported module since it's the module whose imports began the cycle.
           m.startsCircDep = true
@@ -3173,7 +3244,7 @@ pub type Typechecker {
         m
       } else {
         val childTypechecker = Typechecker(moduleLoader: self.moduleLoader, project: self.project, comptimeFuncEvaluator: self.comptimeFuncEvaluator)
-        childTypechecker._typecheckModule(importPathAbs)
+        childTypechecker.typecheckModuleDeclarations(importPathAbs)
       }
 
       if typedImportModule.readFileError {
@@ -3240,7 +3311,7 @@ pub type Typechecker {
     errors
   }
 
-  func typecheckBlock(self, nodes: AstNode[]): Result<TypedAstNode[], TypeError> {
+  func typecheckDeclarations(self, nodes: AstNode[]) {
     val funcDecls: FunctionDeclarationNode[] = []
     val typeDecls: TypeDeclarationNode[] = []
     val enumDecls: EnumDeclarationNode[] = []
@@ -3258,31 +3329,34 @@ pub type Typechecker {
     val structsPass1: (Struct?, TypeDeclarationNode)[] = []
     val decoratorStructs: (Struct, TypeDeclarationNode)[] = []
     for node in typeDecls {
-      val struct = try self.typecheckStructPass1(node) else |err| {
-        self.currentModule.addTypeError(err)
-        structsPass1.push((None, node))
-        continue
-      }
-      match self.typecheckingBuiltin {
+      val predefined = match self.typecheckingBuiltin {
         BuiltinModule.Prelude => {
-          match struct.label.name {
-            "Int" => self.project.preludeIntStruct = struct
-            "Float" => self.project.preludeFloatStruct = struct
-            "Bool" => self.project.preludeBoolStruct = struct
-            "Char" => self.project.preludeCharStruct = struct
-            "String" => self.project.preludeStringStruct = struct
-            "Array" => self.project.preludeArrayStruct = struct
-            "Set" => self.project.preludeSetStruct = struct
-            "Map" => self.project.preludeMapStruct = struct
+          match node.name.name {
+            "Int" => Some(self.project.preludeIntStruct)
+            "Float" => Some(self.project.preludeFloatStruct)
+            "Bool" => Some(self.project.preludeBoolStruct)
+            "Char" => Some(self.project.preludeCharStruct)
+            "String" => Some(self.project.preludeStringStruct)
+            "Array" => Some(self.project.preludeArrayStruct)
+            "Set" => Some(self.project.preludeSetStruct)
+            "Map" => Some(self.project.preludeMapStruct)
+            else => None
           }
         }
         BuiltinModule.Meta => {
-          match struct.label.name {
-            "macro" => self.project.metaMacroDecorator = struct
-            "Expr" => self.project.metaExprStruct = struct
-            "InjectedCode" => self.project.metaInjectedCodeStruct = struct
+          match node.name.name {
+            "macro" => Some(self.project.metaMacroDecorator)
+            "Expr" => Some(self.project.metaExprStruct)
+            "InjectedCode" => Some(self.project.metaInjectedCodeStruct)
+            else => None
           }
         }
+        else => None
+      }
+      val struct = try self.typecheckStructPass1(node, predefined) else |err| {
+        self.currentModule.addTypeError(err)
+        structsPass1.push((None, node))
+        continue
       }
       structsPass1.push((Some(struct), node))
 
@@ -3293,27 +3367,38 @@ pub type Typechecker {
 
     val enumsPass1: (Enum?, EnumDeclarationNode)[] = []
     for node in enumDecls {
-      val enum_ = try self.typecheckEnumPass1(node) else |err| {
+      val predefined = match self.typecheckingBuiltin {
+        BuiltinModule.Prelude => {
+          match node.name.name {
+            "Option" => Some(self.project.preludeOptionEnum)
+            "Result" => Some(self.project.preludeResultEnum)
+            else => None
+          }
+        }
+        else => None
+      }
+      val enum_ = try self.typecheckEnumPass1(node, predefined) else |err| {
         self.currentModule.addTypeError(err)
         enumsPass1.push((None, node))
         continue
-      }
-      match self.typecheckingBuiltin {
-        BuiltinModule.Prelude => {
-          match enum_.label.name {
-            "Option" => self.project.preludeOptionEnum = enum_
-            "Result" => self.project.preludeResultEnum = enum_
-          }
-        }
       }
       enumsPass1.push((Some(enum_), node))
     }
 
     for (struct, node) in decoratorStructs {
       struct.isDecoratorType = true
-      try self._typecheckStructPass2_1(struct, node)
-      val toRevisit = try self._typecheckStructPass2_2(struct, node)
-      try self._typecheckStructPass3(struct, node, toRevisit)
+      try self._typecheckStructPass2_1(struct, node) else |e| {
+        self.currentModule.addTypeError(e)
+        continue
+      }
+      val toRevisit = try self._typecheckStructPass2_2(struct, node) else |e| {
+        self.currentModule.addTypeError(e)
+        continue
+      }
+      try self._typecheckStructPass3(struct, node, toRevisit) else |e| {
+        self.currentModule.addTypeError(e)
+        continue
+      }
     }
 
     val functionsPass1: ((Function, Variable)?, FunctionDeclarationNode)[] = []
@@ -3346,124 +3431,116 @@ pub type Typechecker {
 
     // --- Pass 2 for types, enums, and functions
 
-    val structsPass2_1: (Struct?, TypeDeclarationNode)[] = []
     for (structOpt, node) in structsPass1 {
       if structOpt |struct| {
         if !struct.isDecoratorType {
-          try self._typecheckStructPass2_1(struct, node)
+          try self._typecheckStructPass2_1(struct, node) else |e| {
+            self.currentModule.addTypeError(e)
+            continue
+          }
         }
       }
-
-      structsPass2_1.push((structOpt, node))
     }
 
-    val enumsPass2_1: (Enum?, EnumDeclarationNode)[] = []
     for (enumOpt, node) in enumsPass1 {
       if enumOpt |enum_| {
-        try self._typecheckEnumPass2_1(enum_, node)
+        try self._typecheckEnumPass2_1(enum_, node) else |e| {
+          self.currentModule.addTypeError(e)
+          continue
+        }
       }
-
-      enumsPass2_1.push((enumOpt, node))
     }
 
-    val structsPass2_2: (Struct?, Map<Label, Int[]>)[] = []
     for (structOpt, node) in structsPass1 {
-      val toRevisit = if structOpt |struct| {
+      var toRevisit: Map<Label, Int[]> = {}
+      if structOpt |struct| {
         if !struct.isDecoratorType {
-          try self._typecheckStructPass2_2(struct, node)
-        } else {
+          toRevisit = try self._typecheckStructPass2_2(struct, node) else |e| {
+            self.currentModule.addTypeError(e)
+            {}
+          }
+        }
+      }
+
+      self.currentModule.decls.structDecls.push((structOpt, toRevisit))
+    }
+
+    for (enumOpt, node) in enumsPass1 {
+      var toRevisit: Map<Label, Int[]> = {}
+      if enumOpt |enum_| {
+        toRevisit = try self._typecheckEnumPass2_2(enum_, node) else |e| {
+          self.currentModule.addTypeError(e)
           {}
         }
-      } else {
-        {}
       }
 
-      structsPass2_2.push((structOpt, toRevisit))
+      self.currentModule.decls.enumDecls.push((enumOpt, toRevisit))
     }
 
-    val enumsPass2_2: (Enum?, Map<Label, Int[]>)[] = []
-    for (enumOpt, node) in enumsPass2_1 {
-      val toRevisit = if enumOpt |enum_| {
-        try self._typecheckEnumPass2_2(enum_, node)
-      } else {
-        {}
-      }
-
-      enumsPass2_2.push((enumOpt, toRevisit))
-    }
-
-    val functionsPass2: (Function?, Int[])[] = []
     for (fnOpt, node) in functionsPass1 {
-      if fnOpt |(fn, aliasVar)| {
-        val paramsNeedingRevisit = try self.typecheckFunctionPass2(fn: fn, allowSelf: false, params: node.params)
-        aliasVar.ty = fn.getType()
-        paramsNeedingRevisit
-        functionsPass2.push((Some(fn), paramsNeedingRevisit))
-      } else {
-        functionsPass2.push((None, []))
+      val (fn, aliasVar) = try fnOpt else {
+        self.currentModule.decls.funcDecls.push((None, []))
+        continue
       }
-    }
+      val paramsNeedingRevisit = try self.typecheckFunctionPass2(fn: fn, allowSelf: false, params: node.params) else |e| {
+        self.currentModule.addTypeError(e)
+        self.currentModule.decls.funcDecls.push((None, []))
+        continue
+      }
 
-    val functionsIter = functionsPass2.iterator()
-    val structsIter = structsPass2_2.iterator()
-    val enumsIter = enumsPass2_2.iterator()
+      aliasVar.ty = fn.getType()
+      self.currentModule.decls.funcDecls.push((Some(fn), paramsNeedingRevisit))
+    }
+  }
+
+  func typecheckDefinitions(self): TypedAstNode[] {
+    val functionsIter = self.currentModule.decls.funcDecls.iterator()
+    val structsIter = self.currentModule.decls.structDecls.iterator()
+    val enumsIter = self.currentModule.decls.enumDecls.iterator()
 
     val typedNodes: TypedAstNode[] = []
-    for node in nodes {
+    for node in self.currentModule.parsedModule.nodes {
       val typedNode = match node.kind {
         AstNodeKind.FunctionDeclaration(fnDeclNode) => {
-          val typedNode = if functionsIter.next() |(fnOpt, paramsNeedingRevisit)| {
-            if fnOpt |fn| {
-              try self.typecheckFunctionPass3(fn: fn, allowSelf: false, params: fnDeclNode.params, body: fnDeclNode.body, paramsNeedingRevisit: paramsNeedingRevisit) else |err| {
-                self.currentModule.addTypeError(err)
-                continue
-              }
-              TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.FunctionDeclaration(fn))
-            } else {
-              continue
-            }
-          } else {
-            unreachable("there should be as many functions as there are functiondecl nodes")
+          val (fnOpt, paramsNeedingRevisit) = try functionsIter.next() else unreachable("there should be as many functions as there are functiondecl nodes")
+          val fn = try fnOpt else continue
+
+          try self.typecheckFunctionPass3(fn: fn, allowSelf: false, params: fnDeclNode.params, body: fnDeclNode.body, paramsNeedingRevisit: paramsNeedingRevisit) else |err| {
+            self.currentModule.addTypeError(err)
+            continue
           }
 
-          typedNodes.push(typedNode)
-          continue
+          TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.FunctionDeclaration(fn))
         }
         AstNodeKind.TypeDeclaration(typeDeclNode) => {
-          val typedNode = if structsIter.next() |(structOpt, toRevisit)| {
-            if structOpt |struct| {
-              if !struct.isDecoratorType {
-                try self._typecheckStructPass3(struct, typeDeclNode, toRevisit)
-              }
-
-              TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.TypeDeclaration(struct))
-            } else {
+          val (structOpt, toRevisit) = try structsIter.next() else unreachable("there should be as many types as there are typedecl nodes")
+          val struct = try structOpt else continue
+          if !struct.isDecoratorType {
+            try self._typecheckStructPass3(struct, typeDeclNode, toRevisit) else |err| {
+              self.currentModule.addTypeError(err)
               continue
             }
-          } else {
-            unreachable("there should be as many types as there are typedecl nodes")
           }
 
-          typedNodes.push(typedNode)
-          continue
+          TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.TypeDeclaration(struct))
         }
         AstNodeKind.EnumDeclaration(enumDeclNode) => {
-          val typedNode = if enumsIter.next() |(enumOpt, toRevisit)| {
-            if enumOpt |enum_| {
-              try self._typecheckEnumPass3(enum_, enumDeclNode, toRevisit)
-              TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.EnumDeclaration(enum_))
-            } else {
-              continue
-            }
-          } else {
-            unreachable("there should be as many enums as there are enumdecl nodes")
+          val (enumOpt, toRevisit) = try enumsIter.next() else unreachable("there should be as many enums as there are enumdecl nodes")
+          val enum_ = try enumOpt else continue
+
+          try self._typecheckEnumPass3(enum_, enumDeclNode, toRevisit) else |err| {
+            self.currentModule.addTypeError(err)
+            continue
           }
 
-          typedNodes.push(typedNode)
-          continue
+          TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.EnumDeclaration(enum_))
         }
-        _ => {
-          if self.currentScope.terminator return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+        else => {
+          if self.currentScope.terminator {
+            self.currentModule.addTypeError(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+            break
+          }
+
           self.typecheckStatement(node: node, typeHint: None)
         }
       }
@@ -3471,7 +3548,7 @@ pub type Typechecker {
       typedNodes.push(typedNode)
     }
 
-    return Ok(typedNodes)
+    typedNodes
   }
 
   func typecheckStatement(self, node: AstNode, typeHint: Type?): TypedAstNode {
@@ -5350,7 +5427,7 @@ pub type Typechecker {
         moduleName: Label(name: mod, position: Position(line: -1, col: -1)),
       ))
     }
-    val imports = try self.processImports(None, parsedModule) else |position| {
+    val imports = try self.typecheckDeclarationsInImportedModules(None, parsedModule) else |position| {
       self.currentModule.addTypeError(TypeError(
         position: token.position,
         kind: TypeErrorKind.ErrorWithinMacroOutput(macroName: fn.label.name, generatedContents: contents, innerError: ErrorWithinMacroOutputKind.TypeError(TypeError(position: position, kind: TypeErrorKind.CircularDependency)))
