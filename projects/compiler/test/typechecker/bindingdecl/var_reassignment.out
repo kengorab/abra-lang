@@ -1,0 +1,4 @@
+// No errors expected - the typechecker should pass
+// But the LSP should show warnings for:
+// - neverReassigned (line 3)
+// - funcNeverReassigned (line 15)
