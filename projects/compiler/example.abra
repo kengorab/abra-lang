@@ -1,3 +1,9 @@
-val x = 123
-val y = debug(x) + 1
-stdoutWriteln("y = $y")
+func def(a: Int): Int = a + 1
+val defVal = def
+/// Expect: 24
+stdoutWriteln(defVal(23).toString())
+
+func ghi(a: Int, b: Int): Int = a + b
+val ghiVal = ghi
+/// Expect: 24
+stdoutWriteln(ghiVal(11, 13).toString())

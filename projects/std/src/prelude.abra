@@ -1,6 +1,7 @@
 import "./_intrinsics" as intrinsics
 import Pointer, Byte from "./_intrinsics"
 import "libc" as libc
+// import macro, InjectedCode, Expr from "meta"
 
 func stdoutWrite(str = "") {
   // TODO: uncomment once if-statements are handled by new IR generation
@@ -1540,3 +1541,13 @@ pub func todo(message = "") {
   stdoutWriteln("Encountered unimplemented code: $message")
   libc.exit(1)
 }
+
+// @macro
+// pub func debug(value: Expr): InjectedCode {
+//   InjectedCode.new()
+//     .append("(if true {")
+//     .append("  val exp = ").appendExpr(value)
+//     .append("  stdoutWriteln(\"").appendExpr(value).append(" = \$").appendExpr(value).append("\")")
+//     .append("  exp")
+//     .append("} else { unreachable(\"will get optimized away\") })")
+// }
