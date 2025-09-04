@@ -222,7 +222,6 @@ pub type Scope {
   pub parent: Scope? = None
   pub terminator: Terminator? = None
   pub idxInFn: Int = 0
-  numLambdas: Int = 0
 
   pub func bogus(name = ""): Scope {
     val scopeName = if name == "" "bogus" else "bogus($name)"
@@ -1720,7 +1719,6 @@ pub type Typechecker {
   paramDefaultValueContext: ParamDefaultValueContext? = None
   isStructOrEnumValueAllowed: Bool = false
   isEnumContainerValueAllowed: Bool = false
-  numLambdas: Int = 0
   numRootLevelScopes: Int = 0
   typecheckingBuiltin: BuiltinModule? = None
   pub lspMode: Bool = false
@@ -2306,12 +2304,6 @@ pub type Typechecker {
     if self.currentModule.name.startsWith(self.moduleLoader.stdRoot) return false
 
     true
-  }
-
-  func _nextLambdaName(self): String {
-    val name = "lambda_${self.currentModule.id}_${self.numLambdas}"
-    self.numLambdas += 1
-    name
   }
 
   func beginChildScope(self, name: String, kind: ScopeKind): Scope {
@@ -5977,7 +5969,7 @@ pub type Typechecker {
       }
     }
 
-    val lambdaName = self._nextLambdaName()
+    val lambdaName = "lambda_${token.position.line}_${token.position.col}"
     val prevScope = self.beginChildScope(lambdaName, ScopeKind.Func)
     val prevFn = self.currentFunction
 

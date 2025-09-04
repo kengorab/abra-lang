@@ -418,9 +418,9 @@
                 "node": {
                   "kind": "lambda",
                   "function": {
-                    "label": { "name": "lambda_3_1", "position": [8, 16] },
+                    "label": { "name": "lambda_8_16", "position": [8, 16] },
                     "scope": {
-                      "name": "$root::module_3::lambda_3_1",
+                      "name": "$root::module_3::lambda_8_16",
                       "variables": [],
                       "functions": [],
                       "structs": [],
