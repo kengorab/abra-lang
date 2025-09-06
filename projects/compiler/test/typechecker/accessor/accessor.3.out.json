@@ -502,15 +502,7 @@
             "mutable": false,
             "type": {
               "kind": "function",
-              "parameters": [
-                {
-                  "required": false,
-                  "type": {
-                    "kind": "primitive",
-                    "primitive": "String"
-                  }
-                }
-              ],
+              "parameters": [],
               "returnType": {
                 "kind": "primitive",
                 "primitive": "String"
@@ -527,15 +519,7 @@
           },
           "type": {
             "kind": "function",
-            "parameters": [
-              {
-                "required": false,
-                "type": {
-                  "kind": "primitive",
-                  "primitive": "String"
-                }
-              }
-            ],
+            "parameters": [],
             "returnType": {
               "kind": "primitive",
               "primitive": "String"
@@ -611,15 +595,7 @@
           },
           "type": {
             "kind": "function",
-            "parameters": [
-              {
-                "required": false,
-                "type": {
-                  "kind": "primitive",
-                  "primitive": "String"
-                }
-              }
-            ],
+            "parameters": [],
             "returnType": {
               "kind": "primitive",
               "primitive": "String"
@@ -655,23 +631,7 @@
             "mutable": false,
             "type": {
               "kind": "function",
-              "parameters": [
-                {
-                  "required": true,
-                  "type": {
-                    "kind": "instance",
-                    "struct": { "moduleId": 3, "name": "Foo" },
-                    "typeParams": []
-                  }
-                },
-                {
-                  "required": false,
-                  "type": {
-                    "kind": "primitive",
-                    "primitive": "String"
-                  }
-                }
-              ],
+              "parameters": [],
               "returnType": {
                 "kind": "primitive",
                 "primitive": "String"
@@ -688,23 +648,7 @@
           },
           "type": {
             "kind": "function",
-            "parameters": [
-              {
-                "required": true,
-                "type": {
-                  "kind": "instance",
-                  "struct": { "moduleId": 3, "name": "Foo" },
-                  "typeParams": []
-                }
-              },
-              {
-                "required": false,
-                "type": {
-                  "kind": "primitive",
-                  "primitive": "String"
-                }
-              }
-            ],
+            "parameters": [],
             "returnType": {
               "kind": "primitive",
               "primitive": "String"
@@ -779,23 +723,7 @@
           },
           "type": {
             "kind": "function",
-            "parameters": [
-              {
-                "required": true,
-                "type": {
-                  "kind": "instance",
-                  "struct": { "moduleId": 3, "name": "Foo" },
-                  "typeParams": []
-                }
-              },
-              {
-                "required": false,
-                "type": {
-                  "kind": "primitive",
-                  "primitive": "String"
-                }
-              }
-            ],
+            "parameters": [],
             "returnType": {
               "kind": "primitive",
               "primitive": "String"

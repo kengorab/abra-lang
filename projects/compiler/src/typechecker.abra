@@ -109,13 +109,30 @@ pub type IdentifierMeta {
   pub definitionPosition: (IdentifierMetaModule, Position)? = None
 }
 
+type Declarations {
+  funcDecls: (Function?, Map<Int, Variable>)[] = []
+  structDecls: (Struct?, Map<Label, Map<Int, Variable>>)[] = []
+  enumDecls: (Enum?, Map<Label, Map<Int, Variable>>)[] = []
+  bindingDecls: (Token, Type?, Variable[], TypedAstNode?, BindingDeclarationNode)[] = []
+}
+
+enum TypedModuleState {
+  NotStarted
+  GatheringDeclarationsPass1
+  GatheringDeclarationsPass2
+  DeclarationsGathered
+  Complete
+}
+
 pub type TypedModule {
   pub id: Int
   pub name: String
   pub code: TypedAstNode[]
   pub rootScope: Scope
-  pub isEntry: Bool = false
-  complete: Bool = false
+  parsedModule: ParsedModule
+  decls: Declarations
+  isEntry: Bool = false
+  state: TypedModuleState = TypedModuleState.NotStarted
   imports: Map<String, ImportedModule> = {}
   pub exports: Map<String, Export> = {}
   pub identsByLine: Map<Int, (Int, Int, IdentifierMeta)[]> = {}
@@ -124,7 +141,10 @@ pub type TypedModule {
   pub lexParseErrors: LexerOrParseError[] = []
   pub typeErrors: TypeError[] = []
 
-  func bogus(): TypedModule = TypedModule(id: -1, name: "bogus", code: [], rootScope: Scope.bogus())
+  pub func bogus(): TypedModule {
+    val parsedModule = ParsedModule(imports: [], nodes: [])
+    TypedModule(id: -1, name: "bogus", code: [], rootScope: Scope.bogus(), parsedModule: parsedModule, decls: Declarations())
+  }
 
   func addTypeError(self, err: TypeError) {
     self.typeErrors.push(err)
@@ -156,9 +176,9 @@ pub type Variable {
   pub isParameter: Bool = false
   pub isCaptured: Bool = false
 
-  func bogus(): Variable {
-    val label = Label(name: "_bogus", position: Position.bogus())
-    Variable(label: label, scope: Scope.bogus(), mutable: false, ty: Type(kind: TypeKind.Never))
+  func bogus(name = "_bogus", ty = Type(kind: TypeKind.Never)): Variable {
+    val label = Label(name: name, position: Position.bogus())
+    Variable(label: label, scope: Scope.bogus(), mutable: false, ty: ty)
   }
 
   pub func isGlobal(self): Int? = match self.scope.kind { ScopeKind.Module(id, _) => Some(id), _ => None }
@@ -202,7 +222,6 @@ pub type Scope {
   pub parent: Scope? = None
   pub terminator: Terminator? = None
   pub idxInFn: Int = 0
-  numLambdas: Int = 0
 
   pub func bogus(name = ""): Scope {
     val scopeName = if name == "" "bogus" else "bogus($name)"
@@ -293,6 +312,18 @@ pub type Struct {
     struct
   }
 
+  func memberwiseCopy(target: Struct, source: Struct) {
+    target.moduleId = source.moduleId
+    target.label = source.label
+    target.scope = source.scope
+    target.typeParams = source.typeParams
+    target.fields = source.fields
+    target.instanceMethods = source.instanceMethods
+    target.staticMethods = source.staticMethods
+    target.builtin = source.builtin
+    target.isDecoratorType = source.isDecoratorType
+  }
+
   // Override toString method since default implementation recurses infinitely (scope -> variables -> TypeKind.Struct)
   pub func toString(self): String = "Struct(moduleId: ${self.moduleId}, label: ${self.label}, ...)"
 
@@ -327,6 +358,17 @@ pub type Enum {
   pub instanceMethods: Function[] = []
   pub staticMethods: Function[] = []
   builtin: BuiltinModule? = None
+
+  func memberwiseCopy(target: Enum, source: Enum) {
+    target.moduleId = source.moduleId
+    target.label = source.label
+    target.scope = source.scope
+    target.typeParams = source.typeParams
+    target.variants = source.variants
+    target.instanceMethods = source.instanceMethods
+    target.staticMethods = source.staticMethods
+    target.builtin = source.builtin
+  }
 
   func toString(self): String = "Enum(moduleId: ${self.moduleId}, label: ${self.label})"
 
@@ -1656,9 +1698,9 @@ enum TypeErrorKind {
   InvalidMacroReturnType(injectedCodeStruct: Struct)
 }
 
-type ParamDefaultValueContext {
-  exprContainsFunctionCall: Bool = false
-  exprContainsVariableRef: Bool = false
+type ExprInfoCaptor {
+  containsFunctionCall: Bool = false
+  containsFnAlias: Bool = false
 }
 
 pub type Typechecker {
@@ -1669,14 +1711,14 @@ pub type Typechecker {
   currentScope: Scope = Scope(name: "\$root")
   currentTypeDecl: InstanceKind? = None
   currentFunction: Function? = None
-  paramDefaultValueContext: ParamDefaultValueContext? = None
+  exprInfoCaptor: ExprInfoCaptor? = None
   isStructOrEnumValueAllowed: Bool = false
   isEnumContainerValueAllowed: Bool = false
-  numLambdas: Int = 0
   numRootLevelScopes: Int = 0
   typecheckingBuiltin: BuiltinModule? = None
   pub lspMode: Bool = false
   identsByLine: Map<Int, (Int, Int, IdentifierMeta)[]> = {}
+  typeErrorSink: TypeError[]? = None
 
   pub func typecheckEntrypoint(self, modulePathAbs: String) {
     val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
@@ -1685,7 +1727,7 @@ pub type Typechecker {
     if !self.project.modules[preludeModulePathAbs] {
       val lspMode = self.lspMode
       self.lspMode = false
-      self._typecheckModule(preludeModulePathAbs)
+      self.typecheckModuleDeclarations(preludeModulePathAbs)
       self.lspMode = lspMode
 
       for (_, mod) in self.project.modules {
@@ -1715,8 +1757,12 @@ pub type Typechecker {
       }
     }
 
-    val mod = self._typecheckModule(modulePathAbs)
+    val mod = self.typecheckModuleDeclarations(modulePathAbs)
     mod.isEntry = true
+
+    for m in self.project.sortedModules() {
+      self.typecheckModuleDefinitions(m)
+    }
   }
 
   func _verifyNameUniqueInScope(self, label: Label, scope: Scope): TypeError? {
@@ -2255,12 +2301,6 @@ pub type Typechecker {
     true
   }
 
-  func _nextLambdaName(self): String {
-    val name = "lambda_${self.currentModule.id}_${self.numLambdas}"
-    self.numLambdas += 1
-    name
-  }
-
   func beginChildScope(self, name: String, kind: ScopeKind): Scope {
     val newScope = self.currentScope.makeChild(name, kind)
     newScope.idxInFn = if self.currentFunction |f| {
@@ -2275,10 +2315,40 @@ pub type Typechecker {
     prevScope
   }
 
+  func addTypeError(self, err: TypeError) {
+    if self.typeErrorSink |errors| {
+      errors.push(err)
+      return
+    }
+
+    self.currentModule.addTypeError(err)
+  }
+
+  func beginErrorCapture(self): TypeError[] {
+    if self.typeErrorSink unreachable("cannot begin error capture, already collecting errors")
+
+    val errors: TypeError[] = []
+    self.typeErrorSink = Some(errors)
+    errors
+  }
+
+  func endErrorCapture(self) { self.typeErrorSink = None }
+
+  func beginExprInfoCapture(self): ExprInfoCaptor {
+    if self.exprInfoCaptor unreachable("cannot begin expr info capture, already capturing expr info")
+
+    val ctx = ExprInfoCaptor()
+    self.exprInfoCaptor = Some(ctx)
+
+    ctx
+  }
+
+  func endExprInfoCapture(self) { self.exprInfoCaptor = None }
+
   // Start LSP helpers
 
   func _addLSPIdentForStruct(self, position: Position, struct: Struct, importMod: TypedModule?) {
-    val defMod = if struct.scope.parent == Some(self.project.preludeModule.rootScope) {
+    val defMod = if struct.builtin == Some(BuiltinModule.Prelude) {
       IdentifierMetaModule.Prelude
     } else {
       IdentifierMetaModule.Module(importMod?.name ?: self.currentModule.name)
@@ -2294,7 +2364,7 @@ pub type Typechecker {
   }
 
   func _addLSPIdentForEnum(self, position: Position, enum_: Enum, importMod: TypedModule?) {
-    val defMod = if enum_.scope.parent == Some(self.project.preludeModule.rootScope) {
+    val defMod = if enum_.builtin == Some(BuiltinModule.Prelude) {
       IdentifierMetaModule.Prelude
     } else {
       IdentifierMetaModule.Module(importMod?.name ?: self.currentModule.name)
@@ -2310,7 +2380,7 @@ pub type Typechecker {
   }
 
   func _addLSPIdentForEnumVariant(self, position: Position, enum_: Enum, variant: TypedEnumVariant) {
-    val definitionModule = if enum_.scope.parent == Some(self.project.preludeModule.rootScope) {
+    val definitionModule = if enum_.builtin == Some(BuiltinModule.Prelude) {
       IdentifierMetaModule.Prelude
     } else {
       match enum_.scope.parent?.kind {
@@ -2376,36 +2446,20 @@ pub type Typechecker {
 
   // End LSP helpers
 
-  func _typecheckModule(self, modulePathAbs: String): TypedModule {
+  func typecheckModuleDeclarations(self, modulePathAbs: String): TypedModule {
     if self.project.modules[modulePathAbs] |mod| return mod
 
-    self.typecheckingBuiltin = if modulePathAbs == self.moduleLoader.stdRoot + "/prelude.abra" {
-      Some(BuiltinModule.Prelude)
-    } else if modulePathAbs == self.moduleLoader.stdRoot + "/_intrinsics.abra" {
-      Some(BuiltinModule.Intrinsics)
-    } else if modulePathAbs == self.moduleLoader.stdRoot + "/meta.abra" {
-      Some(BuiltinModule.Meta)
-    } else {
-      None
-    }
-
-    val scope = self.currentScope.makeChild("module_tmp", ScopeKind.Module(id: -1, name: modulePathAbs))
-    val mod = TypedModule(id: -1, name: modulePathAbs, code: [], rootScope: scope)
-    if self.typecheckingBuiltin == Some(BuiltinModule.Prelude) {
-      self.project.preludeModule = mod
-    }
-    // Insert module with placeholder scope and moduleId. These values will be filled in after typechecking
-    // this module's imports; this ensures that sorting the final list of modules by id results in a resolved
-    // dependency graph.
-    self.currentModule = mod
-    self.project.modules[modulePathAbs] = mod
-
     val parsedModule = try self.moduleLoader.tokenizeAndParse(modulePathAbs) else |e| {
+      val scope = self.currentScope.makeChild("module_tmp", ScopeKind.Module(id: -1, name: modulePathAbs))
+      val bogusParsedModule = ParsedModule(imports: [], nodes: [])
+      val decls = Declarations()
+      val mod = TypedModule(id: -1, name: modulePathAbs, code: [], rootScope: scope, parsedModule: bogusParsedModule, decls: decls)
+      self.project.modules[modulePathAbs] = mod
       match e {
         TokenizeAndParseError.ReadFileError => {
           // Mark the module as having an reading error, and also as complete since it's gone as far as it can go
           mod.readFileError = true
-          mod.complete = true
+          mod.state = TypedModuleState.Complete
         }
         TokenizeAndParseError.LexerError(inner) => mod.lexParseErrors.push(LexerOrParseError.LexerError(inner))
         TokenizeAndParseError.ParseError(inner) => mod.lexParseErrors.push(LexerOrParseError.ParseError(inner))
@@ -2416,8 +2470,29 @@ pub type Typechecker {
       return mod
     }
 
+    // todo: should be possible to move all this initialization down to below the call to `typecheckDeclarationsInImportedModules`, would clean up a lot of these setup calls (just need to sort out the circ dep error reporting)
+    self.typecheckingBuiltin = if modulePathAbs == self.moduleLoader.stdRoot + "/prelude.abra" {
+      Some(BuiltinModule.Prelude)
+    } else if modulePathAbs == self.moduleLoader.stdRoot + "/_intrinsics.abra" {
+      Some(BuiltinModule.Intrinsics)
+    } else if modulePathAbs == self.moduleLoader.stdRoot + "/meta.abra" {
+      Some(BuiltinModule.Meta)
+    } else {
+      None
+    }
+    val scope = self.currentScope.makeChild("module_tmp", ScopeKind.Module(id: -1, name: modulePathAbs))
+    val mod = TypedModule(id: -1, name: modulePathAbs, code: [], rootScope: scope, parsedModule: parsedModule, decls: Declarations())
+    if self.typecheckingBuiltin == Some(BuiltinModule.Prelude) {
+      self.project.preludeModule = mod
+    }
+    // Insert module with placeholder scope and moduleId. These values will be filled in after typechecking
+    // this module's imports; this ensures that sorting the final list of modules by id results in a resolved
+    // dependency graph.
+    self.currentModule = mod
+    self.project.modules[modulePathAbs] = mod
+
     // An Err return value here means we saw a circular dependency, and we need to bail
-    val imports = try self.processImports(Some(modulePathAbs), parsedModule) else return mod
+    val imports = try self.typecheckDeclarationsInImportedModules(Some(modulePathAbs), parsedModule) else return mod
 
     val moduleId = self.project.modules.values().filter(m => m.id != -1).length
     mod.id = moduleId
@@ -2433,19 +2508,28 @@ pub type Typechecker {
       }
     }
 
-    match self.typecheckBlock(parsedModule.nodes) {
-      Ok(v) => mod.code = v
-      Err(e) => mod.addTypeError(e)
-    }
+    mod.state = TypedModuleState.GatheringDeclarationsPass1
+    self.typecheckDeclarations(parsedModule.nodes)
 
     self.currentScope = prevScope
-    mod.complete = true
+    mod.state = TypedModuleState.DeclarationsGathered
     mod.identsByLine = self.identsByLine
     if self.typecheckingBuiltin {
       self.typecheckingBuiltin = None
     }
 
     mod
+  }
+
+  func typecheckModuleDefinitions(self, mod: TypedModule) {
+    self.currentModule = mod
+    val prevScope = self.currentScope
+    self.currentScope = mod.rootScope
+
+    self.currentModule.code = self.typecheckDefinitions()
+    self.currentModule.state = TypedModuleState.Complete
+
+    self.currentScope = prevScope
   }
 
   func typecheckDecoratorNode(self, dec: DecoratorNode): Result<Decorator, TypeError> {
@@ -2467,7 +2551,7 @@ pub type Typechecker {
     val res = try self.typecheckInvocationOfFunction(bogusTok, dec.name.position, initializerFn, [], dec.arguments, None, None, Some(Instantiatable.Struct(decoratorStruct)))
     val typedArgs = match res.kind {
       TypedAstNodeKind.Invocation(_, typedArgs, _) => typedArgs
-      else => unreachable("must be TypedAstNodeKind.Invocation")
+      else => unreachable("must be TypedAstNodeKind.Invocation (${self.currentModule.name}:${dec.name.position.line}:${dec.name.position.col})")
     }
 
     val args: LiteralAstNode[] = []
@@ -2488,7 +2572,7 @@ pub type Typechecker {
     for d in node.decorators {
       val dec = try self.typecheckDecoratorNode(d) else |err| {
         // Report error and recover
-        self.currentModule.addTypeError(err)
+        self.addTypeError(err)
         continue
       }
       decorators.push(dec)
@@ -2505,7 +2589,7 @@ pub type Typechecker {
     val seenTypeParams: Map<String, Label> = {}
     for label in node.typeParams {
       if seenTypeParams[label.name] |original| {
-        self.currentModule.addTypeError(TypeError(position: label.position, kind: TypeErrorKind.DuplicateName(original)))
+        self.addTypeError(TypeError(position: label.position, kind: TypeErrorKind.DuplicateName(original)))
       } else {
         seenTypeParams[label.name] = label
 
@@ -2517,7 +2601,7 @@ pub type Typechecker {
 
     val returnType = if node.returnTypeAnnotation |typeAnn| {
       try self.resolveTypeIdentifier(typeAnn) else |err| {
-        self.currentModule.addTypeError(err)
+        self.addTypeError(err)
         Type(kind: TypeKind.CouldNotDetermine)
       }
     } else {
@@ -2526,7 +2610,7 @@ pub type Typechecker {
 
     if isMacro {
       if !self._typeSatisfiesRequired(ty: returnType, required: Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.metaInjectedCodeStruct), []))) {
-        self.currentModule.addTypeError(TypeError(position: node.name.position, kind: TypeErrorKind.InvalidMacroReturnType(self.project.metaInjectedCodeStruct)))
+        self.addTypeError(TypeError(position: node.name.position, kind: TypeErrorKind.InvalidMacroReturnType(self.project.metaInjectedCodeStruct)))
       }
     }
 
@@ -2551,7 +2635,7 @@ pub type Typechecker {
     Ok(fn)
   }
 
-  func typecheckFunctionParam(self, param: FunctionParam, typeHint: Type?, allowSelf: Bool, isRevisit = false): Result<(TypedFunctionParam, Bool), TypeError> {
+  func typecheckFunctionParam(self, param: FunctionParam, typeHint: Type?, allowSelf: Bool, preexistingParamVar: Variable? = None): Result<(TypedFunctionParam, Variable?), TypeError> {
     if param.label.name == "self" {
       if !allowSelf return Err(TypeError(position: param.label.position, kind: TypeErrorKind.InvalidParamPosition(purpose: "self")))
 
@@ -2562,7 +2646,7 @@ pub type Typechecker {
         try self.addVariableToScope(variable)
 
         val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: None, isVariadic: false, variable: variable)
-        return Ok((typedParam, false))
+        return Ok((typedParam, None))
       }
 
       return Err(TypeError(position: param.label.position, kind: TypeErrorKind.InvalidParamPosition(purpose: "self")))
@@ -2570,7 +2654,7 @@ pub type Typechecker {
 
     val paramType = if param.typeAnnotation |typeAnn| {
       val ty = try self.resolveTypeIdentifier(typeAnn) else |err| {
-        self.currentModule.addTypeError(err)
+        self.addTypeError(err)
         Type(kind: TypeKind.CouldNotDetermine)
       }
       if typeHint |hintTy| {
@@ -2587,34 +2671,34 @@ pub type Typechecker {
 
     var defaultValue: TypedAstNode? = None
     if param.defaultValue |node| {
-      if isRevisit {
+      if preexistingParamVar {
         match self._typecheckExpression(node, paramType) {
           Ok(expr) => { defaultValue = Some(expr) }
-          Err(err) => {
-            self.currentModule.addTypeError(err)
-          }
+          Err(err) => self.addTypeError(err)
         }
       } else {
-        // TODO: There has to be a cleaner way of representing this
-        val ctx = ParamDefaultValueContext()
-        self.paramDefaultValueContext = Some(ctx)
-        val expr = match self._typecheckExpression(node, paramType) {
-          Ok(v) => v
-          Err(e) => {
-            self.paramDefaultValueContext = None
-            if ctx.exprContainsFunctionCall || ctx.exprContainsVariableRef {
-              val placeholder = Some(TypedAstNode(token: node.token, ty: Type(kind: TypeKind.Hole), kind: TypedAstNodeKind.Placeholder))
-              val typedParam = TypedFunctionParam(label: param.label, ty: Type(kind: TypeKind.Hole), defaultValue: placeholder, isVariadic: param.isVariadic, variable: Variable.bogus())
-              return Ok((typedParam, true))
-            }
-            return Err(e)
-          }
+        val ctx = self.beginExprInfoCapture()
+        val capturedErrors = self.beginErrorCapture()
+        val expr = try self._typecheckExpression(node, paramType) else |e| {
+          capturedErrors.push(e)
+          TypedAstNode(token: node.token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
         }
-        self.paramDefaultValueContext = None
-        if ctx.exprContainsFunctionCall || ctx.exprContainsVariableRef {
-          val typedParam = TypedFunctionParam(label: param.label, ty: paramType ?: expr.ty, defaultValue: Some(expr), isVariadic: param.isVariadic, variable: Variable.bogus())
-          return Ok((typedParam, true))
+        self.endErrorCapture()
+        self.endExprInfoCapture()
+
+        if capturedErrors[-1] |err| {
+          if !ctx.containsFunctionCall return Err(err)
         }
+
+        if ctx.containsFunctionCall {
+          val ty = paramType ?: expr.ty
+          val variable = Variable(label: param.label, scope: self.currentScope, mutable: false, ty: ty, isParameter: true)
+          try self.addVariableToScope(variable)
+
+          val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: Some(expr), isVariadic: param.isVariadic, variable: variable)
+          return Ok((typedParam, Some(variable)))
+        }
+
         defaultValue = Some(expr)
       }
     }
@@ -2641,8 +2725,14 @@ pub type Typechecker {
       }
     }
 
-    val variable = Variable(label: param.label, scope: self.currentScope, mutable: false, ty: ty, isParameter: true)
-    try self.addVariableToScope(variable)
+    val variable = if preexistingParamVar |v| {
+      v.ty = ty
+      v
+    } else {
+      val v = Variable(label: param.label, scope: self.currentScope, mutable: false, ty: ty, isParameter: true)
+      try self.addVariableToScope(v)
+      v
+    }
 
     if param.isVariadic {
       if self._typeAsInstance1(ty, self.project.preludeArrayStruct) |innerType| {
@@ -2657,14 +2747,14 @@ pub type Typechecker {
     }
 
     val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: defaultValue, isVariadic: param.isVariadic, variable: variable)
-    Ok((typedParam, false))
+    Ok((typedParam, None))
   }
 
-  func typecheckFunctionPass2(self, fn: Function, allowSelf: Bool, params: FunctionParam[], paramHints: Type[] = []): Result<Int[], TypeError> {
+  func typecheckFunctionPass2(self, fn: Function, allowSelf: Bool, params: FunctionParam[], paramHints: Type[] = []): Result<Map<Int, Variable>, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = fn.scope
 
-    val paramsNeedingRevisit: Int[] = []
+    val paramsNeedingRevisit: Map<Int, Variable> = {}
     val seenParamNames: Set<String> = #{}
     var startedOptionalParams = false
     for param, idx in params {
@@ -2684,19 +2774,19 @@ pub type Typechecker {
       }
 
       val hint = paramHints[idx]
-      val (typedParam, needsRevisit) = try self.typecheckFunctionParam(param, hint, allowSelf)
+      val (typedParam, paramVar) = try self.typecheckFunctionParam(param, hint, allowSelf)
       if fn.isMacro {
         if !self._typeSatisfiesRequired(ty: typedParam.ty, required: Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.metaExprStruct), []))) {
-          self.currentModule.addTypeError(TypeError(position: typedParam.label.position, kind: TypeErrorKind.InvalidMacroParamType(self.project.metaExprStruct)))
+          self.addTypeError(TypeError(position: typedParam.label.position, kind: TypeErrorKind.InvalidMacroParamType(self.project.metaExprStruct)))
         }
       }
       val paramName = typedParam.label.name
       // This is a bit messy - if param is `self` then don't add here; it's already denoted as an instance method via its FunctionKind
       if paramName != "self" { fn.params.push(typedParam) }
       // Adjust the index value if we're in an instance method, since `self` isn't included in the fn.params array
-      if needsRevisit {
+      if paramVar |v| {
         val paramIdx = match fn.kind { FunctionKind.InstanceMethod => idx - 1, _ => idx }
-        paramsNeedingRevisit.push(paramIdx)
+        paramsNeedingRevisit[paramIdx] = v
       }
     }
 
@@ -2705,7 +2795,7 @@ pub type Typechecker {
     Ok(paramsNeedingRevisit)
   }
 
-  func typecheckFunctionPass3(self, fn: Function, allowSelf: Bool, params: FunctionParam[], body: AstNode[], paramsNeedingRevisit: Int[], paramHints: Type[] = []): Result<Int, TypeError> {
+  func typecheckFunctionPass3(self, fn: Function, allowSelf: Bool, params: FunctionParam[], body: AstNode[], paramsNeedingRevisit: Map<Int, Variable>, paramHints: Type[] = []): Result<Int, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = fn.scope
     val prevFn = self.currentFunction
@@ -2718,7 +2808,7 @@ pub type Typechecker {
     }
 
     for param, idx in fn.params {
-      if !paramsNeedingRevisit.contains(idx) continue
+      val paramVar = try paramsNeedingRevisit[idx] else continue
 
       // Since `self` is not included in the fn.params array, but it is in the untyped AST, when referring to the untyped AST, we need to adjust
       val origNodeParamIdx = match fn.kind { FunctionKind.InstanceMethod => idx + 1, _ => idx }
@@ -2726,7 +2816,7 @@ pub type Typechecker {
       val defaultValueNode = try paramNode.defaultValue else unreachable("the only way a parameter needs revisiting is if it has a default value")
 
       val hint = paramHints[idx]
-      val (typedParam, needsRevisit) = try self.typecheckFunctionParam(param: paramNode, typeHint: hint, allowSelf: allowSelf, isRevisit: true)
+      val (typedParam, needsRevisit) = try self.typecheckFunctionParam(param: paramNode, typeHint: hint, allowSelf: allowSelf, preexistingParamVar: Some(paramVar))
       if needsRevisit unreachable("parameters should not need to be revisited more than once")
       fn.params[idx] = typedParam
     }
@@ -2765,7 +2855,7 @@ pub type Typechecker {
         }
         if !self._typeSatisfiesRequired(ty: expr.ty, required: fn.returnType) {
           val fnName = if fn.isLambda None else Some(fn.label.name)
-          self.currentModule.addTypeError(TypeError(position: expr.token.position, kind: TypeErrorKind.ReturnTypeMismatch(fnName, fn.returnType, Some(expr.ty))))
+          self.addTypeError(TypeError(position: expr.token.position, kind: TypeErrorKind.ReturnTypeMismatch(fnName, fn.returnType, Some(expr.ty))))
           TypedAstNode(token: expr.token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
         } else {
           expr
@@ -2782,11 +2872,11 @@ pub type Typechecker {
     Ok(0)
   }
 
-  func typecheckStructPass1(self, node: TypeDeclarationNode): Result<Struct, TypeError> {
+  func typecheckStructPass1(self, node: TypeDeclarationNode, predefined: Struct?): Result<Struct, TypeError> {
     val isPublic = if node.pubToken |pubToken| {
       // If not in a valid export scope, report error and treat it as if not marked `pub`
       if self.ensureValidExportScope(pubToken) |err| {
-        self.currentModule.addTypeError(err)
+        self.addTypeError(err)
         false
       } else {
         true
@@ -2802,7 +2892,7 @@ pub type Typechecker {
     val seenTypeParams: Map<String, Label> = {}
     for label in node.typeParams {
       if seenTypeParams[label.name] |original| {
-        self.currentModule.addTypeError(TypeError(position: label.position, kind: TypeErrorKind.DuplicateName(original)))
+        self.addTypeError(TypeError(position: label.position, kind: TypeErrorKind.DuplicateName(original)))
       } else {
         seenTypeParams[label.name] = label
 
@@ -2815,8 +2905,13 @@ pub type Typechecker {
 
     val currentModuleId = self.currentModule.id
     val struct = Struct(moduleId: currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, builtin: self.typecheckingBuiltin)
-    try self.addStructToScope(struct, isPublic)
+    if predefined |predefined| {
+      Struct.memberwiseCopy(target: predefined, struct)
+      try self.addStructToScope(predefined, isPublic)
+      return Ok(predefined)
+    }
 
+    try self.addStructToScope(struct, isPublic)
     Ok(struct)
   }
 
@@ -2835,7 +2930,7 @@ pub type Typechecker {
 
       val ty = try self.resolveTypeIdentifier(field.typeAnnotation)
       if struct.isDecoratorType && !self.typeIsCompileTimeKnown(ty) {
-        self.currentModule.addTypeError(TypeError(position: field.name.position, kind: TypeErrorKind.NonComptimeDecoratorFieldType(struct.label.name, field.name.name, ty)))
+        self.addTypeError(TypeError(position: field.name.position, kind: TypeErrorKind.NonComptimeDecoratorFieldType(struct.label.name, field.name.name, ty)))
       }
       struct.fields.push(Field(name: field.name, ty: ty, initializer: None, isPublic: !!field.pubToken))
     }
@@ -2855,8 +2950,8 @@ pub type Typechecker {
     Ok(0)
   }
 
-  func _typecheckMethodsPass2(self, instanceKind: InstanceKind, funcDeclNodes: FunctionDeclarationNode[]): Result<Map<Label, Int[]>, TypeError> {
-    val allParamsNeedingRevisit: Map<Label, Int[]> = {}
+  func typecheckMethodsPass2(self, instanceKind: InstanceKind, funcDeclNodes: FunctionDeclarationNode[]): Result<Map<Label, Map<Int, Variable>>, TypeError> {
+    val allParamsNeedingRevisit: Map<Label, Map<Int, Variable>> = {}
 
     val (scope, instanceMethods, staticMethods) = match instanceKind {
       InstanceKind.Struct(struct) => (struct.scope, struct.instanceMethods, struct.staticMethods)
@@ -2932,13 +3027,13 @@ pub type Typechecker {
     Ok(allParamsNeedingRevisit)
   }
 
-  func _typecheckStructPass2_2(self, struct: Struct, node: TypeDeclarationNode): Result<Map<Label, Int[]>, TypeError> {
+  func typecheckStructPass2_2(self, struct: Struct, node: TypeDeclarationNode): Result<Map<Label, Map<Int, Variable>>, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = struct.scope
     val prevTypeDecl = self.currentTypeDecl
     self.currentTypeDecl = Some(InstanceKind.Struct(struct))
 
-    val allParamsNeedingRevisit = try self._typecheckMethodsPass2(InstanceKind.Struct(struct), node.methods)
+    val allParamsNeedingRevisit = try self.typecheckMethodsPass2(InstanceKind.Struct(struct), node.methods)
 
     self.currentTypeDecl = prevTypeDecl
     self.currentScope = prevScope
@@ -2946,7 +3041,7 @@ pub type Typechecker {
     Ok(allParamsNeedingRevisit)
   }
 
-  func _typecheckStructPass3(self, struct: Struct, node: TypeDeclarationNode, paramsNeedingRevisit: Map<Label, Int[]>): Result<Int, TypeError> {
+  func typecheckStructPass3(self, struct: Struct, node: TypeDeclarationNode, paramsNeedingRevisit: Map<Label, Map<Int, Variable>>): Result<Int, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = struct.scope
     val prevTypeDecl = self.currentTypeDecl
@@ -2975,7 +3070,8 @@ pub type Typechecker {
         unreachable("method not visited in prior pass")
       }
 
-      val toRevisit = try paramsNeedingRevisit[fnLabel] else unreachable("params improperly visited in prior pass")
+      // if params improperly visited in prior pass, we can't proceed here
+      val toRevisit = try paramsNeedingRevisit[fnLabel] else continue
       try self.typecheckFunctionPass3(fn: fn, allowSelf: true, params: funcDeclNode.params, body: funcDeclNode.body, paramsNeedingRevisit: toRevisit)
     }
 
@@ -2985,11 +3081,11 @@ pub type Typechecker {
     Ok(0)
   }
 
-  func typecheckEnumPass1(self, node: EnumDeclarationNode): Result<Enum, TypeError> {
+  func typecheckEnumPass1(self, node: EnumDeclarationNode, predefined: Enum?): Result<Enum, TypeError> {
     val isPublic = if node.pubToken |pubToken| {
       // If not in a valid export scope, report error and treat it as if not marked `pub`
       if self.ensureValidExportScope(pubToken) |err| {
-        self.currentModule.addTypeError(err)
+        self.addTypeError(err)
         false
       } else {
         true
@@ -3005,7 +3101,7 @@ pub type Typechecker {
     val seenTypeParams: Map<String, Label> = {}
     for label in node.typeParams {
       if seenTypeParams[label.name] |original| {
-        self.currentModule.addTypeError(TypeError(position: label.position, kind: TypeErrorKind.DuplicateName(original)))
+        self.addTypeError(TypeError(position: label.position, kind: TypeErrorKind.DuplicateName(original)))
       } else {
         seenTypeParams[label.name] = label
 
@@ -3018,8 +3114,13 @@ pub type Typechecker {
 
     val currentModuleId = self.currentModule.id
     val enum_ = Enum(moduleId: currentModuleId, label: node.name, scope: typeScope, typeParams: typeParams, builtin: self.typecheckingBuiltin)
-    try self.addEnumToScope(enum_, isPublic)
+    if predefined |predefined| {
+      Enum.memberwiseCopy(target: predefined, source: enum_)
+      try self.addEnumToScope(predefined, isPublic)
+      return Ok(predefined)
+    }
 
+    try self.addEnumToScope(enum_, isPublic)
     Ok(enum_)
   }
 
@@ -3034,7 +3135,8 @@ pub type Typechecker {
     for variant, idx in node.variants {
       val variantLabel = match variant { EnumVariant.Constant(label) => label, EnumVariant.Container(label, _) => label }
       if seenVariants[variantLabel.name] |original| {
-        return Err(TypeError(position: variantLabel.position, kind: TypeErrorKind.DuplicateName(original)))
+        self.addTypeError(TypeError(position: variantLabel.position, kind: TypeErrorKind.DuplicateName(original)))
+        continue
       }
       seenVariants[variantLabel.name] = variantLabel
 
@@ -3049,7 +3151,8 @@ pub type Typechecker {
           val seenFields: Map<String, Label> = {}
           for field in fields {
             if seenFields[field.name.name] |original| {
-              return Err(TypeError(position: field.name.position, kind: TypeErrorKind.DuplicateName(original)))
+              self.addTypeError(TypeError(position: field.name.position, kind: TypeErrorKind.DuplicateName(original)))
+              continue
             }
             seenFields[field.name.name] = field.name
 
@@ -3078,7 +3181,7 @@ pub type Typechecker {
     Ok(0)
   }
 
-  func _typecheckEnumPass2_2(self, enum_: Enum, node: EnumDeclarationNode): Result<Map<Label, Int[]>, TypeError> {
+  func typecheckEnumPass2_2(self, enum_: Enum, node: EnumDeclarationNode): Result<Map<Label, Map<Int, Variable>>, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = enum_.scope
     val prevTypeDecl = self.currentTypeDecl
@@ -3110,7 +3213,7 @@ pub type Typechecker {
       }
     }
 
-    val allParamsNeedingRevisit = try self._typecheckMethodsPass2(InstanceKind.Enum(enum_), node.methods)
+    val allParamsNeedingRevisit = try self.typecheckMethodsPass2(InstanceKind.Enum(enum_), node.methods)
 
     self.currentTypeDecl = prevTypeDecl
     self.currentScope = prevScope
@@ -3118,7 +3221,7 @@ pub type Typechecker {
     Ok(allParamsNeedingRevisit)
   }
 
-  func _typecheckEnumPass3(self, enum_: Enum, node: EnumDeclarationNode, paramsNeedingRevisit: Map<Label, Int[]>): Result<Int, TypeError> {
+  func typecheckEnumPass3(self, enum_: Enum, node: EnumDeclarationNode, paramsNeedingRevisit: Map<Label, Map<Int, Variable>>): Result<Int, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = enum_.scope
     val prevTypeDecl = self.currentTypeDecl
@@ -3136,7 +3239,8 @@ pub type Typechecker {
         unreachable("method not visited in prior pass")
       }
 
-      val toRevisit = try paramsNeedingRevisit[fnLabel] else unreachable("params improperly visited in prior pass")
+      // if params improperly visited in prior pass, we can't proceed here
+      val toRevisit = try paramsNeedingRevisit[fnLabel] else continue
       try self.typecheckFunctionPass3(fn: fn, allowSelf: true, params: funcDeclNode.params, body: funcDeclNode.body, paramsNeedingRevisit: toRevisit)
     }
 
@@ -3146,7 +3250,199 @@ pub type Typechecker {
     Ok(0)
   }
 
-  func processImports(self, modulePathAbs: String?, parsedModule: ParsedModule): Result<(TypedModule, ImportNode)[], Position> {
+  func typecheckBindingPass1(self, token: Token, node: BindingDeclarationNode): (Type?, Variable[], TypedAstNode?) {
+    val isMutable = token.kind == TokenKind.Var
+    val isPublic = if node.pubToken |pubToken| {
+      // If not in a valid export scope, report error and treat it as if not marked `pub`
+      if self.ensureValidExportScope(pubToken) |err| {
+        self.addTypeError(err)
+        false
+      } else {
+        true
+      }
+    } else {
+      false
+    }
+
+    val annType = if node.typeAnnotation |typeAnn| {
+      val ty = try self.resolveTypeIdentifier(typeAnn) else |err| {
+        self.addTypeError(err)
+        Type(kind: TypeKind.CouldNotDetermine)
+      }
+      Some(ty)
+    } else {
+      None
+    }
+
+    val (typedExpr, ty) = if annType |ty| {
+      (None, ty)
+    } else if node.expr |expr| {
+      val ctx = self.beginExprInfoCapture()
+      val capturedErrors = self.beginErrorCapture()
+      val typedExpr = try self._typecheckExpression(expr, annType) else |err| {
+        capturedErrors.push(err)
+        TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
+      }
+
+      val ty = if annType |annotatedType| {
+        if !self._typeSatisfiesRequired(ty: typedExpr.ty, required: annotatedType) {
+          capturedErrors.push(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.TypeMismatch([annotatedType], typedExpr.ty)))
+        }
+
+        annotatedType
+      } else {
+        typedExpr.ty
+      }
+
+      if ty.kind == TypeKind.CouldNotDetermine || ty.isInvalidValueType() {
+        capturedErrors.push(TypeError(position: expr.token.position, kind: TypeErrorKind.IllegalValueType(ty: ty, purpose: "assignment")))
+      }
+
+      self.endErrorCapture()
+      self.endExprInfoCapture()
+
+      val needsRevisit = ctx.containsFunctionCall || ctx.containsFnAlias || !capturedErrors.isEmpty()
+      (if needsRevisit None else Some(typedExpr), ty)
+    } else {
+      (None, Type(kind: TypeKind.CouldNotDetermine))
+    }
+
+    if !node.expr {
+      val (pos, name) = match node.bindingPattern {
+        BindingPattern.Variable(label) => (label.position, Some(label.name))
+        BindingPattern.Tuple(lParenTok, _) => (lParenTok.position, None)
+      }
+
+      if !isMutable {
+        self.addTypeError(TypeError(position: pos, kind: TypeErrorKind.MissingValExpr(name)))
+      } else if !annType {
+        self.addTypeError(TypeError(position: pos, kind: TypeErrorKind.MissingVarExprAndTypeAnn(name)))
+      }
+    }
+
+    val variables = self.visitBindingPatternPass1(isMutable, node.bindingPattern, ty)
+    for v in variables {
+      if isPublic {
+        v.isExported = true
+        self.currentModule.exports[v.label.name] = Export.Variable(v)
+      }
+    }
+
+    (annType, variables, typedExpr)
+  }
+
+  func visitBindingPatternPass1(self, mutable: Bool, pattern: BindingPattern, ty: Type): Variable[] {
+    match pattern {
+      BindingPattern.Variable(label) => {
+        val variable = Variable(label: label, scope: self.currentScope, mutable: mutable, ty: ty)
+        match self.addVariableToScope(variable) {
+          Ok => [variable]
+          Err(e) => {
+            self.addTypeError(e)
+            []
+          }
+        }
+      }
+      BindingPattern.Tuple(lParenTok, patterns) => {
+        val innerTypes = match ty.kind {
+          TypeKind.Tuple(innerTypes) => innerTypes
+          else => patterns.map(() => Type(kind: TypeKind.CouldNotDetermine))
+        }
+
+        val variables: Variable[] = []
+        for innerType, idx in innerTypes {
+          val pat = try patterns[idx] else break
+
+          val foundVars = self.visitBindingPatternPass1(mutable, pat, innerType)
+          for v in foundVars {
+            variables.push(v)
+          }
+        }
+
+        variables
+      }
+    }
+  }
+
+  func typecheckBindingPass2(self, token: Token, annType: Type?, variables: Variable[], expr: TypedAstNode?, node: BindingDeclarationNode): TypedAstNode {
+    val (typedExpr, ty) = if expr |expr| {
+      (Some(expr), expr.ty)
+    } else if node.expr |expr| {
+      val typedExpr = try self._typecheckExpression(expr, annType) else |err| {
+        self.addTypeError(err)
+        TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
+      }
+      val ty = if annType |annotatedType| {
+        if !self._typeSatisfiesRequired(ty: typedExpr.ty, required: annotatedType) {
+          self.addTypeError(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.TypeMismatch([annotatedType], typedExpr.ty)))
+        }
+
+        annotatedType
+      } else {
+        typedExpr.ty
+      }
+
+      if ty.isInvalidValueType() {
+        self.addTypeError(TypeError(position: expr.token.position, kind: TypeErrorKind.IllegalValueType(ty: ty, purpose: "assignment")))
+      }
+
+      (Some(typedExpr), ty)
+    } else {
+      (None, annType ?: Type(kind: TypeKind.CouldNotDetermine))
+    }
+
+    val vars = variables.keyBy(v => v.label.name)
+    self.visitBindingPatternPass2(node.bindingPattern, vars, ty)
+
+    val typedNode = TypedBindingDeclarationNode(bindingPattern: node.bindingPattern, variables: variables, expr: typedExpr)
+    TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.BindingDeclaration(typedNode))
+  }
+
+  func visitBindingPatternPass2(self, pattern: BindingPattern, vars: Map<String, Variable>, ty: Type) {
+    match pattern {
+      BindingPattern.Variable(label) => {
+        // if there's no variable by that name, it must mean that there was an error declaring it, so we bail
+        val variable = try vars[label.name] else return
+        variable.ty = ty
+
+        if self.lspMode {
+          val ident = IdentifierMeta(
+            name: label.name,
+            kind: IdentifierKindMeta.Variable(mutable: variable.mutable, typeRepr: ty.repr()),
+            definitionPosition: Some((IdentifierMetaModule.Module(self.currentModule.name), label.position)),
+          )
+          self._addLSPIdent(label.position, ident)
+        }
+      }
+      BindingPattern.Tuple(lParenTok, patterns) => {
+        val innerTypes = match ty.kind {
+          TypeKind.Tuple(innerTypes) => innerTypes
+          TypeKind.CouldNotDetermine => patterns.map(() => Type(kind: TypeKind.CouldNotDetermine))
+          else => {
+            self.addTypeError(TypeError(position: lParenTok.position, kind: TypeErrorKind.InvalidDestructuring(InvalidDestructuringReason.NonTupleAsTuple(ty))))
+            patterns.map(() => Type(kind: TypeKind.CouldNotDetermine))
+          }
+        }
+
+        if patterns[innerTypes.length] |invalidPat| {
+          val kind = TypeErrorKind.InvalidDestructuring(InvalidDestructuringReason.InvalidTupleArity(expected: innerTypes.length, given: patterns.length))
+          self.addTypeError(TypeError(position: invalidPat.position(), kind: kind))
+        }
+
+        for innerType, idx in innerTypes {
+          val pat = try patterns[idx] else {
+            val kind = TypeErrorKind.InvalidDestructuring(InvalidDestructuringReason.InvalidTupleArity(expected: innerTypes.length, given: patterns.length))
+            self.addTypeError(TypeError(position: lParenTok.position, kind: kind))
+            break
+          }
+
+          self.visitBindingPatternPass2(pat, vars, innerType)
+        }
+      }
+    }
+  }
+
+  func typecheckDeclarationsInImportedModules(self, modulePathAbs: String?, parsedModule: ParsedModule): Result<(TypedModule, ImportNode)[], Position> {
     val imports: (TypedModule, ImportNode)[] = []
     for importNode in parsedModule.imports {
       var importNodePath = importNode.moduleName.name
@@ -3162,7 +3458,7 @@ pub type Typechecker {
       }
 
       val typedImportModule = if self.project.modules[importPathAbs] |m| {
-        if !m.complete {
+        if m.state == TypedModuleState.NotStarted {
           // If a module attempts to import a module that is not yet complete, then we've found a circular dependency.
           // Flag that imported module since it's the module whose imports began the cycle.
           m.startsCircDep = true
@@ -3173,7 +3469,7 @@ pub type Typechecker {
         m
       } else {
         val childTypechecker = Typechecker(moduleLoader: self.moduleLoader, project: self.project, comptimeFuncEvaluator: self.comptimeFuncEvaluator)
-        childTypechecker._typecheckModule(importPathAbs)
+        childTypechecker.typecheckModuleDeclarations(importPathAbs)
       }
 
       if typedImportModule.readFileError {
@@ -3183,11 +3479,11 @@ pub type Typechecker {
           TypeErrorKind.UnknownModule(importNode.moduleName.name, false)
         }
 
-        self.currentModule.addTypeError(TypeError(position: importNode.moduleName.position, kind: kind))
+        self.addTypeError(TypeError(position: importNode.moduleName.position, kind: kind))
       } else if self.currentModule.startsCircDep {
         // If the imported module can be read but the current module has been flagged as having started a circular
         // dependency, we need to add that error to the current module so it can be surfaced.
-        self.currentModule.addTypeError(TypeError(position: importNode.moduleName.position, kind: TypeErrorKind.CircularDependency))
+        self.addTypeError(TypeError(position: importNode.moduleName.position, kind: TypeErrorKind.CircularDependency))
       }
 
       imports.push((typedImportModule, importNode))
@@ -3240,15 +3536,19 @@ pub type Typechecker {
     errors
   }
 
-  func typecheckBlock(self, nodes: AstNode[]): Result<TypedAstNode[], TypeError> {
+  func typecheckDeclarations(self, nodes: AstNode[]) {
     val funcDecls: FunctionDeclarationNode[] = []
     val typeDecls: TypeDeclarationNode[] = []
     val enumDecls: EnumDeclarationNode[] = []
+    val bindingDecls: (Token, BindingDeclarationNode)[] = []
     for node in nodes {
       match node.kind {
         AstNodeKind.FunctionDeclaration(node) => funcDecls.push(node)
         AstNodeKind.TypeDeclaration(node) => typeDecls.push(node)
         AstNodeKind.EnumDeclaration(node) => enumDecls.push(node)
+        AstNodeKind.BindingDeclaration(bindingDeclNode) => {
+          bindingDecls.push((node.token, bindingDeclNode))
+        }
         _ => {}
       }
     }
@@ -3258,31 +3558,34 @@ pub type Typechecker {
     val structsPass1: (Struct?, TypeDeclarationNode)[] = []
     val decoratorStructs: (Struct, TypeDeclarationNode)[] = []
     for node in typeDecls {
-      val struct = try self.typecheckStructPass1(node) else |err| {
-        self.currentModule.addTypeError(err)
-        structsPass1.push((None, node))
-        continue
-      }
-      match self.typecheckingBuiltin {
+      val predefined = match self.typecheckingBuiltin {
         BuiltinModule.Prelude => {
-          match struct.label.name {
-            "Int" => self.project.preludeIntStruct = struct
-            "Float" => self.project.preludeFloatStruct = struct
-            "Bool" => self.project.preludeBoolStruct = struct
-            "Char" => self.project.preludeCharStruct = struct
-            "String" => self.project.preludeStringStruct = struct
-            "Array" => self.project.preludeArrayStruct = struct
-            "Set" => self.project.preludeSetStruct = struct
-            "Map" => self.project.preludeMapStruct = struct
+          match node.name.name {
+            "Int" => Some(self.project.preludeIntStruct)
+            "Float" => Some(self.project.preludeFloatStruct)
+            "Bool" => Some(self.project.preludeBoolStruct)
+            "Char" => Some(self.project.preludeCharStruct)
+            "String" => Some(self.project.preludeStringStruct)
+            "Array" => Some(self.project.preludeArrayStruct)
+            "Set" => Some(self.project.preludeSetStruct)
+            "Map" => Some(self.project.preludeMapStruct)
+            else => None
           }
         }
         BuiltinModule.Meta => {
-          match struct.label.name {
-            "macro" => self.project.metaMacroDecorator = struct
-            "Expr" => self.project.metaExprStruct = struct
-            "InjectedCode" => self.project.metaInjectedCodeStruct = struct
+          match node.name.name {
+            "macro" => Some(self.project.metaMacroDecorator)
+            "Expr" => Some(self.project.metaExprStruct)
+            "InjectedCode" => Some(self.project.metaInjectedCodeStruct)
+            else => None
           }
         }
+        else => None
+      }
+      val struct = try self.typecheckStructPass1(node, predefined) else |err| {
+        self.addTypeError(err)
+        structsPass1.push((None, node))
+        continue
       }
       structsPass1.push((Some(struct), node))
 
@@ -3293,27 +3596,38 @@ pub type Typechecker {
 
     val enumsPass1: (Enum?, EnumDeclarationNode)[] = []
     for node in enumDecls {
-      val enum_ = try self.typecheckEnumPass1(node) else |err| {
-        self.currentModule.addTypeError(err)
-        enumsPass1.push((None, node))
-        continue
-      }
-      match self.typecheckingBuiltin {
+      val predefined = match self.typecheckingBuiltin {
         BuiltinModule.Prelude => {
-          match enum_.label.name {
-            "Option" => self.project.preludeOptionEnum = enum_
-            "Result" => self.project.preludeResultEnum = enum_
+          match node.name.name {
+            "Option" => Some(self.project.preludeOptionEnum)
+            "Result" => Some(self.project.preludeResultEnum)
+            else => None
           }
         }
+        else => None
+      }
+      val enum_ = try self.typecheckEnumPass1(node, predefined) else |err| {
+        self.addTypeError(err)
+        enumsPass1.push((None, node))
+        continue
       }
       enumsPass1.push((Some(enum_), node))
     }
 
     for (struct, node) in decoratorStructs {
       struct.isDecoratorType = true
-      try self._typecheckStructPass2_1(struct, node)
-      val toRevisit = try self._typecheckStructPass2_2(struct, node)
-      try self._typecheckStructPass3(struct, node, toRevisit)
+      try self._typecheckStructPass2_1(struct, node) else |e| {
+        self.addTypeError(e)
+        continue
+      }
+      val toRevisit = try self.typecheckStructPass2_2(struct, node) else |e| {
+        self.addTypeError(e)
+        continue
+      }
+      try self.typecheckStructPass3(struct, node, toRevisit) else |e| {
+        self.addTypeError(e)
+        continue
+      }
     }
 
     val functionsPass1: ((Function, Variable)?, FunctionDeclarationNode)[] = []
@@ -3321,7 +3635,7 @@ pub type Typechecker {
       val isPublic = if node.pubToken |pubToken| {
         // If not in a valid export scope, report error and treat it as if not marked `pub`
         if self.ensureValidExportScope(pubToken) |err| {
-          self.currentModule.addTypeError(err)
+          self.addTypeError(err)
           false
         } else {
           true
@@ -3331,7 +3645,7 @@ pub type Typechecker {
       }
 
       val fn = try self.typecheckFunctionPass1(node) else |err| {
-        self.currentModule.addTypeError(err)
+        self.addTypeError(err)
         functionsPass1.push((None, node))
         continue
       }
@@ -3346,124 +3660,126 @@ pub type Typechecker {
 
     // --- Pass 2 for types, enums, and functions
 
-    val structsPass2_1: (Struct?, TypeDeclarationNode)[] = []
     for (structOpt, node) in structsPass1 {
       if structOpt |struct| {
         if !struct.isDecoratorType {
-          try self._typecheckStructPass2_1(struct, node)
+          try self._typecheckStructPass2_1(struct, node) else |e| {
+            self.addTypeError(e)
+            continue
+          }
         }
       }
-
-      structsPass2_1.push((structOpt, node))
     }
 
-    val enumsPass2_1: (Enum?, EnumDeclarationNode)[] = []
     for (enumOpt, node) in enumsPass1 {
       if enumOpt |enum_| {
-        try self._typecheckEnumPass2_1(enum_, node)
+        try self._typecheckEnumPass2_1(enum_, node) else |e| {
+          self.addTypeError(e)
+          continue
+        }
       }
-
-      enumsPass2_1.push((enumOpt, node))
     }
 
-    val structsPass2_2: (Struct?, Map<Label, Int[]>)[] = []
+    val bindingsPass1: (Variable[], BindingDeclarationNode)[] = []
+    for (token, node) in bindingDecls {
+      val (annotatedType, variables, typedExpr) = self.typecheckBindingPass1(token, node)
+      self.currentModule.decls.bindingDecls.push((token, annotatedType, variables, typedExpr, node))
+    }
+
+    self.currentModule.state = TypedModuleState.GatheringDeclarationsPass2
+
     for (structOpt, node) in structsPass1 {
-      val toRevisit = if structOpt |struct| {
+      var toRevisit: Map<Label, Map<Int, Variable>> = {}
+      if structOpt |struct| {
         if !struct.isDecoratorType {
-          try self._typecheckStructPass2_2(struct, node)
-        } else {
+          toRevisit = try self.typecheckStructPass2_2(struct, node) else |e| {
+            self.addTypeError(e)
+            {}
+          }
+        }
+      }
+      self.currentModule.decls.structDecls.push((structOpt, toRevisit))
+    }
+
+    for (enumOpt, node) in enumsPass1 {
+      var toRevisit: Map<Label, Map<Int, Variable>> = {}
+      if enumOpt |enum_| {
+        toRevisit = try self.typecheckEnumPass2_2(enum_, node) else |e| {
+          self.addTypeError(e)
           {}
         }
-      } else {
-        {}
       }
-
-      structsPass2_2.push((structOpt, toRevisit))
+      self.currentModule.decls.enumDecls.push((enumOpt, toRevisit))
     }
 
-    val enumsPass2_2: (Enum?, Map<Label, Int[]>)[] = []
-    for (enumOpt, node) in enumsPass2_1 {
-      val toRevisit = if enumOpt |enum_| {
-        try self._typecheckEnumPass2_2(enum_, node)
-      } else {
-        {}
-      }
-
-      enumsPass2_2.push((enumOpt, toRevisit))
-    }
-
-    val functionsPass2: (Function?, Int[])[] = []
     for (fnOpt, node) in functionsPass1 {
-      if fnOpt |(fn, aliasVar)| {
-        val paramsNeedingRevisit = try self.typecheckFunctionPass2(fn: fn, allowSelf: false, params: node.params)
-        aliasVar.ty = fn.getType()
-        paramsNeedingRevisit
-        functionsPass2.push((Some(fn), paramsNeedingRevisit))
-      } else {
-        functionsPass2.push((None, []))
+      val (fn, aliasVar) = try fnOpt else {
+        self.currentModule.decls.funcDecls.push((None, {}))
+        continue
       }
+      val paramsNeedingRevisit = try self.typecheckFunctionPass2(fn: fn, allowSelf: false, params: node.params) else |e| {
+        self.addTypeError(e)
+        self.currentModule.decls.funcDecls.push((None, {}))
+        continue
+      }
+      aliasVar.ty = fn.getType()
+      self.currentModule.decls.funcDecls.push((Some(fn), paramsNeedingRevisit))
     }
+  }
 
-    val functionsIter = functionsPass2.iterator()
-    val structsIter = structsPass2_2.iterator()
-    val enumsIter = enumsPass2_2.iterator()
+  func typecheckDefinitions(self): TypedAstNode[] {
+    val functionsIter = self.currentModule.decls.funcDecls.iterator()
+    val structsIter = self.currentModule.decls.structDecls.iterator()
+    val enumsIter = self.currentModule.decls.enumDecls.iterator()
+    val bindingsIter = self.currentModule.decls.bindingDecls.iterator()
 
     val typedNodes: TypedAstNode[] = []
-    for node in nodes {
+    for node in self.currentModule.parsedModule.nodes {
       val typedNode = match node.kind {
         AstNodeKind.FunctionDeclaration(fnDeclNode) => {
-          val typedNode = if functionsIter.next() |(fnOpt, paramsNeedingRevisit)| {
-            if fnOpt |fn| {
-              try self.typecheckFunctionPass3(fn: fn, allowSelf: false, params: fnDeclNode.params, body: fnDeclNode.body, paramsNeedingRevisit: paramsNeedingRevisit) else |err| {
-                self.currentModule.addTypeError(err)
-                continue
-              }
-              TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.FunctionDeclaration(fn))
-            } else {
-              continue
-            }
-          } else {
-            unreachable("there should be as many functions as there are functiondecl nodes")
+          val (fnOpt, paramsNeedingRevisit) = try functionsIter.next() else unreachable("there should be as many functions as there are functiondecl nodes")
+          val fn = try fnOpt else continue
+
+          try self.typecheckFunctionPass3(fn: fn, allowSelf: false, params: fnDeclNode.params, body: fnDeclNode.body, paramsNeedingRevisit: paramsNeedingRevisit) else |err| {
+            self.addTypeError(err)
+            continue
           }
 
-          typedNodes.push(typedNode)
-          continue
+          TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.FunctionDeclaration(fn))
         }
         AstNodeKind.TypeDeclaration(typeDeclNode) => {
-          val typedNode = if structsIter.next() |(structOpt, toRevisit)| {
-            if structOpt |struct| {
-              if !struct.isDecoratorType {
-                try self._typecheckStructPass3(struct, typeDeclNode, toRevisit)
-              }
-
-              TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.TypeDeclaration(struct))
-            } else {
+          val (structOpt, toRevisit) = try structsIter.next() else unreachable("there should be as many types as there are typedecl nodes")
+          val struct = try structOpt else continue
+          if !struct.isDecoratorType {
+            try self.typecheckStructPass3(struct, typeDeclNode, toRevisit) else |err| {
+              self.addTypeError(err)
               continue
             }
-          } else {
-            unreachable("there should be as many types as there are typedecl nodes")
           }
 
-          typedNodes.push(typedNode)
-          continue
+          TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.TypeDeclaration(struct))
         }
         AstNodeKind.EnumDeclaration(enumDeclNode) => {
-          val typedNode = if enumsIter.next() |(enumOpt, toRevisit)| {
-            if enumOpt |enum_| {
-              try self._typecheckEnumPass3(enum_, enumDeclNode, toRevisit)
-              TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.EnumDeclaration(enum_))
-            } else {
-              continue
-            }
-          } else {
-            unreachable("there should be as many enums as there are enumdecl nodes")
+          val (enumOpt, toRevisit) = try enumsIter.next() else unreachable("there should be as many enums as there are enumdecl nodes")
+          val enum_ = try enumOpt else continue
+
+          try self.typecheckEnumPass3(enum_, enumDeclNode, toRevisit) else |err| {
+            self.addTypeError(err)
+            continue
           }
 
-          typedNodes.push(typedNode)
-          continue
+          TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.EnumDeclaration(enum_))
         }
-        _ => {
-          if self.currentScope.terminator return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+        AstNodeKind.BindingDeclaration(bindingDeclNode) => {
+          val (token, annType, variables, typedExpr, node) = try bindingsIter.next() else unreachable("there should be as many bindings as there are bbbbindingdecl nodes")
+          self.typecheckBindingPass2(token, annType, variables, typedExpr, node)
+        }
+        else => {
+          if self.currentScope.terminator {
+            self.addTypeError(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+            break
+          }
+
           self.typecheckStatement(node: node, typeHint: None)
         }
       }
@@ -3471,7 +3787,7 @@ pub type Typechecker {
       typedNodes.push(typedNode)
     }
 
-    return Ok(typedNodes)
+    typedNodes
   }
 
   func typecheckStatement(self, node: AstNode, typeHint: Type?): TypedAstNode {
@@ -3491,7 +3807,7 @@ pub type Typechecker {
     match res {
       Ok(node) => node
       Err(err) => {
-        self.currentModule.addTypeError(err)
+        self.addTypeError(err)
         TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
       }
     }
@@ -3504,7 +3820,7 @@ pub type Typechecker {
         val variables = match self.addVariableToScope(variable) {
           Ok => [variable]
           Err(err) => {
-            self.currentModule.addTypeError(err)
+            self.addTypeError(err)
             []
           }
         }
@@ -3525,21 +3841,21 @@ pub type Typechecker {
           TypeKind.Tuple(innerTypes) => innerTypes
           TypeKind.CouldNotDetermine => patterns.map(() => Type(kind: TypeKind.CouldNotDetermine))
           _ => {
-            self.currentModule.addTypeError(TypeError(position: lParenTok.position, kind: TypeErrorKind.InvalidDestructuring(InvalidDestructuringReason.NonTupleAsTuple(ty))))
+            self.addTypeError(TypeError(position: lParenTok.position, kind: TypeErrorKind.InvalidDestructuring(InvalidDestructuringReason.NonTupleAsTuple(ty))))
             patterns.map(() => Type(kind: TypeKind.CouldNotDetermine))
           }
         }
 
         if patterns[innerTypes.length] |invalidPat| {
           val kind = TypeErrorKind.InvalidDestructuring(InvalidDestructuringReason.InvalidTupleArity(expected: innerTypes.length, given: patterns.length))
-          self.currentModule.addTypeError(TypeError(position: invalidPat.position(), kind: kind))
+          self.addTypeError(TypeError(position: invalidPat.position(), kind: kind))
         }
 
         val variables: Variable[] = []
         for innerType, idx in innerTypes {
           val pat = try patterns[idx] else {
             val kind = TypeErrorKind.InvalidDestructuring(InvalidDestructuringReason.InvalidTupleArity(expected: innerTypes.length, given: patterns.length))
-            self.currentModule.addTypeError(TypeError(position: lParenTok.position, kind: kind))
+            self.addTypeError(TypeError(position: lParenTok.position, kind: kind))
             break
           }
 
@@ -3559,7 +3875,7 @@ pub type Typechecker {
     val isPublic = if node.pubToken |pubToken| {
       // If not in a valid export scope, report error and treat it as if not marked `pub`
       if self.ensureValidExportScope(pubToken) |err| {
-        self.currentModule.addTypeError(err)
+        self.addTypeError(err)
         false
       } else {
         true
@@ -3570,7 +3886,7 @@ pub type Typechecker {
 
     val annType = if node.typeAnnotation |typeAnn| {
       val ty = try self.resolveTypeIdentifier(typeAnn) else |err| {
-        self.currentModule.addTypeError(err)
+        self.addTypeError(err)
         Type(kind: TypeKind.CouldNotDetermine)
       }
       Some(ty)
@@ -3580,12 +3896,12 @@ pub type Typechecker {
 
     val (expr, ty) = if node.expr |expr| {
       val typedExpr = try self._typecheckExpression(expr, annType) else |err| {
-        self.currentModule.addTypeError(err)
+        self.addTypeError(err)
         TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
       }
       val ty = if annType |annotatedType| {
         if !self._typeSatisfiesRequired(ty: typedExpr.ty, required: annotatedType) {
-          self.currentModule.addTypeError(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.TypeMismatch([annotatedType], typedExpr.ty)))
+          self.addTypeError(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.TypeMismatch([annotatedType], typedExpr.ty)))
         }
 
         annotatedType
@@ -3594,7 +3910,7 @@ pub type Typechecker {
       }
 
       if ty.isInvalidValueType() {
-        self.currentModule.addTypeError(TypeError(position: expr.token.position, kind: TypeErrorKind.IllegalValueType(ty: ty, purpose: "assignment")))
+        self.addTypeError(TypeError(position: expr.token.position, kind: TypeErrorKind.IllegalValueType(ty: ty, purpose: "assignment")))
       }
 
       (Some(typedExpr), ty)
@@ -3848,11 +4164,11 @@ pub type Typechecker {
         val intType = Type(kind: TypeKind.PrimitiveInt)
         val typedStart = try self._typecheckExpression(start, Some(intType))
         if !self._typeSatisfiesRequired(ty: typedStart.ty, required: intType) {
-          self.currentModule.addTypeError(TypeError(position: typedStart.token.position, kind: TypeErrorKind.TypeMismatch([intType], typedStart.ty)))
+          self.addTypeError(TypeError(position: typedStart.token.position, kind: TypeErrorKind.TypeMismatch([intType], typedStart.ty)))
         }
         val typedEnd = try self._typecheckExpression(end, Some(intType))
         if !self._typeSatisfiesRequired(ty: typedEnd.ty, required: intType) {
-          self.currentModule.addTypeError(TypeError(position: typedEnd.token.position, kind: TypeErrorKind.TypeMismatch([intType], typedEnd.ty)))
+          self.addTypeError(TypeError(position: typedEnd.token.position, kind: TypeErrorKind.TypeMismatch([intType], typedEnd.ty)))
         }
 
         (TypedForIterKind.Range(startExpr: typedStart, endExpr: typedEnd), intType)
@@ -4322,7 +4638,7 @@ pub type Typechecker {
         TypedAstNode(token: token, ty: Type(kind: kind), kind: TypedAstNodeKind.Literal(literal))
       }
       AstNodeKind.StringInterpolation(exprs) => self.typecheckStringInterpolation(token, exprs)
-      AstNodeKind.Unary(node) => try self.typecheckUnary(token, node)
+      AstNodeKind.Unary(node) => self.typecheckUnary(token, node)
       AstNodeKind.Binary(node) => try self.typecheckBinary(token, node)
       AstNodeKind.Grouped(inner) => {
         val expr = try self._typecheckExpression(inner, None)
@@ -4369,37 +4685,43 @@ pub type Typechecker {
     for expr in exprs {
       match self._typecheckExpression(expr, None) {
         Ok(typedExpr) => typedExprs.push(typedExpr)
-        Err(err) => self.currentModule.addTypeError(err)
+        Err(err) => self.addTypeError(err)
       }
     }
 
     TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveString), kind: TypedAstNodeKind.StringInterpolation(exprs: typedExprs))
   }
 
-  func typecheckUnary(self, token: Token, node: UnaryAstNode): Result<TypedAstNode, TypeError> {
-    val expr = try self._typecheckExpression(node: node.expr, typeHint: None)
+  func typecheckUnary(self, token: Token, node: UnaryAstNode): TypedAstNode {
+    val expr = try self._typecheckExpression(node: node.expr, typeHint: None) else |e| {
+      self.addTypeError(e)
+      TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
+    }
     if expr.ty.kind == TypeKind.CouldNotDetermine {
-      return Ok(TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Unary(op: node.op, expr: expr)))
+      return TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Unary(op: node.op, expr: expr))
     }
 
     val ty = match node.op {
       UnaryOp.Minus => {
-        if !self._typeSatisfiesRequired(ty: expr.ty, required: Type(kind: TypeKind.PrimitiveInt)) &&
-          !self._typeSatisfiesRequired(ty: expr.ty, required: Type(kind: TypeKind.PrimitiveFloat)) {
+        if !self._typeSatisfiesRequired(ty: expr.ty, required: Type(kind: TypeKind.PrimitiveInt)) && !self._typeSatisfiesRequired(ty: expr.ty, required: Type(kind: TypeKind.PrimitiveFloat)) {
           val expected = [Type(kind: TypeKind.PrimitiveInt), Type(kind: TypeKind.PrimitiveFloat)]
-          return Err(TypeError(position: expr.token.position, kind: TypeErrorKind.TypeMismatch(expected, expr.ty)))
+          self.addTypeError(TypeError(position: expr.token.position, kind: TypeErrorKind.TypeMismatch(expected, expr.ty)))
+          Type(kind: TypeKind.CouldNotDetermine)
+        } else {
+          expr.ty
         }
-        expr.ty
       }
       UnaryOp.Negate => {
         if !self._typeIsOption(expr.ty) && !self._typeSatisfiesRequired(ty: expr.ty, required: Type(kind: TypeKind.PrimitiveBool)) {
-          return Err(TypeError(position: expr.token.position, kind: TypeErrorKind.TypeMismatch([Type(kind: TypeKind.PrimitiveBool)], expr.ty)))
+          self.addTypeError(TypeError(position: expr.token.position, kind: TypeErrorKind.TypeMismatch([Type(kind: TypeKind.PrimitiveBool)], expr.ty)))
+          Type(kind: TypeKind.CouldNotDetermine)
+        } else {
+          Type(kind: TypeKind.PrimitiveBool)
         }
-        Type(kind: TypeKind.PrimitiveBool)
       }
     }
 
-    Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Unary(op: node.op, expr: expr)))
+    TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Unary(op: node.op, expr: expr))
   }
 
   func typecheckBinary(self, token: Token, node: BinaryAstNode): Result<TypedAstNode, TypeError> {
@@ -4513,19 +4835,9 @@ pub type Typechecker {
     val ((variable, varImportMod), name, fnTypeHint) = match kind {
       IdentifierKind.Named(name) => {
         val resolvedIdentifier = try self._resolveIdentifier(name) else {
-          val err = TypeError(position: token.position, kind: TypeErrorKind.UnknownName(name, "variable"))
-          if self.paramDefaultValueContext |ctx| {
-            ctx.exprContainsVariableRef = true
-            // Return error here rather than just recording and recovering because the logic which determines whether to revisit a
-            // parameter's failed default value typechecking expects an Error to have been returned. A bit of a weird control flow.
-            return Err(err)
-          } else {
-            self.currentModule.addTypeError(err)
-            val bogusVar = Variable.bogus()
-            bogusVar.label.name = name
-            bogusVar.ty = Type(kind: TypeKind.CouldNotDetermine)
-            (bogusVar, None)
-          }
+          self.addTypeError(TypeError(position: token.position, kind: TypeErrorKind.UnknownName(name, "variable")))
+          val bogusVar = Variable.bogus(name: name, ty: Type(kind: TypeKind.CouldNotDetermine))
+          (bogusVar, None)
         }
 
         val variable = resolvedIdentifier[0]
@@ -4537,6 +4849,10 @@ pub type Typechecker {
                   currentFn.capturedClosures.push(fn)
                 }
               }
+            }
+
+            if self.exprInfoCaptor |ctx| {
+              ctx.containsFnAlias = true
             }
 
             typeHint
@@ -4560,9 +4876,6 @@ pub type Typechecker {
       }
       IdentifierKind.Self => {
         val resolvedIdentifier = try self._resolveIdentifier("self") else {
-          if self.paramDefaultValueContext |ctx| {
-            ctx.exprContainsVariableRef = true
-          }
           return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName("self", "variable")))
         }
 
@@ -4768,12 +5081,12 @@ pub type Typechecker {
     val identifierNode = if _mod |(mod, aliasLabel)| {
       val (dotTok, label) = field
       if dotTok.kind == TokenKind.QuestionDot {
-        self.currentModule.addTypeError(TypeError(position: dotTok.position, kind: TypeErrorKind.UnnecessaryOptSafety))
+        self.addTypeError(TypeError(position: dotTok.position, kind: TypeErrorKind.UnnecessaryOptSafety))
       }
 
       val exportVar = match mod.exports[label.name] {
         None => {
-          self.currentModule.addTypeError(TypeError(position: label.position, kind: TypeErrorKind.UnknownImportForAlias(label.name, aliasLabel)))
+          self.addTypeError(TypeError(position: label.position, kind: TypeErrorKind.UnknownImportForAlias(label.name, aliasLabel)))
           return (None, true)
         }
         Export.Variable(v) => v
@@ -4923,7 +5236,7 @@ pub type Typechecker {
           }
         }
 
-        self.currentModule.addTypeError(TypeError(position: label.position, kind: TypeErrorKind.UnknownField(ty, label.name, specialCase)))
+        self.addTypeError(TypeError(position: label.position, kind: TypeErrorKind.UnknownField(ty, label.name, specialCase)))
         return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder))
       }
     }
@@ -5004,8 +5317,8 @@ pub type Typechecker {
       _ => return Err(TypeError(position: exprPos, kind: TypeErrorKind.IllegalCallableType(invokeeExpr.ty)))
     }
 
-    if self.paramDefaultValueContext |ctx| {
-      ctx.exprContainsFunctionCall = true
+    if self.exprInfoCaptor |ctx| {
+      ctx.containsFunctionCall = true
       return Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Placeholder))
     }
 
@@ -5109,8 +5422,8 @@ pub type Typechecker {
       }
     }
 
-    if self.paramDefaultValueContext |ctx| {
-      ctx.exprContainsFunctionCall = true
+    if self.exprInfoCaptor |ctx| {
+      ctx.containsFunctionCall = true
 
       val returnType = if fn.returnType.containsGenerics() {
         fn.returnType.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
@@ -5326,20 +5639,15 @@ pub type Typechecker {
     val (_, fnModulePath) = try fn.scope.findParentModule() else unreachable("fn '${fn.label.name} must be defined within a module")
     val fnModule = try self.project.modules[fnModulePath] else unreachable("could not find module '$fnModulePath'")
     if fnModule.hasError() {
-      self.currentModule.addTypeError(TypeError(
-        position: token.position,
-        kind: TypeErrorKind.ErrorWithinMacroFunction(fn)
-      ))
+      self.addTypeError(TypeError(position: token.position, kind: TypeErrorKind.ErrorWithinMacroFunction(fn)))
       return TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
     }
 
     val injectedCode = try self.comptimeFuncEvaluator(fn, typedArguments, resolvedGenerics) else |e| unreachable("comptimeFuncEvaluator: $e")
     val contents = injectedCode.chunks.join()
     val parsedModule = try tokenizeAndParse(contents) else |e| {
-      self.currentModule.addTypeError(TypeError(
-        position: token.position,
-        kind: TypeErrorKind.ErrorWithinMacroOutput(macroName: fn.label.name, generatedContents: contents, innerError: ErrorWithinMacroOutputKind.LexerOrParseError(e))
-      ))
+      val kind = TypeErrorKind.ErrorWithinMacroOutput(macroName: fn.label.name, generatedContents: contents, innerError: ErrorWithinMacroOutputKind.LexerOrParseError(e))
+      self.addTypeError(TypeError(position: token.position, kind: kind))
       return TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
     }
 
@@ -5350,21 +5658,17 @@ pub type Typechecker {
         moduleName: Label(name: mod, position: Position(line: -1, col: -1)),
       ))
     }
-    val imports = try self.processImports(None, parsedModule) else |position| {
-      self.currentModule.addTypeError(TypeError(
-        position: token.position,
-        kind: TypeErrorKind.ErrorWithinMacroOutput(macroName: fn.label.name, generatedContents: contents, innerError: ErrorWithinMacroOutputKind.TypeError(TypeError(position: position, kind: TypeErrorKind.CircularDependency)))
-      ))
+    val imports = try self.typecheckDeclarationsInImportedModules(None, parsedModule) else |position| {
+      val kind = TypeErrorKind.ErrorWithinMacroOutput(macroName: fn.label.name, generatedContents: contents, innerError: ErrorWithinMacroOutputKind.TypeError(TypeError(position: position, kind: TypeErrorKind.CircularDependency)))
+      self.addTypeError(TypeError(position: token.position, kind: kind))
       return TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
     }
 
     for (typedImportModule, importNode) in imports {
       val errors = self._typecheckImport(typedImportModule, importNode)
       for err in errors {
-        self.currentModule.addTypeError(TypeError(
-          position: token.position,
-          kind: TypeErrorKind.ErrorWithinMacroOutput(macroName: fn.label.name, generatedContents: contents, innerError: ErrorWithinMacroOutputKind.TypeError(err))
-        ))
+        val kind = TypeErrorKind.ErrorWithinMacroOutput(macroName: fn.label.name, generatedContents: contents, innerError: ErrorWithinMacroOutputKind.TypeError(err))
+        self.addTypeError(TypeError(position: token.position, kind: kind))
       }
     }
 
@@ -5378,10 +5682,8 @@ pub type Typechecker {
     self.currentModule.typeErrors = origTypeErrors
 
     for err in seenTypeErrors {
-      self.currentModule.addTypeError(TypeError(
-        position: token.position,
-        kind: TypeErrorKind.ErrorWithinMacroOutput(macroName: fn.label.name, generatedContents: contents, innerError: ErrorWithinMacroOutputKind.TypeError(err))
-      ))
+      val kind = TypeErrorKind.ErrorWithinMacroOutput(macroName: fn.label.name, generatedContents: contents, innerError: ErrorWithinMacroOutputKind.TypeError(err))
+      self.addTypeError(TypeError(position: token.position, kind: kind))
     }
 
     // todo: somehow allow this
@@ -5675,7 +5977,7 @@ pub type Typechecker {
       }
     }
 
-    val lambdaName = self._nextLambdaName()
+    val lambdaName = "lambda_${token.position.line}_${token.position.col}"
     val prevScope = self.beginChildScope(lambdaName, ScopeKind.Func)
     val prevFn = self.currentFunction
 
