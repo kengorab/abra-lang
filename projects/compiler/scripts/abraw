@@ -84,14 +84,14 @@ $(echo "$compiler_bin $filepath $outfile")
 qbe -o "$dotabradir/$outfile.s" "$dotabradir/$outfile.ssa"
 
 # 64MB of stack memory is crazy i know
-CFLAGS_COMMON="-Wno-override-module -fstack-protector-all -fsanitize=address -Wl,-stack_size,0x4000000"
+CFLAGS_COMMON="-Wno-override-module -fstack-protector-all -fsanitize=address"
 if [[ "$OSTYPE" == "darwin"* ]]; then
   # There are some differences in behavior on macos vs linux:
   #  1. ignore linker warnings. For some reason libgc.a has warnings on macos
   #  2. for some reason, libgc.a needs to be first (this is not the case on linux)
-  clang "$abra_root/include/libgc.a" "$dotabradir/$outfile.s" -o "$dotabradir/$outfile" -lm $CFLAGS_COMMON -Wl,-w
+  clang "$abra_root/include/libgc.a" "$dotabradir/$outfile.s" -o "$dotabradir/$outfile" -lm $CFLAGS_COMMON -Wl,-stack_size,0x4000000 -Wl,-w
 else
-  clang "$dotabradir/$outfile.s" "$abra_root/include/libgc.a" -o "$dotabradir/$outfile" -lm $CFLAGS_COMMON
+  clang "$dotabradir/$outfile.s" "$abra_root/include/libgc.a" -o "$dotabradir/$outfile" -lm $CFLAGS_COMMON -Wl,--stack_size,0x4000000
 fi
 
 if [[ "$run" == "true" ]]; then
