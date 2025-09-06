@@ -110,16 +110,16 @@ pub type IdentifierMeta {
 }
 
 type Declarations {
-  funcDecls: (Function?, Int[])[] = []
-  structDecls: (Struct?, Map<Label, Int[]>)[] = []
-  enumDecls: (Enum?, Map<Label, Int[]>)[] = []
+  funcDecls: (Function?, Map<Int, Variable>)[] = []
+  structDecls: (Struct?, Map<Label, Map<Int, Variable>>)[] = []
+  enumDecls: (Enum?, Map<Label, Map<Int, Variable>>)[] = []
   bindingDecls: (Token, Type?, Variable[], TypedAstNode?, BindingDeclarationNode)[] = []
 }
 
 enum TypedModuleState {
   NotStarted
-  GatheringDeclarations
-  GatheringDeclarationsBindingsPass1(ctx: ParamDefaultValueContext)
+  GatheringDeclarationsPass1
+  GatheringDeclarationsPass2
   DeclarationsGathered
   Complete
 }
@@ -176,9 +176,9 @@ pub type Variable {
   pub isParameter: Bool = false
   pub isCaptured: Bool = false
 
-  func bogus(): Variable {
-    val label = Label(name: "_bogus", position: Position.bogus())
-    Variable(label: label, scope: Scope.bogus(), mutable: false, ty: Type(kind: TypeKind.Never))
+  func bogus(name = "_bogus", ty = Type(kind: TypeKind.Never)): Variable {
+    val label = Label(name: name, position: Position.bogus())
+    Variable(label: label, scope: Scope.bogus(), mutable: false, ty: ty)
   }
 
   pub func isGlobal(self): Int? = match self.scope.kind { ScopeKind.Module(id, _) => Some(id), _ => None }
@@ -795,11 +795,6 @@ pub type Decorator {
   pub label: Label
   pub arguments: LiteralAstNode[]
 }
-
-// enum TypedBindingPattern {
-//   Variable(v: Variable)
-//   Tuple(vars: Variable[])
-// }
 
 pub type TypedBindingDeclarationNode {
   pub bindingPattern: BindingPattern // todo: replace with TypedBindingPattern (above)
@@ -1703,9 +1698,9 @@ enum TypeErrorKind {
   InvalidMacroReturnType(injectedCodeStruct: Struct)
 }
 
-type ParamDefaultValueContext {
-  exprContainsFunctionCall: Bool = false
-  exprContainsVariableRef: Bool = false
+type ExprInfoCaptor {
+  containsFunctionCall: Bool = false
+  containsFnAlias: Bool = false
 }
 
 pub type Typechecker {
@@ -1716,14 +1711,14 @@ pub type Typechecker {
   currentScope: Scope = Scope(name: "\$root")
   currentTypeDecl: InstanceKind? = None
   currentFunction: Function? = None
-  paramDefaultValueContext: ParamDefaultValueContext? = None
+  exprInfoCaptor: ExprInfoCaptor? = None
   isStructOrEnumValueAllowed: Bool = false
   isEnumContainerValueAllowed: Bool = false
   numRootLevelScopes: Int = 0
   typecheckingBuiltin: BuiltinModule? = None
   pub lspMode: Bool = false
   identsByLine: Map<Int, (Int, Int, IdentifierMeta)[]> = {}
-  ignoreTypeErrors: TypeError[]? = None
+  typeErrorSink: TypeError[]? = None
 
   pub func typecheckEntrypoint(self, modulePathAbs: String) {
     val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
@@ -2321,13 +2316,34 @@ pub type Typechecker {
   }
 
   func addTypeError(self, err: TypeError) {
-    if self.ignoreTypeErrors |errors| {
+    if self.typeErrorSink |errors| {
       errors.push(err)
       return
     }
 
     self.currentModule.addTypeError(err)
   }
+
+  func beginErrorCapture(self): TypeError[] {
+    if self.typeErrorSink unreachable("cannot begin error capture, already collecting errors")
+
+    val errors: TypeError[] = []
+    self.typeErrorSink = Some(errors)
+    errors
+  }
+
+  func endErrorCapture(self) { self.typeErrorSink = None }
+
+  func beginExprInfoCapture(self): ExprInfoCaptor {
+    if self.exprInfoCaptor unreachable("cannot begin expr info capture, already capturing expr info")
+
+    val ctx = ExprInfoCaptor()
+    self.exprInfoCaptor = Some(ctx)
+
+    ctx
+  }
+
+  func endExprInfoCapture(self) { self.exprInfoCaptor = None }
 
   // Start LSP helpers
 
@@ -2492,7 +2508,7 @@ pub type Typechecker {
       }
     }
 
-    mod.state = TypedModuleState.GatheringDeclarations
+    mod.state = TypedModuleState.GatheringDeclarationsPass1
     self.typecheckDeclarations(parsedModule.nodes)
 
     self.currentScope = prevScope
@@ -2619,7 +2635,7 @@ pub type Typechecker {
     Ok(fn)
   }
 
-  func typecheckFunctionParam(self, param: FunctionParam, typeHint: Type?, allowSelf: Bool, isRevisit = false): Result<(TypedFunctionParam, Bool), TypeError> {
+  func typecheckFunctionParam(self, param: FunctionParam, typeHint: Type?, allowSelf: Bool, preexistingParamVar: Variable? = None): Result<(TypedFunctionParam, Variable?), TypeError> {
     if param.label.name == "self" {
       if !allowSelf return Err(TypeError(position: param.label.position, kind: TypeErrorKind.InvalidParamPosition(purpose: "self")))
 
@@ -2630,7 +2646,7 @@ pub type Typechecker {
         try self.addVariableToScope(variable)
 
         val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: None, isVariadic: false, variable: variable)
-        return Ok((typedParam, false))
+        return Ok((typedParam, None))
       }
 
       return Err(TypeError(position: param.label.position, kind: TypeErrorKind.InvalidParamPosition(purpose: "self")))
@@ -2655,32 +2671,34 @@ pub type Typechecker {
 
     var defaultValue: TypedAstNode? = None
     if param.defaultValue |node| {
-      if isRevisit {
+      if preexistingParamVar {
         match self._typecheckExpression(node, paramType) {
           Ok(expr) => { defaultValue = Some(expr) }
           Err(err) => self.addTypeError(err)
         }
       } else {
-        // TODO: There has to be a cleaner way of representing this
-        val ctx = ParamDefaultValueContext()
-        self.paramDefaultValueContext = Some(ctx)
-        val expr = match self._typecheckExpression(node, paramType) {
-          Ok(v) => v
-          Err(e) => {
-            self.paramDefaultValueContext = None
-            if ctx.exprContainsFunctionCall || ctx.exprContainsVariableRef {
-              val placeholder = Some(TypedAstNode(token: node.token, ty: Type(kind: TypeKind.Hole), kind: TypedAstNodeKind.Placeholder))
-              val typedParam = TypedFunctionParam(label: param.label, ty: Type(kind: TypeKind.Hole), defaultValue: placeholder, isVariadic: param.isVariadic, variable: Variable.bogus())
-              return Ok((typedParam, true))
-            }
-            return Err(e)
-          }
+        val ctx = self.beginExprInfoCapture()
+        val capturedErrors = self.beginErrorCapture()
+        val expr = try self._typecheckExpression(node, paramType) else |e| {
+          capturedErrors.push(e)
+          TypedAstNode(token: node.token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
         }
-        self.paramDefaultValueContext = None
-        if ctx.exprContainsFunctionCall || ctx.exprContainsVariableRef {
-          val typedParam = TypedFunctionParam(label: param.label, ty: paramType ?: expr.ty, defaultValue: Some(expr), isVariadic: param.isVariadic, variable: Variable.bogus())
-          return Ok((typedParam, true))
+        self.endErrorCapture()
+        self.endExprInfoCapture()
+
+        if capturedErrors[-1] |err| {
+          if !ctx.containsFunctionCall return Err(err)
         }
+
+        if ctx.containsFunctionCall {
+          val ty = paramType ?: expr.ty
+          val variable = Variable(label: param.label, scope: self.currentScope, mutable: false, ty: ty, isParameter: true)
+          try self.addVariableToScope(variable)
+
+          val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: Some(expr), isVariadic: param.isVariadic, variable: variable)
+          return Ok((typedParam, Some(variable)))
+        }
+
         defaultValue = Some(expr)
       }
     }
@@ -2707,8 +2725,14 @@ pub type Typechecker {
       }
     }
 
-    val variable = Variable(label: param.label, scope: self.currentScope, mutable: false, ty: ty, isParameter: true)
-    try self.addVariableToScope(variable)
+    val variable = if preexistingParamVar |v| {
+      v.ty = ty
+      v
+    } else {
+      val v = Variable(label: param.label, scope: self.currentScope, mutable: false, ty: ty, isParameter: true)
+      try self.addVariableToScope(v)
+      v
+    }
 
     if param.isVariadic {
       if self._typeAsInstance1(ty, self.project.preludeArrayStruct) |innerType| {
@@ -2723,14 +2747,14 @@ pub type Typechecker {
     }
 
     val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: defaultValue, isVariadic: param.isVariadic, variable: variable)
-    Ok((typedParam, false))
+    Ok((typedParam, None))
   }
 
-  func typecheckFunctionPass2(self, fn: Function, allowSelf: Bool, params: FunctionParam[], paramHints: Type[] = []): Result<Int[], TypeError> {
+  func typecheckFunctionPass2(self, fn: Function, allowSelf: Bool, params: FunctionParam[], paramHints: Type[] = []): Result<Map<Int, Variable>, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = fn.scope
 
-    val paramsNeedingRevisit: Int[] = []
+    val paramsNeedingRevisit: Map<Int, Variable> = {}
     val seenParamNames: Set<String> = #{}
     var startedOptionalParams = false
     for param, idx in params {
@@ -2750,7 +2774,7 @@ pub type Typechecker {
       }
 
       val hint = paramHints[idx]
-      val (typedParam, needsRevisit) = try self.typecheckFunctionParam(param, hint, allowSelf)
+      val (typedParam, paramVar) = try self.typecheckFunctionParam(param, hint, allowSelf)
       if fn.isMacro {
         if !self._typeSatisfiesRequired(ty: typedParam.ty, required: Type(kind: TypeKind.Instance(InstanceKind.Struct(self.project.metaExprStruct), []))) {
           self.addTypeError(TypeError(position: typedParam.label.position, kind: TypeErrorKind.InvalidMacroParamType(self.project.metaExprStruct)))
@@ -2760,9 +2784,9 @@ pub type Typechecker {
       // This is a bit messy - if param is `self` then don't add here; it's already denoted as an instance method via its FunctionKind
       if paramName != "self" { fn.params.push(typedParam) }
       // Adjust the index value if we're in an instance method, since `self` isn't included in the fn.params array
-      if needsRevisit {
+      if paramVar |v| {
         val paramIdx = match fn.kind { FunctionKind.InstanceMethod => idx - 1, _ => idx }
-        paramsNeedingRevisit.push(paramIdx)
+        paramsNeedingRevisit[paramIdx] = v
       }
     }
 
@@ -2771,7 +2795,7 @@ pub type Typechecker {
     Ok(paramsNeedingRevisit)
   }
 
-  func typecheckFunctionPass3(self, fn: Function, allowSelf: Bool, params: FunctionParam[], body: AstNode[], paramsNeedingRevisit: Int[], paramHints: Type[] = []): Result<Int, TypeError> {
+  func typecheckFunctionPass3(self, fn: Function, allowSelf: Bool, params: FunctionParam[], body: AstNode[], paramsNeedingRevisit: Map<Int, Variable>, paramHints: Type[] = []): Result<Int, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = fn.scope
     val prevFn = self.currentFunction
@@ -2784,7 +2808,7 @@ pub type Typechecker {
     }
 
     for param, idx in fn.params {
-      if !paramsNeedingRevisit.contains(idx) continue
+      val paramVar = try paramsNeedingRevisit[idx] else continue
 
       // Since `self` is not included in the fn.params array, but it is in the untyped AST, when referring to the untyped AST, we need to adjust
       val origNodeParamIdx = match fn.kind { FunctionKind.InstanceMethod => idx + 1, _ => idx }
@@ -2792,7 +2816,7 @@ pub type Typechecker {
       val defaultValueNode = try paramNode.defaultValue else unreachable("the only way a parameter needs revisiting is if it has a default value")
 
       val hint = paramHints[idx]
-      val (typedParam, needsRevisit) = try self.typecheckFunctionParam(param: paramNode, typeHint: hint, allowSelf: allowSelf, isRevisit: true)
+      val (typedParam, needsRevisit) = try self.typecheckFunctionParam(param: paramNode, typeHint: hint, allowSelf: allowSelf, preexistingParamVar: Some(paramVar))
       if needsRevisit unreachable("parameters should not need to be revisited more than once")
       fn.params[idx] = typedParam
     }
@@ -2926,8 +2950,8 @@ pub type Typechecker {
     Ok(0)
   }
 
-  func _typecheckMethodsPass2(self, instanceKind: InstanceKind, funcDeclNodes: FunctionDeclarationNode[]): Result<Map<Label, Int[]>, TypeError> {
-    val allParamsNeedingRevisit: Map<Label, Int[]> = {}
+  func typecheckMethodsPass2(self, instanceKind: InstanceKind, funcDeclNodes: FunctionDeclarationNode[]): Result<Map<Label, Map<Int, Variable>>, TypeError> {
+    val allParamsNeedingRevisit: Map<Label, Map<Int, Variable>> = {}
 
     val (scope, instanceMethods, staticMethods) = match instanceKind {
       InstanceKind.Struct(struct) => (struct.scope, struct.instanceMethods, struct.staticMethods)
@@ -3003,13 +3027,13 @@ pub type Typechecker {
     Ok(allParamsNeedingRevisit)
   }
 
-  func _typecheckStructPass2_2(self, struct: Struct, node: TypeDeclarationNode): Result<Map<Label, Int[]>, TypeError> {
+  func typecheckStructPass2_2(self, struct: Struct, node: TypeDeclarationNode): Result<Map<Label, Map<Int, Variable>>, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = struct.scope
     val prevTypeDecl = self.currentTypeDecl
     self.currentTypeDecl = Some(InstanceKind.Struct(struct))
 
-    val allParamsNeedingRevisit = try self._typecheckMethodsPass2(InstanceKind.Struct(struct), node.methods)
+    val allParamsNeedingRevisit = try self.typecheckMethodsPass2(InstanceKind.Struct(struct), node.methods)
 
     self.currentTypeDecl = prevTypeDecl
     self.currentScope = prevScope
@@ -3017,7 +3041,7 @@ pub type Typechecker {
     Ok(allParamsNeedingRevisit)
   }
 
-  func _typecheckStructPass3(self, struct: Struct, node: TypeDeclarationNode, paramsNeedingRevisit: Map<Label, Int[]>): Result<Int, TypeError> {
+  func typecheckStructPass3(self, struct: Struct, node: TypeDeclarationNode, paramsNeedingRevisit: Map<Label, Map<Int, Variable>>): Result<Int, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = struct.scope
     val prevTypeDecl = self.currentTypeDecl
@@ -3157,7 +3181,7 @@ pub type Typechecker {
     Ok(0)
   }
 
-  func _typecheckEnumPass2_2(self, enum_: Enum, node: EnumDeclarationNode): Result<Map<Label, Int[]>, TypeError> {
+  func typecheckEnumPass2_2(self, enum_: Enum, node: EnumDeclarationNode): Result<Map<Label, Map<Int, Variable>>, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = enum_.scope
     val prevTypeDecl = self.currentTypeDecl
@@ -3189,7 +3213,7 @@ pub type Typechecker {
       }
     }
 
-    val allParamsNeedingRevisit = try self._typecheckMethodsPass2(InstanceKind.Enum(enum_), node.methods)
+    val allParamsNeedingRevisit = try self.typecheckMethodsPass2(InstanceKind.Enum(enum_), node.methods)
 
     self.currentTypeDecl = prevTypeDecl
     self.currentScope = prevScope
@@ -3197,7 +3221,7 @@ pub type Typechecker {
     Ok(allParamsNeedingRevisit)
   }
 
-  func _typecheckEnumPass3(self, enum_: Enum, node: EnumDeclarationNode, paramsNeedingRevisit: Map<Label, Int[]>): Result<Int, TypeError> {
+  func typecheckEnumPass3(self, enum_: Enum, node: EnumDeclarationNode, paramsNeedingRevisit: Map<Label, Map<Int, Variable>>): Result<Int, TypeError> {
     val prevScope = self.currentScope
     self.currentScope = enum_.scope
     val prevTypeDecl = self.currentTypeDecl
@@ -3226,7 +3250,7 @@ pub type Typechecker {
     Ok(0)
   }
 
-  func typecheckBindingPass1(self, token: Token, node: BindingDeclarationNode, ctx: ParamDefaultValueContext): (Type?, Variable[], TypedAstNode?) {
+  func typecheckBindingPass1(self, token: Token, node: BindingDeclarationNode): (Type?, Variable[], TypedAstNode?) {
     val isMutable = token.kind == TokenKind.Var
     val isPublic = if node.pubToken |pubToken| {
       // If not in a valid export scope, report error and treat it as if not marked `pub`
@@ -3253,15 +3277,16 @@ pub type Typechecker {
     val (typedExpr, ty) = if annType |ty| {
       (None, ty)
     } else if node.expr |expr| {
-      val errors: TypeError[] = []
-      self.ignoreTypeErrors = Some(errors)
+      val ctx = self.beginExprInfoCapture()
+      val capturedErrors = self.beginErrorCapture()
       val typedExpr = try self._typecheckExpression(expr, annType) else |err| {
-        errors.push(err)
+        capturedErrors.push(err)
         TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
       }
+
       val ty = if annType |annotatedType| {
         if !self._typeSatisfiesRequired(ty: typedExpr.ty, required: annotatedType) {
-          errors.push(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.TypeMismatch([annotatedType], typedExpr.ty)))
+          capturedErrors.push(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.TypeMismatch([annotatedType], typedExpr.ty)))
         }
 
         annotatedType
@@ -3270,13 +3295,14 @@ pub type Typechecker {
       }
 
       if ty.kind == TypeKind.CouldNotDetermine || ty.isInvalidValueType() {
-        errors.push(TypeError(position: expr.token.position, kind: TypeErrorKind.IllegalValueType(ty: ty, purpose: "assignment")))
+        capturedErrors.push(TypeError(position: expr.token.position, kind: TypeErrorKind.IllegalValueType(ty: ty, purpose: "assignment")))
       }
-      self.ignoreTypeErrors = None
 
-      val e = if !errors.isEmpty() || ctx.exprContainsFunctionCall || ctx.exprContainsVariableRef None else Some(typedExpr)
+      self.endErrorCapture()
+      self.endExprInfoCapture()
 
-      (e, ty)
+      val needsRevisit = ctx.containsFunctionCall || ctx.containsFnAlias || !capturedErrors.isEmpty()
+      (if needsRevisit None else Some(typedExpr), ty)
     } else {
       (None, Type(kind: TypeKind.CouldNotDetermine))
     }
@@ -3594,11 +3620,11 @@ pub type Typechecker {
         self.addTypeError(e)
         continue
       }
-      val toRevisit = try self._typecheckStructPass2_2(struct, node) else |e| {
+      val toRevisit = try self.typecheckStructPass2_2(struct, node) else |e| {
         self.addTypeError(e)
         continue
       }
-      try self._typecheckStructPass3(struct, node, toRevisit) else |e| {
+      try self.typecheckStructPass3(struct, node, toRevisit) else |e| {
         self.addTypeError(e)
         continue
       }
@@ -3654,52 +3680,48 @@ pub type Typechecker {
       }
     }
 
-    val ctx = ParamDefaultValueContext()
-    self.currentModule.state = TypedModuleState.GatheringDeclarationsBindingsPass1(ctx)
     val bindingsPass1: (Variable[], BindingDeclarationNode)[] = []
     for (token, node) in bindingDecls {
-      val (annotatedType, variables, typedExpr) = self.typecheckBindingPass1(token, node, ctx)
+      val (annotatedType, variables, typedExpr) = self.typecheckBindingPass1(token, node)
       self.currentModule.decls.bindingDecls.push((token, annotatedType, variables, typedExpr, node))
     }
-    self.currentModule.state = TypedModuleState.GatheringDeclarations
+
+    self.currentModule.state = TypedModuleState.GatheringDeclarationsPass2
 
     for (structOpt, node) in structsPass1 {
-      var toRevisit: Map<Label, Int[]> = {}
+      var toRevisit: Map<Label, Map<Int, Variable>> = {}
       if structOpt |struct| {
         if !struct.isDecoratorType {
-          toRevisit = try self._typecheckStructPass2_2(struct, node) else |e| {
+          toRevisit = try self.typecheckStructPass2_2(struct, node) else |e| {
             self.addTypeError(e)
             {}
           }
         }
       }
-
       self.currentModule.decls.structDecls.push((structOpt, toRevisit))
     }
 
     for (enumOpt, node) in enumsPass1 {
-      var toRevisit: Map<Label, Int[]> = {}
+      var toRevisit: Map<Label, Map<Int, Variable>> = {}
       if enumOpt |enum_| {
-        toRevisit = try self._typecheckEnumPass2_2(enum_, node) else |e| {
+        toRevisit = try self.typecheckEnumPass2_2(enum_, node) else |e| {
           self.addTypeError(e)
           {}
         }
       }
-
       self.currentModule.decls.enumDecls.push((enumOpt, toRevisit))
     }
 
     for (fnOpt, node) in functionsPass1 {
       val (fn, aliasVar) = try fnOpt else {
-        self.currentModule.decls.funcDecls.push((None, []))
+        self.currentModule.decls.funcDecls.push((None, {}))
         continue
       }
       val paramsNeedingRevisit = try self.typecheckFunctionPass2(fn: fn, allowSelf: false, params: node.params) else |e| {
         self.addTypeError(e)
-        self.currentModule.decls.funcDecls.push((None, []))
+        self.currentModule.decls.funcDecls.push((None, {}))
         continue
       }
-
       aliasVar.ty = fn.getType()
       self.currentModule.decls.funcDecls.push((Some(fn), paramsNeedingRevisit))
     }
@@ -3729,7 +3751,7 @@ pub type Typechecker {
           val (structOpt, toRevisit) = try structsIter.next() else unreachable("there should be as many types as there are typedecl nodes")
           val struct = try structOpt else continue
           if !struct.isDecoratorType {
-            try self._typecheckStructPass3(struct, typeDeclNode, toRevisit) else |err| {
+            try self.typecheckStructPass3(struct, typeDeclNode, toRevisit) else |err| {
               self.addTypeError(err)
               continue
             }
@@ -3741,7 +3763,7 @@ pub type Typechecker {
           val (enumOpt, toRevisit) = try enumsIter.next() else unreachable("there should be as many enums as there are enumdecl nodes")
           val enum_ = try enumOpt else continue
 
-          try self._typecheckEnumPass3(enum_, enumDeclNode, toRevisit) else |err| {
+          try self.typecheckEnumPass3(enum_, enumDeclNode, toRevisit) else |err| {
             self.addTypeError(err)
             continue
           }
@@ -4616,7 +4638,7 @@ pub type Typechecker {
         TypedAstNode(token: token, ty: Type(kind: kind), kind: TypedAstNodeKind.Literal(literal))
       }
       AstNodeKind.StringInterpolation(exprs) => self.typecheckStringInterpolation(token, exprs)
-      AstNodeKind.Unary(node) => try self.typecheckUnary(token, node)
+      AstNodeKind.Unary(node) => self.typecheckUnary(token, node)
       AstNodeKind.Binary(node) => try self.typecheckBinary(token, node)
       AstNodeKind.Grouped(inner) => {
         val expr = try self._typecheckExpression(inner, None)
@@ -4670,30 +4692,36 @@ pub type Typechecker {
     TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveString), kind: TypedAstNodeKind.StringInterpolation(exprs: typedExprs))
   }
 
-  func typecheckUnary(self, token: Token, node: UnaryAstNode): Result<TypedAstNode, TypeError> {
-    val expr = try self._typecheckExpression(node: node.expr, typeHint: None)
+  func typecheckUnary(self, token: Token, node: UnaryAstNode): TypedAstNode {
+    val expr = try self._typecheckExpression(node: node.expr, typeHint: None) else |e| {
+      self.addTypeError(e)
+      TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
+    }
     if expr.ty.kind == TypeKind.CouldNotDetermine {
-      return Ok(TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Unary(op: node.op, expr: expr)))
+      return TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Unary(op: node.op, expr: expr))
     }
 
     val ty = match node.op {
       UnaryOp.Minus => {
-        if !self._typeSatisfiesRequired(ty: expr.ty, required: Type(kind: TypeKind.PrimitiveInt)) &&
-          !self._typeSatisfiesRequired(ty: expr.ty, required: Type(kind: TypeKind.PrimitiveFloat)) {
+        if !self._typeSatisfiesRequired(ty: expr.ty, required: Type(kind: TypeKind.PrimitiveInt)) && !self._typeSatisfiesRequired(ty: expr.ty, required: Type(kind: TypeKind.PrimitiveFloat)) {
           val expected = [Type(kind: TypeKind.PrimitiveInt), Type(kind: TypeKind.PrimitiveFloat)]
-          return Err(TypeError(position: expr.token.position, kind: TypeErrorKind.TypeMismatch(expected, expr.ty)))
+          self.addTypeError(TypeError(position: expr.token.position, kind: TypeErrorKind.TypeMismatch(expected, expr.ty)))
+          Type(kind: TypeKind.CouldNotDetermine)
+        } else {
+          expr.ty
         }
-        expr.ty
       }
       UnaryOp.Negate => {
         if !self._typeIsOption(expr.ty) && !self._typeSatisfiesRequired(ty: expr.ty, required: Type(kind: TypeKind.PrimitiveBool)) {
-          return Err(TypeError(position: expr.token.position, kind: TypeErrorKind.TypeMismatch([Type(kind: TypeKind.PrimitiveBool)], expr.ty)))
+          self.addTypeError(TypeError(position: expr.token.position, kind: TypeErrorKind.TypeMismatch([Type(kind: TypeKind.PrimitiveBool)], expr.ty)))
+          Type(kind: TypeKind.CouldNotDetermine)
+        } else {
+          Type(kind: TypeKind.PrimitiveBool)
         }
-        Type(kind: TypeKind.PrimitiveBool)
       }
     }
 
-    Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Unary(op: node.op, expr: expr)))
+    TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Unary(op: node.op, expr: expr))
   }
 
   func typecheckBinary(self, token: Token, node: BinaryAstNode): Result<TypedAstNode, TypeError> {
@@ -4807,19 +4835,9 @@ pub type Typechecker {
     val ((variable, varImportMod), name, fnTypeHint) = match kind {
       IdentifierKind.Named(name) => {
         val resolvedIdentifier = try self._resolveIdentifier(name) else {
-          val err = TypeError(position: token.position, kind: TypeErrorKind.UnknownName(name, "variable"))
-          if self.paramDefaultValueContext |ctx| {
-            ctx.exprContainsVariableRef = true
-            // Return error here rather than just recording and recovering because the logic which determines whether to revisit a
-            // parameter's failed default value typechecking expects an Error to have been returned. A bit of a weird control flow.
-            return Err(err)
-          } else {
-            self.addTypeError(err)
-            val bogusVar = Variable.bogus()
-            bogusVar.label.name = name
-            bogusVar.ty = Type(kind: TypeKind.CouldNotDetermine)
-            (bogusVar, None)
-          }
+          self.addTypeError(TypeError(position: token.position, kind: TypeErrorKind.UnknownName(name, "variable")))
+          val bogusVar = Variable.bogus(name: name, ty: Type(kind: TypeKind.CouldNotDetermine))
+          (bogusVar, None)
         }
 
         val variable = resolvedIdentifier[0]
@@ -4833,11 +4851,8 @@ pub type Typechecker {
               }
             }
 
-            match self.currentModule.state {
-              TypedModuleState.GatheringDeclarationsBindingsPass1(ctx) => {
-                ctx.exprContainsVariableRef = true
-              }
-              else => {}
+            if self.exprInfoCaptor |ctx| {
+              ctx.containsFnAlias = true
             }
 
             typeHint
@@ -4861,9 +4876,6 @@ pub type Typechecker {
       }
       IdentifierKind.Self => {
         val resolvedIdentifier = try self._resolveIdentifier("self") else {
-          if self.paramDefaultValueContext |ctx| {
-            ctx.exprContainsVariableRef = true
-          }
           return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownName("self", "variable")))
         }
 
@@ -5305,8 +5317,8 @@ pub type Typechecker {
       _ => return Err(TypeError(position: exprPos, kind: TypeErrorKind.IllegalCallableType(invokeeExpr.ty)))
     }
 
-    if self.paramDefaultValueContext |ctx| {
-      ctx.exprContainsFunctionCall = true
+    if self.exprInfoCaptor |ctx| {
+      ctx.containsFunctionCall = true
       return Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Placeholder))
     }
 
@@ -5410,12 +5422,8 @@ pub type Typechecker {
       }
     }
 
-    val ctxOpt = match self.currentModule.state {
-      TypedModuleState.GatheringDeclarationsBindingsPass1(ctx) => Some(ctx)
-      else => self.paramDefaultValueContext
-    }
-    if ctxOpt |ctx| {
-      ctx.exprContainsFunctionCall = true
+    if self.exprInfoCaptor |ctx| {
+      ctx.containsFunctionCall = true
 
       val returnType = if fn.returnType.containsGenerics() {
         fn.returnType.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
