@@ -797,7 +797,7 @@ pub type Decorator {
 }
 
 pub type TypedBindingDeclarationNode {
-  pub bindingPattern: BindingPattern // todo: replace with TypedBindingPattern (above)
+  pub bindingPattern: BindingPattern
   pub variables: Variable[]
   pub expr: TypedAstNode?
 }
