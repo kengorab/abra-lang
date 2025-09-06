@@ -1646,9 +1646,10 @@ pub type Generator {
     val varTy = self.getConcreteTypeFromType(variable.ty, concreteGenerics)
     val varIrTy = self.getIrTypeForConcreteType(varTy)
     val ident = if value |(value, _)| {
-      if variable.mutable {
+      if variable.mutable && variable.isReassigned {
         self.ssaValue(varIrTy, Operation.NewLocal(ty: varIrTy, captured: variable.isCaptured, initialValue: Some(value)), Some(varName))
       } else {
+        // Treat immutable variables and mutable variables that are never reassigned the same way
         value
       }
     } else {
