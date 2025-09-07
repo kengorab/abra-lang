@@ -2679,10 +2679,12 @@ pub type Typechecker {
       } else {
         val ctx = self.beginExprInfoCapture()
         val capturedErrors = self.beginErrorCapture()
+        val prevScope = self.currentScope
         val expr = try self._typecheckExpression(node, paramType) else |e| {
           capturedErrors.push(e)
           TypedAstNode(token: node.token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
         }
+        self.currentScope = prevScope
         self.endErrorCapture()
         self.endExprInfoCapture()
 
@@ -3279,10 +3281,12 @@ pub type Typechecker {
     } else if node.expr |expr| {
       val ctx = self.beginExprInfoCapture()
       val capturedErrors = self.beginErrorCapture()
+      val prevScope = self.currentScope
       val typedExpr = try self._typecheckExpression(expr, annType) else |err| {
         capturedErrors.push(err)
         TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
       }
+      self.currentScope = prevScope
 
       val ty = if annType |annotatedType| {
         if !self._typeSatisfiesRequired(ty: typedExpr.ty, required: annotatedType) {
