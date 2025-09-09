@@ -1,4 +1,4 @@
-import valueIfValidHexDigit from "./utils"
+import valueIfValidHexDigit, getCursorLine from "./utils"
 
 pub type Position {
   pub line: Int
@@ -188,47 +188,33 @@ pub type LexerError {
     match self.kind {
       LexerErrorKind.UnexpectedChar(char) => {
         lines.push("Unexpected character '$char':")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
       }
       LexerErrorKind.UnterminatedCharLiteral => {
         lines.push("Unterminated character literal:")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
       }
       LexerErrorKind.UnterminatedString(start) => {
         lines.push("Unterminated string:")
         lines.push("  String begins at (${start.line}:${start.col})")
-        lines.push(self._getCursorLine(start, contents))
+        lines.push(getCursorLine(start.line, start.col, contents))
         lines.push("  String is terminated at (${self.position.line}:${self.position.col})")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
       }
       LexerErrorKind.UnsupportedEscapeSequence(seq, isUnicode) => {
         lines.push("Unsupported escape sequence:")
-        lines.push(self._getCursorLine(self.position, contents, seq.length))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents, seq.length))
         if isUnicode {
           lines.push("Unicode escape sequences must be \\u followed by 4 hexadecimal characters (between 0000 and 7FFF)")
         }
       }
       LexerErrorKind.UnexpectedEof => {
         lines.push("Unexpected end of file:")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
       }
     }
 
     lines.join("\n")
-  }
-
-  func _getCursorLine(self, position: Position, contents: String, cursorLength = 1): String {
-    if contents.lines()[position.line - 1] |line| {
-      val len = position.col - 1 + cursorLength
-      val cursor = Array.fill(len, " ")
-      for i in (len - cursorLength):len {
-        cursor[i] = "^"
-      }
-      "  |  $line\n     ${cursor.join()}"
-    } else {
-      // "unreachable"
-      unreachable()
-    }
   }
 }
 
