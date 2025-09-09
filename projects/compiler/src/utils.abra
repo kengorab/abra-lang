@@ -55,3 +55,36 @@ pub func resolveRelativePath(path: String, relativeTo: String): String[] {
 
   absParentPath
 }
+
+pub func getCursorLine(lineNum: Int, colNum: Int, contents: String, cursorLength = 1): String {
+  val line = getLine(contents, lineNum - 1)
+  val len = colNum - 1 + cursorLength
+  val cursor = Array.fill(len, " ")
+  for i in (len - cursorLength):len {
+    cursor[i] = "^"
+  }
+  "  |  $line\n     ${cursor.join()}"
+}
+
+// TODO: move to prelude
+func getLine(str: String, line: Int): String {
+  if line < 0 return ""
+
+  var seenLines = 0
+  var idx = 0
+  var prevStart = 0
+  while idx < str.length {
+    if str._buffer.loadAt(idx).asInt() == '\n'.asByte().asInt() {
+      if line == seenLines return str[prevStart:idx]
+
+      seenLines += 1
+      prevStart = idx + 1
+    }
+
+    idx += 1
+  }
+
+  if line == seenLines return str[prevStart:idx]
+
+  ""
+}

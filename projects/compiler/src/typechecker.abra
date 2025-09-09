@@ -1,6 +1,6 @@
 import "fs" as fs
 import "meta" as meta
-import getAbsolutePath, resolveRelativePath from "./utils"
+import getAbsolutePath, resolveRelativePath, getCursorLine from "./utils"
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
 import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode, ImportKind, DecoratorNode, LambdaNode, MatchCase, MatchCaseKind, ForIterKind from "./parser"
 
@@ -1040,12 +1040,12 @@ type TypeError {
     match self.kind {
       TypeErrorKind.NotYetImplemented(reason) => {
         lines.push("Not yet implemented:")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("Reason: $reason")
       }
       TypeErrorKind.TypeMismatch(expected, received) => {
         lines.push("Type mismatch")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
 
         val expectedReprs = expected.map(t => t.repr()).join(", ")
         if expected.length == 1 {
@@ -1057,13 +1057,13 @@ type TypeError {
       }
       TypeErrorKind.DuplicateName(original) => {
         lines.push("Duplicate name '${original.name}'")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("This name is also declared at (${original.position.line}:${original.position.col})")
-        lines.push(self._getCursorLine(original.position, contents))
+        lines.push(getCursorLine(original.position.line, original.position.col, contents))
       }
       TypeErrorKind.UnknownName(name, kind) => {
         lines.push("Unknown $kind '$name'")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         if name == "_" {
           lines.push("The '_' identifier is a special name used to discard values, and it cannot be referenced")
         } else {
@@ -1072,7 +1072,7 @@ type TypeError {
       }
       TypeErrorKind.UnknownField(ty, name, specialCase) => {
         lines.push("Unknown field '$name'")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         match ty.kind {
           TypeKind.Func => lines.push("Functions don't have any fields or methods")
           _ => {
@@ -1100,7 +1100,7 @@ type TypeError {
       }
       TypeErrorKind.IllegalAccess(name, kind, parentTy) => {
         lines.push("Illegal access for $kind '$name'")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
 
         val capitalized = kind[0].toUpper() + kind[1:]
         lines.push("$capitalized '$name' is not marked as 'pub' within type '${parentTy.repr()}'")
@@ -1111,7 +1111,7 @@ type TypeError {
         } else {
           lines.push("Missing initializer for immutable variables")
         }
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
       }
       TypeErrorKind.MissingVarExprAndTypeAnn(name) => {
         if name |name| {
@@ -1119,34 +1119,34 @@ type TypeError {
         } else {
           lines.push("Could not determine type of mutable variables")
         }
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("A 'var' must have either an initial value or a type annotation (or both)")
       }
       TypeErrorKind.IllegalNonConstantEnumVariant => {
         lines.push("Forbidden value")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("This enum variant is non-constant and must be constructed")
       }
       TypeErrorKind.IllegalValueType(ty, purpose) => {
         match ty.kind {
           TypeKind.PrimitiveUnit => {
             lines.push("Forbidden type for $purpose")
-            lines.push(self._getCursorLine(self.position, contents))
+            lines.push(getCursorLine(self.position.line, self.position.col, contents))
             lines.push("Instances of type ${ty.repr()} cannot be used as $purpose values")
           }
           TypeKind.Never => {
             lines.push("Forbidden type for $purpose")
-            lines.push(self._getCursorLine(self.position, contents))
+            lines.push(getCursorLine(self.position.line, self.position.col, contents))
             lines.push("Expression has type ${ty.repr()}, which can never be used for $purpose")
           }
           TypeKind.Type => {
             lines.push("Forbidden type for $purpose")
-            lines.push(self._getCursorLine(self.position, contents))
+            lines.push(getCursorLine(self.position.line, self.position.col, contents))
             lines.push("Expression has type ${ty.repr()}, which cannot be used as a value")
           }
           _ => {
             lines.push("Could not determine type for $purpose")
-            lines.push(self._getCursorLine(self.position, contents))
+            lines.push(getCursorLine(self.position.line, self.position.col, contents))
             lines.push("Type '${ty.repr()}' has unfilled holes. Please use an explicit type annotation to denote the type")
           }
         }
@@ -1154,12 +1154,12 @@ type TypeError {
       TypeErrorKind.IllegalControlFlowType(ty, purpose) => {
         if purpose == "if" || purpose == "while" {
           lines.push("Forbidden type for $purpose-condition")
-          lines.push(self._getCursorLine(self.position, contents))
+          lines.push(getCursorLine(self.position.line, self.position.col, contents))
           lines.push("Conditions must either be Bool or Option types")
           lines.push("but instead found " + ty.repr())
         } else if purpose == "for" {
           lines.push("Forbidden type for for-loop target")
-          lines.push(self._getCursorLine(self.position, contents))
+          lines.push(getCursorLine(self.position.line, self.position.col, contents))
           if ty.hasUnfilledHoles() {
             lines.push("Type '${ty.repr()}' has unfilled holes")
           } else {
@@ -1169,7 +1169,7 @@ type TypeError {
       }
       TypeErrorKind.MissingRequiredBlock(exprKind, clause, missing) => {
         lines.push("Incomplete $exprKind expression")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         if missing {
           lines.push("The $clause-block must exist and contain a value")
         } else {
@@ -1178,23 +1178,23 @@ type TypeError {
       }
       TypeErrorKind.DuplicateParameter(name) => {
         lines.push("Duplicate parameter '$name'")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
       }
       TypeErrorKind.InvalidParamPosition(purpose) => {
         match purpose {
           "vararg" => {
             lines.push("Invalid location for variadic parameter")
-            lines.push(self._getCursorLine(self.position, contents))
+            lines.push(getCursorLine(self.position.line, self.position.col, contents))
             lines.push("Variadic parameters must be the last in the parameter list")
           }
           "required" => {
             lines.push("Invalid location for required parameter")
-            lines.push(self._getCursorLine(self.position, contents))
+            lines.push(getCursorLine(self.position.line, self.position.col, contents))
             lines.push("Required parameters must all be listed before any optional parameters")
           }
           "self" => {
             lines.push("Invalid usage of `self` parameter")
-            lines.push(self._getCursorLine(self.position, contents))
+            lines.push(getCursorLine(self.position.line, self.position.col, contents))
             lines.push("`self` can only appear within methods on types")
           }
           _ => { /* no other cases */ }
@@ -1202,7 +1202,7 @@ type TypeError {
       }
       TypeErrorKind.InvalidVarargType(ty) => {
         lines.push("Invalid type for vararg parameter")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         if self._typeIsOption(ty) {
           lines.push("Vararg parameters must be a non-Option Array type, but got ${ty.repr()}")
         } else {
@@ -1216,7 +1216,7 @@ type TypeError {
           lines.push("Return type mismatch for lambda function")
         }
 
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
 
         lines.push("Expected ${expected.repr()}")
         if received |received| {
@@ -1227,7 +1227,7 @@ type TypeError {
       }
       TypeErrorKind.InvalidTerminatorPosition(terminator) => {
         lines.push("Invalid location for $terminator statement")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         match terminator {
           "return" => lines.push("Return statements can only be used within function bodies")
           "break" => lines.push("Break statements can only be used within loop bodies")
@@ -1237,7 +1237,7 @@ type TypeError {
       }
       TypeErrorKind.UnreachableCode => {
         lines.push("Unreachable code")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("Control flow exits before this code is reached")
       }
       TypeErrorKind.WrongInvocationArity(expected, given) => {
@@ -1246,39 +1246,39 @@ type TypeError {
 
         if given > expected {
           lines.push("Too many arguments for invocation")
-          lines.push(self._getCursorLine(self.position, contents))
+          lines.push(getCursorLine(self.position.line, self.position.col, contents))
           lines.push("Expected no more than $expected $argumentsStr, but $given $verbStr passed")
         } else {
           lines.push("Not enough arguments for invocation")
-          lines.push(self._getCursorLine(self.position, contents))
+          lines.push(getCursorLine(self.position.line, self.position.col, contents))
           lines.push("$expected $argumentsStr required, but $given $verbStr passed")
         }
       }
       TypeErrorKind.ParameterLabelMismatch(expected, given) => {
         lines.push("Incorrect label for parameter")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("The parameter's name is '$expected', but instead found '$given'")
       }
       TypeErrorKind.IllegalParameterLabel => {
         lines.push("Incorrect use of label for parameter")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("Parameter labels are not allowed here because parameters' names cannot be determined")
       }
       TypeErrorKind.MixedArgumentType(label) => {
         lines.push("Cannot mix labeled and positional optional arguments")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("This argument requires a label because a prior optional parameter has been labeled:")
-        lines.push(self._getCursorLine(label.position, contents))
+        lines.push(getCursorLine(label.position.line, label.position.col, contents))
         lines.push("(Optional parameters may be listed positionally until a label is encountered. After that point, parameter values cannot be unambiguously determined without labels)")
       }
       TypeErrorKind.MissingRequiredArgumentLabel => {
         lines.push("Invalid instantiation")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("Calls of type constructors must include argument labels")
       }
       TypeErrorKind.MissingRequiredFields(names) => {
         lines.push("Invalid instantiation")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
 
         val maxToShow = 3
         val missing = names[:maxToShow].map(n => "'$n'")
@@ -1289,12 +1289,12 @@ type TypeError {
       }
       TypeErrorKind.UnknownParameterName(name) => {
         lines.push("Unknown parameter label")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("This function doesn't have a parameter named '$name'")
       }
       TypeErrorKind.UnknownParameterType(name) => {
         lines.push("Could not determine type for parameter '$name'")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("Consider adding a type annotation")
       }
       TypeErrorKind.ParameterTypeMismatch(name, expected, given) => {
@@ -1303,13 +1303,13 @@ type TypeError {
         } else {
           lines.push("Type mismatch for parameter")
         }
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("Expected: ${expected.repr()}")
         lines.push("but instead found: ${given.repr()}")
       }
       TypeErrorKind.IllegalCallableType(ty) => {
         lines.push("Cannot invoke target as function")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         match ty.kind {
           TypeKind.Instance(instanceKind, _) => {
             match instanceKind {
@@ -1322,18 +1322,18 @@ type TypeError {
       }
       TypeErrorKind.IllegalDecoratorType(ty) => {
         lines.push("Cannot use non-decorator type as a decorator")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
       }
       TypeErrorKind.WrongTypeArgumentArity(expected, given) => {
         val verbStr = if given == 1 "was" else "were"
 
         lines.push("Incorrect number of type arguments")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("Expected $expected, but $given $verbStr passed")
       }
       TypeErrorKind.NoSuchOperator(leftTy, op, rightTy) => {
         lines.push("Illegal operator")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         val isCoalesceError = op == BinaryOp.Coalesce && !self._typeIsOption(leftTy)
         if isCoalesceError {
           lines.push("The '${op.repr()}' operator can only be used on an Option type")
@@ -1344,12 +1344,12 @@ type TypeError {
       }
       TypeErrorKind.IllegalIndexableType(ty, isRange) => {
         lines.push("Unsupported indexing operation")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("Type '${ty.repr()}' is not indexable" + if isRange " as a range" else "")
       }
       TypeErrorKind.IllegalTupleIndexing(ty, reason) => {
         lines.push("Unsupported tuple indexing operation")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         match reason {
           IllegalTupleIndexingReason.IndexOutOfBounds => {
             lines.push("No value at index for tuple of type '${ty.repr()}'")
@@ -1371,16 +1371,16 @@ type TypeError {
       }
       TypeErrorKind.UnnecessaryOptSafety => {
         lines.push("Unnecessary use of '?.' operator")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("(The lhs value's type here is known to be a non-Option type)")
       }
       TypeErrorKind.InvalidTraitMethodSignature(givenFn) => {
         lines.push("Invalid signature for method '${givenFn.label.name}'")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
       }
       TypeErrorKind.IllegalAssignment(kind, name, reason) => {
         lines.push("Cannot assign to $kind '$name'")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         match reason {
           IllegalAssignmentReason.ImmutableVariable => lines.push("'$name' is declared as immutable")
           IllegalAssignmentReason.TypeAlias => lines.push("'$name' is a type, which cannot be overwritten")
@@ -1393,7 +1393,7 @@ type TypeError {
       }
       TypeErrorKind.UnknownModule(modulePath, isRelativeImport) => {
         lines.push("Could not import module")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         if isRelativeImport {
           lines.push("No file exists at path '$modulePath'")
         } else {
@@ -1402,32 +1402,32 @@ type TypeError {
       }
       TypeErrorKind.CircularDependency => {
         lines.push("Could not import module due to circular dependency")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("The current module is itself imported by this module (or one of its imports), resulting in a cycle")
       }
       TypeErrorKind.IllegalExportScope => {
         lines.push("Invalid visibility modifier")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("Exported values may only appear at the top level scope in a module")
       }
       TypeErrorKind.UnknownImport(moduleName, importName) => {
         lines.push("Invalid import")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("There's no exported value named '$importName' in module '$moduleName'")
       }
       TypeErrorKind.UnknownImportForAlias(importName, alias) => {
         lines.push("Unknown member '$importName'")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("There's no exported value named '$importName' in module aliased as '${alias.name}' at:")
-        lines.push(self._getCursorLine(alias.position, contents))
+        lines.push(getCursorLine(alias.position.line, alias.position.col, contents))
       }
       TypeErrorKind.DuplicateMatchCase => {
         lines.push("Duplicate match case")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
       }
       TypeErrorKind.UnreachableMatchCase(reason, subjectTy) => {
         lines.push("Unreachable match case")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         match reason {
           UnreachableMatchCaseReason.NoOverlap(caseTy) => {
             if caseTy |caseTy| {
@@ -1447,12 +1447,12 @@ type TypeError {
       }
       TypeErrorKind.EmptyMatchBlock => {
         lines.push("Empty block for match case")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("Each case in a match expression must result in a value")
       }
       TypeErrorKind.NonExhaustiveMatch(subjectTy) => {
         lines.push("Non-exhaustive match expression")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("Match target type '${subjectTy.repr()}' is not covered by all cases")
         lines.push("(You can use a wildcard to capture remaining cases)")
       }
@@ -1460,17 +1460,17 @@ type TypeError {
         match reason {
           InvalidMatchCaseDestructuringReason.NonEnum => {
             lines.push("Destructuring is not supported for types in match cases (aside from enum variants)")
-            lines.push(self._getCursorLine(self.position, contents))
+            lines.push(getCursorLine(self.position.line, self.position.col, contents))
           }
           InvalidMatchCaseDestructuringReason.NonEnumContainer => {
             lines.push("This variant is a constant enum variant, which cannot be destructured")
-            lines.push(self._getCursorLine(self.position, contents))
+            lines.push(getCursorLine(self.position.line, self.position.col, contents))
           }
           InvalidMatchCaseDestructuringReason.InvalidArity(expected, given) => {
             val verbStr = if given == 1 "was" else "were"
 
             lines.push("Incorrect number of destructuring arguments")
-            lines.push(self._getCursorLine(self.position, contents))
+            lines.push(getCursorLine(self.position.line, self.position.col, contents))
             lines.push("Expected $expected, but $given $verbStr passed")
             if given < expected {
               lines.push("(You can use '_' to denote positions that you wish to discard)")
@@ -1482,14 +1482,14 @@ type TypeError {
         match reason {
           InvalidDestructuringReason.NonTupleAsTuple(ty) => {
             lines.push("Invalid destructuring")
-            lines.push(self._getCursorLine(self.position, contents))
+            lines.push(getCursorLine(self.position.line, self.position.col, contents))
             lines.push("A value of type '${ty.repr()}' cannot be destructured as a tuple")
           }
           InvalidDestructuringReason.InvalidTupleArity(expected, given) => {
             val verbStr = if given == 1 "was" else "were"
 
             lines.push("Incorrect number of destructuring arguments for tuple")
-            lines.push(self._getCursorLine(self.position, contents))
+            lines.push(getCursorLine(self.position.line, self.position.col, contents))
             lines.push("Expected $expected, but $given $verbStr provided")
             if given < expected {
               lines.push("(You can use '_' to denote positions that you wish to discard)")
@@ -1499,7 +1499,7 @@ type TypeError {
       }
       TypeErrorKind.InvalidTryLocation(reason) => {
         lines.push("Invalid location for try expression")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
 
         match reason {
           InvalidTryLocationReason.NotWithinFunction => {
@@ -1507,7 +1507,7 @@ type TypeError {
           }
           InvalidTryLocationReason.InvalidFunctionReturnType(fnLabel, tryType, returnType, kind) => {
             lines.push("The containing function '${fnLabel.name}' has return type '${returnType.repr()}', which is incompatible with the try expression's type '${tryType.repr()}'.")
-            lines.push(self._getCursorLine(fnLabel.position, contents))
+            lines.push(getCursorLine(fnLabel.position.line, fnLabel.position.col, contents))
             match kind {
               InvalidFunctionReturnTypeKind.IsResult => {
                 lines.push("To be compatible, '${fnLabel.name}' must return a Result whose error type matches that of the try expression")
@@ -1521,32 +1521,32 @@ type TypeError {
       }
       TypeErrorKind.InvalidTryTarget(subjectTy) => {
         lines.push("Invalid subject for try expression")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("This value has type '${subjectTy.repr()}', which is not Try-able")
       }
       TypeErrorKind.TryReturnTypeMismatch(fnLabel, tryType, tryErrType, retErrType) => {
         lines.push("Return type mismatch for function containing try expression")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("The containing function '${fnLabel.name}' returns a Result whose error type is '${retErrType.repr()}', which is incompatible with the try expression.")
-        lines.push(self._getCursorLine(fnLabel.position, contents))
+        lines.push(getCursorLine(fnLabel.position.line, fnLabel.position.col, contents))
         lines.push("To be compatible, the return type of '${fnLabel.name}' must have '${tryErrType.repr()}' as its error type.")
         lines.push("Hint: You can use an else-clause to transform the error value into a compatible value and return it")
       }
       TypeErrorKind.NonComptimeDecoratorFieldType(decoratorName, fieldName, fieldTy) => {
         lines.push("Forbidden field type for decorator '$decoratorName'")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("This field has type '${fieldTy.repr()}', which is not allowed for fields of decorators.")
         // lines.push("Decorators' fields must have types whose values are known at compile-time")
         lines.push("Decorators' fields must be one of: Int, Float, Bool, String")
       }
       TypeErrorKind.ErrorWithinMacroFunction(macroFn) => {
         lines.push("Macro '${macroFn.label.name}' cannot produce valid code at this invocation site")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("The module in which the macro is defined has errors")
       }
       TypeErrorKind.ErrorWithinMacroOutput(macroName, generatedContents, innerError) => {
         lines.push("Macro '$macroName' produced invalid code at this invocation site")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("The generated code contains the following error:\n")
 
         val fakeModulePath = "<generated by macro '$macroName'>"
@@ -1558,31 +1558,17 @@ type TypeError {
       }
       TypeErrorKind.InvalidMacroParamType(exprStruct) => {
         lines.push("Invalid parameter type for @macro function")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("Macro parameters must be of type 'meta.${exprStruct.label.name}'")
       }
       TypeErrorKind.InvalidMacroReturnType(injectedCodeStruct) => {
         lines.push("Invalid return type for @macro function")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("Macros must return an instance of 'meta.${injectedCodeStruct.label.name}'")
       }
     }
 
     lines.join("\n")
-  }
-
-  // TODO: This is duplicated from Lexer, pull this out
-  func _getCursorLine(self, position: Position, contents: String, cursorLength = 1): String {
-    if contents.lines()[position.line - 1] |line| {
-      val len = position.col - 1 + cursorLength
-      val cursor = Array.fill(len, " ")
-      for i in (len - cursorLength):len {
-        cursor[i] = "^"
-      }
-      "  |  $line\n     ${cursor.join()}"
-    } else {
-      unreachable()
-    }
   }
 }
 
@@ -1717,7 +1703,6 @@ pub type Typechecker {
   numRootLevelScopes: Int = 0
   typecheckingBuiltin: BuiltinModule? = None
   pub lspMode: Bool = false
-  identsByLine: Map<Int, (Int, Int, IdentifierMeta)[]> = {}
   typeErrorSink: TypeError[]? = None
 
   pub func typecheckEntrypoint(self, modulePathAbs: String) {
@@ -2408,10 +2393,10 @@ pub type Typechecker {
 
   func _addLSPIdent(self, position: Position, ident: IdentifierMeta) {
     val v = (position.col - 1, position.col + ident.name.length - 1, ident)
-    if self.identsByLine[position.line - 1] |idents| {
+    if self.currentModule.identsByLine[position.line - 1] |idents| {
       idents.push(v)
     } else {
-      self.identsByLine[position.line - 1] = [v]
+      self.currentModule.identsByLine[position.line - 1] = [v]
     }
   }
 
@@ -2513,7 +2498,6 @@ pub type Typechecker {
 
     self.currentScope = prevScope
     mod.state = TypedModuleState.DeclarationsGathered
-    mod.identsByLine = self.identsByLine
     if self.typecheckingBuiltin {
       self.typecheckingBuiltin = None
     }
@@ -5981,7 +5965,7 @@ pub type Typechecker {
       }
     }
 
-    val lambdaName = "lambda_${token.position.line}_${token.position.col}"
+    val lambdaName = "lambda_${self.currentModule.id}_${token.position.line}_${token.position.col}"
     val prevScope = self.beginChildScope(lambdaName, ScopeKind.Func)
     val prevFn = self.currentFunction
 

@@ -1,6 +1,7 @@
 import "fs" as fs
 import "process" as process
 import Position from "./lexer"
+import getCursorLine from "./utils"
 import LiteralAstNode, UnaryOp, BinaryOp, AssignOp, BindingPattern, IndexingMode from "./parser"
 import Project, TypedModule, Scope, ScopeKind, TypedAstNode, TypedAstNodeKind, Type, TypeKind, Field, Struct, InstanceKind, TypedInvokee, Function, FunctionKind, Decorator, AccessorPathSegment, TypedAssignmentMode, Enum, TypedEnumVariant, EnumVariantKind, TypedIndexingNode, VariableAlias, TypedMatchCase, TypedMatchCaseKind, BuiltinModule, Variable, Terminator, TypedForIterKind from "./typechecker"
 import ModuleBuilder, Block, QbeType, Dest, QbeFunction, Value, Label, Callable, QbeData, QbeDataKind, Var from "./qbe"
@@ -28,7 +29,7 @@ type CompileError {
     match self.kind {
       CompileErrorKind.NotYetImplemented(reason) => {
         lines.push("Not yet implemented:")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("Reason: $reason")
       }
       CompileErrorKind.QbeError(message) => {
@@ -44,20 +45,6 @@ type CompileError {
     }
 
     lines.join("\n")
-  }
-
-  // TODO: This is duplicated from Lexer, pull this out
-  func _getCursorLine(self, position: Position, contents: String, cursorLength = 1): String {
-    if contents.lines()[position.line - 1] |line| {
-      val len = position.col - 1 + cursorLength
-      val cursor = Array.fill(len, " ")
-      for i in (len - cursorLength):len {
-        cursor[i] = "^"
-      }
-      "  |  $line\n     ${cursor.join()}"
-    } else {
-      unreachable()
-    }
   }
 }
 

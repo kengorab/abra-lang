@@ -1,4 +1,5 @@
 import Token, TokenKind, Position, StringInterpolationChunk from "./lexer"
+import getCursorLine from "./utils"
 
 pub type ParsedModule {
   pub imports: ImportNode[]
@@ -313,7 +314,7 @@ pub type ParseError {
     match self.kind {
       ParseErrorKind.UnexpectedToken(token) => {
         lines.push("Unexpected token '${token.kind.repr()}':")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
       }
       ParseErrorKind.ExpectedToken(expected, received) => {
 
@@ -324,33 +325,19 @@ pub type ParseError {
           val reprs = expected.map(kind => "'${kind.repr()}'").join(", ")
           lines.push("Unexpected token '${received.repr()}', expected one of $reprs:")
         }
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
       }
       ParseErrorKind.UnexpectedEof => {
         lines.push("Unexpected end of file:")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
       }
       ParseErrorKind.NotYetImplemented => {
         lines.push("Not yet implemented:")
-        lines.push(self._getCursorLine(self.position, contents))
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
       }
     }
 
     lines.join("\n")
-  }
-
-  // TODO: This is duplicated from Lexer, pull this out
-  func _getCursorLine(self, position: Position, contents: String, cursorLength = 1): String {
-    if contents.lines()[position.line - 1] |line| {
-      val len = position.col - 1 + cursorLength
-      val cursor = Array.fill(len, " ")
-      for i in (len - cursorLength):len {
-        cursor[i] = "^"
-      }
-      "  |  $line\n     ${cursor.join()}"
-    } else {
-      unreachable()
-    }
   }
 }
 
