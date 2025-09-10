@@ -3048,7 +3048,6 @@ pub type Generator {
       val innerTy = self.getIrTypeForConcreteType(innerConcreteType)
       val condVal = self.ssaValue(IrType.Bool, Operation.OptionIsNone(v), None)
 
-
       val ifBody = self.withinBlock("try_fail", true, () => {
         self.emit(Instruction(op: Operation.Return(Some(v))))
         None
