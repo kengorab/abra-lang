@@ -1038,6 +1038,11 @@ type TypeError {
     val lines = ["Error at $filePath:${self.position.line}:${self.position.col}"]
 
     match self.kind {
+      TypeErrorKind.InternalError(reason) => {
+        lines.push("Internal error:")
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
+        lines.push("Reason: $reason")
+      }
       TypeErrorKind.NotYetImplemented(reason) => {
         lines.push("Not yet implemented:")
         lines.push(getCursorLine(self.position.line, self.position.col, contents))
@@ -1232,7 +1237,6 @@ type TypeError {
           "return" => lines.push("Return statements can only be used within function bodies")
           "break" => lines.push("Break statements can only be used within loop bodies")
           "continue" => lines.push("Continue statements can only be used within loop bodies")
-          _ => { /* unreachable */ }
         }
       }
       TypeErrorKind.UnreachableCode => {
@@ -1314,7 +1318,6 @@ type TypeError {
           TypeKind.Instance(instanceKind, _) => {
             match instanceKind {
               InstanceKind.Enum => lines.push("This is a constant enum variant, and it accepts no arguments")
-              _ => unreachable()
             }
           }
           _ => lines.push("Type '${ty.repr()}' is not callable")
@@ -1627,6 +1630,7 @@ enum ErrorWithinMacroOutputKind {
 }
 
 enum TypeErrorKind {
+  InternalError(reason: String)
   NotYetImplemented(reason: String)
   TypeMismatch(expected: Type[], received: Type)
   DuplicateName(original: Label)
@@ -2062,7 +2066,7 @@ pub type Typechecker {
 
         return Ok(Either.Left(t))
       }
-      _ first => {
+      else first => {
         match self.findModuleByAlias(first.name) {
           None => {
             val (ty, importMod) = try self.findTypeByNameInScope(first.name) else {
@@ -2087,15 +2091,13 @@ pub type Typechecker {
                       return Ok(Either.Right((enum_, variant, variantIdx)))
                     }
                   }
-                  _ => {}
                 }
               }
-              _ => {}
             }
 
             Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
           }
-          _ => todo("module aliases")
+          else => Err(TypeError(position: first.position, kind: TypeErrorKind.NotYetImplemented("module aliases")))
         }
       }
     }
@@ -2135,7 +2137,10 @@ pub type Typechecker {
       if v.label.name == ident {
         if !v.alias && fnBarrierBreached {
           v.isCaptured = true
-          if !v.isGlobal() unreachable("Exported variable 'prelude:${v.label.name}' is not marked as a global")
+          if !v.isGlobal() {
+            self.addTypeError(TypeError(position: v.label.position, kind: TypeErrorKind.InternalError("Exported variable 'prelude:${v.label.name}' is not marked as a global")))
+            return None
+          }
         }
 
         return Some((v, None))
@@ -2149,7 +2154,10 @@ pub type Typechecker {
             TypedImportKind.Variable(v) => {
               if !v.alias && fnBarrierBreached {
                 v.isCaptured = true
-                if !v.isGlobal() unreachable("Exported variable '$name:${v.label.name}' is not marked as a global")
+                if !v.isGlobal() {
+                  self.addTypeError(TypeError(position: v.label.position, kind: TypeErrorKind.InternalError("Exported variable '$name:${v.label.name}' is not marked as a global")))
+                  return None
+                }
               }
 
               v
@@ -2309,6 +2317,8 @@ pub type Typechecker {
     self.currentModule.addTypeError(err)
   }
 
+  func internalError(self, pos: Position, reason: String): TypeError = TypeError(position: pos, kind: TypeErrorKind.InternalError(reason))
+
   func beginErrorCapture(self): TypeError[] {
     if self.typeErrorSink unreachable("cannot begin error capture, already collecting errors")
 
@@ -2370,7 +2380,7 @@ pub type Typechecker {
     } else {
       match enum_.scope.parent?.kind {
         ScopeKind.Module(_, name) => IdentifierMetaModule.Module(name)
-        _ => unreachable()
+        else => unreachable()
       }
     }
 
@@ -2535,15 +2545,15 @@ pub type Typechecker {
     val res = try self.typecheckInvocationOfFunction(bogusTok, dec.name.position, initializerFn, [], dec.arguments, None, None, Some(Instantiatable.Struct(decoratorStruct)))
     val typedArgs = match res.kind {
       TypedAstNodeKind.Invocation(_, typedArgs, _) => typedArgs
-      else => unreachable("must be TypedAstNodeKind.Invocation (${self.currentModule.name}:${dec.name.position.line}:${dec.name.position.col})")
+      else => return Err(self.internalError(dec.name.position, "must be TypedAstNodeKind.Invocation"))
     }
 
     val args: LiteralAstNode[] = []
     for arg in typedArgs {
       match arg?.kind {
-        None => todo("default-valued decorator fields")
         TypedAstNodeKind.Literal(litNode) => args.push(litNode)
-        else => unreachable("non-literal decorator argument, should have been caught during parsing")
+        None => return Err(self.internalError(dec.name.position, "default-valued decorator fields"))
+        else => return Err(self.internalError(dec.name.position, "non-literal decorator argument, should have been caught during parsing"))
       }
     }
 
@@ -2798,12 +2808,12 @@ pub type Typechecker {
 
       // Since `self` is not included in the fn.params array, but it is in the untyped AST, when referring to the untyped AST, we need to adjust
       val origNodeParamIdx = match fn.kind { FunctionKind.InstanceMethod => idx + 1, _ => idx }
-      val paramNode = try params[origNodeParamIdx] else unreachable("there should be as many parameter nodes as typed parameters")
-      val defaultValueNode = try paramNode.defaultValue else unreachable("the only way a parameter needs revisiting is if it has a default value")
+      val paramNode = try params[origNodeParamIdx] else return Err(self.internalError(param.label.position, "there should be as many parameter nodes as typed parameters"))
+      val defaultValueNode = try paramNode.defaultValue else return Err(self.internalError(param.label.position, "the only way a parameter needs revisiting is if it has a default value"))
 
       val hint = paramHints[idx]
       val (typedParam, needsRevisit) = try self.typecheckFunctionParam(param: paramNode, typeHint: hint, allowSelf: allowSelf, preexistingParamVar: Some(paramVar))
-      if needsRevisit unreachable("parameters should not need to be revisited more than once")
+      if needsRevisit return Err(self.internalError(param.label.position, "parameters should not need to be revisited more than once"))
       fn.params[idx] = typedParam
     }
 
@@ -2926,7 +2936,7 @@ pub type Typechecker {
       match fn.kind {
         FunctionKind.InstanceMethod => struct.instanceMethods.push(fn)
         FunctionKind.StaticMethod => struct.staticMethods.push(fn)
-        FunctionKind.Standalone => unreachable("method has invalid function kind at this point")
+        FunctionKind.Standalone => return Err(self.internalError(fn.label.position, "method has invalid function kind at this point"))
       }
     }
 
@@ -2949,8 +2959,8 @@ pub type Typechecker {
       InstanceKind.Enum(enum_) => Type(kind: TypeKind.Instance(InstanceKind.Enum(enum_), []))
     }
 
-    val instanceMethodsByName = instanceMethods.keyBy(f => f.label)
-    val staticMethodsByName = staticMethods.keyBy(f => f.label)
+    val instanceMethodsByName = instanceMethods.keyBy(f => f.label.name)
+    val staticMethodsByName = staticMethods.keyBy(f => f.label.name)
     var toStringFn: Function? = None
     var hashFn: Function? = None
     var eqFn: Function? = None
@@ -2958,15 +2968,15 @@ pub type Typechecker {
       var isToString = false
       var isHash = false
       var isEq = false
-      val fn = if instanceMethodsByName[funcDeclNode.name] |fn| {
+      val fn = if instanceMethodsByName[funcDeclNode.name.name] |fn| {
         isToString = fn.label.name == "toString"
         isHash = fn.label.name == "hash"
         isEq = fn.label.name == "eq"
         fn
-      } else if staticMethodsByName[funcDeclNode.name] |fn| {
-        fn
       } else {
-        unreachable("could not find function among instance/static methods")
+        try staticMethodsByName[funcDeclNode.name.name] else {
+          return Err(self.internalError(funcDeclNode.name.position, "could not find function among instance/static methods"))
+        }
       }
       val paramsNeedingRevisit = try self.typecheckFunctionPass2(fn: fn, allowSelf: true, params: funcDeclNode.params)
       allParamsNeedingRevisit[fn.label] = paramsNeedingRevisit
@@ -3035,7 +3045,7 @@ pub type Typechecker {
 
     for field, idx in node.fields {
       val initializer = try field.initializer else continue
-      val structField = try struct.fields[idx] else unreachable()
+      val structField = try struct.fields[idx] else return Err(self.internalError(struct.label.position, "missing expected field at index $idx"))
 
       val typedInitializer = try self._typecheckExpression(initializer, Some(structField.ty))
       if !self._typeSatisfiesRequired(ty: typedInitializer.ty, required: structField.ty) {
@@ -3044,16 +3054,14 @@ pub type Typechecker {
       structField.initializer = Some(typedInitializer)
     }
 
-    val instanceMethods = struct.instanceMethods.keyBy(f => f.label)
-    val staticMethods = struct.staticMethods.keyBy(f => f.label)
+    val instanceMethods = struct.instanceMethods.keyBy(f => f.label.name)
+    val staticMethods = struct.staticMethods.keyBy(f => f.label.name)
     for funcDeclNode in node.methods {
       val fnLabel = funcDeclNode.name
-      val fn = if instanceMethods[fnLabel] |f| {
-        f
-      } else if staticMethods[fnLabel] |f| {
-        f
-      } else {
-        unreachable("method not visited in prior pass")
+      val fn = try instanceMethods[fnLabel.name] else {
+        try staticMethods[fnLabel.name] else {
+          return Err(self.internalError(funcDeclNode.name.position, "method not visited in prior pass"))
+        }
       }
 
       // if params improperly visited in prior pass, we can't proceed here
@@ -3157,7 +3165,7 @@ pub type Typechecker {
       match fn.kind {
         FunctionKind.InstanceMethod => enum_.instanceMethods.push(fn)
         FunctionKind.StaticMethod => enum_.staticMethods.push(fn)
-        FunctionKind.Standalone => unreachable("method has invalid function kind at this point")
+        FunctionKind.Standalone => return Err(self.internalError(fn.label.position, "method has invalid function kind at this point"))
       }
     }
 
@@ -3179,11 +3187,11 @@ pub type Typechecker {
         EnumVariantKind.Container(typedFields) => {
           val fields = match node.variants[idx] {
             EnumVariant.Container(_, fields) => fields
-            _ => unreachable("the untyped enum variant must exist at index, and must also be a Container")
+            else => return Err(self.internalError(typedVariant.label.position, "the untyped enum variant must exist at index, and must also be a Container"))
           }
 
           for typedField, idx in typedFields {
-            val field = try fields[idx] else unreachable("the untyped field must exist at index")
+            val field = try fields[idx] else return Err(self.internalError(typedField.name.position, "the untyped field must exist at index"))
             if field.initializer |initializer| {
               val typedInitializer = try self._typecheckExpression(initializer, Some(typedField.ty))
               if !self._typeSatisfiesRequired(ty: typedInitializer.ty, required: typedField.ty) {
@@ -3213,16 +3221,16 @@ pub type Typechecker {
     val prevTypeDecl = self.currentTypeDecl
     self.currentTypeDecl = Some(InstanceKind.Enum(enum_))
 
-    val instanceMethods = enum_.instanceMethods.keyBy(f => f.label)
-    val staticMethods = enum_.staticMethods.keyBy(f => f.label)
+    val instanceMethods = enum_.instanceMethods.keyBy(f => f.label.name)
+    val staticMethods = enum_.staticMethods.keyBy(f => f.label.name)
     for funcDeclNode in node.methods {
       val fnLabel = funcDeclNode.name
-      val fn = if instanceMethods[fnLabel] |f| {
+      val fn = if instanceMethods[fnLabel.name] |f| {
         f
-      } else if staticMethods[fnLabel] |f| {
+      } else if staticMethods[fnLabel.name] |f| {
         f
       } else {
-        unreachable("method not visited in prior pass")
+        return Err(self.internalError(funcDeclNode.name.position, "method not visited in prior pass"))
       }
 
       // if params improperly visited in prior pass, we can't proceed here
@@ -3725,7 +3733,10 @@ pub type Typechecker {
     for node in self.currentModule.parsedModule.nodes {
       val typedNode = match node.kind {
         AstNodeKind.FunctionDeclaration(fnDeclNode) => {
-          val (fnOpt, paramsNeedingRevisit) = try functionsIter.next() else unreachable("there should be as many functions as there are functiondecl nodes")
+          val (fnOpt, paramsNeedingRevisit) = try functionsIter.next() else {
+            self.addTypeError(self.internalError(fnDeclNode.name.position, "there should be as many functions as there are functiondecl nodes"))
+            continue
+          }
           val fn = try fnOpt else continue
 
           try self.typecheckFunctionPass3(fn: fn, allowSelf: false, params: fnDeclNode.params, body: fnDeclNode.body, paramsNeedingRevisit: paramsNeedingRevisit) else |err| {
@@ -3736,7 +3747,10 @@ pub type Typechecker {
           TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.FunctionDeclaration(fn))
         }
         AstNodeKind.TypeDeclaration(typeDeclNode) => {
-          val (structOpt, toRevisit) = try structsIter.next() else unreachable("there should be as many types as there are typedecl nodes")
+          val (structOpt, toRevisit) = try structsIter.next() else {
+            self.addTypeError(self.internalError(typeDeclNode.name.position, "there should be as many types as there are typedecl nodes"))
+            continue
+          }
           val struct = try structOpt else continue
           if !struct.isDecoratorType {
             try self.typecheckStructPass3(struct, typeDeclNode, toRevisit) else |err| {
@@ -3748,7 +3762,10 @@ pub type Typechecker {
           TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.TypeDeclaration(struct))
         }
         AstNodeKind.EnumDeclaration(enumDeclNode) => {
-          val (enumOpt, toRevisit) = try enumsIter.next() else unreachable("there should be as many enums as there are enumdecl nodes")
+          val (enumOpt, toRevisit) = try enumsIter.next() else {
+            self.addTypeError(self.internalError(enumDeclNode.name.position, "there should be as many enums as there are enumdecl nodes"))
+            continue
+          }
           val enum_ = try enumOpt else continue
 
           try self.typecheckEnumPass3(enum_, enumDeclNode, toRevisit) else |err| {
@@ -3759,7 +3776,10 @@ pub type Typechecker {
           TypedAstNode(token: node.token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.EnumDeclaration(enum_))
         }
         AstNodeKind.BindingDeclaration(bindingDeclNode) => {
-          val (token, annType, variables, typedExpr, node) = try bindingsIter.next() else unreachable("there should be as many bindings as there are bbbbindingdecl nodes")
+          val (token, annType, variables, typedExpr, node) = try bindingsIter.next() else {
+            self.addTypeError(self.internalError(bindingDeclNode.bindingPattern.position(), "there should be as many bindings as there are bindingdecl nodes"))
+            continue
+          }
           self.typecheckBindingPass2(token, annType, variables, typedExpr, node)
         }
         else => {
@@ -3963,7 +3983,7 @@ pub type Typechecker {
         val typedIndexingNode = match typedLhs.kind {
           TypedAstNodeKind.Indexing(node) => node
           TypedAstNodeKind.Placeholder => return Ok(typedLhs)
-          _ => unreachable("typecheckIndexing returned unexpected TypedAstNodeKind")
+          else => return Err(self.internalError(typedLhs.token.position, "typecheckIndexing returned unexpected TypedAstNodeKind"))
         }
         val assignmentTy = self._typeIsOption(typedLhs.ty) ?: typedLhs.ty
 
@@ -4001,10 +4021,10 @@ pub type Typechecker {
           TypedAstNodeKind.Identifier(name, _, _, varImportMod) => {
             val pos = typedLhs.token.position
             if varImportMod return Err(TypeError(position: pos, kind: TypeErrorKind.IllegalAssignment(kind: "member", name: name, reason: IllegalAssignmentReason.Import)))
-            unreachable("typecheckAccessor returned unexpected TypedAstNodeKind")
+            return Err(self.internalError(pos, "typecheckAccessor returned unexpected TypedAstNodeKind"))
           }
           TypedAstNodeKind.Placeholder => return Ok(typedLhs)
-          _ => unreachable("typecheckAccessor returned unexpected TypedAstNodeKind")
+          else => return Err(self.internalError(typedLhs.token.position, "typecheckAccessor returned unexpected TypedAstNodeKind"))
         }
 
         val typedExpr = try self._typecheckExpression(expr, Some(field.ty))
@@ -4601,7 +4621,7 @@ pub type Typechecker {
     }
 
     val ty = try resultTy else {
-      if !isStatement unreachable("match expression without result type")
+      if !isStatement return Err(self.internalError(token.position, "match expression without result type"))
       Type(kind: TypeKind.PrimitiveUnit)
     }
 
@@ -4644,7 +4664,7 @@ pub type Typechecker {
       AstNodeKind.If(condition, conditionBinding, ifBlock, elseBlock) => try self._typecheckIf(token, condition, conditionBinding, ifBlock, elseBlock, typeHint)
       AstNodeKind.Match(subject, cases) => try self._typecheckMatch(token, subject, cases, typeHint)
       AstNodeKind.Try(expr, elseClause) => try self.typecheckTry(token, expr, elseClause, typeHint)
-      _ => unreachable("all other node types should have already been handled")
+      _ => return Err(self.internalError(token.position, "all other node types should have already been handled"))
     }
 
     match typedExpr.ty.kind {
@@ -4653,7 +4673,6 @@ pub type Typechecker {
           return Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.IllegalValueType(typedExpr.ty, "value")))
         }
       }
-      _ => {}
     }
 
     Ok(typedExpr)
@@ -4949,7 +4968,7 @@ pub type Typechecker {
 
                 val resolvedGenerics: Map<String, Type> = {}
                 for name, idx in struct.typeParams {
-                  resolvedGenerics[name] = try generics[idx] else unreachable("typeParams.length != generics.length")
+                  resolvedGenerics[name] = try generics[idx] else return Err(self.internalError(label.position, "typeParams.length != generics.length"))
                 }
                 var ty = field.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
                 if optSafe {
@@ -4968,7 +4987,7 @@ pub type Typechecker {
           if fn.label.name == label.name {
             val isPublic = match fn.kind {
               FunctionKind.InstanceMethod(_, isPublic) => isPublic
-              else => unreachable("Function '${fn.label.name}' should be an instance method here")
+              else => return Err(self.internalError(label.position, "Function '${fn.label.name}' should be an instance method here"))
             }
             if !isPublic && self._isIllegalAccessForMember(instanceTypeModuleId) {
               return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAccess(name: fn.label.name, kind: "method", parentTy: ty)))
@@ -4979,7 +4998,7 @@ pub type Typechecker {
             } else {
               val resolvedGenerics: Map<String, Type> = {}
               for name, idx in typeParams {
-                resolvedGenerics[name] = try generics[idx] else unreachable("typeParams.length != generics.length")
+                resolvedGenerics[name] = try generics[idx] else return Err(self.internalError(label.position, "typeParams.length != generics.length"))
               }
 
               fn.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: true, genericsInScope: #{})
@@ -5037,7 +5056,7 @@ pub type Typechecker {
           if method.label.name == label.name {
             val isPublic = match method.kind {
               FunctionKind.StaticMethod(_, isPublic) => isPublic
-              else => unreachable("Function '${method.label.name}' should be a static method here")
+              else => return Err(self.internalError(label.position, "Function '${method.label.name}' should be a static method here"))
             }
             if !isPublic && self._isIllegalAccessForMember(typeModuleId) {
               return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAccess(name: method.label.name, kind: "static method", parentTy: ty)))
@@ -5094,7 +5113,7 @@ pub type Typechecker {
   func typecheckAccessor(self, token: Token, node: AccessorAstNode, typeHint: Type?, isInvocation: Bool): Result<TypedAstNode, TypeError> {
     var accessorPath = node.path
 
-    val firstSeg = try accessorPath[0] else unreachable("path should have at least 1 segment")
+    val firstSeg = try accessorPath[0] else return Err(self.internalError(token.position, "path should have at least 1 segment"))
     val (maybeModuleAccessor, errorOccurred) = self.resolveModuleAliasAccessor(node.root, firstSeg)
     val typedRoot = if maybeModuleAccessor |n| {
       if accessorPath.length == 1 return Ok(n)
@@ -5229,7 +5248,7 @@ pub type Typechecker {
       }
     }
 
-    val finalField = try path.pop() else unreachable("the accessor path should not be empty")
+    val finalField = try path.pop() else return Err(self.internalError(token.position, "the accessor path should not be empty"))
 
     Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Accessor(typedRoot, path, finalField)))
   }
@@ -5386,7 +5405,7 @@ pub type Typechecker {
     if selfVal |(selfNode, _)| {
       val instanceKind = match fn.kind {
         FunctionKind.InstanceMethod(instanceKind, _) => instanceKind
-        else => unreachable("if selfVal passed, then FunctionKind must be InstanceMethod")
+        else => return Err(self.internalError(token.position, "if selfVal passed, then FunctionKind must be InstanceMethod"))
       }
 
       // When instanceKind is not present on FunctionKind.InstanceMethod, that means that the method's selfVal is a generic.
@@ -5487,7 +5506,7 @@ pub type Typechecker {
       }
 
       val (typedArg, paramType) = if param.ty.containsGenerics() {
-        if fn.isMacro todo("macro functions with generics")
+        if fn.isMacro return Err(TypeError(position: token.position, kind: TypeErrorKind.NotYetImplemented("macro functions with generics")))
 
         var paramType = paramTy.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: genericsInScope)
 
@@ -5624,14 +5643,23 @@ pub type Typechecker {
     // If there's any errors in the module in which the macro function is declared, then assume that we cannot accurately invoke the function at compile-time.
     // Note: this is not a great assumption, since the function itself may not have any related errors, and may not depend on anything in the module which
     // has any errors. However, this is difficult to verify at the moment.
-    val (_, fnModulePath) = try fn.scope.findParentModule() else unreachable("fn '${fn.label.name} must be defined within a module")
-    val fnModule = try self.project.modules[fnModulePath] else unreachable("could not find module '$fnModulePath'")
+    val (_, fnModulePath) = try fn.scope.findParentModule() else {
+      self.addTypeError(self.internalError(token.position, "fn '${fn.label.name} must be defined within a module"))
+      return TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
+    }
+    val fnModule = try self.project.modules[fnModulePath] else {
+      self.addTypeError(self.internalError(token.position, "could not find module '$fnModulePath'"))
+      return TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
+    }
     if fnModule.hasError() {
       self.addTypeError(TypeError(position: token.position, kind: TypeErrorKind.ErrorWithinMacroFunction(fn)))
       return TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
     }
 
-    val injectedCode = try self.comptimeFuncEvaluator(fn, typedArguments, resolvedGenerics) else |e| unreachable("comptimeFuncEvaluator: $e")
+    val injectedCode = try self.comptimeFuncEvaluator(fn, typedArguments, resolvedGenerics) else |e| {
+      self.addTypeError(self.internalError(token.position, "comptimeFuncEvaluator: $e"))
+      return TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
+    }
     val contents = injectedCode.chunks.join()
     val parsedModule = try tokenizeAndParse(contents) else |e| {
       val kind = TypeErrorKind.ErrorWithinMacroOutput(macroName: fn.label.name, generatedContents: contents, innerError: ErrorWithinMacroOutputKind.LexerOrParseError(e))
@@ -5675,7 +5703,10 @@ pub type Typechecker {
     }
 
     // todo: somehow allow this
-    try resultNode else unreachable("an empty list of nodes was returned")
+    try resultNode else {
+      self.addTypeError(self.internalError(token.position, "an empty list of nodes was returned"))
+      TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
+    }
   }
 
   func typecheckArray(self, token: Token, items: AstNode[], typeHint: Type?): Result<TypedAstNode, TypeError> {
@@ -5955,7 +5986,7 @@ pub type Typechecker {
       match hint.kind {
         TypeKind.Func(paramTypes, retType) => {
           for (ty, isRequired) in paramTypes {
-            if !isRequired unreachable("unexpected non-required param in lambda param type hint")
+            if !isRequired return Err(self.internalError(token.position, "unexpected non-required param in lambda param type hint"))
 
             paramHints.push(ty)
           }
