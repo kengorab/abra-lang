@@ -1894,6 +1894,7 @@ pub type Typechecker {
       "String" => Some((Type(kind: TypeKind.PrimitiveString), None))
       "Map" => Some((Type(kind: TypeKind.Type(InstanceKind.Struct(self.project.preludeMapStruct))), None))
       "Set" => Some((Type(kind: TypeKind.Type(InstanceKind.Struct(self.project.preludeSetStruct))), None))
+      "Result" => Some((Type(kind: TypeKind.Type(InstanceKind.Enum(self.project.preludeResultEnum))), None))
       _ => {
         var scope = Some(self.currentScope)
         while scope |sc| {

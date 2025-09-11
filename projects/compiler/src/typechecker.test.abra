@@ -102,7 +102,14 @@ func main() {
     if !verifyStdModule(allModules, 0, "_intrinsics") return
     if !verifyStdModule(allModules, 1, "libc") return
     if !verifyStdModule(allModules, 2, "prelude") return
-    val filteredModules = allModules[3:].filter(m => !m.name.endsWith("/meta.abra"))
+    val filteredModules = allModules[3:].filter(m => {
+      !m.name.endsWith("/_intrinsics.abra") &&
+      !m.name.endsWith("/libc.abra") &&
+      !m.name.endsWith("/io.abra") &&
+      !m.name.endsWith("/process.abra") &&
+      !m.name.endsWith("/prelude.abra") &&
+      !m.name.endsWith("/meta.abra")
+    })
 
     Jsonifier(allowPlaceholderNodes: printModulesOnError)
       .printModules(filteredModules)
