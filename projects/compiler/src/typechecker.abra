@@ -131,7 +131,6 @@ pub type TypedModule {
   pub rootScope: Scope
   parsedModule: ParsedModule
   decls: Declarations
-  isEntry: Bool = false
   state: TypedModuleState = TypedModuleState.NotStarted
   imports: Map<String, ImportedModule> = {}
   pub exports: Map<String, Export> = {}
@@ -515,11 +514,8 @@ pub type Project {
     }
   }
 
-  pub func sortedModules(self): TypedModule[] {
+  pub func sortedModules(self, entry: TypedModule): TypedModule[] {
     val modules = self.modules.values()
-    val entry = try modules.find(m => m.isEntry) else {
-      return self.modules.values().sortBy(m => m.id)
-    }
 
     val visited: Set<Int> = #{}
     val result: TypedModule[] = Array.withCapacity(modules.length)
@@ -1709,7 +1705,7 @@ pub type Typechecker {
   pub lspMode: Bool = false
   typeErrorSink: TypeError[]? = None
 
-  pub func typecheckEntrypoint(self, modulePathAbs: String) {
+  pub func typecheckEntrypoint(self, modulePathAbs: String): TypedModule {
     val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
     val preludeModulePathAbs = "/" + preludeModulePathSegs.join("/")
 
@@ -1720,7 +1716,7 @@ pub type Typechecker {
       self.lspMode = lspMode
 
       for (_, mod) in self.project.modules {
-        if mod.hasError() return
+        if mod.hasError() return mod
       }
 
       val preludeStructs = [
@@ -1747,11 +1743,11 @@ pub type Typechecker {
     }
 
     val mod = self.typecheckModuleDeclarations(modulePathAbs)
-    mod.isEntry = true
-
-    for m in self.project.sortedModules() {
+    for m in self.project.sortedModules(mod) {
       self.typecheckModuleDefinitions(m)
     }
+
+    mod
   }
 
   func _verifyNameUniqueInScope(self, label: Label, scope: Scope): TypeError? {
@@ -2517,6 +2513,8 @@ pub type Typechecker {
   }
 
   func typecheckModuleDefinitions(self, mod: TypedModule) {
+    if self.project.modules[mod.name]?.state == Some(TypedModuleState.Complete) return
+
     self.currentModule = mod
     val prevScope = self.currentScope
     self.currentScope = mod.rootScope
