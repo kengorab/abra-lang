@@ -402,21 +402,42 @@ pub type AbraLanguageService {
       ))
     }
 
-    for err in mod.typeErrors {
-      val position = err.position
-      val message = err.getMessage(mod.name, contents)
-      val pos = Position(line: position.line - 1, character: position.col - 1)
-      diagnostics.push(Diagnostic(
-        range: Range(start: pos, end: pos),
-        severity: Some(DiagnosticSeverity.Error),
-        message: message
-          .replaceAll("\n", "\\n")
-          .replaceAll("\"", "\\\"")
-          .replaceAll("\t", "\\t"),
-      ))
-    }
+    for err in mod.typeErrors {\n      val position = err.position\n      val message = err.getMessage(mod.name, contents)\n      val pos = Position(line: position.line - 1, character: position.col - 1)\n      diagnostics.push(Diagnostic(\n        range: Range(start: pos, end: pos),\n        severity: Some(DiagnosticSeverity.Error),\n        message: message\n          .replaceAll(\"\\n\", \"\\\\n\")\n          .replaceAll(\"\\\"\", \"\\\\\\\"\")\n          .replaceAll(\"\\t\", \"\\\\t\"),\n      ))\n    }\n\n    // Check for mutable variables that are never reassigned\n    self._checkUnreassignedVariables(mod, diagnostics)
 
     diagnostics
+  }
+
+  func _checkUnreassignedVariables(self, mod: TypedModule, diagnostics: Diagnostic[]) {
+    // Check variables in the root scope
+    self._checkScopeVariables(mod.rootScope, mod.name, diagnostics)
+    
+    // Check variables in nested scopes
+    self._checkNestedScopes(mod.rootScope, mod.name, diagnostics)
+  }
+
+  func _checkScopeVariables(self, scope: Scope, moduleName: String, diagnostics: Diagnostic[]) {
+    for variable in scope.variables {
+      // Check if it's a mutable variable that was never reassigned
+      if variable.mutable && !variable.isReassigned && !variable.alias {
+        val pos = Position(line: variable.label.position.line - 1, character: variable.label.position.col - 1)
+        diagnostics.push(Diagnostic(
+          range: Range(start: pos, end: pos),
+          severity: Some(DiagnosticSeverity.Warning),
+          message: "Variable '${variable.label.name}' is declared as mutable but never reassigned. Consider using 'val' instead.",
+        ))
+      }
+    }
+  }
+
+  func _checkNestedScopes(self, scope: Scope, moduleName: String, diagnostics: Diagnostic[]) {
+    // Check functions
+    for fn in scope.functions {
+      self._checkScopeVariables(fn.scope, moduleName, diagnostics)
+      self._checkNestedScopes(fn.scope, moduleName, diagnostics)
+    }
+    
+    // Check other nested scopes if they exist
+    // This would require traversing child scopes, but for now we'll just check function scopes
   }
 
   func _findIdentAtPosition(self, uri: String, position: Position): (Int, Int, Int, IdentifierMeta)? {

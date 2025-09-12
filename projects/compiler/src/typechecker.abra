@@ -175,6 +175,7 @@ pub type Variable {
   pub isExported: Bool = false
   pub isParameter: Bool = false
   pub isCaptured: Bool = false
+  pub isReassigned: Bool = false
 
   func bogus(name = "_bogus", ty = Type(kind: TypeKind.Never)): Variable {
     val label = Label(name: name, position: Position.bogus())
@@ -3969,6 +3970,11 @@ pub type Typechecker {
           _ => {
             if !variable.mutable return Err(TypeError(position: pos, kind: TypeErrorKind.IllegalAssignment(kind: "variable", name: name, reason: IllegalAssignmentReason.ImmutableVariable)))
           }
+        }
+
+        // Mark the variable as reassigned if it's mutable
+        if variable.mutable {
+          variable.isReassigned = true
         }
 
         val typedExpr = try self._typecheckExpression(expr, Some(variable.ty))

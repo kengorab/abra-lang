@@ -1,0 +1,23 @@
+// Test case for variable reassignment tracking
+// This variable is mutable but never reassigned - should trigger a warning
+var neverReassigned = 10
+
+// This variable is mutable and is reassigned - should not trigger a warning
+var reassigned = 20
+reassigned = 30
+
+// This variable is immutable - should not trigger a warning
+val immutable = 40
+
+// Test in a function scope
+func testFunction() {
+  // This variable is mutable but never reassigned - should trigger a warning
+  var funcNeverReassigned = 50
+  
+  // This variable is mutable and is reassigned - should not trigger a warning
+  var funcReassigned = 60
+  funcReassigned = 70
+  
+  // This variable is immutable - should not trigger a warning
+  val funcImmutable = 80
+}
