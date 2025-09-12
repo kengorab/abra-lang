@@ -945,7 +945,9 @@ pub type Generator {
     self.knowns.strTy = Some(self.getOrAddCompositeType(strConcreteTy))
     self.knowns.strInit = Some(self.getOrGenInitializerFn(strConcreteTy, None, {}))
 
-    for mod in self.project.sortedModules() {
+    // Sort by id since there's no obvious entrypoint available. I wonder how long this will work before I start to see issues
+    val sortedModules = self.project.modules.values().sortBy(m => m.id)
+    for mod in sortedModules {
       if self.genModule(mod) |modFn| {
         self.mainFn.block[1].push(Instruction(op: Operation.Call(ret: IrType.Unit, fnName: modFn.name, args: [])))
       }

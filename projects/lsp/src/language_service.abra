@@ -371,6 +371,8 @@ pub type AbraLanguageService {
 
     val comptimeFuncEvaluator = ComptimeFunctionEvaluator.init(self._project)
 
+    self._project.modules.remove(filePath)
+
     val typechecker = Typechecker(
       moduleLoader: self._moduleLoader,
       project: self._project,
@@ -396,6 +398,7 @@ pub type AbraLanguageService {
         range: Range(start: pos, end: pos),
         severity: Some(DiagnosticSeverity.Error),
         message: message
+          .replaceAll("\\", "\\\\")
           .replaceAll("\n", "\\n")
           .replaceAll("\"", "\\\"")
           .replaceAll("\t", "\\t"),
@@ -410,6 +413,7 @@ pub type AbraLanguageService {
         range: Range(start: pos, end: pos),
         severity: Some(DiagnosticSeverity.Error),
         message: message
+          .replaceAll("\\", "\\\\")
           .replaceAll("\n", "\\n")
           .replaceAll("\"", "\\\"")
           .replaceAll("\t", "\\t"),

@@ -39,7 +39,7 @@ func main() {
       project: project,
       comptimeFuncEvaluator: comptimeFuncEvaluator.eval,
     )
-    typechecker.typecheckEntrypoint(filePathAbs)
+    val entryMod = typechecker.typecheckEntrypoint(filePathAbs)
 
     val readFileErrors: String[] = []
     val errorMessages: String[] = []
@@ -77,7 +77,7 @@ func main() {
       process.exit(1)
     }
 
-    val builder = match Compiler.compile(project) {
+    val builder = match Compiler.compile(project, entryMod) {
       Ok(v) => v
       Err(e) => {
         stdoutWriteln(e.getMessage())

@@ -12,12 +12,12 @@ pub type BuildCmd {
   pub programArguments: String[]
 }
 
-func typecheck(stdRoot: String, filePath: Path): Project {
+func typecheck(stdRoot: String, filePath: Path): (TypedModule, Project) {
   val moduleLoader = ModuleLoader(stdRoot: stdRoot)
   val project = Project()
   val typechecker = Typechecker(moduleLoader: moduleLoader, project: project)
 
-  typechecker.typecheckEntrypoint(filePath.asString())
+  val entryMod = typechecker.typecheckEntrypoint(filePath.asString())
 
   val readFileErrors: String[] = []
   val errorMessages: String[] = []
@@ -55,7 +55,7 @@ func typecheck(stdRoot: String, filePath: Path): Project {
     process.exit(1)
   }
 
-  project
+  (entryMod, project)
 }
 
 pub func build(cmd: BuildCmd) {
@@ -65,9 +65,9 @@ pub func build(cmd: BuildCmd) {
   }
 
   val inputPath = Path.fromString(cmd.inputFile)
-  val project = typecheck(abraStdRoot, inputPath)
+  val (entryMod, project) = typecheck(abraStdRoot, inputPath)
 
-  val builder = try Compiler.compile(project) else |e| {
+  val builder = try Compiler.compile(project, entryMod) else |e| {
     stdoutWriteln(e.getMessage())
     process.exit(1)
   }

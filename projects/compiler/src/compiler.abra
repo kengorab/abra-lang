@@ -175,7 +175,7 @@ pub type Compiler {
   _functionStructs: Map<String, (Struct, Function)> = {}
   _aliasedTypeNames: Map<String, String> = {}
 
-  pub func compile(project: Project): Result<ModuleBuilder, CompilationError> {
+  pub func compile(project: Project, entryMod: TypedModule): Result<ModuleBuilder, CompilationError> {
     val builder = ModuleBuilder()
 
     val mainFn = builder.buildFunction(name: "main", returnType: Some(QbeType.U32), exported: true)
@@ -191,7 +191,7 @@ pub type Compiler {
     val (callstack, _) = builder.addData(QbeData(name: "__callstack", kind: QbeDataKind.Zeros(size: 1024 * 8)))
     val (callstackPtr, _) = builder.addData(QbeData(name: "__callstackp", kind: QbeDataKind.Constants([(QbeType.U64, Value.Int(0))])))
 
-    val allModules = project.sortedModules()
+    val allModules = project.sortedModules(entryMod)
     val (moduleNamesPtr, _) = builder.addData(QbeData(name: "__modnames", kind: QbeDataKind.Strings(allModules.map(m => m.name))))
 
     val (fnNamesPtr, fnNamesIdx) = builder.addData(QbeData(name: "__fnnames", kind: QbeDataKind.Strings([])))

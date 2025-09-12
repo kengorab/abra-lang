@@ -55,9 +55,9 @@ func main() {
     val project = Project()
     val comptimeFuncEvaluator = ComptimeFunctionEvaluator.init(project)
     val typechecker = Typechecker(moduleLoader: moduleLoader, project: project, comptimeFuncEvaluator: comptimeFuncEvaluator.eval)
-    typechecker.typecheckEntrypoint(filePathAbs)
+    val entryMod = typechecker.typecheckEntrypoint(filePathAbs)
 
-    val allModules = project.sortedModules()
+    val allModules = project.sortedModules(entryMod)
 
     if !printModulesOnError {
       val readFileErrors: String[] = []
