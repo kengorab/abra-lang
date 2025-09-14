@@ -2,6 +2,7 @@ import "./_intrinsics" as intrinsics
 import Pointer, Byte from "./_intrinsics"
 import "libc" as libc
 // import macro, InjectedCode, Expr from "meta"
+import "process" as process
 
 func stdoutWrite(str = "") {
   // TODO: uncomment once if-statements are handled by new IR generation
@@ -1533,12 +1534,14 @@ pub decorator noreturn { }
 @noreturn
 pub func unreachable(message = "") {
   stdoutWriteln("Encountered unreachable code: $message")
+  stdoutWriteln(process.getStackTrace())
   libc.exit(1)
 }
 
 @noreturn
 pub func todo(message = "") {
   stdoutWriteln("Encountered unimplemented code: $message")
+  stdoutWriteln(process.getStackTrace())
   libc.exit(1)
 }
 

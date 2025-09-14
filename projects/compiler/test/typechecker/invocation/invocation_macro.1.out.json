@@ -1,6 +1,6 @@
 {
-  "id": 4,
-  "name": "%FILE_NAME%",
+  "id": 6,
+  "name": "%TEST_DIR%/typechecker/invocation/invocation_macro.1.abra",
   "code": [
     {
       "token": {
@@ -18,7 +18,7 @@
         "function": {
           "label": { "name": "one", "position": [4, 6] },
           "scope": {
-            "name": "$root::module_4::one",
+            "name": "$root::module_6::one",
             "variables": [],
             "functions": [],
             "structs": [],
@@ -30,7 +30,7 @@
           "parameters": [],
           "returnType": {
             "kind": "instance",
-            "struct": { "moduleId": 3, "name": "InjectedCode" },
+            "struct": { "moduleId": 5, "name": "InjectedCode" },
             "typeParams": []
           },
           "body": [
@@ -43,7 +43,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 3, "name": "InjectedCode" },
+                "struct": { "moduleId": 5, "name": "InjectedCode" },
                 "typeParams": []
               },
               "node": {
@@ -63,7 +63,7 @@
                     ],
                     "returnType": {
                       "kind": "instance",
-                      "struct": { "moduleId": 3, "name": "InjectedCode" },
+                      "struct": { "moduleId": 5, "name": "InjectedCode" },
                       "typeParams": []
                     }
                   },
@@ -77,7 +77,7 @@
                     },
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 3, "name": "InjectedCode" },
+                      "struct": { "moduleId": 5, "name": "InjectedCode" },
                       "typeParams": []
                     },
                     "node": {
@@ -89,7 +89,7 @@
                           "parameters": [],
                           "returnType": {
                             "kind": "instance",
-                            "struct": { "moduleId": 3, "name": "InjectedCode" },
+                            "struct": { "moduleId": 5, "name": "InjectedCode" },
                             "typeParams": []
                           }
                         }

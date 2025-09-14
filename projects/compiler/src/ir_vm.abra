@@ -52,7 +52,7 @@ pub func unmarshallString(value: VmValue): Result<String, String> {
     VmValue.ConstString(str) => Ok(str)
     VmValue.Pointer => Err("Could not unmarshall value of raw pointer to String")
     VmValue.Instance(i) => {
-      if i.name != "2_String" return Err("Could not unmarshall instance of '${i.name}' as String")
+      if !i.name.endsWith("_String") return Err("Could not unmarshall instance of '${i.name}' as String")
 
       val length = i.expectField(0).expectInt("String length field is at idx 0, and is an Int")
       val buffer = i.expectField(1).expectPointer("String length field is at idx 0, and is a Pointer<Byte>")
@@ -702,6 +702,11 @@ pub type VM {
             self.store(self.expectAssignee(inst), VmValue.Int(floatVal.round()))
           }
           Builtin.Uninitialized => self.store(self.expectAssignee(inst), VmValue.Int(0))
+          // TODO: real implementations for callstack, modulenames, and functionnames
+          Builtin.Callstack => self.store(self.expectAssignee(inst), VmValue.Int(0))
+          Builtin.CallstackPtr => self.store(self.expectAssignee(inst), VmValue.Int(0))
+          Builtin.ModuleNames => self.store(self.expectAssignee(inst), VmValue.Int(0))
+          Builtin.FunctionNames => self.store(self.expectAssignee(inst), VmValue.Int(0))
         }
       }
     }

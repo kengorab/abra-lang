@@ -1,6 +1,6 @@
 {
-  "id": 3,
-  "name": "%FILE_NAME%",
+  "id": 5,
+  "name": "%TEST_DIR%/typechecker/literals/string_interpolation.abra",
   "code": [
     {
       "token": {
@@ -25,7 +25,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 2, "name": "Array" },
+              "struct": { "moduleId": 4, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -44,7 +44,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 2, "name": "Array" },
+            "struct": { "moduleId": 4, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -315,7 +315,7 @@
             },
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 2, "name": "Array" },
+              "struct": { "moduleId": 4, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -397,7 +397,7 @@
             },
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 2, "name": "Array" },
+              "struct": { "moduleId": 4, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -496,7 +496,7 @@
             },
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 2, "name": "Array" },
+              "struct": { "moduleId": 4, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",

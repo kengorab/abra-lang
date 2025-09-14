@@ -1,6 +1,6 @@
 {
-  "id": 3,
-  "name": "%FILE_NAME%",
+  "id": 5,
+  "name": "%TEST_DIR%/typechecker/invocation/invocation_generics.5.abra",
   "code": [
     {
       "token": {
@@ -18,14 +18,14 @@
         "function": {
           "label": { "name": "arrayMap", "position": [1, 6] },
           "scope": {
-            "name": "$root::module_3::arrayMap",
+            "name": "$root::module_5::arrayMap",
             "variables": [
               {
                 "label": { "name": "arr", "position": [1, 21] },
                 "mutable": false,
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 2, "name": "Array" },
+                  "struct": { "moduleId": 4, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -82,7 +82,7 @@
               "label": { "name": "arr", "position": [1, 21] },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 2, "name": "Array" },
+                "struct": { "moduleId": 4, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "generic",
@@ -117,11 +117,11 @@
           ],
           "returnType": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 2, "name": "Option" },
+            "enum": { "moduleId": 4, "name": "Option" },
             "typeParams": [
               {
                 "kind": "instance",
-                "struct": { "moduleId": 2, "name": "Array" },
+                "struct": { "moduleId": 4, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "generic",
@@ -141,11 +141,11 @@
               },
               "type": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 2, "name": "Option" },
+                "enum": { "moduleId": 4, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "instance",
-                    "struct": { "moduleId": 2, "name": "Array" },
+                    "struct": { "moduleId": 4, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "generic",
@@ -168,7 +168,7 @@
                     },
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 2, "name": "Array" },
+                      "struct": { "moduleId": 4, "name": "Array" },
                       "typeParams": [
                         {
                           "kind": "generic",
@@ -204,7 +204,7 @@
         "function": {
           "label": { "name": "strLen", "position": [3, 6] },
           "scope": {
-            "name": "$root::module_3::strLen",
+            "name": "$root::module_5::strLen",
             "variables": [
               {
                 "label": { "name": "s", "position": [3, 13] },
@@ -282,11 +282,11 @@
             "mutable": false,
             "type": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 2, "name": "Option" },
+              "enum": { "moduleId": 4, "name": "Option" },
               "typeParams": [
                 {
                   "kind": "instance",
-                  "struct": { "moduleId": 2, "name": "Array" },
+                  "struct": { "moduleId": 4, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -307,11 +307,11 @@
           },
           "type": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 2, "name": "Option" },
+            "enum": { "moduleId": 4, "name": "Option" },
             "typeParams": [
               {
                 "kind": "instance",
-                "struct": { "moduleId": 2, "name": "Array" },
+                "struct": { "moduleId": 4, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -332,7 +332,7 @@
                     "required": true,
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 2, "name": "Array" },
+                      "struct": { "moduleId": 4, "name": "Array" },
                       "typeParams": [
                         {
                           "kind": "generic",
@@ -363,11 +363,11 @@
                 ],
                 "returnType": {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 2, "name": "Option" },
+                  "enum": { "moduleId": 4, "name": "Option" },
                   "typeParams": [
                     {
                       "kind": "instance",
-                      "struct": { "moduleId": 2, "name": "Array" },
+                      "struct": { "moduleId": 4, "name": "Array" },
                       "typeParams": [
                         {
                           "kind": "generic",
@@ -389,7 +389,7 @@
                 },
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 2, "name": "Array" },
+                  "struct": { "moduleId": 4, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -511,11 +511,11 @@
             "mutable": false,
             "type": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 2, "name": "Option" },
+              "enum": { "moduleId": 4, "name": "Option" },
               "typeParams": [
                 {
                   "kind": "instance",
-                  "struct": { "moduleId": 2, "name": "Array" },
+                  "struct": { "moduleId": 4, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -537,11 +537,11 @@
           },
           "type": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 2, "name": "Option" },
+            "enum": { "moduleId": 4, "name": "Option" },
             "typeParams": [
               {
                 "kind": "instance",
-                "struct": { "moduleId": 2, "name": "Array" },
+                "struct": { "moduleId": 4, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",

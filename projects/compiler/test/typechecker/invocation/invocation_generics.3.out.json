@@ -1,6 +1,6 @@
 {
-  "id": 3,
-  "name": "%FILE_NAME%",
+  "id": 5,
+  "name": "%TEST_DIR%/typechecker/invocation/invocation_generics.3.abra",
   "code": [
     {
       "token": {
@@ -18,14 +18,14 @@
         "function": {
           "label": { "name": "foo", "position": [1, 6] },
           "scope": {
-            "name": "$root::module_3::foo",
+            "name": "$root::module_5::foo",
             "variables": [
               {
                 "label": { "name": "arr", "position": [1, 13] },
                 "mutable": false,
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 2, "name": "Array" },
+                  "struct": { "moduleId": 4, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -63,7 +63,7 @@
               "label": { "name": "arr", "position": [1, 13] },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 2, "name": "Array" },
+                "struct": { "moduleId": 4, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "generic",
@@ -86,7 +86,7 @@
           ],
           "returnType": {
             "kind": "instance",
-            "struct": { "moduleId": 2, "name": "Array" },
+            "struct": { "moduleId": 4, "name": "Array" },
             "typeParams": [
               {
                 "kind": "generic",
@@ -105,7 +105,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 2, "name": "Array" },
+                "struct": { "moduleId": 4, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "generic",
@@ -145,7 +145,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 2, "name": "Array" },
+              "struct": { "moduleId": 4, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -164,7 +164,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 2, "name": "Array" },
+            "struct": { "moduleId": 4, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -183,7 +183,7 @@
                     "required": true,
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 2, "name": "Array" },
+                      "struct": { "moduleId": 4, "name": "Array" },
                       "typeParams": [
                         {
                           "kind": "generic",
@@ -202,7 +202,7 @@
                 ],
                 "returnType": {
                   "kind": "instance",
-                  "struct": { "moduleId": 2, "name": "Array" },
+                  "struct": { "moduleId": 4, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -222,7 +222,7 @@
                 },
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 2, "name": "Array" },
+                  "struct": { "moduleId": 4, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -280,7 +280,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 2, "name": "Array" },
+              "struct": { "moduleId": 4, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -300,7 +300,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 2, "name": "Array" },
+            "struct": { "moduleId": 4, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",

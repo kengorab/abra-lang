@@ -1,4 +1,4 @@
-const { TestRunner, red, green, magenta } = require('./test-runner')
+const { TestRunner, yellow, green, magenta } = require('./test-runner')
 
 const LEXER_TESTS = [
   // Ints
@@ -875,49 +875,104 @@ const IR_COMPILER_TESTS = [
   // { test: "compiler/json.abra" },
 ]
 
+const runners = [
+  {
+    suite: 'lexer',
+    runner: new TestRunner('lexer_test', `${__dirname}/../src/lexer.test.abra`),
+    tests: LEXER_TESTS,
+  },
+  {
+    suite: 'parser',
+    runner: new TestRunner('parser_test', `${__dirname}/../src/parser.test.abra`),
+    tests: PARSER_TESTS,
+  },
+  {
+    suite: 'typechecker',
+    runner: new TestRunner('typechecker_test', `${__dirname}/../src/typechecker.test.abra`),
+    tests: TYPECHECKER_TESTS,
+  },
+  {
+    suite: 'compiler',
+    runner: new TestRunner('compiler_test', `${__dirname}/../src/compiler.test.abra`),
+    tests: COMPILER_TESTS,
+  },
+  {
+    suite: 'ir_vm',
+    runner: new TestRunner('vm_test', `${__dirname}/../src/ir_vm.test.abra`, { target: 'vm' }),
+    tests: IR_COMPILER_TESTS,
+  },
+  {
+    suite: 'ir_compiler',
+    runner: new TestRunner('native_ir_compiler_test', `${__dirname}/../src/ir_compiler.test.abra`, { target: 'native' }),
+    tests: IR_COMPILER_TESTS,
+  },
+  {
+    suite: 'ir_compiler_js',
+    runner: new TestRunner('js_ir_compiler_test', `${__dirname}/../src/ir_compiler_js.test.abra`, { target: 'js' }),
+    tests: IR_COMPILER_TESTS,
+  },
+]
+
 async function main() {
+  const args = [...process.argv]
+  let testFilter = null
+  let suiteFilter = null
+  let updateSnapshots = false
+
+  while (args.length) {
+    const arg = args.shift()
+    switch (arg) {
+      case '-t': {
+        testFilter = args.shift()
+        if (!testFilter) {
+          console.log('-t flag requires argument')
+          process.exit(1)
+        }
+        break
+      }
+      case '-s': {
+        suiteFilter = args.shift()
+        if (!suiteFilter) {
+          console.log('-s flag requires argument')
+          process.exit(1)
+        }
+        const options = runners.map(r => r.suite)
+        if (!options.includes(suiteFilter)) {
+          console.log(`invalid suite filter '${suiteFilter}', expected one of: ${options.join(', ')}`)
+          process.exit(1)
+        }
+        break
+      }
+      case '-u': {
+        updateSnapshots = true
+        break
+      }
+      default: {
+        continue
+      }
+    }
+  }
+
   let numPass = 0
   let numFail = 0
   let numErr = 0
+  let numUpdated = 0
   let numTests = 0
 
-  const runners = [
-    {
-      runner: new TestRunner('lexer_test', `${__dirname}/../src/lexer.test.abra`),
-      tests: LEXER_TESTS,
-    },
-    {
-      runner: new TestRunner('parser_test', `${__dirname}/../src/parser.test.abra`),
-      tests: PARSER_TESTS,
-    },
-    {
-      runner: new TestRunner('typechecker_test', `${__dirname}/../src/typechecker.test.abra`),
-      tests: TYPECHECKER_TESTS,
-    },
-    {
-      runner: new TestRunner('compiler_test', `${__dirname}/../src/compiler.test.abra`),
-      tests: COMPILER_TESTS,
-    },
-    {
-      runner: new TestRunner('vm_test', `${__dirname}/../src/ir_vm.test.abra`, { target: 'vm' }),
-      tests: IR_COMPILER_TESTS,
-    },
-    {
-      runner: new TestRunner('native_ir_compiler_test', `${__dirname}/../src/ir_compiler.test.abra`, { target: 'native' }),
-      tests: IR_COMPILER_TESTS,
-    },
-    {
-      runner: new TestRunner('js_ir_compiler_test', `${__dirname}/../src/ir_compiler_js.test.abra`, { target: 'js' }),
-      tests: IR_COMPILER_TESTS,
-    },
-  ]
+  for (const { suite, runner, tests } of runners) {
+    if (suiteFilter && suite !== suiteFilter) continue
 
-  for (const { runner, tests } of runners) {
-    numTests += tests.length
-    const results = await runner.runTests(tests)
+    const testsToRun = testFilter
+      ? tests.filter(t => t.test === testFilter) ?? []
+      : tests
+    numTests += testsToRun.length
+    const results = await runner.runTests(testsToRun, updateSnapshots)
     numPass += results.numPass
     numFail += results.numFail
     numErr += results.numErr
+
+    if (updateSnapshots)
+      numUpdated += (results.numUpdated ?? 0)
   }
 
   console.log('\nTotals:')
@@ -927,6 +982,11 @@ async function main() {
   console.log(numFail > 0 ? magenta(failMsg) : failMsg)
   const errMsg = `  Error: ${numErr} / ${numTests}`
   console.log(numErr > 0 ? magenta(errMsg) : errMsg)
+
+  if (updateSnapshots) {
+    const msg = `  Updated: ${numUpdated} / ${numTests}`
+    console.log(numUpdated > 0 ? yellow(msg) : msg)
+  }
 
   if (numPass !== numTests)
     return process.exit(1)

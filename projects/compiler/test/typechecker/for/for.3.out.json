@@ -1,6 +1,6 @@
 {
-  "id": 3,
-  "name": "%FILE_NAME%",
+  "id": 5,
+  "name": "%TEST_DIR%/typechecker/for/for.3.abra",
   "code": [
     {
       "token": {
@@ -25,7 +25,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 2, "name": "Map" },
+              "struct": { "moduleId": 4, "name": "Map" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -48,7 +48,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 2, "name": "Map" },
+            "struct": { "moduleId": 4, "name": "Map" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -163,7 +163,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 2, "name": "Map" },
+            "struct": { "moduleId": 4, "name": "Map" },
             "typeParams": [
               {
                 "kind": "primitive",

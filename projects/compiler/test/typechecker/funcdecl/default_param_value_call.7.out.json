@@ -1,6 +1,6 @@
 {
-  "id": 3,
-  "name": "%FILE_NAME%",
+  "id": 5,
+  "name": "%TEST_DIR%/typechecker/funcdecl/default_param_value_call.7.abra",
   "code": [
     {
       "token": {
@@ -18,7 +18,7 @@
         "function": {
           "label": { "name": "foo1", "position": [2, 6] },
           "scope": {
-            "name": "$root::module_3::foo1",
+            "name": "$root::module_5::foo1",
             "variables": [
               {
                 "label": { "name": "a", "position": [2, 11] },
@@ -118,7 +118,7 @@
           ],
           "returnType": {
             "kind": "instance",
-            "struct": { "moduleId": 2, "name": "Array" },
+            "struct": { "moduleId": 4, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -136,7 +136,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 2, "name": "Array" },
+                "struct": { "moduleId": 4, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -204,7 +204,7 @@
         "function": {
           "label": { "name": "foo2", "position": [3, 6] },
           "scope": {
-            "name": "$root::module_3::foo2",
+            "name": "$root::module_5::foo2",
             "variables": [
               {
                 "label": { "name": "a", "position": [3, 11] },
@@ -320,7 +320,7 @@
           ],
           "returnType": {
             "kind": "instance",
-            "struct": { "moduleId": 2, "name": "Array" },
+            "struct": { "moduleId": 4, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -338,7 +338,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 2, "name": "Array" },
+                "struct": { "moduleId": 4, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -406,7 +406,7 @@
         "function": {
           "label": { "name": "bar", "position": [5, 6] },
           "scope": {
-            "name": "$root::module_3::bar",
+            "name": "$root::module_5::bar",
             "variables": [
               {
                 "label": { "name": "t", "position": [5, 13] },

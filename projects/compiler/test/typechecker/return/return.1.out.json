@@ -1,6 +1,6 @@
 {
-  "id": 3,
-  "name": "%FILE_NAME%",
+  "id": 5,
+  "name": "%TEST_DIR%/typechecker/return/return.1.abra",
   "code": [
     {
       "token": {
@@ -18,7 +18,7 @@
         "function": {
           "label": { "name": "foo", "position": [1, 6] },
           "scope": {
-            "name": "$root::module_3::foo",
+            "name": "$root::module_5::foo",
             "variables": [
               {
                 "label": { "name": "s", "position": [2, 7] },

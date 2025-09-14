@@ -965,7 +965,7 @@ pub enum TypedAstNodeKind {
   Map(items: (TypedAstNode, TypedAstNode)[])
   Tuple(items: TypedAstNode[])
   Indexing(node: TypedIndexingNode)
-  Lambda(fn: Function, typeHint: Type?)
+  Lambda(fn: Function, typeHint: ((Type, Bool)[], Type)?)
   Assignment(mode: TypedAssignmentMode, op: AssignOp, expr: TypedAstNode)
   If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], ifBlockTerminator: Terminator?, typedElseBlock: TypedAstNode[], elseBlockTerminator: Terminator?)
   Match(isStatement: Bool, expr: TypedAstNode, cases: TypedMatchCase[])
@@ -5979,27 +5979,24 @@ pub type Typechecker {
   }
 
   func _typecheckLambda(self, token: Token, node: LambdaNode, typeHint: Type?): Result<TypedAstNode, TypeError> {
-    var paramHints: Type[] = []
-    var retHint: Type? = None
-    if typeHint |hint| {
-      match hint.kind {
-        TypeKind.Func(paramTypes, retType) => {
-          for (ty, isRequired) in paramTypes {
-            if !isRequired return Err(self.internalError(token.position, "unexpected non-required param in lambda param type hint"))
+    val paramHints: Type[] = []
+    val (retHint, sawHint) = match typeHint?.kind {
+      TypeKind.Func(paramTypes, retType) => {
+        for (ty, isRequired) in paramTypes {
+          if !isRequired return Err(self.internalError(token.position, "unexpected non-required param in lambda param type hint"))
 
-            paramHints.push(ty)
-          }
-          retHint = Some(retType)
+          paramHints.push(ty)
         }
-        _ => {}
+        (retType, true)
       }
+      else => (Type(kind: TypeKind.Hole), false)
     }
 
     val lambdaName = "lambda_${self.currentModule.id}_${token.position.line}_${token.position.col}"
     val prevScope = self.beginChildScope(lambdaName, ScopeKind.Func)
     val prevFn = self.currentFunction
 
-    var returnType = retHint ?: Type(kind: TypeKind.Hole)
+    var returnType = if sawHint retHint else Type(kind: TypeKind.Hole)
     if returnType.containsGenerics() {
       // If the return type of a lambda contains generics that have not yet been resolved by the time we get here, then
       // they must be "out" generics rather than "in" generics - this means that they should be treated as Holes which will
@@ -6039,7 +6036,13 @@ pub type Typechecker {
     val lambdaTy = fn.getType()
     self.currentScope = prevScope
 
-    Ok(TypedAstNode(token: token, ty: lambdaTy, kind: TypedAstNodeKind.Lambda(fn, typeHint)))
+    val fnTypeHint = if sawHint {
+      val paramHints = paramHints.map(p => (p, true))
+      Some((paramHints, retHint))
+    } else {
+      None
+    }
+    Ok(TypedAstNode(token: token, ty: lambdaTy, kind: TypedAstNodeKind.Lambda(fn, fnTypeHint)))
   }
 
   func typecheckTry(self, token: Token, expr: AstNode, elseClause: (Token, BindingPattern?, AstNode[])?, typeHint: Type?): Result<TypedAstNode, TypeError> {

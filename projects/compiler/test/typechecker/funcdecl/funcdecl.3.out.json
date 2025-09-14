@@ -1,6 +1,6 @@
 {
-  "id": 3,
-  "name": "%FILE_NAME%",
+  "id": 5,
+  "name": "%TEST_DIR%/typechecker/funcdecl/funcdecl.3.abra",
   "code": [
     {
       "token": {
@@ -18,14 +18,14 @@
         "function": {
           "label": { "name": "f", "position": [2, 6] },
           "scope": {
-            "name": "$root::module_3::f",
+            "name": "$root::module_5::f",
             "variables": [
               {
                 "label": { "name": "a", "position": [2, 8] },
                 "mutable": false,
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 2, "name": "Array" },
+                  "struct": { "moduleId": 4, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -44,7 +44,7 @@
                       "required": true,
                       "type": {
                         "kind": "instance",
-                        "struct": { "moduleId": 2, "name": "Array" },
+                        "struct": { "moduleId": 4, "name": "Array" },
                         "typeParams": [
                           {
                             "kind": "primitive",
@@ -73,7 +73,7 @@
               "label": { "name": "a", "position": [2, 8] },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 2, "name": "Array" },
+                "struct": { "moduleId": 4, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -118,7 +118,7 @@
                           "required": true,
                           "type": {
                             "kind": "instance",
-                            "struct": { "moduleId": 2, "name": "Array" },
+                            "struct": { "moduleId": 4, "name": "Array" },
                             "typeParams": [
                               {
                                 "kind": "primitive",
@@ -150,7 +150,7 @@
                         "required": true,
                         "type": {
                           "kind": "instance",
-                          "struct": { "moduleId": 2, "name": "Array" },
+                          "struct": { "moduleId": 4, "name": "Array" },
                           "typeParams": [
                             {
                               "kind": "primitive",

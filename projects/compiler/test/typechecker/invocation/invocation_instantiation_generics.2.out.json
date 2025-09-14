@@ -1,6 +1,6 @@
 {
-  "id": 3,
-  "name": "%FILE_NAME%",
+  "id": 5,
+  "name": "%TEST_DIR%/typechecker/invocation/invocation_instantiation_generics.2.abra",
   "code": [
     {
       "token": {
@@ -16,7 +16,7 @@
       "node": {
         "kind": "typeDeclaration",
         "struct": {
-          "moduleId": 3,
+          "moduleId": 5,
           "name": { "name": "Foo", "position": [1, 6] },
           "typeParams": [
             "T",
@@ -35,7 +35,7 @@
               "name": { "name": "u", "position": [3, 3] },
               "type": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 2, "name": "Option" },
+                "enum": { "moduleId": 4, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "generic",
@@ -52,7 +52,7 @@
                 },
                 "type": {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 2, "name": "Option" },
+                  "enum": { "moduleId": 4, "name": "Option" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -72,7 +72,7 @@
                     },
                     "type": {
                       "kind": "enum",
-                      "enum": { "moduleId": 2, "name": "Option" }
+                      "enum": { "moduleId": 4, "name": "Option" }
                     },
                     "node": {
                       "kind": "identifier",
@@ -92,7 +92,7 @@
             {
               "label": { "name": "toString", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_3::Foo::toString",
+                "name": "$root::module_5::Foo::toString",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -113,7 +113,7 @@
             {
               "label": { "name": "hash", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_3::Foo::hash",
+                "name": "$root::module_5::Foo::hash",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -134,7 +134,7 @@
             {
               "label": { "name": "eq", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_3::Foo::eq",
+                "name": "$root::module_5::Foo::eq",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -150,7 +150,7 @@
                   "label": { "name": "other", "position": [0, 0] },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 3, "name": "Foo" },
+                    "struct": { "moduleId": 5, "name": "Foo" },
                     "typeParams": [
                       {
                         "kind": "generic",
@@ -193,7 +193,7 @@
         "function": {
           "label": { "name": "foo", "position": [6, 6] },
           "scope": {
-            "name": "$root::module_3::foo",
+            "name": "$root::module_5::foo",
             "variables": [],
             "functions": [],
             "structs": [],
@@ -205,7 +205,7 @@
           "parameters": [],
           "returnType": {
             "kind": "instance",
-            "struct": { "moduleId": 3, "name": "Foo" },
+            "struct": { "moduleId": 5, "name": "Foo" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -227,7 +227,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 3, "name": "Foo" },
+                "struct": { "moduleId": 5, "name": "Foo" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -241,7 +241,7 @@
               },
               "node": {
                 "kind": "invocation",
-                "invokee": { "moduleId": 3, "name": "Foo" },
+                "invokee": { "moduleId": 5, "name": "Foo" },
                 "arguments": [
                   {
                     "token": {

@@ -99,10 +99,7 @@ func main() {
       }
     }
 
-    if !verifyStdModule(allModules, 0, "_intrinsics") return
-    if !verifyStdModule(allModules, 1, "libc") return
-    if !verifyStdModule(allModules, 2, "prelude") return
-    val filteredModules = allModules[3:].filter(m => {
+    val filteredModules = allModules.filter(m => {
       !m.name.endsWith("/_intrinsics.abra") &&
       !m.name.endsWith("/libc.abra") &&
       !m.name.endsWith("/io.abra") &&

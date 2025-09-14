@@ -1,6 +1,6 @@
 {
-  "id": 4,
-  "name": "%FILE_NAME%",
+  "id": 6,
+  "name": "%TEST_DIR%/typechecker/invocation/invocation_macro.2.abra",
   "code": [
     {
       "token": {
@@ -18,18 +18,18 @@
         "function": {
           "label": { "name": "makeTuple", "position": [4, 6] },
           "scope": {
-            "name": "$root::module_4::makeTuple",
+            "name": "$root::module_6::makeTuple",
             "variables": [
               {
                 "label": { "name": "values", "position": [4, 17] },
                 "mutable": false,
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 2, "name": "Array" },
+                  "struct": { "moduleId": 4, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "instance",
-                      "struct": { "moduleId": 3, "name": "Expr" },
+                      "struct": { "moduleId": 5, "name": "Expr" },
                       "typeParams": []
                     }
                   ]
@@ -40,7 +40,7 @@
                 "mutable": false,
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 3, "name": "InjectedCode" },
+                  "struct": { "moduleId": 5, "name": "InjectedCode" },
                   "typeParams": []
                 }
               }
@@ -57,7 +57,7 @@
               "label": { "name": "values", "position": [4, 17] },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 3, "name": "Expr" },
+                "struct": { "moduleId": 5, "name": "Expr" },
                 "typeParams": []
               },
               "defaultValue": null,
@@ -66,7 +66,7 @@
           ],
           "returnType": {
             "kind": "instance",
-            "struct": { "moduleId": 3, "name": "InjectedCode" },
+            "struct": { "moduleId": 5, "name": "InjectedCode" },
             "typeParams": []
           },
           "body": [
@@ -93,7 +93,7 @@
                     "mutable": false,
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 3, "name": "InjectedCode" },
+                      "struct": { "moduleId": 5, "name": "InjectedCode" },
                       "typeParams": []
                     }
                   }
@@ -107,7 +107,7 @@
                   },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 3, "name": "InjectedCode" },
+                    "struct": { "moduleId": 5, "name": "InjectedCode" },
                     "typeParams": []
                   },
                   "node": {
@@ -127,7 +127,7 @@
                         ],
                         "returnType": {
                           "kind": "instance",
-                          "struct": { "moduleId": 3, "name": "InjectedCode" },
+                          "struct": { "moduleId": 5, "name": "InjectedCode" },
                           "typeParams": []
                         }
                       },
@@ -141,7 +141,7 @@
                         },
                         "type": {
                           "kind": "instance",
-                          "struct": { "moduleId": 3, "name": "InjectedCode" },
+                          "struct": { "moduleId": 5, "name": "InjectedCode" },
                           "typeParams": []
                         },
                         "node": {
@@ -153,7 +153,7 @@
                               "parameters": [],
                               "returnType": {
                                 "kind": "instance",
-                                "struct": { "moduleId": 3, "name": "InjectedCode" },
+                                "struct": { "moduleId": 5, "name": "InjectedCode" },
                                 "typeParams": []
                               }
                             }
@@ -208,11 +208,11 @@
                   },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 2, "name": "Array" },
+                    "struct": { "moduleId": 4, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "instance",
-                        "struct": { "moduleId": 3, "name": "Expr" },
+                        "struct": { "moduleId": 5, "name": "Expr" },
                         "typeParams": []
                       }
                     ]
@@ -233,7 +233,7 @@
                       "mutable": false,
                       "type": {
                         "kind": "instance",
-                        "struct": { "moduleId": 3, "name": "Expr" },
+                        "struct": { "moduleId": 5, "name": "Expr" },
                         "typeParams": []
                       }
                     }
@@ -257,7 +257,7 @@
                     },
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 3, "name": "InjectedCode" },
+                      "struct": { "moduleId": 5, "name": "InjectedCode" },
                       "typeParams": []
                     },
                     "node": {
@@ -271,14 +271,14 @@
                               "required": true,
                               "type": {
                                 "kind": "instance",
-                                "struct": { "moduleId": 3, "name": "Expr" },
+                                "struct": { "moduleId": 5, "name": "Expr" },
                                 "typeParams": []
                               }
                             }
                           ],
                           "returnType": {
                             "kind": "instance",
-                            "struct": { "moduleId": 3, "name": "InjectedCode" },
+                            "struct": { "moduleId": 5, "name": "InjectedCode" },
                             "typeParams": []
                           }
                         },
@@ -293,7 +293,7 @@
                           },
                           "type": {
                             "kind": "instance",
-                            "struct": { "moduleId": 3, "name": "InjectedCode" },
+                            "struct": { "moduleId": 5, "name": "InjectedCode" },
                             "typeParams": []
                           },
                           "node": {
@@ -313,7 +313,7 @@
                           },
                           "type": {
                             "kind": "instance",
-                            "struct": { "moduleId": 3, "name": "Expr" },
+                            "struct": { "moduleId": 5, "name": "Expr" },
                             "typeParams": []
                           },
                           "node": {
@@ -392,11 +392,11 @@
                                 },
                                 "type": {
                                   "kind": "instance",
-                                  "struct": { "moduleId": 2, "name": "Array" },
+                                  "struct": { "moduleId": 4, "name": "Array" },
                                   "typeParams": [
                                     {
                                       "kind": "instance",
-                                      "struct": { "moduleId": 3, "name": "Expr" },
+                                      "struct": { "moduleId": 5, "name": "Expr" },
                                       "typeParams": []
                                     }
                                   ]
@@ -430,7 +430,7 @@
                           },
                           "type": {
                             "kind": "instance",
-                            "struct": { "moduleId": 3, "name": "InjectedCode" },
+                            "struct": { "moduleId": 5, "name": "InjectedCode" },
                             "typeParams": []
                           },
                           "node": {
@@ -450,7 +450,7 @@
                                 ],
                                 "returnType": {
                                   "kind": "instance",
-                                  "struct": { "moduleId": 3, "name": "InjectedCode" },
+                                  "struct": { "moduleId": 5, "name": "InjectedCode" },
                                   "typeParams": []
                                 }
                               },
@@ -465,7 +465,7 @@
                                 },
                                 "type": {
                                   "kind": "instance",
-                                  "struct": { "moduleId": 3, "name": "InjectedCode" },
+                                  "struct": { "moduleId": 5, "name": "InjectedCode" },
                                   "typeParams": []
                                 },
                                 "node": {
@@ -511,7 +511,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 3, "name": "InjectedCode" },
+                "struct": { "moduleId": 5, "name": "InjectedCode" },
                 "typeParams": []
               },
               "node": {
@@ -531,7 +531,7 @@
                     ],
                     "returnType": {
                       "kind": "instance",
-                      "struct": { "moduleId": 3, "name": "InjectedCode" },
+                      "struct": { "moduleId": 5, "name": "InjectedCode" },
                       "typeParams": []
                     }
                   },
@@ -546,7 +546,7 @@
                     },
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 3, "name": "InjectedCode" },
+                      "struct": { "moduleId": 5, "name": "InjectedCode" },
                       "typeParams": []
                     },
                     "node": {

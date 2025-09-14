@@ -1,6 +1,6 @@
 {
-  "id": 3,
-  "name": "%FILE_NAME%",
+  "id": 5,
+  "name": "%TEST_DIR%/typechecker/accessor/accessor.4.abra",
   "code": [
     {
       "token": {
@@ -16,7 +16,7 @@
       "node": {
         "kind": "enumDeclaration",
         "enum": {
-          "moduleId": 3,
+          "moduleId": 5,
           "name": { "name": "Foo", "position": [1, 6] },
           "typeParams": [],
           "variants": [
@@ -29,7 +29,7 @@
             {
               "label": { "name": "toString", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_3::Foo::toString",
+                "name": "$root::module_5::Foo::toString",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -50,7 +50,7 @@
             {
               "label": { "name": "hash", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_3::Foo::hash",
+                "name": "$root::module_5::Foo::hash",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -71,7 +71,7 @@
             {
               "label": { "name": "eq", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_3::Foo::eq",
+                "name": "$root::module_5::Foo::eq",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -87,7 +87,7 @@
                   "label": { "name": "other", "position": [0, 0] },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 3, "name": "Foo" },
+                    "enum": { "moduleId": 5, "name": "Foo" },
                     "typeParams": []
                   },
                   "defaultValue": null,
@@ -128,7 +128,7 @@
             "mutable": false,
             "type": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 3, "name": "Foo" },
+              "enum": { "moduleId": 5, "name": "Foo" },
               "typeParams": []
             }
           }
@@ -142,7 +142,7 @@
           },
           "type": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 3, "name": "Foo" },
+            "enum": { "moduleId": 5, "name": "Foo" },
             "typeParams": []
           },
           "node": {
@@ -157,7 +157,7 @@
               },
               "type": {
                 "kind": "enum",
-                "enum": { "moduleId": 3, "name": "Foo" }
+                "enum": { "moduleId": 5, "name": "Foo" }
               },
               "node": {
                 "kind": "identifier",

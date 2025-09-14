@@ -8,7 +8,7 @@ class TestRunner {
     this.target = target
   }
 
-  async runTests(tests) {
+  async runTests(tests, updateSnapshotWhenFailed) {
     console.log(`Running tests for ${this.runnerName}:`)
     const runnerBin = `${process.cwd()}/._abra/${this.runnerName}`
     try {
@@ -25,7 +25,7 @@ class TestRunner {
     for (const { test, assertions, args, env, printModulesOnErr = false } of tests) {
       if (!!assertions) {
         const args = printModulesOnErr ? ['--print-mods-on-err'] : []
-        const result = await this._runTest(runnerBin, test, assertions, args)
+        const result = await this._runTest(runnerBin, test, assertions, args, updateSnapshotWhenFailed)
         results.push(result)
       } else {
         const result = await this._runCompilerTest(runnerBin, test, args, env)
@@ -36,7 +36,7 @@ class TestRunner {
     return this._outputResults(results)
   }
 
-  async _runTest(bin, testFile, outputFile, args = []) {
+  async _runTest(bin, testFile, outputFile, args = [], updateSnapshotWhenFailed) {
     const testFilePath = `${__dirname}/${testFile}`
     const outputFilePath = `${__dirname}/${outputFile}`
 
@@ -51,6 +51,11 @@ class TestRunner {
         .replaceAll('%TEST_DIR%', __dirname)
 
       if (actual !== expected) {
+        if (updateSnapshotWhenFailed) {
+          const updatedFile = actual.replaceAll(__dirname, '%TEST_DIR%')
+          await fs.writeFile(outputFilePath, updatedFile, { encoding: 'utf-8' })
+          return { status: 'updated', testFile }
+        }
         return { status: 'fail', testFile, expected, actual }
       }
 
@@ -124,6 +129,7 @@ class TestRunner {
     let numPass = 0
     let numFail = 0
     let numErr = 0
+    let numUpdated = 0
 
     for (const result of results) {
       switch (result.status) {
@@ -149,6 +155,11 @@ class TestRunner {
           console.log(red(errFmt))
           break
         }
+        case 'updated': {
+          numUpdated += 1
+          console.log(yellow(`  [UPDATED] ${result.testFile}`))
+          break
+        }
       }
     }
 
@@ -159,8 +170,10 @@ class TestRunner {
     console.log(numFail > 0 ? magenta(failMsg) : failMsg)
     const errMsg = `  Error: ${numErr} / ${results.length}`
     console.log(numErr > 0 ? magenta(errMsg) : errMsg)
+    const updatedMsg = `  Updated: ${numUpdated} / ${results.length}`
+    console.log(numUpdated > 0 ? yellow(updatedMsg) : updatedMsg)
 
-    return { numPass, numFail, numErr }
+    return { numPass, numFail, numErr, numUpdated }
   }
 }
 
@@ -194,8 +207,8 @@ const colors = {
   crimson: "\x1b[38m"
 }
 
-const red = str => `${colors.red}${str}${colors.reset}`
 const green = str => `${colors.green}${str}${colors.reset}`
+const yellow = str => `${colors.yellow}${str}${colors.reset}`
 const magenta = str => `${colors.magenta}${str}${colors.reset}`
 
-module.exports = { TestRunner, red, green, magenta }
+module.exports = { TestRunner, yellow, green, magenta }

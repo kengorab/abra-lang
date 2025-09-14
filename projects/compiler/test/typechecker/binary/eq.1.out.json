@@ -1,6 +1,6 @@
 {
-  "id": 3,
-  "name": "%FILE_NAME%",
+  "id": 5,
+  "name": "%TEST_DIR%/typechecker/binary/eq.1.abra",
   "code": [
     {
       "token": {
@@ -75,7 +75,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 2, "name": "Array" },
+            "struct": { "moduleId": 4, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -149,7 +149,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 2, "name": "Array" },
+            "struct": { "moduleId": 4, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",

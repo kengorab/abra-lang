@@ -1,24 +1,53 @@
-func getLine(str: String, line: Int): String {
-  if line < 0 return ""
+// // func foo() {
+// //   unreachable("hello")
+// // }
 
-  var seenLines = 0
-  var idx = 0
-  var prevStart = 0
-  while idx < str.length {
-    if str._buffer.loadAt(idx).asInt() == '\n'.asByte().asInt() {
-      if line == seenLines return str[prevStart:idx]
+// // func bar() = foo()
 
-      seenLines += 1
-      prevStart = idx + 1
-    }
+// // func baz() = bar()
 
-    idx += 1
-  }
+// // baz()
+// import macro, Expr, InjectedCode from "meta"
 
-  if line == seenLines return str[prevStart:idx]
+// @macro
+// func lazy(expr: Expr): InjectedCode {
+//   val cacheName = "_${String.random(3)}"
 
-  ""
-}
+//   InjectedCode.new()
+//     .append("var $cacheName: Int? = None\n")
+//     .append("() => {")
+//     .append("  if $cacheName |v| return v")
+//     .append("  val v = ").appendExpr(expr)
+//     .append("  $cacheName = Some(v)")
+//     .append("  v")
+//     .append("}")
+// }
 
-val s = "''\nabc"
-stdoutWriteln(getLine(s, 1))
+// func makeInt(): Int {
+//   stdoutWriteln("makeInt called!")
+
+//   return 24
+// }
+
+// val int = lazy(makeInt())
+
+// // val makeInt = () => {
+// //   if cache |v| return v
+// //   stdoutWriteln("makeInt called")
+
+// //   cache = Some(123)
+// //   return 123
+// // }
+// // var cache: Int? = None
+
+// stdoutWriteln(""+int())
+// () => {
+//     return 123
+// }
+
+// "hasdf"
+
+val arr = ["a", "b", "c"]
+
+val s = if arr[0] |s| s else "asdf"
+stdoutWriteln(s)

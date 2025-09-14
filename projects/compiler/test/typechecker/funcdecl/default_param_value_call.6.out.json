@@ -1,6 +1,6 @@
 {
-  "id": 3,
-  "name": "%FILE_NAME%",
+  "id": 5,
+  "name": "%TEST_DIR%/typechecker/funcdecl/default_param_value_call.6.abra",
   "code": [
     {
       "token": {
@@ -18,7 +18,7 @@
         "function": {
           "label": { "name": "foo", "position": [2, 6] },
           "scope": {
-            "name": "$root::module_3::foo",
+            "name": "$root::module_5::foo",
             "variables": [
               {
                 "label": { "name": "a", "position": [2, 10] },
@@ -174,7 +174,7 @@
         "function": {
           "label": { "name": "bar", "position": [3, 6] },
           "scope": {
-            "name": "$root::module_3::bar",
+            "name": "$root::module_5::bar",
             "variables": [
               {
                 "label": { "name": "i", "position": [3, 10] },

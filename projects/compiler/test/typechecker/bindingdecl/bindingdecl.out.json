@@ -1,6 +1,6 @@
 {
-  "id": 3,
-  "name": "%FILE_NAME%",
+  "id": 5,
+  "name": "%TEST_DIR%/typechecker/bindingdecl/bindingdecl.abra",
   "code": [
     {
       "token": {
@@ -209,7 +209,7 @@
             "mutable": false,
             "type": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 2, "name": "Option" },
+              "enum": { "moduleId": 4, "name": "Option" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -228,7 +228,7 @@
           },
           "type": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 2, "name": "Option" },
+            "enum": { "moduleId": 4, "name": "Option" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -248,7 +248,7 @@
               },
               "type": {
                 "kind": "enum",
-                "enum": { "moduleId": 2, "name": "Option" }
+                "enum": { "moduleId": 4, "name": "Option" }
               },
               "node": {
                 "kind": "identifier",
@@ -287,7 +287,7 @@
             "mutable": false,
             "type": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 2, "name": "Option" },
+              "enum": { "moduleId": 4, "name": "Option" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -306,7 +306,7 @@
           },
           "type": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 2, "name": "Option" },
+            "enum": { "moduleId": 4, "name": "Option" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -383,7 +383,7 @@
                 },
                 {
                   "kind": "instance",
-                  "struct": { "moduleId": 2, "name": "Array" },
+                  "struct": { "moduleId": 4, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -424,7 +424,7 @@
               },
               {
                 "kind": "instance",
-                "struct": { "moduleId": 2, "name": "Array" },
+                "struct": { "moduleId": 4, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -523,7 +523,7 @@
                 },
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 2, "name": "Array" },
+                  "struct": { "moduleId": 4, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -654,7 +654,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 2, "name": "Array" },
+              "struct": { "moduleId": 4, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -694,7 +694,7 @@
               },
               {
                 "kind": "instance",
-                "struct": { "moduleId": 2, "name": "Array" },
+                "struct": { "moduleId": 4, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",

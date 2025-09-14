@@ -642,9 +642,12 @@ pub type Compiler {
 
             self.sb.writeln("const $dst = $intArray[0];")
           }
-          Builtin.Uninitialized => {
-            self.sb.writeln("const $dst = undefined;")
-          }
+          Builtin.Uninitialized => self.sb.writeln("const $dst = undefined;")
+          // TODO: real implementations for callstack, modulenames, and functionnames
+          Builtin.Callstack => self.sb.writeln("const $dst = undefined;")
+          Builtin.CallstackPtr => self.sb.writeln("const $dst = 0;")
+          Builtin.ModuleNames => self.sb.writeln("const $dst = undefined;")
+          Builtin.FunctionNames => self.sb.writeln("const $dst = undefined;")
         }
       }
     }
