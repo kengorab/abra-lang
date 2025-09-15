@@ -207,8 +207,9 @@ const colors = {
   crimson: "\x1b[38m"
 }
 
+const red = str => `${colors.red}${str}${colors.reset}`
 const green = str => `${colors.green}${str}${colors.reset}`
 const yellow = str => `${colors.yellow}${str}${colors.reset}`
 const magenta = str => `${colors.magenta}${str}${colors.reset}`
 
-module.exports = { TestRunner, yellow, green, magenta }
+module.exports = { TestRunner, red, yellow, green, magenta }
