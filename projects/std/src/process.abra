@@ -3,9 +3,9 @@ import Pointer, Byte from "./_intrinsics"
 import "libc" as libc
 import "io" as io
 
-var _args: String[]? = None
+// var _args: String[]? = None
 pub func args(): String[] {
-  if _args |args| return args
+  // if _args |args| return args
 
   val argc = intrinsics.argc()
   val argv = intrinsics.argv()
@@ -17,7 +17,7 @@ pub func args(): String[] {
     args.push(String(length: len, _buffer: str))
   }
 
-  _args = Some(args)
+  // _args = Some(args)
   args
 }
 
@@ -37,9 +37,9 @@ pub type Uname {
   pub machine: String
 }
 
-var _uname: Uname? = None
+// var _uname: Uname? = None
 pub func uname(): Uname {
-  if _uname |uname| return uname
+  // if _uname |uname| return uname
 
   // On macOS, each field in the utsname struct is a char[256]; on other platforms it's different, so
   // this can be wasteful of memory.
@@ -79,7 +79,7 @@ pub func uname(): Uname {
   machine._buffer.copyFrom(0, utsnameBuf, cursor, machineLen)
 
   val uname = Uname(sysname: sysname, nodename: nodename, release: release, version: version, machine: machine)
-  _uname = Some(uname)
+  // _uname = Some(uname)
   uname
 }
 
@@ -143,9 +143,9 @@ pub func callstack(): StackFrame[] {
   stack
 }
 
-var _moduleNames: String[]? = None
+// var _moduleNames: String[]? = None
 func getModuleNames(): String[] {
-  if _moduleNames |moduleNames| return moduleNames
+  // if _moduleNames |moduleNames| return moduleNames
 
   val moduleNames: String[] = []
   val buf = intrinsics.moduleNames()
@@ -169,13 +169,13 @@ func getModuleNames(): String[] {
     len += 1
   }
 
-  _moduleNames = Some(moduleNames)
+  // _moduleNames = Some(moduleNames)
   moduleNames
 }
 
-var _functionNames: String[]? = None
+// var _functionNames: String[]? = None
 func getFunctionNames(): String[] {
-  if _functionNames |functionNames| return functionNames
+  // if _functionNames |functionNames| return functionNames
 
   val functionNames: String[] = []
   val buf = intrinsics.functionNames()
@@ -199,7 +199,7 @@ func getFunctionNames(): String[] {
     len += 1
   }
 
-  _functionNames = Some(functionNames)
+  // _functionNames = Some(functionNames)
   functionNames
 }
 
@@ -216,12 +216,12 @@ type Stdin {
   }
 }
 
-var _stdin: Stdin? = None
+// var _stdin: Stdin? = None
 pub func stdin(): Stdin {
-  if _stdin |stdin| return stdin
+  // if _stdin |stdin| return stdin
 
   val stdin = Stdin()
-  _stdin = Some(stdin)
+  // _stdin = Some(stdin)
   stdin
 }
 
