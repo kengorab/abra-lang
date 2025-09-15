@@ -514,7 +514,7 @@ pub enum Operation {
         sb.write(")")
       }
       Operation.StoreGlobal(ty, value, global) => {
-        sb.write("store_var(")
+        sb.write("store_global(")
         ty.render(sb)
         sb.write(", ")
         value.render(sb)
@@ -1641,6 +1641,7 @@ pub type Generator {
         if self.valueAsCompileTime(value) |v| {
           global.initialValue = Some(v)
         } else {
+          global.referenced = true
           self.emit(Instruction(op: Operation.StoreGlobal(ty: global.ty, value: value, global: global)))
         }
       }
@@ -1698,6 +1699,7 @@ pub type Generator {
         if self.variableIsGlobal(v) |modId| {
           val globalName = self.globalName(modId, v.label.name)
           val global = self.getGlobal(globalName, pos)
+          global.referenced = true
           self.emit(Instruction(op: Operation.StoreGlobal(ty: varIrTy, value: res, global: global)))
         } else if v.isCaptured {
           self.genStoreCapturedVar(pos, concreteGenerics, v, res)
@@ -3351,10 +3353,7 @@ pub type Generator {
 
   func getConcreteTypeFromType(self, ty: tc.Type, concreteGenerics: Map<String, ConcreteType>): ConcreteType {
     match ty.kind {
-      TypeKind.CouldNotDetermine => {
-        stdoutWriteln(process.getStackTrace())
-        unreachable("Encountered CouldNotDetermine type")
-      }
+      TypeKind.CouldNotDetermine => unreachable("Encountered CouldNotDetermine type")
       TypeKind.PrimitiveUnit => unreachable("getConcreteTypeFromType: Unit")
       TypeKind.PrimitiveInt => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeIntStruct), typeArgs: [])
       TypeKind.PrimitiveFloat => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeFloatStruct), typeArgs: [])
@@ -3362,10 +3361,7 @@ pub type Generator {
       TypeKind.PrimitiveChar => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeCharStruct), typeArgs: [])
       TypeKind.PrimitiveString => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct), typeArgs: [])
       TypeKind.Never => unreachable("Encountered Never type")
-      TypeKind.Generic(name) => try concreteGenerics[name] else {
-        stdoutWriteln(process.getStackTrace())
-        unreachable("getConcreteTypeFromType: generic '$name'")
-      }
+      TypeKind.Generic(name) => try concreteGenerics[name] else unreachable("getConcreteTypeFromType: generic '$name'")
       TypeKind.Instance(instanceKind, typeArgs) => {
         val concreteTypeArgs = typeArgs.map(t => self.getConcreteTypeFromType(t, concreteGenerics))
         ConcreteType(instanceKind: instanceKind, typeArgs: concreteTypeArgs)
