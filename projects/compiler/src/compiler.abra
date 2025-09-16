@@ -246,22 +246,7 @@ pub type Compiler {
     self._currentFn = fn
 
     for node, idx in module.code {
-      val value = try self._compileStatement(node)
-      // If the last statement in the module is an expression, call the `toString` method on that expression, and print the result using `printf`.
-      if idx == module.code.length - 1 && node.ty.kind != TypeKind.PrimitiveUnit {
-        if value |v| {
-          self._currentFn.block.addComment("call `toString` on final expression, and `printf` the String's chars")
-          val (dataPtr, _, _) = self._builder.buildGlobalString("%s\\n")
-          val tostringMethod = try self._getOrCompileToStringMethod(node.ty)
-
-          val fnName = self._functionName("toString", FunctionKind.InstanceMethod(Some((try self._getInstanceTypeForType(node.ty))[0]), true))
-          val frameCtx = CallframeContext(position: node.token.position, callee: Some(fnName))
-          val tostringRepr = try self._buildCall(Some(frameCtx), Callable.Function(tostringMethod), [v])
-          val reprCharsPtr = try self._currentFn.block.buildAdd(Value.Int(8), tostringRepr, Some("_repr_chars_ptr")) else |e| return qbeError(e)
-          val reprChars = self._currentFn.block.buildLoadL(reprCharsPtr, Some("_repr_chars"))
-          self._currentFn.block.buildVoidCall(Callable.Function(self._printf), [dataPtr, reprChars])
-        }
-      }
+      try self._compileStatement(node)
     }
 
     fn.block.buildReturn()
@@ -1549,17 +1534,7 @@ pub type Compiler {
         }
       }
       TypedAstNodeKind.Lambda(fn, typeHint) => {
-        val targetParamTypes = if typeHint |hint| {
-          val paramTypes = match hint.kind {
-            TypeKind.Func(paramTypes, _) => Some(paramTypes)
-            // If the function value is being treated as a Hole, then no param type info needs to be known later anyway
-            TypeKind.Hole => None
-            _ => unreachable("typeKind must be TypeKind.Func")
-          }
-          paramTypes
-        } else {
-          None
-        }
+        val targetParamTypes = if typeHint |(paramHints, _)| Some(paramHints) else None
 
         val capturesMem = if !fn.isClosure() None else {
           val mem = try self._createClosureCaptures(fn)

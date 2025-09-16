@@ -1,6 +1,6 @@
 {
-  "id": 3,
-  "name": "%FILE_NAME%",
+  "id": 5,
+  "name": "%TEST_DIR%/typechecker/binary/or_eq.abra",
   "code": [
     {
       "token": {
@@ -262,7 +262,7 @@
       "node": {
         "kind": "typeDeclaration",
         "struct": {
-          "moduleId": 3,
+          "moduleId": 5,
           "name": { "name": "Foo", "position": [7, 6] },
           "typeParams": [],
           "fields": [
@@ -287,7 +287,7 @@
             {
               "label": { "name": "toString", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_3::Foo::toString",
+                "name": "$root::module_5::Foo::toString",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -308,7 +308,7 @@
             {
               "label": { "name": "hash", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_3::Foo::hash",
+                "name": "$root::module_5::Foo::hash",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -329,7 +329,7 @@
             {
               "label": { "name": "eq", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_3::Foo::eq",
+                "name": "$root::module_5::Foo::eq",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -345,7 +345,7 @@
                   "label": { "name": "other", "position": [0, 0] },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 3, "name": "Foo" },
+                    "struct": { "moduleId": 5, "name": "Foo" },
                     "typeParams": []
                   },
                   "defaultValue": null,
@@ -386,7 +386,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 3, "name": "Foo" },
+              "struct": { "moduleId": 5, "name": "Foo" },
               "typeParams": []
             }
           }
@@ -400,12 +400,12 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 3, "name": "Foo" },
+            "struct": { "moduleId": 5, "name": "Foo" },
             "typeParams": []
           },
           "node": {
             "kind": "invocation",
-            "invokee": { "moduleId": 3, "name": "Foo" },
+            "invokee": { "moduleId": 5, "name": "Foo" },
             "arguments": [
               {
                 "token": {
@@ -496,7 +496,7 @@
                   },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 3, "name": "Foo" },
+                    "struct": { "moduleId": 5, "name": "Foo" },
                     "typeParams": []
                   },
                   "node": {
@@ -547,7 +547,7 @@
             },
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 3, "name": "Foo" },
+              "struct": { "moduleId": 5, "name": "Foo" },
               "typeParams": []
             },
             "node": {
@@ -617,7 +617,7 @@
                   },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 3, "name": "Foo" },
+                    "struct": { "moduleId": 5, "name": "Foo" },
                     "typeParams": []
                   },
                   "node": {
@@ -668,7 +668,7 @@
             },
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 3, "name": "Foo" },
+              "struct": { "moduleId": 5, "name": "Foo" },
               "typeParams": []
             },
             "node": {

@@ -52,7 +52,7 @@ pub func unmarshallString(value: VmValue): Result<String, String> {
     VmValue.ConstString(str) => Ok(str)
     VmValue.Pointer => Err("Could not unmarshall value of raw pointer to String")
     VmValue.Instance(i) => {
-      if i.name != "2_String" return Err("Could not unmarshall instance of '${i.name}' as String")
+      if !i.name.endsWith("_String") return Err("Could not unmarshall instance of '${i.name}' as String")
 
       val length = i.expectField(0).expectInt("String length field is at idx 0, and is an Int")
       val buffer = i.expectField(1).expectPointer("String length field is at idx 0, and is a Pointer<Byte>")
@@ -75,6 +75,7 @@ pub type VM {
   pub ir: ir.IR
   externs: Map<String, (VmValue[]) => VmValue> = {}
   locals: VmValue[] = []
+  globals: Map<String, VmValue> = {}
   captures: VmValue[] = []
   returnValue: VmValue = VmValue.Undefined
   flag: ControlFlag = ControlFlag.Empty
@@ -83,7 +84,20 @@ pub type VM {
 
   pub func evalIR(intermediateRepresentation: ir.IR): VmValue {
     val vm = VM(ir: intermediateRepresentation)
+    vm.initGlobals()
     vm.evalFunctionCall(intermediateRepresentation.mainFunction, [])
+  }
+
+  func initGlobals(self) {
+    for global in self.ir.globals {
+      if !global.referenced continue
+      val value = if global.initialValue |v| {
+        self.irConstToVmValue(v)
+      } else {
+        VmValue.Undefined
+      }
+      self.globals[global.name] = value
+    }
   }
 
   pub func evalFunctionCall(self, fn: ir.IrFunction, args: VmValue[], captures: VmValue[] = []): VmValue {
@@ -132,21 +146,27 @@ pub type VM {
       IdentKind.Named(_, idx) => self.locals[idx]
       IdentKind.Anon(idx) => self.locals[idx]
     }
-    try v else unreachable("(${self.curFnName}: expected value for ident '$ident'")
+    try v else unreachable("${self.curFnName}: expected value for ident '$ident'")
+  }
+
+  func irConstToVmValue(self, const: ir.Const): VmValue {
+    match const {
+      Const.Int(i) => VmValue.Int(i)
+      Const.Float(f) => VmValue.Float(f)
+      Const.Bool(b) => VmValue.Bool(b)
+      Const.Char(i) => VmValue.Int(i) // char is represented as its i64 value
+      Const.String(s) => VmValue.ConstString(s)
+    }
   }
 
   func irValueToVmValue(self, value: ir.Value): VmValue {
     match value {
       Value.Unit => unreachable("unit is invalid value")
-      Value.Const(const) => match const {
-        Const.Int(i) => VmValue.Int(i)
-        Const.Float(f) => VmValue.Float(f)
-        Const.Bool(b) => VmValue.Bool(b)
-        Const.Char(i) => VmValue.Int(i) // char is represented as its i64 value
-        Const.String(s) => VmValue.ConstString(s)
-      }
+      Value.Const(const) => self.irConstToVmValue(const)
       Value.Ident(ident) => self.load(ident)
-      Value.Global(g) => todo("irValueToVmValue: Value.Global")
+      Value.Global(g) => {
+        try self.globals[g.name] else unreachable("${self.curFnName}: expected value for global '${g.name}'")
+      }
     }
   }
 
@@ -380,7 +400,9 @@ pub type VM {
         }
         capture.inner = self.irValueToVmValue(value)
       }
-      Operation.StoreGlobal(ty, value, global) => todo("Operation.StoreGlobal")
+      Operation.StoreGlobal(_, value, global) => {
+        self.globals[global.name] = self.irValueToVmValue(value)
+      }
       Operation.StoreField(ty, value, mem, name, offsetBytes) => {
         val instance = self.irValueToVmValue(mem).expectInstance("Operation.StoreField mem")
         instance.set(offsetBytes >> 3, self.irValueToVmValue(value))
@@ -702,6 +724,11 @@ pub type VM {
             self.store(self.expectAssignee(inst), VmValue.Int(floatVal.round()))
           }
           Builtin.Uninitialized => self.store(self.expectAssignee(inst), VmValue.Int(0))
+          // TODO: real implementations for callstack, modulenames, and functionnames
+          Builtin.Callstack => self.store(self.expectAssignee(inst), VmValue.Int(0))
+          Builtin.CallstackPtr => self.store(self.expectAssignee(inst), VmValue.Int(0))
+          Builtin.ModuleNames => self.store(self.expectAssignee(inst), VmValue.Int(0))
+          Builtin.FunctionNames => self.store(self.expectAssignee(inst), VmValue.Int(0))
         }
       }
     }

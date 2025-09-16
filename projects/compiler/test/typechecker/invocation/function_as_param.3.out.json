@@ -1,6 +1,6 @@
 {
-  "id": 3,
-  "name": "%FILE_NAME%",
+  "id": 5,
+  "name": "%TEST_DIR%/typechecker/invocation/function_as_param.3.abra",
   "code": [
     {
       "token": {
@@ -18,7 +18,7 @@
         "function": {
           "label": { "name": "foo", "position": [1, 6] },
           "scope": {
-            "name": "$root::module_3::foo",
+            "name": "$root::module_5::foo",
             "variables": [
               {
                 "label": { "name": "fn", "position": [1, 10] },
@@ -159,7 +159,7 @@
         "function": {
           "label": { "name": "negativeOne", "position": [3, 6] },
           "scope": {
-            "name": "$root::module_3::negativeOne",
+            "name": "$root::module_5::negativeOne",
             "variables": [],
             "functions": [],
             "structs": [],

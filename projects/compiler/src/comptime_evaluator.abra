@@ -1,7 +1,7 @@
 import Pointer, Byte from "_intrinsics"
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
 import Parser, ParseError, ParsedModule, AstNode, LiteralAstNode, ImportNode, ImportKind, Label from "./parser"
-import Project, Function, Struct, Type, TypedAstNode, TypedAstNodeKind, InstanceKind from "./typechecker"
+import Project, Function, Struct, Type, TypedAstNode, TypedAstNodeKind, InstanceKind, TypedInvokee from "./typechecker"
 import Generator from "./ir"
 import VM, VmValue, Instance, VmFunction, unmarshallString from "./ir_vm"
 import InjectedCode from "meta"
@@ -70,8 +70,54 @@ func stringifyTypedNode(node: TypedAstNode): String {
       chunkStrs.push("\"")
       chunkStrs.join()
     }
+    TypedAstNodeKind.Unary => todo("stringifyTypedNode: Unary")
+    TypedAstNodeKind.Binary => todo("stringifyTypedNode: Binary")
+    TypedAstNodeKind.Grouped => todo("stringifyTypedNode: Grouped")
     TypedAstNodeKind.Identifier(name, _, _, _) => name
-    else => todo("stringify: other TypedAstNodeKinds")
+    TypedAstNodeKind.Accessor => todo("stringifyTypedNode: Accessor")
+    TypedAstNodeKind.Invocation(invokee, arguments, _) => {
+      val chunks: String[] = []
+      match invokee {
+        TypedInvokee.Method(fn, selfVal, isOptSafe) => todo("stringifyTypedNode: Invocation:Method")
+        TypedInvokee.Function(fn) => {
+          chunks.push(fn.label.name)
+        }
+        TypedInvokee.Struct(struct) => todo("stringifyTypedNode: Invocation:Struct")
+        TypedInvokee.Expr(expr) => todo("stringifyTypedNode: Invocation:Expr")
+        TypedInvokee.EnumVariant(enum_, variant) => todo("stringifyTypedNode: Invocation:EnumVariant")
+      }
+
+      chunks.push("(")
+      for _arg in arguments {
+        val arg = try _arg else continue
+        val stringifiedArg = stringifyTypedNode(arg)
+        chunks.push(stringifiedArg)
+        chunks.push(", ")
+      }
+      chunks.push(")")
+
+      chunks.join()
+    }
+    TypedAstNodeKind.Array => todo("stringifyTypedNode: Array")
+    TypedAstNodeKind.Set => todo("stringifyTypedNode: Set")
+    TypedAstNodeKind.Map => todo("stringifyTypedNode: Map")
+    TypedAstNodeKind.Tuple => todo("stringifyTypedNode: Tuple")
+    TypedAstNodeKind.Indexing => todo("stringifyTypedNode: Indexing")
+    TypedAstNodeKind.Lambda => todo("stringifyTypedNode: Lambda")
+    TypedAstNodeKind.Assignment => todo("stringifyTypedNode: Assignment")
+    TypedAstNodeKind.If => todo("stringifyTypedNode: If")
+    TypedAstNodeKind.Match => todo("stringifyTypedNode: Match")
+    TypedAstNodeKind.Try => todo("stringifyTypedNode: Try")
+    TypedAstNodeKind.While => todo("stringifyTypedNode: While")
+    TypedAstNodeKind.For => todo("stringifyTypedNode: For")
+    TypedAstNodeKind.BindingDeclaration => todo("stringifyTypedNode: BindingDeclaration")
+    TypedAstNodeKind.FunctionDeclaration => todo("stringifyTypedNode: FunctionDeclaration")
+    TypedAstNodeKind.TypeDeclaration => todo("stringifyTypedNode: TypeDeclaration")
+    TypedAstNodeKind.EnumDeclaration => todo("stringifyTypedNode: EnumDeclaration")
+    TypedAstNodeKind.Break => todo("stringifyTypedNode: Break")
+    TypedAstNodeKind.Continue => todo("stringifyTypedNode: Continue")
+    TypedAstNodeKind.Return => todo("stringifyTypedNode: Return")
+    TypedAstNodeKind.Placeholder => unreachable("stringifyTypedNode: Placeholder")
   }
 }
 

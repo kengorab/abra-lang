@@ -1,6 +1,6 @@
 {
-  "id": 3,
-  "name": "%FILE_NAME%",
+  "id": 5,
+  "name": "%TEST_DIR%/typechecker/identifier/identifier_transform_OptionNone.abra",
   "code": [
     {
       "token": {
@@ -25,7 +25,7 @@
             "mutable": false,
             "type": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 2, "name": "Option" },
+              "enum": { "moduleId": 4, "name": "Option" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -44,7 +44,7 @@
           },
           "type": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 2, "name": "Option" },
+            "enum": { "moduleId": 4, "name": "Option" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -64,7 +64,7 @@
               },
               "type": {
                 "kind": "enum",
-                "enum": { "moduleId": 2, "name": "Option" }
+                "enum": { "moduleId": 4, "name": "Option" }
               },
               "node": {
                 "kind": "identifier",

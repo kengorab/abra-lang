@@ -198,6 +198,10 @@ pub enum Builtin {
   FloatRound(floatVal: Value)
   FloatBitsToInt(floatVal: Value)
   Uninitialized
+  Callstack
+  CallstackPtr
+  ModuleNames
+  FunctionNames
 }
 
 pub type Block {
@@ -510,7 +514,7 @@ pub enum Operation {
         sb.write(")")
       }
       Operation.StoreGlobal(ty, value, global) => {
-        sb.write("store_var(")
+        sb.write("store_global(")
         ty.render(sb)
         sb.write(", ")
         value.render(sb)
@@ -1637,6 +1641,7 @@ pub type Generator {
         if self.valueAsCompileTime(value) |v| {
           global.initialValue = Some(v)
         } else {
+          global.referenced = true
           self.emit(Instruction(op: Operation.StoreGlobal(ty: global.ty, value: value, global: global)))
         }
       }
@@ -1694,6 +1699,7 @@ pub type Generator {
         if self.variableIsGlobal(v) |modId| {
           val globalName = self.globalName(modId, v.label.name)
           val global = self.getGlobal(globalName, pos)
+          global.referenced = true
           self.emit(Instruction(op: Operation.StoreGlobal(ty: varIrTy, value: res, global: global)))
         } else if v.isCaptured {
           self.genStoreCapturedVar(pos, concreteGenerics, v, res)
@@ -2498,6 +2504,18 @@ pub type Generator {
               val innerTy = self.getIrTypeForConcreteType(try innerConcreteGenerics["T"] else unreachable("(pointer_malloc) could not resolve T for Pointer<T>"))
               self.ssaValue(innerTy, Operation.Builtin(ret: innerTy, builtin: Builtin.Uninitialized), dst)
             }
+            "__callstack" => {
+              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Callstack), dst)
+            }
+            "__callstackp" => {
+              self.ssaValue(IrType.I64, Operation.Builtin(ret: IrType.I64, builtin: Builtin.CallstackPtr), dst)
+            }
+            "modulenames" => {
+              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.ModuleNames), dst)
+            }
+            "functionnames" => {
+              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.FunctionNames), dst)
+            }
             else => todo("Unimplemented static/standalone intrinsic '$intrinsicName'")
           }
         } else {
@@ -3015,18 +3033,8 @@ pub type Generator {
     }
   }
 
-  func genLambda(self, concreteGenerics: Map<String, ConcreteType>, fn: tc.Function, typeHint: tc.Type?, dst: String?): Value {
-    val targetParamTypes = if typeHint |hint| {
-      val paramTypes = match hint.kind {
-        TypeKind.Func(paramTypes, _) => Some(paramTypes)
-        // If the function value is being treated as a Hole, then no param type info needs to be known later anyway
-        TypeKind.Hole => None
-        _ => unreachable("typeKind must be TypeKind.Func")
-      }
-      paramTypes
-    } else {
-      None
-    }
+  func genLambda(self, concreteGenerics: Map<String, ConcreteType>, fn: tc.Function, typeHint: ((tc.Type, Bool)[], tc.Type)?, dst: String?): Value {
+    val targetParamTypes = if typeHint |(paramHints, _)| Some(paramHints) else None
 
     val captures = if fn.isClosure() {
       val captures: Value[] = []
@@ -3345,10 +3353,7 @@ pub type Generator {
 
   func getConcreteTypeFromType(self, ty: tc.Type, concreteGenerics: Map<String, ConcreteType>): ConcreteType {
     match ty.kind {
-      TypeKind.CouldNotDetermine => {
-        stdoutWriteln(process.getStackTrace())
-        unreachable("Encountered CouldNotDetermine type")
-      }
+      TypeKind.CouldNotDetermine => unreachable("Encountered CouldNotDetermine type")
       TypeKind.PrimitiveUnit => unreachable("getConcreteTypeFromType: Unit")
       TypeKind.PrimitiveInt => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeIntStruct), typeArgs: [])
       TypeKind.PrimitiveFloat => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeFloatStruct), typeArgs: [])
@@ -3356,10 +3361,7 @@ pub type Generator {
       TypeKind.PrimitiveChar => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeCharStruct), typeArgs: [])
       TypeKind.PrimitiveString => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct), typeArgs: [])
       TypeKind.Never => unreachable("Encountered Never type")
-      TypeKind.Generic(name) => try concreteGenerics[name] else {
-        stdoutWriteln(process.getStackTrace())
-        unreachable("getConcreteTypeFromType: generic '$name'")
-      }
+      TypeKind.Generic(name) => try concreteGenerics[name] else unreachable("getConcreteTypeFromType: generic '$name'")
       TypeKind.Instance(instanceKind, typeArgs) => {
         val concreteTypeArgs = typeArgs.map(t => self.getConcreteTypeFromType(t, concreteGenerics))
         ConcreteType(instanceKind: instanceKind, typeArgs: concreteTypeArgs)

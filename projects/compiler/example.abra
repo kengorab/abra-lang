@@ -1,24 +1,3 @@
-func getLine(str: String, line: Int): String {
-  if line < 0 return ""
+// import "process" as process
 
-  var seenLines = 0
-  var idx = 0
-  var prevStart = 0
-  while idx < str.length {
-    if str._buffer.loadAt(idx).asInt() == '\n'.asByte().asInt() {
-      if line == seenLines return str[prevStart:idx]
-
-      seenLines += 1
-      prevStart = idx + 1
-    }
-
-    idx += 1
-  }
-
-  if line == seenLines return str[prevStart:idx]
-
-  ""
-}
-
-val s = "''\nabc"
-stdoutWriteln(getLine(s, 1))
+stdoutWriteln("hello")

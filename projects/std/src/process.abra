@@ -83,6 +83,9 @@ pub func uname(): Uname {
   uname
 }
 
+// todo: don't duplicate this, but for now it doesn't matter
+pub decorator noreturn { }
+
 @noreturn
 pub func exit(status = 1) = libc.exit(status)
 

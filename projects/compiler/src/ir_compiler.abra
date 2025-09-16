@@ -586,7 +586,7 @@ pub type Compiler {
             if thenPhiValue |(label, v)| phiCases.push((label, v))
             if elsePhiValue |(label, v)| phiCases.push((label, v))
 
-            try self.currentFn.block.buildPhi(phiCases, dst) else |e| unreachable("$e ($thenBlock)")
+            try self.currentFn.block.buildPhi(phiCases, dst) else |e| unreachable("$e ($thenBlock) ($elseBlock)")
           }
         } else {
           if !isStmt unreachable("must be a statement at this point")
@@ -954,6 +954,19 @@ pub type Compiler {
             self.currentFn.block.buildCastD(floatVal, dst)
           }
           Builtin.Uninitialized => {
+            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+          }
+          // TODO: real implementations for callstack, modulenames, and functionnames
+          Builtin.Callstack => {
+            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+          }
+          Builtin.CallstackPtr => {
+            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+          }
+          Builtin.ModuleNames => {
+            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+          }
+          Builtin.FunctionNames => {
             self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
           }
         }

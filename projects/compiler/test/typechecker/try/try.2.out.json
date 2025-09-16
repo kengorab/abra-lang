@@ -1,6 +1,6 @@
 {
-  "id": 3,
-  "name": "%FILE_NAME%",
+  "id": 5,
+  "name": "%TEST_DIR%/typechecker/try/try.2.abra",
   "code": [
     {
       "token": {
@@ -18,7 +18,7 @@
         "function": {
           "label": { "name": "foo", "position": [1, 6] },
           "scope": {
-            "name": "$root::module_3::foo",
+            "name": "$root::module_5::foo",
             "variables": [],
             "functions": [],
             "structs": [],
@@ -45,11 +45,11 @@
           "parameters": [],
           "returnType": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 2, "name": "Result" },
+            "enum": { "moduleId": 4, "name": "Result" },
             "typeParams": [
               {
                 "kind": "instance",
-                "struct": { "moduleId": 2, "name": "Array" },
+                "struct": { "moduleId": 4, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "generic",
@@ -59,7 +59,7 @@
               },
               {
                 "kind": "instance",
-                "struct": { "moduleId": 2, "name": "Array" },
+                "struct": { "moduleId": 4, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "generic",
@@ -79,11 +79,11 @@
               },
               "type": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 2, "name": "Result" },
+                "enum": { "moduleId": 4, "name": "Result" },
                 "typeParams": [
                   {
                     "kind": "instance",
-                    "struct": { "moduleId": 2, "name": "Array" },
+                    "struct": { "moduleId": 4, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "generic",
@@ -93,7 +93,7 @@
                   },
                   {
                     "kind": "instance",
-                    "struct": { "moduleId": 2, "name": "Array" },
+                    "struct": { "moduleId": 4, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "generic",
@@ -120,7 +120,7 @@
                     ],
                     "returnType": {
                       "kind": "enumInstance",
-                      "enum": { "moduleId": 2, "name": "Result" },
+                      "enum": { "moduleId": 4, "name": "Result" },
                       "typeParams": [
                         {
                           "kind": "generic",
@@ -144,7 +144,7 @@
                     },
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 2, "name": "Array" },
+                      "struct": { "moduleId": 4, "name": "Array" },
                       "typeParams": [
                         {
                           "kind": "generic",
@@ -180,14 +180,14 @@
         "function": {
           "label": { "name": "bar", "position": [3, 6] },
           "scope": {
-            "name": "$root::module_3::bar",
+            "name": "$root::module_5::bar",
             "variables": [
               {
                 "label": { "name": "x", "position": [4, 7] },
                 "mutable": false,
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 2, "name": "Array" },
+                  "struct": { "moduleId": 4, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -207,7 +207,7 @@
           "parameters": [],
           "returnType": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 2, "name": "Result" },
+            "enum": { "moduleId": 4, "name": "Result" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -215,7 +215,7 @@
               },
               {
                 "kind": "instance",
-                "struct": { "moduleId": 2, "name": "Array" },
+                "struct": { "moduleId": 4, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -249,7 +249,7 @@
                     "mutable": false,
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 2, "name": "Array" },
+                      "struct": { "moduleId": 4, "name": "Array" },
                       "typeParams": [
                         {
                           "kind": "primitive",
@@ -268,7 +268,7 @@
                   },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 2, "name": "Array" },
+                    "struct": { "moduleId": 4, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -287,11 +287,11 @@
                       },
                       "type": {
                         "kind": "enumInstance",
-                        "enum": { "moduleId": 2, "name": "Result" },
+                        "enum": { "moduleId": 4, "name": "Result" },
                         "typeParams": [
                           {
                             "kind": "instance",
-                            "struct": { "moduleId": 2, "name": "Array" },
+                            "struct": { "moduleId": 4, "name": "Array" },
                             "typeParams": [
                               {
                                 "kind": "primitive",
@@ -301,7 +301,7 @@
                           },
                           {
                             "kind": "instance",
-                            "struct": { "moduleId": 2, "name": "Array" },
+                            "struct": { "moduleId": 4, "name": "Array" },
                             "typeParams": [
                               {
                                 "kind": "primitive",
@@ -320,11 +320,11 @@
                             "parameters": [],
                             "returnType": {
                               "kind": "enumInstance",
-                              "enum": { "moduleId": 2, "name": "Result" },
+                              "enum": { "moduleId": 4, "name": "Result" },
                               "typeParams": [
                                 {
                                   "kind": "instance",
-                                  "struct": { "moduleId": 2, "name": "Array" },
+                                  "struct": { "moduleId": 4, "name": "Array" },
                                   "typeParams": [
                                     {
                                       "kind": "generic",
@@ -334,7 +334,7 @@
                                 },
                                 {
                                   "kind": "instance",
-                                  "struct": { "moduleId": 2, "name": "Array" },
+                                  "struct": { "moduleId": 4, "name": "Array" },
                                   "typeParams": [
                                     {
                                       "kind": "generic",
@@ -362,7 +362,7 @@
               },
               "type": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 2, "name": "Result" },
+                "enum": { "moduleId": 4, "name": "Result" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -370,7 +370,7 @@
                   },
                   {
                     "kind": "instance",
-                    "struct": { "moduleId": 2, "name": "Array" },
+                    "struct": { "moduleId": 4, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -397,7 +397,7 @@
                     ],
                     "returnType": {
                       "kind": "enumInstance",
-                      "enum": { "moduleId": 2, "name": "Result" },
+                      "enum": { "moduleId": 4, "name": "Result" },
                       "typeParams": [
                         {
                           "kind": "generic",
@@ -435,7 +435,7 @@
                         },
                         "type": {
                           "kind": "instance",
-                          "struct": { "moduleId": 2, "name": "Array" },
+                          "struct": { "moduleId": 4, "name": "Array" },
                           "typeParams": [
                             {
                               "kind": "primitive",

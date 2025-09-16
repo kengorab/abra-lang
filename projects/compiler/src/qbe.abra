@@ -660,7 +660,7 @@ pub type Block {
   pub func buildPhi(self, cases: (Label, Value)[], dst: String? = None): Result<Value, String> {
     var ty = if cases[0] |(_, value)| value.ty() else return Err("phi requires at least 1 label")
     for (label, value) in cases {
-      if ty != value.ty() return Err("phi case type mismatch: @${label.name} (type: ${value.ty()}) doesn't match previous (type: $ty)")
+      if ty.repr() != value.ty().repr() return Err("phi case type mismatch: @${label.name} (type: ${value.ty()}) doesn't match previous (type: $ty)")
 
       self._usedLabels.insert(label)
     }
