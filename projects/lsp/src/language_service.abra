@@ -115,6 +115,24 @@ pub type AbraLanguageService {
           lines
         }
       }
+      IdentifierKindMeta.Macro(params, expanded) => {
+        val lines = [
+          "```abra",
+          "@macro",
+          "func ${ident.name}(${params.join(", ")})",
+          "```",
+          "Expands to:",
+          "```abra",
+          expanded
+            .replaceAll("\\", "\\\\")
+            .replaceAll("\n", "\\n")
+            .replaceAll("\"", "\\\"")
+            .replaceAll("\t", "\\t"),
+          "```"
+        ]
+
+        lines
+      }
       IdentifierKindMeta.Type(isEnum, typeParams) => {
         val prefix = if isEnum "enum" else "type"
         val generics = if typeParams.isEmpty() "" else "<${typeParams.join(", ")}>"

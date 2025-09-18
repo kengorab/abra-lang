@@ -1,6 +1,6 @@
 [
   {
-    "id": 5,
+    "id": 6,
     "name": "%TEST_DIR%/typechecker/import/_exports.abra",
     "exports": [
       {
@@ -87,7 +87,7 @@
           "function": {
             "label": { "name": "add", "position": [3, 10] },
             "scope": {
-              "name": "$root::module_5::add",
+              "name": "$root::module_6::add",
               "variables": [
                 {
                   "label": { "name": "a", "position": [3, 14] },
@@ -206,7 +206,7 @@
         "node": {
           "kind": "typeDeclaration",
           "struct": {
-            "moduleId": 5,
+            "moduleId": 6,
             "name": { "name": "Foo", "position": [5, 10] },
             "typeParams": [],
             "fields": [
@@ -214,7 +214,7 @@
                 "name": { "name": "color", "position": [6, 7] },
                 "type": {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 5, "name": "Color" },
+                  "enum": { "moduleId": 6, "name": "Color" },
                   "typeParams": []
                 },
                 "initializer": null,
@@ -225,7 +225,7 @@
               {
                 "label": { "name": "toString", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_5::Foo::toString",
+                  "name": "$root::module_6::Foo::toString",
                   "variables": [],
                   "functions": [],
                   "structs": [],
@@ -246,7 +246,7 @@
               {
                 "label": { "name": "hash", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_5::Foo::hash",
+                  "name": "$root::module_6::Foo::hash",
                   "variables": [],
                   "functions": [],
                   "structs": [],
@@ -267,7 +267,7 @@
               {
                 "label": { "name": "eq", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_5::Foo::eq",
+                  "name": "$root::module_6::Foo::eq",
                   "variables": [],
                   "functions": [],
                   "structs": [],
@@ -283,7 +283,7 @@
                     "label": { "name": "other", "position": [0, 0] },
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 5, "name": "Foo" },
+                      "struct": { "moduleId": 6, "name": "Foo" },
                       "typeParams": []
                     },
                     "defaultValue": null,
@@ -299,14 +299,14 @@
               {
                 "label": { "name": "foo", "position": [8, 8] },
                 "scope": {
-                  "name": "$root::module_5::Foo::foo",
+                  "name": "$root::module_6::Foo::foo",
                   "variables": [
                     {
                       "label": { "name": "self", "position": [8, 12] },
                       "mutable": false,
                       "type": {
                         "kind": "instance",
-                        "struct": { "moduleId": 5, "name": "Foo" },
+                        "struct": { "moduleId": 6, "name": "Foo" },
                         "typeParams": []
                       }
                     }
@@ -372,7 +372,7 @@
               "mutable": false,
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 5, "name": "Foo" },
+                "struct": { "moduleId": 6, "name": "Foo" },
                 "typeParams": []
               }
             }
@@ -386,12 +386,12 @@
             },
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 5, "name": "Foo" },
+              "struct": { "moduleId": 6, "name": "Foo" },
               "typeParams": []
             },
             "node": {
               "kind": "invocation",
-              "invokee": { "moduleId": 5, "name": "Foo" },
+              "invokee": { "moduleId": 6, "name": "Foo" },
               "arguments": [
                 {
                   "token": {
@@ -402,7 +402,7 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 5, "name": "Color" },
+                    "enum": { "moduleId": 6, "name": "Color" },
                     "typeParams": []
                   },
                   "node": {
@@ -417,7 +417,7 @@
                       },
                       "type": {
                         "kind": "enum",
-                        "enum": { "moduleId": 5, "name": "Color" }
+                        "enum": { "moduleId": 6, "name": "Color" }
                       },
                       "node": {
                         "kind": "identifier",
@@ -450,7 +450,7 @@
         "node": {
           "kind": "enumDeclaration",
           "enum": {
-            "moduleId": 5,
+            "moduleId": 6,
             "name": { "name": "Color", "position": [12, 10] },
             "typeParams": [],
             "variants": [
@@ -504,7 +504,7 @@
               {
                 "label": { "name": "toString", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_5::Color::toString",
+                  "name": "$root::module_6::Color::toString",
                   "variables": [],
                   "functions": [],
                   "structs": [],
@@ -525,7 +525,7 @@
               {
                 "label": { "name": "hash", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_5::Color::hash",
+                  "name": "$root::module_6::Color::hash",
                   "variables": [],
                   "functions": [],
                   "structs": [],
@@ -546,7 +546,7 @@
               {
                 "label": { "name": "eq", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_5::Color::eq",
+                  "name": "$root::module_6::Color::eq",
                   "variables": [],
                   "functions": [],
                   "structs": [],
@@ -562,7 +562,7 @@
                     "label": { "name": "other", "position": [0, 0] },
                     "type": {
                       "kind": "enumInstance",
-                      "enum": { "moduleId": 5, "name": "Color" },
+                      "enum": { "moduleId": 6, "name": "Color" },
                       "typeParams": []
                     },
                     "defaultValue": null,
@@ -583,7 +583,7 @@
     ]
   },
   {
-    "id": 6,
+    "id": 7,
     "name": "%TEST_DIR%/typechecker/import/import_type_identifier.1.abra",
     "code": [
       {
@@ -609,11 +609,11 @@
               "mutable": false,
               "type": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Option" },
+                "enum": { "moduleId": 5, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "instance",
-                    "struct": { "moduleId": 5, "name": "Foo" },
+                    "struct": { "moduleId": 6, "name": "Foo" },
                     "typeParams": []
                   }
                 ]
@@ -629,11 +629,11 @@
             },
             "type": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 4, "name": "Option" },
+              "enum": { "moduleId": 5, "name": "Option" },
               "typeParams": [
                 {
                   "kind": "instance",
-                  "struct": { "moduleId": 5, "name": "Foo" },
+                  "struct": { "moduleId": 6, "name": "Foo" },
                   "typeParams": []
                 }
               ]
@@ -650,7 +650,7 @@
                 },
                 "type": {
                   "kind": "enum",
-                  "enum": { "moduleId": 4, "name": "Option" }
+                  "enum": { "moduleId": 5, "name": "Option" }
                 },
                 "node": {
                   "kind": "identifier",
@@ -689,11 +689,11 @@
               "mutable": false,
               "type": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Option" },
+                "enum": { "moduleId": 5, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 5, "name": "Color" },
+                    "enum": { "moduleId": 6, "name": "Color" },
                     "typeParams": []
                   }
                 ]
@@ -709,11 +709,11 @@
             },
             "type": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 4, "name": "Option" },
+              "enum": { "moduleId": 5, "name": "Option" },
               "typeParams": [
                 {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 5, "name": "Color" },
+                  "enum": { "moduleId": 6, "name": "Color" },
                   "typeParams": []
                 }
               ]
@@ -730,7 +730,7 @@
                 },
                 "type": {
                   "kind": "enum",
-                  "enum": { "moduleId": 4, "name": "Option" }
+                  "enum": { "moduleId": 5, "name": "Option" }
                 },
                 "node": {
                   "kind": "identifier",

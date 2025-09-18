@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/assignment/assignment_indexing.abra",
   "code": [
     {
@@ -25,7 +25,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 4, "name": "Array" },
+              "struct": { "moduleId": 5, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -44,7 +44,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 4, "name": "Array" },
+            "struct": { "moduleId": 5, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -156,7 +156,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 4, "name": "Array" },
+                "struct": { "moduleId": 5, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -224,7 +224,7 @@
                 },
                 {
                   "kind": "instance",
-                  "struct": { "moduleId": 4, "name": "Array" },
+                  "struct": { "moduleId": 5, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -256,7 +256,7 @@
               },
               {
                 "kind": "instance",
-                "struct": { "moduleId": 4, "name": "Array" },
+                "struct": { "moduleId": 5, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -312,7 +312,7 @@
                 },
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 4, "name": "Array" },
+                  "struct": { "moduleId": 5, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -405,7 +405,7 @@
                   },
                   {
                     "kind": "instance",
-                    "struct": { "moduleId": 4, "name": "Array" },
+                    "struct": { "moduleId": 5, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -447,7 +447,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 4, "name": "Map" },
+              "struct": { "moduleId": 5, "name": "Map" },
               "typeParams": [
                 {
                   "kind": "tuple",
@@ -479,7 +479,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 4, "name": "Map" },
+            "struct": { "moduleId": 5, "name": "Map" },
             "typeParams": [
               {
                 "kind": "tuple",
@@ -711,7 +711,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 4, "name": "Map" },
+                "struct": { "moduleId": 5, "name": "Map" },
                 "typeParams": [
                   {
                     "kind": "tuple",

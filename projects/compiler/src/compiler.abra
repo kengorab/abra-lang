@@ -165,6 +165,7 @@ pub type Compiler {
   _fnNamesPtr: Value
   _resolvedGenerics: ResolvedGenerics = ResolvedGenerics()
   _loopStack: LoopBounds[] = []
+  _lambdaCount: Int = 0
   // cached things
   _printf: QbeFunction = QbeFunction.spec(name: "printf", returnType: None, parameters: [], variadicIdx: Some(1))
   _snprintf: QbeFunction = QbeFunction.spec(name: "snprintf", returnType: Some(QbeType.U64), parameters: [], variadicIdx: Some(3))
@@ -4444,7 +4445,15 @@ pub type Compiler {
     Ok("$enumTypeName.${variant.label.name}")
   }
 
-  func _fnName(self, fn: Function): String = ".${fn.label.name}"
+  func _fnName(self, fn: Function): String {
+    if fn.isLambda {
+      val suffix = self._lambdaCount
+      self._lambdaCount += 1
+      ".lambda_$suffix"
+    } else {
+      ".${fn.label.name}"
+    }
+  }
 
   func _structMethodFnName(self, struct: Struct, fn: Function): Result<String, CompileError> {
     val sep = match fn.kind {

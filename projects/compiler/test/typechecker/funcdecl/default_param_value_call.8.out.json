@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/funcdecl/default_param_value_call.8.abra",
   "code": [
     {
@@ -18,7 +18,7 @@
         "function": {
           "label": { "name": "foo", "position": [2, 6] },
           "scope": {
-            "name": "$root::module_5::foo",
+            "name": "$root::module_6::foo",
             "variables": [
               {
                 "label": { "name": "a", "position": [2, 10] },
@@ -182,7 +182,7 @@
         "function": {
           "label": { "name": "baz", "position": [5, 6] },
           "scope": {
-            "name": "$root::module_5::baz",
+            "name": "$root::module_6::baz",
             "variables": [
               {
                 "label": { "name": "a", "position": [5, 10] },
@@ -322,7 +322,7 @@
         "function": {
           "label": { "name": "bar", "position": [6, 6] },
           "scope": {
-            "name": "$root::module_5::bar",
+            "name": "$root::module_6::bar",
             "variables": [
               {
                 "label": { "name": "a", "position": [6, 10] },

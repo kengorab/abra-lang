@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/invocation/function_as_param_generic.abra",
   "code": [
     {
@@ -18,7 +18,7 @@
         "function": {
           "label": { "name": "foo", "position": [1, 6] },
           "scope": {
-            "name": "$root::module_5::foo",
+            "name": "$root::module_6::foo",
             "variables": [
               {
                 "label": { "name": "fn", "position": [1, 16] },
@@ -191,7 +191,7 @@
         "function": {
           "label": { "name": "negativeOne", "position": [3, 6] },
           "scope": {
-            "name": "$root::module_5::negativeOne",
+            "name": "$root::module_6::negativeOne",
             "variables": [],
             "functions": [],
             "structs": [],
@@ -427,7 +427,7 @@
         "function": {
           "label": { "name": "bar", "position": [7, 6] },
           "scope": {
-            "name": "$root::module_5::bar",
+            "name": "$root::module_6::bar",
             "variables": [
               {
                 "label": { "name": "s", "position": [7, 10] },

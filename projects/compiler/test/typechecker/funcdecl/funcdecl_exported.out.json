@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/funcdecl/funcdecl_exported.abra",
   "exports": [
     {
@@ -24,7 +24,7 @@
         "function": {
           "label": { "name": "foo", "position": [1, 10] },
           "scope": {
-            "name": "$root::module_5::foo",
+            "name": "$root::module_6::foo",
             "variables": [],
             "functions": [],
             "structs": [],

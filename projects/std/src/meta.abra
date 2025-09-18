@@ -9,7 +9,7 @@ pub type InjectedCode {
   pub func addImport(self, module: String): String {
     if self.imports[module] |alias| return alias
 
-    val alias = "_${String.random(24)}"
+    val alias = "__imp_${module}_${String.random(4)}__"
     self.imports[module] = alias
     alias
   }
@@ -19,8 +19,20 @@ pub type InjectedCode {
     self
   }
 
+  pub func appendln(self, str: String): InjectedCode {
+    self.chunks.push(str)
+    self.chunks.push("\n")
+    self
+  }
+
   pub func appendExpr(self, expr: Expr): InjectedCode {
     self.chunks.push(expr.stringify())
+    self
+  }
+
+  pub func appendExprln(self, expr: Expr): InjectedCode {
+    self.chunks.push(expr.stringify())
+    self.chunks.push("\n")
     self
   }
 }

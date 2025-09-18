@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/match/match_expr_terminators.abra",
   "code": [
     {
@@ -18,7 +18,7 @@
         "function": {
           "label": { "name": "foo", "position": [2, 6] },
           "scope": {
-            "name": "$root::module_5::foo",
+            "name": "$root::module_6::foo",
             "variables": [
               {
                 "label": { "name": "a", "position": [2, 10] },
@@ -823,7 +823,7 @@
         "function": {
           "label": { "name": "bar", "position": [31, 6] },
           "scope": {
-            "name": "$root::module_5::bar",
+            "name": "$root::module_6::bar",
             "variables": [],
             "functions": [],
             "structs": [],

@@ -30,7 +30,7 @@
           "parameters": [],
           "returnType": {
             "kind": "instance",
-            "struct": { "moduleId": 5, "name": "InjectedCode" },
+            "struct": { "moduleId": 2, "name": "InjectedCode" },
             "typeParams": []
           },
           "body": [
@@ -43,7 +43,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 5, "name": "InjectedCode" },
+                "struct": { "moduleId": 2, "name": "InjectedCode" },
                 "typeParams": []
               },
               "node": {
@@ -63,7 +63,7 @@
                     ],
                     "returnType": {
                       "kind": "instance",
-                      "struct": { "moduleId": 5, "name": "InjectedCode" },
+                      "struct": { "moduleId": 2, "name": "InjectedCode" },
                       "typeParams": []
                     }
                   },
@@ -77,7 +77,7 @@
                     },
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 5, "name": "InjectedCode" },
+                      "struct": { "moduleId": 2, "name": "InjectedCode" },
                       "typeParams": []
                     },
                     "node": {
@@ -89,7 +89,7 @@
                           "parameters": [],
                           "returnType": {
                             "kind": "instance",
-                            "struct": { "moduleId": 5, "name": "InjectedCode" },
+                            "struct": { "moduleId": 2, "name": "InjectedCode" },
                             "typeParams": []
                           }
                         }

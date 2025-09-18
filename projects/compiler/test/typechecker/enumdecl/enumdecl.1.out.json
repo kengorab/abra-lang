@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/enumdecl/enumdecl.1.abra",
   "code": [
     {
@@ -16,7 +16,7 @@
       "node": {
         "kind": "enumDeclaration",
         "enum": {
-          "moduleId": 5,
+          "moduleId": 6,
           "name": { "name": "Foo", "position": [1, 6] },
           "typeParams": [],
           "variants": [
@@ -84,7 +84,7 @@
             {
               "label": { "name": "toString", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_5::Foo::toString",
+                "name": "$root::module_6::Foo::toString",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -105,7 +105,7 @@
             {
               "label": { "name": "hash", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_5::Foo::hash",
+                "name": "$root::module_6::Foo::hash",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -126,7 +126,7 @@
             {
               "label": { "name": "eq", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_5::Foo::eq",
+                "name": "$root::module_6::Foo::eq",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -142,7 +142,7 @@
                   "label": { "name": "other", "position": [0, 0] },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 5, "name": "Foo" },
+                    "enum": { "moduleId": 6, "name": "Foo" },
                     "typeParams": []
                   },
                   "defaultValue": null,
@@ -158,14 +158,14 @@
             {
               "label": { "name": "foo", "position": [6, 8] },
               "scope": {
-                "name": "$root::module_5::Foo::foo",
+                "name": "$root::module_6::Foo::foo",
                 "variables": [
                   {
                     "label": { "name": "self", "position": [6, 12] },
                     "mutable": false,
                     "type": {
                       "kind": "enumInstance",
-                      "enum": { "moduleId": 5, "name": "Foo" },
+                      "enum": { "moduleId": 6, "name": "Foo" },
                       "typeParams": []
                     }
                   }
@@ -208,7 +208,7 @@
             {
               "label": { "name": "fooStatic", "position": [7, 8] },
               "scope": {
-                "name": "$root::module_5::Foo::fooStatic",
+                "name": "$root::module_6::Foo::fooStatic",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -270,7 +270,7 @@
             "mutable": true,
             "type": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 5, "name": "Foo" },
+              "enum": { "moduleId": 6, "name": "Foo" },
               "typeParams": []
             }
           }
