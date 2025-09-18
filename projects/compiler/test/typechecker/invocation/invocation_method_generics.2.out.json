@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/invocation/invocation_method_generics.2.abra",
   "code": [
     {
@@ -16,7 +16,7 @@
       "node": {
         "kind": "typeDeclaration",
         "struct": {
-          "moduleId": 5,
+          "moduleId": 6,
           "name": { "name": "Foo", "position": [1, 6] },
           "typeParams": [
             "T"
@@ -35,7 +35,7 @@
             {
               "label": { "name": "toString", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_5::Foo::toString",
+                "name": "$root::module_6::Foo::toString",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -56,7 +56,7 @@
             {
               "label": { "name": "hash", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_5::Foo::hash",
+                "name": "$root::module_6::Foo::hash",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -77,7 +77,7 @@
             {
               "label": { "name": "eq", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_5::Foo::eq",
+                "name": "$root::module_6::Foo::eq",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -93,7 +93,7 @@
                   "label": { "name": "other", "position": [0, 0] },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 5, "name": "Foo" },
+                    "struct": { "moduleId": 6, "name": "Foo" },
                     "typeParams": [
                       {
                         "kind": "generic",
@@ -114,14 +114,14 @@
             {
               "label": { "name": "foo", "position": [4, 8] },
               "scope": {
-                "name": "$root::module_5::Foo::foo",
+                "name": "$root::module_6::Foo::foo",
                 "variables": [
                   {
                     "label": { "name": "self", "position": [4, 15] },
                     "mutable": false,
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 5, "name": "Foo" },
+                      "struct": { "moduleId": 6, "name": "Foo" },
                       "typeParams": [
                         {
                           "kind": "generic",
@@ -235,7 +235,7 @@
             "mutable": true,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 5, "name": "Foo" },
+              "struct": { "moduleId": 6, "name": "Foo" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -324,7 +324,7 @@
                 },
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 5, "name": "Foo" },
+                  "struct": { "moduleId": 6, "name": "Foo" },
                   "typeParams": [
                     {
                       "kind": "primitive",

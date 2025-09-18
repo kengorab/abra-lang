@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/funcdecl/funcdecl.4.abra",
   "code": [
     {
@@ -64,7 +64,7 @@
         "function": {
           "label": { "name": "foo", "position": [3, 6] },
           "scope": {
-            "name": "$root::module_5::foo",
+            "name": "$root::module_6::foo",
             "variables": [
               {
                 "label": { "name": "x", "position": [3, 10] },

@@ -16,10 +16,10 @@ pub func dup2(fd1: Int, fd2: Int): Int
 @external("wait")
 pub func wait(status: Pointer<Int>): Int
 
-@external("fork") 
+@external("fork")
 pub func fork(): Int
 
-@external("execvp") 
+@external("execvp")
 pub func execvp(file: Pointer<Byte>, args: Pointer<Pointer<Byte>>): Int
 
 @external("getenv")

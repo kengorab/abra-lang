@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/binary/coalesce.1.abra",
   "code": [
     {
@@ -25,7 +25,7 @@
             "mutable": false,
             "type": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 4, "name": "Option" },
+              "enum": { "moduleId": 5, "name": "Option" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -44,7 +44,7 @@
           },
           "type": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 4, "name": "Option" },
+            "enum": { "moduleId": 5, "name": "Option" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -129,7 +129,7 @@
               },
               "type": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Option" },
+                "enum": { "moduleId": 5, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "primitive",

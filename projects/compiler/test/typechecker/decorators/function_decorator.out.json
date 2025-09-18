@@ -1,6 +1,6 @@
 [
   {
-    "id": 5,
+    "id": 6,
     "name": "%TEST_DIR%/typechecker/decorators/_exports.abra",
     "exports": [
       {
@@ -27,7 +27,7 @@
         "node": {
           "kind": "typeDeclaration",
           "struct": {
-            "moduleId": 5,
+            "moduleId": 6,
             "name": { "name": "FromOtherModule1", "position": [1, 15] },
             "typeParams": [],
             "fields": [
@@ -54,7 +54,7 @@
               {
                 "label": { "name": "toString", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_5::FromOtherModule1::toString",
+                  "name": "$root::module_6::FromOtherModule1::toString",
                   "variables": [],
                   "functions": [],
                   "structs": [],
@@ -75,7 +75,7 @@
               {
                 "label": { "name": "hash", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_5::FromOtherModule1::hash",
+                  "name": "$root::module_6::FromOtherModule1::hash",
                   "variables": [],
                   "functions": [],
                   "structs": [],
@@ -96,7 +96,7 @@
               {
                 "label": { "name": "eq", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_5::FromOtherModule1::eq",
+                  "name": "$root::module_6::FromOtherModule1::eq",
                   "variables": [],
                   "functions": [],
                   "structs": [],
@@ -112,7 +112,7 @@
                     "label": { "name": "other", "position": [0, 0] },
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 5, "name": "FromOtherModule1" },
+                      "struct": { "moduleId": 6, "name": "FromOtherModule1" },
                       "typeParams": []
                     },
                     "defaultValue": null,
@@ -144,7 +144,7 @@
         "node": {
           "kind": "typeDeclaration",
           "struct": {
-            "moduleId": 5,
+            "moduleId": 6,
             "name": { "name": "FromOtherModule2", "position": [6, 15] },
             "typeParams": [],
             "fields": [
@@ -162,7 +162,7 @@
               {
                 "label": { "name": "toString", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_5::FromOtherModule2::toString",
+                  "name": "$root::module_6::FromOtherModule2::toString",
                   "variables": [],
                   "functions": [],
                   "structs": [],
@@ -183,7 +183,7 @@
               {
                 "label": { "name": "hash", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_5::FromOtherModule2::hash",
+                  "name": "$root::module_6::FromOtherModule2::hash",
                   "variables": [],
                   "functions": [],
                   "structs": [],
@@ -204,7 +204,7 @@
               {
                 "label": { "name": "eq", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_5::FromOtherModule2::eq",
+                  "name": "$root::module_6::FromOtherModule2::eq",
                   "variables": [],
                   "functions": [],
                   "structs": [],
@@ -220,7 +220,7 @@
                     "label": { "name": "other", "position": [0, 0] },
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 5, "name": "FromOtherModule2" },
+                      "struct": { "moduleId": 6, "name": "FromOtherModule2" },
                       "typeParams": []
                     },
                     "defaultValue": null,
@@ -241,7 +241,7 @@
     ]
   },
   {
-    "id": 6,
+    "id": 7,
     "name": "%TEST_DIR%/typechecker/decorators/function_decorator.abra",
     "code": [
       {
@@ -258,7 +258,7 @@
         "node": {
           "kind": "typeDeclaration",
           "struct": {
-            "moduleId": 6,
+            "moduleId": 7,
             "name": { "name": "Bar", "position": [3, 11] },
             "typeParams": [],
             "fields": [
@@ -275,7 +275,7 @@
               {
                 "label": { "name": "toString", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_6::Bar::toString",
+                  "name": "$root::module_7::Bar::toString",
                   "variables": [],
                   "functions": [],
                   "structs": [],
@@ -296,7 +296,7 @@
               {
                 "label": { "name": "hash", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_6::Bar::hash",
+                  "name": "$root::module_7::Bar::hash",
                   "variables": [],
                   "functions": [],
                   "structs": [],
@@ -317,7 +317,7 @@
               {
                 "label": { "name": "eq", "position": [0, 0] },
                 "scope": {
-                  "name": "$root::module_6::Bar::eq",
+                  "name": "$root::module_7::Bar::eq",
                   "variables": [],
                   "functions": [],
                   "structs": [],
@@ -333,7 +333,7 @@
                     "label": { "name": "other", "position": [0, 0] },
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 6, "name": "Bar" },
+                      "struct": { "moduleId": 7, "name": "Bar" },
                       "typeParams": []
                     },
                     "defaultValue": null,
@@ -367,7 +367,7 @@
           "function": {
             "label": { "name": "f1", "position": [9, 6] },
             "scope": {
-              "name": "$root::module_6::f1",
+              "name": "$root::module_7::f1",
               "variables": [],
               "functions": [],
               "structs": [],
@@ -401,7 +401,7 @@
           "function": {
             "label": { "name": "f2", "position": [12, 6] },
             "scope": {
-              "name": "$root::module_6::f2",
+              "name": "$root::module_7::f2",
               "variables": [],
               "functions": [],
               "structs": [],
@@ -435,7 +435,7 @@
           "function": {
             "label": { "name": "f3", "position": [15, 6] },
             "scope": {
-              "name": "$root::module_6::f3",
+              "name": "$root::module_7::f3",
               "variables": [],
               "functions": [],
               "structs": [],
@@ -469,7 +469,7 @@
           "function": {
             "label": { "name": "f4", "position": [18, 6] },
             "scope": {
-              "name": "$root::module_6::f4",
+              "name": "$root::module_7::f4",
               "variables": [],
               "functions": [],
               "structs": [],

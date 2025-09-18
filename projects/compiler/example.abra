@@ -1,3 +1,8 @@
-// import "process" as process
+// println(1, "hello", 1.23)
 
-stdoutWriteln("hello")
+// val x = 123
+// val y = debug(x) + 1
+// val z = debug(x + y) + 1
+// println(z)
+
+println([1].length.toString())

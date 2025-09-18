@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/lambda/lambda.1.abra",
   "code": [
     {
@@ -81,9 +81,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_5_1_37", "position": [1, 37] },
+              "label": { "name": "lambda_6_1_37", "position": [1, 37] },
               "scope": {
-                "name": "$root::module_5::lambda_5_1_37",
+                "name": "$root::module_6::lambda_6_1_37",
                 "variables": [
                   {
                     "label": { "name": "a", "position": [1, 31] },
@@ -269,9 +269,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_5_2_28", "position": [2, 28] },
+              "label": { "name": "lambda_6_2_28", "position": [2, 28] },
               "scope": {
-                "name": "$root::module_5::lambda_5_2_28",
+                "name": "$root::module_6::lambda_6_2_28",
                 "variables": [
                   {
                     "label": { "name": "a", "position": [2, 12] },
@@ -412,7 +412,7 @@
               ],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Option" },
+                "enum": { "moduleId": 5, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -443,7 +443,7 @@
             ],
             "returnType": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 4, "name": "Option" },
+              "enum": { "moduleId": 5, "name": "Option" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -455,9 +455,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_5_3_20", "position": [3, 20] },
+              "label": { "name": "lambda_6_3_20", "position": [3, 20] },
               "scope": {
-                "name": "$root::module_5::lambda_5_3_20",
+                "name": "$root::module_6::lambda_6_3_20",
                 "variables": [
                   {
                     "label": { "name": "a", "position": [3, 12] },
@@ -488,7 +488,7 @@
               ],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Option" },
+                "enum": { "moduleId": 5, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -506,7 +506,7 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 4, "name": "Option" },
+                    "enum": { "moduleId": 5, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -545,7 +545,7 @@
                         },
                         "type": {
                           "kind": "enumInstance",
-                          "enum": { "moduleId": 4, "name": "Option" },
+                          "enum": { "moduleId": 5, "name": "Option" },
                           "typeParams": [
                             {
                               "kind": "primitive",
@@ -565,7 +565,7 @@
                             },
                             "type": {
                               "kind": "enum",
-                              "enum": { "moduleId": 4, "name": "Option" }
+                              "enum": { "moduleId": 5, "name": "Option" }
                             },
                             "node": {
                               "kind": "identifier",
@@ -590,7 +590,7 @@
                         },
                         "type": {
                           "kind": "enumInstance",
-                          "enum": { "moduleId": 4, "name": "Option" },
+                          "enum": { "moduleId": 5, "name": "Option" },
                           "typeParams": [
                             {
                               "kind": "primitive",
@@ -696,9 +696,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_5_4_33", "position": [4, 33] },
+              "label": { "name": "lambda_6_4_33", "position": [4, 33] },
               "scope": {
-                "name": "$root::module_5::lambda_5_4_33",
+                "name": "$root::module_6::lambda_6_4_33",
                 "variables": [
                   {
                     "label": { "name": "a", "position": [4, 26] },
@@ -876,9 +876,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_5_5_36", "position": [5, 36] },
+              "label": { "name": "lambda_6_5_36", "position": [5, 36] },
               "scope": {
-                "name": "$root::module_5::lambda_5_5_36",
+                "name": "$root::module_6::lambda_6_5_36",
                 "variables": [
                   {
                     "label": { "name": "a", "position": [5, 26] },
@@ -1027,7 +1027,7 @@
               "parameters": [],
               "returnType": {
                 "kind": "instance",
-                "struct": { "moduleId": 4, "name": "Array" },
+                "struct": { "moduleId": 5, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -1050,7 +1050,7 @@
             "parameters": [],
             "returnType": {
               "kind": "instance",
-              "struct": { "moduleId": 4, "name": "Array" },
+              "struct": { "moduleId": 5, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -1062,9 +1062,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_5_7_27", "position": [7, 27] },
+              "label": { "name": "lambda_6_7_27", "position": [7, 27] },
               "scope": {
-                "name": "$root::module_5::lambda_5_7_27",
+                "name": "$root::module_6::lambda_6_7_27",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -1076,7 +1076,7 @@
               "parameters": [],
               "returnType": {
                 "kind": "instance",
-                "struct": { "moduleId": 4, "name": "Array" },
+                "struct": { "moduleId": 5, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -1094,7 +1094,7 @@
                   },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 4, "name": "Array" },
+                    "struct": { "moduleId": 5, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -1139,11 +1139,11 @@
               "parameters": [],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Option" },
+                "enum": { "moduleId": 5, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "instance",
-                    "struct": { "moduleId": 4, "name": "Array" },
+                    "struct": { "moduleId": 5, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -1168,11 +1168,11 @@
             "parameters": [],
             "returnType": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 4, "name": "Option" },
+              "enum": { "moduleId": 5, "name": "Option" },
               "typeParams": [
                 {
                   "kind": "instance",
-                  "struct": { "moduleId": 4, "name": "Array" },
+                  "struct": { "moduleId": 5, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -1186,9 +1186,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_5_8_28", "position": [8, 28] },
+              "label": { "name": "lambda_6_8_28", "position": [8, 28] },
               "scope": {
-                "name": "$root::module_5::lambda_5_8_28",
+                "name": "$root::module_6::lambda_6_8_28",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -1200,11 +1200,11 @@
               "parameters": [],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Option" },
+                "enum": { "moduleId": 5, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "instance",
-                    "struct": { "moduleId": 4, "name": "Array" },
+                    "struct": { "moduleId": 5, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -1224,11 +1224,11 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 4, "name": "Option" },
+                    "enum": { "moduleId": 5, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "instance",
-                        "struct": { "moduleId": 4, "name": "Array" },
+                        "struct": { "moduleId": 5, "name": "Array" },
                         "typeParams": [
                           {
                             "kind": "primitive",
@@ -1251,7 +1251,7 @@
                         },
                         "type": {
                           "kind": "instance",
-                          "struct": { "moduleId": 4, "name": "Array" },
+                          "struct": { "moduleId": 5, "name": "Array" },
                           "typeParams": [
                             {
                               "kind": "primitive",
@@ -1299,11 +1299,11 @@
               "parameters": [],
               "returnType": {
                 "kind": "instance",
-                "struct": { "moduleId": 4, "name": "Array" },
+                "struct": { "moduleId": 5, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 4, "name": "Option" },
+                    "enum": { "moduleId": 5, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -1328,11 +1328,11 @@
             "parameters": [],
             "returnType": {
               "kind": "instance",
-              "struct": { "moduleId": 4, "name": "Array" },
+              "struct": { "moduleId": 5, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 4, "name": "Option" },
+                  "enum": { "moduleId": 5, "name": "Option" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -1346,9 +1346,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_5_9_28", "position": [9, 28] },
+              "label": { "name": "lambda_6_9_28", "position": [9, 28] },
               "scope": {
-                "name": "$root::module_5::lambda_5_9_28",
+                "name": "$root::module_6::lambda_6_9_28",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -1360,11 +1360,11 @@
               "parameters": [],
               "returnType": {
                 "kind": "instance",
-                "struct": { "moduleId": 4, "name": "Array" },
+                "struct": { "moduleId": 5, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 4, "name": "Option" },
+                    "enum": { "moduleId": 5, "name": "Option" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -1384,11 +1384,11 @@
                   },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 4, "name": "Array" },
+                    "struct": { "moduleId": 5, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "enumInstance",
-                        "enum": { "moduleId": 4, "name": "Option" },
+                        "enum": { "moduleId": 5, "name": "Option" },
                         "typeParams": [
                           {
                             "kind": "primitive",

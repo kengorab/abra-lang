@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/invocation/function_as_param.1.abra",
   "code": [
     {
@@ -18,7 +18,7 @@
         "function": {
           "label": { "name": "foo", "position": [1, 6] },
           "scope": {
-            "name": "$root::module_5::foo",
+            "name": "$root::module_6::foo",
             "variables": [
               {
                 "label": { "name": "fn", "position": [1, 10] },
@@ -159,7 +159,7 @@
         "function": {
           "label": { "name": "negate", "position": [3, 6] },
           "scope": {
-            "name": "$root::module_5::negate",
+            "name": "$root::module_6::negate",
             "variables": [
               {
                 "label": { "name": "i", "position": [3, 13] },

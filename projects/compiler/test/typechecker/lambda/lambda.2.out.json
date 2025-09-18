@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/lambda/lambda.2.abra",
   "code": [
     {
@@ -25,7 +25,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 4, "name": "Array" },
+              "struct": { "moduleId": 5, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -44,7 +44,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 4, "name": "Array" },
+            "struct": { "moduleId": 5, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -134,7 +134,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 4, "name": "Array" },
+              "struct": { "moduleId": 5, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -154,7 +154,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 4, "name": "Array" },
+            "struct": { "moduleId": 5, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -192,7 +192,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 4, "name": "Array" },
+              "struct": { "moduleId": 5, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -211,7 +211,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 4, "name": "Array" },
+            "struct": { "moduleId": 5, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -255,7 +255,7 @@
                 ],
                 "returnType": {
                   "kind": "instance",
-                  "struct": { "moduleId": 4, "name": "Array" },
+                  "struct": { "moduleId": 5, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -275,7 +275,7 @@
                 },
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 4, "name": "Array" },
+                  "struct": { "moduleId": 5, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -316,9 +316,9 @@
                 "node": {
                   "kind": "lambda",
                   "function": {
-                    "label": { "name": "lambda_5_4_25", "position": [4, 25] },
+                    "label": { "name": "lambda_6_4_25", "position": [4, 25] },
                     "scope": {
-                      "name": "$root::module_5::lambda_5_4_25",
+                      "name": "$root::module_6::lambda_6_4_25",
                       "variables": [
                         {
                           "label": { "name": "x", "position": [4, 22] },
@@ -434,7 +434,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 4, "name": "Array" },
+              "struct": { "moduleId": 5, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -454,7 +454,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 4, "name": "Array" },
+            "struct": { "moduleId": 5, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -485,14 +485,14 @@
         "function": {
           "label": { "name": "forEach", "position": [8, 6] },
           "scope": {
-            "name": "$root::module_5::forEach",
+            "name": "$root::module_6::forEach",
             "variables": [
               {
                 "label": { "name": "set", "position": [8, 17] },
                 "mutable": false,
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 4, "name": "Set" },
+                  "struct": { "moduleId": 5, "name": "Set" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -543,7 +543,7 @@
               "label": { "name": "set", "position": [8, 17] },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 4, "name": "Set" },
+                "struct": { "moduleId": 5, "name": "Set" },
                 "typeParams": [
                   {
                     "kind": "generic",
@@ -635,7 +635,7 @@
                     },
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 4, "name": "Set" },
+                      "struct": { "moduleId": 5, "name": "Set" },
                       "typeParams": [
                         {
                           "kind": "generic",
@@ -676,9 +676,9 @@
                     "node": {
                       "kind": "lambda",
                       "function": {
-                        "label": { "name": "lambda_5_9_19", "position": [9, 19] },
+                        "label": { "name": "lambda_6_9_19", "position": [9, 19] },
                         "scope": {
-                          "name": "$root::module_5::forEach::lambda_5_9_19",
+                          "name": "$root::module_6::forEach::lambda_6_9_19",
                           "variables": [
                             {
                               "label": { "name": "key", "position": [9, 15] },
@@ -825,14 +825,14 @@
         "function": {
           "label": { "name": "map", "position": [11, 6] },
           "scope": {
-            "name": "$root::module_5::map",
+            "name": "$root::module_6::map",
             "variables": [
               {
                 "label": { "name": "arr", "position": [11, 16] },
                 "mutable": false,
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 4, "name": "Array" },
+                  "struct": { "moduleId": 5, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -867,7 +867,7 @@
                 "mutable": false,
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 4, "name": "Array" },
+                  "struct": { "moduleId": 5, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "generic",
@@ -904,7 +904,7 @@
               "label": { "name": "arr", "position": [11, 16] },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 4, "name": "Array" },
+                "struct": { "moduleId": 5, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "generic",
@@ -939,7 +939,7 @@
           ],
           "returnType": {
             "kind": "instance",
-            "struct": { "moduleId": 4, "name": "Array" },
+            "struct": { "moduleId": 5, "name": "Array" },
             "typeParams": [
               {
                 "kind": "generic",
@@ -971,7 +971,7 @@
                     "mutable": false,
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 4, "name": "Array" },
+                      "struct": { "moduleId": 5, "name": "Array" },
                       "typeParams": [
                         {
                           "kind": "generic",
@@ -990,7 +990,7 @@
                   },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 4, "name": "Array" },
+                    "struct": { "moduleId": 5, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "generic",
@@ -1034,7 +1034,7 @@
                         ],
                         "returnType": {
                           "kind": "instance",
-                          "struct": { "moduleId": 4, "name": "Array" },
+                          "struct": { "moduleId": 5, "name": "Array" },
                           "typeParams": [
                             {
                               "kind": "generic",
@@ -1054,7 +1054,7 @@
                         },
                         "type": {
                           "kind": "instance",
-                          "struct": { "moduleId": 4, "name": "Array" },
+                          "struct": { "moduleId": 5, "name": "Array" },
                           "typeParams": [
                             {
                               "kind": "generic",
@@ -1095,9 +1095,9 @@
                         "node": {
                           "kind": "lambda",
                           "function": {
-                            "label": { "name": "lambda_5_12_26", "position": [12, 26] },
+                            "label": { "name": "lambda_6_12_26", "position": [12, 26] },
                             "scope": {
-                              "name": "$root::module_5::map::lambda_5_12_26",
+                              "name": "$root::module_6::map::lambda_6_12_26",
                               "variables": [
                                 {
                                   "label": { "name": "v", "position": [12, 24] },
@@ -1236,7 +1236,7 @@
               },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 4, "name": "Array" },
+                "struct": { "moduleId": 5, "name": "Array" },
                 "typeParams": [
                   {
                     "kind": "generic",

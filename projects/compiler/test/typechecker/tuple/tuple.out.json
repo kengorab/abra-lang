@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/tuple/tuple.abra",
   "code": [
     {
@@ -151,7 +151,7 @@
               "types": [
                 {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 4, "name": "Option" },
+                  "enum": { "moduleId": 5, "name": "Option" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -179,7 +179,7 @@
             "types": [
               {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Option" },
+                "enum": { "moduleId": 5, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -205,7 +205,7 @@
                 },
                 "type": {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 4, "name": "Option" },
+                  "enum": { "moduleId": 5, "name": "Option" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -225,7 +225,7 @@
                     },
                     "type": {
                       "kind": "enum",
-                      "enum": { "moduleId": 4, "name": "Option" }
+                      "enum": { "moduleId": 5, "name": "Option" }
                     },
                     "node": {
                       "kind": "identifier",

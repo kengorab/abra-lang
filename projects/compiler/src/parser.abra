@@ -30,7 +30,15 @@ pub enum LiteralAstNode {
   String(value: String)
 }
 
-pub enum UnaryOp { Minus, Negate }
+pub enum UnaryOp {
+  Minus
+  Negate
+
+  pub func repr(self): String = match self {
+    UnaryOp.Minus => "-"
+    UnaryOp.Negate => "!"
+  }
+}
 
 pub type UnaryAstNode {
   pub op: UnaryOp
