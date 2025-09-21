@@ -357,7 +357,7 @@ pub type Enum {
   pub variants: TypedEnumVariant[] = []
   pub instanceMethods: Function[] = []
   pub staticMethods: Function[] = []
-  builtin: BuiltinModule? = None
+  pub builtin: BuiltinModule? = None
 
   func memberwiseCopy(target: Enum, source: Enum) {
     target.moduleId = source.moduleId
