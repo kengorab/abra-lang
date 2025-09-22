@@ -1,23 +1,21 @@
-func printlnBool(b: Bool) = stdoutWriteln(b.toString())
-
 func f1(): Bool?[] = [None, Some(true), Some(false)]
 /// Expect: [Option.None, Option.Some(value: true), Option.Some(value: false)]
-stdoutWriteln(f1().toString())
+println(f1())
 
 func f2(): String?[] = if true { [Some("one"), None, Some("two")] } else []
 /// Expect: [Option.Some(value: "one"), Option.None, Option.Some(value: "two")]
-stdoutWriteln(f2().toString())
+println(f2())
 
 val arr1: Int?[] = [Some(1), None, Some(2), Some(3)]
 /// Expect: [Option.Some(value: 1), Option.None, Option.Some(value: 2), Option.Some(value: 3)]
-stdoutWriteln(arr1.toString())
+println(arr1)
 
 val arr2: Int[]? = Some([1, 2, 3])
 /// Expect: Option.Some(value: [1, 2, 3])
-stdoutWriteln(arr2.toString())
+println(arr2)
 val arr3: Int[]? = None
 /// Expect: Option.None
-stdoutWriteln(arr3.toString())
+println(arr3)
 
 type Foo {
   f: String
@@ -29,11 +27,11 @@ func hash<T>(t: T): Int = t.hash()
 if true {
   val i: Int? = None
   /// Expect: 1
-  stdoutWriteln(hash(i).toString())
+  println(hash(i))
 
   val x = Some(17)
   /// Expect: false
-  printlnBool(hash(x) == (17).hash())
+  println(hash(x) == (17).hash())
 }
 
 // == operator
@@ -45,11 +43,11 @@ if true {
   val i4 = Some(16)
 
   /// Expect: false
-  printlnBool(i1 == i2)
+  println(i1 == i2)
   /// Expect: false
-  printlnBool(i2 == i4)
+  println(i2 == i4)
   /// Expect: true
-  printlnBool(i2 == i3)
+  println(i2 == i3)
 
   // Test with object
   val s1: String? = None
@@ -58,27 +56,27 @@ if true {
   val s4 = Some("hmm")
 
   /// Expect: false
-  printlnBool(s1 == s2)
+  println(s1 == s2)
   /// Expect: false
-  printlnBool(s2 == s4)
+  println(s2 == s4)
   /// Expect: true
-  printlnBool(s2 == s3)
+  println(s2 == s3)
 }
 
 // Coalescing (?:)
 if true {
   val i1: Int? = None
   /// Expect: 17
-  stdoutWriteln((i1 ?: 17).toString())
+  println(i1 ?: 17)
 
   val i2 = Some(value: 9)
   /// Expect: 9
-  stdoutWriteln((i2 ?: 17).toString())
+  println(i2 ?: 17)
 }
 
 val xyz = "abc"
 type TestOptChainingMethodInvocation {
-  func unitMethod(self) = stdoutWriteln("TestOptChainingMethodInvocation#unitMethod")
+  func unitMethod(self) = println("TestOptChainingMethodInvocation#unitMethod")
   func closure(self): Int = xyz.length
 }
 
@@ -88,31 +86,31 @@ if true {
 
 //   // Getting field of known-non-None value
 //   /// Expect: 4
-//   stdoutWriteln(arr?.length)
+//   println(arr?.length)
 //   // Calling method of known-non-None value
 //   /// Expect: [a, b, c, d]
-//   stdoutWriteln(arr?.toString())
+//   println(arr?.toString())
 
   // Getting field of Option value
   /// Expect: Option.Some(value: 1)
-  stdoutWriteln(arr[0]?.length.toString())
+  println(arr[0]?.length)
   /// Expect: Option.None
-  stdoutWriteln(arr[6]?.length.toString())
+  println(arr[6]?.length)
 
   // Calling method of Option value
   /// Expect: Option.Some(value: false)
-  stdoutWriteln(arr[0]?.isEmpty().toString())
+  println(arr[0]?.isEmpty())
   /// Expect: Option.None
-  stdoutWriteln(arr[6]?.isEmpty().toString())
+  println(arr[6]?.isEmpty())
 
   // nested opt-safe accessors
   val foo = Foo(f: "abc")
   val fooArr = [foo]
 
   /// Expect: Option.Some(value: 3)
-  stdoutWriteln(fooArr[0]?.f?.length.toString())
+  println(fooArr[0]?.f?.length)
   /// Expect: Option.Some(value: 3)
-  stdoutWriteln(fooArr[0]?.f?.length?.abs().toString())
+  println(fooArr[0]?.f?.length?.abs())
 
   // Calling unit method of Option value
   val t1: TestOptChainingMethodInvocation? = None
@@ -124,10 +122,10 @@ if true {
   // Calling closure method of Option value
   val t3: TestOptChainingMethodInvocation? = None
   /// Expect: Option.None
-  stdoutWriteln(t3?.closure().toString())
+  println(t3?.closure())
   val t4 = Some(TestOptChainingMethodInvocation())
   /// Expect: Option.Some(value: 3)
-  stdoutWriteln(t4?.closure().toString())
+  println(t4?.closure())
 }
 
 // Negate operator
@@ -135,14 +133,14 @@ val someInt = Some(123)
 val noneInt: Int? = None
 
 /// Expect: true
-printlnBool(!noneInt)
+println(!noneInt)
 /// Expect: false
-printlnBool(!someInt)
+println(!someInt)
 
 /// Expect: false
-printlnBool(!!noneInt)
+println(!!noneInt)
 /// Expect: true
-printlnBool(!!someInt)
+println(!!someInt)
 
 // Optional enum instances
 
@@ -154,7 +152,7 @@ enum Color {
 if true {
   val colors = [Color.Red, Color.Green, Color.Blue]
   /// Expect: Option.None
-  stdoutWriteln(colors[3]?.toString().toString())
+  println(colors[3])
   /// Expect: Option.Some(value: "Color.Blue")
-  stdoutWriteln(colors[2]?.toString().toString())
+  println(colors[2]?.toString())
 }

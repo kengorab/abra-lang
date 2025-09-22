@@ -1,89 +1,87 @@
-func printlnBool(b: Bool) = stdoutWriteln(b.toString())
-
 // Test literal construction
 /// Expect: hello
-stdoutWriteln("hello")
+println("hello")
 
 // + operator
 if true {
   /// Expect: helloworld
-  stdoutWriteln("hello" + "world")
+  println("hello" + "world")
   /// Expect: hello12
-  stdoutWriteln("hello" + 12)
+  println("hello" + 12)
   /// Expect: 12hello
-  stdoutWriteln(12 + "hello")
+  println(12 + "hello")
   /// Expect: hello1.23
-  stdoutWriteln("hello" + 1.23)
+  println("hello" + 1.23)
   /// Expect: 1.23hello
-  stdoutWriteln(1.23 + "hello")
+  println(1.23 + "hello")
   /// Expect: hellotrue
-  stdoutWriteln("hello" + true)
+  println("hello" + true)
   /// Expect: truehello
-  stdoutWriteln(true + "hello")
+  println(true + "hello")
   /// Expect: hello[1, 2, 3]
-  stdoutWriteln("hello" + [1, 2, 3])
+  println("hello" + [1, 2, 3])
   /// Expect: [1, 2, 3]hello
-  stdoutWriteln([1, 2, 3] + "hello")
+  println([1, 2, 3] + "hello")
 }
 
 // == operator (also String#eq)
 if true {
   val s1 = "string"
   /// Expect: true
-  printlnBool(s1 == s1)
+  println(s1 == s1)
   /// Expect: true
-  printlnBool(s1 == "string")
+  println(s1 == "string")
 
   /// Expect: false
-  printlnBool(s1 != s1)
+  println(s1 != s1)
   /// Expect: true
-  printlnBool(s1 != "string!")
+  println(s1 != "string!")
 }
 
 // Interpolation
 if true {
   val array = [1, 2, 3]
   /// Expect: length of [1, 2, 3] is 3
-  stdoutWriteln("length of $array is ${array.length}")
+  println("length of $array is ${array.length}")
 }
 
 // String#replaceAll(pattern: String, replacement: String)
 if true {
   /// Expect: LLaaLLa
-  stdoutWriteln("laala".replaceAll("l", "LL"))
+  println("laala".replaceAll("l", "LL"))
 
   /// Expect: aaLLaLL
-  stdoutWriteln("aalal".replaceAll("l", "LL"))
+  println("aalal".replaceAll("l", "LL"))
 
   /// Expect: LLaaLLaLL
-  stdoutWriteln("laalal".replaceAll("l", "LL"))
+  println("laalal".replaceAll("l", "LL"))
 
   /// Expect: feebar
-  stdoutWriteln("foobar".replaceAll("o", "e"))
+  println("foobar".replaceAll("o", "e"))
 
   /// Expect: fexexbar
-  stdoutWriteln("foobar".replaceAll("o", "ex"))
+  println("foobar".replaceAll("o", "ex"))
 
   /// Expect: foobar
-  stdoutWriteln("foobar".replaceAll("x", "yz"))
+  println("foobar".replaceAll("x", "yz"))
 
   /// Expect: -ä
-  stdoutWriteln("/ä".replaceAll("/", "-"))
+  println("/ä".replaceAll("/", "-"))
 
   /// Expect: xfxoxox
-  stdoutWriteln("foo".replaceAll("", "x"))
+  println("foo".replaceAll("", "x"))
 
   /// Expect: x
-  stdoutWriteln("".replaceAll("", "x"))
+  println("".replaceAll("", "x"))
 
   /// Expect: abcd
-  stdoutWriteln("abcd".replaceAll("", ""))
+  println("abcd".replaceAll("", ""))
 
   /// Expect: fa bar baaz
-  stdoutWriteln("foo boor booooz".replaceAll("oo", "a"))
+  println("foo boor booooz".replaceAll("oo", "a"))
 
   // /// Expect: "hello"
-  // stdoutWriteln("\"hello\"".replaceAll("\"", "\\\""))
+  // println("\"hello\"".replaceAll("\"", "\\\""))
 }
 
 // String#chars
@@ -95,11 +93,11 @@ if true {
   /// Expect: l 3
   /// Expect: o 4
   for ch, idx in chars {
-    stdoutWriteln("$ch $idx")
+    println("$ch $idx")
   }
 
   /// Expect: done
-  stdoutWriteln("done")
+  println("done")
 }
 
 // Indexing (also String#get(index: Int))
@@ -107,18 +105,18 @@ if true {
   val s1 = "abc"
 
   /// Expect: |  a b c a b c  |
-  stdoutWriteln("| ${s1[-4]} ${s1[-3]} ${s1[-2]} ${s1[-1]} ${s1[0]} ${s1[1]} ${s1[2]} ${s1[3]} |")
+  println("| ${s1[-4]} ${s1[-3]} ${s1[-2]} ${s1[-1]} ${s1[0]} ${s1[1]} ${s1[2]} ${s1[3]} |")
 
   val s2 = "hello"
 
   /// Expect: h e l l o
-  stdoutWriteln("${s2[0]} ${s2[1]} ${s2[2]} ${s2[3]} ${s2[4]}")
+  println("${s2[0]} ${s2[1]} ${s2[2]} ${s2[3]} ${s2[4]}")
 
   /// Expect: o l l e h
-  stdoutWriteln("${s2[-1]} ${s2[-2]} ${s2[-3]} ${s2[-4]} ${s2[-5]}")
+  println("${s2[-1]} ${s2[-2]} ${s2[-3]} ${s2[-4]} ${s2[-5]}")
 
   /// Expect:   end
-  stdoutWriteln("${s2[5]} ${s2[-6]} end")
+  println("${s2[5]} ${s2[-6]} end")
 }
 
 // Range indexing (also String#getRange(startIndex: Int, endIndex: Int))
@@ -126,132 +124,132 @@ if true {
   val s = "hello"
 
   /// Expect: ell ell
-  stdoutWriteln("${s[1:4]} ${s[-4:4]}")
+  println("${s[1:4]} ${s[-4:4]}")
 
   /// Expect:  end
-  stdoutWriteln("${s[1:1]} end")
+  println("${s[1:1]} end")
 
   val a = 1
   val b = 4
 
   /// Expect: ell ell
-  stdoutWriteln("${s[a:b]} ${s[-b:b]}")
+  println("${s[a:b]} ${s[-b:b]}")
 
   /// Expect: ello h
-  stdoutWriteln("${s[1:]} ${s[:1]}")
+  println("${s[1:]} ${s[:1]}")
 
   /// Expect: ello h
-  stdoutWriteln("${s[a:]} ${s[:a]}")
+  println("${s[a:]} ${s[:a]}")
 }
 
 // String#hash
 if true {
   val empty = ""
   /// Expect: true
-  printlnBool(empty.hash() == "".hash())
+  println(empty.hash() == "".hash())
 
   val nonEmpty = "hello"
   /// Expect: true
-  printlnBool(nonEmpty.hash() == "hello".hash())
+  println(nonEmpty.hash() == "hello".hash())
 }
 
 // String#isEmpty
 if true {
   val empty = ""
   /// Expect: true
-  stdoutWriteln(empty.isEmpty().toString())
+  println(empty.isEmpty())
 
   val nonEmpty = "hello"
   /// Expect: false
-  stdoutWriteln(nonEmpty.isEmpty().toString())
+  println(nonEmpty.isEmpty())
 }
 
 // String#toLower
 if true {
   /// Expect: ||
-  stdoutWriteln("|" + "".toLower() + "|")
+  println("|" + "".toLower() + "|")
   /// Expect: -hello!
-  stdoutWriteln("-hElLo!".toLower())
+  println("-hElLo!".toLower())
 }
 
 // String#toUpper
 if true {
   /// Expect: ||
-  stdoutWriteln("|" + "".toUpper() + "|")
+  println("|" + "".toUpper() + "|")
   /// Expect: -HELLO!
-  stdoutWriteln("-hElLo!".toUpper())
+  println("-hElLo!".toUpper())
 }
 
 // String#split
 if true {
   /// Expect: [a, s, d, f]
-  stdoutWriteln("a s d f".split(by: " ").toString())
+  println("a s d f".split(by: " "))
 
   /// Expect: [, a, b, c d]
-  stdoutWriteln("  a  b  c d".split("  ").toString())
+  println("  a  b  c d".split("  "))
 
   /// Expect: [a, s, d, f]
-  stdoutWriteln("asdf".split("").toString())
+  println("asdf".split(""))
 
   /// Expect: [a, s, d, f]
-  stdoutWriteln("a\ns\nd\nf".split("\n").toString())
+  println("a\ns\nd\nf".split("\n"))
 
   /// Expect: [asdf]
-  stdoutWriteln("asdf".split("qwer").toString())
+  println("asdf".split("qwer"))
 }
 
 // String#lines
 if true {
   /// Expect: [a s d f]
-  stdoutWriteln("a s d f".lines().toString())
+  println("a s d f".lines())
 
   /// Expect: []
-  stdoutWriteln("".lines().toString())
+  println("".lines())
 
   /// Expect: [a, s, d, f]
-  stdoutWriteln("a\ns\nd\nf".lines().toString())
+  println("a\ns\nd\nf".lines())
 }
 
 // String#startsWith
 if true {
   /// Expect: true
-  stdoutWriteln("".startsWith("").toString())
+  println("".startsWith(""))
   /// Expect: true
-  stdoutWriteln("hello".startsWith("").toString())
+  println("hello".startsWith(""))
   /// Expect: true
-  stdoutWriteln("hello".startsWith("he").toString())
+  println("hello".startsWith("he"))
   /// Expect: true
-  stdoutWriteln("hello".startsWith("hello").toString())
+  println("hello".startsWith("hello"))
   /// Expect: false
-  stdoutWriteln("hello".startsWith("hex").toString())
+  println("hello".startsWith("hex"))
   /// Expect: false
-  stdoutWriteln("hello".startsWith("hhello").toString())
+  println("hello".startsWith("hhello"))
 }
 
 // String#endsWith
 if true {
   /// Expect: true
-  stdoutWriteln("".endsWith("").toString())
+  println("".endsWith(""))
   /// Expect: true
-  stdoutWriteln("hello".endsWith("").toString())
+  println("hello".endsWith(""))
   /// Expect: true
-  stdoutWriteln("hello".endsWith("lo").toString())
+  println("hello".endsWith("lo"))
   /// Expect: true
-  stdoutWriteln("hello".endsWith("hello").toString())
+  println("hello".endsWith("hello"))
   /// Expect: false
-  stdoutWriteln("hello".endsWith("lo!").toString())
+  println("hello".endsWith("lo!"))
   /// Expect: false
-  stdoutWriteln("hello".endsWith("hhello").toString())
+  println("hello".endsWith("hhello"))
 }
 
 // String#repeat
 if true {
   /// Expect: ||
-  stdoutWriteln("|" + "abc".repeat(0) + "|")
+  println("|" + "abc".repeat(0) + "|")
 
   /// Expect: ||
-  stdoutWriteln("|" + "abc".repeat(-1) + "|")
+  println("|" + "abc".repeat(-1) + "|")
 
   /// Expect: abcabcabc
-  stdoutWriteln("abc".repeat(3))
+  println("abc".repeat(3))
 }

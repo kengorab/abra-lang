@@ -1,29 +1,29 @@
 /// Expect: 1
-stdoutWriteln([1].length.toString())
+println([1].length)
 /// Expect: 2
-stdoutWriteln([[1, 2], [3, 4]].length.toString())
+println([[1, 2], [3, 4]].length)
 
 // Test array literal construction
 if true {
   val emptyArr: Int[] = []
   /// Expect: []
-  stdoutWriteln(emptyArr.toString())
+  println(emptyArr)
 
   val intArr = [1, 2, 3, 4]
   /// Expect: [1, 2, 3, 4]
-  stdoutWriteln(intArr.toString())
+  println(intArr)
 
   val floatArr = [0.12, 3.45, 6.0]
   /// Expect: [0.12, 3.45, 6]
-  stdoutWriteln(floatArr.toString())
+  println(floatArr)
 
   val stringArr = ["ab", "cd", "ef"]
   /// Expect: [ab, cd, ef]
-  stdoutWriteln(stringArr.toString())
+  println(stringArr)
 
   val nestedArr = [[1, 2], [3, 4], [5, 6]]
   /// Expect: [[1, 2], [3, 4], [5, 6]]
-  stdoutWriteln(nestedArr.toString())
+  println(nestedArr)
 }
 
 // Test array indexing assignment
@@ -31,47 +31,47 @@ if true {
   val emptyArr: Int[] = []
   emptyArr[0] = 123
   /// Expect: []
-  stdoutWriteln(emptyArr.toString())
+  println(emptyArr)
 
   val intArr = [1, 2, 3, 4]
   /// Expect: [1, 2, 3, 4]
-  stdoutWriteln(intArr.toString())
+  println(intArr)
   intArr[0] = 0
   /// Expect: [0, 2, 3, 4]
-  stdoutWriteln(intArr.toString())
+  println(intArr)
   intArr[-1] = 0
   /// Expect: [0, 2, 3, 0]
-  stdoutWriteln(intArr.toString())
+  println(intArr)
 
   val floatArr = [0.12, 3.45, 6.0]
   /// Expect: [0.12, 3.45, 6]
-  stdoutWriteln(floatArr.toString())
+  println(floatArr)
   floatArr[0] = 0.001
   /// Expect: [0.001, 3.45, 6]
-  stdoutWriteln(floatArr.toString())
+  println(floatArr)
   floatArr[-1] = 0.001
   /// Expect: [0.001, 3.45, 0.001]
-  stdoutWriteln(floatArr.toString())
+  println(floatArr)
 
   val stringArr = ["ab", "cd", "ef"]
   /// Expect: [ab, cd, ef]
-  stdoutWriteln(stringArr.toString())
+  println(stringArr)
   stringArr[0] = "ba"
   /// Expect: [ba, cd, ef]
-  stdoutWriteln(stringArr.toString())
+  println(stringArr)
   stringArr[-1] = "fe"
   /// Expect: [ba, cd, fe]
-  stdoutWriteln(stringArr.toString())
+  println(stringArr)
 
   val nestedArr = [[1, 2], [3, 4], [5, 6]]
   /// Expect: [[1, 2], [3, 4], [5, 6]]
-  stdoutWriteln(nestedArr.toString())
+  println(nestedArr)
   nestedArr[0] = [0, 1]
   /// Expect: [[0, 1], [3, 4], [5, 6]]
-  stdoutWriteln(nestedArr.toString())
+  println(nestedArr)
   nestedArr[-1] = [3, 2]
   /// Expect: [[0, 1], [3, 4], [3, 2]]
-  stdoutWriteln(nestedArr.toString())
+  println(nestedArr)
 }
 
 // == operator (also Array#eq)
@@ -79,34 +79,34 @@ if true {
   val arr = [1, 2]
 
   /// Expect: true
-  stdoutWriteln((arr == [1, 2]).toString())
+  println((arr == [1, 2]))
   /// Expect: true
-  stdoutWriteln(([[1, 2], [3, 4]] == [[1, 2], [3, 4]]).toString())
+  println(([[1, 2], [3, 4]] == [[1, 2], [3, 4]]))
   /// Expect: true
-  stdoutWriteln(([1.2, 3.4] != [5.6, 7.8]).toString())
+  println(([1.2, 3.4] != [5.6, 7.8]))
   /// Expect: true
-  stdoutWriteln(([true, false] != [false, true]).toString())
+  println(([true, false] != [false, true]))
 }
 
 // Indexing (also Array#get(index: Int))
 if true {
   val arr = [1, 2, 3]
   /// Expect: Option.None
-  stdoutWriteln(arr[-4].toString())
+  println(arr[-4])
   /// Expect: Option.Some(value: 1)
-  stdoutWriteln(arr[-3].toString())
+  println(arr[-3])
   /// Expect: Option.Some(value: 2)
-  stdoutWriteln(arr[-2].toString())
+  println(arr[-2])
   /// Expect: Option.Some(value: 3)
-  stdoutWriteln(arr[-1].toString())
+  println(arr[-1])
   /// Expect: Option.Some(value: 1)
-  stdoutWriteln(arr[0].toString())
+  println(arr[0])
   /// Expect: Option.Some(value: 2)
-  stdoutWriteln(arr[1].toString())
+  println(arr[1])
   /// Expect: Option.Some(value: 3)
-  stdoutWriteln(arr[2].toString())
+  println(arr[2])
   /// Expect: Option.None
-  stdoutWriteln(arr[3].toString())
+  println(arr[3])
 }
 
 // Range indexing (also Array#getRange(startIndex: Int, endIndex: Int))
@@ -114,47 +114,47 @@ if true {
   val arr = [1, 2, 3, 4, 5]
 
   /// Expect: [2, 3, 4]
-  stdoutWriteln(arr[1:4].toString())
+  println(arr[1:4])
   /// Expect: [2, 3, 4]
-  stdoutWriteln(arr[-4:4].toString())
+  println(arr[-4:4])
   /// Expect: [2, 3, 4]
-  stdoutWriteln(arr[1:-1].toString())
+  println(arr[1:-1])
 
   /// Expect: []
-  stdoutWriteln(arr[1:1].toString())
+  println(arr[1:1])
 
   val x = 1
   val y = 4
 
   /// Expect: [2, 3, 4]
-  stdoutWriteln(arr[x:y].toString())
+  println(arr[x:y])
   /// Expect: [2, 3, 4]
-  stdoutWriteln(arr[-y:y].toString())
+  println(arr[-y:y])
 
   /// Expect: [2, 3, 4, 5]
-  stdoutWriteln(arr[1:].toString())
+  println(arr[1:])
   /// Expect: [1]
-  stdoutWriteln(arr[:1].toString())
+  println(arr[:1])
 
   /// Expect: [2, 3, 4, 5]
-  stdoutWriteln(arr[x:].toString())
+  println(arr[x:])
   /// Expect: [1]
-  stdoutWriteln(arr[:x].toString())
+  println(arr[:x])
 }
 
 // Array.fill
 if true {
   val zeroes = Array.fill(5, 0)
   /// Expect: [0, 0, 0, 0, 0]
-  stdoutWriteln(zeroes.toString())
+  println(zeroes)
 
   val arr = [1, 2]
   val refs = Array.fill(3, arr)
   /// Expect: [[1, 2], [1, 2], [1, 2]]
-  stdoutWriteln(refs.toString())
+  println(refs)
   arr.push(3)
   /// Expect: [[1, 2, 3], [1, 2, 3], [1, 2, 3]]
-  stdoutWriteln(refs.toString())
+  println(refs)
 }
 
 // Array.fillBy
@@ -162,36 +162,36 @@ if true {
   val zero = 0
   val zeroes = Array.fillBy(5, () => zero)
   /// Expect: [0, 0, 0, 0, 0]
-  stdoutWriteln(zeroes.toString())
+  println(zeroes)
 
   val nums = Array.fillBy(5, i => i + 1)
   /// Expect: [1, 2, 3, 4, 5]
-  stdoutWriteln(nums.toString())
+  println(nums)
 
   val arr = [1, 2]
   val sharedRefs = Array.fillBy(3, () => arr)
   /// Expect: [[1, 2], [1, 2], [1, 2]]
-  stdoutWriteln(sharedRefs.toString())
+  println(sharedRefs)
   arr.push(3)
   /// Expect: [[1, 2, 3], [1, 2, 3], [1, 2, 3]]
-  stdoutWriteln(sharedRefs.toString())
+  println(sharedRefs)
 
   val uniqueRefs = Array.fillBy(3, () => [1, 2])
   /// Expect: [[1, 2], [1, 2], [1, 2]]
-  stdoutWriteln(uniqueRefs.toString())
+  println(uniqueRefs)
   if uniqueRefs[0] |arr| arr[1] = 0
   /// Expect: [[1, 0], [1, 2], [1, 2]]
-  stdoutWriteln(uniqueRefs.toString())
+  println(uniqueRefs)
 }
 
 // Array#hash
 if true {
   val arr = [1, 2, 3]
   /// Expect: true
-  stdoutWriteln((arr.hash() == [1, 2, 3].hash()).toString())
+  println((arr.hash() == [1, 2, 3].hash()))
 
   /// Expect: false
-  stdoutWriteln((arr.hash() == [1, 2].hash()).toString())
+  println((arr.hash() == [1, 2].hash()))
 }
 
 // Array#iterator
@@ -199,15 +199,15 @@ if true {
   val a = [1.23, 4.56, 7.89]
   val iter = a.iterator()
   /// Expect: Option.Some(value: 1.23)
-  stdoutWriteln(iter.next().toString())
+  println(iter.next())
   /// Expect: Option.Some(value: 4.56)
-  stdoutWriteln(iter.next().toString())
+  println(iter.next())
   /// Expect: Option.Some(value: 7.89)
-  stdoutWriteln(iter.next().toString())
+  println(iter.next())
   /// Expect: Option.None
-  stdoutWriteln(iter.next().toString())
+  println(iter.next())
   /// Expect: Option.None
-  stdoutWriteln(iter.next().toString())
+  println(iter.next())
 }
 
 // For-loops
@@ -215,59 +215,59 @@ if true {
 /// Expect: b
 /// Expect: c
 for ch in ["a", "b", "c"] {
-  stdoutWriteln(ch)
+  println(ch)
 }
 
 // Array#push
 if true {
   val intArr = [1, 2, 3]
   /// Expect: [1, 2, 3] 3 4
-  stdoutWriteln("$intArr ${intArr.length} ${intArr.getCapacity()}")
+  println(intArr, intArr.length, intArr.getCapacity())
   // Pushing beyond the capacity should expand the array
   intArr.push(4)
   intArr.push(5)
   /// Expect: [1, 2, 3, 4, 5] 5 8
-  stdoutWriteln("$intArr ${intArr.length} ${intArr.getCapacity()}")
+  println(intArr, intArr.length, intArr.getCapacity())
 
   // Popping element should leave _capacity
   intArr.pop()
   intArr.pop()
   /// Expect: [1, 2, 3] 3 8
-  stdoutWriteln("$intArr ${intArr.length} ${intArr.getCapacity()}")
+  println(intArr, intArr.length, intArr.getCapacity())
 
   val strArr = ["a", "b", "c"]
   val arrArr = [strArr, strArr]
   /// Expect: [[a, b, c], [a, b, c]] 3 4
-  stdoutWriteln("$arrArr ${strArr.length} ${strArr.getCapacity()}")
+  println(arrArr, strArr.length, strArr.getCapacity())
   // Pushing beyond the capacity should expand the array
   strArr.push("d")
   strArr.push("e")
   /// Expect: [[a, b, c, d, e], [a, b, c, d, e]] 5 8
-  stdoutWriteln("$arrArr ${strArr.length} ${strArr.getCapacity()}")
+  println(arrArr, strArr.length, strArr.getCapacity())
 }
 
 // Array#pop
 if true {
   val arr = [1, 2, 3]
   /// Expect: Option.Some(value: 3)
-  stdoutWriteln(arr.pop().toString())
+  println(arr.pop())
   /// Expect: [1, 2]
-  stdoutWriteln(arr.toString())
+  println(arr)
 
   /// Expect: Option.Some(value: 2)
-  stdoutWriteln(arr.pop().toString())
+  println(arr.pop())
   /// Expect: [1]
-  stdoutWriteln(arr.toString())
+  println(arr)
 
   /// Expect: Option.Some(value: 1)
-  stdoutWriteln(arr.pop().toString())
+  println(arr.pop())
   /// Expect: []
-  stdoutWriteln(arr.toString())
+  println(arr)
 
   /// Expect: Option.None
-  stdoutWriteln(arr.pop().toString())
+  println(arr.pop())
   /// Expect: []
-  stdoutWriteln(arr.toString())
+  println(arr)
 }
 
 // Array#concat
@@ -275,29 +275,29 @@ if true {
   val arr1 = [1, 2, 3, 4]
   val arr2 = [5, 6, 7]
   /// Expect: [1, 2, 3, 4, 5, 6, 7]
-  stdoutWriteln(arr1.concat(arr2).toString())
+  println(arr1.concat(arr2))
   /// Expect: [1, 2, 3, 4] [5, 6, 7]
-  stdoutWriteln("$arr1 $arr2") // verify originals unmodified
+  println(arr1, arr2) // verify originals unmodified
 }
 
 // Array#map
 func addOne(i: Int): Int = i + 1
-func exclaim(i: Int, _: Int, x = "!"): String = i + x //"$i$x"
+func exclaim(i: Int, _: Int, x = "!"): String = i + x
 // val one = 1
 if true {
   val arr = [1, 2, 3, 4]
 
   /// Expect: [2, 3, 4, 5]
-  stdoutWriteln(arr.map(addOne).toString())
+  println(arr.map(addOne))
   /// Expect: [2, 3, 4, 5]
-  stdoutWriteln(arr.map(i => i + 1).toString())
+  println(arr.map(i => i + 1))
   // /// Expect: [2, 3, 4, 5]
-  // stdoutWriteln(arr.map(i => i + one))
+  // println(arr.map(i => i + one))
 
   /// Expect: [1!, 2!, 3!, 4!]
-  stdoutWriteln(arr.map(exclaim).toString())
+  println(arr.map(exclaim))
   /// Expect: [1!, 2!, 3!, 4!]
-  stdoutWriteln(arr.map((i, _, x = "!") => i + x).toString())
+  println(arr.map((i, _, x = "!") => i + x))
 }
 
 // Array#flatMap
@@ -305,7 +305,7 @@ if true {
   val arr = [1, 2, 3, 4]
 
   /// Expect: [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
-  stdoutWriteln(arr.flatMap(i => Array.fill(i, i)).toString())
+  println(arr.flatMap(i => Array.fill(i, i)))
 }
 
 // Array#filter
@@ -314,9 +314,9 @@ if true {
   val arr = [1, 2, 3, 4]
 
   /// Expect: [2, 4]
-  stdoutWriteln(arr.filter(isEven).toString())
+  println(arr.filter(isEven))
   /// Expect: [2, 4]
-  stdoutWriteln(arr.filter(x => x % 2 == 0).toString())
+  println(arr.filter(x => x % 2 == 0))
 }
 
 // Array#reduce
@@ -324,23 +324,14 @@ func doSum(acc: Int, i: Int): Int = acc + i
 if true {
   val arr = [1, 2, 3, 4]
 
-  // TODO: I shouldn't need r1/r2 below, but otherwise I get a typechecker error:
-  //   Type mismatch for parameter 'initialValue'
-  //     |    println(arr.reduce(0, doSum))
-  //                             ^
-  //   Expected: Any
-  //   but instead found: Int
-
   /// Expect: 10
-  val r1 = arr.reduce(0, doSum)
-  stdoutWriteln(r1.toString())
+  println(arr.reduce(0, doSum))
   /// Expect: 10
-  val r2 = arr.reduce(0, (acc, i) => acc + i)
-  stdoutWriteln(r2.toString())
+  println(arr.reduce(0, (acc, i) => acc + i))
 }
 
 // Array#forEach
-func printItem(item: Int) = stdoutWriteln(item.toString())
+func printItem(item: Int) = println(item)
 if true {
   val arr = [1, 2, 3, 4]
 
@@ -353,116 +344,114 @@ if true {
   /// Expect: 2
   /// Expect: 3
   /// Expect: 4
-  arr.forEach(i => {
-    stdoutWriteln(i.toString())
-  })
+  arr.forEach(i => println(i))
 }
 
 // Array#join
 if true {
   val arr = [123, 456, 789]
   /// Expect: 123|456|789
-  stdoutWriteln(arr.join("|"))
+  println(arr.join("|"))
   /// Expect: 123456789
-  stdoutWriteln(arr.join())
+  println(arr.join())
 
   /// Expect: 1
-  stdoutWriteln([1].join(", "))
+  println([1].join(", "))
 }
 
 // Array#contains
 if true {
   val intArr = [123, 456, 789]
   /// Expect: true
-  stdoutWriteln(intArr.contains(123).toString())
+  println(intArr.contains(123))
   /// Expect: false
-  stdoutWriteln(intArr.contains(10).toString())
+  println(intArr.contains(10))
 
   val empty: Int[] = []
   /// Expect: false
-  stdoutWriteln(empty.contains(123).toString())
+  println(empty.contains(123))
 
   val strArr = ["hello", "world"]
   /// Expect: true
-  stdoutWriteln(strArr.contains("hello").toString())
+  println(strArr.contains("hello"))
   /// Expect: false
-  stdoutWriteln(strArr.contains("HELLO").toString())
+  println(strArr.contains("HELLO"))
 }
 
 // Array#find
 if true {
   val intArr = [123, 456, 789]
   /// Expect: Option.Some(value: 123)
-  stdoutWriteln(intArr.find(i => i == 123).toString())
+  println(intArr.find(i => i == 123))
   /// Expect: Option.None
-  stdoutWriteln(intArr.find(i => i == 10).toString())
+  println(intArr.find(i => i == 10))
 
   val empty: Int[] = []
   /// Expect: Option.None
-  stdoutWriteln(empty.find(i => i == 123).toString())
+  println(empty.find(i => i == 123))
 
   val strArr = ["hello", "world"]
   /// Expect: Option.Some(value: "hello")
-  stdoutWriteln(strArr.find(s => s == "hello").toString())
+  println(strArr.find(s => s == "hello"))
   /// Expect: Option.None
-  stdoutWriteln(strArr.find(s => s == "HELLO").toString())
+  println(strArr.find(s => s == "HELLO"))
 }
 
 // Array#findIndex
 if true {
   val intArr = [123, 456, 789]
   /// Expect: Option.Some(value: (123, 0))
-  stdoutWriteln(intArr.findIndex(i => i == 123).toString())
+  println(intArr.findIndex(i => i == 123))
   /// Expect: Option.None
-  stdoutWriteln(intArr.findIndex(i => i == 10).toString())
+  println(intArr.findIndex(i => i == 10))
 
   val empty: Int[] = []
   /// Expect: Option.None
-  stdoutWriteln(empty.findIndex(i => i == 123).toString())
+  println(empty.findIndex(i => i == 123))
 
   val strArr = ["hello", "world"]
   /// Expect: Option.Some(value: ("hello", 0))
-  stdoutWriteln(strArr.findIndex(s => s == "hello").toString())
+  println(strArr.findIndex(s => s == "hello"))
   /// Expect: Option.None
-  stdoutWriteln(strArr.findIndex(s => s == "HELLO").toString())
+  println(strArr.findIndex(s => s == "HELLO"))
 }
 
 // Array#any
 if true {
   val intArr = [123, 456, 789]
   /// Expect: true
-  stdoutWriteln(intArr.any(i => i == 123).toString())
+  println(intArr.any(i => i == 123))
   /// Expect: false
-  stdoutWriteln(intArr.any(i => i == 10).toString())
+  println(intArr.any(i => i == 10))
 
   val empty: Int[] = []
   /// Expect: false
-  stdoutWriteln(empty.any(i => i == 123).toString())
+  println(empty.any(i => i == 123))
 
   val strArr = ["hello", "world"]
   /// Expect: true
-  stdoutWriteln(strArr.any(s => s == "hello").toString())
+  println(strArr.any(s => s == "hello"))
   /// Expect: false
-  stdoutWriteln(strArr.any(s => s == "HELLO").toString())
+  println(strArr.any(s => s == "HELLO"))
 }
 
 // Array#all
 if true {
   val intArr = [123, 456, 789]
   /// Expect: true
-  stdoutWriteln(intArr.all(i => i > 0).toString())
+  println(intArr.all(i => i > 0))
   /// Expect: false
-  stdoutWriteln(intArr.all(i => i == 10).toString())
+  println(intArr.all(i => i == 10))
 
   val empty: Int[] = []
   /// Expect: true
-  stdoutWriteln(empty.all(i => i == 123).toString())
+  println(empty.all(i => i == 123))
 
   val strArr = ["hello", "world"]
   /// Expect: true
-  stdoutWriteln(strArr.all(s => s.length > 0).toString())
+  println(strArr.all(s => s.length > 0))
   /// Expect: false
-  stdoutWriteln(strArr.all(s => s == "HELLO").toString())
+  println(strArr.all(s => s == "HELLO"))
 }
 
 // Array#sortBy
@@ -470,38 +459,38 @@ if true {
   val strings = ["abc", "d", "efgh", "ij", "k", "lm", "nopqr", "stu", "v", "wxyz"]
   val sorted = strings.sortBy(s => s.length)
   /// Expect: [abc, d, efgh, ij, k, lm, nopqr, stu, v, wxyz]
-  stdoutWriteln(strings.toString()) // original should be unmodified
+  println(strings) // original should be unmodified
   /// Expect: [d, k, v, ij, lm, stu, abc, efgh, wxyz, nopqr]
-  stdoutWriteln(sorted.toString())
+  println(sorted)
 
   val arrays = [[1, 2], [], [3, 4, 5], [6], [7, 8, 9, 10]]
   val sortedRev = arrays.sortBy(fn: a => a.length, reverse: true)
   /// Expect: [[1, 2], [], [3, 4, 5], [6], [7, 8, 9, 10]]
-  stdoutWriteln(arrays.toString()) // original should be unmodified
+  println(arrays) // original should be unmodified
   /// Expect: [[7, 8, 9, 10], [3, 4, 5], [1, 2], [6], []]
-  stdoutWriteln(sortedRev.toString())
+  println(sortedRev)
 }
 
 // Array#keyBy
 if true {
   val empty: String[] = []
   /// Expect: {}
-  stdoutWriteln(empty.keyBy(s => s.length).toString())
+  println(empty.keyBy(s => s.length))
 
   val strArr = "The quick brown fox jumped over the lazy dog".split(" ")
   /// Expect: { 3: dog, 4: lazy, 5: brown, 6: jumped }
-  stdoutWriteln(strArr.keyBy(s => s.length).toString())
+  println(strArr.keyBy(s => s.length))
 }
 
 // Array#indexBy
 if true {
   val empty: String[] = []
   /// Expect: {}
-  stdoutWriteln(empty.indexBy(s => s.length).toString())
+  println(empty.indexBy(s => s.length))
 
   val strArr = "The quick brown fox jumped over the lazy dog".split(" ")
   /// Expect: { 3: [The, fox, the, dog], 4: [over, lazy], 5: [quick, brown], 6: [jumped] }
-  stdoutWriteln(strArr.indexBy(s => s.length).toString())
+  println(strArr.indexBy(s => s.length))
 }
 
 // Array#asSet
@@ -509,9 +498,9 @@ if true {
   val empty: String[] = []
   val emptySet: Set<String> = #{}
   /// Expect: true
-  stdoutWriteln((empty.asSet() == emptySet).toString())
+  println((empty.asSet() == emptySet))
 
   val arr = [1, 2, 3, 4, 3, 2, 1]
   /// Expect: true
-  stdoutWriteln((arr.asSet() == #{1, 2, 3, 4}).toString())
+  println((arr.asSet() == #{1, 2, 3, 4}))
 }

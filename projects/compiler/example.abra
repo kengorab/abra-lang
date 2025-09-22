@@ -1,8 +1,7 @@
-// println(1, "hello", 1.23)
+val m = { (1): "a", (2): "b" }
 
-// val x = 123
-// val y = debug(x) + 1
-// val z = debug(x + y) + 1
-// println(z)
-
-println([1].length.toString())
+val v = m.getOrElse(1, () => {
+  println("calling default fn")
+  "c"
+})
+println(v)

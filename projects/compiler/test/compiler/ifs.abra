@@ -2,64 +2,64 @@
 
 /// Expect: here 1
 if 1 < 4 {
-  stdoutWriteln("here 1")
+  println("here 1")
 } else {
-  stdoutWriteln("here 2")
+  println("here 2")
 }
 
 /// Expect: here 2
 if 1 > 4 {
-  stdoutWriteln("here 1")
+  println("here 1")
 } else {
-  stdoutWriteln("here 2")
+  println("here 2")
 }
 
 /// Expect: here 3
 if 1 > 4 {
-  stdoutWriteln("here 1")
+  println("here 1")
 } else if 2 > 4 {
-  stdoutWriteln("here 2")
+  println("here 2")
 } else {
-  stdoutWriteln("here 3")
+  println("here 3")
 }
 
 // If expressions
 
 val a = if 1 > 0 123 else 456
 /// Expect: 123
-stdoutWriteln(a.toString())
+println(a)
 
 val b = (if 1 < 0 123 else 456) + 1000
 /// Expect: 1456
-stdoutWriteln(b.toString())
+println(b)
 
 val c = if true { Some(123) } else { None }
 /// Expect: Option.Some(value: 123)
-stdoutWriteln(c.toString())
+println(c)
 
 val d = if false { Some(123) } else { None }
 /// Expect: Option.None
-stdoutWriteln(d.toString())
+println(d)
 
 /// Expect: Option.Some(value: 3)
-stdoutWriteln((if true { Some(1 + 2) } else { None }).toString())
+println(if true { Some(1 + 2) } else { None })
 
 // Condition bindings
 val arr = [1, 2, 3, 4]
 /// Expect: 101
-stdoutWriteln((if arr[0] |item| { item + 100 } else { 0 }).toString())
+println(if arr[0] |item| { item + 100 } else { 0 })
 /// Expect: 0
-stdoutWriteln((if arr[5] |item| { item + 100 } else { 0 }).toString())
+println(if arr[5] |item| { item + 100 } else { 0 })
 
 // Destructuring condition binding as tuple
 val pairs = [("a", 1), ("b", 2)]
 // Statement
 if pairs[0] |(k, v)| {
   /// Expect: a 1
-  stdoutWriteln("$k $v")
+  println(k, v)
 }
 
 // Expression
 val x = if pairs[0] |(k, v)| k.length + v else 0
 /// Expect: 2
-stdoutWriteln(x.toString())
+println(x)

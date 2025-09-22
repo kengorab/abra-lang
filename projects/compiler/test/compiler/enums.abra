@@ -34,81 +34,79 @@ val cyan = Color.RGB2(g: 255, b: 255)
 val yellow = Color.RGB2(r: 255, g: 255)
 
 /// Expect: Color.RGB2(r: 0, g: 0, b: 0)
-stdoutWriteln(black.toString())
+println(black)
 /// Expect: Color.RGB2(r: 255, g: 255, b: 255)
-stdoutWriteln(white.toString())
+println(white)
 /// Expect: Color.RGB2(r: 255, g: 0, b: 0)
-stdoutWriteln(red.toString())
+println(red)
 /// Expect: Color.RGB2(r: 0, g: 255, b: 0)
-stdoutWriteln(green.toString())
+println(green)
 /// Expect: Color.RGB2(r: 0, g: 0, b: 255)
-stdoutWriteln(blue.toString())
+println(blue)
 /// Expect: Color.RGB2(r: 255, g: 0, b: 255)
-stdoutWriteln(pink.toString())
+println(pink)
 /// Expect: Color.RGB2(r: 0, g: 255, b: 255)
-stdoutWriteln(cyan.toString())
+println(cyan)
 /// Expect: Color.RGB2(r: 255, g: 255, b: 0)
-stdoutWriteln(yellow.toString())
+println(yellow)
 
 // Test default toString method
 /// Expect: Color.Red
-stdoutWriteln(r.toString())
+println(r)
 /// Expect: Color.Red
-stdoutWriteln(Color.Red.toString())
+println(Color.Red)
 /// Expect: Color.Green
-stdoutWriteln(g.toString())
+println(g)
 /// Expect: Color.Green
-stdoutWriteln(Color.Green.toString())
+println(Color.Green)
 /// Expect: Color.Blue
-stdoutWriteln(b.toString())
+println(b)
 /// Expect: Color.Blue
-stdoutWriteln(Color.Blue.toString())
+println(Color.Blue)
 /// Expect: Color.RGB(r: 170, g: 170, b: 170)
-stdoutWriteln(gray.toString())
+println(gray)
 /// Expect: Color.RGB(r: 170, g: 170, b: 170)
-stdoutWriteln(Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa).toString())
-
-func printlnBool(b: Bool) = stdoutWriteln(b.toString())
+println(Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa))
 
 // Test default hash method
 /// Expect: true
-printlnBool(r.hash() == Color.Red.hash())
+println(r.hash() == Color.Red.hash())
 /// Expect: true
-printlnBool(g.hash() == Color.Green.hash())
+println(g.hash() == Color.Green.hash())
 /// Expect: true
-printlnBool(b.hash() == Color.Blue.hash())
+println(b.hash() == Color.Blue.hash())
 /// Expect: true
-printlnBool(gray.hash() == Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa).hash())
+println(gray.hash() == Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa).hash())
 /// Expect: false
-printlnBool(r.hash() == Color.Blue.hash())
+println(r.hash() == Color.Blue.hash())
 /// Expect: false
-printlnBool(r.hash() == Color.Green.hash())
+println(r.hash() == Color.Green.hash())
 /// Expect: false
-printlnBool(gray.hash() == Color.Red.hash())
+println(gray.hash() == Color.Red.hash())
 
 // Test default eq method
 /// Expect: true
-printlnBool(r == Color.Red)
+println(r == Color.Red)
 /// Expect: false
-printlnBool(r == Color.Green)
+println(r == Color.Green)
 /// Expect: false
-printlnBool(r == Color.Blue)
+println(r == Color.Blue)
 /// Expect: true
-printlnBool(gray == Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa))
+println(gray == Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa))
 /// Expect: false
-printlnBool(gray == Color.RGB(r: 0x33, g: 0x33, b: 0x33))
+println(gray == Color.RGB(r: 0x33, g: 0x33, b: 0x33))
 /// Expect: false
-printlnBool(gray == Color.Green)
+println(gray == Color.Green)
 
 // Test calling method
 /// Expect: 0xFF0000 0xFF0000
-stdoutWriteln("${Color.Red.hex()} ${r.hex()}")
+println(Color.Red.hex(), r.hex())
 /// Expect: 0x00FF00 0x00FF00
-stdoutWriteln("${Color.Green.hex()} ${g.hex()}")
+println(Color.Green.hex(), g.hex())
 /// Expect: 0x0000FF 0x0000FF
-stdoutWriteln("${Color.Blue.hex()} ${b.hex()}")
+println(Color.Blue.hex(), b.hex())
 /// Expect: todo todo
-stdoutWriteln("${Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa).hex()} ${gray.hex()}")
+println(Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa).hex(), gray.hex())
 
 enum Color2 {
   Red
@@ -118,23 +116,23 @@ enum Color2 {
   func toString(self): String = "custom Color2#toString implementation"
   func hash(self): Int = 17
   func eq(self, other: Color2): Bool {
-    stdoutWriteln("[Color2#eq] here")
+    println("[Color2#eq] here")
     false
   }
 }
 
 // Test custom toString method
 /// Expect: custom Color2#toString implementation
-stdoutWriteln(Color2.Red.toString())
+println(Color2.Red)
 
 // Test custom hash method
 /// Expect: 17
-stdoutWriteln(Color2.Green.hash().toString())
+println(Color2.Green.hash())
 
 // Test custom eq method
 /// Expect: [Color2#eq] here
 /// Expect: false
-printlnBool(Color2.Blue == Color2.Blue)
+println(Color2.Blue == Color2.Blue)
 
 // Test generic enum
 
@@ -166,6 +164,6 @@ enum List<T> {
 
 val list = List.Cons(value: "a", next: List.Cons(value: "b", next: List.Cons(value: "c", next: List.Nil)))
 /// Expect: 3
-stdoutWriteln(list.length().toString())
+println(list.length())
 /// Expect: 3
-stdoutWriteln(List.lengthOf(list).toString())
+println(List.lengthOf(list))

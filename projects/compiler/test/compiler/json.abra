@@ -3,141 +3,140 @@ import JsonParser from "json"
 // Testing basic values
 if true {
   /// Expect: Result.Ok(value: JsonValue.Number(value: Either.Left(left: 1)))
-  stdoutWriteln(JsonParser.parseString("1").toString())
+  println(JsonParser.parseString("1"))
   /// Expect: Result.Ok(value: JsonValue.Number(value: Either.Right(right: 2.5)))
-  stdoutWriteln(JsonParser.parseString("2.5").toString())
+  println(JsonParser.parseString("2.5"))
   /// Expect: Result.Ok(value: JsonValue.String(value: "hello"))
-  stdoutWriteln(JsonParser.parseString("\"hello\"").toString())
+  println(JsonParser.parseString("\"hello\""))
   /// Expect: Result.Ok(value: JsonValue.Boolean(value: true))
-  stdoutWriteln(JsonParser.parseString("true").toString())
+  println(JsonParser.parseString("true"))
   /// Expect: Result.Ok(value: JsonValue.Boolean(value: false))
-  stdoutWriteln(JsonParser.parseString("false").toString())
+  println(JsonParser.parseString("false"))
   /// Expect: Result.Ok(value: JsonValue.Null)
-  stdoutWriteln(JsonParser.parseString("null").toString())
+  println(JsonParser.parseString("null"))
 }
 
 // Testing numbers
 if true {
   /// Expect: Result.Ok(value: JsonValue.Number(value: Either.Left(left: -2)))
-  stdoutWriteln(JsonParser.parseString("-2").toString())
+  println(JsonParser.parseString("-2"))
   /// Expect: Result.Ok(value: JsonValue.Number(value: Either.Right(right: -2.05)))
-  stdoutWriteln(JsonParser.parseString("-2.05").toString())
+  println(JsonParser.parseString("-2.05"))
 
   /// Expect: Result.Ok(value: JsonValue.Number(value: Either.Right(right: 20000)))
-  stdoutWriteln(JsonParser.parseString("2e04").toString())
+  println(JsonParser.parseString("2e04"))
   /// Expect: Result.Ok(value: JsonValue.Number(value: Either.Right(right: 20000)))
-  stdoutWriteln(JsonParser.parseString("2e+04").toString())
+  println(JsonParser.parseString("2e+04"))
   /// Expect: Result.Ok(value: JsonValue.Number(value: Either.Right(right: -20000)))
-  stdoutWriteln(JsonParser.parseString("-2e04").toString())
+  println(JsonParser.parseString("-2e04"))
   /// Expect: Result.Ok(value: JsonValue.Number(value: Either.Right(right: 0.0002)))
-  stdoutWriteln(JsonParser.parseString("2e-04").toString())
+  println(JsonParser.parseString("2e-04"))
   /// Expect: Result.Ok(value: JsonValue.Number(value: Either.Right(right: -0.0002)))
-  stdoutWriteln(JsonParser.parseString("-2e-04").toString())
+  println(JsonParser.parseString("-2e-04"))
 
   /// Expect: Result.Ok(value: JsonValue.Number(value: Either.Right(right: 2000)))
-  stdoutWriteln(JsonParser.parseString("0.2e04").toString())
+  println(JsonParser.parseString("0.2e04"))
   /// Expect: Result.Ok(value: JsonValue.Number(value: Either.Right(right: 2000)))
-  stdoutWriteln(JsonParser.parseString("0.2e+04").toString())
+  println(JsonParser.parseString("0.2e+04"))
   /// Expect: Result.Ok(value: JsonValue.Number(value: Either.Right(right: -2000)))
-  stdoutWriteln(JsonParser.parseString("-0.2e04").toString())
+  println(JsonParser.parseString("-0.2e04"))
   /// Expect: Result.Ok(value: JsonValue.Number(value: Either.Right(right: 0.0002)))
-  stdoutWriteln(JsonParser.parseString("0.2e-03").toString())
+  println(JsonParser.parseString("0.2e-03"))
   /// Expect: Result.Ok(value: JsonValue.Number(value: Either.Right(right: -0.0002)))
-  stdoutWriteln(JsonParser.parseString("-0.2e-03").toString())
+  println(JsonParser.parseString("-0.2e-03"))
 }
 
 // Testing strings
 if true {
   // escape sequences
   /// Expect: Result.Ok(value: "JsonValue.String(value: "" \ \n \r \t /")")
-  stdoutWriteln(
+  println(
     JsonParser.parseString("\"\\\" \\\\ \\n \\r \\t \\/\"")
       .map(v => v.toString().replaceAll("\n", "\\n").replaceAll("\r", "\\r").replaceAll("\t", "\\t"))
-      .toString()
   )
 
   // unicode escape sequence
   /// Expect: Result.Ok(value: JsonValue.String(value: "PH"))
-  stdoutWriteln(JsonParser.parseString("\"\\u0050\\u0048\"").toString())
+  println(JsonParser.parseString("\"\\u0050\\u0048\""))
 
   // TODO: Uncomment when Strings support `bytelength`
   // // unicode characters
   // /// Expect: Result.Ok(value: JsonValue.String(value: "日"))
-  // stdoutWriteln(JsonParser.parseString("\"日\""))
+  // println(JsonParser.parseString("\"日\""))
 }
 
 // Testing array values
 if true {
   /// Expect: Result.Ok(value: JsonValue.Array(items: []))
-  stdoutWriteln(JsonParser.parseString("[]").toString())
+  println(JsonParser.parseString("[]"))
   /// Expect: Result.Ok(value: JsonValue.Array(items: [JsonValue.Number(value: Either.Left(left: 1))]))
-  stdoutWriteln(JsonParser.parseString("[1]").toString())
+  println(JsonParser.parseString("[1]"))
   /// Expect: Result.Ok(value: JsonValue.Array(items: [JsonValue.Number(value: Either.Left(left: 1)), JsonValue.Number(value: Either.Left(left: 2)), JsonValue.Number(value: Either.Left(left: 3))]))
-  stdoutWriteln(JsonParser.parseString("[1, 2, 3]").toString())
+  println(JsonParser.parseString("[1, 2, 3]"))
   /// Expect: Result.Ok(value: JsonValue.Array(items: [JsonValue.Number(value: Either.Right(right: 1.5))]))
-  stdoutWriteln(JsonParser.parseString("[1.5]").toString())
+  println(JsonParser.parseString("[1.5]"))
   /// Expect: Result.Ok(value: JsonValue.Array(items: [JsonValue.Null]))
-  stdoutWriteln(JsonParser.parseString("[null]").toString())
+  println(JsonParser.parseString("[null]"))
   /// Expect: Result.Ok(value: JsonValue.Array(items: [JsonValue.Boolean(value: true)]))
-  stdoutWriteln(JsonParser.parseString("[true]").toString())
+  println(JsonParser.parseString("[true]"))
   /// Expect: Result.Ok(value: JsonValue.Array(items: [JsonValue.Boolean(value: false)]))
-  stdoutWriteln(JsonParser.parseString("[false]").toString())
+  println(JsonParser.parseString("[false]"))
   /// Expect: Result.Ok(value: JsonValue.Array(items: [JsonValue.String(value: "hello")]))
-  stdoutWriteln(JsonParser.parseString("[\"hello\"]").toString())
+  println(JsonParser.parseString("[\"hello\"]"))
   /// Expect: Result.Ok(value: JsonValue.Array(items: [JsonValue.Number(value: Either.Left(left: 0))]))
-  stdoutWriteln(JsonParser.parseString("[0]").toString())
+  println(JsonParser.parseString("[0]"))
   /// Expect: Result.Ok(value: JsonValue.Array(items: [JsonValue.Number(value: Either.Left(left: 0))]))
-  stdoutWriteln(JsonParser.parseString("[ 0 ]").toString())
+  println(JsonParser.parseString("[ 0 ]"))
   /// Expect: Result.Ok(value: JsonValue.Array(items: [JsonValue.Array(items: [JsonValue.String(value: "hello")])]))
-  stdoutWriteln(JsonParser.parseString("[[\"hello\"]]").toString())
+  println(JsonParser.parseString("[[\"hello\"]]"))
   /// Expect: Result.Ok(value: JsonValue.Array(items: [JsonValue.Object(obj: JsonObject(_map: { foo: JsonValue.Number(value: Either.Left(left: 1)) }))]))
-  stdoutWriteln(JsonParser.parseString("[{\"foo\": 1}]").toString())
+  println(JsonParser.parseString("[{\"foo\": 1}]"))
 }
 
 // Testing object values
 if true {
   /// Expect: Result.Ok(value: JsonValue.Object(obj: JsonObject(_map: {})))
-  stdoutWriteln(JsonParser.parseString("{}").toString())
+  println(JsonParser.parseString("{}"))
   /// Expect: Result.Ok(value: JsonValue.Object(obj: JsonObject(_map: { foo: JsonValue.Number(value: Either.Left(left: 1)) })))
-  stdoutWriteln(JsonParser.parseString("{\"foo\": 1}").toString())
+  println(JsonParser.parseString("{\"foo\": 1}"))
   /// Expect: Result.Ok(value: JsonValue.Object(obj: JsonObject(_map: { bar: JsonValue.Array(items: [JsonValue.String(value: "baz")]), foo: JsonValue.Number(value: Either.Left(left: 1)) })))
-  stdoutWriteln(JsonParser.parseString("{ \"foo\" : 1 , \"bar\": [\"baz\"]}").toString())
+  println(JsonParser.parseString("{ \"foo\" : 1 , \"bar\": [\"baz\"]}"))
   /// Expect: Result.Ok(value: "JsonValue.Object(obj: JsonObject(_map: { fo\no: JsonValue.Number(value: Either.Left(left: 1)) }))")
-  stdoutWriteln(JsonParser.parseString("{\"fo\\no\": 1}").map(v => v.toString().replaceAll("\n", "\\n")).toString())
+  println(JsonParser.parseString("{\"fo\\no\": 1}").map(v => v.toString().replaceAll("\n", "\\n")))
 }
 
 // Testing parsing errors
 if true {
   /// Expect: Result.Err(error: JsonParseError.UnexpectedEndOfNumber)
-  stdoutWriteln(JsonParser.parseString("2.").toString())
+  println(JsonParser.parseString("2."))
 
   /// Expect: Result.Err(error: JsonParseError.InvalidCharacterInString)
-  stdoutWriteln(JsonParser.parseString("\"\\u123z\"").toString())
+  println(JsonParser.parseString("\"\\u123z\""))
 
   /// Expect: Result.Err(error: JsonParseError.InvalidCharacterInString)
-  stdoutWriteln(JsonParser.parseString("\"hello\nworld\"").toString())
+  println(JsonParser.parseString("\"hello\nworld\""))
 
   /// Expect: Result.Err(error: JsonParseError.ValueExpected)
-  stdoutWriteln(JsonParser.parseString("[1,]").toString())
+  println(JsonParser.parseString("[1,]"))
   /// Expect: Result.Err(error: JsonParseError.EofExpected)
-  stdoutWriteln(JsonParser.parseString("[0]1").toString())
+  println(JsonParser.parseString("[0]1"))
   /// Expect: Result.Err(error: JsonParseError.EofExpected)
-  stdoutWriteln(JsonParser.parseString("[0] 1").toString())
+  println(JsonParser.parseString("[0] 1"))
   /// Expect: Result.Err(error: JsonParseError.CommaExpected)
-  stdoutWriteln(JsonParser.parseString("[0 true]").toString())
+  println(JsonParser.parseString("[0 true]"))
   /// Expect: Result.Err(error: JsonParseError.CommaOrClosingBracketExpected)
-  stdoutWriteln(JsonParser.parseString("[0 ").toString())
+  println(JsonParser.parseString("[0 "))
 
   /// Expect: Result.Err(error: JsonParseError.ObjectPropertyExpected)
-  stdoutWriteln(JsonParser.parseString("{\"foo\": 1,}").toString())
+  println(JsonParser.parseString("{\"foo\": 1,}"))
   /// Expect: Result.Err(error: JsonParseError.ObjectPropertyExpected)
-  stdoutWriteln(JsonParser.parseString("{1}").toString())
+  println(JsonParser.parseString("{1}"))
   /// Expect: Result.Err(error: JsonParseError.ColonExpected)
-  stdoutWriteln(JsonParser.parseString("{ \"foo\" 1 }").toString())
+  println(JsonParser.parseString("{ \"foo\" 1 }"))
   /// Expect: Result.Err(error: JsonParseError.ValueExpected)
-  stdoutWriteln(JsonParser.parseString("{ \"foo\": }").toString())
+  println(JsonParser.parseString("{ \"foo\": }"))
   /// Expect: Result.Err(error: JsonParseError.CommaExpected)
-  stdoutWriteln(JsonParser.parseString("{ \"foo\":  1 \"bar\": 2}").toString())
+  println(JsonParser.parseString("{ \"foo\":  1 \"bar\": 2}"))
   /// Expect: Result.Err(error: JsonParseError.CommaOrClosingBracketExpected)
-  stdoutWriteln(JsonParser.parseString("{ \"foo\":  1 ").toString())
+  println(JsonParser.parseString("{ \"foo\":  1 "))
 }
