@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/match/match_expr.abra",
   "code": [
     {
@@ -158,7 +158,7 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 4, "name": "Array" },
+              "struct": { "moduleId": 5, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -177,7 +177,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 4, "name": "Array" },
+            "struct": { "moduleId": 5, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -267,7 +267,7 @@
             "mutable": false,
             "type": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 4, "name": "Option" },
+              "enum": { "moduleId": 5, "name": "Option" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -286,7 +286,7 @@
           },
           "type": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 4, "name": "Option" },
+            "enum": { "moduleId": 5, "name": "Option" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -308,7 +308,7 @@
                 },
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 4, "name": "Array" },
+                  "struct": { "moduleId": 5, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "primitive",
@@ -394,7 +394,7 @@
               },
               "type": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Option" },
+                "enum": { "moduleId": 5, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -596,7 +596,7 @@
               },
               "type": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Option" },
+                "enum": { "moduleId": 5, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -864,7 +864,7 @@
               },
               "type": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Option" },
+                "enum": { "moduleId": 5, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -1069,7 +1069,7 @@
               },
               "type": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Option" },
+                "enum": { "moduleId": 5, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -1240,7 +1240,7 @@
       "node": {
         "kind": "enumDeclaration",
         "enum": {
-          "moduleId": 5,
+          "moduleId": 6,
           "name": { "name": "Color", "position": [34, 6] },
           "typeParams": [],
           "variants": [
@@ -1261,7 +1261,7 @@
             {
               "label": { "name": "toString", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_5::Color::toString",
+                "name": "$root::module_6::Color::toString",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -1282,7 +1282,7 @@
             {
               "label": { "name": "hash", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_5::Color::hash",
+                "name": "$root::module_6::Color::hash",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -1303,7 +1303,7 @@
             {
               "label": { "name": "eq", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_5::Color::eq",
+                "name": "$root::module_6::Color::eq",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -1319,7 +1319,7 @@
                   "label": { "name": "other", "position": [0, 0] },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 5, "name": "Color" },
+                    "enum": { "moduleId": 6, "name": "Color" },
                     "typeParams": []
                   },
                   "defaultValue": null,
@@ -1360,11 +1360,11 @@
             "mutable": false,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 4, "name": "Array" },
+              "struct": { "moduleId": 5, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 5, "name": "Color" },
+                  "enum": { "moduleId": 6, "name": "Color" },
                   "typeParams": []
                 }
               ]
@@ -1380,11 +1380,11 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 4, "name": "Array" },
+            "struct": { "moduleId": 5, "name": "Array" },
             "typeParams": [
               {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 5, "name": "Color" },
+                "enum": { "moduleId": 6, "name": "Color" },
                 "typeParams": []
               }
             ]
@@ -1401,7 +1401,7 @@
                 },
                 "type": {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 5, "name": "Color" },
+                  "enum": { "moduleId": 6, "name": "Color" },
                   "typeParams": []
                 },
                 "node": {
@@ -1416,7 +1416,7 @@
                     },
                     "type": {
                       "kind": "enum",
-                      "enum": { "moduleId": 5, "name": "Color" }
+                      "enum": { "moduleId": 6, "name": "Color" }
                     },
                     "node": {
                       "kind": "identifier",
@@ -1439,7 +1439,7 @@
                 },
                 "type": {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 5, "name": "Color" },
+                  "enum": { "moduleId": 6, "name": "Color" },
                   "typeParams": []
                 },
                 "node": {
@@ -1454,7 +1454,7 @@
                     },
                     "type": {
                       "kind": "enum",
-                      "enum": { "moduleId": 5, "name": "Color" }
+                      "enum": { "moduleId": 6, "name": "Color" }
                     },
                     "node": {
                       "kind": "identifier",
@@ -1477,7 +1477,7 @@
                 },
                 "type": {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 5, "name": "Color" },
+                  "enum": { "moduleId": 6, "name": "Color" },
                   "typeParams": []
                 },
                 "node": {
@@ -1492,7 +1492,7 @@
                     },
                     "type": {
                       "kind": "enum",
-                      "enum": { "moduleId": 5, "name": "Color" }
+                      "enum": { "moduleId": 6, "name": "Color" }
                     },
                     "node": {
                       "kind": "identifier",
@@ -1534,11 +1534,11 @@
             "mutable": false,
             "type": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 4, "name": "Option" },
+              "enum": { "moduleId": 5, "name": "Option" },
               "typeParams": [
                 {
                   "kind": "enumInstance",
-                  "enum": { "moduleId": 5, "name": "Color" },
+                  "enum": { "moduleId": 6, "name": "Color" },
                   "typeParams": []
                 }
               ]
@@ -1554,11 +1554,11 @@
           },
           "type": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 4, "name": "Option" },
+            "enum": { "moduleId": 5, "name": "Option" },
             "typeParams": [
               {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 5, "name": "Color" },
+                "enum": { "moduleId": 6, "name": "Color" },
                 "typeParams": []
               }
             ]
@@ -1577,11 +1577,11 @@
                 },
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 4, "name": "Array" },
+                  "struct": { "moduleId": 5, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "enumInstance",
-                      "enum": { "moduleId": 5, "name": "Color" },
+                      "enum": { "moduleId": 6, "name": "Color" },
                       "typeParams": []
                     }
                   ]
@@ -1636,7 +1636,7 @@
             "mutable": false,
             "type": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 5, "name": "Color" },
+              "enum": { "moduleId": 6, "name": "Color" },
               "typeParams": []
             }
           }
@@ -1650,7 +1650,7 @@
           },
           "type": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 5, "name": "Color" },
+            "enum": { "moduleId": 6, "name": "Color" },
             "typeParams": []
           },
           "node": {
@@ -1666,11 +1666,11 @@
               },
               "type": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Option" },
+                "enum": { "moduleId": 5, "name": "Option" },
                 "typeParams": [
                   {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 5, "name": "Color" },
+                    "enum": { "moduleId": 6, "name": "Color" },
                     "typeParams": []
                   }
                 ]
@@ -1685,7 +1685,7 @@
                 "kind": {
                   "kind": "enumVariant",
                   "variantIdx": 0,
-                  "enum": { "moduleId": 5, "name": "Color" },
+                  "enum": { "moduleId": 6, "name": "Color" },
                   "destructuredVariables": []
                 },
                 "binding": {
@@ -1693,7 +1693,7 @@
                   "mutable": false,
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 5, "name": "Color" },
+                    "enum": { "moduleId": 6, "name": "Color" },
                     "typeParams": []
                   }
                 },
@@ -1708,7 +1708,7 @@
                     },
                     "type": {
                       "kind": "enumInstance",
-                      "enum": { "moduleId": 5, "name": "Color" },
+                      "enum": { "moduleId": 6, "name": "Color" },
                       "typeParams": []
                     },
                     "node": {
@@ -1722,7 +1722,7 @@
                 "kind": {
                   "kind": "enumVariant",
                   "variantIdx": 1,
-                  "enum": { "moduleId": 5, "name": "Color" },
+                  "enum": { "moduleId": 6, "name": "Color" },
                   "destructuredVariables": []
                 },
                 "binding": {
@@ -1730,7 +1730,7 @@
                   "mutable": false,
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 5, "name": "Color" },
+                    "enum": { "moduleId": 6, "name": "Color" },
                     "typeParams": []
                   }
                 },
@@ -1745,7 +1745,7 @@
                     },
                     "type": {
                       "kind": "enumInstance",
-                      "enum": { "moduleId": 5, "name": "Color" },
+                      "enum": { "moduleId": 6, "name": "Color" },
                       "typeParams": []
                     },
                     "node": {
@@ -1768,7 +1768,7 @@
                     },
                     "type": {
                       "kind": "enumInstance",
-                      "enum": { "moduleId": 5, "name": "Color" },
+                      "enum": { "moduleId": 6, "name": "Color" },
                       "typeParams": []
                     },
                     "node": {
@@ -1783,7 +1783,7 @@
                         },
                         "type": {
                           "kind": "enum",
-                          "enum": { "moduleId": 5, "name": "Color" }
+                          "enum": { "moduleId": 6, "name": "Color" }
                         },
                         "node": {
                           "kind": "identifier",
@@ -1827,7 +1827,7 @@
             "mutable": false,
             "type": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 5, "name": "Color" },
+              "enum": { "moduleId": 6, "name": "Color" },
               "typeParams": []
             }
           }
@@ -1842,7 +1842,7 @@
           },
           "type": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 5, "name": "Color" },
+            "enum": { "moduleId": 6, "name": "Color" },
             "typeParams": []
           },
           "node": {
@@ -1866,7 +1866,7 @@
       "node": {
         "kind": "enumDeclaration",
         "enum": {
-          "moduleId": 5,
+          "moduleId": 6,
           "name": { "name": "Color2", "position": [45, 6] },
           "typeParams": [],
           "variants": [
@@ -1908,7 +1908,7 @@
             {
               "label": { "name": "toString", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_5::Color2::toString",
+                "name": "$root::module_6::Color2::toString",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -1929,7 +1929,7 @@
             {
               "label": { "name": "hash", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_5::Color2::hash",
+                "name": "$root::module_6::Color2::hash",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -1950,7 +1950,7 @@
             {
               "label": { "name": "eq", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_5::Color2::eq",
+                "name": "$root::module_6::Color2::eq",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -1966,7 +1966,7 @@
                   "label": { "name": "other", "position": [0, 0] },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 5, "name": "Color2" },
+                    "enum": { "moduleId": 6, "name": "Color2" },
                     "typeParams": []
                   },
                   "defaultValue": null,
@@ -2007,7 +2007,7 @@
             "mutable": false,
             "type": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 5, "name": "Color2" },
+              "enum": { "moduleId": 6, "name": "Color2" },
               "typeParams": []
             }
           }
@@ -2021,7 +2021,7 @@
           },
           "type": {
             "kind": "enumInstance",
-            "enum": { "moduleId": 5, "name": "Color2" },
+            "enum": { "moduleId": 6, "name": "Color2" },
             "typeParams": []
           },
           "node": {
@@ -2135,7 +2135,7 @@
               },
               "type": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 5, "name": "Color2" },
+                "enum": { "moduleId": 6, "name": "Color2" },
                 "typeParams": []
               },
               "node": {
@@ -2148,7 +2148,7 @@
                 "kind": {
                   "kind": "enumVariant",
                   "variantIdx": 0,
-                  "enum": { "moduleId": 5, "name": "Color2" },
+                  "enum": { "moduleId": 6, "name": "Color2" },
                   "destructuredVariables": [
                     {
                       "label": { "name": "r", "position": [48, 14] },

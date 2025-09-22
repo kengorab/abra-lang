@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/lambda/lambda_generic_inference.2.abra",
   "code": [
     {
@@ -28,7 +28,7 @@
               "parameters": [],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Result" },
+                "enum": { "moduleId": 5, "name": "Result" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -55,7 +55,7 @@
             "parameters": [],
             "returnType": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 4, "name": "Result" },
+              "enum": { "moduleId": 5, "name": "Result" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -71,9 +71,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_5_1_14", "position": [1, 14] },
+              "label": { "name": "lambda_6_1_14", "position": [1, 14] },
               "scope": {
-                "name": "$root::module_5::lambda_5_1_14",
+                "name": "$root::module_6::lambda_6_1_14",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -85,7 +85,7 @@
               "parameters": [],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Result" },
+                "enum": { "moduleId": 5, "name": "Result" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -152,7 +152,7 @@
                             },
                             "type": {
                               "kind": "enumInstance",
-                              "enum": { "moduleId": 4, "name": "Result" },
+                              "enum": { "moduleId": 5, "name": "Result" },
                               "typeParams": [
                                 {
                                   "kind": "primitive",
@@ -181,7 +181,7 @@
                                   ],
                                   "returnType": {
                                     "kind": "enumInstance",
-                                    "enum": { "moduleId": 4, "name": "Result" },
+                                    "enum": { "moduleId": 5, "name": "Result" },
                                     "typeParams": [
                                       {
                                         "kind": "generic",
@@ -231,7 +231,7 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 4, "name": "Result" },
+                    "enum": { "moduleId": 5, "name": "Result" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -260,7 +260,7 @@
                         ],
                         "returnType": {
                           "kind": "enumInstance",
-                          "enum": { "moduleId": 4, "name": "Result" },
+                          "enum": { "moduleId": 5, "name": "Result" },
                           "typeParams": [
                             {
                               "kind": "generic",
@@ -327,7 +327,7 @@
               "parameters": [],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Result" },
+                "enum": { "moduleId": 5, "name": "Result" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -355,7 +355,7 @@
             "parameters": [],
             "returnType": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 4, "name": "Result" },
+              "enum": { "moduleId": 5, "name": "Result" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -401,7 +401,7 @@
               "parameters": [],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Result" },
+                "enum": { "moduleId": 5, "name": "Result" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -428,7 +428,7 @@
             "parameters": [],
             "returnType": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 4, "name": "Result" },
+              "enum": { "moduleId": 5, "name": "Result" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -444,9 +444,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_5_8_14", "position": [8, 14] },
+              "label": { "name": "lambda_6_8_14", "position": [8, 14] },
               "scope": {
-                "name": "$root::module_5::lambda_5_8_14",
+                "name": "$root::module_6::lambda_6_8_14",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -458,7 +458,7 @@
               "parameters": [],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Result" },
+                "enum": { "moduleId": 5, "name": "Result" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -480,7 +480,7 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 4, "name": "Result" },
+                    "enum": { "moduleId": 5, "name": "Result" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -523,7 +523,7 @@
                         },
                         "type": {
                           "kind": "enumInstance",
-                          "enum": { "moduleId": 4, "name": "Result" },
+                          "enum": { "moduleId": 5, "name": "Result" },
                           "typeParams": [
                             {
                               "kind": "primitive",
@@ -552,7 +552,7 @@
                               ],
                               "returnType": {
                                 "kind": "enumInstance",
-                                "enum": { "moduleId": 4, "name": "Result" },
+                                "enum": { "moduleId": 5, "name": "Result" },
                                 "typeParams": [
                                   {
                                     "kind": "generic",
@@ -598,7 +598,7 @@
                         },
                         "type": {
                           "kind": "enumInstance",
-                          "enum": { "moduleId": 4, "name": "Result" },
+                          "enum": { "moduleId": 5, "name": "Result" },
                           "typeParams": [
                             {
                               "kind": "primitive",
@@ -627,7 +627,7 @@
                               ],
                               "returnType": {
                                 "kind": "enumInstance",
-                                "enum": { "moduleId": 4, "name": "Result" },
+                                "enum": { "moduleId": 5, "name": "Result" },
                                 "typeParams": [
                                   {
                                     "kind": "generic",
@@ -697,7 +697,7 @@
               "parameters": [],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Result" },
+                "enum": { "moduleId": 5, "name": "Result" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -725,7 +725,7 @@
             "parameters": [],
             "returnType": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 4, "name": "Result" },
+              "enum": { "moduleId": 5, "name": "Result" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -771,7 +771,7 @@
               "parameters": [],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Result" },
+                "enum": { "moduleId": 5, "name": "Result" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -798,7 +798,7 @@
             "parameters": [],
             "returnType": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 4, "name": "Result" },
+              "enum": { "moduleId": 5, "name": "Result" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -814,9 +814,9 @@
           "node": {
             "kind": "lambda",
             "function": {
-              "label": { "name": "lambda_5_11_14", "position": [11, 14] },
+              "label": { "name": "lambda_6_11_14", "position": [11, 14] },
               "scope": {
-                "name": "$root::module_5::lambda_5_11_14",
+                "name": "$root::module_6::lambda_6_11_14",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -828,7 +828,7 @@
               "parameters": [],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Result" },
+                "enum": { "moduleId": 5, "name": "Result" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -850,7 +850,7 @@
                   },
                   "type": {
                     "kind": "enumInstance",
-                    "enum": { "moduleId": 4, "name": "Result" },
+                    "enum": { "moduleId": 5, "name": "Result" },
                     "typeParams": [
                       {
                         "kind": "primitive",
@@ -893,7 +893,7 @@
                         },
                         "type": {
                           "kind": "enumInstance",
-                          "enum": { "moduleId": 4, "name": "Result" },
+                          "enum": { "moduleId": 5, "name": "Result" },
                           "typeParams": [
                             {
                               "kind": "primitive",
@@ -922,7 +922,7 @@
                               ],
                               "returnType": {
                                 "kind": "enumInstance",
-                                "enum": { "moduleId": 4, "name": "Result" },
+                                "enum": { "moduleId": 5, "name": "Result" },
                                 "typeParams": [
                                   {
                                     "kind": "generic",
@@ -968,7 +968,7 @@
                         },
                         "type": {
                           "kind": "enumInstance",
-                          "enum": { "moduleId": 4, "name": "Result" },
+                          "enum": { "moduleId": 5, "name": "Result" },
                           "typeParams": [
                             {
                               "kind": "primitive",
@@ -997,7 +997,7 @@
                               ],
                               "returnType": {
                                 "kind": "enumInstance",
-                                "enum": { "moduleId": 4, "name": "Result" },
+                                "enum": { "moduleId": 5, "name": "Result" },
                                 "typeParams": [
                                   {
                                     "kind": "generic",
@@ -1067,7 +1067,7 @@
               "parameters": [],
               "returnType": {
                 "kind": "enumInstance",
-                "enum": { "moduleId": 4, "name": "Result" },
+                "enum": { "moduleId": 5, "name": "Result" },
                 "typeParams": [
                   {
                     "kind": "primitive",
@@ -1095,7 +1095,7 @@
             "parameters": [],
             "returnType": {
               "kind": "enumInstance",
-              "enum": { "moduleId": 4, "name": "Result" },
+              "enum": { "moduleId": 5, "name": "Result" },
               "typeParams": [
                 {
                   "kind": "primitive",

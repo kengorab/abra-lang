@@ -1,48 +1,46 @@
-func printlnBool(b: Bool) = stdoutWriteln(b.toString())
-
 // Test raw construction of map
 if true {
   val m0: Map<Int, String> = Map.new()
   /// Expect: {}
-  stdoutWriteln(m0.toString())
+  println(m0)
 
   val m1: Map<Int, String> = Map.new()
   m1.insert(24, "hello")
   /// Expect: { 24: hello }
-  stdoutWriteln(m1.toString())
+  println(m1)
 
   val m2: Map<Int, String> = Map.new()
   m2.insert(24, "hello")
   m2.insert(17, "bonjour")
   /// Expect: { 17: bonjour, 24: hello }
-  stdoutWriteln(m2.toString())
+  println(m2)
 
   // Forcing a hash-collision
   val m3: Map<Int, String> = Map.new()
   m3.insert(1, "hello")
   m3.insert(m3.getCapacity() + 1, "world")
   /// Expect: { 1: hello, 17: world }
-  stdoutWriteln(m3.toString())
+  println(m3)
 }
 
 // Test map literal construction
 if true {
   val m0: Map<Int, String> = {}
   /// Expect: {}
-  stdoutWriteln(m0.toString())
+  println(m0)
 
   val m1 = { (24): "hello" }
   /// Expect: { 24: hello }
-  stdoutWriteln(m1.toString())
+  println(m1)
 
   val m2 = { (24): "hello", (17): "bonjour" }
   /// Expect: { 17: bonjour, 24: hello }
-  stdoutWriteln(m2.toString())
+  println(m2)
 
   // Forcing a hash-collision (16 initial buckets by default)
   val m3 = { (1): "hello", (17): "world" }
   /// Expect: { 1: hello, 17: world }
-  stdoutWriteln(m3.toString())
+  println(m3)
 }
 
 // == operator (also Map#eq)
@@ -50,9 +48,9 @@ if true {
   val map = { a: "abc", b: "def" }
 
   /// Expect: true
-  printlnBool(map == { b: "def", a: "abc" })
+  println(map == { b: "def", a: "abc" })
   /// Expect: true
-  printlnBool({ (1): { (1): ["a"], (2): ["b"] } } == { (1): { (1): ["a"], (2): ["b"] } })
+  println({ (1): { (1): ["a"], (2): ["b"] } } == { (1): { (1): ["a"], (2): ["b"] } })
 }
 
 // Map.fromPairs
@@ -62,40 +60,40 @@ if true {
   val m = Map.fromPairs(pairs)
 
   /// Expect: { c: 3, b: 2, a: 1 }
-  stdoutWriteln(m.toString())
+  println(m)
 }
 
 // Map#keys
 if true {
   val map1 = { a: 1, b: 2 }
   /// Expect: #{b, a}
-  stdoutWriteln(map1.keys().toString())
+  println(map1.keys())
 
   val map2 = { ((1, 1)): true, ((0, 1)): false }
   /// Expect: #{(0, 1), (1, 1)}
-  stdoutWriteln(map2.keys().toString())
+  println(map2.keys())
 }
 
 // Map#values
 if true {
   val map1 = { a: 1, b: 2 }
   /// Expect: [2, 1]
-  stdoutWriteln(map1.values().toString())
+  println(map1.values())
 
   val map2 = { ((1, 1)): true, ((0, 1)): false }
   /// Expect: [false, true]
-  stdoutWriteln(map2.values().toString())
+  println(map2.values())
 }
 
 // Map#entries
 if true {
   val map1 = { a: 1, b: 2 }
   /// Expect: #{("b", 2), ("a", 1)}
-  stdoutWriteln(map1.entries().toString())
+  println(map1.entries())
 
   val map2 = { ((1, 1)): true, ((0, 1)): false }
   /// Expect: #{((1, 1), true), ((0, 1), false)}
-  stdoutWriteln(map2.entries().toString())
+  println(map2.entries())
 }
 
 // Map#iterator
@@ -104,15 +102,15 @@ if true {
   val iter = m.iterator()
 
   /// Expect: Option.Some(value: ("c", 3))
-  stdoutWriteln(iter.next().toString())
+  println(iter.next())
   /// Expect: Option.Some(value: ("b", 2))
-  stdoutWriteln(iter.next().toString())
+  println(iter.next())
   /// Expect: Option.Some(value: ("a", 1))
-  stdoutWriteln(iter.next().toString())
+  println(iter.next())
   /// Expect: Option.None
-  stdoutWriteln(iter.next().toString())
+  println(iter.next())
   /// Expect: Option.None
-  stdoutWriteln(iter.next().toString())
+  println(iter.next())
 }
 
 // For-loops
@@ -120,7 +118,7 @@ if true {
 /// Expect: ("b", 2) 1
 /// Expect: ("a", 1) 2
 for ch, idx in { a: 1, b: 2, c: 3 } {
-  stdoutWriteln("$ch $idx")
+  println("$ch $idx")
 }
 
 // Map#containsKey
@@ -128,9 +126,9 @@ if true {
   val m = { (1): "a", (2): "b" }
 
   /// Expect: true
-  stdoutWriteln(m.containsKey(1).toString())
+  println(m.containsKey(1))
   /// Expect: false
-  stdoutWriteln(m.containsKey(3).toString())
+  println(m.containsKey(3))
 }
 
 // Map#mapValues
@@ -139,11 +137,11 @@ if true {
 
   val m2 = m1.mapValues((_, v) => v + "!")
   /// Expect: { 1: abc!, 2: defg! }
-  stdoutWriteln(m2.toString())
+  println(m2)
 
   val m3 = m1.mapValues((_, v) => v.length)
   /// Expect: { 1: 3, 2: 4 }
-  stdoutWriteln(m3.toString())
+  println(m3)
 }
 
 // Map#insert (also []= operator)
@@ -152,7 +150,7 @@ if true {
   m.insert("c", 3)
   m["d"] = 4
   /// Expect: { d: 4, c: 3, b: 2, a: 1 }
-  stdoutWriteln(m.toString())
+  println(m)
 
   val letters = ["e", "f", "g", "h", "i", "j", "l", "k", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"]
   for ch, idx in letters {
@@ -160,9 +158,9 @@ if true {
   }
   // Map should have been resized
   /// Expect: { y: 24, w: 22, u: 20, s: 18, q: 16, o: 14, m: 12, k: 11, i: 8, g: 6, e: 4, c: 3, a: 1, z: 25, x: 23, v: 21, t: 19, r: 17, p: 15, n: 13, l: 10, j: 9, h: 7, f: 5, d: 4, b: 2 }
-  stdoutWriteln(m.toString())
+  println(m)
   /// Expect: false
-  stdoutWriteln(m._needsResize().toString())
+  println(m._needsResize())
 }
 
 // Map#get
@@ -170,11 +168,11 @@ if true {
   val m = { (1): "a", (2): "b" }
 
   /// Expect: Option.Some(value: "a")
-  stdoutWriteln(m.get(1).toString())
+  println(m.get(1))
   /// Expect: Option.Some(value: "b")
-  stdoutWriteln(m.get(2).toString())
+  println(m.get(2))
   /// Expect: Option.None
-  stdoutWriteln(m.get(3).toString())
+  println(m.get(3))
 }
 
 // Map#getOr
@@ -182,11 +180,11 @@ if true {
   val m = { (1): "a", (2): "b" }
 
   /// Expect: a
-  stdoutWriteln(m.getOr(1, "c"))
+  println(m.getOr(1, "c"))
   /// Expect: b
-  stdoutWriteln(m.getOr(2, "c"))
+  println(m.getOr(2, "c"))
   /// Expect: c
-  stdoutWriteln(m.getOr(3, "c"))
+  println(m.getOr(3, "c"))
 }
 
 // Map#getOrElse
@@ -194,21 +192,26 @@ if true {
   val m = { (1): "a", (2): "b" }
 
   /// Expect: a
-  stdoutWriteln(m.getOrElse(1, () => {
-    stdoutWriteln("calling default fn")
+  val v1 = m.getOrElse(1, () => {
+    println("calling default fn")
     "c"
-  }))
+  })
+  println(v1)
+
   /// Expect: b
-  stdoutWriteln(m.getOrElse(2, () => {
-    stdoutWriteln("calling default fn")
+  val v2 = m.getOrElse(2, () => {
+    println("calling default fn")
     "c"
-  }))
+  })
+  println(v2)
+
   /// Expect: calling default fn
   /// Expect: c
-  stdoutWriteln(m.getOrElse(3, () => {
-    stdoutWriteln("calling default fn")
+  val v3 = m.getOrElse(3, () => {
+    println("calling default fn")
     "c"
-  }))
+  })
+  println(v3)
 }
 
 // Map#update
@@ -216,19 +219,19 @@ if true {
   val m = { (1): "a", (2): "b" }
 
   /// Expect: { 1: a, 2: b }
-  stdoutWriteln(m.toString())
+  println(m)
 
   val old1 = m.update(1, () => "A")
   /// Expect: { 1: A, 2: b }
-  stdoutWriteln(m.toString())
+  println(m)
   /// Expect: Option.Some(value: "a")
-  stdoutWriteln(old1.toString())
+  println(old1)
 
   val old2 = m.update(4, () => "???")
   /// Expect: { 1: A, 2: b }
-  stdoutWriteln(m.toString())
+  println(m)
   /// Expect: Option.None
-  stdoutWriteln(old2.toString())
+  println(old2)
 }
 
 // Map#remove
@@ -242,50 +245,50 @@ if true {
     t: 6
   }
   /// Expect: { d: 4, t: 6, c: 3, s: 5, b: 2, a: 1 }
-  stdoutWriteln(m.toString())
+  println(m)
 
   /// Expect: Option.None
-  stdoutWriteln(m.remove("x").toString())
+  println(m.remove("x"))
   /// Expect: 6
-  stdoutWriteln(m.size.toString())
+  println(m.size)
 
   /// Expect: Option.Some(value: 2)
-  stdoutWriteln(m.remove("b").toString())
+  println(m.remove("b"))
   /// Expect: { d: 4, t: 6, c: 3, s: 5, a: 1 }
-  stdoutWriteln(m.toString())
+  println(m)
   /// Expect: 5
-  stdoutWriteln(m.size.toString())
+  println(m.size)
 
   // Kinda dirty, but needed in order to test removing keys with the same hash
   /// Expect: true
-  printlnBool(m._getKeyHash("c") == m._getKeyHash("s"))
+  println(m._getKeyHash("c") == m._getKeyHash("s"))
 
   /// Expect: Option.Some(value: 5)
-  stdoutWriteln(m.remove("s").toString())
+  println(m.remove("s"))
   /// Expect: { d: 4, t: 6, c: 3, a: 1 }
-  stdoutWriteln(m.toString())
+  println(m)
   /// Expect: 4
-  stdoutWriteln(m.size.toString())
+  println(m.size)
   /// Expect: Option.Some(value: 3)
-  stdoutWriteln(m.remove("c").toString())
+  println(m.remove("c"))
   /// Expect: { d: 4, t: 6, a: 1 }
-  stdoutWriteln(m.toString())
+  println(m)
   /// Expect: 3
-  stdoutWriteln(m.size.toString())
+  println(m.size)
 
   /// Expect: true
-  printlnBool(m._getKeyHash("d") == m._getKeyHash("t"))
+  println(m._getKeyHash("d") == m._getKeyHash("t"))
 
   /// Expect: Option.Some(value: 4)
-  stdoutWriteln(m.remove("d").toString())
+  println(m.remove("d"))
   /// Expect: { t: 6, a: 1 }
-  stdoutWriteln(m.toString())
+  println(m)
   /// Expect: 2
-  stdoutWriteln(m.size.toString())
+  println(m.size)
   /// Expect: Option.Some(value: 6)
-  stdoutWriteln(m.remove("t").toString())
+  println(m.remove("t"))
   /// Expect: { a: 1 }
-  stdoutWriteln(m.toString())
+  println(m)
   /// Expect: 1
-  stdoutWriteln(m.size.toString())
+  println(m.size)
 }

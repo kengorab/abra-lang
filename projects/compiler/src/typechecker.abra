@@ -92,6 +92,7 @@ type ImportedModule {
 pub enum IdentifierKindMeta {
   Variable(mutable: Bool, typeRepr: String)
   Function(typeParams: String[], params: String[], returnTypeRepr: String, methodTy: (Bool, String)?)
+  Macro(params: String[], expanded: String)
   Type(isEnum: Bool, typeParams: String[])
   Module(moduleFilePath: String)
   Field(fieldTy: String, parentTypeRepr: String)
@@ -356,7 +357,7 @@ pub type Enum {
   pub variants: TypedEnumVariant[] = []
   pub instanceMethods: Function[] = []
   pub staticMethods: Function[] = []
-  builtin: BuiltinModule? = None
+  pub builtin: BuiltinModule? = None
 
   func memberwiseCopy(target: Enum, source: Enum) {
     target.moduleId = source.moduleId
@@ -821,7 +822,7 @@ pub type Function {
   pub returnType: Type
   pub body: TypedAstNode[] = []
   pub isGenerated: Bool = false
-  isLambda: Bool = false
+  pub isLambda: Bool = false
   pub decorators: Decorator[] = []
   pub captures: Variable[] = []
   pub capturedClosures: Function[] = []
@@ -5603,7 +5604,7 @@ pub type Typechecker {
 
     // If the function being invoked is a macro, invoke the function at compile-time and typecheck its returned node as if it were present in the original source
     if fn.isMacro {
-      val res = self.typecheckMacroInvocation(token, fn, typedArguments, resolvedGenerics)
+      val res = self.typecheckMacroInvocation(token, invokeePosition, fn, typedArguments, resolvedGenerics)
       return Ok(res)
     }
 
@@ -5638,7 +5639,7 @@ pub type Typechecker {
     Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Invocation(typedInvokee, typedArguments, resolvedGenerics)))
   }
 
-  func typecheckMacroInvocation(self, token: Token, fn: Function, typedArguments: TypedAstNode?[], resolvedGenerics: Map<String, Type>): TypedAstNode {
+  func typecheckMacroInvocation(self, token: Token, invokeePosition: Position, fn: Function, typedArguments: TypedAstNode?[], resolvedGenerics: Map<String, Type>): TypedAstNode {
     // If there's any errors in the module in which the macro function is declared, then assume that we cannot accurately invoke the function at compile-time.
     // Note: this is not a great assumption, since the function itself may not have any related errors, and may not depend on anything in the module which
     // has any errors. However, this is difficult to verify at the moment.
@@ -5660,6 +5661,29 @@ pub type Typechecker {
       return TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
     }
     val contents = injectedCode.chunks.join()
+
+    val lspMode = if self.lspMode {
+      if self.currentModule.identsByLine[invokeePosition.line - 1] |identsByLine| {
+        for (colStart, colEnd, ident) in identsByLine {
+          if colStart <= invokeePosition.col && invokeePosition.col <= colEnd {
+            match ident.kind {
+              IdentifierKindMeta.Function(_, params, _, _) => {
+                val imports = injectedCode.imports.entries()
+                  .map(_i => "import \"${_i[0]}\" as ${_i[1]}")
+                  .join("\n")
+                ident.kind = IdentifierKindMeta.Macro(params, "$imports\n\n$contents")
+              }
+            }
+            break
+          }
+        }
+      }
+      true
+    } else {
+      false
+    }
+    self.lspMode = false
+
     val parsedModule = try tokenizeAndParse(contents) else |e| {
       val kind = TypeErrorKind.ErrorWithinMacroOutput(macroName: fn.label.name, generatedContents: contents, innerError: ErrorWithinMacroOutputKind.LexerOrParseError(e))
       self.addTypeError(TypeError(position: token.position, kind: kind))
@@ -5700,6 +5724,8 @@ pub type Typechecker {
       val kind = TypeErrorKind.ErrorWithinMacroOutput(macroName: fn.label.name, generatedContents: contents, innerError: ErrorWithinMacroOutputKind.TypeError(err))
       self.addTypeError(TypeError(position: token.position, kind: kind))
     }
+
+    self.lspMode = lspMode
 
     // todo: somehow allow this
     try resultNode else {

@@ -1,18 +1,16 @@
-func printlnInt(i: Int) = stdoutWriteln(i.toString())
-
 // While-loops
 
 if true {
   var i = 0
   while i < 3 {
-    printlnInt(i)
+    println(i)
     i += 1
   }
   /// Expect: 0
   /// Expect: 1
   /// Expect: 2
   /// Expect: done
-  stdoutWriteln("done")
+  println("done")
 }
 
 // Condition bindings
@@ -20,14 +18,14 @@ if true {
   val arr = [1, 2, 3]
   var n = 0
   while arr[n] |item| {
-    printlnInt(100 + item)
+    println(100 + item)
     n += 1
   }
   /// Expect: 101
   /// Expect: 102
   /// Expect: 103
   /// Expect: done
-  stdoutWriteln("done")
+  println("done")
 }
 
 // Destructuring condition binding as tuple
@@ -35,13 +33,13 @@ if true {
   val arr = [("a", 1), ("bc", 2)]
   var n = 0
   while arr[n] |(k, v)| {
-    printlnInt(100 + k.length + v)
+    println(100 + k.length + v)
     n += 1
   }
   /// Expect: 102
   /// Expect: 104
   /// Expect: done
-  stdoutWriteln("done")
+  println("done")
 }
 
 // Control flow within loops
@@ -49,10 +47,10 @@ if true {
   /// Expect: first loop
   /// Expect: done
   while true {
-    stdoutWriteln("first loop")
+    println("first loop")
     break
   }
-  stdoutWriteln("done")
+  println("done")
 
   /// Expect: 0
   /// Expect: 1
@@ -64,10 +62,10 @@ if true {
       x += 1
       continue
     }
-    printlnInt(x)
+    println(x)
     x += 1
   }
-  stdoutWriteln("done")
+  println("done")
 }
 
 // For-loops
@@ -78,43 +76,43 @@ if true {
   /// Expect: 1
   /// Expect: 2
   for i in 0:3 {
-    stdoutWriteln("$i")
+    println(i)
   }
 
   /// Expect: 0 0
   /// Expect: 1 1
   /// Expect: 2 2
   for i, idx in 0:1+2 {
-    stdoutWriteln("$i $idx")
+    println(i, idx)
   }
 
   /// Expect: 0 0
   for i, idx in 0:1+2 {
     if i == 1 break
-    stdoutWriteln("$i $idx")
+    println(i, idx)
   }
 
   /// Expect: 0 0
   /// Expect: 2 2
   for i, idx in 0:1+2 {
     if i == 1 continue
-    stdoutWriteln("$i $idx")
+    println(i, idx)
   }
 
   /// Expect: done
-  stdoutWriteln("done")
+  println("done")
 }
 
 // Destructuring iteratee binding as tuple
 if true {
   val arr = [("a", 1), ("bc", 2)]
   for (k, v) in arr {
-    printlnInt(100 + k.length + v)
+    println(100 + k.length + v)
   }
   /// Expect: 102
   /// Expect: 104
   /// Expect: done
-  stdoutWriteln("done")
+  println("done")
 }
 
 // Iterating over `Iterator` type
@@ -124,9 +122,9 @@ if true {
   /// Expect: 4
   /// Expect: done
   for i in range(0, 5, 2) {
-    printlnInt(i)
+    println(i)
   }
-  stdoutWriteln("done")
+  println("done")
 }
 
 // Iterating over Array, Set, Map
@@ -135,20 +133,20 @@ if true {
   /// Expect: b
   /// Expect: c
   for ch in ["a", "b", "c"] {
-    stdoutWriteln(ch)
+    println(ch)
   }
 
   /// Expect: a 0
   /// Expect: b 1
   /// Expect: c 2
   for ch, idx in ["a", "b", "c"] {
-    stdoutWriteln("$ch $idx")
+    println(ch, idx)
   }
 
   /// Expect: a 0
   /// Expect: b 1
   for ch, idx in ["a", "b", "c"] {
-    stdoutWriteln("$ch $idx")
+    println(ch, idx)
     if ch == "b" {
       break
     }
@@ -160,20 +158,20 @@ if true {
     if ch == "b" {
       continue
     }
-    stdoutWriteln("$ch $idx")
+    println(ch, idx)
   }
 
   // /// Expect: c 0
   // /// Expect: b 1
   // /// Expect: a 2
   // for ch, idx in #{"a", "b", "c"} {
-  //   stdoutWriteln("$ch $idx")
+  //   println("$ch $idx")
   // }
 
   /// Expect: ("c", 3) 0
   /// Expect: ("b", 2) 1
   /// Expect: ("a", 1) 2
   for ch, idx in { a: 1, b: 2, c: 3 } {
-    stdoutWriteln("$ch $idx")
+    println("$ch", idx)
   }
 }

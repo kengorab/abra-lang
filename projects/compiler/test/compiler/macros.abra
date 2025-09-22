@@ -5,7 +5,7 @@ func one(): InjectedCode = InjectedCode.new().append("123")
 
 val x = one() + one()
 /// Expect: 246
-stdoutWriteln("$x")
+println(x)
 
 @macro
 func makeTuple(*values: Expr[]): InjectedCode {
@@ -23,8 +23,8 @@ func makeTuple(*values: Expr[]): InjectedCode {
 
 val t1 = makeTuple(1, "two", false)
 /// Expect: (1, "two", false)
-stdoutWriteln("$t1")
+println("$t1")
 
 val t2 = makeTuple(1, "two", false, 4)
 /// Expect: (1, "two", false, 4)
-stdoutWriteln("$t2")
+println("$t2")

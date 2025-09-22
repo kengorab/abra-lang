@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/funcdecl/default_param_value_accessor.abra",
   "code": [
     {
@@ -16,7 +16,7 @@
       "node": {
         "kind": "typeDeclaration",
         "struct": {
-          "moduleId": 5,
+          "moduleId": 6,
           "name": { "name": "Foo", "position": [1, 6] },
           "typeParams": [],
           "fields": [
@@ -33,7 +33,7 @@
             {
               "label": { "name": "toString", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_5::Foo::toString",
+                "name": "$root::module_6::Foo::toString",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -54,7 +54,7 @@
             {
               "label": { "name": "hash", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_5::Foo::hash",
+                "name": "$root::module_6::Foo::hash",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -75,7 +75,7 @@
             {
               "label": { "name": "eq", "position": [0, 0] },
               "scope": {
-                "name": "$root::module_5::Foo::eq",
+                "name": "$root::module_6::Foo::eq",
                 "variables": [],
                 "functions": [],
                 "structs": [],
@@ -91,7 +91,7 @@
                   "label": { "name": "other", "position": [0, 0] },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 5, "name": "Foo" },
+                    "struct": { "moduleId": 6, "name": "Foo" },
                     "typeParams": []
                   },
                   "defaultValue": null,
@@ -125,14 +125,14 @@
         "function": {
           "label": { "name": "foo", "position": [3, 6] },
           "scope": {
-            "name": "$root::module_5::foo",
+            "name": "$root::module_6::foo",
             "variables": [
               {
                 "label": { "name": "a", "position": [3, 10] },
                 "mutable": false,
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 5, "name": "Foo" },
+                  "struct": { "moduleId": 6, "name": "Foo" },
                   "typeParams": []
                 }
               },
@@ -157,7 +157,7 @@
               "label": { "name": "a", "position": [3, 10] },
               "type": {
                 "kind": "instance",
-                "struct": { "moduleId": 5, "name": "Foo" },
+                "struct": { "moduleId": 6, "name": "Foo" },
                 "typeParams": []
               },
               "defaultValue": null,
@@ -192,7 +192,7 @@
                     },
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 5, "name": "Foo" },
+                      "struct": { "moduleId": 6, "name": "Foo" },
                       "typeParams": []
                     },
                     "node": {

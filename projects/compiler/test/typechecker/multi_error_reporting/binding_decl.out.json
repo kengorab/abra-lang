@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/multi_error_reporting/binding_decl.abra",
   "code": [
     {
@@ -18,7 +18,7 @@
         "function": {
           "label": { "name": "foo", "position": [1, 6] },
           "scope": {
-            "name": "$root::module_5::foo",
+            "name": "$root::module_6::foo",
             "variables": [
               {
                 "label": { "name": "a", "position": [2, 7] },
@@ -100,7 +100,7 @@
                 "mutable": false,
                 "type": {
                   "kind": "instance",
-                  "struct": { "moduleId": 4, "name": "Array" },
+                  "struct": { "moduleId": 5, "name": "Array" },
                   "typeParams": [
                     {
                       "kind": "hole"
@@ -629,7 +629,7 @@
                     "mutable": false,
                     "type": {
                       "kind": "instance",
-                      "struct": { "moduleId": 4, "name": "Array" },
+                      "struct": { "moduleId": 5, "name": "Array" },
                       "typeParams": [
                         {
                           "kind": "hole"
@@ -647,7 +647,7 @@
                   },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 4, "name": "Array" },
+                    "struct": { "moduleId": 5, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "hole"
@@ -1046,7 +1046,7 @@
                   },
                   "type": {
                     "kind": "instance",
-                    "struct": { "moduleId": 4, "name": "Array" },
+                    "struct": { "moduleId": 5, "name": "Array" },
                     "typeParams": [
                       {
                         "kind": "hole"

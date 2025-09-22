@@ -1,3 +1,7 @@
-// import "process" as process
+val m = { (1): "a", (2): "b" }
 
-stdoutWriteln("hello")
+val v = m.getOrElse(1, () => {
+  println("calling default fn")
+  "c"
+})
+println(v)

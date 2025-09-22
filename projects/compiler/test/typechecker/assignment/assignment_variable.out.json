@@ -1,5 +1,5 @@
 {
-  "id": 5,
+  "id": 6,
   "name": "%TEST_DIR%/typechecker/assignment/assignment_variable.abra",
   "code": [
     {
@@ -115,7 +115,7 @@
             "mutable": true,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 4, "name": "Array" },
+              "struct": { "moduleId": 5, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",
@@ -134,7 +134,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 4, "name": "Array" },
+            "struct": { "moduleId": 5, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -223,7 +223,7 @@
           },
           "type": {
             "kind": "instance",
-            "struct": { "moduleId": 4, "name": "Array" },
+            "struct": { "moduleId": 5, "name": "Array" },
             "typeParams": [
               {
                 "kind": "primitive",
@@ -244,7 +244,7 @@
             "mutable": true,
             "type": {
               "kind": "instance",
-              "struct": { "moduleId": 4, "name": "Array" },
+              "struct": { "moduleId": 5, "name": "Array" },
               "typeParams": [
                 {
                   "kind": "primitive",

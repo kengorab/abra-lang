@@ -1,125 +1,121 @@
-func printlnBool(b: Bool) = stdoutWriteln(b.toString())
-func printlnInt(i: Int) = stdoutWriteln(i.toString())
-func printlnFloat(f: Float) = stdoutWriteln(f.toString())
-
 /// Expect: 24
-printlnInt(24)
+println(24)
 
 // Unary operations
 /// Expect: -1
-printlnInt(-1)
+println(-1)
 /// Expect: 1
-printlnInt(--1)
+println(--1)
 
 // Binary operations
 /// Expect: 32
-printlnInt(17 + 15)
+println(17 + 15)
 /// Expect: 32.1
-printlnFloat(17 + 15.1)
+println(17 + 15.1)
 
 /// Expect: 2
-printlnInt(17 - 15)
+println(17 - 15)
 /// Expect: 1.9
-printlnFloat(17 - 15.1)
+println(17 - 15.1)
 
 /// Expect: 2550
-printlnInt(17 * 150)
+println(17 * 150)
 /// Expect: 2551.7
-printlnFloat(17 * 150.1)
+println(17 * 150.1)
 
 /// Expect: 1.13333
-printlnFloat(17 / 15)
+println(17 / 15)
 /// Expect: 1.12583
-printlnFloat(17 / 15.1)
+println(17 / 15.1)
 
 /// Expect: 2
-printlnInt(7 % 5)
+println(7 % 5)
 /// Expect: 1.8
-printlnFloat(7 % 5.2)
+println(7 % 5.2)
 
 /// Expect: 32
-printlnFloat(2 ** 5)
+println(2 ** 5)
 /// Expect: 0.03125
-printlnFloat(2 ** -5)
+println(2 ** -5)
 /// Expect: -32
-printlnFloat(-2 ** 5)
+println(-2 ** 5)
 /// Expect: -0.03125
-printlnFloat(-2 ** -5)
+println(-2 ** -5)
 
 /// Expect: true
-printlnBool(1 << 3 != 17)
+println(1 << 3 != 17)
 /// Expect: true
-printlnBool(0x00ff << 8 == 0xff00)
+println(0x00ff << 8 == 0xff00)
 /// Expect: true
-printlnBool(0xff00 >> 8 == 0x00ff)
+println(0xff00 >> 8 == 0x00ff)
 
 /// Expect: 1
-printlnInt(0xff && 1)
+println(0xff && 1)
 /// Expect: 255
-printlnInt(0xfe || 1)
+println(0xfe || 1)
 /// Expect: 255
-printlnInt(0b01010101 ^ 0b10101010)
+println(0b01010101 ^ 0b10101010)
 
 /// Expect: true
-printlnBool(17 == (15 + 2))
+println(17 == (15 + 2))
 /// Expect: false
-printlnBool(17 == 15)
+println(17 == 15)
 /// Expect: false
-printlnBool(17 != (15 + 2))
+println(17 != (15 + 2))
 /// Expect: true
-printlnBool(17 != 15)
+println(17 != 15)
 
 /// Expect: true
-printlnBool(17 < 18)
+println(17 < 18)
 /// Expect: false
-printlnBool(17 < 15)
+println(17 < 15)
 /// Expect: true
-printlnBool(17 < 18.0)
+println(17 < 18.0)
 /// Expect: false
-printlnBool(17 < 15.1)
+println(17 < 15.1)
 
 /// Expect: false
-printlnBool(17 > 18)
+println(17 > 18)
 /// Expect: true
-printlnBool(17 > 15)
+println(17 > 15)
 /// Expect: false
-printlnBool(17 > 18.0)
+println(17 > 18.0)
 /// Expect: true
-printlnBool(17 > 15.1)
+println(17 > 15.1)
 
 /// Expect: true
-printlnBool(17 <= 18)
+println(17 <= 18)
 /// Expect: false
-printlnBool(17 <= 15)
+println(17 <= 15)
 /// Expect: true
-printlnBool(17 <= 18.0)
+println(17 <= 18.0)
 /// Expect: false
-printlnBool(17 <= 15.1)
+println(17 <= 15.1)
 
 /// Expect: false
-printlnBool(17 >= 18)
+println(17 >= 18)
 /// Expect: true
-printlnBool(17 >= 15)
+println(17 >= 15)
 /// Expect: false
-printlnBool(17 >= 18.0)
+println(17 >= 18.0)
 /// Expect: true
-printlnBool(17 >= 15.1)
+println(17 >= 15.1)
 
 // Int#unsignedToString
 if true {
   val i1 = 118
   /// Expect: 118
-  stdoutWriteln(i1.toString())
+  println(i1.toString())
   /// Expect: 118
-  stdoutWriteln(i1.unsignedToString())
+  println(i1.unsignedToString())
 
   val i2 = (1 << 63) || (1 << 31)
   /// Expect: -9223372034707292160
-  stdoutWriteln(i2.toString())
+  println(i2.toString())
   /// Expect: 9223372039002259456
-  stdoutWriteln(i2.unsignedToString())
+  println(i2.unsignedToString())
 
   //val i3 = 0b1000000000000000000000000000000010000000000000000000000000000000
   ///// Expect: -9223372034707292160 9223372039002259456
-  //stdoutWriteln(i3.toString(), i3.unsignedToString())
+  //println(i3.toString(), i3.unsignedToString())
 }

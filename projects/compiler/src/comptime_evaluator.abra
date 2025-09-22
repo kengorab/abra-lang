@@ -1,7 +1,7 @@
 import Pointer, Byte from "_intrinsics"
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
-import Parser, ParseError, ParsedModule, AstNode, LiteralAstNode, ImportNode, ImportKind, Label from "./parser"
-import Project, Function, Struct, Type, TypedAstNode, TypedAstNodeKind, InstanceKind, TypedInvokee from "./typechecker"
+import Parser, ParseError, ParsedModule, AstNode, LiteralAstNode, ImportNode, ImportKind, Label, IndexingMode, BindingPattern from "./parser"
+import Project, Function, Struct, Type, TypedAstNode, TypedAstNodeKind, InstanceKind, TypedInvokee, AccessorPathSegment, TypedIndexingNode, FunctionKind, BuiltinModule from "./typechecker"
 import Generator from "./ir"
 import VM, VmValue, Instance, VmFunction, unmarshallString from "./ir_vm"
 import InjectedCode from "meta"
@@ -49,8 +49,31 @@ func stringifyTypedNode(node: TypedAstNode): String {
       LiteralAstNode.Int(i) => "$i"
       LiteralAstNode.Float(f) => "$f"
       LiteralAstNode.Bool(b) => "$b"
-      LiteralAstNode.String(s) => "\"$s\""
-      else => todo("stringify: other literal kinds")
+      LiteralAstNode.Char(code) => {
+        // TODO: extract out into a new `Char#escaped(self):String` method
+        val ch = match Char.fromInt(code) {
+          '\0' => "\\0"
+          '\b' => "\\b"
+          '\n' => "\\n"
+          '\f' => "\\f"
+          '\\' => "\\\\"
+          '\r' => "\\r"
+          '\t' => "\\t"
+          '\'' => "\\'"
+          else c => "$c"
+        }
+        "'$ch'"
+      }
+      LiteralAstNode.String(s) => {
+        // TODO: extract out into a new `String#escaped(self):String` method
+        val str = s
+          .replaceAll("\\", "\\\\")
+          .replaceAll("\"", "\\\"")
+          .replaceAll("\n", "\\n")
+          .replaceAll("\r", "\\r")
+          .replaceAll("\t", "\\t")
+        "\"$str\""
+      }
     }
     TypedAstNodeKind.StringInterpolation(chunks) => {
       val chunkStrs = ["\""]
@@ -70,47 +93,292 @@ func stringifyTypedNode(node: TypedAstNode): String {
       chunkStrs.push("\"")
       chunkStrs.join()
     }
-    TypedAstNodeKind.Unary => todo("stringifyTypedNode: Unary")
-    TypedAstNodeKind.Binary => todo("stringifyTypedNode: Binary")
-    TypedAstNodeKind.Grouped => todo("stringifyTypedNode: Grouped")
+    TypedAstNodeKind.Unary(op, expr) => {
+      "${op.repr()}${stringifyTypedNode(expr)}"
+    }
+    TypedAstNodeKind.Binary(left, op, right) => {
+      "${stringifyTypedNode(left)} ${op.repr()} ${stringifyTypedNode(right)}"
+    }
+    TypedAstNodeKind.Grouped(inner) => {
+      "(${stringifyTypedNode(inner)})"
+    }
     TypedAstNodeKind.Identifier(name, _, _, _) => name
-    TypedAstNodeKind.Accessor => todo("stringifyTypedNode: Accessor")
+    TypedAstNodeKind.Accessor(head, middle, tail) => {
+      val chunks: String[] = []
+
+      val headStr = stringifyTypedNode(head)
+      if headStr != "Option" {
+        chunks.push(headStr)
+      }
+      for seg in middle.concat([tail]) {
+        match seg {
+          AccessorPathSegment.EnumVariant(label, ty, enum_, variant) => {
+            val variantName = variant.label.name
+            if headStr == "Option" && variantName == "None" {
+              chunks.push(variantName)
+            } else {
+              chunks.push(".$variantName")
+            }
+          }
+          AccessorPathSegment.Method(label, fn, optSafe, typeHint) => {
+            val dot = if optSafe "?." else "."
+            chunks.push(dot)
+            chunks.push(label.name)
+          }
+          AccessorPathSegment.Field(label, _, _, optSafe) => {
+            val dot = if optSafe "?." else "."
+            chunks.push(dot)
+            chunks.push(label.name)
+          }
+        }
+      }
+
+      chunks.join()
+    }
     TypedAstNodeKind.Invocation(invokee, arguments, _) => {
       val chunks: String[] = []
+      var argLabels: String[]? = None
       match invokee {
-        TypedInvokee.Method(fn, selfVal, isOptSafe) => todo("stringifyTypedNode: Invocation:Method")
-        TypedInvokee.Function(fn) => {
+        TypedInvokee.Method(fn, selfVal, isOptSafe) => {
+          chunks.push(stringifyTypedNode(selfVal))
+          val dot = if isOptSafe "?." else "."
+          chunks.push(dot)
           chunks.push(fn.label.name)
         }
-        TypedInvokee.Struct(struct) => todo("stringifyTypedNode: Invocation:Struct")
-        TypedInvokee.Expr(expr) => todo("stringifyTypedNode: Invocation:Expr")
-        TypedInvokee.EnumVariant(enum_, variant) => todo("stringifyTypedNode: Invocation:EnumVariant")
+        TypedInvokee.Function(fn) => {
+          match fn.kind {
+            FunctionKind.StaticMethod(instanceKind, _) => {
+              // todo: this doesn't cover every case (eg. mod.Type.fn())
+              match instanceKind {
+                InstanceKind.Struct(struct) => chunks.push(struct.label.name)
+                InstanceKind.Enum(enum_) => chunks.push(enum_.label.name)
+              }
+              chunks.push(".")
+            }
+          }
+          chunks.push(fn.label.name)
+        }
+        TypedInvokee.Struct(struct) => {
+          // todo: this doesn't cover every case (eg. mod.Type(...))
+          chunks.push(struct.label.name)
+          argLabels = Some(struct.fields.map(f => f.name.name))
+        }
+        TypedInvokee.Expr(expr) => chunks.push(stringifyTypedNode(expr))
+        TypedInvokee.EnumVariant(enum_, variant) => {
+          // todo: this doesn't cover every case (eg. mod.Enum.Variant)
+          val enumName = enum_.label.name
+          val variantName = variant.label.name
+          val str = if enumName == "Option" && enum_.builtin == Some(BuiltinModule.Prelude) {
+            variantName
+          } else {
+            "$enumName.$variantName"
+          }
+          chunks.push(str)
+        }
       }
 
       chunks.push("(")
-      for _arg in arguments {
+      for _arg, idx in arguments {
+        val label = if argLabels |labels| {
+          Some(try labels[idx] else unreachable("expected label for arg idx=$idx"))
+        } else {
+          None
+        }
         val arg = try _arg else continue
+
         val stringifiedArg = stringifyTypedNode(arg)
+        if label |l| {
+          chunks.push(l)
+          chunks.push(": ")
+        }
         chunks.push(stringifiedArg)
-        chunks.push(", ")
+        if idx != arguments.length - 1 {
+          chunks.push(", ")
+        }
       }
       chunks.push(")")
 
       chunks.join()
     }
-    TypedAstNodeKind.Array => todo("stringifyTypedNode: Array")
-    TypedAstNodeKind.Set => todo("stringifyTypedNode: Set")
-    TypedAstNodeKind.Map => todo("stringifyTypedNode: Map")
-    TypedAstNodeKind.Tuple => todo("stringifyTypedNode: Tuple")
-    TypedAstNodeKind.Indexing => todo("stringifyTypedNode: Indexing")
-    TypedAstNodeKind.Lambda => todo("stringifyTypedNode: Lambda")
+    TypedAstNodeKind.Array(items) => {
+      val chunks = ["["]
+
+      for item, idx in items {
+        chunks.push(stringifyTypedNode(item))
+        if idx != items.length - 1 {
+          chunks.push(", ")
+        }
+      }
+
+      chunks.push("]")
+      chunks.join()
+    }
+    TypedAstNodeKind.Set(items) => {
+      val chunks = ["#{"]
+
+      for item, idx in items {
+        chunks.push(stringifyTypedNode(item))
+        if idx != items.length - 1 {
+          chunks.push(", ")
+        }
+      }
+
+      chunks.push("}")
+      chunks.join()
+    }
+    TypedAstNodeKind.Map(items) => {
+      if items.isEmpty() return "{}"
+
+      val chunks = ["{"]
+
+      for (key, value), idx in items {
+        val surroundWithParens = match key.kind {
+          TypedAstNodeKind.Identifier => false
+          TypedAstNodeKind.Literal(lit) => match lit { LiteralAstNode.String => false, else => true }
+          TypedAstNodeKind.StringInterpolation => false
+          else => true
+        }
+        val keyStr = if surroundWithParens {
+          "(${stringifyTypedNode(key)})"
+        } else {
+          stringifyTypedNode(key)
+        }
+        chunks.push(keyStr)
+        chunks.push(": ")
+        chunks.push(stringifyTypedNode(value))
+        if idx != items.length - 1 {
+          chunks.push(", ")
+        }
+      }
+      chunks.push("}")
+
+      chunks.join()
+    }
+    TypedAstNodeKind.Tuple(items) => {
+      val chunks = ["("]
+      for item, idx in items {
+        chunks.push(stringifyTypedNode(item))
+        if idx != items.length - 1 {
+          chunks.push(", ")
+        }
+      }
+      chunks.push(")")
+
+      chunks.join()
+    }
+    TypedAstNodeKind.Indexing(node) => {
+      match node {
+        TypedIndexingNode.ArrayLike(expr, indexingMode) => {
+          val exprStr = stringifyTypedNode(expr)
+          val idxStr = match indexingMode {
+            IndexingMode.Single(expr) => stringifyTypedNode(expr)
+            IndexingMode.Range(start, end) => {
+              val startStr = if start |s| stringifyTypedNode(s) else ""
+              val endStr = if end |e| stringifyTypedNode(e) else ""
+              "$startStr:$endStr"
+            }
+          }
+
+          "$exprStr[$idxStr]"
+        }
+        TypedIndexingNode.Map(expr, idx) => {
+          val exprStr = stringifyTypedNode(expr)
+          val idxStr = stringifyTypedNode(idx)
+
+          "$exprStr[$idxStr]"
+        }
+        TypedIndexingNode.Tuple(expr, idx) => {
+          val exprStr = stringifyTypedNode(expr)
+
+          "$exprStr[$idx]"
+        }
+      }
+    }
+    TypedAstNodeKind.Lambda(fn, _) => {
+      val chunks = ["("]
+      for param, idx in fn.params {
+        chunks.push(param.label.name)
+        if param.defaultValue |v| {
+          chunks.push(" = ")
+          chunks.push(stringifyTypedNode(v))
+        }
+
+        if idx != fn.params.length - 1 {
+          chunks.push(", ")
+        }
+      }
+      chunks.push(") => ")
+
+      val bodyIsSingleExpr = fn.body.length != 1
+      if bodyIsSingleExpr chunks.push("{")
+      for node, idx in fn.body {
+        if bodyIsSingleExpr chunks.push("  ")
+        chunks.push(stringifyTypedNode(node))
+        if bodyIsSingleExpr chunks.push("\n")
+      }
+      if bodyIsSingleExpr chunks.push("}")
+
+      chunks.join()
+    }
     TypedAstNodeKind.Assignment => todo("stringifyTypedNode: Assignment")
-    TypedAstNodeKind.If => todo("stringifyTypedNode: If")
+    TypedAstNodeKind.If(_, cond, binding, ifBlock, _, elseBlock, _) => {
+      val chunks = ["if ", stringifyTypedNode(cond)]
+
+      if binding |(pat, _)| {
+        chunks.push("|")
+        stringifyBindingPattern(pat, chunks)
+        chunks.push("|")
+      }
+
+      chunks.push(" ")
+
+      if ifBlock.length == 1 {
+        chunks.push(stringifyTypedNode(try ifBlock[0] else unreachable()))
+      } else {
+        chunks.push("{")
+        for node, idx in ifBlock {
+          chunks.push("\n  ")
+          chunks.push(stringifyTypedNode(node))
+          if idx != ifBlock.length - 1 {
+            chunks.push("\n")
+          }
+        }
+        chunks.push("}")
+      }
+
+      if elseBlock.length == 1 {
+        chunks.push(" else ")
+        chunks.push(stringifyTypedNode(try elseBlock[0] else unreachable()))
+      } else {
+        chunks.push(" else {")
+        for node, idx in elseBlock {
+          chunks.push("\n  ")
+          chunks.push(stringifyTypedNode(node))
+          if idx != elseBlock.length - 1 {
+            chunks.push("\n")
+          }
+        }
+        chunks.push("}")
+      }
+
+      chunks.join()
+    }
     TypedAstNodeKind.Match => todo("stringifyTypedNode: Match")
     TypedAstNodeKind.Try => todo("stringifyTypedNode: Try")
     TypedAstNodeKind.While => todo("stringifyTypedNode: While")
     TypedAstNodeKind.For => todo("stringifyTypedNode: For")
-    TypedAstNodeKind.BindingDeclaration => todo("stringifyTypedNode: BindingDeclaration")
+    TypedAstNodeKind.BindingDeclaration(node) => {
+      val v = try node.variables[0] else unreachable("binding decl must contain at least 1 variable")
+      val chunks = [if v.mutable "var " else "val "]
+
+      stringifyBindingPattern(node.bindingPattern, chunks)
+      if node.expr |expr| {
+        chunks.push(" = ")
+        chunks.push(stringifyTypedNode(expr))
+      }
+
+      chunks.join()
+    }
     TypedAstNodeKind.FunctionDeclaration => todo("stringifyTypedNode: FunctionDeclaration")
     TypedAstNodeKind.TypeDeclaration => todo("stringifyTypedNode: TypeDeclaration")
     TypedAstNodeKind.EnumDeclaration => todo("stringifyTypedNode: EnumDeclaration")
@@ -118,6 +386,22 @@ func stringifyTypedNode(node: TypedAstNode): String {
     TypedAstNodeKind.Continue => todo("stringifyTypedNode: Continue")
     TypedAstNodeKind.Return => todo("stringifyTypedNode: Return")
     TypedAstNodeKind.Placeholder => unreachable("stringifyTypedNode: Placeholder")
+  }
+}
+
+func stringifyBindingPattern(pat: BindingPattern, chunks: String[]) {
+  match pat {
+    BindingPattern.Variable(v) => chunks.push(v.name)
+    BindingPattern.Tuple(_, pats) => {
+      chunks.push("(")
+      for p, idx in pats {
+        stringifyBindingPattern(p, chunks)
+        if idx != pats.length - 1 {
+          chunks.push(", ")
+        }
+      }
+      chunks.push(")")
+    }
   }
 }
 
