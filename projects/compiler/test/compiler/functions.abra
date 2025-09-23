@@ -15,13 +15,13 @@ println(foo(2))
 // Functions, methods, and closures as value (lambdas too)
 func abc(): Int = 24
 /// Expect: <#function>
-println("$abc")
+println(abc)
 val abcVal = abc
 /// Expect: <#function> 24
-println("$abcVal", abcVal())
+println(abcVal, abcVal())
 
 /// Expect: <#function>
-println("${"abc".isEmpty}")
+println("abc".isEmpty)
 
 func def(a: Int): Int = a + 1
 val defVal = def
