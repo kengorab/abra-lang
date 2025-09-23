@@ -1,7 +1,3 @@
-val m = { (1): "a", (2): "b" }
-
-val v = m.getOrElse(1, () => {
-  println("calling default fn")
-  "c"
-})
-println(v)
+val t = (1, "two", [3])
+stdoutWriteln(t.toString())
+// stdoutWriteln("$t")

@@ -5009,8 +5009,44 @@ pub type Typechecker {
 
         None
       }
-      TypeKind.Tuple => None
-      TypeKind.Func => None
+      TypeKind.Tuple(types) => {
+        val scope = self.project.preludeModule.rootScope.makeChild("T${types.length}", ScopeKind.Type)
+        val method = if label.name == "toString" {
+          Some(Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(None, true)))
+        } else if label.name == "hash" {
+          Some(Function.generated(scope, "hash", [], Type(kind: TypeKind.PrimitiveInt), FunctionKind.InstanceMethod(None, true)))
+        } else if label.name == "eq" {
+          Some(Function.generated(scope, "eq", [("other", ty)], Type(kind: TypeKind.PrimitiveBool), FunctionKind.InstanceMethod(None, true)))
+        } else {
+          None
+        }
+
+        if method |method| {
+          Some(AccessorPathSegment.Method(label, method, optSafe, typeHint))
+        } else {
+          None
+        }
+      }
+      TypeKind.Func(paramTypes, retType) => {
+        val isUnit = retType.kind == TypeKind.PrimitiveUnit
+        val name = if isUnit "UnitFunction${paramTypes.length}" else "Function${paramTypes.length}"
+        val scope = self.project.preludeModule.rootScope.makeChild(name, ScopeKind.Type)
+        val method = if label.name == "toString" {
+          Some(Function.generated(scope, "toString", [], Type(kind: TypeKind.PrimitiveString), FunctionKind.InstanceMethod(None, true)))
+        } else if label.name == "hash" {
+          Some(Function.generated(scope, "hash", [], Type(kind: TypeKind.PrimitiveInt), FunctionKind.InstanceMethod(None, true)))
+        } else if label.name == "eq" {
+          Some(Function.generated(scope, "eq", [("other", ty)], Type(kind: TypeKind.PrimitiveBool), FunctionKind.InstanceMethod(None, true)))
+        } else {
+          None
+        }
+
+        if method |method| {
+          Some(AccessorPathSegment.Method(label, method, optSafe, typeHint))
+        } else {
+          None
+        }
+      }
       TypeKind.Type(instanceKind) => {
         // TODO: static fields
 
@@ -5408,8 +5444,11 @@ pub type Typechecker {
         else => return Err(self.internalError(token.position, "if selfVal passed, then FunctionKind must be InstanceMethod"))
       }
 
-      // When instanceKind is not present on FunctionKind.InstanceMethod, that means that the method's selfVal is a generic.
-      // In that case, the template from which to extract generics should just be self's type.
+      // When instanceKind is not present on FunctionKind.InstanceMethod, that means that the method's selfVal is a "virtual" type
+      // (a type that only exists during typechecking, such as a generic, a tuple, or a function type). These types still have
+      // toString/hash/eq methods, but they're implemented as auto-generated builtins during compilation.
+      // In the case where the type is "virtual", the template from which to extract generics should just be self's type; otherwise
+      // the template should be constructed according to the underlying instanceKind.
       val template = if instanceKind |instanceKind| {
         val typeParams = match instanceKind { InstanceKind.Struct(s) => s.typeParams, InstanceKind.Enum(e) => e.typeParams }
         Type(kind: TypeKind.Instance(instanceKind, typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
