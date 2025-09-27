@@ -1,3 +1,25 @@
-val t = (1, "two", [3])
-stdoutWriteln(t.toString())
-// stdoutWriteln("$t")
+val map2 = { ([1, 2]): true, ([3, 4]): false }
+println(map2.entries())
+
+// val m = { (1): "a", (2): "b" }
+
+// // println(m.getOr(1, "c"))
+// // println(m.getOr(2, "c"))
+// println(m.getOr(3, "c"))
+
+// for ch, idx in { a: 1, b: 2, c: 3 } {
+//   println("$ch $idx")
+// }
+
+// val arr = [1.2, 3.4]
+// for f in arr {
+//   println(f)
+// }
+
+// val pairs = [("a", 1), ("b", 2), ("c", 3)]
+// // for p in pairs {
+// //   println(p)
+// // }
+// val m = Map.fromPairs(pairs)
+// println(m)
+

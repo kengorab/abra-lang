@@ -12,6 +12,15 @@ pub type CompilationResult {
   }
 }
 
+val jsReservedWords = #{
+  "abstract", "arguments", "async", "await", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue",
+  "debugger", "default", "delete", "do", "double", "else", "enum", "eval", "export", "extends", "false", "final", "finally",
+  "float", "for", "function", "goto", "if", "implements", "function", "import", "in", "instanceof", "int", "interface", "let", "long",
+  "native", "new", "null", "package", "private", "protected", "public", "return", "short", "static", "super", "switch", "synchronized",
+  "this", "throw", "throws", "transient", "true", "try", "typeof", "using", "var", "void", "volatile", "while", "with", "yield"
+}
+func jsIdentName(name: String): String = if jsReservedWords.contains(name) return "${name}_" else name
+
 pub type Compiler {
   ir: IR
   sb: StringBuilder
@@ -27,7 +36,7 @@ pub type Compiler {
     sb.write("const { ")
     for fn in ir.functions {
       if !fn.extern continue
-      sb.write(fn.name)
+      sb.write(jsIdentName(fn.name))
       sb.write(", ")
     }
     sb.writeln("} = externs;")
@@ -42,7 +51,8 @@ pub type Compiler {
     compiler.compileMainFunction(ir.mainFunction)
     sb.writeln()
 
-    sb.writeln("${ir.mainFunction.name}();")
+    val mainFnName = jsIdentName(ir.mainFunction.name)
+    sb.writeln("$mainFnName();")
 
     for fn in ir.functions {
       compiler.compileFunction(fn)
@@ -57,19 +67,20 @@ pub type Compiler {
   func compileGlobal(self, global: GlobalVariable) {
     if !global.referenced return
 
+    val globalName = jsIdentName(global.name)
     if global.initialValue |init| {
-      self.sb.write("const ${global.name} = ")
+      self.sb.write("const $globalName = ")
       self.emitIrConstToJsValue(init)
       self.sb.writeln(";")
     } else {
-      self.sb.writeln("let ${global.name};")
+      self.sb.writeln("let $globalName;")
     }
   }
 
   func compileMainFunction(self, fn: IrFunction) {
     self.sb
       .write("function ")
-      .write(fn.name)
+      .write(jsIdentName(fn.name))
       .writeln("() {")
 
     self.indentLevel += 1
@@ -86,14 +97,15 @@ pub type Compiler {
 
     self.numTemps = 0
 
-    self.sb.write("function ${fn.name}(")
+    val fnName = jsIdentName(fn.name)
+    self.sb.write("function $fnName(")
     if fn.isClosure {
       self.sb.write("__env__")
       if !fn.params.isEmpty() self.sb.write(", ")
     }
     for param, idx in fn.params {
       val paramName = match param.kind { IdentKind.Named(name, _) => name, else => unreachable("expected IdentKind.Named for param") }
-      self.sb.write(paramName)
+      self.sb.write(jsIdentName(paramName))
       if idx != fn.params.length - 1 {
         self.sb.write(", ")
       }
@@ -124,7 +136,7 @@ pub type Compiler {
   }
 
   func compileInstruction(self, inst: Instruction) {
-    val dst = inst.assignee?.kind?.name() ?: self.nextTemp()
+    val dst = jsIdentName(inst.assignee?.kind?.name() ?: self.nextTemp())
 
     self.emitIndent()
 
@@ -238,7 +250,8 @@ pub type Compiler {
       Operation.Gte(l, r) => self.genBinary(dst, ">=", l, r)
       Operation.Shr(l, r) => self.genBinary(dst, ">>", l, r)
       Operation.LoadVar(ty, ident) => {
-        self.sb.writeln("const $dst = ${ident.kind.name()};")
+        val identName = jsIdentName(ident.kind.name())
+        self.sb.writeln("const $dst = $identName;")
       }
       Operation.LoadCapturedVar(ty, src, deref) => {
         match src {
@@ -254,10 +267,11 @@ pub type Compiler {
             }
           }
           CaptureSource.OutsideFn(ident) => {
+            val identName = jsIdentName(ident.kind.name())
             if deref {
-              self.sb.writeln("const {\$:$dst} = ${ident.kind.name()};")
+              self.sb.writeln("const {\$:$dst} = $identName;")
             } else {
-              self.sb.writeln("const $dst = ${ident.kind.name()};")
+              self.sb.writeln("const $dst = $identName;")
             }
           }
         }
@@ -268,7 +282,7 @@ pub type Compiler {
         self.sb.writeln(".$name;")
       }
       Operation.StoreVar(ty, value, ident) => {
-        self.sb.write(ident.kind.name())
+        self.sb.write(jsIdentName(ident.kind.name()))
         self.sb.write(" = ")
         self.emitIrValueToJsValue(value)
         self.sb.writeln(";")
@@ -276,14 +290,14 @@ pub type Compiler {
       Operation.StoreCapturedVar(ty, value, src) => {
         val name = match src {
           CaptureSource.WithinCapturingFn(idx, _, _) => "__env__[$idx]"
-          CaptureSource.OutsideFn(ident) => ident.kind.name()
+          CaptureSource.OutsideFn(ident) => jsIdentName(ident.kind.name())
         }
         self.sb.write("$name.\$ = ")
         self.emitIrValueToJsValue(value)
         self.sb.writeln(";")
       }
       Operation.StoreGlobal(ty, value, global) => {
-        self.sb.write(global.name)
+        self.sb.write(jsIdentName(global.name))
         self.sb.write(" = ")
         self.emitIrValueToJsValue(value)
         self.sb.writeln(";")
@@ -355,15 +369,19 @@ pub type Compiler {
         self.sb.writeln("}")
       }
       Operation.ForRanged(start, end, iteratee, idx, body) => {
-        self.sb.write("for (let ${iteratee.kind.name()} = ")
+        val iterateeName = jsIdentName(iteratee.kind.name())
+
+        self.sb.write("for (let $iterateeName = ")
         self.emitIrValueToJsValue(start)
         if idx |idx| {
-          self.sb.write(", ${idx.kind.name()} = 0")
+          val idxName = jsIdentName(idx.kind.name())
+          self.sb.write(", $idxName = 0")
         }
 
-        self.sb.write(";; ${iteratee.kind.name()} += 1")
+        self.sb.write(";; $iterateeName += 1")
         if idx |idx| {
-          self.sb.write(", ${idx.kind.name()} += 1")
+          val idxName = jsIdentName(idx.kind.name())
+          self.sb.write(", $idxName += 1")
         }
         self.sb.writeln(") {")
         self.indentLevel += 1
@@ -373,7 +391,7 @@ pub type Compiler {
         }
 
         self.emitIndent()
-        self.sb.write("if (${iteratee.kind.name()} >= ")
+        self.sb.write("if ($iterateeName >= ")
         self.emitIrValueToJsValue(end.result)
         self.sb.writeln(") break;")
 
@@ -692,8 +710,8 @@ pub type Compiler {
     match v {
       Value.Unit => unreachable("values cannot be of type unit")
       Value.Const(const) => self.irConstToJsValue(const)
-      Value.Ident(i) => i.kind.name()
-      Value.Global(g) => g.name
+      Value.Ident(i) => jsIdentName(i.kind.name())
+      Value.Global(g) => jsIdentName(g.name)
     }
   }
 }
