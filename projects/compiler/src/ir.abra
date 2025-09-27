@@ -1352,7 +1352,16 @@ pub type Generator {
           return
         }
 
-        todo("genHashMethodBody: non-primitives")
+        val fields = s.fields.map((f, idx) => {
+          val fieldConcreteType = self.getConcreteTypeFromType(f.ty, newConcreteGenerics)
+          val fieldIrType = self.getIrTypeForConcreteType(fieldConcreteType)
+
+          val selfItemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: selfVal, name: f.name.name, offset: idx * ALIGNMENT), None)
+          (fieldConcreteType, selfItemVal)
+        })
+
+        val res = self.genHashLogicForStructuredData(fields)
+        self.emit(Instruction(op: Operation.Return(Some(res))))
       }
       InstanceKind.Enum => todo("genHashMethodBody: enum")
     }
@@ -1533,29 +1542,19 @@ pub type Generator {
         val loopName = "for_loop"
         self.emit(Instruction(op: Operation.WhileLoopStart(loopName)))
 
-        val variable = try itemBinding[1][0] else unreachable()
         val condBindingVal = self.ssaValue(nextFnRetIrTy, Operation.Call(ret: nextFnRetIrTy, fnName: nextFnName, args: [iterVal]), None)
-
         val optIsNone = self.ssaValue(IrType.Bool, Operation.OptionIsNone(condBindingVal), None)
         val cond = self.ssaValue(IrType.Bool, Operation.Negate(optIsNone), None)
 
         val body = self.withinBlock(loopName, !!terminator, () => {
           val (pattern, vars) = itemBinding
           val variables = vars.keyBy(v => v.label.name)
-          val nextFnRetInnerConcreteGenerics = if isMap {
-            // When iterating over a map, the values will be of type `(K, V)`. Tuples are represented as an ad-hoc struct
-            // during IR generation but they're a special TypeKind during typechecking. This means that, for a Map<String, Int>,
-            // the concrete generics _should_ be { A: String, B: Int } but instead we need to provide { K: String, V: Int }; the
-            // ad-hoc type parameters A and B of the Tuple are unknown to the typechecker, which expects K and V. It's a little
-            // unfortunate, but it's a price to pay for convenience of having special Tuple representation during typechecking.
-            iterConcreteGenerics
-          } else {
-            self.extractConcreteGenericsFromConcreteType(nextFnRetInnerConcreteTy)
-          }
 
           val nextVal = self.ssaValue(nextFnRetInnerIrTy, Operation.OptionUnwrap(nextFnRetInnerIrTy, condBindingVal), None)
 
-          self.genBindingPattern(pattern, variables, Some((nextVal, nextFnRetInnerConcreteTy)), nextFnRetInnerConcreteGenerics)
+          val names = variables.values().map(v => (v.label.name, v.ty.repr()))
+          val bindingConcreteGenerics = self.deriveConcreteGenericsOfForLoopBindingPattern(pattern, variables, nextFnRetInnerConcreteTy)
+          self.genBindingPattern(pattern, variables, Some((nextVal, nextFnRetInnerConcreteTy)), bindingConcreteGenerics)
 
           if idxSlot |idxSlot| {
             val idxValue = self.ssaValue(IrType.I64, Operation.LoadVar(ty: IrType.I64, ident: idxSlot), None)
@@ -1563,8 +1562,20 @@ pub type Generator {
             self.emit(Instruction(op: Operation.StoreVar(ty: IrType.I64, value: idxInc, ident: idxSlot)))
           }
 
+          val loopBodyConcreteGenerics: Map<String, ConcreteType> = {}
+          for (name, ty) in concreteGenerics {
+            loopBodyConcreteGenerics[name] = ty
+          }
+          for (name, ty) in bindingConcreteGenerics {
+            if loopBodyConcreteGenerics[name] |prev| {
+              if prev != ty unreachable("would insert conflicting type for generic '$name' (was previously '$prev', but want to insert '$ty')")
+            } else {
+              loopBodyConcreteGenerics[name] = ty
+            }
+          }
+
           for node, idx in block {
-            self.genStatement(node, concreteGenerics)
+            self.genStatement(node, loopBodyConcreteGenerics)
           }
 
           None
@@ -1601,6 +1612,43 @@ pub type Generator {
         })
 
         self.emit(Instruction(op: Operation.ForRanged(start: startValue, end: endValue, iteratee: itVar, idx: idxVar, body: body)))
+      }
+    }
+  }
+
+  func deriveConcreteGenericsOfForLoopBindingPattern(self, pattern: BindingPattern, variables: Map<String, tc.Variable>, workingConcreteTy: ConcreteType, result: Map<String, ConcreteType> = {}): Map<String, ConcreteType> {
+    match pattern {
+      BindingPattern.Variable(varName) => {
+        val variable = try variables[varName.name] else unreachable("expected variable '${varName.name}'")
+        self._deriveConcreteGenericsOfForLoopVariableBindingPattern(variable.ty, workingConcreteTy, result)
+      }
+      BindingPattern.Tuple(_, patterns) => {
+        val isInvalid = match workingConcreteTy.instanceKind { InstanceKind.Struct(s) => !self.isTupleStruct(s), else => true }
+        if isInvalid unreachable("expected tuple concrete type but got $workingConcreteTy")
+
+        for pat, idx in patterns {
+          val tupleTy = try workingConcreteTy.typeArgs[idx] else unreachable("invalid tuple arity (expected ${patterns.length}, but was ${workingConcreteTy.typeArgs.length})")
+          self.deriveConcreteGenericsOfForLoopBindingPattern(pat, variables, tupleTy, result)
+        }
+      }
+    }
+
+    result
+  }
+
+  func _deriveConcreteGenericsOfForLoopVariableBindingPattern(self, bindingType: tc.Type, workingConcreteTy: ConcreteType, result: Map<String, ConcreteType> = {}) {
+    match bindingType.kind {
+      TypeKind.Generic(name) => {
+        result[name] = workingConcreteTy
+      }
+      TypeKind.Tuple(types) => {
+        val isInvalid = match workingConcreteTy.instanceKind { InstanceKind.Struct(s) => !self.isTupleStruct(s), else => true }
+        if isInvalid unreachable("expected tuple concrete type but got $workingConcreteTy")
+
+        for ty, idx in types {
+          val tupleTy = try workingConcreteTy.typeArgs[idx] else unreachable("invalid tuple arity (expected ${types.length}, but was ${workingConcreteTy.typeArgs.length})")
+          self._deriveConcreteGenericsOfForLoopVariableBindingPattern(ty, tupleTy, result)
+        }
       }
     }
   }
@@ -1781,7 +1829,7 @@ pub type Generator {
         self.genCall(pos, concreteGenerics, newConcreteGenerics, dst, invokee, args)
       }
       TypedAstNodeKind.Array(items) => self.genArray(pos, concreteGenerics, dst, node.ty, items)
-      TypedAstNodeKind.Set => todo("genExpression: Set (${node.token})")
+      TypedAstNodeKind.Set(items) => self.genSet(pos, concreteGenerics, dst, node.ty, items)
       TypedAstNodeKind.Map(items) => self.genMap(pos, concreteGenerics, dst, node.ty, items)
       TypedAstNodeKind.Tuple(items) => {
         val tupleStruct = self.tupleStruct(items.length)
@@ -2212,7 +2260,7 @@ pub type Generator {
         val condVal = self.ssaValue(IrType.Bool, Operation.OptionIsNone(lval), None)
 
         val ifBody = self.withinBlock("coalesce_fail", false, () => {
-          val rval = self.genExpression(left, concreteGenerics)
+          val rval = self.genExpression(right, concreteGenerics)
           Some(rval)
         })
         val elseBody = self.withinBlock("coalesce_pass", false, () => {
@@ -2397,6 +2445,28 @@ pub type Generator {
     }
 
     self.ssaValue(IrType.Bool, op, dst)
+  }
+
+  func genHashLogic(self, concreteType: ConcreteType, value: Value, dst: String?): Value {
+    val irTy = self.getIrTypeForConcreteType(concreteType)
+    if irTy == IrType.I64 return value
+    if irTy == IrType.F64 {
+      return self.ssaValue(IrType.I64, Operation.Builtin(IrType.I64, Builtin.FloatBitsToInt(value)), None)
+    }
+    if irTy == IrType.Bool {
+      val ifBody = self.withinBlock("hash_bool_true", false, () => Some(Value.Const(Const.Int(1))))
+      val elseBody = self.withinBlock("hash_bool_false", false, () => Some(Value.Const(Const.Int(0))))
+      return self.ssaValue(IrType.I64, Operation.If(IrType.I64, value, ifBody, elseBody), dst)
+    }
+    if irTy == IrType.Byte return value
+
+    val newConcreteGenerics = self.extractConcreteGenericsFromConcreteType(concreteType)
+    val hashFn = self.getMethodByName(concreteType.instanceKind, "hash", staticMethod: false)
+    val hashFnName = self.fnName(Some(concreteType), hashFn, newConcreteGenerics, [])
+    self.enqueueFunction(hashFn, hashFnName, [], Some(concreteType), newConcreteGenerics)
+
+    val op = Operation.Call(ret: IrType.I64, fnName: hashFnName, args: [value])
+    self.ssaValue(IrType.I64, op, dst)
   }
 
   func intrinsicArgs1(self, name: String, arguments: tc.TypedAstNode?[]): tc.TypedAstNode {
@@ -2592,6 +2662,10 @@ pub type Generator {
 
           val paramsNeedingDefaultValue = args.map((arg, idx) => !!fn.params[idx]?.defaultValue && !arg)
           val selfConcreteType = self.getConcreteTypeFromType(selfVal.ty, concreteGenerics)
+          val extracted = self.extractConcreteGenericsFromConcreteType(selfConcreteType)
+          for (_, label) in fn.typeParams {
+            extracted[label.name] = try innerConcreteGenerics[label.name] else unreachable("unfulfilled generic '${label.name}' for method '${fn.label.name}'")
+          }
           val method = match selfVal.ty.kind {
             TypeKind.Generic => {
               if fn.label.name == "toString" || fn.label.name == "eq" || fn.label.name == "hash" {
@@ -2602,8 +2676,8 @@ pub type Generator {
             }
             else => fn
           }
-          val fnName = self.fnName(Some(selfConcreteType), method, innerConcreteGenerics, paramsNeedingDefaultValue)
-          self.enqueueFunction(method, fnName, paramsNeedingDefaultValue, Some(selfConcreteType), innerConcreteGenerics)
+          val fnName = self.fnName(Some(selfConcreteType), method, extracted, paramsNeedingDefaultValue)
+          self.enqueueFunction(method, fnName, paramsNeedingDefaultValue, Some(selfConcreteType), extracted)
 
           argValues.push(self.genExpression(selfVal, concreteGenerics))
 
@@ -2896,6 +2970,32 @@ pub type Generator {
     self.generateArrayWithItems(pos, arrayItemConcreteType, dst, values)
   }
 
+  func genSet(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, dst: String?, setTy: tc.Type, items: tc.TypedAstNode[]): Value {
+    val setConcreteType = self.getConcreteTypeFromType(setTy, concreteGenerics)
+    val setIrTy = self.getIrTypeForConcreteType(setConcreteType)
+    val setItemConcreteType = try setConcreteType.typeArgs[0] else unreachable("ConcreteType for set must have 1 type argument")
+
+    val setConcreteGenerics = { "T": setItemConcreteType } // `T` is the known generic of `Set.new`
+    val setNewFn = self.getMethodByName(InstanceKind.Struct(self.project.preludeSetStruct), "new", staticMethod: true)
+    val setNewFnName = self.fnName(None, setNewFn, setConcreteGenerics, [true])
+    self.enqueueFunction(setNewFn, setNewFnName, [true], None, setConcreteGenerics)
+
+    val setVal = self.ssaValue(setIrTy, Operation.Call(ret: setIrTy, fnName: setNewFnName, args: []), None)
+
+    if !items.isEmpty() {
+      val setInsertFn = self.getMethodByName(InstanceKind.Struct(self.project.preludeSetStruct), "insert", staticMethod: false)
+      val setInsertFnName = self.fnName(Some(setConcreteType), setInsertFn, setConcreteGenerics, [])
+      self.enqueueFunction(setInsertFn, setInsertFnName, [], Some(setConcreteType), setConcreteGenerics)
+
+      for item in items {
+        val itemVal = self.genExpression(item, setConcreteGenerics)
+        self.emit(Instruction(op: Operation.Call(ret: IrType.Unit, fnName: setInsertFnName, args: [setVal, itemVal])))
+      }
+    }
+
+    setVal
+  }
+
   func genMap(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, dst: String?, mapTy: tc.Type, items: (tc.TypedAstNode, tc.TypedAstNode)[]): Value {
     val mapConcreteType = self.getConcreteTypeFromType(mapTy, concreteGenerics)
     val mapIrTy = self.getIrTypeForConcreteType(mapConcreteType)
@@ -3181,6 +3281,17 @@ pub type Generator {
     for (itemConcreteType, selfVal, otherVal), idx in data {
       val eq = self.genCompoundValue(() => self.genEqLogic(itemConcreteType, selfVal, otherVal, negate: false, dst: None))
       acc = self.ssaValue(IrType.Bool, Operation.BoolAnd(acc, eq), None)
+    }
+
+    acc
+  }
+
+  func genHashLogicForStructuredData(self, data: (ConcreteType, Value)[]): Value {
+    var acc = Value.Const(Const.Int(1))
+    for (itemConcreteType, selfVal), idx in data {
+      val hash = self.genHashLogic(itemConcreteType, selfVal, dst: None)
+      val prod = self.ssaValue(IrType.I64, Operation.Mul(Value.Const(Const.Int(31)), hash), None)
+      acc = self.ssaValue(IrType.I64, Operation.Add(acc, prod), None)
     }
 
     acc

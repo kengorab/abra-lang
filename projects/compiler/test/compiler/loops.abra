@@ -161,12 +161,12 @@ if true {
     println(ch, idx)
   }
 
-  // /// Expect: c 0
-  // /// Expect: b 1
-  // /// Expect: a 2
-  // for ch, idx in #{"a", "b", "c"} {
-  //   println(ch, idx)
-  // }
+  /// Expect: c 0
+  /// Expect: b 1
+  /// Expect: a 2
+  for ch, idx in #{"a", "b", "c"} {
+    println(ch, idx)
+  }
 
   /// Expect: ("c", 3) 0
   /// Expect: ("b", 2) 1
