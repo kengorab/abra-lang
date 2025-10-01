@@ -290,14 +290,16 @@ if true {
   /// Expect: [2, 3, 4, 5]
   println(arr.map(addOne))
   /// Expect: [2, 3, 4, 5]
-  println(arr.map(i => i + 1))
+  val v1 = arr.map(i => i + 1)
+  println(v1)
   // /// Expect: [2, 3, 4, 5]
   // println(arr.map(i => i + one))
 
   /// Expect: [1!, 2!, 3!, 4!]
   println(arr.map(exclaim))
   /// Expect: [1!, 2!, 3!, 4!]
-  println(arr.map((i, _, x = "!") => i + x))
+  val v2 = arr.map((i, _, x = "!") => i + x)
+  println(v2)
 }
 
 // Array#flatMap
@@ -305,7 +307,8 @@ if true {
   val arr = [1, 2, 3, 4]
 
   /// Expect: [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
-  println(arr.flatMap(i => Array.fill(i, i)))
+  val v1 = arr.flatMap(i  => Array.fill(i, i))
+  println(v1)
 }
 
 // Array#filter
@@ -316,7 +319,8 @@ if true {
   /// Expect: [2, 4]
   println(arr.filter(isEven))
   /// Expect: [2, 4]
-  println(arr.filter(x => x % 2 == 0))
+  val v = arr.filter(x => x % 2 == 0)
+  println(v)
 }
 
 // Array#reduce
@@ -382,9 +386,11 @@ if true {
 if true {
   val intArr = [123, 456, 789]
   /// Expect: Option.Some(value: 123)
-  println(intArr.find(i => i == 123))
+  val v1 = intArr.find(i => i == 123)
+  println(v1)
   /// Expect: Option.None
-  println(intArr.find(i => i == 10))
+  val v2 = intArr.find(i => i == 10)
+  println(v2)
 
   val empty: Int[] = []
   /// Expect: Option.None
@@ -392,18 +398,22 @@ if true {
 
   val strArr = ["hello", "world"]
   /// Expect: Option.Some(value: "hello")
-  println(strArr.find(s => s == "hello"))
+  val v3 = strArr.find(s => s == "hello")
+  println(v3)
   /// Expect: Option.None
-  println(strArr.find(s => s == "HELLO"))
+  val v4 = strArr.find(s => s == "HELLO")
+  println(v4)
 }
 
 // Array#findIndex
 if true {
   val intArr = [123, 456, 789]
   /// Expect: Option.Some(value: (123, 0))
-  println(intArr.findIndex(i => i == 123))
+  val v1 = intArr.findIndex(i => i == 123)
+  println(v1)
   /// Expect: Option.None
-  println(intArr.findIndex(i => i == 10))
+  val v2 = intArr.findIndex(i => i == 10)
+  println(v2)
 
   val empty: Int[] = []
   /// Expect: Option.None
@@ -411,18 +421,22 @@ if true {
 
   val strArr = ["hello", "world"]
   /// Expect: Option.Some(value: ("hello", 0))
-  println(strArr.findIndex(s => s == "hello"))
+  val v3 = strArr.findIndex(s => s == "hello")
+  println(v3)
   /// Expect: Option.None
-  println(strArr.findIndex(s => s == "HELLO"))
+  val v4 = strArr.findIndex(s => s == "HELLO")
+  println(v4)
 }
 
 // Array#any
 if true {
   val intArr = [123, 456, 789]
   /// Expect: true
-  println(intArr.any(i => i == 123))
+  val v1 = intArr.any(i => i == 123)
+  println(v1)
   /// Expect: false
-  println(intArr.any(i => i == 10))
+  val v2 = intArr.any(i => i == 10)
+  println(v2)
 
   val empty: Int[] = []
   /// Expect: false
@@ -430,28 +444,35 @@ if true {
 
   val strArr = ["hello", "world"]
   /// Expect: true
-  println(strArr.any(s => s == "hello"))
+  val v3 = strArr.any(s => s == "hello")
+  println(v3)
   /// Expect: false
-  println(strArr.any(s => s == "HELLO"))
+  val v4 = strArr.any(s => s == "HELLO")
+  println(v4)
 }
 
 // Array#all
 if true {
   val intArr = [123, 456, 789]
   /// Expect: true
-  println(intArr.all(i => i > 0))
+  val v1 = intArr.all(i => i > 0)
+  println(v1)
   /// Expect: false
-  println(intArr.all(i => i == 10))
+  val v2 = intArr.all(i => i == 10)
+  println(v2)
 
   val empty: Int[] = []
   /// Expect: true
-  println(empty.all(i => i == 123))
+  val v3 = empty.all(i => i == 123)
+  println(v3)
 
   val strArr = ["hello", "world"]
   /// Expect: true
-  println(strArr.all(s => s.length > 0))
+  val v4 = strArr.all(s => s.length > 0)
+  println(v4)
   /// Expect: false
-  println(strArr.all(s => s == "HELLO"))
+  val v5 = strArr.all(s => s == "HELLO")
+  println(v5)
 }
 
 // Array#sortBy
@@ -479,18 +500,21 @@ if true {
 
   val strArr = "The quick brown fox jumped over the lazy dog".split(" ")
   /// Expect: { 3: dog, 4: lazy, 5: brown, 6: jumped }
-  println(strArr.keyBy(s => s.length))
+  val keyed = strArr.keyBy(s => s.length)
+  println(keyed)
 }
 
 // Array#indexBy
 if true {
   val empty: String[] = []
   /// Expect: {}
-  println(empty.indexBy(s => s.length))
+  val m1 = empty.indexBy(s => s.length)
+  println(m1)
 
   val strArr = "The quick brown fox jumped over the lazy dog".split(" ")
   /// Expect: { 3: [The, fox, the, dog], 4: [over, lazy], 5: [quick, brown], 6: [jumped] }
-  println(strArr.indexBy(s => s.length))
+  val m2 = strArr.indexBy(s => s.length)
+  println(m2)
 }
 
 // Array#asSet

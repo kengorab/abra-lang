@@ -590,11 +590,11 @@ pub type Block {
     local
   }
 
-  pub func buildCastD(self, value: Value, dst: String? = None): Value {
+  pub func buildCast(self, ty: QbeType, value: Value, dst: String? = None): Value {
     val dest = dst ?: self._nextLocal()
-    val local = Value.Ident(dest, QbeType.U64)
+    val local = Value.Ident(dest, ty)
 
-    self.append(Instruction.Cast(dst: Dest(name: local.repr(), ty: QbeType.U64), value: value))
+    self.append(Instruction.Cast(dst: Dest(name: local.repr(), ty: ty), value: value))
 
     local
   }

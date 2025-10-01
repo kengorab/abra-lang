@@ -1,5 +1,19 @@
-val map2 = { ([1, 2]): true, ([3, 4]): false }
-println(map2.entries())
+val arr = [1, 2, 3, 4, 5]
+println(arr[1:4])
+
+// val floatArr = [0.12, 3.45, 6.0]
+// println(floatArr)
+// floatArr[0] = 0.001
+// println(floatArr)
+
+// val x = 9221120237041090561
+// println(x)
+
+// val hmm = (0.0 / 0.0) - (0.0 / 0.0)
+// println(hmm)
+
+// val map2 = { ([1, 2]): true, ([3, 4]): false }
+// println(map2.entries())
 
 // val m = { (1): "a", (2): "b" }
 
