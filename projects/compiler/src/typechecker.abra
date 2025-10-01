@@ -958,7 +958,7 @@ pub enum TypedAstNodeKind {
   Unary(op: UnaryOp, expr: TypedAstNode)
   Binary(left: TypedAstNode, op: BinaryOp, right: TypedAstNode)
   Grouped(inner: TypedAstNode)
-  Identifier(name: String, variable: Variable, fnAliasTypeHint: Type?, varImportModule: TypedModule?)
+  Identifier(name: String, variable: Variable, fnAliasTypeHint: ((Type, Bool)[], Type)?, varImportModule: TypedModule?)
   Accessor(head: TypedAstNode, middle: AccessorPathSegment[], tail: AccessorPathSegment)
   Invocation(invokee: TypedInvokee, arguments: TypedAstNode?[], resolvedGenerics: Map<String, Type>)
   Array(items: TypedAstNode[])
@@ -4862,7 +4862,13 @@ pub type Typechecker {
               ctx.containsFnAlias = true
             }
 
-            typeHint
+            match typeHint?.kind {
+              None => None
+              TypeKind.Func(paramTypes, retType) => Some((paramTypes, retType))
+              // If the function value is being treated as a Hole, then no param type info needs to be known later anyway
+              TypeKind.Hole => None
+              _ => unreachable("fnAliasTypeKind must be TypeKind.Func")
+            }
           }
           _ => None
         }

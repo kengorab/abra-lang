@@ -554,18 +554,18 @@ pub type VM {
         self.returnValue = if value |value| self.irValueToVmValue(value) else VmValue.Undefined
         self.flag = ControlFlag.Return
       }
-      Operation.OptionNone(innerTy) => {
+      Operation.OptionNone(_) => {
         self.store(self.expectAssignee(inst), VmValue.OptionNone)
       }
-      Operation.OptionSome(innerTy, value) => {
+      Operation.OptionSome(_, value) => {
         val v = self.irValueToVmValue(value)
         self.store(self.expectAssignee(inst), v)
       }
-      Operation.OptionIsNone(value) => {
+      Operation.OptionIsNone(_, value) => {
         val isNone = match self.irValueToVmValue(value) { VmValue.OptionNone => true, else => false }
         self.store(self.expectAssignee(inst), VmValue.Bool(isNone))
       }
-      Operation.OptionUnwrap(innerTy, value) => {
+      Operation.OptionUnwrap(_, value) => {
         match self.irValueToVmValue(value) {
           VmValue.OptionNone => unreachable("unwrapped None")
           else v => self.store(self.expectAssignee(inst), v)
@@ -684,6 +684,7 @@ pub type VM {
             match itemTy {
               IrType.Unit => unreachable("values cannot be of type unit")
               IrType.Byte => dstVal.copyFrom(dstOffsetVal, srcVal, srcOffsetVal, sizeVal)
+              IrType.I64 => dstVal.copyFrom(dstOffsetVal * 8, srcVal, srcOffsetVal * 8, sizeVal * 8)
               else v => todo("CopyFrom: $v")
             }
           }

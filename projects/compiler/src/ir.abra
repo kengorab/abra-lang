@@ -279,7 +279,7 @@ pub enum Operation {
 
   OptionNone(innerTy: IrType)
   OptionSome(innerTy: IrType, value: Value)
-  OptionIsNone(value: Value)
+  OptionIsNone(innerTy: IrType, value: Value)
   OptionUnwrap(innerTy: IrType, value: Value)
   StructuredToString(prefix: String, lenVal: Value, fields: (IrType, String, Value)[])
   Builtin(ret: IrType, builtin: Builtin)
@@ -657,8 +657,10 @@ pub enum Operation {
         value.render(sb)
         sb.write(")")
       }
-      Operation.OptionIsNone(value) => {
+      Operation.OptionIsNone(innerTy, value) => {
         sb.write("option_is_none(")
+        innerTy.render(sb)
+        sb.write(", ")
         value.render(sb)
         sb.write(")")
       }
@@ -1302,7 +1304,8 @@ pub type Generator {
             Some(res)
           })
 
-          val cond = self.ssaValue(IrType.Bool, Operation.OptionIsNone(selfVal), None)
+          val selfIrType = self.getIrTypeForConcreteType(concreteType)
+          val cond = self.ssaValue(IrType.Bool, Operation.OptionIsNone(typeArgIrType, selfVal), None)
           val ident = self.ssaValue(strTy, Operation.If(strTy, cond, isNoneBlock, isSomeBlock), None)
           self.emit(Instruction(op: Operation.Return(Some(ident))))
         } else {
@@ -1379,8 +1382,10 @@ pub type Generator {
 
         val optInnerTy = self.project.typeIsOption(condNode.ty)
         val condBindingVal = self.genExpression(condNode, concreteGenerics)
-        val condVal = if optInnerTy |innerTy| {
-          val optIsNone = self.ssaValue(IrType.Bool, Operation.OptionIsNone(condBindingVal), None)
+        val condVal = if optInnerTy |innerType| {
+          val innerConcreteType = self.getConcreteTypeFromType(innerType, concreteGenerics)
+          val innerTy = self.getIrTypeForConcreteType(innerConcreteType)
+          val optIsNone = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerTy, condBindingVal), None)
           self.ssaValue(IrType.Bool, Operation.Negate(optIsNone), None)
         } else {
           condBindingVal
@@ -1424,8 +1429,10 @@ pub type Generator {
         self.emit(Instruction(op: Operation.WhileLoopStart(loopName)))
 
         val condBindingVal = self.genExpression(condNode, concreteGenerics)
-        val cond = if optInnerTy {
-          val optIsNone = self.ssaValue(IrType.Bool, Operation.OptionIsNone(condBindingVal), None)
+        val cond = if optInnerTy |innerType| {
+          val innerConcreteType = self.getConcreteTypeFromType(innerType, concreteGenerics)
+          val innerTy = self.getIrTypeForConcreteType(innerConcreteType)
+          val optIsNone = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerTy, condBindingVal), None)
           self.ssaValue(IrType.Bool, Operation.Negate(optIsNone), None)
         } else {
           condBindingVal
@@ -1543,7 +1550,7 @@ pub type Generator {
         self.emit(Instruction(op: Operation.WhileLoopStart(loopName)))
 
         val condBindingVal = self.ssaValue(nextFnRetIrTy, Operation.Call(ret: nextFnRetIrTy, fnName: nextFnName, args: [iterVal]), None)
-        val optIsNone = self.ssaValue(IrType.Bool, Operation.OptionIsNone(condBindingVal), None)
+        val optIsNone = self.ssaValue(IrType.Bool, Operation.OptionIsNone(nextFnRetInnerIrTy, condBindingVal), None)
         val cond = self.ssaValue(IrType.Bool, Operation.Negate(optIsNone), None)
 
         val body = self.withinBlock(loopName, !!terminator, () => {
@@ -1778,7 +1785,7 @@ pub type Generator {
             val optWrapperConcreteType = ConcreteType(instanceKind: InstanceKind.Enum(self.project.preludeOptionEnum), typeArgs: [arrItemConcreteType])
             val optWrapperIrTy = self.getIrTypeForConcreteType(optWrapperConcreteType)
 
-            self.emit(Instruction(op: Operation.Call(ret: optWrapperIrTy, fnName: arraySetFnName, args: [arrVal, idxVal, res])))
+            self.ssaValue(IrType.Unit, Operation.Call(ret: optWrapperIrTy, fnName: arraySetFnName, args: [arrVal, idxVal, res]), None)
           }
           TypedIndexingNode.Map(mapExpr, idxExpr) => {
             val idxVal = self.genExpression(idxExpr, concreteGenerics)
@@ -1800,7 +1807,7 @@ pub type Generator {
             val optWrapperConcreteType = ConcreteType(instanceKind: InstanceKind.Enum(self.project.preludeOptionEnum), typeArgs: [mapValConcreteType])
             val optWrapperIrTy = self.getIrTypeForConcreteType(optWrapperConcreteType)
 
-            self.emit(Instruction(op: Operation.Call(ret: optWrapperIrTy, fnName: mapInsertFnName, args: [mapVal, idxVal, res])))
+            self.ssaValue(IrType.Unit, Operation.Call(ret: optWrapperIrTy, fnName: mapInsertFnName, args: [mapVal, idxVal, res]), None)
           }
           TypedIndexingNode.Tuple => unreachable("cannot assign to tuple via indexing")
         }
@@ -1852,8 +1859,10 @@ pub type Generator {
 
         val optInnerTy = self.project.typeIsOption(condNode.ty)
         val condBindingVal = self.genExpression(condNode, concreteGenerics)
-        val condVal = if optInnerTy |innerTy| {
-          val optIsNone = self.ssaValue(IrType.Bool, Operation.OptionIsNone(condBindingVal), None)
+        val condVal = if optInnerTy |innerType| {
+          val innerConcreteType = self.getConcreteTypeFromType(innerType, concreteGenerics)
+          val innerTy = self.getIrTypeForConcreteType(innerConcreteType)
+          val optIsNone = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerTy, condBindingVal), None)
           self.ssaValue(IrType.Bool, Operation.Negate(optIsNone), None)
         } else {
           condBindingVal
@@ -2007,8 +2016,10 @@ pub type Generator {
           }
         }
 
-        if self.project.typeIsOption(expr.ty) {
-          self.ssaValue(IrType.Bool, Operation.OptionIsNone(exprVal), dst)
+        if self.project.typeIsOption(expr.ty) |innerType| {
+          val innerConcreteType = self.getConcreteTypeFromType(innerType, concreteGenerics)
+          val innerTy = self.getIrTypeForConcreteType(innerConcreteType)
+          self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerTy, exprVal), dst)
         } else {
           self.ssaValue(IrType.Bool, Operation.Negate(exprVal), dst)
         }
@@ -2257,7 +2268,7 @@ pub type Generator {
         val innerTy = self.getIrTypeForConcreteType(innerConcreteType)
 
         val lval = self.genExpression(left, concreteGenerics)
-        val condVal = self.ssaValue(IrType.Bool, Operation.OptionIsNone(lval), None)
+        val condVal = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerTy, lval), None)
 
         val ifBody = self.withinBlock("coalesce_fail", false, () => {
           val rval = self.genExpression(right, concreteGenerics)
@@ -2782,7 +2793,7 @@ pub type Generator {
     }
   }
 
-  func genIdentifier(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, dst: String?, name: String, variable: tc.Variable, fnAliasTypeHint: tc.Type?, varImportModule: tc.TypedModule?): Value {
+  func genIdentifier(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, dst: String?, name: String, variable: tc.Variable, fnAliasTypeHint: ((tc.Type, Bool)[], tc.Type)?, varImportModule: tc.TypedModule?): Value {
     val varConcreteType = self.getConcreteTypeFromType(variable.ty, concreteGenerics)
     val varTy = self.getIrTypeForConcreteType(varConcreteType)
 
@@ -2795,7 +2806,21 @@ pub type Generator {
     }
 
     match variable.alias {
-      VariableAlias.Function(fn) => todo("genIdentifier VariableAlias.Function")
+      VariableAlias.Function(fn) => {
+        val targetParamTypes = if fnAliasTypeHint |(paramHints, _)| Some(paramHints) else None
+
+        val captures = if fn.isClosure() {
+          val captures: Value[] = []
+          for variable in fn.captures {
+            captures.push(self.genLoadCapturedVar(variable.label.position, concreteGenerics, variable, deref: false))
+          }
+          Some(captures)
+        } else {
+          None
+        }
+
+        self.genFunctionValue(concreteGenerics, fn, targetParamTypes, dst, captures)
+      }
       else => {
         if varImportModule |mod| {
           val globalName = self.globalName(mod.id, variable.label.name)
@@ -3073,7 +3098,7 @@ pub type Generator {
               self.enqueueFunction(arrayGetRangeFn, arrayGetRangeFnName, paramsNeedingDefaultValue, Some(exprConcreteType), arrConcreteGenerics)
 
               arrayGetRangeFnName
-            } else if exprConcreteType.instanceKind == InstanceKind.Struct(self.project.preludeArrayStruct) {
+            } else if exprConcreteType.instanceKind == InstanceKind.Struct(self.project.preludeStringStruct) {
               val stringGetRangeFn = self.getMethodByName(InstanceKind.Struct(self.project.preludeStringStruct), "getRange", staticMethod: false)
               val stringGetRangeFnName = self.fnName(Some(exprConcreteType), stringGetRangeFn, {}, paramsNeedingDefaultValue)
               self.enqueueFunction(stringGetRangeFn, stringGetRangeFnName, paramsNeedingDefaultValue, Some(exprConcreteType), {})
@@ -3156,7 +3181,7 @@ pub type Generator {
     if self.project.typeIsOption(expr.ty) |innerType| {
       val innerConcreteType = self.getConcreteTypeFromType(innerType, concreteGenerics)
       val innerTy = self.getIrTypeForConcreteType(innerConcreteType)
-      val condVal = self.ssaValue(IrType.Bool, Operation.OptionIsNone(v), None)
+      val condVal = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerTy, v), None)
 
       val ifBody = self.withinBlock("try_fail", true, () => {
         self.emit(Instruction(op: Operation.Return(Some(v))))

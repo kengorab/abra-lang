@@ -772,8 +772,18 @@ pub type Compiler {
           self.currentFn.block.buildReturn()
         }
       }
-      Operation.OptionNone => {
-        self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+      Operation.OptionNone(innerTy) => {
+        if innerTy == IrType.F64 {
+          // A None instance of type `Float?` is represented as a IEEE 754 Quiet NaN, with the lsb also set (to
+          // distinguish it from an actual NaN, in which the lsb is unset):
+          // 0b0_11111111111_1100000000000000000000000000000000000000000000000001
+          //   S EEEEEEEEEEE MMMM ...                                    ... MMMM
+          // (All exp bits + msb of mantissa set = Quiet NaN). 2nd msb of mantissa is set to avoid conflict with
+          // Intel's QNaN Floating-Point Indefinite value.
+          self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0x7ffc000000000001), dst)
+        } else {
+          self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+        }
       }
       Operation.OptionSome(innerTy, value) => {
         val qbeVal = self.irValueToQbeValue(value)
@@ -781,14 +791,19 @@ pub type Compiler {
           val mem = self.callMalloc(qbe.Value.Int(8), dst)
           self.currentFn.block.buildStoreL(qbeVal, mem)
         } else if innerTy == IrType.F64 {
-          self.currentFn.block.buildAdd(qbe.Value.Float(0.0), qbeVal, dst)
+          self.currentFn.block.buildCast(qbe.QbeType.U64, qbeVal, dst)
         } else {
-          self.currentFn.block.buildAdd(qbe.Value.Int(0), qbeVal, dst)
+          try self.currentFn.block.buildAdd(qbe.Value.Int(0), qbeVal, dst) else |e| unreachable(e)
         }
       }
-      Operation.OptionIsNone(value) => {
+      Operation.OptionIsNone(innerTy, value) => {
         val qbeVal = self.irValueToQbeValue(value)
-        val res = try self.currentFn.block.buildCompareEq(qbe.Value.Int(0), qbeVal, Some(self.nextTemp())) else |e| unreachable(e)
+        val res = if innerTy == IrType.F64 {
+          // Check for None instance of type `Float?` by comparing against magic value (see comment above in Operation.OptionNone)
+          try self.currentFn.block.buildCompareEq(qbe.Value.Int(0x7ffc000000000001), qbeVal, Some(self.nextTemp())) else |e| unreachable(e)
+        } else {
+          try self.currentFn.block.buildCompareEq(qbe.Value.Int(0), qbeVal, Some(self.nextTemp())) else |e| unreachable(e)
+        }
         self.currentFn.block.buildExt(res, false, dst)
       }
       Operation.OptionUnwrap(innerTy, value) => {
@@ -796,9 +811,9 @@ pub type Compiler {
         if innerTy == IrType.I64 {
           self.currentFn.block.buildLoadL(qbeVal, dst)
         } else if innerTy == IrType.F64 {
-          self.currentFn.block.buildAdd(qbe.Value.Float(0.0), qbeVal, dst)
+          self.currentFn.block.buildCast(qbe.QbeType.F64, qbeVal, dst)
         } else {
-          self.currentFn.block.buildAdd(qbe.Value.Int(0), qbeVal, dst)
+          try self.currentFn.block.buildAdd(qbe.Value.Int(0), qbeVal, dst) else |e| unreachable(e)
         }
       }
       Operation.StructuredToString(prefix, lenVal, fields) => self.compileStructuredToString(prefix, lenVal, fields, dst)
@@ -951,7 +966,7 @@ pub type Compiler {
           Builtin.FloatBitsToInt(float) => {
             val floatVal = self.irValueToQbeValue(float)
 
-            self.currentFn.block.buildCastD(floatVal, dst)
+            self.currentFn.block.buildCast(qbe.QbeType.U64, floatVal, dst)
           }
           Builtin.Uninitialized => {
             self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
@@ -1037,8 +1052,9 @@ pub type Compiler {
       srcPtr,
       Some(self.nextTemp()),
     ) else |e| unreachable(e)
+    val numBytes = try self.currentFn.block.buildMul(itemSize, amount, Some(self.nextTemp())) else |e| unreachable(e)
 
-    self.currentFn.block.buildVoidCall(qbe.Callable.Function(self.memcpyFn), [dstMem, srcMem, amount])
+    self.currentFn.block.buildVoidCall(qbe.Callable.Function(self.memcpyFn), [dstMem, srcMem, numBytes])
   }
 
   func nextTemp(self): String {

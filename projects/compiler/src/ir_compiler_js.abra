@@ -471,7 +471,7 @@ pub type Compiler {
         self.emitIrValueToJsValue(value)
         self.sb.writeln(";")
       }
-      Operation.OptionIsNone(value) => {
+      Operation.OptionIsNone(_, value) => {
         self.sb.write("const $dst = ")
         self.emitIrValueToJsValue(value)
         self.sb.writeln(" === null;")
