@@ -1,5 +1,50 @@
-val arr = [1, 2, 3, 4, 5]
-println(arr[1:4])
+type Foo {
+  f: String
+}
+val foo = Foo(f: "abc")
+val fooArr = [foo]
+
+val v = fooArr[0]?.f?.length
+println(v)
+
+// val arr = ["a", "b", "c", "d"]
+// println(arr[0]?.isEmpty())
+// println(arr[6]?.isEmpty())
+
+// if true {
+//   // Test with primitive
+//   val i1: Int? = None
+//   val i2 = Some(17)
+//   val i3 = Some(17)
+//   val i4 = Some(16)
+
+//   /// Expect: false
+//   println(i1 == i2)
+//   /// Expect: false
+//   println(i2 == i4)
+//   /// Expect: true
+//   println(i2 == i3)
+
+//   // Test with object
+//   val s1: String? = None
+//   val s2 = Some("str")
+//   val s3 = Some("str")
+//   val s4 = Some("hmm")
+
+//   /// Expect: false
+//   println(s1 == s2)
+//   /// Expect: false
+//   println(s2 == s4)
+//   /// Expect: true
+//   println(s2 == s3)
+// }
+
+// val arr = ["a", "b", "c", "d"]
+// val l = arr[0]?.length ?: 123
+
+// println(l)
+
+// println(arr[0]?.length)
 
 // val floatArr = [0.12, 3.45, 6.0]
 // println(floatArr)

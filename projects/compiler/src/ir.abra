@@ -1291,25 +1291,25 @@ pub type Generator {
       InstanceKind.Enum(e) => {
         if e == self.project.preludeOptionEnum {
           val typeArg = try concreteType.typeArgs[0] else unreachable()
-          val typeArgIrType = self.getIrTypeForConcreteType(typeArg)
+          val innerIrType = self.getIrTypeForConcreteType(typeArg)
 
           val isNoneBlock = self.withinBlock("is_none", false, () => {
             val none = self.ssaValue(strTy, Operation.ConstString("Option.None"), None)
             Some(none)
           })
           val isSomeBlock = self.withinBlock("is_some", false, () => {
-            val some = self.ssaValue(typeArgIrType, Operation.OptionUnwrap(typeArgIrType, selfVal), None)
+            val some = self.ssaValue(innerIrType, Operation.OptionUnwrap(innerIrType, selfVal), None)
             val res = self.genToStringLogicForStructuredData("Option.Some", [("value", typeArg, some)])
 
             Some(res)
           })
 
           val selfIrType = self.getIrTypeForConcreteType(concreteType)
-          val cond = self.ssaValue(IrType.Bool, Operation.OptionIsNone(typeArgIrType, selfVal), None)
+          val cond = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerIrType, selfVal), None)
           val ident = self.ssaValue(strTy, Operation.If(strTy, cond, isNoneBlock, isSomeBlock), None)
           self.emit(Instruction(op: Operation.Return(Some(ident))))
         } else {
-          todo("genToStringMethodBody: enum")
+          todo("genToStringMethodBody: enum '${e.label.name}'")
         }
       }
     }
@@ -1337,7 +1337,37 @@ pub type Generator {
         val res = self.genEqLogicForStructuredData(fields)
         self.emit(Instruction(op: Operation.Return(Some(res))))
       }
-      InstanceKind.Enum => todo("genEqMethodBody: enum")
+      InstanceKind.Enum(e) => {
+        if e == self.project.preludeOptionEnum {
+          val typeArg = try concreteType.typeArgs[0] else unreachable()
+          val innerIrType = self.getIrTypeForConcreteType(typeArg)
+
+          val selfIsNone = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerIrType, selfVal), None)
+          val selfIsSome = self.ssaValue(IrType.Bool, Operation.Negate(selfIsNone), None)
+          val otherIsNone = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerIrType, otherVal), None)
+          val otherIsSome = self.genCompoundValue(() => self.ssaValue(IrType.Bool, Operation.Negate(otherIsNone), None))
+          val cond = self.ssaValue(IrType.Bool, Operation.BoolAnd(selfIsSome, otherIsSome), None)
+
+          val bothSomeBlock = self.withinBlock("both_Some", false, () => {
+            val selfUnwrapped = self.ssaValue(innerIrType, Operation.OptionUnwrap(innerIrType, selfVal), None)
+            val otherUnwrapped = self.ssaValue(innerIrType, Operation.OptionUnwrap(innerIrType, otherVal), None)
+
+            val eq = self.genEqLogic(typeArg, selfUnwrapped, otherUnwrapped, false, None)
+            Some(eq)
+          })
+          val notBothSomeBlock = self.withinBlock("not_both_Some", false, () => {
+            val otherIsNone = CompoundValue(body: [], result: otherIsNone)
+            val bothNone = self.ssaValue(IrType.Bool, Operation.BoolAnd(selfIsNone, otherIsNone), None)
+
+            Some(bothNone)
+          })
+
+          val ident = self.ssaValue(IrType.Bool, Operation.If(IrType.Bool, cond, bothSomeBlock, notBothSomeBlock), None)
+          self.emit(Instruction(op: Operation.Return(Some(ident))))
+        } else {
+          todo("genToStringMethodBody: enum")
+        }
+      }
     }
   }
 
@@ -1366,7 +1396,26 @@ pub type Generator {
         val res = self.genHashLogicForStructuredData(fields)
         self.emit(Instruction(op: Operation.Return(Some(res))))
       }
-      InstanceKind.Enum => todo("genHashMethodBody: enum")
+      InstanceKind.Enum(e) => {
+        if e == self.project.preludeOptionEnum {
+          val typeArg = try concreteType.typeArgs[0] else unreachable()
+          val innerIrType = self.getIrTypeForConcreteType(typeArg)
+
+          val selfIsNone = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerIrType, selfVal), None)
+          val selfNoneBlock = self.withinBlock("is_None", false, () => Some(Value.Const(Const.Int(1))))
+          val selfSomeBlock = self.withinBlock("is_Some", false, () => {
+            val selfUnwrapped = self.ssaValue(innerIrType, Operation.OptionUnwrap(innerIrType, selfVal), None)
+
+            val hash = self.genHashLogic(typeArg, selfUnwrapped, None)
+            Some(self.ssaValue(IrType.I64, Operation.Add(Value.Const(Const.Int(1)), hash), None))
+          })
+
+          val ident = self.ssaValue(IrType.I64, Operation.If(IrType.I64, selfIsNone, selfNoneBlock, selfSomeBlock), None)
+          self.emit(Instruction(op: Operation.Return(Some(ident))))
+        } else {
+          todo("genToStringMethodBody: enum")
+        }
+      }
     }
   }
 
@@ -2513,6 +2562,7 @@ pub type Generator {
 
   func genCall(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, innerConcreteGenerics: Map<String, ConcreteType>, dst: String?, invokee: tc.TypedInvokee, args: tc.TypedAstNode?[]): Value {
     val argValues: Value[] = []
+    var optSafeCtx: ((String, Instruction[]), Value, Block)? = None
 
     val (fnName, returnType) = match invokee {
       TypedInvokee.Function(fn) => {
@@ -2672,7 +2722,49 @@ pub type Generator {
           // todo: check for closure
 
           val paramsNeedingDefaultValue = args.map((arg, idx) => !!fn.params[idx]?.defaultValue && !arg)
-          val selfConcreteType = self.getConcreteTypeFromType(selfVal.ty, concreteGenerics)
+          var selfConcreteType = self.getConcreteTypeFromType(selfVal.ty, concreteGenerics)
+          optSafeCtx = if isOptSafe {
+            if selfConcreteType.instanceKind != InstanceKind.Enum(self.project.preludeOptionEnum) unreachable()
+            selfConcreteType = try selfConcreteType.typeArgs[0] else unreachable()
+            val method = match selfVal.ty.kind {
+              TypeKind.Generic => {
+                if fn.label.name == "toString" || fn.label.name == "eq" || fn.label.name == "hash" {
+                  self.getMethodByName(selfConcreteType.instanceKind, fn.label.name, staticMethod: false)
+                } else {
+                  unreachable("no other methods can exist on a value of generic type")
+                }
+              }
+              else => fn
+            }
+            val returnTypeIr = if method.returnType.kind == tc.TypeKind.PrimitiveUnit {
+              None
+            } else {
+              val concreteReturnType = self.getConcreteTypeFromType(method.returnType, innerConcreteGenerics)
+              Some(self.getIrTypeForConcreteType(concreteReturnType))
+            }
+
+            val selfInnerIrType = self.getIrTypeForConcreteType(selfConcreteType)
+            val selfIrVal = self.genExpression(selfVal, concreteGenerics)
+            val cond = self.ssaValue(IrType.Bool, Operation.OptionIsNone(selfInnerIrType, selfIrVal), None)
+            val ifBody = self.withinBlock("opt_safe_is_none", false, () => {
+              if returnTypeIr |irType| {
+                Some(self.ssaValue(irType, Operation.OptionNone(irType), dst))
+              } else {
+                None
+              }
+            })
+
+            val prevBlock = self.curCtx.block
+
+            self.curCtx.block = ("opt_safe_is_some", [])
+            val selfValUnwrapped = self.ssaValue(selfInnerIrType, Operation.OptionUnwrap(selfInnerIrType, selfIrVal), None)
+            argValues.push(selfValUnwrapped)
+
+            Some((prevBlock, cond, ifBody))
+          } else {
+            None
+          }
+
           val extracted = self.extractConcreteGenericsFromConcreteType(selfConcreteType)
           for (_, label) in fn.typeParams {
             extracted[label.name] = try innerConcreteGenerics[label.name] else unreachable("unfulfilled generic '${label.name}' for method '${fn.label.name}'")
@@ -2690,7 +2782,11 @@ pub type Generator {
           val fnName = self.fnName(Some(selfConcreteType), method, extracted, paramsNeedingDefaultValue)
           self.enqueueFunction(method, fnName, paramsNeedingDefaultValue, Some(selfConcreteType), extracted)
 
-          argValues.push(self.genExpression(selfVal, concreteGenerics))
+          // If it's an opt-safe call, the (unwrapped) selfVal will already have been added to args above
+          if !optSafeCtx {
+            val selfIrVal = self.genExpression(selfVal, concreteGenerics)
+            argValues.push(selfIrVal)
+          }
 
           val concreteReturnType = if method.returnType.kind == tc.TypeKind.PrimitiveUnit {
             None
@@ -2734,8 +2830,8 @@ pub type Generator {
 
           val irType = self.getIrTypeForConcreteType(concreteType)
           val typeArg = try concreteType.typeArgs[0] else unreachable()
-          val typeArgIrType = self.getIrTypeForConcreteType(typeArg)
-          return self.ssaValue(irType, Operation.OptionSome(typeArgIrType, argVal), dst)
+          val innerIrType = self.getIrTypeForConcreteType(typeArg)
+          return self.ssaValue(irType, Operation.OptionSome(innerIrType, argVal), dst)
         }
 
         val fields = match variant.kind {
@@ -2781,15 +2877,38 @@ pub type Generator {
       }
     }
 
-    if returnType |concreteReturnType| {
-      val retTy = self.getIrTypeForConcreteType(concreteReturnType)
+    if optSafeCtx |(prevBlock, ifCond, ifBlock)| {
+      val (result, resultTy) = if returnType |concreteReturnType| {
+        val retTy = self.getIrTypeForConcreteType(concreteReturnType)
 
-      self.ssaValue(retTy, Operation.Call(ret: retTy, fnName: fnName, args: argValues), dst)
+        val wrappedConcreteType = ConcreteType(instanceKind: InstanceKind.Enum(self.project.preludeOptionEnum), typeArgs: [concreteReturnType])
+        val wrappedIrTy = self.getIrTypeForConcreteType(wrappedConcreteType)
+        val result = self.ssaValue(retTy, Operation.Call(ret: retTy, fnName: fnName, args: argValues), dst)
+        val wrappedResult = self.ssaValue(wrappedIrTy, Operation.OptionSome(retTy, result), None)
+
+        (Some(wrappedResult), wrappedIrTy)
+      } else {
+        val op = Operation.Call(ret: IrType.Unit, fnName: fnName, args: argValues)
+        self.emit(Instruction(op: op))
+
+        (None, IrType.Unit)
+      }
+
+      val (name, instrs) = self.curCtx.block
+      self.curCtx.block = prevBlock
+      val elseBlock = Block(name: name, body: instrs, result: result, terminates: false) // todo: can it terminate?
+      self.ssaValue(resultTy, Operation.If(resultTy, ifCond, ifBlock, elseBlock), dst)
     } else {
-      val op = Operation.Call(ret: IrType.Unit, fnName: fnName, args: argValues)
-      self.emit(Instruction(op: op))
+      if returnType |concreteReturnType| {
+        val retTy = self.getIrTypeForConcreteType(concreteReturnType)
 
-      Value.Unit
+        self.ssaValue(retTy, Operation.Call(ret: retTy, fnName: fnName, args: argValues), dst)
+      } else {
+        val op = Operation.Call(ret: IrType.Unit, fnName: fnName, args: argValues)
+        self.emit(Instruction(op: op))
+
+        Value.Unit
+      }
     }
   }
 
@@ -2921,8 +3040,8 @@ pub type Generator {
 
           val irType = self.getIrTypeForConcreteType(concreteType)
           val typeArg = try concreteType.typeArgs[0] else unreachable()
-          val typeArgIrType = self.getIrTypeForConcreteType(typeArg)
-          self.ssaValue(irType, Operation.OptionNone(typeArgIrType), dst)
+          val innerIrType = self.getIrTypeForConcreteType(typeArg)
+          self.ssaValue(irType, Operation.OptionNone(innerIrType), dst)
         } else {
           val global = self.getOrAddConstEnumVariant(concreteType, variant, variantIdx)
           global.initialValue = Some(Const.Int(variantIdx))
@@ -2948,14 +3067,28 @@ pub type Generator {
           if idx != segs.length - 1 unreachable("enum variant must be in first position")
           if storeVal |res| unreachable("cannot store into enum variant")
 
-          resVal = workingVal
           break
         }
         AccessorPathSegment.Method => todo("followAccessorPath: methods")
         AccessorPathSegment.Field(label, ty, field, isOptSafe) => {
-          if isOptSafe todo()
+          val optSafeCtx = if isOptSafe {
+            if concreteType.instanceKind != InstanceKind.Enum(self.project.preludeOptionEnum) unreachable()
+            concreteType = try concreteType.typeArgs[0] else unreachable()
+            val innerIrType = self.getIrTypeForConcreteType(concreteType)
+            val cond = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerIrType, workingVal), None)
+            val ifBody = self.withinBlock("opt_safe_is_none", false, () => {
+              Some(self.ssaValue(innerIrType, Operation.OptionNone(innerIrType), dst))
+            })
 
-          match concreteType.instanceKind {
+            val prevBlock = self.curCtx.block
+
+            self.curCtx.block = ("opt_safe_is_some", [])
+            workingVal = self.ssaValue(innerIrType, Operation.OptionUnwrap(innerIrType, workingVal), None)
+
+            Some((prevBlock, cond, ifBody))
+          } else None
+
+          val fieldTy = match concreteType.instanceKind {
             InstanceKind.Struct(struct) => {
               val (f, fieldIdx) = try struct.fields.findIndex(f => f.name.name == field.name.name) else unreachable("no such field '${field.name.name}'")
               val offset = fieldIdx * ALIGNMENT
@@ -2964,25 +3097,37 @@ pub type Generator {
               val fieldTy = self.getIrTypeForConcreteType(fieldConcreteType)
 
               if idx == segs.length - 1 {
-                resVal = if storeVal |res| {
+                workingVal = if storeVal |res| {
                   self.emit(Instruction(op: Operation.StoreField(ty: fieldTy, value: res, mem: workingVal, name: f.name.name, offset: offset)))
                   Value.Unit
                 } else {
-                  self.ssaValue(fieldTy, Operation.LoadField(ty: fieldTy, mem: workingVal, name: f.name.name, offset: offset), dst)
+                  val d = if optSafeCtx None else dst
+                  self.ssaValue(fieldTy, Operation.LoadField(ty: fieldTy, mem: workingVal, name: f.name.name, offset: offset), d)
                 }
-                break
+              } else {
+                workingVal = self.ssaValue(fieldTy, Operation.LoadField(ty: fieldTy, mem: workingVal, name: f.name.name, offset: offset), None)
               }
-
-              workingVal = self.ssaValue(fieldTy, Operation.LoadField(ty: fieldTy, mem: workingVal, name: f.name.name, offset: offset), None)
               concreteType = self.getConcreteTypeFromType(ty, newConcreteGenerics)
+
+              fieldTy
             }
-            InstanceKind.Enum => todo("enum field accessor")
+            InstanceKind.Enum(enum_) => todo("enum field accessor: '${enum_.label.name}.${field.name.name}'")
+          }
+
+          if optSafeCtx |(prevBlock, ifCond, ifBlock)| {
+            val wrappedIrTy = self.getIrTypeForConcreteType(concreteType)
+            val wrappedResult = self.ssaValue(wrappedIrTy, Operation.OptionSome(fieldTy, workingVal), None)
+
+            val (name, instrs) = self.curCtx.block
+            self.curCtx.block = prevBlock
+            val elseBlock = Block(name: name, body: instrs, result: Some(wrappedResult), terminates: false) // todo: can it terminate?
+            workingVal = self.ssaValue(wrappedIrTy, Operation.If(wrappedIrTy, ifCond, ifBlock, elseBlock), dst)
           }
         }
       }
     }
 
-    resVal
+    workingVal
   }
 
   func genArray(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, dst: String?, arrayTy: tc.Type, items: tc.TypedAstNode[]): Value {

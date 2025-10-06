@@ -781,6 +781,8 @@ pub type Compiler {
           // (All exp bits + msb of mantissa set = Quiet NaN). 2nd msb of mantissa is set to avoid conflict with
           // Intel's QNaN Floating-Point Indefinite value.
           self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0x7ffc000000000001), dst)
+        } else if innerTy == IrType.Bool {
+          self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(2), dst)
         } else {
           self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
         }
@@ -801,6 +803,8 @@ pub type Compiler {
         val res = if innerTy == IrType.F64 {
           // Check for None instance of type `Float?` by comparing against magic value (see comment above in Operation.OptionNone)
           try self.currentFn.block.buildCompareEq(qbe.Value.Int(0x7ffc000000000001), qbeVal, Some(self.nextTemp())) else |e| unreachable(e)
+        } else if innerTy == IrType.Bool {
+          try self.currentFn.block.buildCompareEq(qbe.Value.Int(2), qbeVal, Some(self.nextTemp())) else |e| unreachable(e)
         } else {
           try self.currentFn.block.buildCompareEq(qbe.Value.Int(0), qbeVal, Some(self.nextTemp())) else |e| unreachable(e)
         }

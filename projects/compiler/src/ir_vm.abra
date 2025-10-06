@@ -634,12 +634,8 @@ pub type VM {
                 val int = v.expectInt("Builtin.Store byte")
                 Pointer.reinterpret<Byte, Byte>(pointer).storeAt(int.asByte(), offsetVal)
               }
-              IrType.Composite => {
-                val ptr = match v {
-                  VmValue.ConstString v => Pointer.addressOf(v)
-                  VmValue.Instance v => Pointer.addressOf(v)
-                  else => unreachable("unexpected value for itemTy composite: '$v'")
-                }
+              IrType.Composite(irTypeName) => {
+                val ptr = Pointer.addressOf(v)
                 Pointer.reinterpret<Byte, Int>(pointer).storeAt(ptr.address(), offsetVal)
               }
               IrType.Ptr => todo("Builtin.Store: ptr")
