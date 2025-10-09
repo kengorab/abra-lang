@@ -859,7 +859,7 @@ const IR_COMPILER_TESTS = [
   { test: "compiler/arrays.abra" },
   // { test: "compiler/functions.abra" },
   { test: "compiler/functions'.abra" },
-  // { test: "compiler/optionals.abra" },
+  { test: "compiler/optionals.abra" },
   { test: "compiler/ifs.abra" },
   { test: "compiler/loops.abra" },
   // { test: "compiler/types.abra" },
