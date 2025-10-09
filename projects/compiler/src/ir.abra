@@ -276,7 +276,9 @@ pub enum Operation {
   Break
   Continue
   Return(value: Value? = None)
+  Unreachable(message: String)
 
+  GetEnumVariantIdx(innerTy: IrType, value: Value, numVariants: Int)
   OptionNone(innerTy: IrType)
   OptionSome(innerTy: IrType, value: Value)
   OptionIsNone(innerTy: IrType, value: Value)
@@ -644,6 +646,14 @@ pub enum Operation {
         sb.write("return(")
         if v |v| v.render(sb)
         sb.write(")")
+      }
+      Operation.Unreachable(message) => sb.write("unreachable('$message')")
+      Operation.GetEnumVariantIdx(innerTy, value, numVariants) => {
+        sb.write("get_enum_variant_idx(")
+        innerTy.render(sb)
+        sb.write(", ")
+        value.render(sb)
+        sb.write(", numVariants=$numVariants)")
       }
       Operation.OptionNone(innerTy) => {
         sb.write("option_none(")
@@ -1163,7 +1173,7 @@ pub type Generator {
   }
 
   func getOrGenInitializerFn(self, concreteType: ConcreteType, enumVariant: tc.TypedEnumVariant?, concreteGenerics: Map<String, ConcreteType>, fieldsNeedingDefaultValue: Bool[] = []): IrFunction {
-    val (fnName, fields, initialSize, enumVariantIdx) = match concreteType.instanceKind {
+    val (fnName, fields, reservedSize, enumVariantIdx) = match concreteType.instanceKind {
       InstanceKind.Struct(s) => {
         val fnName = self.structInitFnName(concreteType, fieldsNeedingDefaultValue)
 
@@ -1172,13 +1182,13 @@ pub type Generator {
       InstanceKind.Enum(e) => {
         val variant = try enumVariant else unreachable()
         val fields = match variant.kind {
-          EnumVariantKind.Constant => unreachable()
+          EnumVariantKind.Constant => unreachable("Constant enum variants implemented elsewhere")
           EnumVariantKind.Container(fields) => fields
         }
         val fnName = self.enumVariantInitFnName(concreteType, variant, fieldsNeedingDefaultValue)
         val (_, variantIdx) = try e.variants.findIndex(v => v.label.name == variant.label.name) else unreachable("${e.label.name}.${variant.label.name} must exist")
 
-        (fnName, fields, 8, Some(variantIdx))
+        (fnName, fields, ALIGNMENT, Some(variantIdx))
       }
     }
 
@@ -1189,7 +1199,7 @@ pub type Generator {
     self.addFunction(fnName, irFunc)
     val prevCtx = self.enterFunction(irFunc, None)
 
-    var size = initialSize
+    var size = reservedSize
     var anyFieldNeedsDefault = false
     val argsForUnderlying: (Value, IrType, String, Int)[] = []
     for field, idx in fields {
@@ -1213,7 +1223,8 @@ pub type Generator {
         Value.Ident(ident)
       }
 
-      argsForUnderlying.push((fieldVal, fieldTy, field.name.name, idx * ALIGNMENT))
+      val offsetBytes = idx * ALIGNMENT + reservedSize
+      argsForUnderlying.push((fieldVal, fieldTy, field.name.name, offsetBytes))
     }
 
     val retVal = if anyFieldNeedsDefault {
@@ -1236,7 +1247,7 @@ pub type Generator {
       }
 
       for (fieldVal, fieldTy, fieldName, fieldOffset), idx in argsForUnderlying {
-        self.emit(Instruction(op: Operation.StoreField(ty: fieldTy, value: fieldVal, mem: mem, name: fieldName, offset: fieldOffset))) // todo: shouldn't this start at offset 1 (since offset 0 above is $idx)?
+        self.emit(Instruction(op: Operation.StoreField(ty: fieldTy, value: fieldVal, mem: mem, name: fieldName, offset: fieldOffset)))
       }
 
       mem
@@ -1308,9 +1319,55 @@ pub type Generator {
           val cond = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerIrType, selfVal), None)
           val ident = self.ssaValue(strTy, Operation.If(strTy, cond, isNoneBlock, isSomeBlock), None)
           self.emit(Instruction(op: Operation.Return(Some(ident))))
-        } else {
-          todo("genToStringMethodBody: enum '${e.label.name}'")
+          return
         }
+
+        val irType = self.getIrTypeForConcreteType(concreteType)
+        val emptyElseBlock = Block(name: "empty_else_block", body: [], result: None, terminates: false)
+
+        val selfVariantIdx = self.ssaValue(IrType.I64, Operation.GetEnumVariantIdx(irType, selfVal, e.variants.length), None)
+        val containerVariants: (Int, String, tc.Field[])[] = []
+        for variant, idx in e.variants {
+          val variantName = match variant.kind {
+            EnumVariantKind.Constant => variant.label.name
+            EnumVariantKind.Container(containerFields) => {
+              containerVariants.push((idx, variant.label.name, containerFields))
+              continue
+            }
+          }
+
+          val cond = self.ssaValue(IrType.Bool, Operation.Eq(negate: false, left: selfVariantIdx, right: Value.Const(Const.Int(idx))), None)
+          val ifBlock = self.withinBlock("is_$variantName", true, () => {
+            val strVal = self.ssaValue(strTy, Operation.ConstString("${e.label.name}.$variantName"), None)
+            self.emit(Instruction(op: Operation.Return(Some(strVal))))
+
+            None
+          })
+
+          self.emit(Instruction(op: Operation.If(IrType.Unit, cond, ifBlock, emptyElseBlock)))
+        }
+
+        for (idx, variantName, containerFields) in containerVariants {
+          val cond = self.ssaValue(IrType.Bool, Operation.Eq(negate: false, left: selfVariantIdx, right: Value.Const(Const.Int(idx))), None)
+
+          val ifBlock = self.withinBlock("is_$variantName", true, () => {
+            val fields = containerFields.map((f, idx) => {
+              val fieldConcreteType = self.getConcreteTypeFromType(f.ty, newConcreteGenerics)
+              val fieldIrType = self.getIrTypeForConcreteType(fieldConcreteType)
+
+              val itemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: selfVal, name: f.name.name, offset: (idx + 1) * ALIGNMENT), None)
+              (f.name.name, fieldConcreteType, itemVal)
+            })
+            val strVal = self.genToStringLogicForStructuredData("${e.label.name}.$variantName", fields)
+            self.emit(Instruction(op: Operation.Return(Some(strVal))))
+
+            None
+          })
+
+          self.emit(Instruction(op: Operation.If(IrType.Unit, cond, ifBlock, emptyElseBlock)))
+        }
+
+        self.emit(Instruction(op: Operation.Unreachable("non-exhaustive handling of enum '${e.label.name}'")))
       }
     }
   }
@@ -1364,9 +1421,46 @@ pub type Generator {
 
           val ident = self.ssaValue(IrType.Bool, Operation.If(IrType.Bool, cond, bothSomeBlock, notBothSomeBlock), None)
           self.emit(Instruction(op: Operation.Return(Some(ident))))
-        } else {
-          todo("genToStringMethodBody: enum")
+          return
         }
+
+        val irType = self.getIrTypeForConcreteType(concreteType)
+        val emptyElseBlock = Block(name: "empty_else_block", body: [], result: None, terminates: false)
+
+        val selfVariantIdx = self.ssaValue(IrType.I64, Operation.GetEnumVariantIdx(irType, selfVal, e.variants.length), None)
+        val otherVariantIdx = self.ssaValue(IrType.I64, Operation.GetEnumVariantIdx(irType, otherVal, e.variants.length), None)
+        val idxsNotEqual = self.ssaValue(IrType.Bool, Operation.Eq(negate: true, left: selfVariantIdx, right: otherVariantIdx), None)
+        val idxsNotEqualBlock = self.withinBlock("variant_idx_not_eq", true, () => {
+          self.emit(Instruction(op: Operation.Return(Some(Value.Const(Const.Bool(false))))))
+
+          None
+        })
+        self.emit(Instruction(op: Operation.If(IrType.Unit, idxsNotEqual, idxsNotEqualBlock, emptyElseBlock)))
+
+        for variant, idx in e.variants {
+          val containerFields = match variant.kind {
+            EnumVariantKind.Constant => continue
+            EnumVariantKind.Container(fields) => fields
+          }
+
+          val cond = self.ssaValue(IrType.Bool, Operation.Eq(negate: false, left: selfVariantIdx, right: Value.Const(Const.Int(idx))), None)
+          val ifBlock = self.withinBlock("self_is_${variant.label.name}", true, () => {
+            val fields = containerFields.map((f, idx) => {
+              val fieldConcreteType = self.getConcreteTypeFromType(f.ty, newConcreteGenerics)
+              val fieldIrType = self.getIrTypeForConcreteType(fieldConcreteType)
+
+              val selfItemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: selfVal, name: f.name.name, offset: idx * ALIGNMENT), None)
+              val otherItemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: otherVal, name: f.name.name, offset: idx * ALIGNMENT), None)
+              (fieldConcreteType, selfItemVal, otherItemVal)
+            })
+            self.emit(Instruction(op: Operation.Return(Some(self.genEqLogicForStructuredData(fields)))))
+
+            None
+          })
+          self.emit(Instruction(op: Operation.If(IrType.Unit, cond, ifBlock, emptyElseBlock)))
+        }
+
+        self.emit(Instruction(op: Operation.Return(Some(Value.Const(Const.Bool(true))))))
       }
     }
   }
@@ -1412,9 +1506,55 @@ pub type Generator {
 
           val ident = self.ssaValue(IrType.I64, Operation.If(IrType.I64, selfIsNone, selfNoneBlock, selfSomeBlock), None)
           self.emit(Instruction(op: Operation.Return(Some(ident))))
-        } else {
-          todo("genToStringMethodBody: enum")
+          return
         }
+
+        val irType = self.getIrTypeForConcreteType(concreteType)
+        val emptyElseBlock = Block(name: "empty_else_block", body: [], result: None, terminates: false)
+
+        val selfVariantIdx = self.ssaValue(IrType.I64, Operation.GetEnumVariantIdx(irType, selfVal, e.variants.length), None)
+        val containerVariants: (Int, String, tc.Field[])[] = []
+        for variant, idx in e.variants {
+          val variantName = match variant.kind {
+            EnumVariantKind.Constant => variant.label.name
+            EnumVariantKind.Container(containerFields) => {
+              containerVariants.push((idx, variant.label.name, containerFields))
+              continue
+            }
+          }
+
+          val cond = self.ssaValue(IrType.Bool, Operation.Eq(negate: false, left: selfVariantIdx, right: Value.Const(Const.Int(idx))), None)
+          val ifBlock = self.withinBlock("is_$variantName", true, () => {
+            self.emit(Instruction(op: Operation.Return(Some(Value.Const(Const.Int(idx))))))
+
+            None
+          })
+
+          self.emit(Instruction(op: Operation.If(IrType.Unit, cond, ifBlock, emptyElseBlock)))
+        }
+
+        for (idx, variantName, containerFields) in containerVariants {
+          val cond = self.ssaValue(IrType.Bool, Operation.Eq(negate: false, left: selfVariantIdx, right: Value.Const(Const.Int(idx))), None)
+
+          val ifBlock = self.withinBlock("is_$variantName", true, () => {
+            val fields = containerFields.map((f, idx) => {
+              val fieldConcreteType = self.getConcreteTypeFromType(f.ty, newConcreteGenerics)
+              val fieldIrType = self.getIrTypeForConcreteType(fieldConcreteType)
+
+              val itemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: selfVal, name: f.name.name, offset: (idx + 1) * ALIGNMENT), None)
+              (fieldConcreteType, itemVal)
+            })
+            val res = self.genHashLogicForStructuredData(fields)
+            val hashVal = self.ssaValue(IrType.I64, Operation.Add(selfVariantIdx, res), None)
+            self.emit(Instruction(op: Operation.Return(Some(hashVal))))
+
+            None
+          })
+
+          self.emit(Instruction(op: Operation.If(IrType.Unit, cond, ifBlock, emptyElseBlock)))
+        }
+
+        self.emit(Instruction(op: Operation.Unreachable("non-exhaustive handling of enum '${e.label.name}'")))
       }
     }
   }
@@ -2474,16 +2614,19 @@ pub type Generator {
   }
 
   func genEqLogic(self, concreteType: ConcreteType, left: Value, right: Value, negate: Bool, dst: String?): Value {
-    if self.valuesAsCompileTime(left, right) |(lval, rval)| {
-      val const = match lval {
-        Const.Int(l) => match rval { Const.Int(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-        Const.Float(l) => match rval { Const.Float(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-        Const.Bool(l) => match rval { Const.Bool(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-        Const.Char(l) => match rval { Const.Char(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-        Const.String(l) => match rval { Const.String(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-      }
+    val eqMethod = self.getMethodByName(concreteType.instanceKind, "eq", staticMethod: false)
+    if eqMethod.isGenerated {
+      if self.valuesAsCompileTime(left, right) |(lval, rval)| {
+        val const = match lval {
+          Const.Int(l) => match rval { Const.Int(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
+          Const.Float(l) => match rval { Const.Float(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
+          Const.Bool(l) => match rval { Const.Bool(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
+          Const.Char(l) => match rval { Const.Char(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
+          Const.String(l) => match rval { Const.String(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
+        }
 
-      return self.ssaValueComptime(const, dst)
+        return self.ssaValueComptime(const, dst)
+      }
     }
 
     val irTy = self.getIrTypeForConcreteType(concreteType)
@@ -3028,10 +3171,7 @@ pub type Generator {
 
     var (workingVal, concreteType) = match segs[0] {
       AccessorPathSegment.EnumVariant(label, ty, enum_, variant) => {
-        match variant.kind {
-          EnumVariantKind.Container => unreachable("non-constant enum variant missing instantation")
-          _ => {}
-        }
+        match variant.kind { EnumVariantKind.Container => unreachable("non-constant enum variant missing instantation") }
 
         val concreteType = self.getConcreteTypeFromType(ty, concreteGenerics)
         val (_, variantIdx) = try enum_.variants.findIndex(v => v.label.name == variant.label.name) else unreachable("${enum_.label.name}.${variant.label.name} must exist")
@@ -3561,7 +3701,7 @@ pub type Generator {
 
   func getOrAddConstEnumVariant(self, concreteType: ConcreteType, variant: tc.TypedEnumVariant, variantIdx: Int): GlobalVariable {
     val typeName = self.typeName(concreteType, withTypeArgs: true)
-    val globalName = "${typeName}_${variant.label.name}"
+    val globalName = "_${typeName}_${variant.label.name}"
     if self.globals[globalName] |g| return g
 
     val ty = self.getIrTypeForConcreteType(concreteType)

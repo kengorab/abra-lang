@@ -1,11 +1,57 @@
-type Foo {
-  f: String
-}
-val foo = Foo(f: "abc")
-val fooArr = [foo]
+enum Color {
+  Red
+  Green
+  Blue
+  RGB(r: Int, g: Int, b: Int)
+  RGB2(r: Int = 0, g: Int = 0, b: Int = 0)
 
-val v = fooArr[0]?.f?.length
-println(v)
+  func hex(self): String {
+    if self == Color.Red {
+      "0xFF0000"
+    } else if self == Color.Green {
+      "0x00FF00"
+    } else if self == Color.Blue {
+      "0x0000FF"
+    } else {
+      "todo"
+    }
+  }
+}
+
+val r = Color.Red
+val g = Color.Green
+val b = Color.Blue
+val gray = Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa)
+
+println(r == Color.Red)
+/// Expect: false
+println(r == Color.Green)
+/// Expect: false
+println(r == Color.Blue)
+/// Expect: true
+println(gray == Color.RGB(r: 0xaa, g: 0xaa, b: 0xaa))
+/// Expect: false
+println(gray == Color.RGB(r: 0x33, g: 0x33, b: 0x33))
+/// Expect: false
+println(gray == Color.Green)
+
+// enum Color {
+//   Red
+//   Green
+//   RGB(r: Int, g: Int, b: Int)
+//   Blue
+// }
+// val colors = [Color.Red, Color.Green, Color.RGB(r: 1, g: 2, b: 3), Color.Blue, Color.RGB(r: 0xff, g: 0xff, b: 0xff)]
+// println(colors)
+
+// type Foo {
+//   f: String
+// }
+// val foo = Foo(f: "abc")
+// val fooArr = [foo]
+
+// val v = fooArr[0]?.f?.length
+// println(v)
 
 // val arr = ["a", "b", "c", "d"]
 // println(arr[0]?.isEmpty())

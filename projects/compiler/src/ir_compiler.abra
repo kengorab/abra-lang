@@ -772,6 +772,32 @@ pub type Compiler {
           self.currentFn.block.buildReturn()
         }
       }
+      Operation.Unreachable(message) => {
+        self.currentFn.block.addComment(message)
+        self.currentFn.block.buildHalt()
+      }
+      Operation.GetEnumVariantIdx(_, value, numVariants) => {
+        val v = self.irValueToQbeValue(value)
+
+        val labelThen = self.currentFn.block.addLabel("variant_idx_is_const_variant")
+        val labelElse = self.currentFn.block.addLabel("variant_idx_is_container")
+        val labelCont = self.currentFn.block.addLabel("variant_idx_cont")
+        val cond = try self.currentFn.block.buildCompareLt(v, qbe.Value.Int(numVariants), Some(self.nextTemp())) else |e| unreachable(e)
+        self.currentFn.block.buildJnz(cond, labelThen, labelElse)
+
+        self.currentFn.block.registerLabel(labelThen)
+        val thenVal = v
+        self.currentFn.block.buildJmp(labelCont)
+
+        self.currentFn.block.registerLabel(labelElse)
+        val elseVal = self.currentFn.block.buildLoadL(v, Some(self.nextTemp()))
+        self.currentFn.block.buildJmp(labelCont)
+
+        self.currentFn.block.registerLabel(labelCont)
+
+        val phiCases = [(labelThen, thenVal), (labelElse, elseVal)]
+        try self.currentFn.block.buildPhi(phiCases, dst) else |e| unreachable(e)
+      }
       Operation.OptionNone(innerTy) => {
         if innerTy == IrType.F64 {
           // A None instance of type `Float?` is represented as a IEEE 754 Quiet NaN, with the lsb also set (to

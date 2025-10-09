@@ -144,15 +144,15 @@ println(!!someInt)
 
 // Optional enum instances
 
-// enum Color {
-//   Red
-//   Green
-//   Blue
-// }
-// if true {
-//   val colors = [Color.Red, Color.Green, Color.Blue]
-//   /// Expect: Option.None
-//   println(colors[3])
-//   /// Expect: Option.Some(value: "Color.Blue")
-//   println(colors[2]?.toString())
-// }
+enum Color {
+  Red
+  Green
+  Blue
+}
+if true {
+  val colors = [Color.Red, Color.Green, Color.Blue]
+  /// Expect: Option.None
+  println(colors[3])
+  /// Expect: Option.Some(value: "Color.Blue")
+  println(colors[2]?.toString())
+}
