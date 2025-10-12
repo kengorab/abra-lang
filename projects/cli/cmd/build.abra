@@ -26,10 +26,9 @@ func typecheck(stdRoot: String, filePath: Path): (TypedModule, Project) {
       readFileErrors.push(mod.name)
       continue
     }
-
     val contents = try moduleLoader.loadFileContents(mod.name) else {
-      // Any unreadable modules should have had the `readFileError` field set, which is checked above
-      unreachable("Could not read file '${mod.name}'")
+      readFileErrors.push(mod.name)
+      continue
     }
 
     for err in mod.lexParseErrors {

@@ -1,0 +1,11 @@
+var arr = [1, 2, 3]
+match arr[0] {
+  Int i => i + 1
+  None => 123
+}
+
+// Note: this type of matching is not supported, since it's already expressable in a simpler way:
+match arr[0] {
+  None => 123
+  else i => i + 1
+}

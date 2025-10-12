@@ -1,5 +1,0 @@
-Error at %FILE_NAME%:3:3
-Unreachable match case
-  |    Float b => b * 7
-       ^
-No overlap between case type 'Float' and match target type 'Int'

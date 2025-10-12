@@ -1,5 +1,0 @@
-val a = 123
-val x = match a {
-  Int a => a + 1
-  _ => 4
-}

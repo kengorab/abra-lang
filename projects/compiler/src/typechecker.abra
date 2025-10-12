@@ -927,7 +927,6 @@ pub enum TypedAssignmentMode {
 
 pub enum TypedMatchCaseKind {
   Literal(value: LiteralAstNode)
-  Type(ty: Type)
   EnumVariant(enum_: Enum, variant: TypedEnumVariant, variantIdx: Int, destructuredVariables: Variable[])
   None_
   Else
@@ -2039,65 +2038,40 @@ pub type Typechecker {
     Ok(ty)
   }
 
-  // TODO: At some point, make this work with module alias types (eg. `foo.Bar` and `foo.Baz.Qux` for a module `foo` containing type `Bar` and enum `Baz`)
-  //       This can perhaps be called in place of the current body for `TypeIdentifier.Normal` in `resolveTypeIdentifier` above, and fail if the result
-  //       if Right (because enum variants are not (yet?) valid individually-addressable types).
-  func _resolveTypeOrEnumVariant(self, path: Label[], last: Label): Result<Either<Type, (Enum, TypedEnumVariant, Int)>, TypeError> {
-    match path[0] {
+  // TODO: At some point, make this work with module alias types (eg. `foo.Baz.Qux` for a module `foo` containing enum `Baz`)
+  func resolveEnumVariant(self, path: Label[], last: Label): Result<(Enum, TypedEnumVariant, Int), TypeError> {
+    val first = try path[0] else unreachable("unexpected empty path for enum variant")
+    match self.findModuleByAlias(first.name) {
       None => {
-        val (ty, importMod) = try self.findTypeByNameInScope(last.name) else {
-          return Err(TypeError(position: last.position, kind: TypeErrorKind.UnknownName(last.name, "type")))
+        val (ty, importMod) = try self.findTypeByNameInScope(first.name) else {
+          return Err(TypeError(position: first.position, kind: TypeErrorKind.UnknownName(first.name, "type")))
         }
-        val t = match ty.kind {
-          TypeKind.Type(instanceKind) => Type(kind: TypeKind.Instance(instanceKind, []))
-          _ => ty
+        val label = if path[1] |seg| {
+          return Err(TypeError(position: seg.position, kind: TypeErrorKind.UnknownName(seg.name, "type")))
+        } else {
+          last
         }
 
-        if self.lspMode {
-          if self._getLSPTypeData(t) |(definitionModule, instanceKind)| {
+        match ty.kind {
+          TypeKind.Type(instanceKind) => {
             match instanceKind {
-              InstanceKind.Struct(struct) => self._addLSPIdentForStruct(last.position, struct, importMod)
-              InstanceKind.Enum(enum_) => self._addLSPIdentForEnum(last.position, enum_, importMod)
-            }
-          }
-        }
-
-        return Ok(Either.Left(t))
-      }
-      else first => {
-        match self.findModuleByAlias(first.name) {
-          None => {
-            val (ty, importMod) = try self.findTypeByNameInScope(first.name) else {
-              return Err(TypeError(position: first.position, kind: TypeErrorKind.UnknownName(first.name, "type")))
-            }
-            val label = if path[1] |seg| {
-              return Err(TypeError(position: seg.position, kind: TypeErrorKind.UnknownName(seg.name, "type")))
-            } else {
-              last
-            }
-
-            match ty.kind {
-              TypeKind.Type(instanceKind) => {
-                match instanceKind {
-                  InstanceKind.Enum(enum_) => {
-                    if enum_.variants.findIndex(v => v.label.name == label.name) |(variant, variantIdx)| {
-                      if self.lspMode {
-                        self._addLSPIdentForEnum(first.position, enum_, importMod)
-                        self._addLSPIdentForEnumVariant(label.position, enum_, variant)
-                      }
-
-                      return Ok(Either.Right((enum_, variant, variantIdx)))
-                    }
+              InstanceKind.Enum(enum_) => {
+                if enum_.variants.findIndex(v => v.label.name == label.name) |(variant, variantIdx)| {
+                  if self.lspMode {
+                    self._addLSPIdentForEnum(first.position, enum_, importMod)
+                    self._addLSPIdentForEnumVariant(label.position, enum_, variant)
                   }
+
+                  return Ok((enum_, variant, variantIdx))
                 }
               }
             }
-
-            Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
           }
-          else => Err(TypeError(position: first.position, kind: TypeErrorKind.NotYetImplemented("module aliases")))
         }
+
+        Err(TypeError(position: label.position, kind: TypeErrorKind.UnknownName(label.name, "type")))
       }
+      else => Err(TypeError(position: first.position, kind: TypeErrorKind.NotYetImplemented("module aliases")))
     }
   }
 
@@ -4423,100 +4397,71 @@ pub type Typechecker {
       var caseVar: Variable? = None
       val typedMatchCaseKind = match case.kind {
         MatchCaseKind.Type(path, last, args) => {
-          val typeOrEnumVariant = try self._resolveTypeOrEnumVariant(path, last)
-          val typedCaseKind = match typeOrEnumVariant {
-            Either.Left(caseTy) => {
-              if seenTypes.contains(caseTy) return Err(TypeError(position: case.position, kind: TypeErrorKind.DuplicateMatchCase))
-              seenTypes.insert(caseTy)
+          val (enum_, variant, variantIdx) = try self.resolveEnumVariant(path, last)
+          if seenEnumVariants[enum_] |seenVariants| {
+            if seenVariants.contains(variantIdx) return Err(TypeError(position: case.position, kind: TypeErrorKind.DuplicateMatchCase))
+            seenVariants.insert(variantIdx)
+          } else {
+            seenEnumVariants[enum_] = #{variantIdx}
+          }
 
-              if args[0] |firstArg| {
-                return Err(TypeError(position: firstArg.position, kind: TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.NonEnum)))
-              }
+          val subjectTy = self._typeIsOption(subjectTy) ?: subjectTy
+          val template = Type(kind: TypeKind.Instance(InstanceKind.Enum(enum_), enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+          val extractedGenerics = subjectTy.extractGenerics(template)
+          val resolvedGenerics: Map<String, Type> = {}
+          for (name, ty) in extractedGenerics {
+            resolvedGenerics[name] = ty
+          }
 
-              val subjectTy = self._typeIsOption(subjectTy) ?: subjectTy
-              if !self._typeSatisfiesRequired(ty: caseTy, required: subjectTy) {
-                return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: Some(caseTy)), typedExpr.ty)))
-              }
+          val caseTy = template.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
+          if !self._typeSatisfiesRequired(ty: caseTy, required: subjectTy) {
+            return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: Some(caseTy)), typedExpr.ty)))
+          }
 
-              self.beginChildScope("matchcase_${caseTy.repr()}", ScopeKind.MatchCase)
-              if case.binding |binding| {
-                // TODO: generics in ty
-                caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: caseTy))
-              }
+          self.beginChildScope("matchcase_${enum_.label.name}_$variantIdx", ScopeKind.MatchCase)
 
-              TypedMatchCaseKind.Type(caseTy)
-            }
-            Either.Right(_p) => {
-              // TODO: destructuring in match cases
-              val (enum_, variant, variantIdx) = _p
-              if seenEnumVariants[enum_] |seenVariants| {
-                if seenVariants.contains(variantIdx) return Err(TypeError(position: case.position, kind: TypeErrorKind.DuplicateMatchCase))
-                seenVariants.insert(variantIdx)
-              } else {
-                seenEnumVariants[enum_] = #{variantIdx}
-              }
+          val variables: Variable[] = []
+          if args[0] |firstArg| {
+            match variant.kind {
+              EnumVariantKind.Constant => return Err(TypeError(position: firstArg.position, kind: TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.NonEnumContainer)))
+              EnumVariantKind.Container(fields) => {
+                if args[fields.length] |invalidArg| {
+                  val kind = TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.InvalidArity(expected: fields.length, given: args.length))
+                  return Err(TypeError(position: invalidArg.position, kind: kind))
+                }
 
-              val subjectTy = self._typeIsOption(subjectTy) ?: subjectTy
-              val template = Type(kind: TypeKind.Instance(InstanceKind.Enum(enum_), enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
-              val extractedGenerics = subjectTy.extractGenerics(template)
-              val resolvedGenerics: Map<String, Type> = {}
-              for (name, ty) in extractedGenerics {
-                resolvedGenerics[name] = ty
-              }
+                for field, idx in fields {
+                  val arg = try args[idx] else {
+                    val kind = TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.InvalidArity(expected: fields.length, given: args.length))
+                    return Err(TypeError(position: case.position, kind: kind))
+                  }
+                  val variableTy = if field.ty.containsGenerics() {
+                    field.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
+                  } else {
+                    field.ty
+                  }
+                  val variable = Variable(label: arg, scope: self.currentScope, mutable: false, ty: variableTy)
+                  try self.addVariableToScope(variable)
+                  variables.push(variable)
 
-              val caseTy = template.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
-              if !self._typeSatisfiesRequired(ty: caseTy, required: subjectTy) {
-                return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: Some(caseTy)), typedExpr.ty)))
-              }
-
-              self.beginChildScope("matchcase_${enum_.label.name}_$variantIdx", ScopeKind.MatchCase)
-
-              val variables: Variable[] = []
-              if args[0] |firstArg| {
-                match variant.kind {
-                  EnumVariantKind.Constant => return Err(TypeError(position: firstArg.position, kind: TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.NonEnumContainer)))
-                  EnumVariantKind.Container(fields) => {
-                    if args[fields.length] |invalidArg| {
-                      val kind = TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.InvalidArity(expected: fields.length, given: args.length))
-                      return Err(TypeError(position: invalidArg.position, kind: kind))
-                    }
-
-                    for field, idx in fields {
-                      val arg = try args[idx] else {
-                        val kind = TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.InvalidArity(expected: fields.length, given: args.length))
-                        return Err(TypeError(position: case.position, kind: kind))
-                      }
-                      val variableTy = if field.ty.containsGenerics() {
-                        field.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
-                      } else {
-                        field.ty
-                      }
-                      val variable = Variable(label: arg, scope: self.currentScope, mutable: false, ty: variableTy)
-                      try self.addVariableToScope(variable)
-                      variables.push(variable)
-
-                      if self.lspMode {
-                        val ident = IdentifierMeta(
-                          name: arg.name,
-                          kind: IdentifierKindMeta.Variable(mutable: false, typeRepr: variableTy.repr()),
-                          definitionPosition: Some((IdentifierMetaModule.Module(self.currentModule.name), arg.position)),
-                        )
-                        self._addLSPIdent(arg.position, ident)
-                      }
-                    }
+                  if self.lspMode {
+                    val ident = IdentifierMeta(
+                      name: arg.name,
+                      kind: IdentifierKindMeta.Variable(mutable: false, typeRepr: variableTy.repr()),
+                      definitionPosition: Some((IdentifierMetaModule.Module(self.currentModule.name), arg.position)),
+                    )
+                    self._addLSPIdent(arg.position, ident)
                   }
                 }
               }
-
-              if case.binding |binding| {
-                caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: caseTy))
-              }
-
-              TypedMatchCaseKind.EnumVariant(enum_, variant, variantIdx, variables)
             }
           }
 
-          typedCaseKind
+          if case.binding |binding| {
+            caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: caseTy))
+          }
+
+          TypedMatchCaseKind.EnumVariant(enum_, variant, variantIdx, variables)
         }
         MatchCaseKind.Literal(value) => {
           if seenLiteralCases.contains(value) return Err(TypeError(position: case.position, kind: TypeErrorKind.DuplicateMatchCase))

@@ -1423,6 +1423,7 @@ pub type Parser {
         }
         TokenKind.Ident(name) => {
           if name == "_" {
+            // todo: fully replace with `else`, after requiring commas between non-block cases
             self._advance() // consume '_' token
             MatchCaseKind.Else
           } else {
@@ -1430,7 +1431,13 @@ pub type Parser {
             var last = label
             val path: Label[] = []
             while self._peek() |nextToken| {
-              if nextToken.kind != TokenKind.Dot break
+              if nextToken.kind != TokenKind.Dot {
+                // todo: this business of "smartly" substituting "Ok"/"Err" is pretty clunky
+                if path.isEmpty() && !(last.name == "Ok" || last.name == "Err") {
+                  return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Dot], nextToken.kind)))
+                }
+                break
+              }
               self._advance() // consume '.' token
               val label = try self._expectNextLabel()
               path.push(last)

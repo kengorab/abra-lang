@@ -617,18 +617,6 @@ pub type Jsonifier {
 
           self.print("\"kind\": ")
           match case.kind {
-            TypedMatchCaseKind.Type(ty) => {
-              stdoutWriteln("{")
-              self.indentInc()
-
-              self.println("\"kind\": \"type\",")
-              self.print("\"type\": ")
-              self.printType(ty)
-              stdoutWriteln()
-
-              self.indentDec()
-              self.print("}")
-            }
             TypedMatchCaseKind.EnumVariant(enum_, _, variantIdx, destructuredVariables) => {
               stdoutWriteln("{")
               self.indentInc()

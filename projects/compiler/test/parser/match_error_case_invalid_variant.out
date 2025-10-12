@@ -1,0 +1,4 @@
+Error at %FILE_NAME%:3:7
+Unexpected token 'identifier', expected '.':
+  |    Int i => i + 1
+           ^

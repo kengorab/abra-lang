@@ -363,60 +363,8 @@
                 "caseKind": {
                   "kind": "type",
                   "path": [
-                    { "name": "Int", "position": [16, 3] }
-                  ],
-                  "arguments": [
-                  ]
-                },
-                "caseBinding": { "name": "i", "position": [16, 7] },
-                "body": [
-                  {
-                    "token": {
-                      "position": [16, 14],
-                      "kind": {
-                        "name": "Plus"
-                      }
-                    },
-                    "kind": {
-                      "name": "binary",
-                      "op": "BinaryOp.Add",
-                      "left": {
-                        "token": {
-                          "position": [16, 12],
-                          "kind": {
-                            "name": "Ident",
-                            "value": "i"
-                          }
-                        },
-                        "kind": {
-                          "name": "identifier",
-                          "ident": "i"
-                        }
-                      },
-                      "right": {
-                        "token": {
-                          "position": [16, 16],
-                          "kind": {
-                            "name": "Int",
-                            "value": 1
-                          }
-                        },
-                        "kind": {
-                          "name": "literal",
-                          "type": "int",
-                          "value": 1
-                        }
-                      }
-                    }
-                  }
-                ]
-              },
-              {
-                "caseKind": {
-                  "kind": "type",
-                  "path": [
-                    { "name": "Color", "position": [17, 3] },
-                    { "name": "Blue", "position": [17, 9] }
+                    { "name": "Color", "position": [16, 3] },
+                    { "name": "Blue", "position": [16, 9] }
                   ],
                   "arguments": [
                   ]
@@ -425,7 +373,7 @@
                 "body": [
                   {
                     "token": {
-                      "position": [17, 17],
+                      "position": [16, 17],
                       "kind": {
                         "name": "Int",
                         "value": 255
@@ -443,9 +391,9 @@
                 "caseKind": {
                   "kind": "type",
                   "path": [
-                    { "name": "colors", "position": [18, 3] },
-                    { "name": "Color", "position": [18, 10] },
-                    { "name": "Blue", "position": [18, 16] }
+                    { "name": "colors", "position": [17, 3] },
+                    { "name": "Color", "position": [17, 10] },
+                    { "name": "Blue", "position": [17, 16] }
                   ],
                   "arguments": [
                   ]
@@ -454,7 +402,7 @@
                 "body": [
                   {
                     "token": {
-                      "position": [18, 24],
+                      "position": [17, 24],
                       "kind": {
                         "name": "Int",
                         "value": 255
@@ -472,73 +420,20 @@
                 "caseKind": {
                   "kind": "type",
                   "path": [
-                    { "name": "Int", "position": [19, 3] }
+                    { "name": "Color", "position": [18, 3] },
+                    { "name": "Blue", "position": [18, 9] }
                   ],
                   "arguments": [
-                    { "name": "x", "position": [19, 7] }
-                  ]
-                },
-                "caseBinding": { "name": "i", "position": [19, 10] },
-                "body": [
-                  {
-                    "token": {
-                      "position": [19, 17],
-                      "kind": {
-                        "name": "Plus"
-                      }
-                    },
-                    "kind": {
-                      "name": "binary",
-                      "op": "BinaryOp.Add",
-                      "left": {
-                        "token": {
-                          "position": [19, 15],
-                          "kind": {
-                            "name": "Ident",
-                            "value": "i"
-                          }
-                        },
-                        "kind": {
-                          "name": "identifier",
-                          "ident": "i"
-                        }
-                      },
-                      "right": {
-                        "token": {
-                          "position": [19, 19],
-                          "kind": {
-                            "name": "Int",
-                            "value": 1
-                          }
-                        },
-                        "kind": {
-                          "name": "literal",
-                          "type": "int",
-                          "value": 1
-                        }
-                      }
-                    }
-                  }
-                ]
-              },
-              {
-                "caseKind": {
-                  "kind": "type",
-                  "path": [
-                    { "name": "Color", "position": [20, 3] },
-                    { "name": "Blue", "position": [20, 9] }
-                  ],
-                  "arguments": [
-                    { "name": "a", "position": [20, 14] },
-                    { "name": "b", "position": [20, 17] },
-                    { "name": "c", "position": [20, 20] }
+                    { "name": "a", "position": [18, 14] },
+                    { "name": "b", "position": [18, 17] },
+                    { "name": "c", "position": [18, 20] }
                   ]
                 },
                 "caseBinding": null,
                 "body": [
                   {
                     "token": {
-                      "position": [20, 26],
+                      "position": [18, 26],
                       "kind": {
                         "name": "Int",
                         "value": 255
@@ -560,7 +455,7 @@
                 "body": [
                   {
                     "token": {
-                      "position": [21, 8],
+                      "position": [19, 8],
                       "kind": {
                         "name": "Int",
                         "value": 0
@@ -578,11 +473,11 @@
                 "caseKind": {
                   "kind": "else"
                 },
-                "caseBinding": { "name": "f", "position": [22, 8] },
+                "caseBinding": { "name": "f", "position": [20, 8] },
                 "body": [
                   {
                     "token": {
-                      "position": [22, 15],
+                      "position": [20, 15],
                       "kind": {
                         "name": "Minus"
                       }
@@ -592,7 +487,7 @@
                       "op": "BinaryOp.Sub",
                       "left": {
                         "token": {
-                          "position": [22, 13],
+                          "position": [20, 13],
                           "kind": {
                             "name": "Ident",
                             "value": "f"
@@ -605,7 +500,7 @@
                       },
                       "right": {
                         "token": {
-                          "position": [22, 17],
+                          "position": [20, 17],
                           "kind": {
                             "name": "Int",
                             "value": 1
@@ -628,7 +523,7 @@
     },
     {
       "token": {
-        "position": [26, 1],
+        "position": [24, 1],
         "kind": {
           "name": "Match"
         }
@@ -637,7 +532,7 @@
         "name": "match",
         "expr": {
           "token": {
-            "position": [26, 10],
+            "position": [24, 10],
             "kind": {
               "name": "LParen"
             }
@@ -646,7 +541,7 @@
             "name": "invocation",
             "invokee": {
               "token": {
-                "position": [26, 7],
+                "position": [24, 7],
                 "kind": {
                   "name": "Ident",
                   "value": "foo"
@@ -667,17 +562,17 @@
               "kind": "type",
               "path": [
                 { "name": "Result", "position": [0, 0] },
-                { "name": "Ok", "position": [27, 3] }
+                { "name": "Ok", "position": [25, 3] }
               ],
               "arguments": [
-                { "name": "v", "position": [27, 6] }
+                { "name": "v", "position": [25, 6] }
               ]
             },
             "caseBinding": null,
             "body": [
               {
                 "token": {
-                  "position": [27, 12],
+                  "position": [25, 12],
                   "kind": {
                     "name": "Ident",
                     "value": "v"
@@ -695,17 +590,17 @@
               "kind": "type",
               "path": [
                 { "name": "Result", "position": [0, 0] },
-                { "name": "Err", "position": [28, 3] }
+                { "name": "Err", "position": [26, 3] }
               ],
               "arguments": [
-                { "name": "e", "position": [28, 7] }
+                { "name": "e", "position": [26, 7] }
               ]
             },
             "caseBinding": null,
             "body": [
               {
                 "token": {
-                  "position": [28, 13],
+                  "position": [26, 13],
                   "kind": {
                     "name": "Ident",
                     "value": "e"
