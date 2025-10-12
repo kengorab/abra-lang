@@ -1,1 +1,1 @@
-match foo { A 123 => 123 }
+match foo { A.B 123 => 123 }

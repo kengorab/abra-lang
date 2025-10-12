@@ -1610,7 +1610,7 @@ pub type Generator {
 
         self.emit(Instruction(op: Operation.If(IrType.Unit, condVal, ifBody, elseBody)))
       }
-      TypedAstNodeKind.Match => todo("TypedAstNodeKind.Match (${node.token.position})")
+      TypedAstNodeKind.Match(isStatement, subjectNode, cases) => self.genMatch(isStatement, subjectNode, cases, concreteGenerics, None)
       TypedAstNodeKind.While(condNode, condBinding, block, terminator) => {
         val optInnerTy = self.project.typeIsOption(condNode.ty)
 
@@ -2003,6 +2003,10 @@ pub type Generator {
       }
       TypedAssignmentMode.Accessor(head, middle, tail) => self.followAccessorPath(head, middle, tail, concreteGenerics, None, Some(res))
     }
+  }
+
+  func genMatch(self, isStatement: Bool, subjectNode: tc.TypedAstNode, cases: tc.TypedMatchCase[], concreteGenerics: Map<String, ConcreteType>, dst: String?): Value {
+    todo("genMatch")
   }
 
   func genExpression(self, node: tc.TypedAstNode, concreteGenerics: Map<String, ConcreteType>, dst: String? = None): Value {
