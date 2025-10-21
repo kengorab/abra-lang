@@ -2,7 +2,7 @@ import "process" as process
 import Position from "./lexer"
 import Label, LiteralAstNode, AssignOp, UnaryOp, BinaryOp, BindingPattern, IndexingMode from "./parser"
 // match arms don't support import-based namespacing for enums yet, so enums used in matches are imported by name
-import TypedAstNodeKind, TypedInvokee, FunctionKind, TypeKind, ScopeKind, InstanceKind, EnumVariantKind, VariableAlias, AccessorPathSegment, TypedAssignmentMode, TypedIndexingNode, TypedForIterKind from "./typechecker"
+import TypedAstNodeKind, TypedInvokee, FunctionKind, TypeKind, ScopeKind, InstanceKind, EnumVariantKind, VariableAlias, AccessorPathSegment, TypedAssignmentMode, TypedIndexingNode, TypedForIterKind, TypedMatchCaseKind from "./typechecker"
 import "./typechecker" as tc
 
 // TODO: move to stdlib
@@ -1610,7 +1610,7 @@ pub type Generator {
 
         self.emit(Instruction(op: Operation.If(IrType.Unit, condVal, ifBody, elseBody)))
       }
-      TypedAstNodeKind.Match(isStatement, subjectNode, cases) => self.genMatch(isStatement, subjectNode, cases, concreteGenerics, None)
+      TypedAstNodeKind.Match(isStatement, subjectNode, cases) => self.genMatch(node, isStatement, subjectNode, cases, concreteGenerics, None)
       TypedAstNodeKind.While(condNode, condBinding, block, terminator) => {
         val optInnerTy = self.project.typeIsOption(condNode.ty)
 
@@ -2005,8 +2005,192 @@ pub type Generator {
     }
   }
 
-  func genMatch(self, isStatement: Bool, subjectNode: tc.TypedAstNode, cases: tc.TypedMatchCase[], concreteGenerics: Map<String, ConcreteType>, dst: String?): Value {
-    todo("genMatch")
+  func genMatch(self, node: tc.TypedAstNode, isStatement: Bool, subjectNode: tc.TypedAstNode, cases: tc.TypedMatchCase[], concreteGenerics: Map<String, ConcreteType>, dst: String?): Value {
+    val resIrType = if !isStatement {
+      val resultConcreteType = self.getConcreteTypeFromType(node.ty, concreteGenerics)
+      self.getIrTypeForConcreteType(resultConcreteType)
+    } else {
+      IrType.Unit
+    }
+
+    // The subjVal value can potentially be updated as the match's cases are built out, depending on the context.
+    var subjVal = self.genExpression(subjectNode, concreteGenerics)
+    val subjValOrig = subjVal
+    val subjectConcreteType = self.getConcreteTypeFromType(subjectNode.ty, concreteGenerics)
+    val subjectOptInnerType = if self.project.typeIsOption(subjectNode.ty) |innerType| {
+      val innerConcreteType = self.getConcreteTypeFromType(innerType, concreteGenerics)
+      val innerIrType = self.getIrTypeForConcreteType(innerConcreteType)
+      Some((innerConcreteType, innerIrType))
+    } else {
+      None
+    }
+
+    val blocks: (() => Operation, () => Block, tc.Variable?)[] = []
+    var noneCase: (Operation, () => Block, ConcreteType, IrType, tc.Variable?)? = None
+    var wildcardBlock: (() => Block)? = None
+    for case, idx in cases {
+      // Defer evaluation of the case block until later, when any potential optional-unwrapping has occurred. This closes over
+      // the `subjVal` value, so it can be overwritten by the logic below such that it will hold the correct value based on
+      // the context (see more down below).
+      val caseBlockFn = () => {
+        self.withinBlock("case_$idx", !!case.terminator, () => {
+          if case.binding |variable| {
+            var variableSubject = subjVal
+            var concreteTy = subjectConcreteType
+            match case.kind {
+              TypedMatchCaseKind.Literal => {
+                // If the match case is a literal, then the only way control flow could enter this case is if the value was
+                // non-None; therefore, any potential binding's type should be the Option's inner type
+                if subjectOptInnerType |(innerConcreteType, _)| {
+                  concreteTy = innerConcreteType
+                }
+              }
+              TypedMatchCaseKind.Else => {
+                // An else-case is a catchall, and it needs to be flexible enough to handle multiple preconditions. If there is a None case
+                // present among the match cases (which only passes typechecking if the subject is an Option type), then we know that the
+                // subjVal will point to the unwrapped value by the time control flow reaches this case. If there is not a None case, then
+                // the binding must be created using the original subject value (which will not have been potentially overwritten).
+                if noneCase {
+                  val (innerConcreteType, _) = try subjectOptInnerType else unreachable("None case present with non-Option subject type")
+                  concreteTy = innerConcreteType
+                } else if subjectOptInnerType {
+                  variableSubject = subjValOrig
+                }
+              }
+            }
+
+            val vars = { (variable.label.name): variable }
+            self.genBindingPattern(BindingPattern.Variable(variable.label), vars, Some((variableSubject, concreteTy)), concreteGenerics)
+          }
+
+          for node, idx in case.body {
+            if !isStatement && idx == case.body.length - 1 {
+              return Some(self.genExpression(node, concreteGenerics))
+            } else {
+              self.genStatement(node, concreteGenerics)
+            }
+          }
+
+          None
+        })
+      }
+
+      val caseCond = match case.kind {
+        TypedMatchCaseKind.None_ => {
+          val (innerConcreteType, innerIrType) = try subjectOptInnerType else unreachable("there shouldn't be a None case if the subject type is not Option")
+          val op = Operation.OptionIsNone(innerIrType, subjVal)
+          noneCase = Some((op, caseBlockFn, innerConcreteType, innerIrType, case.binding))
+          continue
+        }
+        TypedMatchCaseKind.Literal(lit) => {
+          () => {
+            val litVal = self.genLiteral(node.token.position, lit, None)
+            Operation.Eq(negate: false, left: subjVal, right: litVal)
+          }
+        }
+        TypedMatchCaseKind.Else => {
+          wildcardBlock = Some(caseBlockFn)
+          () => Operation.ConstBool(true)
+        }
+        else => todo("other match case types")
+      }
+
+      blocks.push((caseCond, caseBlockFn, case.binding))
+    }
+
+    // Build the root if-operation, optimizing out None-checks and unwrapping. Subsequent cases will be nested within this
+    // operation's else-block.
+    var elseBlock = Block(name: "case_1", body: [], result: None, terminates: false)
+    val rootOp = if noneCase |(condOp, blockFn, innerConcreteType, innerIrType, binding)| {
+      // Shift the None case to be first, if there is one. This allows for an optimization - if the subject value is None
+      // then control flow enters the block, but if it's non-None then we can preemptively unwrap the subject value for
+      // use in later case evaluation. Here we update the `subjVal` variable, which is captured by the `caseBlockFn` values
+      // above, so when subsequent `blockFn`s are evaluated, they'll point to the unwrapped value.
+
+      // Note: we call the `blockFn` _before_ overwriting `subjVal` to be the unwrapped value, to ensure that the thunk sees
+      // the original value (we only want the unwrapped value to be seen by future blocks).
+      val block = blockFn()
+
+      val prevBlock = self.curCtx.block
+      self.curCtx.block = ("subj_is_Some", elseBlock.body)
+      subjVal = self.ssaValue(innerIrType, Operation.OptionUnwrap(innerIrType, subjVal), None)
+      self.curCtx.block = prevBlock
+
+      val cond = self.ssaValue(IrType.Bool, condOp, None)
+      Operation.If(resIrType, cond, block, elseBlock)
+    } else if blocks[0] |(condFn, blockFn, binding)| {
+      // If there is no None case, and the subject's type is an Option type, then we can still perform the above optimization.
+      // If the subject is None then we don't need to do any of the other case evaluations and we can simply evaluate the else-case;
+      // if there is no else-case, then we do nothing if we're in a match _statement_ or halt if we're in an expression (since this
+      // would represent a non-exhaustive match and should have been caught by the typechecker).
+      // If the value is non-None, then we can unwrap the value and overwrite the captured `subjVal` value in the block thunks. This
+      // value will then be used when evaluating all future cases.
+      if subjectOptInnerType |(innerConcreteType, innerIrType)| {
+        val isNoneCond = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerIrType, subjVal), None)
+        val isNoneBlock = if wildcardBlock |blockFn| {
+          blockFn()
+        } else if resIrType == IrType.Unit {
+          Block(name: "no_op", body: [], result: None, terminates: false)
+        } else {
+          Block(name: "unreachable", body: [Instruction(op: Operation.Unreachable("non-exhaustive match cases"))], result: None, terminates: true)
+        }
+        val isSomeBlock = self.withinBlock("subj_is_Some", false, () => {
+          subjVal = self.ssaValue(innerIrType, Operation.OptionUnwrap(innerIrType, subjVal), None)
+
+          val cond = self.ssaValue(IrType.Bool, condFn(), None)
+          // Note: we call `blockFn` _after_ overwriting `subjVal`, as we want the thunk to see the unwrapped `subjVal` value.
+          val block = blockFn()
+
+          val innerOp = Operation.If(resIrType, cond, block, elseBlock)
+          if resIrType == IrType.Unit {
+            self.emit(Instruction(op: innerOp))
+            None
+          } else {
+            Some(self.ssaValue(resIrType, innerOp, None))
+          }
+        })
+
+        Operation.If(resIrType, isNoneCond, isNoneBlock, isSomeBlock)
+      } else {
+        val cond = self.ssaValue(IrType.Bool, condFn(), None)
+        val block = blockFn()
+        Operation.If(resIrType, cond, block, elseBlock)
+      }
+    } else {
+      return Value.Unit
+    }
+
+    val result = if resIrType == IrType.Unit {
+      self.emit(Instruction(op: rootOp))
+      None
+    } else {
+      Some(self.ssaValue(resIrType, rootOp, None))
+    }
+
+    // Iterate through all remaining blocks to generate an if-operation for each case. Each operation takes place _within_ the body
+    // of the previous if-operation's else-block.
+    val prevBlock = self.curCtx.block
+    for (condFn, blockFn, binding), idx in blocks {
+      self.curCtx.block = (elseBlock.name, elseBlock.body)
+      val elseBlockNext = Block(name: "case_${idx + 2}", body: [], result: None, terminates: false)
+      val cond = self.ssaValue(IrType.Bool, condFn(), None)
+      val ifOp = Operation.If(resIrType, cond, blockFn(), elseBlockNext)
+      if resIrType == IrType.Unit {
+        self.emit(Instruction(op: ifOp))
+      } else {
+        elseBlock.result = Some(self.ssaValue(resIrType, ifOp, None))
+      }
+
+      elseBlock = elseBlockNext
+    }
+
+    if resIrType != IrType.Unit {
+      elseBlock.body = [Instruction(op: Operation.Unreachable("non-exhaustive pattern matching"))]
+      elseBlock.terminates = true
+    }
+    self.curCtx.block = prevBlock
+
+    result ?: Value.Unit
   }
 
   func genExpression(self, node: tc.TypedAstNode, concreteGenerics: Map<String, ConcreteType>, dst: String? = None): Value {
@@ -2048,7 +2232,7 @@ pub type Generator {
       TypedAstNodeKind.Indexing(node) => self.genIndexing(pos, concreteGenerics, dst, node)
       TypedAstNodeKind.Lambda(fn, typeHint) => self.genLambda(concreteGenerics, fn, typeHint, dst)
       TypedAstNodeKind.If(isStatement, condNode, condBinding, ifBlock, ifBlockTerminator, elseBlock, elseBlockTerminator) => {
-        if isStatement unreachable("unexpected if statement")
+        if isStatement unreachable("unexpected if statement (expected expression)")
 
         val optInnerTy = self.project.typeIsOption(condNode.ty)
         val condBindingVal = self.genExpression(condNode, concreteGenerics)
@@ -2107,6 +2291,11 @@ pub type Generator {
         val resConcreteType = self.getConcreteTypeFromType(node.ty, concreteGenerics)
         val resIrTy = self.getIrTypeForConcreteType(resConcreteType)
         self.ssaValue(resIrTy, Operation.If(resIrTy, condVal, ifBody, elseBody), dst)
+      }
+      TypedAstNodeKind.Match(isStatement, subjectNode, cases) => {
+        if isStatement unreachable("unexpected match statement (expected expression)")
+
+        self.genMatch(node, false, subjectNode, cases, concreteGenerics, dst)
       }
       TypedAstNodeKind.Try(expr, elseClause) => self.genTry(concreteGenerics, expr, elseClause, dst)
       else => todo("Other expressions (${node.token})")
