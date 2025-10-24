@@ -594,7 +594,7 @@ pub type VM {
         }
       }
       Operation.StructuredToString(prefix, _, fields) => {
-        val strIrTy = IrType.Composite(self.ir.knowns.stringType().name)
+        val strIrTy = IrType.Composite(self.ir.knowns.stringType().name, isEnum: false)
         val fieldReprs: String[] = []
         for (fieldIrTy, fieldName, fieldStr), idx in fields {
           val fieldStrVal = self.irValueToVmValue(fieldStr)
@@ -613,7 +613,7 @@ pub type VM {
           Builtin.Malloc(count, itemTy) => {
             val countVal = self.irValueToVmValue(count).expectInt("Builtin.Malloc count")
             val v = match ret {
-              IrType.Composite(typeName) => {
+              IrType.Composite(typeName, _) => {
                 VmValue.Instance(Instance(name: typeName, fields: Array.fill(countVal>>3, VmValue.Undefined)))
               }
               else => {
@@ -656,7 +656,7 @@ pub type VM {
                 val int = v.expectInt("Builtin.Store byte")
                 Pointer.reinterpret<Byte, Byte>(pointer).storeAt(int.asByte(), offsetVal)
               }
-              IrType.Composite(irTypeName) => {
+              IrType.Composite(irTypeName, _) => {
                 val ptr = Pointer.addressOf(v)
                 Pointer.reinterpret<Byte, Int>(pointer).storeAt(ptr.address(), offsetVal)
               }

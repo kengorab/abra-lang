@@ -1,68 +1,101 @@
-func f1() {
-  val x = 123
-  val s = match x {
-    1 => "a"
-    2 => "b"
-    123 => "c"
-    else => "?"
-  }
-  println(s)
-}
-f1()
+// func f1() {
+//   val x = 123
+//   val s = match x {
+//     1 => "a"
+//     2 => "b"
+//     123 => "c"
+//     else => "?"
+//   }
+//   println(s)
+// }
+// f1()
 
-func f2() {
-  val x = 123
-  match x {
-    1 => println("a")
-    2 => println("b")
-    123 => println("c")
-    else => println("?")
-  }
-}
-f2()
+// func f2() {
+//   val x = 123
+//   match x {
+//     1 => println("a")
+//     2 => println("b")
+//     123 => println("c")
+//     else => println("?")
+//   }
+// }
+// f2()
 
-func f3(idx: Int) {
-  val arr = [1, 2, 3]
-  val s2 = match arr[idx] {
-    1 _1 => "a" + _1
-    2 _2 => "b" + _2
-    123 _123 => "c" + _123
-    None _none => "none" + _none
-    else _else => "?" + _else
-  }
-  println(s2)
-}
-f3(0) // a
-f3(1) // b
-f3(2) // ?
-f3(3) // none
+// func f3(idx: Int) {
+//   val arr = [1, 2, 3]
+//   val s2 = match arr[idx] {
+//     1 _1 => "a" + _1
+//     2 _2 => "b" + _2
+//     123 _123 => "c" + _123
+//     None _none => "none" + _none
+//     else _else => "?" + _else
+//   }
+//   println(s2)
+// }
+// f3(0) // a
+// f3(1) // b
+// f3(2) // ?
+// f3(3) // none
 
-func f4(idx: Int) {
-  val arr = [1, 2, 3]
-  val s2 = match arr[idx] {
-    1 _1 => "a" + _1
-    2 _2 => "b" + _2
-    123 _123 => "c" + _123
-    else _else => "?" + _else
-  }
-  println(s2)
-}
-f4(0) // a
-f4(1) // b
-f4(2) // ?
-f4(3) // ?
+// func f4(idx: Int) {
+//   val arr = [1, 2, 3]
+//   val s2 = match arr[idx] {
+//     1 _1 => "a" + _1
+//     2 _2 => "b" + _2
+//     123 _123 => "c" + _123
+//     else _else => "?" + _else
+//   }
+//   println(s2)
+// }
+// f4(0) // a
+// f4(1) // b
+// f4(2) // ?
+// f4(3) // ?
 
-func f5(idx: Int) {
-  val arr = [1, 2, 3]
-  match arr[idx] {
-    1 _1 => println("a" + _1)
-    2 _2 => println("b" + _2)
-    123 _123 => println("c" + _123)
-    // else _else => println("?" + _else)
-  }
-}
-f5(0) // a
-f5(1) // b
-f5(2) // ?
-f5(3) // ?
+// func f5(idx: Int) {
+//   val arr = [1, 2, 3]
+//   match arr[idx] {
+//     1 _1 => println("a" + _1)
+//     2 _2 => println("b" + _2)
+//     123 _123 => println("c" + _123)
+//     // else _else => println("?" + _else)
+//   }
+// }
+// f5(0) // a
+// f5(1) // b
+// f5(2) // ?
+// f5(3) // ?
 
+// enum Color {
+//   Red
+//   Blue
+//   Green
+//   RGB(r: Int, g: Int, b: Int)
+// }
+
+// func f6() {
+//   val colors = [Color.Red, Color.Blue, Color.Green, Color.RGB(r: 1, g: 2, b: 3)]
+//   /// Expect: red
+//   /// Expect: blue
+//   /// Expect: green
+//   /// Expect: rgb(1, 2, 3)
+//   for color in colors {
+//     match color {
+//       Color.Red => println("red")
+//       Color.Blue => println("blue")
+//       Color.Green => println("green")
+//       Color.RGB(r, g, b) => println("rgb($r, $g, $b)")
+//     }
+//   }
+// }
+// f6()
+
+val arr = [1, 2, 3, 4]
+
+/// Expect: 18
+match arr[1] {
+  2 v => println(16 + v)
+  1 => println(15)
+  None => println(-4)
+  else => println(100)
+}

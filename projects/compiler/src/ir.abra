@@ -802,7 +802,7 @@ pub enum IrType {
   F64
   Bool
   Byte
-  Composite(name: String)
+  Composite(name: String, isEnum: Bool)
   Ptr
 
   pub func render(self, sb: StringBuilder) {
@@ -812,7 +812,7 @@ pub enum IrType {
       IrType.F64 => sb.write("f64")
       IrType.Bool => sb.write("bool")
       IrType.Byte => sb.write("byte")
-      IrType.Composite(name) => sb.write(name)
+      IrType.Composite(name, _) => sb.write(name)
       IrType.Ptr => sb.write("ptr")
     }
   }
@@ -1261,7 +1261,7 @@ pub type Generator {
   }
 
   func genToStringMethodBody(self, selfVal: Value, concreteType: ConcreteType) {
-    val strTy = IrType.Composite(self.knowns.stringType().name)
+    val strTy = IrType.Composite(name: self.knowns.stringType().name, isEnum: false)
 
     val newConcreteGenerics = self.extractConcreteGenericsFromConcreteType(concreteType)
     match concreteType.instanceKind {
@@ -2017,6 +2017,7 @@ pub type Generator {
     var subjVal = self.genExpression(subjectNode, concreteGenerics)
     val subjValOrig = subjVal
     val subjectConcreteType = self.getConcreteTypeFromType(subjectNode.ty, concreteGenerics)
+    val subjectIrType = self.getIrTypeForConcreteType(subjectConcreteType)
     val subjectOptInnerType = if self.project.typeIsOption(subjectNode.ty) |innerType| {
       val innerConcreteType = self.getConcreteTypeFromType(innerType, concreteGenerics)
       val innerIrType = self.getIrTypeForConcreteType(innerConcreteType)
@@ -2025,8 +2026,9 @@ pub type Generator {
       None
     }
 
-    val blocks: (() => Operation, () => Block, tc.Variable?)[] = []
-    var noneCase: (Operation, () => Block, ConcreteType, IrType, tc.Variable?)? = None
+    val blocks: (() => Value, () => Block, tc.Variable?)[] = []
+    var noneCase: (Value, () => Block, ConcreteType, IrType, tc.Variable?)? = None
+    var enumVariantIdxValue: Value? = None
     var wildcardBlock: (() => Block)? = None
     for case, idx in cases {
       // Defer evaluation of the case block until later, when any potential optional-unwrapping has occurred. This closes over
@@ -2034,13 +2036,35 @@ pub type Generator {
       // the context (see more down below).
       val caseBlockFn = () => {
         self.withinBlock("case_$idx", !!case.terminator, () => {
+          match case.kind {
+            TypedMatchCaseKind.EnumVariant(enum_, variant, variantIdx, destructuredVariables) => {
+              val fields = match variant.kind { EnumVariantKind.Container(fields) => fields, else => [] }
+              val vars = Map.fromPairs(destructuredVariables.map(v => (v.label.name, v)))
+
+              for field, idx in fields {
+                val variable = try destructuredVariables[idx] else unreachable("fields.length != destructuredVariables.length")
+                val fieldConcreteType = self.getConcreteTypeFromType(field.ty, concreteGenerics)
+                val fieldIrType = self.getIrTypeForConcreteType(fieldConcreteType)
+
+                val offset = (idx + 1) * ALIGNMENT
+                val fieldSubject = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: subjVal, name: field.name.name, offset: offset), None)
+                self.genBindingPattern(BindingPattern.Variable(variable.label), vars, Some((fieldSubject, fieldConcreteType)), concreteGenerics)
+              }
+            }
+          }
+
           if case.binding |variable| {
             var variableSubject = subjVal
             var concreteTy = subjectConcreteType
             match case.kind {
+              // If the match case is a literal or enum variant, then the only way control flow could enter this case is if
+              // the value was non-None; therefore, any potential binding's type should be the Option's inner type
               TypedMatchCaseKind.Literal => {
-                // If the match case is a literal, then the only way control flow could enter this case is if the value was
-                // non-None; therefore, any potential binding's type should be the Option's inner type
+                if subjectOptInnerType |(innerConcreteType, _)| {
+                  concreteTy = innerConcreteType
+                }
+              }
+              TypedMatchCaseKind.EnumVariant => {
                 if subjectOptInnerType |(innerConcreteType, _)| {
                   concreteTy = innerConcreteType
                 }
@@ -2064,7 +2088,7 @@ pub type Generator {
           }
 
           for node, idx in case.body {
-            if !isStatement && idx == case.body.length - 1 {
+            if !isStatement && idx == case.body.length - 1 && !case.terminator {
               return Some(self.genExpression(node, concreteGenerics))
             } else {
               self.genStatement(node, concreteGenerics)
@@ -2078,21 +2102,39 @@ pub type Generator {
       val caseCond = match case.kind {
         TypedMatchCaseKind.None_ => {
           val (innerConcreteType, innerIrType) = try subjectOptInnerType else unreachable("there shouldn't be a None case if the subject type is not Option")
-          val op = Operation.OptionIsNone(innerIrType, subjVal)
-          noneCase = Some((op, caseBlockFn, innerConcreteType, innerIrType, case.binding))
+          val cond = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerIrType, subjVal), None)
+          noneCase = Some((cond, caseBlockFn, innerConcreteType, innerIrType, case.binding))
           continue
         }
         TypedMatchCaseKind.Literal(lit) => {
           () => {
             val litVal = self.genLiteral(node.token.position, lit, None)
-            Operation.Eq(negate: false, left: subjVal, right: litVal)
+
+            // If the subject is an Option type, it's safe to use the inner type as the concrete type for the purpose of doing the
+            // case equality check. This is because by the time a literal case is tested for equality, None values will already be
+            // caught by the None case (if present) or the wildcard case, and the subject will become the unwrapped Option value.
+            val concreteType = if subjectOptInnerType |(subjectInnerConcreteType, _)| {
+              subjectInnerConcreteType
+            } else {
+              subjectConcreteType
+            }
+            self.genEqLogic(concreteType, subjVal, litVal, false, None)
+          }
+        }
+        TypedMatchCaseKind.EnumVariant(enum_, variant, variantIdx, destructuredVariables) => {
+          () => {
+            val variantIdxVal = try enumVariantIdxValue else {
+              val idxValue = self.ssaValue(IrType.I64, Operation.GetEnumVariantIdx(subjectIrType, subjVal, enum_.variants.length), None)
+              enumVariantIdxValue = Some(idxValue)
+              idxValue
+            }
+            self.ssaValue(IrType.Bool, Operation.Eq(negate: false, left: variantIdxVal, right: Value.Const(Const.Int(variantIdx))), None)
           }
         }
         TypedMatchCaseKind.Else => {
           wildcardBlock = Some(caseBlockFn)
-          () => Operation.ConstBool(true)
+          () => Value.Const(Const.Bool(true))
         }
-        else => todo("other match case types")
       }
 
       blocks.push((caseCond, caseBlockFn, case.binding))
@@ -2101,7 +2143,7 @@ pub type Generator {
     // Build the root if-operation, optimizing out None-checks and unwrapping. Subsequent cases will be nested within this
     // operation's else-block.
     var elseBlock = Block(name: "case_1", body: [], result: None, terminates: false)
-    val rootOp = if noneCase |(condOp, blockFn, innerConcreteType, innerIrType, binding)| {
+    val rootOp = if noneCase |(cond, blockFn, innerConcreteType, innerIrType, binding)| {
       // Shift the None case to be first, if there is one. This allows for an optimization - if the subject value is None
       // then control flow enters the block, but if it's non-None then we can preemptively unwrap the subject value for
       // use in later case evaluation. Here we update the `subjVal` variable, which is captured by the `caseBlockFn` values
@@ -2116,7 +2158,6 @@ pub type Generator {
       subjVal = self.ssaValue(innerIrType, Operation.OptionUnwrap(innerIrType, subjVal), None)
       self.curCtx.block = prevBlock
 
-      val cond = self.ssaValue(IrType.Bool, condOp, None)
       Operation.If(resIrType, cond, block, elseBlock)
     } else if blocks[0] |(condFn, blockFn, binding)| {
       // If there is no None case, and the subject's type is an Option type, then we can still perform the above optimization.
@@ -2137,11 +2178,8 @@ pub type Generator {
         val isSomeBlock = self.withinBlock("subj_is_Some", false, () => {
           subjVal = self.ssaValue(innerIrType, Operation.OptionUnwrap(innerIrType, subjVal), None)
 
-          val cond = self.ssaValue(IrType.Bool, condFn(), None)
           // Note: we call `blockFn` _after_ overwriting `subjVal`, as we want the thunk to see the unwrapped `subjVal` value.
-          val block = blockFn()
-
-          val innerOp = Operation.If(resIrType, cond, block, elseBlock)
+          val innerOp = Operation.If(resIrType, condFn(), blockFn(), elseBlock)
           if resIrType == IrType.Unit {
             self.emit(Instruction(op: innerOp))
             None
@@ -2152,9 +2190,7 @@ pub type Generator {
 
         Operation.If(resIrType, isNoneCond, isNoneBlock, isSomeBlock)
       } else {
-        val cond = self.ssaValue(IrType.Bool, condFn(), None)
-        val block = blockFn()
-        Operation.If(resIrType, cond, block, elseBlock)
+        Operation.If(resIrType, condFn(), blockFn(), elseBlock)
       }
     } else {
       return Value.Unit
@@ -2173,8 +2209,7 @@ pub type Generator {
     for (condFn, blockFn, binding), idx in blocks {
       self.curCtx.block = (elseBlock.name, elseBlock.body)
       val elseBlockNext = Block(name: "case_${idx + 2}", body: [], result: None, terminates: false)
-      val cond = self.ssaValue(IrType.Bool, condFn(), None)
-      val ifOp = Operation.If(resIrType, cond, blockFn(), elseBlockNext)
+      val ifOp = Operation.If(resIrType, condFn(), blockFn(), elseBlockNext)
       if resIrType == IrType.Unit {
         self.emit(Instruction(op: ifOp))
       } else {
@@ -2313,7 +2348,7 @@ pub type Generator {
   }
 
   func genStringInterpolation(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, exprs: tc.TypedAstNode[], dst: String?): Value {
-    val strIrTy = IrType.Composite(self.knowns.stringType().name)
+    val strIrTy = IrType.Composite(name: self.knowns.stringType().name, isEnum: false)
 
     var allComptime = true
     val comptimeStrings: String[] = []
@@ -2415,7 +2450,7 @@ pub type Generator {
         val lval = self.genExpression(left, concreteGenerics)
         val rval = self.genExpression(right, concreteGenerics)
 
-        val strTy = IrType.Composite(self.knowns.stringType().name)
+        val strTy = IrType.Composite(name: self.knowns.stringType().name, isEnum: false)
         val lvalTy = self.getValueTy(lval)
         val rvalTy = self.getValueTy(rval)
         if lvalTy == strTy || rvalTy == strTy {
@@ -2964,7 +2999,7 @@ pub type Generator {
               val arg = self.intrinsicArgs1("u64_to_string", args)
               val u64Val = self.genExpression(arg, innerConcreteGenerics, dst)
 
-              val strTy = IrType.Composite(self.knowns.stringType().name)
+              val strTy = IrType.Composite(name: self.knowns.stringType().name, isEnum: false)
               self.ssaValue(strTy, Operation.Builtin(ret: strTy, builtin: Builtin.U64ToString(u64Val)), dst)
             }
             "uninitialized" => {
@@ -3745,7 +3780,7 @@ pub type Generator {
 
   func genToStringLogicForStructuredData(self, prefix: String, data: (String, ConcreteType, Value)[]): Value {
     val strTy = self.knowns.stringType()
-    val strIrType = IrType.Composite(strTy.name)
+    val strIrType = IrType.Composite(name: strTy.name, isEnum: false)
 
     val prefixStr = Value.Const(Const.String(prefix))
     var knownConstLen = prefix.length + 2 + (data.length - 1) * 2 // account for '(' and ')', as well as ',' and ' ' between items. NB: does not include NULL
@@ -3808,7 +3843,7 @@ pub type Generator {
         Const.Bool(value) => (Operation.ConstBool(value), IrType.Bool)
         Const.Char(value) => (Operation.ConstChar(value), IrType.I64)
         Const.String(value) => {
-          val strTy = IrType.Composite(self.knowns.stringType().name)
+          val strTy = IrType.Composite(name: self.knowns.stringType().name, isEnum: false)
           (Operation.ConstString(value), strTy)
         }
       }
@@ -3826,7 +3861,7 @@ pub type Generator {
   }
 
   func genCallToStringMethod(self, value: Value, concreteType: ConcreteType, dst: String? = None): Value {
-    val strTy = IrType.Composite(self.knowns.stringType().name)
+    val strTy = IrType.Composite(name: self.knowns.stringType().name, isEnum: false)
 
     val concreteGenerics = self.extractConcreteGenericsFromConcreteType(concreteType)
     val toStringFn = self.getMethodByName(concreteType.instanceKind, "toString", staticMethod: false)
@@ -4086,11 +4121,11 @@ pub type Generator {
         }
 
         val t = self.getOrAddCompositeType(ty)
-        IrType.Composite(name: t.name)
+        IrType.Composite(name: t.name, isEnum: false)
       }
       InstanceKind.Enum => {
         val t = self.getOrAddCompositeType(ty)
-        IrType.Composite(name: t.name)
+        IrType.Composite(name: t.name, isEnum: true)
       }
     }
   }
@@ -4172,7 +4207,7 @@ pub type Generator {
         Const.Float => IrType.F64
         Const.Bool => IrType.Bool
         Const.Char => IrType.I64
-        Const.String => IrType.Composite(name: self.knowns.stringType().name)
+        Const.String => IrType.Composite(name: self.knowns.stringType().name, isEnum: false)
       }
       Value.Ident(ident) => ident.ty
       Value.Global(global) => global.ty

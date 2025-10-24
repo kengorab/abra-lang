@@ -489,7 +489,7 @@ pub type Compiler {
         self.sb.writeln(";")
       }
       Operation.StructuredToString(prefix, lenVal, fields) => {
-        val strIrTy = IrType.Composite(self.ir.knowns.stringType().name)
+        val strIrTy = IrType.Composite(self.ir.knowns.stringType().name, isEnum: false)
         val strTemplateLiteralParts = ["`$prefix("]
 
         for (fieldIrType, fieldName, fieldStrValue), idx in fields {

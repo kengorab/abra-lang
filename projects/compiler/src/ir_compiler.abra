@@ -799,18 +799,34 @@ pub type Compiler {
         try self.currentFn.block.buildPhi(phiCases, dst) else |e| unreachable(e)
       }
       Operation.OptionNone(innerTy) => {
-        if innerTy == IrType.F64 {
-          // A None instance of type `Float?` is represented as a IEEE 754 Quiet NaN, with the lsb also set (to
-          // distinguish it from an actual NaN, in which the lsb is unset):
-          // 0b0_11111111111_1100000000000000000000000000000000000000000000000001
-          //   S EEEEEEEEEEE MMMM ...                                    ... MMMM
-          // (All exp bits + msb of mantissa set = Quiet NaN). 2nd msb of mantissa is set to avoid conflict with
-          // Intel's QNaN Floating-Point Indefinite value.
-          self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0x7ffc000000000001), dst)
-        } else if innerTy == IrType.Bool {
-          self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(2), dst)
-        } else {
-          self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+        match innerTy {
+          IrType.F64 => {
+            // A None instance of type `Float?` is represented as a IEEE 754 Quiet NaN, with the lsb also set (to
+            // distinguish it from an actual NaN, in which the lsb is unset):
+            // 0b0_11111111111_1100000000000000000000000000000000000000000000000001
+            //   S EEEEEEEEEEE MMMM ...                                    ... MMMM
+            // (All exp bits + msb of mantissa set = Quiet NaN). 2nd msb of mantissa is set to avoid conflict with
+            // Intel's QNaN Floating-Point Indefinite value.
+            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0x7ffc000000000001), dst)
+          }
+          IrType.Bool => {
+            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(2), dst)
+          }
+          IrType.Composite(_, isEnum) => {
+            if isEnum {
+              // Enum values can either be a 64 bit integer or a pointer to a chunk of memory containing field values.
+              // A None value of `T?`, where T is an enum, must not be 0 because then it would be indistinguishable
+              // from a Some value of the first variant (which, for a Constant variant, would just be the literal 0).
+              // So instead, a None value here is represented as U64_MAX value, since it's near impossible that there
+              // will ever be an enum which has that many variants.
+              self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0xffffffffffffffff), dst)
+            } else {
+              self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+            }
+          }
+          else => {
+            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+          }
         }
       }
       Operation.OptionSome(innerTy, value) => {
@@ -826,13 +842,25 @@ pub type Compiler {
       }
       Operation.OptionIsNone(innerTy, value) => {
         val qbeVal = self.irValueToQbeValue(value)
-        val res = if innerTy == IrType.F64 {
-          // Check for None instance of type `Float?` by comparing against magic value (see comment above in Operation.OptionNone)
-          try self.currentFn.block.buildCompareEq(qbe.Value.Int(0x7ffc000000000001), qbeVal, Some(self.nextTemp())) else |e| unreachable(e)
-        } else if innerTy == IrType.Bool {
-          try self.currentFn.block.buildCompareEq(qbe.Value.Int(2), qbeVal, Some(self.nextTemp())) else |e| unreachable(e)
-        } else {
-          try self.currentFn.block.buildCompareEq(qbe.Value.Int(0), qbeVal, Some(self.nextTemp())) else |e| unreachable(e)
+        val res = match innerTy {
+          IrType.F64 => {
+            // Check for None instance of type `Float?` by comparing against magic value (see comment above in Operation.OptionNone)
+            try self.currentFn.block.buildCompareEq(qbe.Value.Int(0x7ffc000000000001), qbeVal, Some(self.nextTemp())) else |e| unreachable(e)
+          }
+          IrType.Bool => {
+            try self.currentFn.block.buildCompareEq(qbe.Value.Int(2), qbeVal, Some(self.nextTemp())) else |e| unreachable(e)
+          }
+          IrType.Composite(_, isEnum) => {
+            if isEnum {
+              // Check for None instance by comparing against magic value of U64_MAX (see comment above in Operation.OptionNone)
+              try self.currentFn.block.buildCompareEq(qbe.Value.Int(0xfffffffffffffffff), qbeVal, Some(self.nextTemp())) else |e| unreachable(e)
+            } else {
+              try self.currentFn.block.buildCompareEq(qbe.Value.Int(0), qbeVal, Some(self.nextTemp())) else |e| unreachable(e)
+            }
+          }
+          else => {
+            try self.currentFn.block.buildCompareEq(qbe.Value.Int(0), qbeVal, Some(self.nextTemp())) else |e| unreachable(e)
+          }
         }
         self.currentFn.block.buildExt(res, false, dst)
       }
@@ -1020,7 +1048,7 @@ pub type Compiler {
   }
 
   func compileStructuredToString(self, prefix: String, lenVal: Value, fields: (IrType, String, Value)[], dst: String?): qbe.Value {
-    val strIrTy = IrType.Composite(self.ir.knowns.stringType().name)
+    val strIrTy = IrType.Composite(self.ir.knowns.stringType().name, isEnum: false)
 
     val lenQbeVal = self.irValueToQbeValue(lenVal)
     val lenPlusOneQbeVal = try self.currentFn.block.buildAdd(qbe.Value.Int(1), lenQbeVal, Some(self.nextTemp())) else |e| unreachable(e)
@@ -1160,7 +1188,7 @@ pub type Compiler {
   }
 
   func constructString(self, ptrVal: qbe.Value, lenVal: qbe.Value, dst: String? = None): qbe.Value {
-    val strTy = self.irTypeToQbeType(IrType.Composite(self.ir.knowns.stringType().name))
+    val strTy = self.irTypeToQbeType(IrType.Composite(self.ir.knowns.stringType().name, isEnum: false))
     val strInitFn = self.ir.knowns.stringInitializerFn()
     try self.currentFn.block.buildCallRaw(strInitFn.name, strTy, [lenVal, ptrVal], dst) else |e| unreachable(e)
   }
