@@ -1847,7 +1847,6 @@ pub type Compiler {
           // No nextCaseLabel, since the `else` case will always be the last case if present
           (None, exprVal, exprType)
         }
-        _ => todo("other match case types")
       }
 
       if case.binding |v| {

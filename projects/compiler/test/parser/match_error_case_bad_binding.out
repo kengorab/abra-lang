@@ -1,4 +1,4 @@
-Error at %FILE_NAME%:1:15
+Error at %FILE_NAME%:1:17
 Unexpected token 'int', expected one of 'identifier', '=>':
-  |  match foo { A 123 => 123 }
-                   ^
+  |  match foo { A.B 123 => 123 }
+                     ^

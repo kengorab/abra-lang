@@ -305,7 +305,14 @@ pub type VM {
           VmValue.Int(l) => match r { VmValue.Int(r) => VmValue.Bool(if negate l != r else l == r), else v => unreachable("unexpected right value: $v") }
           VmValue.Bool(l) => match r { VmValue.Bool(r) => VmValue.Bool(if negate l != r else l == r), else v => unreachable("unexpected right value: $v") }
           VmValue.Float(l) => match r { VmValue.Float(r) => VmValue.Bool(if negate l != r else l == r), else v => unreachable("unexpected right value: $v") }
-          else v => unreachable("unexpected left value: $v")
+          VmValue.Instance(i) => {
+            // todo: assert instance is an enum instance
+
+            val variantIdx = try i.fields[0] else unreachable("")
+            val variantIdxVal = variantIdx.expectInt("")
+            match r { VmValue.Int(r) => VmValue.Bool(if negate variantIdxVal != r else variantIdxVal == r), else v => unreachable("unexpected right value: $v") }
+          }
+          else v => unreachable("unexpected left value: $v (right value: $r)")
         }
         self.store(self.expectAssignee(inst), res)
       }
@@ -554,6 +561,21 @@ pub type VM {
         self.returnValue = if value |value| self.irValueToVmValue(value) else VmValue.Undefined
         self.flag = ControlFlag.Return
       }
+      Operation.Unreachable(message) => {
+        unreachable("$message: Halting VM")
+      }
+      Operation.GetEnumVariantIdx(_, value, _) => {
+        val v = self.irValueToVmValue(value)
+        val idx = match v {
+          VmValue.Int(i) => i
+          VmValue.Instance(i) => {
+            val variantIdxField = try i.fields[0] else unreachable("enum container instance must have variant idx as first field")
+            variantIdxField.expectInt("enum variant idx")
+          }
+          else => unreachable("unexpected value for GetEnumVariantIdx '$v'")
+        }
+        self.store(self.expectAssignee(inst), VmValue.Int(idx))
+      }
       Operation.OptionNone(_) => {
         self.store(self.expectAssignee(inst), VmValue.OptionNone)
       }
@@ -572,7 +594,7 @@ pub type VM {
         }
       }
       Operation.StructuredToString(prefix, _, fields) => {
-        val strIrTy = IrType.Composite(self.ir.knowns.stringType().name)
+        val strIrTy = IrType.Composite(self.ir.knowns.stringType().name, isEnum: false)
         val fieldReprs: String[] = []
         for (fieldIrTy, fieldName, fieldStr), idx in fields {
           val fieldStrVal = self.irValueToVmValue(fieldStr)
@@ -591,7 +613,7 @@ pub type VM {
           Builtin.Malloc(count, itemTy) => {
             val countVal = self.irValueToVmValue(count).expectInt("Builtin.Malloc count")
             val v = match ret {
-              IrType.Composite(typeName) => {
+              IrType.Composite(typeName, _) => {
                 VmValue.Instance(Instance(name: typeName, fields: Array.fill(countVal>>3, VmValue.Undefined)))
               }
               else => {
@@ -634,12 +656,8 @@ pub type VM {
                 val int = v.expectInt("Builtin.Store byte")
                 Pointer.reinterpret<Byte, Byte>(pointer).storeAt(int.asByte(), offsetVal)
               }
-              IrType.Composite => {
-                val ptr = match v {
-                  VmValue.ConstString v => Pointer.addressOf(v)
-                  VmValue.Instance v => Pointer.addressOf(v)
-                  else => unreachable("unexpected value for itemTy composite: '$v'")
-                }
+              IrType.Composite(irTypeName, _) => {
+                val ptr = Pointer.addressOf(v)
                 Pointer.reinterpret<Byte, Int>(pointer).storeAt(ptr.address(), offsetVal)
               }
               IrType.Ptr => todo("Builtin.Store: ptr")

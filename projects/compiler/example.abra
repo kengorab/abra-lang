@@ -1,39 +1,101 @@
-val arr = [1, 2, 3, 4, 5]
-println(arr[1:4])
+// func f1() {
+//   val x = 123
+//   val s = match x {
+//     1 => "a"
+//     2 => "b"
+//     123 => "c"
+//     else => "?"
+//   }
+//   println(s)
+// }
+// f1()
 
-// val floatArr = [0.12, 3.45, 6.0]
-// println(floatArr)
-// floatArr[0] = 0.001
-// println(floatArr)
+// func f2() {
+//   val x = 123
+//   match x {
+//     1 => println("a")
+//     2 => println("b")
+//     123 => println("c")
+//     else => println("?")
+//   }
+// }
+// f2()
 
-// val x = 9221120237041090561
-// println(x)
+// func f3(idx: Int) {
+//   val arr = [1, 2, 3]
+//   val s2 = match arr[idx] {
+//     1 _1 => "a" + _1
+//     2 _2 => "b" + _2
+//     123 _123 => "c" + _123
+//     None _none => "none" + _none
+//     else _else => "?" + _else
+//   }
+//   println(s2)
+// }
+// f3(0) // a
+// f3(1) // b
+// f3(2) // ?
+// f3(3) // none
 
-// val hmm = (0.0 / 0.0) - (0.0 / 0.0)
-// println(hmm)
+// func f4(idx: Int) {
+//   val arr = [1, 2, 3]
+//   val s2 = match arr[idx] {
+//     1 _1 => "a" + _1
+//     2 _2 => "b" + _2
+//     123 _123 => "c" + _123
+//     else _else => "?" + _else
+//   }
+//   println(s2)
+// }
+// f4(0) // a
+// f4(1) // b
+// f4(2) // ?
+// f4(3) // ?
 
-// val map2 = { ([1, 2]): true, ([3, 4]): false }
-// println(map2.entries())
+// func f5(idx: Int) {
+//   val arr = [1, 2, 3]
+//   match arr[idx] {
+//     1 _1 => println("a" + _1)
+//     2 _2 => println("b" + _2)
+//     123 _123 => println("c" + _123)
+//     // else _else => println("?" + _else)
+//   }
+// }
+// f5(0) // a
+// f5(1) // b
+// f5(2) // ?
+// f5(3) // ?
 
-// val m = { (1): "a", (2): "b" }
-
-// // println(m.getOr(1, "c"))
-// // println(m.getOr(2, "c"))
-// println(m.getOr(3, "c"))
-
-// for ch, idx in { a: 1, b: 2, c: 3 } {
-//   println("$ch $idx")
+// enum Color {
+//   Red
+//   Blue
+//   Green
+//   RGB(r: Int, g: Int, b: Int)
 // }
 
-// val arr = [1.2, 3.4]
-// for f in arr {
-//   println(f)
+// func f6() {
+//   val colors = [Color.Red, Color.Blue, Color.Green, Color.RGB(r: 1, g: 2, b: 3)]
+//   /// Expect: red
+//   /// Expect: blue
+//   /// Expect: green
+//   /// Expect: rgb(1, 2, 3)
+//   for color in colors {
+//     match color {
+//       Color.Red => println("red")
+//       Color.Blue => println("blue")
+//       Color.Green => println("green")
+//       Color.RGB(r, g, b) => println("rgb($r, $g, $b)")
+//     }
+//   }
 // }
+// f6()
 
-// val pairs = [("a", 1), ("b", 2), ("c", 3)]
-// // for p in pairs {
-// //   println(p)
-// // }
-// val m = Map.fromPairs(pairs)
-// println(m)
+val arr = [1, 2, 3, 4]
 
+/// Expect: 18
+match arr[1] {
+  2 v => println(16 + v)
+  1 => println(15)
+  None => println(-4)
+  else => println(100)
+}
