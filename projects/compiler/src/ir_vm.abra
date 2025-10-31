@@ -564,7 +564,7 @@ pub type VM {
       Operation.Unreachable(message) => {
         unreachable("$message: Halting VM")
       }
-      Operation.GetEnumVariantIdx(_, value, _) => {
+      Operation.GetEnumVariantIdx(value, _) => {
         val v = self.irValueToVmValue(value)
         val idx = match v {
           VmValue.Int(i) => i

@@ -278,7 +278,7 @@ pub enum Operation {
   Return(value: Value? = None)
   Unreachable(message: String)
 
-  GetEnumVariantIdx(innerTy: IrType, value: Value, numVariants: Int)
+  GetEnumVariantIdx(value: Value, numVariants: Int)
   OptionNone(innerTy: IrType)
   OptionSome(innerTy: IrType, value: Value)
   OptionIsNone(innerTy: IrType, value: Value)
@@ -648,10 +648,8 @@ pub enum Operation {
         sb.write(")")
       }
       Operation.Unreachable(message) => sb.write("unreachable('$message')")
-      Operation.GetEnumVariantIdx(innerTy, value, numVariants) => {
+      Operation.GetEnumVariantIdx(value, numVariants) => {
         sb.write("get_enum_variant_idx(")
-        innerTy.render(sb)
-        sb.write(", ")
         value.render(sb)
         sb.write(", numVariants=$numVariants)")
       }
@@ -1322,10 +1320,8 @@ pub type Generator {
           return
         }
 
-        val irType = self.getIrTypeForConcreteType(concreteType)
         val emptyElseBlock = Block(name: "empty_else_block", body: [], result: None, terminates: false)
-
-        val selfVariantIdx = self.ssaValue(IrType.I64, Operation.GetEnumVariantIdx(irType, selfVal, e.variants.length), None)
+        val selfVariantIdx = self.emitGetEnumVariantIdx(selfVal, e)
         val containerVariants: (Int, String, tc.Field[])[] = []
         for variant, idx in e.variants {
           val variantName = match variant.kind {
@@ -1424,11 +1420,9 @@ pub type Generator {
           return
         }
 
-        val irType = self.getIrTypeForConcreteType(concreteType)
         val emptyElseBlock = Block(name: "empty_else_block", body: [], result: None, terminates: false)
-
-        val selfVariantIdx = self.ssaValue(IrType.I64, Operation.GetEnumVariantIdx(irType, selfVal, e.variants.length), None)
-        val otherVariantIdx = self.ssaValue(IrType.I64, Operation.GetEnumVariantIdx(irType, otherVal, e.variants.length), None)
+        val selfVariantIdx = self.emitGetEnumVariantIdx(selfVal, e)
+        val otherVariantIdx = self.emitGetEnumVariantIdx(otherVal, e)
         val idxsNotEqual = self.ssaValue(IrType.Bool, Operation.Eq(negate: true, left: selfVariantIdx, right: otherVariantIdx), None)
         val idxsNotEqualBlock = self.withinBlock("variant_idx_not_eq", true, () => {
           self.emit(Instruction(op: Operation.Return(Some(Value.Const(Const.Bool(false))))))
@@ -1509,10 +1503,8 @@ pub type Generator {
           return
         }
 
-        val irType = self.getIrTypeForConcreteType(concreteType)
         val emptyElseBlock = Block(name: "empty_else_block", body: [], result: None, terminates: false)
-
-        val selfVariantIdx = self.ssaValue(IrType.I64, Operation.GetEnumVariantIdx(irType, selfVal, e.variants.length), None)
+        val selfVariantIdx = self.emitGetEnumVariantIdx(selfVal, e)
         val containerVariants: (Int, String, tc.Field[])[] = []
         for variant, idx in e.variants {
           val variantName = match variant.kind {
@@ -2017,7 +2009,6 @@ pub type Generator {
     var subjVal = self.genExpression(subjectNode, concreteGenerics)
     val subjValOrig = subjVal
     val subjectConcreteType = self.getConcreteTypeFromType(subjectNode.ty, concreteGenerics)
-    val subjectIrType = self.getIrTypeForConcreteType(subjectConcreteType)
     val subjectOptInnerType = if self.project.typeIsOption(subjectNode.ty) |innerType| {
       val innerConcreteType = self.getConcreteTypeFromType(innerType, concreteGenerics)
       val innerIrType = self.getIrTypeForConcreteType(innerConcreteType)
@@ -2026,7 +2017,7 @@ pub type Generator {
       None
     }
 
-    val blocks: (() => Value, () => Block, tc.Variable?)[] = []
+    val blocks: (() => Value, () => Block, tc.Variable?, Bool)[] = []
     var noneCase: (Value, () => Block, ConcreteType, IrType, tc.Variable?)? = None
     var enumVariantIdxValue: Value? = None
     var wildcardBlock: (() => Block)? = None
@@ -2124,7 +2115,7 @@ pub type Generator {
         TypedMatchCaseKind.EnumVariant(enum_, variant, variantIdx, destructuredVariables) => {
           () => {
             val variantIdxVal = try enumVariantIdxValue else {
-              val idxValue = self.ssaValue(IrType.I64, Operation.GetEnumVariantIdx(subjectIrType, subjVal, enum_.variants.length), None)
+              val idxValue = self.emitGetEnumVariantIdx(subjVal, enum_)
               enumVariantIdxValue = Some(idxValue)
               idxValue
             }
@@ -2137,7 +2128,7 @@ pub type Generator {
         }
       }
 
-      blocks.push((caseCond, caseBlockFn, case.binding))
+      blocks.push((caseCond, caseBlockFn, case.binding, case.kind == TypedMatchCaseKind.Else))
     }
 
     // Build the root if-operation, optimizing out None-checks and unwrapping. Subsequent cases will be nested within this
@@ -2159,7 +2150,20 @@ pub type Generator {
       self.curCtx.block = prevBlock
 
       Operation.If(resIrType, cond, block, elseBlock)
-    } else if blocks[0] |(condFn, blockFn, binding)| {
+    } else if blocks[0] |(condFn, blockFn, binding, isWildcardCase)| {
+      if isWildcardCase {
+        val block = blockFn()
+        for instr, idx in block.body {
+          if !isStatement && idx == block.body.length - 1 && !block.terminates {
+            return self.ssaValue(resIrType, instr.op, dst)
+          } else {
+            self.emit(instr)
+          }
+        }
+
+        return Value.Unit
+      }
+
       // If there is no None case, and the subject's type is an Option type, then we can still perform the above optimization.
       // If the subject is None then we don't need to do any of the other case evaluations and we can simply evaluate the else-case;
       // if there is no else-case, then we do nothing if we're in a match _statement_ or halt if we're in an expression (since this
@@ -2200,26 +2204,43 @@ pub type Generator {
       self.emit(Instruction(op: rootOp))
       None
     } else {
-      Some(self.ssaValue(resIrType, rootOp, None))
+      Some(self.ssaValue(resIrType, rootOp, dst))
     }
 
     // Iterate through all remaining blocks to generate an if-operation for each case. Each operation takes place _within_ the body
     // of the previous if-operation's else-block.
     val prevBlock = self.curCtx.block
-    for (condFn, blockFn, binding), idx in blocks {
+    for (condFn, blockFn, binding, isWildcardCase), idx in blocks {
       self.curCtx.block = (elseBlock.name, elseBlock.body)
-      val elseBlockNext = Block(name: "case_${idx + 2}", body: [], result: None, terminates: false)
-      val ifOp = Operation.If(resIrType, condFn(), blockFn(), elseBlockNext)
-      if resIrType == IrType.Unit {
-        self.emit(Instruction(op: ifOp))
-      } else {
-        elseBlock.result = Some(self.ssaValue(resIrType, ifOp, None))
-      }
 
-      elseBlock = elseBlockNext
+      if isWildcardCase {
+        if idx != blocks.length - 1 unreachable("wildcard case should be last")
+
+        val block = blockFn()
+        for instr, idx in block.body {
+          if !isStatement && idx == block.body.length - 1 && !block.terminates {
+            elseBlock.result = Some(self.ssaValue(resIrType, instr.op, None))
+          } else {
+            self.emit(instr)
+          }
+        }
+        elseBlock.terminates = block.terminates
+      } else {
+        val elseBlockNext = Block(name: "case_${idx + 2}", body: [], result: None, terminates: false)
+        val block = blockFn()
+        val ifOp = Operation.If(resIrType, condFn(), block, elseBlockNext)
+        if resIrType == IrType.Unit || block.terminates {
+          self.emit(Instruction(op: ifOp))
+        } else {
+          elseBlock.result = Some(self.ssaValue(resIrType, ifOp, None))
+        }
+        elseBlock.terminates = block.terminates
+
+        elseBlock = elseBlockNext
+      }
     }
 
-    if resIrType != IrType.Unit {
+    if resIrType != IrType.Unit && !wildcardBlock {
       elseBlock.body = [Instruction(op: Operation.Unreachable("non-exhaustive pattern matching"))]
       elseBlock.terminates = true
     }
@@ -3688,25 +3709,76 @@ pub type Generator {
   }
 
   func genTry(self, concreteGenerics: Map<String, ConcreteType>, expr: tc.TypedAstNode, elseClause: tc.TypedTryElseClause?, dst: String?): Value {
-    if elseClause todo("genTry: else blocks")
-
     val v = self.genExpression(expr, concreteGenerics)
     if self.project.typeIsOption(expr.ty) |innerType| {
+      val ifBody = if elseClause |elseClause| {
+        self.withinBlock("try_opt_else", !!elseClause.terminator, () => {
+          if elseClause.pattern |binding| self.genConditionBinding(concreteGenerics, Some(innerType), v, binding)
+          for node, idx in elseClause.block {
+            if idx == elseClause.block.length - 1 && !elseClause.terminator {
+              return Some(self.genExpression(node, concreteGenerics))
+            } else {
+              self.genStatement(node, concreteGenerics)
+            }
+          }
+
+          None
+        })
+      } else {
+        self.withinBlock("try_opt_fail", true, () => {
+          self.emit(Instruction(op: Operation.Return(Some(v))))
+          None
+        })
+      }
+
       val innerConcreteType = self.getConcreteTypeFromType(innerType, concreteGenerics)
       val innerTy = self.getIrTypeForConcreteType(innerConcreteType)
-      val condVal = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerTy, v), None)
-
-      val ifBody = self.withinBlock("try_fail", true, () => {
-        self.emit(Instruction(op: Operation.Return(Some(v))))
-        None
-      })
-      val elseBody = self.withinBlock("try_pass", false, () => {
+      val elseBody = self.withinBlock("try_opt_pass", false, () => {
         Some(self.ssaValue(innerTy, Operation.OptionUnwrap(innerTy, v), None))
       })
 
+      val condVal = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerTy, v), None)
       self.ssaValue(innerTy, Operation.If(innerTy, condVal, ifBody, elseBody), dst)
+    } else if self.project.typeIsResult(expr.ty) |(resOkType, resErrType)| {
+      val (_, errVariantIdx) = self.getEnumVariantByName(self.project.preludeResultEnum, "Err")
+      val variantIdxVal = self.emitGetEnumVariantIdx(v, self.project.preludeResultEnum)
+
+      val ifBody = if elseClause |elseClause| {
+        self.withinBlock("try_else", !!elseClause.terminator, () => {
+          if elseClause.pattern |binding| {
+            val resErrConcreteType = self.getConcreteTypeFromType(resErrType, concreteGenerics)
+            val resErrTy = self.getIrTypeForConcreteType(resErrConcreteType)
+            val errVal = self.ssaValue(resErrTy, Operation.LoadField(ty: resErrTy, mem: v, name: "error", offset: 1*ALIGNMENT), None)
+            self.genConditionBinding(concreteGenerics, Some(resErrType), errVal, binding)
+          }
+          for node, idx in elseClause.block {
+            if idx == elseClause.block.length - 1 && !elseClause.terminator {
+              return Some(self.genExpression(node, concreteGenerics))
+            } else {
+              self.genStatement(node, concreteGenerics)
+            }
+          }
+
+          None
+        })
+      } else {
+        self.withinBlock("try_fail", true, () => {
+          self.emit(Instruction(op: Operation.Return(Some(v))))
+          None
+        })
+      }
+
+      val resOkConcreteType = self.getConcreteTypeFromType(resOkType, concreteGenerics)
+      val resOkTy = self.getIrTypeForConcreteType(resOkConcreteType)
+      val elseBody = self.withinBlock("try_pass", false, () => {
+        val okVal = self.ssaValue(resOkTy, Operation.LoadField(ty: resOkTy, mem: v, name: "value", offset: 1*ALIGNMENT), None)
+        Some(okVal)
+      })
+
+      val condVal = self.ssaValue(IrType.Bool, Operation.Eq(negate: false, left: Value.Const(Const.Int(errVariantIdx)), right: variantIdxVal), None)
+      self.ssaValue(resOkTy, Operation.If(resOkTy, condVal, ifBody, elseBody), dst)
     } else {
-      todo("genTry: result type")
+      unreachable("un-Tryable type ${expr.ty.repr()}")
     }
   }
 
@@ -4160,6 +4232,35 @@ pub type Generator {
     try methods.find(m => m.label.name == name) else {
       val sep = if staticMethod "." else "#"
       unreachable("$parentName$sep$name must exist")
+    }
+  }
+
+  func getEnumVariantByName(self, enum_: tc.Enum, name: String): (tc.TypedEnumVariant, Int) {
+    try enum_.variants.findIndex(v => v.label.name == name) else {
+      unreachable("variant ${enum_.label.name}.$name must exist")
+    }
+  }
+
+  func emitGetEnumVariantIdx(self, value: Value, enum_: tc.Enum): Value {
+    var allConstant = true
+    var allContainers = true
+    for variant in enum_.variants {
+      match variant.kind {
+        EnumVariantKind.Constant => {
+          allContainers = false
+        }
+        EnumVariantKind.Container => {
+          allConstant = false
+        }
+      }
+    }
+
+    if allConstant {
+      value
+    } else if allContainers {
+      self.ssaValue(IrType.I64, Operation.LoadField(ty: IrType.I64, mem: value, name: "\$idx", offset: 0), None)
+    } else {
+      self.ssaValue(IrType.I64, Operation.GetEnumVariantIdx(value, enum_.variants.length), None)
     }
   }
 

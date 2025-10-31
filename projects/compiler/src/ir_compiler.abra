@@ -576,17 +576,22 @@ pub type Compiler {
             None
           }
 
-          self.currentFn.block.registerLabel(labelCont)
+          if !(thenBlock.terminates && elseBlock.terminates) {
+            self.currentFn.block.registerLabel(labelCont)
 
-          if !thenBlock.result && !elseBlock.result {
-            // in if-exprs that are missing both then- and else-values, emit unreachable
-            if !isStmt self.currentFn.block.buildHalt()
-          } else {
-            val phiCases: (qbe.Label, qbe.Value)[] = []
-            if thenPhiValue |(label, v)| phiCases.push((label, v))
-            if elsePhiValue |(label, v)| phiCases.push((label, v))
+            if !thenBlock.result && !elseBlock.result {
+              // in if-exprs that are missing both then- and else-values, emit unreachable
+              if !isStmt {
+                self.currentFn.block.addComment("if-expr missing both then- and else-values")
+                self.currentFn.block.buildHalt()
+              }
+            } else {
+              val phiCases: (qbe.Label, qbe.Value)[] = []
+              if thenPhiValue |(label, v)| phiCases.push((label, v))
+              if elsePhiValue |(label, v)| phiCases.push((label, v))
 
-            try self.currentFn.block.buildPhi(phiCases, dst) else |e| unreachable("$e ($thenBlock) ($elseBlock)")
+              try self.currentFn.block.buildPhi(phiCases, dst) else |e| unreachable("$e ($thenBlock) ($elseBlock)")
+            }
           }
         } else {
           if !isStmt unreachable("must be a statement at this point")
@@ -776,7 +781,7 @@ pub type Compiler {
         self.currentFn.block.addComment(message)
         self.currentFn.block.buildHalt()
       }
-      Operation.GetEnumVariantIdx(_, value, numVariants) => {
+      Operation.GetEnumVariantIdx(value, numVariants) => {
         val v = self.irValueToQbeValue(value)
 
         val labelThen = self.currentFn.block.addLabel("variant_idx_is_const_variant")

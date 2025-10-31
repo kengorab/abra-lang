@@ -863,11 +863,11 @@ const IR_COMPILER_TESTS = [
   { test: "compiler/maps.abra" },
   { test: "compiler/sets.abra" },
   { test: "compiler/match.abra" },
-  // { test: "compiler/try_result.abra" },
-  // { test: "compiler/try_option.abra" },
+  { test: "compiler/try_result.abra" },
+  { test: "compiler/try_option.abra" },
   // { test: "compiler/process.abra", args: ['-f', 'bar', '--baz', 'qux'], env: { FOO: 'bar' } },
   // { test: "compiler/process_callstack.abra" },
-  // { test: "compiler/json.abra" },
+  { test: "compiler/json.abra" },
 ]
 
 const runners = [
