@@ -466,7 +466,7 @@ pub type Compiler {
       Operation.Unreachable(message) => {
         self.sb.write("throw new Error(\"$message\")")
       }
-      Operation.GetEnumVariantIdx(_, value, numVariants) => {
+      Operation.GetEnumVariantIdx(value, numVariants) => {
         val jsVal = self.irValueToJsValue(value)
         self.sb.writeln("const $dst = typeof $jsVal === 'number' ? $jsVal : $jsVal.\$idx;")
       }
