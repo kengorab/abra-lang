@@ -1,11 +1,20 @@
-func f1(): Result<String, Int> {
-  val s = try f2() else return Err(1234)
+// type Adder {
+//   i: Int
 
-  Ok(s + "!")
+//   func add(self, x: Int): Int = self.i + x
+// }
+
+func addA(x: Int, y = 1): Int = x + y
+func addB(x: Int, y = 1): Int = x + y
+func addC(x: Float, y = 1.1): Float = x + y
+
+func f() {
+  val add1 = addA
+  val add2 = addB
+  val add3 = addC
+
+  println(add1(3))
+  println(add2(3))
+  println(add3(3.14))
 }
-
-func f2(): Result<String, Int> {
-  Ok("asdf")
-}
-
-println(f1())
+f()

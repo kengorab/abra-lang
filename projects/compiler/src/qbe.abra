@@ -719,7 +719,7 @@ pub enum QbeType {
     }
   }
 
-  func repr(self): String {
+  pub func repr(self): String {
     match self {
       QbeType.U8 => "b"
       QbeType.U16 => "h"

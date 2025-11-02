@@ -405,7 +405,9 @@ pub type Compiler {
       Operation.FunctionPointer(fnName) => {
         self.sb.writeln("const $dst = $fnName;")
       }
-      Operation.CreateClosure(fnName, captures) => {
+      Operation.CreateClosure(fnName, captures, capturedSelf) => {
+        if capturedSelf todo("ir_vm: capturedSelf")
+
         self.sb.write("const $dst = (...args) => $fnName([")
         for c, idx in captures {
           self.emitIrValueToJsValue(c)

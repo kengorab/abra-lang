@@ -269,7 +269,7 @@ pub enum Operation {
   ForRanged(start: Value, end: CompoundValue, iteratee: Ident, idx: Ident?, body: Block)
 
   FunctionPointer(fnName: String)
-  CreateClosure(fnName: String, captures: Value[])
+  CreateClosure(fnName: String, captures: Value[], capturedSelf: Value?)
   Call(ret: IrType, fnName: String, args: Value[], envLocation: ClosureEnvLocation? = None)
   CallValue(ret: IrType, fnVal: Value, args: Value[])
 
@@ -611,12 +611,14 @@ pub enum Operation {
       Operation.FunctionPointer(fnName) => {
         sb.write("fn_ptr($fnName)")
       }
-      Operation.CreateClosure(fnName, captures) => {
+      Operation.CreateClosure(fnName, captures, capturedSelf) => {
         sb.write("create_closure($fnName, [")
         for c, idx in captures {
           c.render(sb)
           if idx != captures.length - 1 { sb.write(", ") }
         }
+        sb.write("], self=")
+        if capturedSelf |v| v.render(sb) else sb.write("None")
         sb.write(")")
       }
       Operation.Call(ret, fnName, args, _) => {
@@ -3330,7 +3332,7 @@ pub type Generator {
           None
         }
 
-        self.genFunctionValue(concreteGenerics, fn, targetParamTypes, dst, captures)
+        self.genFunctionValue(concreteGenerics, fn, targetParamTypes, dst, captures, capturedSelf: None)
       }
       else => {
         if varImportModule |mod| {
@@ -3705,7 +3707,7 @@ pub type Generator {
       None
     }
 
-    self.genFunctionValue(concreteGenerics, fn, targetParamTypes, dst, captures)
+    self.genFunctionValue(concreteGenerics, fn, targetParamTypes, dst, captures, capturedSelf: None)
   }
 
   func genTry(self, concreteGenerics: Map<String, ConcreteType>, expr: tc.TypedAstNode, elseClause: tc.TypedTryElseClause?, dst: String?): Value {
@@ -3784,7 +3786,15 @@ pub type Generator {
 
   // codegen helpers
 
-  func genFunctionValue(self, concreteGenerics: Map<String, ConcreteType>, fn: tc.Function, targetParamTypes: (tc.Type, Bool)[]?, dst: String?, captures: Value[]?): Value {
+  func genFunctionValue(
+    self,
+    concreteGenerics: Map<String, ConcreteType>,
+    fn: tc.Function,
+    targetParamTypes: (tc.Type, Bool)[]?,
+    dst: String?,
+    captures: Value[]?,
+    capturedSelf: Value?,
+  ): Value {
     val concreteParamTypes = if targetParamTypes |paramTypes| {
       paramTypes.filter(_p => _p[1]).map(_p => self.getConcreteTypeFromType(_p[0], concreteGenerics))
     } else {
@@ -3817,7 +3827,9 @@ pub type Generator {
     }
 
     if captures |captures| {
-      self.ssaValue(IrType.Ptr, Operation.CreateClosure(fnName: fnName, captures: captures), dst)
+      self.ssaValue(IrType.Ptr, Operation.CreateClosure(fnName: fnName, captures: captures, capturedSelf: capturedSelf), dst)
+    } else if capturedSelf {
+      self.ssaValue(IrType.Ptr, Operation.CreateClosure(fnName: fnName, captures: [], capturedSelf: capturedSelf), dst)
     } else {
       self.ssaValue(IrType.Ptr, Operation.FunctionPointer(fnName: fnName), dst)
     }

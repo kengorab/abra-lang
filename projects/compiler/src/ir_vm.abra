@@ -515,7 +515,9 @@ pub type VM {
 
         self.store(self.expectAssignee(inst), VmValue.Function(VmFunction.Runtime(fn: fn, captures: [])))
       }
-      Operation.CreateClosure(fnName, captures) => {
+      Operation.CreateClosure(fnName, captures, capturedSelf) => {
+        if capturedSelf todo("ir_vm: capturedSelf")
+
         val fn = try self.ir.functions.find(fn => fn.name == fnName) else unreachable("could not find function '$fnName' in IR")
         val captureVals: VmValue[] = []
         for c in captures {
