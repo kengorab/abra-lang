@@ -1008,7 +1008,7 @@ pub enum TypedAstNodeKind {
 
 pub enum AccessorPathSegment {
   EnumVariant(label: Label, ty: Type, enum_: Enum, variant: TypedEnumVariant)
-  Method(label: Label, fn: Function, optSafe: Bool, typeHint: Type?)
+  Method(label: Label, fn: Function, optSafe: Bool, typeHint: ((Type, Bool)[], Type)?)
   Field(label: Label, ty: Type, f: Field, optSafe: Bool)
 
   func getType(self): Type {
@@ -4884,7 +4884,15 @@ pub type Typechecker {
         }
 
         if method |method| {
-          Some(AccessorPathSegment.Method(label, method, optSafe, typeHint))
+          val fnAliasTypeHint = match typeHint?.kind {
+            None => None
+            TypeKind.Func(paramTypes, retType) => Some((paramTypes, retType))
+            // If the function value is being treated as a Hole, then no param type info needs to be known later anyway
+            TypeKind.Hole => None
+            _ => unreachable("fnAliasTypeKind must be TypeKind.Func")
+          }
+
+          Some(AccessorPathSegment.Method(label, method, optSafe, fnAliasTypeHint))
         } else {
           None
         }
@@ -4935,7 +4943,15 @@ pub type Typechecker {
 
               fn.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: true, genericsInScope: #{})
             }
-            return Ok(Some(AccessorPathSegment.Method(label, method, optSafe, typeHint)))
+
+            val fnAliasTypeHint = match typeHint?.kind {
+              None => None
+              TypeKind.Func(paramTypes, retType) => Some((paramTypes, retType))
+              // If the function value is being treated as a Hole, then no param type info needs to be known later anyway
+              TypeKind.Hole => None
+              _ => unreachable("fnAliasTypeKind must be TypeKind.Func")
+            }
+            return Ok(Some(AccessorPathSegment.Method(label, method, optSafe, fnAliasTypeHint)))
           }
         }
 
@@ -4954,7 +4970,14 @@ pub type Typechecker {
         }
 
         if method |method| {
-          Some(AccessorPathSegment.Method(label, method, optSafe, typeHint))
+          val fnAliasTypeHint = match typeHint?.kind {
+            None => None
+            TypeKind.Func(paramTypes, retType) => Some((paramTypes, retType))
+            // If the function value is being treated as a Hole, then no param type info needs to be known later anyway
+            TypeKind.Hole => None
+            _ => unreachable("fnAliasTypeKind must be TypeKind.Func")
+          }
+          Some(AccessorPathSegment.Method(label, method, optSafe, fnAliasTypeHint))
         } else {
           None
         }
@@ -4974,7 +4997,14 @@ pub type Typechecker {
         }
 
         if method |method| {
-          Some(AccessorPathSegment.Method(label, method, optSafe, typeHint))
+          val fnAliasTypeHint = match typeHint?.kind {
+            None => None
+            TypeKind.Func(paramTypes, retType) => Some((paramTypes, retType))
+            // If the function value is being treated as a Hole, then no param type info needs to be known later anyway
+            TypeKind.Hole => None
+            _ => unreachable("fnAliasTypeKind must be TypeKind.Func")
+          }
+          Some(AccessorPathSegment.Method(label, method, optSafe, fnAliasTypeHint))
         } else {
           None
         }
@@ -5030,7 +5060,14 @@ pub type Typechecker {
               return Err(TypeError(position: label.position, kind: TypeErrorKind.IllegalAccess(name: method.label.name, kind: "static method", parentTy: ty)))
             }
 
-            return Ok(Some(AccessorPathSegment.Method(label, method, optSafe, typeHint)))
+            val fnAliasTypeHint = match typeHint?.kind {
+              None => None
+              TypeKind.Func(paramTypes, retType) => Some((paramTypes, retType))
+              // If the function value is being treated as a Hole, then no param type info needs to be known later anyway
+              TypeKind.Hole => None
+              _ => unreachable("fnAliasTypeKind must be TypeKind.Func")
+            }
+            return Ok(Some(AccessorPathSegment.Method(label, method, optSafe, fnAliasTypeHint)))
           }
         }
 

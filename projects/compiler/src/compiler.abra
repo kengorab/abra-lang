@@ -2347,17 +2347,7 @@ pub type Compiler {
             None
           }
 
-          val targetParamTypes = if fnAliasTypeHint |hint| {
-            val paramTypes = match hint.kind {
-              TypeKind.Func(paramTypes, _) => Some(paramTypes)
-              // If the function value is being treated as a Hole, then no param type info needs to be known later anyway
-              TypeKind.Hole => None
-              _ => unreachable("fnAliasTypeKind must be TypeKind.Func")
-            }
-            paramTypes
-          } else {
-            None
-          }
+          val targetParamTypes = if fnAliasTypeHint |(paramTypes, _)| Some(paramTypes) else None
 
           self._resolvedGenerics.popLayer()
 

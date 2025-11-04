@@ -17,7 +17,7 @@ pub type Instance {
 }
 
 pub enum VmFunction {
-  Runtime(fn: ir.IrFunction, captures: VmValue[])
+  Runtime(fn: ir.IrFunction, captures: VmValue[], capturedSelf: VmValue)
   HostSupplied(fn: (VmValue[]) => VmValue)
 }
 
@@ -513,17 +513,21 @@ pub type VM {
       Operation.FunctionPointer(fnName) => {
         val fn = try self.ir.functions.find(fn => fn.name == fnName) else unreachable("could not find function '$fnName' in IR")
 
-        self.store(self.expectAssignee(inst), VmValue.Function(VmFunction.Runtime(fn: fn, captures: [])))
+        self.store(self.expectAssignee(inst), VmValue.Function(VmFunction.Runtime(fn: fn, captures: [], capturedSelf: VmValue.Undefined)))
       }
       Operation.CreateClosure(fnName, captures, capturedSelf) => {
-        if capturedSelf todo("ir_vm: capturedSelf")
-
         val fn = try self.ir.functions.find(fn => fn.name == fnName) else unreachable("could not find function '$fnName' in IR")
         val captureVals: VmValue[] = []
         for c in captures {
           captureVals.push(self.irValueToVmValue(c))
         }
-        self.store(self.expectAssignee(inst), VmValue.Function(VmFunction.Runtime(fn: fn, captures: captureVals)))
+
+        val capturedSelfVal = if capturedSelf |v| {
+          self.irValueToVmValue(v)
+        } else {
+          VmValue.Undefined
+        }
+        self.store(self.expectAssignee(inst), VmValue.Function(VmFunction.Runtime(fn: fn, captures: captureVals, capturedSelf: capturedSelfVal)))
       }
       Operation.Call(ret, fnName, args, envLocation) => {
         val fn = try self.ir.functions.find(fn => fn.name == fnName) else unreachable("could not find function '$fnName' in IR")
@@ -545,13 +549,26 @@ pub type VM {
         val fn = self.irValueToVmValue(subject).expectFunction("Operation.CallValue subject")
 
         val callArgs: VmValue[] = []
-        for arg in args {
-          callArgs.push(self.irValueToVmValue(arg))
-        }
 
         val res = match fn {
-          VmFunction.Runtime(fn, captures) => self.evalFunctionCall(fn, callArgs, captures)
-          VmFunction.HostSupplied(fn) => fn(callArgs)
+          VmFunction.Runtime(fn, captures, capturedSelf) => {
+            if capturedSelf != VmValue.Undefined {
+              callArgs.push(capturedSelf)
+            }
+
+            for arg in args {
+              callArgs.push(self.irValueToVmValue(arg))
+            }
+
+            self.evalFunctionCall(fn, callArgs, captures)
+          }
+          VmFunction.HostSupplied(fn) => {
+            for arg in args {
+              callArgs.push(self.irValueToVmValue(arg))
+            }
+
+            fn(callArgs)
+          }
         }
         if inst.assignee |assignee| {
           self.store(assignee, res)
