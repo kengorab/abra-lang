@@ -694,11 +694,7 @@ pub type Compiler {
         try self.currentFn.block.buildOr(shl, qbe.Value.Int(1), dst) else |e| unreachable(e)
       }
       Operation.CreateClosure(fnName, captures, capturedSelf) => {
-        // val padding = if capturedSelf 2 else 1
         val closureMem = self.callMalloc(qbe.Value.Int((captures.length + 2) * 8), dst)
-        // self.currentFn.block.buildStoreL(qbe.Value.Global(fnName, qbe.QbeType.Pointer), closureMem)
-
-        // var cursor = try self.currentFn.block.buildAdd(qbe.Value.Int(8), closureMem, Some(self.nextTemp())) else |e| unreachable(e)
 
         val capturedSelfVal = if capturedSelf |capturedSelf| {
           self.irValueToQbeValue(capturedSelf)
