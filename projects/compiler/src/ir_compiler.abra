@@ -158,24 +158,20 @@ pub type Compiler {
         }
       }
       Operation.ConstInt(int) => {
-        self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(int), dst)
+        self.currentFn.block.buildCopy(qbe.Value.Int(int), dst)
       }
       Operation.ConstFloat(float) => {
-        self.currentFn.block.buildAdd(qbe.Value.Float(0.0), qbe.Value.Float(float), dst)
+        self.currentFn.block.buildCopy(qbe.Value.Float(float), dst)
       }
       Operation.ConstChar(int) => {
-        self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(int), dst)
+        self.currentFn.block.buildCopy(qbe.Value.Int(int), dst)
       }
       Operation.ConstBool(b) => {
-        if b {
-          self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(1), dst)
-        } else {
-          self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
-        }
+        self.currentFn.block.buildCopy(qbe.Value.Int(if b 1 else 0), dst)
       }
       Operation.ConstString(str) => {
         val slot = self.makeConstString(str)
-        try self.currentFn.block.buildAdd(qbe.Value.Int(0), slot, dst) else |e| unreachable(e)
+        self.currentFn.block.buildCopy(slot, dst)
       }
       Operation.Minus(v) => {
         val value = self.irValueToQbeValue(v)
@@ -461,7 +457,11 @@ pub type Compiler {
         match src {
           CaptureSource.WithinCapturingFn(idx, name, mutable) => {
             val env = try self.currentFnEnv else unreachable("Operation.LoadCapturedVar(idx: $idx, name: '$name'): no env for current function '${self.currentFn.name}'")
-            val captureSlot = try self.currentFn.block.buildAdd(qbe.Value.Int(idx * 8), env, Some(self.nextTemp())) else |e| unreachable(e)
+            val captureSlot = if idx == 0 {
+              self.currentFn.block.buildCopy(env, Some(self.nextTemp()))
+            } else {
+              try self.currentFn.block.buildAdd(qbe.Value.Int(idx * 8), env, Some(self.nextTemp())) else |e| unreachable(e)
+            }
 
             if mutable {
               if deref {
@@ -486,10 +486,10 @@ pub type Compiler {
         }
       }
       Operation.LoadField(ty, mem, _, offset) => {
+        val memVal = self.irValueToQbeValue(mem)
         val ptr = if offset == 0 {
-          self.irValueToQbeValue(mem)
+          memVal
         } else {
-          val memVal = self.irValueToQbeValue(mem)
           try self.currentFn.block.buildAdd(qbe.Value.Int(offset), memVal, Some(self.nextTemp())) else |e| unreachable(e)
         }
         self.currentFn.block.buildLoad(self.irTypeToQbeType(ty), ptr, dst)
@@ -506,7 +506,11 @@ pub type Compiler {
         match src {
           CaptureSource.WithinCapturingFn(idx, name, _) => {
             val env = try self.currentFnEnv else unreachable("Operation.StoreCapturedVar(idx: $idx, name: '$name'): no env for current function '${self.currentFn.name}'")
-            val captureSlot = try self.currentFn.block.buildAdd(qbe.Value.Int(idx * 8), env, Some(self.nextTemp())) else |e| unreachable(e)
+            val captureSlot = if idx == 0 {
+              self.currentFn.block.buildCopy(env, Some(self.nextTemp()))
+            } else {
+              try self.currentFn.block.buildAdd(qbe.Value.Int(idx * 8), env, Some(self.nextTemp())) else |e| unreachable(e)
+            }
 
             val varPtr = self.currentFn.block.buildLoadL(captureSlot, Some(self.nextTemp()))
             self.currentFn.block.buildStore(varTy, v, varPtr)
@@ -525,10 +529,10 @@ pub type Compiler {
         self.currentFn.block.buildStore(self.irTypeToQbeType(ty), v, mem)
       }
       Operation.StoreField(ty, value, mem, _, offset) => {
+        val memVal = self.irValueToQbeValue(mem)
         val ptr = if offset == 0 {
-          self.irValueToQbeValue(mem)
+          memVal
         } else {
-          val memVal = self.irValueToQbeValue(mem)
           try self.currentFn.block.buildAdd(qbe.Value.Int(offset), memVal, Some(self.nextTemp())) else |e| unreachable(e)
         }
 
@@ -748,27 +752,18 @@ pub type Compiler {
         }
       }
       Operation.Break => {
-        if self.loopStack[-1] |(_, loopEndLabel)| {
-          self.currentFn.block.buildJmp(loopEndLabel)
+        val (_, loopEndLabel) = try self.loopStack[-1] else unreachable("cannot have a break statement outside of a loop")
 
-          Ok(None)
-        } else {
-          unreachable("cannot have a break statement outside of a loop")
-        }
+        self.currentFn.block.buildJmp(loopEndLabel)
+        Ok(None)
       }
       Operation.Continue => {
-        if self.loopStack[-1] |(loopStartLabel, _)| {
-          self.currentFn.block.buildJmp(loopStartLabel)
-        } else {
-          unreachable("cannot have a continue statement outside of a loop")
-        }
+        val (loopStartLabel, _) = try self.loopStack[-1] else unreachable("cannot have a continue statement outside of a loop")
+        self.currentFn.block.buildJmp(loopStartLabel)
       }
       Operation.Return(value) => {
-        if value |v| {
-          self.currentFn.block.buildReturn(Some(self.irValueToQbeValue(v)))
-        } else {
-          self.currentFn.block.buildReturn()
-        }
+        val v = if value |v| Some(self.irValueToQbeValue(v)) else None
+        self.currentFn.block.buildReturn(v)
       }
       Operation.Unreachable(message) => {
         self.currentFn.block.addComment(message)
@@ -805,10 +800,10 @@ pub type Compiler {
             //   S EEEEEEEEEEE MMMM ...                                    ... MMMM
             // (All exp bits + msb of mantissa set = Quiet NaN). 2nd msb of mantissa is set to avoid conflict with
             // Intel's QNaN Floating-Point Indefinite value.
-            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0x7ffc000000000001), dst)
+            self.currentFn.block.buildCopy(qbe.Value.Int(0x7ffc000000000001), dst)
           }
           IrType.Bool => {
-            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(2), dst)
+            self.currentFn.block.buildCopy(qbe.Value.Int(2), dst)
           }
           IrType.Composite(_, isEnum) => {
             if isEnum {
@@ -817,13 +812,13 @@ pub type Compiler {
               // from a Some value of the first variant (which, for a Constant variant, would just be the literal 0).
               // So instead, a None value here is represented as U64_MAX value, since it's near impossible that there
               // will ever be an enum which has that many variants.
-              self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0xffffffffffffffff), dst)
+              self.currentFn.block.buildCopy(qbe.Value.Int(0xffffffffffffffff), dst)
             } else {
-              self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+              self.currentFn.block.buildCopy(qbe.Value.Int(0), dst)
             }
           }
           else => {
-            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+            self.currentFn.block.buildCopy(qbe.Value.Int(0), dst)
           }
         }
       }
@@ -835,7 +830,7 @@ pub type Compiler {
         } else if innerTy == IrType.F64 {
           self.currentFn.block.buildCast(qbe.QbeType.U64, qbeVal, dst)
         } else {
-          try self.currentFn.block.buildAdd(qbe.Value.Int(0), qbeVal, dst) else |e| unreachable(e)
+          self.currentFn.block.buildCopy(qbeVal, dst)
         }
       }
       Operation.OptionIsNone(innerTy, value) => {
@@ -869,7 +864,7 @@ pub type Compiler {
         } else if innerTy == IrType.F64 {
           self.currentFn.block.buildCast(qbe.QbeType.F64, qbeVal, dst)
         } else {
-          try self.currentFn.block.buildAdd(qbe.Value.Int(0), qbeVal, dst) else |e| unreachable(e)
+          self.currentFn.block.buildCopy(qbeVal, dst)
         }
       }
       Operation.StructuredToString(prefix, lenVal, fields) => self.compileStructuredToString(prefix, lenVal, fields, dst)
@@ -910,8 +905,12 @@ pub type Compiler {
             val offsetVal = self.irValueToQbeValue(offset)
 
             val (size, qbeTy) = sizeOfType(itemTy)
-            val sizeVal = try self.currentFn.block.buildMul(qbe.Value.Int(size), offsetVal, Some(self.nextTemp())) else |e| unreachable(e)
-            val mem = try self.currentFn.block.buildAdd(sizeVal, ptrVal, Some(self.nextTemp())) else |e| unreachable(e)
+            val mem = if offsetVal == qbe.Value.Int(0) {
+              self.currentFn.block.buildCopy(ptrVal, Some(self.nextTemp()))
+            } else {
+              val sizeVal = try self.currentFn.block.buildMul(qbe.Value.Int(size), offsetVal, Some(self.nextTemp())) else |e| unreachable(e)
+              try self.currentFn.block.buildAdd(sizeVal, ptrVal, Some(self.nextTemp())) else |e| unreachable(e)
+            }
 
             if size == 1 {
               self.currentFn.block.buildStoreB(valueVal, mem)
@@ -924,8 +923,12 @@ pub type Compiler {
             val offsetVal = self.irValueToQbeValue(offset)
 
             val (size, qbeTy) = sizeOfType(itemTy)
-            val sizeVal = try self.currentFn.block.buildMul(qbe.Value.Int(size), offsetVal, Some(self.nextTemp())) else |e| unreachable(e)
-            val mem = try self.currentFn.block.buildAdd(sizeVal, ptrVal, Some(self.nextTemp())) else |e| unreachable(e)
+            val mem = if offsetVal == qbe.Value.Int(0) {
+              self.currentFn.block.buildCopy(ptrVal, Some(self.nextTemp()))
+            } else {
+              val sizeVal = try self.currentFn.block.buildMul(qbe.Value.Int(size), offsetVal, Some(self.nextTemp())) else |e| unreachable(e)
+              try self.currentFn.block.buildAdd(sizeVal, ptrVal, Some(self.nextTemp())) else |e| unreachable(e)
+            }
 
             if size == 1 {
               self.currentFn.block.buildLoadB(mem, dst)
@@ -1025,20 +1028,20 @@ pub type Compiler {
             self.currentFn.block.buildCast(qbe.QbeType.U64, floatVal, dst)
           }
           Builtin.Uninitialized => {
-            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+            self.currentFn.block.buildCopy(qbe.Value.Int(0), dst)
           }
           // TODO: real implementations for callstack, modulenames, and functionnames
           Builtin.Callstack => {
-            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+            self.currentFn.block.buildCopy(qbe.Value.Int(0), dst)
           }
           Builtin.CallstackPtr => {
-            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+            self.currentFn.block.buildCopy(qbe.Value.Int(0), dst)
           }
           Builtin.ModuleNames => {
-            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+            self.currentFn.block.buildCopy(qbe.Value.Int(0), dst)
           }
           Builtin.FunctionNames => {
-            self.currentFn.block.buildAdd(qbe.Value.Int(0), qbe.Value.Int(0), dst)
+            self.currentFn.block.buildCopy(qbe.Value.Int(0), dst)
           }
         }
       }
@@ -1187,16 +1190,20 @@ pub type Compiler {
   }
 
   func compileMemcpy(self, dstPtr: qbe.Value, dstOffset: qbe.Value, srcPtr: qbe.Value, srcOffset: qbe.Value, amount: qbe.Value, itemSize: qbe.Value) {
-    val dstMem = try self.currentFn.block.buildAdd(
-      try self.currentFn.block.buildMul(itemSize, dstOffset, Some(self.nextTemp())) else |e| unreachable(e),
-      dstPtr,
-      Some(self.nextTemp()),
-    ) else |e| unreachable(e)
-    val srcMem = try self.currentFn.block.buildAdd(
-      try self.currentFn.block.buildMul(itemSize, srcOffset, Some(self.nextTemp())) else |e| unreachable(e),
-      srcPtr,
-      Some(self.nextTemp()),
-    ) else |e| unreachable(e)
+    val dstMem = if dstOffset == qbe.Value.Int(0) {
+      self.currentFn.block.buildCopy(dstPtr, Some(self.nextTemp()))
+    } else {
+      val dstOffsetVal = try self.currentFn.block.buildMul(itemSize, dstOffset, Some(self.nextTemp())) else |e| unreachable(e)
+      try self.currentFn.block.buildAdd(dstOffsetVal, dstPtr, Some(self.nextTemp())) else |e| unreachable(e)
+    }
+
+    val srcMem = if srcOffset == qbe.Value.Int(0) {
+      self.currentFn.block.buildCopy(srcPtr, Some(self.nextTemp()))
+    } else {
+      val srcOffsetVal = try self.currentFn.block.buildMul(itemSize, srcOffset, Some(self.nextTemp())) else |e| unreachable(e)
+      try self.currentFn.block.buildAdd(srcOffsetVal, srcPtr, Some(self.nextTemp())) else |e| unreachable(e)
+    }
+
     val numBytes = try self.currentFn.block.buildMul(itemSize, amount, Some(self.nextTemp())) else |e| unreachable(e)
 
     self.currentFn.block.buildVoidCall(qbe.Callable.Function(self.memcpyFn), [dstMem, srcMem, numBytes])
@@ -1263,7 +1270,7 @@ pub type Compiler {
 
   func strValGetParts(self, strVal: qbe.Value): (qbe.Value, qbe.Value) {
     val strLen = self.currentFn.block.buildLoadL(
-      try self.currentFn.block.buildAdd(qbe.Value.Int(0), strVal, Some(self.nextTemp())) else |e| unreachable(e),
+      self.currentFn.block.buildCopy(strVal, Some(self.nextTemp())),
       Some(self.nextTemp()),
     )
     val strBuf = self.currentFn.block.buildLoadL(
