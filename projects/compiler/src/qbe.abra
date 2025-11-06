@@ -599,6 +599,16 @@ pub type Block {
     local
   }
 
+  pub func buildCopy(self, value: Value, dst: String? = None): Value {
+    val dest = dst ?: self._nextLocal()
+    val ty = value.ty()
+    val local = Value.Ident(dest, ty)
+
+    self.append(Instruction.Copy(dst: Dest(name: local.repr(), ty: ty), value: value))
+
+    local
+  }
+
   pub func buildCall(self, callable: Callable, arguments: Value[], dst: String? = None, envPtr: Value? = None): Result<Value, String> {
     val dest = dst ?: self._nextLocal()
 
@@ -907,6 +917,7 @@ enum Instruction {
   FToL(dst: Dest, value: Value, signed: Bool)
 
   Cast(dst: Dest, value: Value)
+  Copy(dst: Dest, value: Value)
 
   Call(dst: Dest?, fn: Value, args: Value[], env: Value?)
   CallVarargs(dst: Dest?, fn: Value, varargsIdx: Int, args: Value[], env: Value?)
@@ -1204,6 +1215,12 @@ enum Instruction {
       Instruction.Cast(dst, v) => {
         dst.encode(file)
         file.write(" cast ")
+        v.encode(file)
+        file.writeln()
+      }
+      Instruction.Copy(dst, v) => {
+        dst.encode(file)
+        file.write(" copy ")
         v.encode(file)
         file.writeln()
       }
