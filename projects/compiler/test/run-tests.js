@@ -857,7 +857,7 @@ const IR_COMPILER_TESTS = [
   { test: "compiler/optionals.abra" },
   { test: "compiler/ifs.abra" },
   { test: "compiler/loops.abra" },
-  // { test: "compiler/types.abra" },
+  { test: "compiler/types.abra" },
   { test: "compiler/enums.abra" },
   { test: "compiler/tuples.abra" },
   { test: "compiler/maps.abra" },

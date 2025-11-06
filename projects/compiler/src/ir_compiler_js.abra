@@ -69,7 +69,8 @@ pub type Compiler {
 
     val globalName = jsIdentName(global.name)
     if global.initialValue |init| {
-      self.sb.write("const $globalName = ")
+      val keyword = if global.mutable "let" else "const"
+      self.sb.write("$keyword $globalName = ")
       self.emitIrConstToJsValue(init)
       self.sb.writeln(";")
     } else {
@@ -405,15 +406,23 @@ pub type Compiler {
       Operation.FunctionPointer(fnName) => {
         self.sb.writeln("const $dst = $fnName;")
       }
-      Operation.CreateClosure(fnName, captures) => {
-        self.sb.write("const $dst = (...args) => $fnName([")
-        for c, idx in captures {
-          self.emitIrValueToJsValue(c)
-          if idx != captures.length - 1 {
-            self.sb.write(", ")
-          }
+      Operation.CreateClosure(fnName, captures, capturedSelf) => {
+        self.sb.write("const $dst = (...args) => $fnName(")
+        if capturedSelf |v| {
+          self.emitIrValueToJsValue(v)
+          self.sb.write(",")
         }
-        self.sb.writeln("], ...args);")
+        if !captures.isEmpty() {
+          self.sb.write("[")
+          for c, idx in captures {
+            self.emitIrValueToJsValue(c)
+            if idx != captures.length - 1 {
+              self.sb.write(", ")
+            }
+          }
+          self.sb.write("],")
+        }
+        self.sb.writeln("...args);")
       }
       Operation.Call(ret, fnName, args, envLocation) => {
         if ret != IrType.Unit {

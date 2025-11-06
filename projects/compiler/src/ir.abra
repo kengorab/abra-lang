@@ -269,7 +269,7 @@ pub enum Operation {
   ForRanged(start: Value, end: CompoundValue, iteratee: Ident, idx: Ident?, body: Block)
 
   FunctionPointer(fnName: String)
-  CreateClosure(fnName: String, captures: Value[])
+  CreateClosure(fnName: String, captures: Value[], capturedSelf: Value?)
   Call(ret: IrType, fnName: String, args: Value[], envLocation: ClosureEnvLocation? = None)
   CallValue(ret: IrType, fnVal: Value, args: Value[])
 
@@ -611,12 +611,14 @@ pub enum Operation {
       Operation.FunctionPointer(fnName) => {
         sb.write("fn_ptr($fnName)")
       }
-      Operation.CreateClosure(fnName, captures) => {
+      Operation.CreateClosure(fnName, captures, capturedSelf) => {
         sb.write("create_closure($fnName, [")
         for c, idx in captures {
           c.render(sb)
           if idx != captures.length - 1 { sb.write(", ") }
         }
+        sb.write("], self=")
+        if capturedSelf |v| v.render(sb) else sb.write("None")
         sb.write(")")
       }
       Operation.Call(ret, fnName, args, _) => {
@@ -933,6 +935,10 @@ pub type ConcreteType {
 
 // All values placed into heap-allocated memory must be aligned on 8-byte boundaries, in order to satisfy bdwgc
 val ALIGNMENT = 8
+
+// This is a dummy struct used to represent the ConcreteType of a type/enum. Its fields/methods are never referenced,
+// it's just meant as a placeholder in places where a ConcreteType is expected (but never actually used, in the case of types/enums).
+val TYPE_STRUCT = ConcreteType(instanceKind: InstanceKind.Struct(tc.Struct.makeDummy(moduleId: 0, name: "Type")), typeArgs: [])
 
 pub type Generator {
   project: tc.Project
@@ -3330,14 +3336,19 @@ pub type Generator {
           None
         }
 
-        self.genFunctionValue(concreteGenerics, fn, targetParamTypes, dst, captures)
+        self.genFunctionValue(concreteGenerics, fn, targetParamTypes, dst, captures, capturedSelf: None, capturedSelfType: None)
       }
       else => {
         if varImportModule |mod| {
           val globalName = self.globalName(mod.id, variable.label.name)
           val global = self.getGlobal(globalName, pos)
           if global.initialValue |v| {
-            Value.Const(v)
+            if global.mutable {
+              global.referenced = true
+              Value.Global(global)
+            } else {
+              Value.Const(v)
+            }
           } else {
             global.referenced = true
             Value.Global(global)
@@ -3346,7 +3357,12 @@ pub type Generator {
           val globalName = self.globalName(modId, variable.label.name)
           val global = self.getGlobal(globalName, pos)
           if global.initialValue |v| {
-            Value.Const(v)
+            if global.mutable {
+              global.referenced = true
+              Value.Global(global)
+            } else {
+              Value.Const(v)
+            }
           } else {
             global.referenced = true
             Value.Global(global)
@@ -3441,10 +3457,15 @@ pub type Generator {
         (variantVal, concreteType)
       }
       else => {
-        val concreteType = self.getConcreteTypeFromType(head.ty, concreteGenerics)
-        val headVal = self.genExpression(head, concreteGenerics)
+        match head.ty.kind {
+          TypeKind.Type => (Value.Unit, TYPE_STRUCT)
+          else => {
+            val concreteType = self.getConcreteTypeFromType(head.ty, concreteGenerics)
+            val headVal = self.genExpression(head, concreteGenerics)
 
-        (headVal, concreteType)
+            (headVal, concreteType)
+          }
+        }
       }
     }
 
@@ -3458,7 +3479,30 @@ pub type Generator {
 
           break
         }
-        AccessorPathSegment.Method => todo("followAccessorPath: methods")
+        AccessorPathSegment.Method(label, fn, isOptSafe, fnAliasTypeHint) => {
+          if isOptSafe todo("isOptSafe AccessorPathSegment.Method")
+          val targetParamTypes = if fnAliasTypeHint |(paramHints, _)| Some(paramHints) else None
+
+          val captures = if fn.isClosure() {
+            val captures: Value[] = []
+            for variable in fn.captures {
+              captures.push(self.genLoadCapturedVar(variable.label.position, concreteGenerics, variable, deref: false))
+            }
+            Some(captures)
+          } else {
+            None
+          }
+
+          val (capturedSelf, capturedSelfType) = match fn.kind {
+            FunctionKind.InstanceMethod => (Some(workingVal), Some(concreteType))
+            FunctionKind.StaticMethod => (None, None)
+            else => unreachable()
+          }
+
+          val fnType = fn.getType()
+          workingVal = self.genFunctionValue(concreteGenerics, fn, targetParamTypes, dst, captures, capturedSelf: capturedSelf, capturedSelfType: capturedSelfType)
+          concreteType = self.getConcreteTypeFromType(fnType, concreteGenerics)
+        }
         AccessorPathSegment.Field(label, ty, field, isOptSafe) => {
           val optSafeCtx = if isOptSafe {
             if concreteType.instanceKind != InstanceKind.Enum(self.project.preludeOptionEnum) unreachable()
@@ -3705,7 +3749,7 @@ pub type Generator {
       None
     }
 
-    self.genFunctionValue(concreteGenerics, fn, targetParamTypes, dst, captures)
+    self.genFunctionValue(concreteGenerics, fn, targetParamTypes, dst, captures, capturedSelf: None, capturedSelfType: None)
   }
 
   func genTry(self, concreteGenerics: Map<String, ConcreteType>, expr: tc.TypedAstNode, elseClause: tc.TypedTryElseClause?, dst: String?): Value {
@@ -3784,7 +3828,16 @@ pub type Generator {
 
   // codegen helpers
 
-  func genFunctionValue(self, concreteGenerics: Map<String, ConcreteType>, fn: tc.Function, targetParamTypes: (tc.Type, Bool)[]?, dst: String?, captures: Value[]?): Value {
+  func genFunctionValue(
+    self,
+    concreteGenerics: Map<String, ConcreteType>,
+    fn: tc.Function,
+    targetParamTypes: (tc.Type, Bool)[]?,
+    dst: String?,
+    captures: Value[]?,
+    capturedSelf: Value?,
+    capturedSelfType: ConcreteType?,
+  ): Value {
     val concreteParamTypes = if targetParamTypes |paramTypes| {
       paramTypes.filter(_p => _p[1]).map(_p => self.getConcreteTypeFromType(_p[0], concreteGenerics))
     } else {
@@ -3793,8 +3846,8 @@ pub type Generator {
     val targetArity = concreteParamTypes.length
 
     val fnName = if targetArity == fn.params.length {
-      val fnName = self.fnName(None, fn, concreteGenerics, [])
-      self.enqueueFunction(fn, fnName, [], None, concreteGenerics)
+      val fnName = self.fnName(capturedSelfType, fn, concreteGenerics, [])
+      self.enqueueFunction(fn, fnName, [], capturedSelfType, concreteGenerics)
       fnName
     } else if targetArity < fn.params.length {
       val paramsNeedingDefaultValue = fn.params.map((param, idx) => {
@@ -3805,19 +3858,21 @@ pub type Generator {
           true
         }
       })
-      val fnName = self.fnName(None, fn, concreteGenerics, paramsNeedingDefaultValue)
-      self.enqueueFunction(fn, fnName, paramsNeedingDefaultValue, None, concreteGenerics)
+      val fnName = self.fnName(capturedSelfType, fn, concreteGenerics, paramsNeedingDefaultValue)
+      self.enqueueFunction(fn, fnName, paramsNeedingDefaultValue, capturedSelfType, concreteGenerics)
       fnName
     } else {
       val toDiscard = concreteParamTypes[fn.params.length:]
-      val fnName = self.fnName(None, fn, concreteGenerics, [], !toDiscard.isEmpty())
-      self.enqueueFunction(fn, fnName, [], None, concreteGenerics, toDiscard)
+      val fnName = self.fnName(capturedSelfType, fn, concreteGenerics, [], !toDiscard.isEmpty())
+      self.enqueueFunction(fn, fnName, [], capturedSelfType, concreteGenerics, toDiscard)
 
       fnName
     }
 
     if captures |captures| {
-      self.ssaValue(IrType.Ptr, Operation.CreateClosure(fnName: fnName, captures: captures), dst)
+      self.ssaValue(IrType.Ptr, Operation.CreateClosure(fnName: fnName, captures: captures, capturedSelf: capturedSelf), dst)
+    } else if capturedSelf {
+      self.ssaValue(IrType.Ptr, Operation.CreateClosure(fnName: fnName, captures: [], capturedSelf: capturedSelf), dst)
     } else {
       self.ssaValue(IrType.Ptr, Operation.FunctionPointer(fnName: fnName), dst)
     }
@@ -4100,7 +4155,7 @@ pub type Generator {
 
         ConcreteType(instanceKind: InstanceKind.Struct(struct), typeArgs: concreteTypeArgs)
       }
-      TypeKind.Type(type_) => todo("TypeKind.Type")
+      TypeKind.Type(type_) => unreachable("getConcreteTypeFromType: TypeKind.Type")
       TypeKind.Tuple(types) => {
         val struct = self.tupleStruct(types.length)
         val concreteTypeArgs = types.map(t => self.getConcreteTypeFromType(t, concreteGenerics))
