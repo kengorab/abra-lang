@@ -81,7 +81,7 @@ class TestRunner {
         await runCommand(compilerBin, [testFilePath, testName])
         return runCommand('node', [`${process.cwd()}/._abra/${testName}_harness.mjs`, ...args], env)
       } else if (target === 'vm') {
-        return runCommand(compilerBin, [testFilePath])
+        return runCommand(compilerBin, [testFilePath, ...args], env)
       } else if (target === 'native') {
         await runCommand('abra', ['build', '-o', testName, testFilePath], { COMPILER_BIN: compilerBin })
         return runCommand(`${process.cwd()}/._abra/${testName}`, args, env)

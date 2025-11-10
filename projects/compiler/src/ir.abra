@@ -183,7 +183,10 @@ pub enum Value {
 
 pub enum Builtin {
   Malloc(count: Value, itemTy: IrType)
+  Null
+  IsNull(ptr: Value)
   Realloc(ptr: Value, count: Value, itemTy: IrType? = None)
+  PointerAddress(ptr: Value),
   Store(ptr: Value, value: Value, offset: Value, itemTy: IrType)
   Load(ptr: Value, offset: Value, itemTy: IrType)
   CopyFrom(dst: Value, dstOffset: Value, src: Value, srcOffset: Value, size: Value, itemTy: IrType)
@@ -198,6 +201,8 @@ pub enum Builtin {
   FloatRound(floatVal: Value)
   FloatBitsToInt(floatVal: Value)
   Uninitialized
+  Argc
+  Argv
   Callstack
   CallstackPtr
   ModuleNames
@@ -704,6 +709,13 @@ pub enum Operation {
             sb.write(", ")
             itemTy.render(sb)
           }
+          Builtin.Null => {
+            sb.write("ptr_null")
+          }
+          Builtin.IsNull(ptr) => {
+            sb.write("ptr_is_null, ")
+            ptr.render(sb)
+          }
           Builtin.Realloc(ptr, count, itemTy) => {
             sb.write("realloc, ")
             ptr.render(sb)
@@ -713,6 +725,11 @@ pub enum Operation {
               sb.write(", ")
               ty.render(sb)
             }
+          }
+          Builtin.PointerAddress(ptr) => {
+            sb.write("ptr_address, ")
+            ptr.render(sb)
+            sb.write(", ")
           }
           Builtin.Store(ptr, value, offset, itemTy) => {
             sb.write("ptr_store, ")
@@ -786,9 +803,13 @@ pub enum Operation {
             sb.write("float_bits_to_int, ")
             float.render(sb)
           }
-          Builtin.Uninitialized => {
-            sb.write("uninitialized")
-          }
+          Builtin.Uninitialized => sb.write("uninitialized")
+          Builtin.Argc => sb.write("argc")
+          Builtin.Argv => sb.write("argv")
+          Builtin.Callstack => sb.write("callstack")
+          Builtin.CallstackPtr => sb.write("callstack_ptr")
+          Builtin.ModuleNames => sb.write("module_names")
+          Builtin.FunctionNames => sb.write("function_names")
         }
         sb.write(")")
       }
@@ -2015,6 +2036,7 @@ pub type Generator {
     var subjVal = self.genExpression(subjectNode, concreteGenerics)
     val subjValOrig = subjVal
     val subjectConcreteType = self.getConcreteTypeFromType(subjectNode.ty, concreteGenerics)
+    val subjectConcreteGenerics = self.extractConcreteGenericsFromConcreteType(subjectConcreteType)
     val subjectOptInnerType = if self.project.typeIsOption(subjectNode.ty) |innerType| {
       val innerConcreteType = self.getConcreteTypeFromType(innerType, concreteGenerics)
       val innerIrType = self.getIrTypeForConcreteType(innerConcreteType)
@@ -2040,12 +2062,12 @@ pub type Generator {
 
               for field, idx in fields {
                 val variable = try destructuredVariables[idx] else unreachable("fields.length != destructuredVariables.length")
-                val fieldConcreteType = self.getConcreteTypeFromType(field.ty, concreteGenerics)
+                val fieldConcreteType = self.getConcreteTypeFromType(field.ty, subjectConcreteGenerics)
                 val fieldIrType = self.getIrTypeForConcreteType(fieldConcreteType)
 
                 val offset = (idx + 1) * ALIGNMENT
                 val fieldSubject = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: subjVal, name: field.name.name, offset: offset), None)
-                self.genBindingPattern(BindingPattern.Variable(variable.label), vars, Some((fieldSubject, fieldConcreteType)), concreteGenerics)
+                self.genBindingPattern(BindingPattern.Variable(variable.label), vars, Some((fieldSubject, fieldConcreteType)), subjectConcreteGenerics)
               }
             }
           }
@@ -2081,7 +2103,7 @@ pub type Generator {
             }
 
             val vars = { (variable.label.name): variable }
-            self.genBindingPattern(BindingPattern.Variable(variable.label), vars, Some((variableSubject, concreteTy)), concreteGenerics)
+            self.genBindingPattern(BindingPattern.Variable(variable.label), vars, Some((variableSubject, concreteTy)), subjectConcreteGenerics)
           }
 
           for node, idx in case.body {
@@ -2974,11 +2996,20 @@ pub type Generator {
           (fnName, concreteReturnType)
         } else if self.getIntrinsicDecName(fn) |intrinsicName| {
           return match intrinsicName {
+            "argc" => {
+              self.ssaValue(IrType.I64, Operation.Builtin(ret: IrType.I64, builtin: Builtin.Argc), dst)
+            }
+            "argv" => {
+              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Argv), dst)
+            }
             "pointer_malloc" => {
               val count = self.genExpression(self.intrinsicArgs1("pointer_malloc", args), innerConcreteGenerics)
               val itemTy = self.getIrTypeForConcreteType(try innerConcreteGenerics["T"] else unreachable("(pointer_malloc) could not resolve T for Pointer<T>"))
 
               self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Malloc(count: count, itemTy: itemTy)), dst)
+            }
+            "pointer_null" => {
+              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Null), dst)
             }
             "byte_from_int" => {
               val arg = self.intrinsicArgs1("byte_from_int", args)
@@ -3067,6 +3098,11 @@ pub type Generator {
           todo("Unimplemented external method '$fnName'")
         } else if self.getIntrinsicDecName(fn) |intrinsicName| {
           return match intrinsicName {
+            "pointer_is_null" => {
+              val ptrVal = self.genExpression(selfVal, concreteGenerics)
+
+              self.ssaValue(IrType.Bool, Operation.Builtin(ret: IrType.Bool, builtin: Builtin.IsNull(ptr: ptrVal)), dst)
+            }
             "pointer_realloc" => {
               val ptrVal = self.genExpression(selfVal, concreteGenerics)
               val count = self.intrinsicArgs1("pointer_realloc", args)
@@ -3075,6 +3111,11 @@ pub type Generator {
               val countVal = self.genExpression(count, innerConcreteGenerics)
 
               self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Realloc(ptr: ptrVal, count: countVal, itemTy: Some(itemTy))), dst)
+            }
+            "pointer_address" => {
+              val ptrVal = self.genExpression(selfVal, concreteGenerics)
+
+              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.PointerAddress(ptr: ptrVal)), dst)
             }
             "pointer_store_at" => {
               val ptrVal = self.genExpression(selfVal, concreteGenerics)

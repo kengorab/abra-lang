@@ -74,12 +74,7 @@ func main() {
     }
 
     val ir = Generator.generateIR(project, foldConstants: true)
-    VM.evalIR(ir)
-
-    // val fn = try ir.functions.find(f => f.name.endsWith("shout")) else unreachable()
-    // val res = VM(ir: ir).evalFunctionCall(fn, [])
-    // val str = try unmarshallString(res) else |e| unreachable(e)
-    // stdoutWriteln(str)
+    VM.evalIR(ir, args[1:])
   } else {
     stdoutWriteln("Missing required argument <file-name>")
     process.exit(1)

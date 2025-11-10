@@ -31,6 +31,8 @@ pub type Compiler {
   ir: IR
   builder: ModuleBuilder
   currentFn: qbe.QbeFunction
+  argcPtr: qbe.Value
+  argvPtr: qbe.Value
   currentFnEnv: qbe.Value? = None
   numTemps: Int = 0
   loopStack: (/* start: */ qbe.Label, /* end: */ qbe.Label)[] = []
@@ -45,10 +47,15 @@ pub type Compiler {
   pub func compile(ir: IR): CompilationResult {
     val builder = ModuleBuilder()
 
+    val (argcPtr, _) = builder.addData(qbe.QbeData(name: "__argc", kind: qbe.QbeDataKind.Constants([(QbeType.U64, qbe.Value.Int(0))])))
+    val (argvPtr, _) = builder.addData(qbe.QbeData(name: "__argv", kind: qbe.QbeDataKind.Constants([(QbeType.U64, qbe.Value.Int(0))])))
+
     val compiler = Compiler(
       ir: ir,
       builder: builder,
       currentFn: qbe.QbeFunction.spec(name: "dummy"),
+      argcPtr: argcPtr,
+      argvPtr: argvPtr,
     )
 
     compiler.compileMainFunction(ir.mainFunction)
@@ -85,11 +92,13 @@ pub type Compiler {
     val f = self.builder.buildFunction(name: fn.name, returnType: Some(qbe.QbeType.U64), exported: true)
     self.currentFn = f
 
-    // TODO: persist to globals
-    val argcVal = f.addParameter("argc", qbe.QbeType.U64)
-    val argvVal = f.addParameter("argv", qbe.QbeType.U64)
+    val argcParam = f.addParameter("argc", qbe.QbeType.U64)
+    val argvParam = f.addParameter("argv", qbe.QbeType.U64)
 
     f.block.buildVoidCallRaw("GC_init", [])
+
+    f.block.buildStoreL(argcParam, self.argcPtr)
+    f.block.buildStoreL(argvParam, self.argvPtr)
 
     for inst in fn.block[1] {
       self.compileInstruction(inst)
@@ -880,12 +889,26 @@ pub type Compiler {
         }
 
         match builtin {
+          Builtin.Argc => {
+            self.currentFn.block.buildLoadL(self.argcPtr, dst)
+          }
+          Builtin.Argv => {
+            self.currentFn.block.buildLoadL(self.argvPtr, dst)
+          }
           Builtin.Malloc(count, itemTy) => {
             val countVal = self.irValueToQbeValue(count)
             val (size, _) = sizeOfType(itemTy)
             val sizeVal = try self.currentFn.block.buildMul(qbe.Value.Int(size), countVal, Some(self.nextTemp())) else |e| unreachable(e)
 
             self.callMalloc(sizeVal, dst)
+          }
+          Builtin.Null => {
+            self.currentFn.block.buildCopy(qbe.Value.Int(0), dst)
+          }
+          Builtin.IsNull(ptr) => {
+            val ptrVal = self.irValueToQbeValue(ptr)
+
+            try self.currentFn.block.buildCompareEq(qbe.Value.Int(0), ptrVal, dst) else |e| unreachable(e)
           }
           Builtin.Realloc(ptr, count, itemTy) => {
             val ptrVal = self.irValueToQbeValue(ptr)
@@ -898,6 +921,10 @@ pub type Compiler {
             }
 
             self.callRealloc(ptrVal, sizeVal, dst)
+          }
+          Builtin.PointerAddress(ptr) => {
+            val ptrVal = self.irValueToQbeValue(ptr)
+            self.currentFn.block.buildCopy(ptrVal, dst)
           }
           Builtin.Store(ptr, value, offset, itemTy) => {
             val ptrVal = self.irValueToQbeValue(ptr)
