@@ -8,13 +8,22 @@
     <script type="module">
       import main from './._abra/_main.mjs';
 
+      const $td = new TextDecoder();
+      const $te = new TextEncoder();
+
+      function _decodeString(buf) {
+        let i = buf.length - 1;
+        while (i >= 0 && buf[i] === 0) { i--; }
+        return $td.decode(buf.slice(0, i + 1));
+      }
+
       const stdout = document.getElementById('stdout');
 
       // The `write` function appends to the #stdout element, and also outputs to the console.
       // When outputting to the console, make sure to disregard newlines and empty strings, since
       // `console` methods always append the newline.
       function write(fd, buf, _count) {
-        let str = buf.join('')
+        let str = _decodeString(buf)
         stdout.innerHTML += str
 
         if (str.endsWith('\n')) { str = str.substring(0, str.length - 1); }
@@ -27,7 +36,18 @@
         }
       }
 
-      main({ write });
+      function strlen(str) {
+        return str.length;
+      }
+
+      function getenv(key) {
+        const keyStr = _decodeString(key)
+        console.log(`getkey('${keyStr}'): unimplemented`)
+        return null;
+      }
+
+      const externs = { write, strlen, getenv };
+      main(externs, []);
     </script>
 
 </head>

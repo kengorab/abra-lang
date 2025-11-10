@@ -23,7 +23,7 @@ pub type ComptimeFunctionEvaluator {
     for f in self.gen.fnQueue { self.gen.genFunction(f) }
 
     val ir = self.gen.getIR()
-    val vm = VM(ir: ir)
+    val vm = VM(ir: ir, args: [])
 
     val marshalledArgs: VmValue[] = []
     for argument, idx in arguments {

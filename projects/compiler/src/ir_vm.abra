@@ -73,6 +73,7 @@ enum ControlFlag {
 
 pub type VM {
   pub ir: ir.IR
+  pub args: String[]
   externs: Map<String, (VmValue[]) => VmValue> = {}
   locals: VmValue[] = []
   globals: Map<String, VmValue> = {}
@@ -82,8 +83,8 @@ pub type VM {
   whileLoopCond: ir.Instruction[]? = None
   curFnName: String = ""
 
-  pub func evalIR(intermediateRepresentation: ir.IR): VmValue {
-    val vm = VM(ir: intermediateRepresentation)
+  pub func evalIR(intermediateRepresentation: ir.IR, programArgs: String[]): VmValue {
+    val vm = VM(ir: intermediateRepresentation, args: programArgs)
     vm.initGlobals()
     vm.evalFunctionCall(intermediateRepresentation.mainFunction, [])
   }
@@ -629,6 +630,16 @@ pub type VM {
       }
       Operation.Builtin(ret, builtin) => {
         match builtin {
+          Builtin.Argc => {
+            self.store(self.expectAssignee(inst), VmValue.Int(self.args.length))
+          }
+          Builtin.Argv => {
+            val argv = Pointer.malloc<VmValue>(self.args.length)
+            for arg, idx in self.args {
+              argv.storeAt(VmValue.Pointer(arg._buffer), idx)
+            }
+            self.store(self.expectAssignee(inst), VmValue.Pointer(Pointer.reinterpret(argv)))
+          }
           Builtin.Malloc(count, itemTy) => {
             val countVal = self.irValueToVmValue(count).expectInt("Builtin.Malloc count")
             val v = match ret {
@@ -644,6 +655,13 @@ pub type VM {
             }
             self.store(self.expectAssignee(inst), v)
           }
+          Builtin.Null => {
+            self.store(self.expectAssignee(inst), VmValue.Pointer(Pointer.null()))
+          }
+          Builtin.IsNull(ptr) => {
+            val ptrVal = self.irValueToVmValue(ptr).expectPointer("Builtin.IsNull ptr")
+            self.store(self.expectAssignee(inst), VmValue.Bool(ptrVal.isNullPtr()))
+          }
           Builtin.Realloc(ptr, count, itemTy) => {
             val ptrVal = self.irValueToVmValue(ptr).expectPointer("Builtin.Realloc ptr")
             val countVal = self.irValueToVmValue(count).expectInt("Builtin.Realloc count")
@@ -651,6 +669,10 @@ pub type VM {
             val numBytes = countVal * itemSize
             val res = ptrVal.realloc(numBytes)
             self.store(self.expectAssignee(inst), VmValue.Pointer(res))
+          }
+          Builtin.PointerAddress(ptr) => {
+            val ptrVal = self.irValueToVmValue(ptr).expectPointer("Builtin.PointerAddress ptr")
+            self.store(self.expectAssignee(inst), VmValue.Int(ptrVal.address()))
           }
           Builtin.Store(ptr, value, offset, itemTy) => {
             val pointer = self.irValueToVmValue(ptr).expectPointer("Builtin.Store ptr")
@@ -722,6 +744,7 @@ pub type VM {
               IrType.Unit => unreachable("values cannot be of type unit")
               IrType.Byte => dstVal.copyFrom(dstOffsetVal, srcVal, srcOffsetVal, sizeVal)
               IrType.I64 => dstVal.copyFrom(dstOffsetVal * 8, srcVal, srcOffsetVal * 8, sizeVal * 8)
+              IrType.Composite => dstVal.copyFrom(dstOffsetVal * 8, srcVal, srcOffsetVal * 8, sizeVal * 8)
               else v => todo("CopyFrom: $v")
             }
           }
@@ -776,6 +799,8 @@ pub type VM {
     match name {
       "write" => self.externWrite(args)
       "rand" => self.externRand(args)
+      "strlen" => self.externStrlen(args)
+      "getenv" => self.externGetenv(args)
       else => {
         if self.externs[name] |fn| {
           self.returnValue = fn(args)
@@ -786,7 +811,7 @@ pub type VM {
     }
   }
 
-  pub func externWrite(self, args: VmValue[]) {
+  func externWrite(self, args: VmValue[]) {
     val arg0 = try args[0] else unreachable("write(fd: Int, buf: Pointer<Byte>, count: Int)")
     val fd = arg0.expectInt("externWrite fd")
 
@@ -800,8 +825,24 @@ pub type VM {
     self.returnValue = VmValue.Int(res)
   }
 
-  pub func externRand(self, args: VmValue[]) {
+  func externRand(self, args: VmValue[]) {
     val res = libc.rand()
     self.returnValue = VmValue.Int(res)
+  }
+
+  func externStrlen(self, args: VmValue[]) {
+    val arg0 = try args[0] else unreachable("strlen(buf: Pointer<Byte>)")
+    val strPtr = arg0.expectPointer("externStrlen strPtr")
+
+    val res = libc.strlen(strPtr)
+    self.returnValue = VmValue.Int(res)
+  }
+
+  func externGetenv(self, args: VmValue[]) {
+    val arg0 = try args[0] else unreachable("getenv(name: Pointer<Byte>)")
+    val strPtr = arg0.expectPointer("externGetenv strPtr")
+
+    val res = libc.getenv(strPtr)
+    self.returnValue = VmValue.Pointer(res)
   }
 }

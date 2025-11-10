@@ -32,7 +32,7 @@ pub type Compiler {
 
     val compiler = Compiler(ir: ir, sb: sb)
 
-    sb.writeln("export default function(externs) {")
+    sb.writeln("export default function(externs, args) {")
     sb.write("const { ")
     for fn in ir.functions {
       if !fn.extern continue
@@ -42,6 +42,8 @@ pub type Compiler {
     sb.writeln("} = externs;")
 
     sb.writeln(builtins)
+
+    sb.writeln("const \$\$args = args.map(a => \$te.encode(a));")
 
     for g in ir.globals {
       compiler.compileGlobal(g)
@@ -524,6 +526,12 @@ pub type Compiler {
       }
       Operation.Builtin(ret, builtin) => {
         match builtin {
+          Builtin.Argc => {
+            self.sb.writeln("const $dst = \$\$args.length;")
+          }
+          Builtin.Argv => {
+            self.sb.writeln("const $dst = \$\$args;")
+          }
           Builtin.Malloc(count, itemTy) => {
             self.sb.write("const $dst = ")
             // If there's no type being malloc'd, then it can be modeled as an object. If the type is Byte then it's
@@ -543,10 +551,22 @@ pub type Compiler {
             }
             self.sb.writeln(" // builtin(malloc)")
           }
+          Builtin.Null => {
+            self.sb.writeln("const $dst = null; // pointer_null")
+          }
+          Builtin.IsNull(ptr) => {
+            self.sb.write("const $dst = ")
+            self.emitIrValueToJsValue(ptr)
+            self.sb.writeln(" === null; // pointer_is_null")
+          }
           Builtin.Realloc(ptr, count, _) => {
             self.sb.write("const $dst = ")
             self.emitIrValueToJsValue(ptr)
             self.sb.writeln("; // realloc (no-op)")
+          }
+          Builtin.PointerAddress => {
+            // this is sort of meaningless for a js target
+            todo("Builtin.PointerAddress")
           }
           Builtin.Store(ptr, value, offset, _) => {
             self.emitIrValueToJsValue(ptr)
