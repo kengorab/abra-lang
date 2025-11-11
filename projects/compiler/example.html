@@ -46,7 +46,11 @@
         return null;
       }
 
-      const externs = { write, strlen, getenv };
+      function errno() {
+        return 0;
+      }
+
+      const externs = { write, strlen, getenv, errno };
       main(externs, []);
     </script>
 

@@ -207,6 +207,7 @@ pub enum Builtin {
   CallstackPtr
   ModuleNames
   FunctionNames
+  Errno
 }
 
 pub type Block {
@@ -2056,18 +2057,20 @@ pub type Generator {
       val caseBlockFn = () => {
         self.withinBlock("case_$idx", !!case.terminator, () => {
           match case.kind {
-            TypedMatchCaseKind.EnumVariant(enum_, variant, variantIdx, destructuredVariables) => {
-              val fields = match variant.kind { EnumVariantKind.Container(fields) => fields, else => [] }
-              val vars = Map.fromPairs(destructuredVariables.map(v => (v.label.name, v)))
+            TypedMatchCaseKind.EnumVariant(_, variant, _, destructuredVariables) => {
+              if !destructuredVariables.isEmpty() {
+                val fields = match variant.kind { EnumVariantKind.Container(fields) => fields, else => [] }
+                val vars = Map.fromPairs(destructuredVariables.map(v => (v.label.name, v)))
 
-              for field, idx in fields {
-                val variable = try destructuredVariables[idx] else unreachable("fields.length != destructuredVariables.length")
-                val fieldConcreteType = self.getConcreteTypeFromType(field.ty, subjectConcreteGenerics)
-                val fieldIrType = self.getIrTypeForConcreteType(fieldConcreteType)
+                for field, idx in fields {
+                  val variable = try destructuredVariables[idx] else unreachable("fields.length != destructuredVariables.length (${node.token.position})")
+                  val fieldConcreteType = self.getConcreteTypeFromType(field.ty, subjectConcreteGenerics)
+                  val fieldIrType = self.getIrTypeForConcreteType(fieldConcreteType)
 
-                val offset = (idx + 1) * ALIGNMENT
-                val fieldSubject = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: subjVal, name: field.name.name, offset: offset), None)
-                self.genBindingPattern(BindingPattern.Variable(variable.label), vars, Some((fieldSubject, fieldConcreteType)), subjectConcreteGenerics)
+                  val offset = (idx + 1) * ALIGNMENT
+                  val fieldSubject = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: subjVal, name: field.name.name, offset: offset), None)
+                  self.genBindingPattern(BindingPattern.Variable(variable.label), vars, Some((fieldSubject, fieldConcreteType)), subjectConcreteGenerics)
+                }
               }
             }
           }
@@ -2377,9 +2380,7 @@ pub type Generator {
         self.ssaValue(resIrTy, Operation.If(resIrTy, condVal, ifBody, elseBody), dst)
       }
       TypedAstNodeKind.Match(isStatement, subjectNode, cases) => {
-        if isStatement unreachable("unexpected match statement (expected expression)")
-
-        self.genMatch(node, false, subjectNode, cases, concreteGenerics, dst)
+        self.genMatch(node, isStatement, subjectNode, cases, concreteGenerics, dst)
       }
       TypedAstNodeKind.Try(expr, elseClause) => self.genTry(concreteGenerics, expr, elseClause, dst)
       else => todo("Other expressions (${node.token})")
@@ -3011,6 +3012,14 @@ pub type Generator {
             "pointer_null" => {
               self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Null), dst)
             }
+            "pointer_reinterpret" => {
+              val ptr = self.intrinsicArgs1("pointer_reinterpret", args)
+              self.genExpression(ptr, innerConcreteGenerics, dst)
+            }
+            "pointer_addressof" => {
+              val ptr = self.intrinsicArgs1("pointer_addressof", args)
+              self.genExpression(ptr, innerConcreteGenerics, dst)
+            }
             "byte_from_int" => {
               val arg = self.intrinsicArgs1("byte_from_int", args)
               self.genExpression(arg, innerConcreteGenerics, dst)
@@ -3075,6 +3084,9 @@ pub type Generator {
             }
             "functionnames" => {
               self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.FunctionNames), dst)
+            }
+            "errno" => {
+              self.ssaValue(IrType.I64, Operation.Builtin(ret: IrType.I64, builtin: Builtin.Errno), dst)
             }
             else => todo("Unimplemented static/standalone intrinsic '$intrinsicName'")
           }

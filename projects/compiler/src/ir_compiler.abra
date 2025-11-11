@@ -1,4 +1,5 @@
 import File from "fs"
+import "process" as process
 import IR, IrFunction, IrType, Instruction, Operation, Ident, Value, Const, IdentKind, GlobalVariable, Builtin, ClosureEnvLocation, CaptureSource from "./ir"
 import ModuleBuilder, QbeType from "./qbe"
 import "./qbe" as qbe
@@ -764,7 +765,6 @@ pub type Compiler {
         val (_, loopEndLabel) = try self.loopStack[-1] else unreachable("cannot have a break statement outside of a loop")
 
         self.currentFn.block.buildJmp(loopEndLabel)
-        Ok(None)
       }
       Operation.Continue => {
         val (loopStartLabel, _) = try self.loopStack[-1] else unreachable("cannot have a continue statement outside of a loop")
@@ -1069,6 +1069,16 @@ pub type Compiler {
           }
           Builtin.FunctionNames => {
             self.currentFn.block.buildCopy(qbe.Value.Int(0), dst)
+          }
+          Builtin.Errno => {
+            val errnoFnName = match process.uname().sysname {
+              "Linux" => "__errno_location"
+              "Darwin" => "__error"
+              else sysname => todo("[errno] unsupported system $sysname")
+            }
+            val errnoPtr = try self.currentFn.block.buildCallRaw(errnoFnName, QbeType.Pointer, [], Some(self.nextTemp())) else |e| unreachable(e)
+            val errnoVal = self.currentFn.block.buildLoadW(errnoPtr, Some(self.nextTemp()))
+            self.currentFn.block.buildExt(value: errnoVal, signed: false, dst: Some(self.nextTemp()))
           }
         }
       }

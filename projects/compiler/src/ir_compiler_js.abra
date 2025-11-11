@@ -702,6 +702,7 @@ pub type Compiler {
           Builtin.CallstackPtr => self.sb.writeln("const $dst = 0;")
           Builtin.ModuleNames => self.sb.writeln("const $dst = undefined;")
           Builtin.FunctionNames => self.sb.writeln("const $dst = undefined;")
+          Builtin.Errno => self.sb.writeln("const $dst = errno();")
         }
       }
     }
