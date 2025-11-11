@@ -32,10 +32,15 @@ function getenv(key) {
   return $te.encode(val)
 }
 
+function errno() {
+  return 0;
+}
+
 const externs = {
   write,
   strlen,
   getenv,
+  errno,
 };
 
 main(externs, process.argv.slice(1));

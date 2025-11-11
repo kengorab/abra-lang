@@ -790,6 +790,7 @@ pub type VM {
           Builtin.CallstackPtr => self.store(self.expectAssignee(inst), VmValue.Int(0))
           Builtin.ModuleNames => self.store(self.expectAssignee(inst), VmValue.Int(0))
           Builtin.FunctionNames => self.store(self.expectAssignee(inst), VmValue.Int(0))
+          Builtin.Errno => self.store(self.expectAssignee(inst), VmValue.Int(libc.errno()))
         }
       }
     }
