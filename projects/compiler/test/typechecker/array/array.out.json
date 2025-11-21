@@ -469,6 +469,12 @@
                 },
                 "node": {
                   "kind": "invocation",
+                  "resolvedGenerics": {
+                    "V": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  },
                   "invokee": "Option.Some",
                   "arguments": [
                     {
@@ -553,6 +559,12 @@
                 },
                 "node": {
                   "kind": "invocation",
+                  "resolvedGenerics": {
+                    "V": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  },
                   "invokee": "Option.Some",
                   "arguments": [
                     {
@@ -707,6 +719,12 @@
                 },
                 "node": {
                   "kind": "invocation",
+                  "resolvedGenerics": {
+                    "V": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  },
                   "invokee": "Option.Some",
                   "arguments": [
                     {
@@ -748,6 +766,12 @@
                 },
                 "node": {
                   "kind": "invocation",
+                  "resolvedGenerics": {
+                    "V": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  },
                   "invokee": "Option.Some",
                   "arguments": [
                     {
@@ -985,6 +1009,12 @@
             },
             "node": {
               "kind": "invocation",
+              "resolvedGenerics": {
+                "V": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              },
               "invokee": "Option.Some",
               "arguments": [
                 {
@@ -1026,6 +1056,12 @@
             },
             "node": {
               "kind": "invocation",
+              "resolvedGenerics": {
+                "V": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              },
               "invokee": "Option.Some",
               "arguments": [
                 {
@@ -1110,6 +1146,12 @@
             },
             "node": {
               "kind": "invocation",
+              "resolvedGenerics": {
+                "V": {
+                  "kind": "primitive",
+                  "primitive": "Int"
+                }
+              },
               "invokee": "Option.Some",
               "arguments": [
                 {
@@ -1192,6 +1234,18 @@
             },
             "node": {
               "kind": "invocation",
+              "resolvedGenerics": {
+                "V": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 5, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                }
+              },
               "invokee": "Option.Some",
               "arguments": [
                 {
@@ -1279,6 +1333,18 @@
             },
             "node": {
               "kind": "invocation",
+              "resolvedGenerics": {
+                "V": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 5, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                }
+              },
               "invokee": "Option.Some",
               "arguments": [
                 {
@@ -1415,6 +1481,18 @@
             },
             "node": {
               "kind": "invocation",
+              "resolvedGenerics": {
+                "V": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 5, "name": "Array" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                }
+              },
               "invokee": "Option.Some",
               "arguments": [
                 {
@@ -1556,6 +1634,24 @@
           },
           "node": {
             "kind": "invocation",
+            "resolvedGenerics": {
+              "V": {
+                "kind": "instance",
+                "struct": { "moduleId": 5, "name": "Array" },
+                "typeParams": [
+                  {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 5, "name": "Option" },
+                    "typeParams": [
+                      {
+                        "kind": "primitive",
+                        "primitive": "String"
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
             "invokee": "Option.Some",
             "arguments": [
               {
@@ -2022,6 +2118,18 @@
             },
             "node": {
               "kind": "invocation",
+              "resolvedGenerics": {
+                "V": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 5, "name": "Set" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                }
+              },
               "invokee": "Option.Some",
               "arguments": [
                 {
@@ -2123,6 +2231,18 @@
             },
             "node": {
               "kind": "invocation",
+              "resolvedGenerics": {
+                "V": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 5, "name": "Set" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                }
+              },
               "invokee": "Option.Some",
               "arguments": [
                 {
@@ -2245,6 +2365,18 @@
             },
             "node": {
               "kind": "invocation",
+              "resolvedGenerics": {
+                "V": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 5, "name": "Set" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                }
+              },
               "invokee": "Option.Some",
               "arguments": [
                 {
@@ -2297,6 +2429,18 @@
             },
             "node": {
               "kind": "invocation",
+              "resolvedGenerics": {
+                "V": {
+                  "kind": "instance",
+                  "struct": { "moduleId": 5, "name": "Set" },
+                  "typeParams": [
+                    {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  ]
+                }
+              },
               "invokee": "Option.Some",
               "arguments": [
                 {

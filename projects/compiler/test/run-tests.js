@@ -418,10 +418,12 @@ const TYPECHECKER_TESTS = [
   // Match expressions & statements
   { test: "typechecker/match/match_expr.abra", assertions: "typechecker/match/match_expr.out.json" },
   { test: "typechecker/match/match_stmt.abra", assertions: "typechecker/match/match_stmt.out.json" },
+  { test: "typechecker/match/match_no_unfilled_holes.abra", assertions: "typechecker/match/match_no_unfilled_holes.out.json" },
   { test: "typechecker/match/match_Result.abra", assertions: "typechecker/match/match_Result.out.json" },
   { test: "typechecker/match/match_expr_terminators.abra", assertions: "typechecker/match/match_expr_terminators.out.json" },
   { test: "typechecker/match/error_expr_empty_block.abra", assertions: "typechecker/match/error_expr_empty_block.out" },
   { test: "typechecker/match/error_unfilled_holes.1.abra", assertions: "typechecker/match/error_unfilled_holes.1.out" },
+  { test: "typechecker/match/error_unfilled_holes.2.abra", assertions: "typechecker/match/error_unfilled_holes.2.out" },
   { test: "typechecker/match/error_alreadycovered_None.abra", assertions: "typechecker/match/error_alreadycovered_None.out" },
   { test: "typechecker/match/error_duplicate_literal.abra", assertions: "typechecker/match/error_duplicate_literal.out" },
   { test: "typechecker/match/error_invalid_else_type.abra", assertions: "typechecker/match/error_invalid_else_type.out" },

@@ -168,6 +168,12 @@
           },
           "node": {
             "kind": "invocation",
+            "resolvedGenerics": {
+              "T": {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            },
             "invokee": { "moduleId": 6, "name": "Foo" },
             "arguments": [
               {
@@ -302,6 +308,12 @@
           },
           "node": {
             "kind": "invocation",
+            "resolvedGenerics": {
+              "T": {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            },
             "invokee": { "moduleId": 6, "name": "Foo" },
             "arguments": [
               {
@@ -448,6 +460,18 @@
           },
           "node": {
             "kind": "invocation",
+            "resolvedGenerics": {
+              "T": {
+                "kind": "instance",
+                "struct": { "moduleId": 6, "name": "Foo" },
+                "typeParams": [
+                  {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  }
+                ]
+              }
+            },
             "invokee": { "moduleId": 6, "name": "Foo" },
             "arguments": [
               {
@@ -469,6 +493,12 @@
                 },
                 "node": {
                   "kind": "invocation",
+                  "resolvedGenerics": {
+                    "T": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  },
                   "invokee": { "moduleId": 6, "name": "Foo" },
                   "arguments": [
                     {

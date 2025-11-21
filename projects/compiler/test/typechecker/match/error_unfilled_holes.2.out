@@ -1,0 +1,5 @@
+Error at %FILE_NAME%:4:8
+Could not determine type for match expression result
+  |    2 => match arr[1] {
+            ^
+Type '<unknown>[]' has unfilled holes. Please use an explicit type annotation to denote the type

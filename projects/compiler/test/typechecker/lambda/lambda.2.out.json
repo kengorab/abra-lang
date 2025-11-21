@@ -221,6 +221,16 @@
           },
           "node": {
             "kind": "invocation",
+            "resolvedGenerics": {
+              "U": {
+                "kind": "primitive",
+                "primitive": "Float"
+              },
+              "T": {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            },
             "invokee": {
               "method": "map",
               "type": {
@@ -594,6 +604,12 @@
               },
               "node": {
                 "kind": "invocation",
+                "resolvedGenerics": {
+                  "T": {
+                    "kind": "generic",
+                    "name": "T"
+                  }
+                },
                 "invokee": {
                   "method": "forEach",
                   "type": {
@@ -1000,6 +1016,16 @@
                   },
                   "node": {
                     "kind": "invocation",
+                    "resolvedGenerics": {
+                      "U": {
+                        "kind": "generic",
+                        "name": "U"
+                      },
+                      "T": {
+                        "kind": "generic",
+                        "name": "T"
+                      }
+                    },
                     "invokee": {
                       "method": "map",
                       "type": {

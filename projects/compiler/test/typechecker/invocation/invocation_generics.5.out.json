@@ -157,6 +157,18 @@
               },
               "node": {
                 "kind": "invocation",
+                "resolvedGenerics": {
+                  "V": {
+                    "kind": "instance",
+                    "struct": { "moduleId": 5, "name": "Array" },
+                    "typeParams": [
+                      {
+                        "kind": "generic",
+                        "name": "U"
+                      }
+                    ]
+                  }
+                },
                 "invokee": "Option.Some",
                 "arguments": [
                   {
@@ -323,6 +335,16 @@
           },
           "node": {
             "kind": "invocation",
+            "resolvedGenerics": {
+              "U": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "T": {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            },
             "invokee": {
               "function": "arrayMap",
               "type": {

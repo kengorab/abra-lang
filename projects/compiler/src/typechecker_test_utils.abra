@@ -432,8 +432,24 @@ pub type Jsonifier {
         self.indentDec()
         self.println("}")
       }
-      TypedAstNodeKind.Invocation(invokee, arguments, _) => {
+      TypedAstNodeKind.Invocation(invokee, arguments, resolvedGenerics) => {
         self.println("\"kind\": \"invocation\",")
+
+        if !resolvedGenerics.isEmpty() {
+          self.println("\"resolvedGenerics\": {")
+          self.indentInc()
+          for (k, v), idx in resolvedGenerics {
+            self.print("\"$k\": ")
+            self.printType(v)
+            if idx != resolvedGenerics.size - 1 {
+              stdoutWriteln(",")
+            } else {
+              stdoutWriteln()
+            }
+          }
+          self.indentDec()
+          self.println("},")
+        }
 
         self.print("\"invokee\": ")
         match invokee {

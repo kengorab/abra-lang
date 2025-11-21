@@ -2839,13 +2839,21 @@ pub type Typechecker {
         //     Ok(123)
         //   }
         val hint = if fn.returnType.hasUnfilledHoles() None else Some(fn.returnType)
-        val expr = try self._typecheckExpressionOrTerminator(node, hint)
+        var expr = try self._typecheckExpressionOrTerminator(node, hint)
+        var hadHoles = false
         if fn.returnType.hasUnfilledHoles() {
           fn.returnType.tryFillHoles(expr.ty)
+          hadHoles = true
         }
         if expr.ty.hasUnfilledHoles() {
           expr.ty.tryFillHoles(fn.returnType)
+          hadHoles = true
         }
+        if hadHoles {
+          val hint = if fn.returnType.hasUnfilledHoles() None else Some(fn.returnType)
+          expr = try self._typecheckExpressionOrTerminator(node, hint)
+        }
+
         if !self._typeSatisfiesRequired(ty: expr.ty, required: fn.returnType) {
           val fnName = if fn.isLambda None else Some(fn.label.name)
           self.addTypeError(TypeError(position: expr.token.position, kind: TypeErrorKind.ReturnTypeMismatch(fnName, fn.returnType, Some(expr.ty))))
@@ -4549,6 +4557,17 @@ pub type Typechecker {
     val ty = try resultTy else {
       if !isStatement return Err(self.internalError(token.position, "match expression without result type"))
       Type(kind: TypeKind.PrimitiveUnit)
+    }
+
+    if !isStatement && ty.hasUnfilledHoles() {
+      return Err(TypeError(position: token.position, kind: TypeErrorKind.IllegalValueType(ty: ty, purpose: "match expression result")))
+    }
+
+    for case in typedCases {
+      val lastBodyNode = try case.body[-1] else continue
+      if lastBodyNode.ty.hasUnfilledHoles() {
+        lastBodyNode.ty.tryFillHoles(ty)
+      }
     }
 
     // If the resulting type is Unit or Never after visiting all the cases' blocks, then treat this as a statement

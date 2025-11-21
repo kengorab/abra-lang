@@ -288,6 +288,16 @@
           },
           "node": {
             "kind": "invocation",
+            "resolvedGenerics": {
+              "U": {
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "T": {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            },
             "invokee": {
               "method": "foo",
               "type": {

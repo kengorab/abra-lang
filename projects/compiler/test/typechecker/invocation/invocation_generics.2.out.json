@@ -157,6 +157,12 @@
           },
           "node": {
             "kind": "invocation",
+            "resolvedGenerics": {
+              "T": {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            },
             "invokee": {
               "function": "foo1",
               "type": {
@@ -344,6 +350,12 @@
           },
           "node": {
             "kind": "invocation",
+            "resolvedGenerics": {
+              "T": {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            },
             "invokee": {
               "function": "foo1",
               "type": {
@@ -639,6 +651,12 @@
           },
           "node": {
             "kind": "invocation",
+            "resolvedGenerics": {
+              "T": {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            },
             "invokee": {
               "function": "foo2",
               "type": {
@@ -797,6 +815,12 @@
           },
           "node": {
             "kind": "invocation",
+            "resolvedGenerics": {
+              "T": {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            },
             "invokee": {
               "function": "foo2",
               "type": {

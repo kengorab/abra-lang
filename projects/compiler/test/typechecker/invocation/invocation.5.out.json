@@ -189,6 +189,12 @@
             },
             "node": {
               "kind": "invocation",
+              "resolvedGenerics": {
+                "V": {
+                  "kind": "primitive",
+                  "primitive": "Bool"
+                }
+              },
               "invokee": "Option.Some",
               "arguments": [
                 {
