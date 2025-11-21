@@ -176,6 +176,12 @@
           },
           "node": {
             "kind": "invocation",
+            "resolvedGenerics": {
+              "T": {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            },
             "invokee": "Foo.Bar",
             "arguments": [
               {
@@ -197,6 +203,12 @@
                 },
                 "node": {
                   "kind": "invocation",
+                  "resolvedGenerics": {
+                    "V": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  },
                   "invokee": "Option.Some",
                   "arguments": [
                     {

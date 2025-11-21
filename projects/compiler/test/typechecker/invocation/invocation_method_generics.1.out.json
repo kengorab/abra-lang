@@ -314,6 +314,12 @@
           },
           "node": {
             "kind": "invocation",
+            "resolvedGenerics": {
+              "T": {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            },
             "invokee": { "moduleId": 6, "name": "Foo" },
             "arguments": [
               {
@@ -390,6 +396,12 @@
           },
           "node": {
             "kind": "invocation",
+            "resolvedGenerics": {
+              "T": {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            },
             "invokee": {
               "method": "foo",
               "type": {

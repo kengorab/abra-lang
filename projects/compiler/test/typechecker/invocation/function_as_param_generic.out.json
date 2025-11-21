@@ -283,6 +283,16 @@
           },
           "node": {
             "kind": "invocation",
+            "resolvedGenerics": {
+              "U": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "T": {
+                "kind": "primitive",
+                "primitive": "Int"
+              }
+            },
             "invokee": {
               "function": "foo",
               "type": {
@@ -522,6 +532,16 @@
           },
           "node": {
             "kind": "invocation",
+            "resolvedGenerics": {
+              "U": {
+                "kind": "primitive",
+                "primitive": "Bool"
+              },
+              "T": {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            },
             "invokee": {
               "function": "foo",
               "type": {

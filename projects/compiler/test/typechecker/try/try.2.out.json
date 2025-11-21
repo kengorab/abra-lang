@@ -105,6 +105,28 @@
               },
               "node": {
                 "kind": "invocation",
+                "resolvedGenerics": {
+                  "V": {
+                    "kind": "instance",
+                    "struct": { "moduleId": 5, "name": "Array" },
+                    "typeParams": [
+                      {
+                        "kind": "generic",
+                        "name": "T"
+                      }
+                    ]
+                  },
+                  "E": {
+                    "kind": "instance",
+                    "struct": { "moduleId": 5, "name": "Array" },
+                    "typeParams": [
+                      {
+                        "kind": "generic",
+                        "name": "U"
+                      }
+                    ]
+                  }
+                },
                 "invokee": {
                   "function": "Ok",
                   "type": {
@@ -313,6 +335,16 @@
                       },
                       "node": {
                         "kind": "invocation",
+                        "resolvedGenerics": {
+                          "U": {
+                            "kind": "primitive",
+                            "primitive": "String"
+                          },
+                          "T": {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        },
                         "invokee": {
                           "function": "foo",
                           "type": {
@@ -382,6 +414,22 @@
               },
               "node": {
                 "kind": "invocation",
+                "resolvedGenerics": {
+                  "V": {
+                    "kind": "primitive",
+                    "primitive": "Int"
+                  },
+                  "E": {
+                    "kind": "instance",
+                    "struct": { "moduleId": 5, "name": "Array" },
+                    "typeParams": [
+                      {
+                        "kind": "primitive",
+                        "primitive": "String"
+                      }
+                    ]
+                  }
+                },
                 "invokee": {
                   "function": "Ok",
                   "type": {
