@@ -556,7 +556,7 @@ pub type Compiler {
         val labelThen = self.currentFn.block.addLabel(thenBlock.name)
         val labelCont = self.currentFn.block.addLabel("cont")
 
-        if !elseBlock.body.isEmpty() || !!elseBlock.result {
+        if !elseBlock.body.isEmpty() || !!elseBlock.result || elseBlock.terminates {
           val labelElse = self.currentFn.block.addLabel(elseBlock.name)
 
           self.currentFn.block.buildJnz(condVal, labelThen, labelElse)

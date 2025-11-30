@@ -808,6 +808,64 @@ pub type TypedAstNode {
   pub token: Token
   pub ty: Type
   pub kind: TypedAstNodeKind
+
+  func fillTypeHoles(self, typ: Type) {
+    if typ.kind == TypeKind.Never return
+
+    self.ty.tryFillHoles(typ)
+
+    match self.kind {
+      TypedAstNodeKind.Grouped(inner) => inner.fillTypeHoles(typ)
+      TypedAstNodeKind.Invocation(invokee, _, resolvedGenerics) => {
+        match invokee {
+          TypedInvokee.Method(fn, _, _) => {
+            val extracted = typ.extractGenerics(fn.returnType)
+            for (name, typ) in extracted {
+              if !resolvedGenerics[name] {
+                resolvedGenerics[name] = typ
+              }
+            }
+          }
+          TypedInvokee.Function(fn) => {
+            val extracted = typ.extractGenerics(fn.returnType)
+            for (name, typ) in extracted {
+              if !resolvedGenerics[name] {
+                resolvedGenerics[name] = typ
+              }
+            }
+          }
+          TypedInvokee.Struct(struct) => {
+            val extracted = typ.extractGenerics(struct.asInstanceType())
+            for (name, typ) in extracted {
+              if !resolvedGenerics[name] {
+                resolvedGenerics[name] = typ
+              }
+            }
+          }
+          TypedInvokee.Expr => {}
+          TypedInvokee.EnumVariant(enum_, _) => {
+            val extracted = typ.extractGenerics(enum_.asInstanceType())
+            for (name, typ) in extracted {
+              if !resolvedGenerics[name] {
+                resolvedGenerics[name] = typ
+              }
+            }
+          }
+        }
+      }
+      TypedAstNodeKind.If(_, _, _, ifBlock, _, elseBlock, _) => {
+        ifBlock[-1]?.fillTypeHoles(typ)
+        elseBlock[-1]?.fillTypeHoles(typ)
+      }
+      TypedAstNodeKind.Match(_, _, cases) => {
+        for case in cases {
+          case.body[-1]?.fillTypeHoles(typ)
+        }
+      }
+      TypedAstNodeKind.Return(expr) => expr?.fillTypeHoles(typ)
+      else => {}
+    }
+  }
 }
 
 pub type Decorator {
@@ -2840,18 +2898,11 @@ pub type Typechecker {
         //   }
         val hint = if fn.returnType.hasUnfilledHoles() None else Some(fn.returnType)
         var expr = try self._typecheckExpressionOrTerminator(node, hint)
-        var hadHoles = false
         if fn.returnType.hasUnfilledHoles() {
           fn.returnType.tryFillHoles(expr.ty)
-          hadHoles = true
         }
         if expr.ty.hasUnfilledHoles() {
-          expr.ty.tryFillHoles(fn.returnType)
-          hadHoles = true
-        }
-        if hadHoles {
-          val hint = if fn.returnType.hasUnfilledHoles() None else Some(fn.returnType)
-          expr = try self._typecheckExpressionOrTerminator(node, hint)
+          expr.fillTypeHoles(fn.returnType)
         }
 
         if !self._typeSatisfiesRequired(ty: expr.ty, required: fn.returnType) {
@@ -4311,11 +4362,11 @@ pub type Typechecker {
         if typedElseBlock[-1] |lastElseNode| {
           val elseType = lastElseNode.ty
 
-          if ifType.hasUnfilledHoles() {
-            ifType.tryFillHoles(elseType)
+          if elseType.kind != TypeKind.Never && ifType.hasUnfilledHoles() {
+            typedIfBlock[-1]?.fillTypeHoles(elseType)
           }
-          if elseType.hasUnfilledHoles() {
-            elseType.tryFillHoles(ifType)
+          if ifType.kind != TypeKind.Never && elseType.hasUnfilledHoles() {
+            lastElseNode.fillTypeHoles(ifType)
           }
 
           if !self._typeSatisfiesRequired(ty: elseType, required: ifType) {
@@ -4513,7 +4564,14 @@ pub type Typechecker {
         if self.currentScope.terminator return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
 
         if idx == case.body.length - 1 && !isStatement {
-          val typedNode = try self._typecheckExpressionOrTerminator(node, typeHint)
+          var hint = typeHint
+          if resultTy |resTy| {
+            if resTy.kind != TypeKind.Never && !resTy.hasUnfilledHoles() {
+              hint = resultTy
+            }
+          }
+
+          val typedNode = try self._typecheckExpressionOrTerminator(node, hint)
           typedBody.push(typedNode)
         } else {
           val typedNode = self.typecheckStatement(node, None)
@@ -4565,8 +4623,8 @@ pub type Typechecker {
 
     for case in typedCases {
       val lastBodyNode = try case.body[-1] else continue
-      if lastBodyNode.ty.hasUnfilledHoles() {
-        lastBodyNode.ty.tryFillHoles(ty)
+      if ty.kind != TypeKind.Never && lastBodyNode.ty.hasUnfilledHoles() {
+        lastBodyNode.fillTypeHoles(ty)
       }
     }
 
@@ -5791,7 +5849,7 @@ pub type Typechecker {
 
     for item in typedItems {
       if !innerHasUnfilledHoles && item.ty.hasUnfilledHoles() {
-        item.ty.tryFillHoles(inner)
+        item.fillTypeHoles(inner)
         if !self._typeSatisfiesRequired(ty: item.ty, required: inner) {
           return Err(TypeError(position: item.token.position, kind: TypeErrorKind.TypeMismatch([inner], item.ty)))
         }
@@ -5831,7 +5889,7 @@ pub type Typechecker {
 
     for item in typedItems {
       if !innerHasUnfilledHoles && item.ty.hasUnfilledHoles() {
-        item.ty.tryFillHoles(inner)
+        item.fillTypeHoles(inner)
         if !self._typeSatisfiesRequired(ty: item.ty, required: inner) {
           return Err(TypeError(position: item.token.position, kind: TypeErrorKind.TypeMismatch([inner], item.ty)))
         }
@@ -5894,8 +5952,8 @@ pub type Typechecker {
     val valTyHasUnfilledHoles = vTy.hasUnfilledHoles()
 
     for (typedKey, typedVal) in typedItems {
-      if !keyTyHasUnfilledHoles && typedKey.ty.hasUnfilledHoles() { typedKey.ty.tryFillHoles(kTy) }
-      if !valTyHasUnfilledHoles && typedVal.ty.hasUnfilledHoles() { typedVal.ty.tryFillHoles(vTy) }
+      if !keyTyHasUnfilledHoles && typedKey.ty.hasUnfilledHoles() { typedKey.fillTypeHoles(kTy) }
+      if !valTyHasUnfilledHoles && typedVal.ty.hasUnfilledHoles() { typedVal.fillTypeHoles(vTy) }
      }
 
     Ok(TypedAstNode(token: token, ty: ty, kind: TypedAstNodeKind.Map(typedItems)))
@@ -6169,7 +6227,7 @@ pub type Typechecker {
           tryValType.tryFillHoles(elseType)
         }
         if elseType.hasUnfilledHoles() {
-          elseType.tryFillHoles(tryValType)
+          lastElseNode.fillTypeHoles(tryValType)
         }
 
         if !self._typeSatisfiesRequired(ty: elseType, required: tryValType) {

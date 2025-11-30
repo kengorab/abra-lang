@@ -1,15 +1,21 @@
-func foo<T>(fn: (Int) => Result<T, String>): Result<T[], String> {
-  val r1 = try fn(0)
-  val r2 = try fn(1)
+// func foo<T>(fn: (Int) => Result<T, String>): Result<T[], String> {
+//   val r1 = try fn(0)
+//   val r2 = try fn(1)
 
-  Ok([r1, r2])
+//   Ok([r1, r2])
+// }
+
+// val res = foo(i => {
+//   if i == 0 {
+//     Result.Err("asdf")
+//   } else {
+//     Result.Ok(i)
+//   }
+// })
+// println(res)
+
+val fn1 = () => {
+  if true return Err("hello")
+
+  Ok(123)
 }
-
-val res = foo(i => {
-  if i == 0 {
-    Result.Err("asdf")
-  } else {
-    Result.Ok(i)
-  }
-})
-println(res)
