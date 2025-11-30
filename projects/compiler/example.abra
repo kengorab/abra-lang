@@ -1,24 +1,21 @@
-type Adder {
-  i: Int
+// func foo<T>(fn: (Int) => Result<T, String>): Result<T[], String> {
+//   val r1 = try fn(0)
+//   val r2 = try fn(1)
 
-  func add(self, x: Int): Int = self.i + x
+//   Ok([r1, r2])
+// }
+
+// val res = foo(i => {
+//   if i == 0 {
+//     Result.Err("asdf")
+//   } else {
+//     Result.Ok(i)
+//   }
+// })
+// println(res)
+
+val fn1 = () => {
+  if true return Err("hello")
+
+  Ok(123)
 }
-
-func addA(x: Int, y = 1): Int = x + y
-func addB(x: Int, y = 1): Int = x + y
-func addC(x: Float, y = 1.1): Float = x + y
-
-func f() {
-  val add1 = addA
-  val add2 = addB
-  val add3 = addC
-
-  println(add1(3))
-  println(add2(3))
-  println(add3(3.14))
-
-  val adder = Adder(i: 1)
-  val doAdd = adder.add
-  println(doAdd(11))
-}
-f()

@@ -1,5 +1,5 @@
 Error at %FILE_NAME%:1:9
-Could not determine type for assignment
+Could not determine type for match expression result
   |  val x = match 123 {
              ^
 Type '<unknown>?' has unfilled holes. Please use an explicit type annotation to denote the type

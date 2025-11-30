@@ -73,6 +73,12 @@
                 },
                 "node": {
                   "kind": "invocation",
+                  "resolvedGenerics": {
+                    "T": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    }
+                  },
                   "invokee": {
                     "function": "bar",
                     "type": {
@@ -273,6 +279,12 @@
                     },
                     "node": {
                       "kind": "invocation",
+                      "resolvedGenerics": {
+                        "T": {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      },
                       "invokee": {
                         "function": "bar",
                         "type": {

@@ -1,0 +1,16 @@
+val arr = [1, 2, 3]
+
+val x = match arr[0] {
+  1 => []
+  2 => []
+  3 => []
+  else => ["hello"]
+}
+val _: String[] = x
+
+val y = match arr[0] {
+  1 => None
+  2 => None
+  else => Some("hello")
+}
+val _: String? = y
