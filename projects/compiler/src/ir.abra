@@ -548,7 +548,7 @@ pub enum Operation {
           v.render(sb)
           sb.write(")")
         }
-        if !elseBlock.body.isEmpty() {
+        if !elseBlock.body.isEmpty() || !!elseBlock.result {
           sb.write(", .${elseBlock.name}")
           if elseBlock.result |v| {
             sb.write(" (")
@@ -2165,6 +2165,7 @@ pub type Generator {
     // Build the root if-operation, optimizing out None-checks and unwrapping. Subsequent cases will be nested within this
     // operation's else-block.
     var elseBlock = Block(name: "case_1", body: [], result: None, terminates: false)
+    var blockOffsetIdx = 0
     val rootOp = if noneCase |(cond, blockFn, innerConcreteType, innerIrType, binding)| {
       // Shift the None case to be first, if there is one. This allows for an optimization - if the subject value is None
       // then control flow enters the block, but if it's non-None then we can preemptively unwrap the subject value for
@@ -2194,6 +2195,8 @@ pub type Generator {
 
         return Value.Unit
       }
+
+      blockOffsetIdx = 1
 
       // If there is no None case, and the subject's type is an Option type, then we can still perform the above optimization.
       // If the subject is None then we don't need to do any of the other case evaluations and we can simply evaluate the else-case;
@@ -2231,17 +2234,12 @@ pub type Generator {
       return Value.Unit
     }
 
-    val result = if resIrType == IrType.Unit {
-      self.emit(Instruction(op: rootOp))
-      None
-    } else {
-      Some(self.ssaValue(resIrType, rootOp, dst))
-    }
-
     // Iterate through all remaining blocks to generate an if-operation for each case. Each operation takes place _within_ the body
     // of the previous if-operation's else-block.
     val prevBlock = self.curCtx.block
     for (condFn, blockFn, binding, isWildcardCase), idx in blocks {
+      if idx < blockOffsetIdx continue
+
       self.curCtx.block = (elseBlock.name, elseBlock.body)
 
       if isWildcardCase {
@@ -2249,12 +2247,9 @@ pub type Generator {
 
         val block = blockFn()
         for instr, idx in block.body {
-          if !isStatement && idx == block.body.length - 1 && !block.terminates {
-            elseBlock.result = Some(self.ssaValue(resIrType, instr.op, None))
-          } else {
-            self.emit(instr)
-          }
+          self.emit(instr)
         }
+        elseBlock.result = block.result
         elseBlock.terminates = block.terminates
       } else {
         val elseBlockNext = Block(name: "case_${idx + 2}", body: [], result: None, terminates: false)
@@ -2277,7 +2272,12 @@ pub type Generator {
     }
     self.curCtx.block = prevBlock
 
-    result ?: Value.Unit
+    if resIrType == IrType.Unit {
+      self.emit(Instruction(op: rootOp))
+      Value.Unit
+    } else {
+      self.ssaValue(resIrType, rootOp, dst)
+    }
   }
 
   func genExpression(self, node: tc.TypedAstNode, concreteGenerics: Map<String, ConcreteType>, dst: String? = None): Value {
@@ -2349,8 +2349,16 @@ pub type Generator {
         val ifBody = self.withinBlock("then", !!ifBlockTerminator, () => {
           if condBinding |binding| self.genConditionBinding(concreteGenerics, optInnerTy, condBindingVal, binding)
           for node, idx in ifBlock {
-            if idx == ifBlock.length - 1 && !ifBlockTerminator {
-              return Some(self.genExpression(node, concreteGenerics))
+            if idx == ifBlock.length - 1 {
+              val terminator = try ifBlockTerminator else {
+                return Some(self.genExpression(node, concreteGenerics))
+              }
+
+              self.genStatement(node, concreteGenerics)
+              if terminator == tc.Terminator.Halting {
+                self.emit(Instruction(op: Operation.Unreachable("halt")))
+              }
+              return None
             } else {
               self.genStatement(node, concreteGenerics)
             }
@@ -2360,8 +2368,16 @@ pub type Generator {
         })
         val elseBody = self.withinBlock("else", !!elseBlockTerminator, () => {
           for node, idx in elseBlock {
-            if idx == elseBlock.length - 1 && !elseBlockTerminator {
-              return Some(self.genExpression(node, concreteGenerics))
+            if idx == elseBlock.length - 1 {
+              val terminator = try elseBlockTerminator else {
+                return Some(self.genExpression(node, concreteGenerics))
+              }
+
+              self.genStatement(node, concreteGenerics)
+              if terminator == tc.Terminator.Halting {
+                self.emit(Instruction(op: Operation.Unreachable("halt")))
+              }
+              return None
             } else {
               self.genStatement(node, concreteGenerics)
             }

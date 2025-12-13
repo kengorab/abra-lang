@@ -187,14 +187,24 @@ pub type Variable {
 pub enum Terminator {
   Returning
   NonReturning
+  Halting
+
+  func returns(self): Bool = self != Terminator.NonReturning
 
   func combine(t1: Terminator?, t2: Terminator?): Terminator? {
-    if t1 == Some(Terminator.Returning) && t2 == Some(Terminator.Returning) {
+    val term1 = try t1 else return None
+    val term2 = try t2 else return None
+
+    if term1 == Terminator.Returning && term2 == Terminator.Returning {
       Some(Terminator.Returning)
-    } else if (t1 == Some(Terminator.NonReturning) && !!t2) || (t2 == Some(Terminator.NonReturning) && !!t1) {
-      Some(Terminator.NonReturning)
+    } else if term1 == Terminator.Returning && term2 == Terminator.Halting {
+      Some(Terminator.Returning)
+    } else if term1 == Terminator.Halting && term2 == Terminator.Returning {
+      Some(Terminator.Returning)
+    } else if term1 == Terminator.Halting && term2 == Terminator.Halting {
+      Some(Terminator.Halting)
     } else {
-      None
+      Some(Terminator.NonReturning)
     }
   }
 }
@@ -2873,7 +2883,8 @@ pub type Typechecker {
     }
 
     for node, idx in body {
-      if self.currentScope.terminator == Some(Terminator.Returning) return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+      val cannotContinue = self.currentScope.terminator?.returns() ?: false
+      if cannotContinue return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
 
       val typedNode = if idx == body.length - 1 && hasReturnValue {
         val fnName = if fn.isLambda None else Some(fn.label.name)
@@ -4121,7 +4132,7 @@ pub type Typechecker {
     val terminator = self.currentScope.terminator
 
     self.currentScope = prevScope
-    if terminator == Some(Terminator.Returning) {
+    if terminator?.returns() ?: false {
       self.currentScope.terminator = terminator
     }
 
@@ -4217,7 +4228,7 @@ pub type Typechecker {
     val terminator = self.currentScope.terminator
 
     self.currentScope = prevScope
-    if terminator == Some(Terminator.Returning) {
+    if terminator?.returns() ?: false {
       self.currentScope.terminator = terminator
     }
 
@@ -4320,7 +4331,8 @@ pub type Typechecker {
 
     val typedIfBlock: TypedAstNode[] = []
     for node, idx in ifBlock {
-      if self.currentScope.terminator == Some(Terminator.Returning) return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+      val cannotContinue = self.currentScope.terminator?.returns() ?: false
+      if cannotContinue return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
 
       if idx == ifBlock.length - 1 && !isStatement {
         val typedNode = try self._typecheckExpressionOrTerminator(node, typeHint)
@@ -4340,7 +4352,8 @@ pub type Typechecker {
     if elseBlock |elseBlock| {
       hasElseBlock = true
       for node, idx in elseBlock {
-        if self.currentScope.terminator == Some(Terminator.Returning) return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+        val cannotContinue = self.currentScope.terminator?.returns() ?: false
+        if cannotContinue return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
 
         if idx == elseBlock.length - 1 && !isStatement {
           val hint = if ifType |t| (if t.hasUnfilledHoles() None else ifType) else None

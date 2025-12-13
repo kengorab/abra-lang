@@ -60,6 +60,14 @@ if true {
     }
   }
 
+  var v = 1
+  val i = match v {
+    1 => 1
+    else => 0
+  }
+  /// Expect: i: 1
+  println("i: $i")
+
   // TODO: remove this, lambda is unhappy to have a for-loop be the last statement for some reason
   /// Expect: done
   println("done")

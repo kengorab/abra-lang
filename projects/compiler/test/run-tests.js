@@ -746,6 +746,10 @@ const TYPECHECKER_TESTS = [
   { test: "typechecker/decorators/error_unlabeled_args.abra", assertions: "typechecker/decorators/error_unlabeled_args.out" },
   { test: "typechecker/decorators/function_decorator.abra", assertions: "typechecker/decorators/function_decorator.out.json" },
 
+  // Non-returns
+  { test: "typechecker/noreturn/error_unreachable_stmt.abra", assertions: "typechecker/noreturn/error_unreachable_stmt.out" },
+  { test: "typechecker/noreturn/unreachable.abra", assertions: "typechecker/noreturn/unreachable.out.json" },
+
   // Returns
   { test: "typechecker/return/return.1.abra", assertions: "typechecker/return/return.1.out.json" },
   { test: "typechecker/return/return.2.abra", assertions: "typechecker/return/return.2.out.json" },
