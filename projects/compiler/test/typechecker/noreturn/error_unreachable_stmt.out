@@ -1,0 +1,5 @@
+Error at %TEST_DIR%/typechecker/noreturn/error_unreachable_stmt.abra:4:3
+Unreachable code
+  |    val a = 1
+       ^
+Control flow exits before this code is reached

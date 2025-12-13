@@ -1,0 +1,6 @@
+val x = if true {
+  1
+} else {
+  unreachable("asdf")
+}
+val _: Int = x
