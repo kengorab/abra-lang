@@ -1,6 +1,5 @@
-Error at %FILE_NAME%:7:3
-Return type mismatch for function 'foo'
+Error at %TEST_DIR%/typechecker/return/error_unreachable_stmt_match_outside.abra:7:3
+Unreachable code
   |    val x = 123
        ^
-Expected Int
-but instead found Unit
+Control flow exits before this code is reached

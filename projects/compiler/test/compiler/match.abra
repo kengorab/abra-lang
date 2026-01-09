@@ -268,6 +268,15 @@ if true {
   }
   /// Expect: -1
   println(y)
+
+  val z = match Color.Green {
+    Color.Red => Color.Blue
+    Color.Blue => unreachable()
+    Color.Green => Color.Red
+    else => Color.Green
+  }
+  /// Expect: Color.Red
+  println(z)
 }
 
 // Testing terminator in block

@@ -564,9 +564,6 @@ pub type Compiler {
           for inst in thenBlock.body {
             self.compileInstruction(inst)
           }
-          if !thenBlock.terminates {
-            self.currentFn.block.buildJmp(labelCont)
-          }
 
           val thenPhiValue = if thenBlock.result |v| {
             val label = self.currentFn.block.currentLabel
@@ -575,13 +572,13 @@ pub type Compiler {
           } else {
             None
           }
+          if !thenBlock.terminates {
+            self.currentFn.block.buildJmp(labelCont)
+          }
 
           self.currentFn.block.registerLabel(labelElse)
           for inst in elseBlock.body {
             self.compileInstruction(inst)
-          }
-          if !elseBlock.terminates {
-            self.currentFn.block.buildJmp(labelCont)
           }
           val elsePhiValue = if elseBlock.result |v| {
             val label = self.currentFn.block.currentLabel
@@ -589,6 +586,9 @@ pub type Compiler {
             Some((label, elseVal))
           } else {
             None
+          }
+          if !elseBlock.terminates {
+            self.currentFn.block.buildJmp(labelCont)
           }
 
           if !(thenBlock.terminates && elseBlock.terminates) {
@@ -908,7 +908,8 @@ pub type Compiler {
           Builtin.IsNull(ptr) => {
             val ptrVal = self.irValueToQbeValue(ptr)
 
-            try self.currentFn.block.buildCompareEq(qbe.Value.Int(0), ptrVal, dst) else |e| unreachable(e)
+            val res = try self.currentFn.block.buildCompareEq(qbe.Value.Int(0), ptrVal, Some(self.nextTemp())) else |e| unreachable(e)
+            self.currentFn.block.buildExt(res, false, dst)
           }
           Builtin.Realloc(ptr, count, itemTy) => {
             val ptrVal = self.irValueToQbeValue(ptr)
@@ -1078,7 +1079,7 @@ pub type Compiler {
             }
             val errnoPtr = try self.currentFn.block.buildCallRaw(errnoFnName, QbeType.Pointer, [], Some(self.nextTemp())) else |e| unreachable(e)
             val errnoVal = self.currentFn.block.buildLoadW(errnoPtr, Some(self.nextTemp()))
-            self.currentFn.block.buildExt(value: errnoVal, signed: false, dst: Some(self.nextTemp()))
+            self.currentFn.block.buildExt(value: errnoVal, signed: false, dst: dst)
           }
         }
       }

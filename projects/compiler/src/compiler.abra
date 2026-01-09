@@ -316,7 +316,7 @@ pub type Compiler {
 
         Ok(None)
       }
-      TypedAstNodeKind.Match(isStatement, expr, cases) => self._compileMatch(node, isStatement, expr, cases)
+      TypedAstNodeKind.Match(isStatement, _, expr, cases) => self._compileMatch(node, isStatement, expr, cases)
       TypedAstNodeKind.While(cond, conditionBinding, block, blockTerminator) => {
         val loopStartLabel = self._currentFn.block.addLabel("while_loop_start")
         val loopBodyLabel = self._currentFn.block.addLabel("while_loop_body")
@@ -1613,7 +1613,7 @@ pub type Compiler {
           Ok(Value.Ident("bogus", QbeType.F32))
         }
       }
-      TypedAstNodeKind.Match(isStatement, expr, cases) => {
+      TypedAstNodeKind.Match(isStatement, _, expr, cases) => {
         val res = try self._compileMatch(node, isStatement, expr, cases)
         if res |res| Ok(res) else unreachable("match expression needs a resulting value")
       }
