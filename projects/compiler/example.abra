@@ -1,14 +1,35 @@
-var cond = true
-// val arr = [1, 2, 3]
-
-var y = 1 + 1
-val x = match y { //arr[0] {
-  1 => if cond {
-    123
-  } else {
-    unreachable("asdf")
-  }
-  // 1 => 123
-  else => 0
+enum Foo {
+  Bar
+  Baz(s1: String, s2: String)
+  Qux
 }
-stdoutWriteln(x.toString())
+
+// func foo(f: Foo) {
+//   val s = match f {
+//     Foo.Bar => 1
+//     Foo.Baz(s1, s2) => {
+//       println(s1, s2)
+//       s1.length + s2.length
+//     }
+//     Foo.Qux => 2
+//   }
+//   println(s)
+// }
+
+// foo(Foo.Baz("abc", "de"))
+
+func foo(f: Foo): Foo {
+  match f {
+    Foo.Bar => return Foo.Bar
+    Foo.Baz(a, b) => return Foo.Bar
+    Foo.Qux => return Foo.Qux
+  }
+
+  Foo.Bar
+}
+
+stdoutWriteln(foo(Foo.Bar).toString())
+
+// stdoutWriteln("hello")
+
+
