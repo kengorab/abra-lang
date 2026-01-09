@@ -1951,7 +1951,7 @@ pub type Typechecker {
         }
 
         val instanceTypeArgs = try self._verifyNumTypeArgs(label.position, typeArguments, struct.typeParams.length)
-        return Ok(Some(Type(kind: TypeKind.Instance(InstanceKind.Struct(struct), instanceTypeArgs))))
+        Ok(Some(Type(kind: TypeKind.Instance(InstanceKind.Struct(struct), instanceTypeArgs))))
       }
       InstanceKind.Enum(enum_) => {
         if self.lspMode {
@@ -1959,7 +1959,7 @@ pub type Typechecker {
         }
 
         val instanceTypeArgs = try self._verifyNumTypeArgs(label.position, typeArguments, enum_.typeParams.length)
-        return Ok(Some(Type(kind: TypeKind.Instance(InstanceKind.Enum(enum_), instanceTypeArgs))))
+        Ok(Some(Type(kind: TypeKind.Instance(InstanceKind.Enum(enum_), instanceTypeArgs))))
       }
     }
   }
@@ -4044,7 +4044,7 @@ pub type Typechecker {
         }
 
         val mode = TypedAssignmentMode.Variable(variable)
-        return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, op, typedExpr)))
+        Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, op, typedExpr)))
       }
       AssignmentMode.Indexing(targetExpr, indexExpr) => {
         val typedLhs = try self.typecheckIndexing(token, targetExpr, IndexingMode.Single(indexExpr), None)
@@ -4061,7 +4061,7 @@ pub type Typechecker {
         }
 
         val mode = TypedAssignmentMode.Indexing(typedIndexingNode)
-        return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, op, typedExpr)))
+        Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, op, typedExpr)))
       }
       AssignmentMode.Accessor(accessorNode) => {
         val typedLhs = try self.typecheckAccessor(token, accessorNode, None, isInvocation: false)
@@ -4100,7 +4100,7 @@ pub type Typechecker {
           return Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.TypeMismatch([field.ty], typedExpr.ty)))
         }
 
-        return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, op, typedExpr)))
+        Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, op, typedExpr)))
       }
     }
   }
@@ -6060,7 +6060,7 @@ pub type Typechecker {
         }
 
         val typedIndexMode = IndexingMode.Single(typedIdxExpr)
-        return Ok(TypedAstNode(token: token, ty: singleModeType, kind: TypedAstNodeKind.Indexing(TypedIndexingNode.ArrayLike(typedExpr, typedIndexMode))))
+        Ok(TypedAstNode(token: token, ty: singleModeType, kind: TypedAstNodeKind.Indexing(TypedIndexingNode.ArrayLike(typedExpr, typedIndexMode))))
       }
       IndexingMode.Range(startExpr, endExpr) => {
         val typedStartExpr = if startExpr |expr| {
@@ -6078,7 +6078,7 @@ pub type Typechecker {
           Some(e)
         } else None
         val typedIndexMode = IndexingMode.Range(typedStartExpr, typedEndExpr)
-        return Ok(TypedAstNode(token: token, ty: rangeModeType, kind: TypedAstNodeKind.Indexing(TypedIndexingNode.ArrayLike(typedExpr, typedIndexMode))))
+        Ok(TypedAstNode(token: token, ty: rangeModeType, kind: TypedAstNodeKind.Indexing(TypedIndexingNode.ArrayLike(typedExpr, typedIndexMode))))
       }
     }
   }

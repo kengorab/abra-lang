@@ -1,6 +1,6 @@
 enum Foo {
   Bar
-  Baz(s1: String, s2: String)
+  Baz
   Qux
 }
 
@@ -21,11 +21,9 @@ enum Foo {
 func foo(f: Foo): Foo {
   match f {
     Foo.Bar => return Foo.Bar
-    Foo.Baz(a, b) => return Foo.Bar
+    Foo.Baz => return Foo.Bar
     Foo.Qux => return Foo.Qux
   }
-
-  Foo.Bar
 }
 
 stdoutWriteln(foo(Foo.Bar).toString())
