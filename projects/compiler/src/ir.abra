@@ -811,6 +811,7 @@ pub enum Operation {
           Builtin.CallstackPtr => sb.write("callstack_ptr")
           Builtin.ModuleNames => sb.write("module_names")
           Builtin.FunctionNames => sb.write("function_names")
+          Builtin.Errno => sb.write("errno")
         }
         sb.write(")")
       }
@@ -1181,7 +1182,9 @@ pub type Generator {
         if idx == fn.body.length - 1 && fn.scope.terminator != Some(tc.Terminator.Returning) {
           if retTy != IrType.Unit {
             val retVal = self.genExpression(node, ctx.concreteGenerics)
-            self.emit(Instruction(op: Operation.Return(Some(retVal))))
+            if node.ty.kind != tc.TypeKind.Never {
+              self.emit(Instruction(op: Operation.Return(Some(retVal))))
+            }
           } else {
             self.genStatement(node, ctx.concreteGenerics)
             self.emit(Instruction(op: Operation.Return()))
@@ -1630,7 +1633,7 @@ pub type Generator {
 
         self.emit(Instruction(op: Operation.If(IrType.Unit, condVal, ifBody, elseBody)))
       }
-      TypedAstNodeKind.Match(isStatement, subjectNode, cases) => self.genMatch(node, isStatement, subjectNode, cases, concreteGenerics, None)
+      TypedAstNodeKind.Match(isStatement, isExhaustive, subjectNode, cases) => self.genMatch(node, isStatement, isExhaustive, subjectNode, cases, concreteGenerics, None)
       TypedAstNodeKind.While(condNode, condBinding, block, terminator) => {
         val optInnerTy = self.project.typeIsOption(condNode.ty)
 
@@ -2025,7 +2028,7 @@ pub type Generator {
     }
   }
 
-  func genMatch(self, node: tc.TypedAstNode, isStatement: Bool, subjectNode: tc.TypedAstNode, cases: tc.TypedMatchCase[], concreteGenerics: Map<String, ConcreteType>, dst: String?): Value {
+  func genMatch(self, node: tc.TypedAstNode, isStatement: Bool, isExhaustive: Bool, subjectNode: tc.TypedAstNode, cases: tc.TypedMatchCase[], concreteGenerics: Map<String, ConcreteType>, dst: String?): Value {
     val resIrType = if !isStatement {
       val resultConcreteType = self.getConcreteTypeFromType(node.ty, concreteGenerics)
       self.getIrTypeForConcreteType(resultConcreteType)
@@ -2208,7 +2211,7 @@ pub type Generator {
         val isNoneCond = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerIrType, subjVal), None)
         val isNoneBlock = if wildcardBlock |blockFn| {
           blockFn()
-        } else if resIrType == IrType.Unit {
+        } else if isStatement {
           Block(name: "no_op", body: [], result: None, terminates: false)
         } else {
           Block(name: "unreachable", body: [Instruction(op: Operation.Unreachable("non-exhaustive match cases"))], result: None, terminates: true)
@@ -2218,7 +2221,7 @@ pub type Generator {
 
           // Note: we call `blockFn` _after_ overwriting `subjVal`, as we want the thunk to see the unwrapped `subjVal` value.
           val innerOp = Operation.If(resIrType, condFn(), blockFn(), elseBlock)
-          if resIrType == IrType.Unit {
+          if isStatement {
             self.emit(Instruction(op: innerOp))
             None
           } else {
@@ -2249,34 +2252,72 @@ pub type Generator {
         for instr, idx in block.body {
           self.emit(instr)
         }
+
+        // Since the wildcard case becomes the ongoing else-block, assigning `result` and `terminates` here is ok. It is not a safe assumption
+        // to set `terminates` in the non-wildcard case since a block may terminate but that should _not_ result in the entire else-tree terminating.
+        // See comment below where the the if-operation gets finalized.
         elseBlock.result = block.result
         elseBlock.terminates = block.terminates
       } else {
         val elseBlockNext = Block(name: "case_${idx + 2}", body: [], result: None, terminates: false)
         val block = blockFn()
         val ifOp = Operation.If(resIrType, condFn(), block, elseBlockNext)
-        if resIrType == IrType.Unit || block.terminates {
+        if isStatement {
           self.emit(Instruction(op: ifOp))
         } else {
+          // May be erased during finalization, see code below
           elseBlock.result = Some(self.ssaValue(resIrType, ifOp, None))
         }
-        elseBlock.terminates = block.terminates
 
         elseBlock = elseBlockNext
       }
     }
 
-    if resIrType != IrType.Unit && !wildcardBlock {
+    if !wildcardBlock && (!isStatement || isExhaustive) {
       elseBlock.body = [Instruction(op: Operation.Unreachable("non-exhaustive pattern matching"))]
       elseBlock.terminates = true
     }
     self.curCtx.block = prevBlock
 
-    if resIrType == IrType.Unit {
+    self.finalizeMatchGeneration(rootOp)
+
+    if isStatement {
       self.emit(Instruction(op: rootOp))
       Value.Unit
     } else {
       self.ssaValue(resIrType, rootOp, dst)
+    }
+  }
+
+  // The finalizing pass iterates over each if-Op in the match-tree and tests whether each sub-branch of the else-branch terminates (no need to
+  // test the if-branch since each match cases cascade along the else-branches). If they do both terminate, then the parent else-block itself
+  // must terminate too. This is necessary because it's possible that it is not known whether an else-block should be marked as terminates until
+  // after every match case is visited; additionally an if/else-block's `result` may need to be cleared out in order to prevent an invalid value
+  // being rendered later on (ie. a `Never` instance, which does not exist).
+  func finalizeMatchGeneration(self, op: Operation): Bool {
+    match op {
+      Operation.If(_, _, ifBlock, elseBlock) => {
+        if !ifBlock.terminates {
+          if ifBlock.body[-1] |last| {
+            if self.finalizeMatchGeneration(last.op) {
+              ifBlock.result = None
+              ifBlock.terminates = true
+            }
+          }
+        }
+
+        if !elseBlock.terminates {
+          if elseBlock.body[-1] |last| {
+            if self.finalizeMatchGeneration(last.op) {
+              elseBlock.result = None
+              elseBlock.terminates = true
+            }
+          }
+        }
+
+        ifBlock.terminates && elseBlock.terminates
+      }
+      else => false
     }
   }
 
@@ -2349,16 +2390,8 @@ pub type Generator {
         val ifBody = self.withinBlock("then", !!ifBlockTerminator, () => {
           if condBinding |binding| self.genConditionBinding(concreteGenerics, optInnerTy, condBindingVal, binding)
           for node, idx in ifBlock {
-            if idx == ifBlock.length - 1 {
-              val terminator = try ifBlockTerminator else {
-                return Some(self.genExpression(node, concreteGenerics))
-              }
-
-              self.genStatement(node, concreteGenerics)
-              if terminator == tc.Terminator.Halting {
-                self.emit(Instruction(op: Operation.Unreachable("halt")))
-              }
-              return None
+            if idx == ifBlock.length - 1 && !ifBlockTerminator {
+              return Some(self.genExpression(node, concreteGenerics))
             } else {
               self.genStatement(node, concreteGenerics)
             }
@@ -2368,16 +2401,8 @@ pub type Generator {
         })
         val elseBody = self.withinBlock("else", !!elseBlockTerminator, () => {
           for node, idx in elseBlock {
-            if idx == elseBlock.length - 1 {
-              val terminator = try elseBlockTerminator else {
-                return Some(self.genExpression(node, concreteGenerics))
-              }
-
-              self.genStatement(node, concreteGenerics)
-              if terminator == tc.Terminator.Halting {
-                self.emit(Instruction(op: Operation.Unreachable("halt")))
-              }
-              return None
+            if idx == elseBlock.length - 1 && !elseBlockTerminator {
+              return Some(self.genExpression(node, concreteGenerics))
             } else {
               self.genStatement(node, concreteGenerics)
             }
@@ -2395,8 +2420,8 @@ pub type Generator {
         val resIrTy = self.getIrTypeForConcreteType(resConcreteType)
         self.ssaValue(resIrTy, Operation.If(resIrTy, condVal, ifBody, elseBody), dst)
       }
-      TypedAstNodeKind.Match(isStatement, subjectNode, cases) => {
-        self.genMatch(node, isStatement, subjectNode, cases, concreteGenerics, dst)
+      TypedAstNodeKind.Match(isStatement, isExhaustive, subjectNode, cases) => {
+        self.genMatch(node, isStatement, isExhaustive, subjectNode, cases, concreteGenerics, dst)
       }
       TypedAstNodeKind.Try(expr, elseClause) => self.genTry(concreteGenerics, expr, elseClause, dst)
       else => todo("Other expressions (${node.token})")
@@ -3000,6 +3025,7 @@ pub type Generator {
   func genCall(self, pos: Position, concreteGenerics: Map<String, ConcreteType>, innerConcreteGenerics: Map<String, ConcreteType>, dst: String?, invokee: tc.TypedInvokee, args: tc.TypedAstNode?[]): Value {
     val argValues: Value[] = []
     var optSafeCtx: ((String, Instruction[]), Value, Block)? = None
+    var isNoReturn = false
 
     val (fnName, returnType) = match invokee {
       TypedInvokee.Function(fn) => {
@@ -3113,6 +3139,7 @@ pub type Generator {
           val fnName = self.fnName(None, fn, innerConcreteGenerics, paramsNeedingDefaultValue)
           self.enqueueFunction(fn, fnName, paramsNeedingDefaultValue, None, innerConcreteGenerics)
 
+          isNoReturn = fn.isNoReturn
           val concreteReturnType = if fn.returnType.kind == tc.TypeKind.PrimitiveUnit {
             None
           } else {
@@ -3255,6 +3282,7 @@ pub type Generator {
             argValues.push(selfIrVal)
           }
 
+          isNoReturn = fn.isNoReturn
           val concreteReturnType = if method.returnType.kind == tc.TypeKind.PrimitiveUnit {
             None
           } else {
@@ -3373,6 +3401,10 @@ pub type Generator {
       } else {
         val op = Operation.Call(ret: IrType.Unit, fnName: fnName, args: argValues)
         self.emit(Instruction(op: op))
+
+        if isNoReturn {
+          self.emit(Instruction(op: Operation.Unreachable("noreturn")))
+        }
 
         Value.Unit
       }

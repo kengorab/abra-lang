@@ -187,9 +187,8 @@ pub type Variable {
 pub enum Terminator {
   Returning
   NonReturning
-  Halting
 
-  func returns(self): Bool = self != Terminator.NonReturning
+  func returns(self): Bool = self == Terminator.Returning
 
   func combine(t1: Terminator?, t2: Terminator?): Terminator? {
     val term1 = try t1 else return None
@@ -197,12 +196,6 @@ pub enum Terminator {
 
     if term1 == Terminator.Returning && term2 == Terminator.Returning {
       Some(Terminator.Returning)
-    } else if term1 == Terminator.Returning && term2 == Terminator.Halting {
-      Some(Terminator.Returning)
-    } else if term1 == Terminator.Halting && term2 == Terminator.Returning {
-      Some(Terminator.Returning)
-    } else if term1 == Terminator.Halting && term2 == Terminator.Halting {
-      Some(Terminator.Halting)
     } else {
       Some(Terminator.NonReturning)
     }
@@ -867,7 +860,7 @@ pub type TypedAstNode {
         ifBlock[-1]?.fillTypeHoles(typ)
         elseBlock[-1]?.fillTypeHoles(typ)
       }
-      TypedAstNodeKind.Match(_, _, cases) => {
+      TypedAstNodeKind.Match(_, _, _, cases) => {
         for case in cases {
           case.body[-1]?.fillTypeHoles(typ)
         }
@@ -919,6 +912,7 @@ pub type Function {
   pub capturedClosures: Function[] = []
   numScopes: Int = 0
   pub isMacro: Bool = false
+  pub isNoReturn: Bool = false
 
   pub func generated(
     scope: Scope,
@@ -990,6 +984,7 @@ pub type Function {
       decorators: self.decorators,
       captures: self.captures,
       capturedClosures: self.capturedClosures,
+      isNoReturn: self.isNoReturn,
     )
   }
 
@@ -1059,7 +1054,7 @@ pub enum TypedAstNodeKind {
   Lambda(fn: Function, typeHint: ((Type, Bool)[], Type)?)
   Assignment(mode: TypedAssignmentMode, op: AssignOp, expr: TypedAstNode)
   If(isStatement: Bool, typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, typedIfBlock: TypedAstNode[], ifBlockTerminator: Terminator?, typedElseBlock: TypedAstNode[], elseBlockTerminator: Terminator?)
-  Match(isStatement: Bool, expr: TypedAstNode, cases: TypedMatchCase[])
+  Match(isStatement: Bool, isExhaustive: Bool, expr: TypedAstNode, cases: TypedMatchCase[])
   Try(typedExpr: TypedAstNode, typedElseClause: TypedTryElseClause?)
   While(typedCondition: TypedAstNode, conditionBinding: (BindingPattern, Variable[])?, block: TypedAstNode[], terminator: Terminator?)
   For(typedForIterKind: TypedForIterKind, itemBinding: (BindingPattern, Variable[]), indexBinding: Variable?, block: TypedAstNode[], terminator: Terminator?)
@@ -1956,7 +1951,7 @@ pub type Typechecker {
         }
 
         val instanceTypeArgs = try self._verifyNumTypeArgs(label.position, typeArguments, struct.typeParams.length)
-        return Ok(Some(Type(kind: TypeKind.Instance(InstanceKind.Struct(struct), instanceTypeArgs))))
+        Ok(Some(Type(kind: TypeKind.Instance(InstanceKind.Struct(struct), instanceTypeArgs))))
       }
       InstanceKind.Enum(enum_) => {
         if self.lspMode {
@@ -1964,11 +1959,9 @@ pub type Typechecker {
         }
 
         val instanceTypeArgs = try self._verifyNumTypeArgs(label.position, typeArguments, enum_.typeParams.length)
-        return Ok(Some(Type(kind: TypeKind.Instance(InstanceKind.Enum(enum_), instanceTypeArgs))))
+        Ok(Some(Type(kind: TypeKind.Instance(InstanceKind.Enum(enum_), instanceTypeArgs))))
       }
     }
-
-    Ok(None)
   }
 
   func findTypeByNameInScope(self, name: String, startingScope = self.currentScope): (Type, TypedModule?)? {
@@ -2628,6 +2621,7 @@ pub type Typechecker {
   func typecheckFunctionPass1(self, node: FunctionDeclarationNode): Result<Function, TypeError> {
     val decorators: Decorator[] = []
     var isMacro = false
+    var isNoReturn = false
     for d in node.decorators {
       val dec = try self.typecheckDecoratorNode(d) else |err| {
         // Report error and recover
@@ -2638,6 +2632,9 @@ pub type Typechecker {
 
       if dec.backingStruct == self.project.metaMacroDecorator {
         isMacro = true
+      }
+      if d.name.name == "noreturn" {
+        isNoReturn = true
       }
     }
 
@@ -2688,7 +2685,7 @@ pub type Typechecker {
       FunctionKind.Standalone
     }
 
-    val fn = Function(label: node.name, scope: fnScope, kind: fnKind, typeParams: typeParams, params: [], returnType: returnType, body: [], decorators: decorators, isMacro: isMacro)
+    val fn = Function(label: node.name, scope: fnScope, kind: fnKind, typeParams: typeParams, params: [], returnType: returnType, body: [], decorators: decorators, isMacro: isMacro, isNoReturn: isNoReturn)
     try self.addFunctionToScope(fn)
 
     Ok(fn)
@@ -2884,7 +2881,11 @@ pub type Typechecker {
 
     for node, idx in body {
       val cannotContinue = self.currentScope.terminator?.returns() ?: false
-      if cannotContinue return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+      if cannotContinue {
+        self.currentFunction = prevFn
+        self.currentScope = prevScope
+        return Err(TypeError(position: node.token.position, kind: TypeErrorKind.UnreachableCode))
+      }
 
       val typedNode = if idx == body.length - 1 && hasReturnValue {
         val fnName = if fn.isLambda None else Some(fn.label.name)
@@ -4043,7 +4044,7 @@ pub type Typechecker {
         }
 
         val mode = TypedAssignmentMode.Variable(variable)
-        return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, op, typedExpr)))
+        Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, op, typedExpr)))
       }
       AssignmentMode.Indexing(targetExpr, indexExpr) => {
         val typedLhs = try self.typecheckIndexing(token, targetExpr, IndexingMode.Single(indexExpr), None)
@@ -4060,7 +4061,7 @@ pub type Typechecker {
         }
 
         val mode = TypedAssignmentMode.Indexing(typedIndexingNode)
-        return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, op, typedExpr)))
+        Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, op, typedExpr)))
       }
       AssignmentMode.Accessor(accessorNode) => {
         val typedLhs = try self.typecheckAccessor(token, accessorNode, None, isInvocation: false)
@@ -4099,7 +4100,7 @@ pub type Typechecker {
           return Err(TypeError(position: typedExpr.token.position, kind: TypeErrorKind.TypeMismatch([field.ty], typedExpr.ty)))
         }
 
-        return Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, op, typedExpr)))
+        Ok(TypedAstNode(token: token, ty: Type(kind: TypeKind.PrimitiveUnit), kind: TypedAstNodeKind.Assignment(mode, op, typedExpr)))
       }
     }
   }
@@ -4401,7 +4402,7 @@ pub type Typechecker {
     Ok(TypedAstNode(token: token, ty: ty, kind: kind))
   }
 
-  func _typecheckMatch(self, token: Token, expr: AstNode, cases: MatchCase[], typeHint: Type?): Result<TypedAstNode, TypeError> {
+  func typecheckMatch(self, token: Token, expr: AstNode, cases: MatchCase[], typeHint: Type?): Result<TypedAstNode, TypeError> {
     val isStatement = if typeHint |hint| hint.kind == TypeKind.PrimitiveUnit else false
     val typedExpr = try self._typecheckExpression(expr, None)
 
@@ -4439,7 +4440,8 @@ pub type Typechecker {
       false
     }
 
-    for case in cases {
+    var terminator: Terminator? = None
+    for case, idx in cases {
       if allCasesHandled() {
         return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.AlreadyCovered(exhaustive: true), typedExpr.ty)))
       }
@@ -4615,22 +4617,30 @@ pub type Typechecker {
         }
       }
 
-      val terminator = self.currentScope.terminator
+      val caseTerminator = self.currentScope.terminator
+      terminator = if idx == 0 {
+        caseTerminator
+      } else {
+        Terminator.combine(terminator, caseTerminator)
+      }
       self.currentScope = prevScope
 
-      typedCases.push(TypedMatchCase(kind: typedMatchCaseKind, binding: caseVar, body: typedBody, terminator: terminator))
+      typedCases.push(TypedMatchCase(kind: typedMatchCaseKind, binding: caseVar, body: typedBody, terminator: caseTerminator))
     }
 
-    if !isStatement && !allCasesHandled() {
-      return Err(TypeError(position: token.position, kind: TypeErrorKind.NonExhaustiveMatch(typedExpr.ty)))
-    }
+    val isExhaustive = allCasesHandled()
+    self.currentScope.terminator = if isExhaustive terminator else None
 
     val ty = try resultTy else {
       if !isStatement return Err(self.internalError(token.position, "match expression without result type"))
       Type(kind: TypeKind.PrimitiveUnit)
     }
-
-    if !isStatement && ty.hasUnfilledHoles() {
+    // If the resulting type is Unit or Never after visiting all the cases' blocks, then treat this as a statement
+    val isStmt = isStatement || ty.kind == TypeKind.PrimitiveUnit || ty.kind == TypeKind.Never
+    if !isStmt && !isExhaustive {
+      return Err(TypeError(position: token.position, kind: TypeErrorKind.NonExhaustiveMatch(typedExpr.ty)))
+    }
+    if !isStmt && ty.hasUnfilledHoles() {
       return Err(TypeError(position: token.position, kind: TypeErrorKind.IllegalValueType(ty: ty, purpose: "match expression result")))
     }
 
@@ -4641,9 +4651,7 @@ pub type Typechecker {
       }
     }
 
-    // If the resulting type is Unit or Never after visiting all the cases' blocks, then treat this as a statement
-    val isStmt = isStatement || ty.kind == TypeKind.PrimitiveUnit || ty.kind == TypeKind.Never
-    val kind = TypedAstNodeKind.Match(isStmt, typedExpr, typedCases)
+    val kind = TypedAstNodeKind.Match(isStmt, isExhaustive, typedExpr, typedCases)
     Ok(TypedAstNode(token: token, ty: ty, kind: kind))
   }
 
@@ -4678,7 +4686,7 @@ pub type Typechecker {
       AstNodeKind.Indexing(expr, index) => try self.typecheckIndexing(token, expr, index, typeHint)
       AstNodeKind.Lambda(value) => try self._typecheckLambda(token, value, typeHint)
       AstNodeKind.If(condition, conditionBinding, ifBlock, elseBlock) => try self._typecheckIf(token, condition, conditionBinding, ifBlock, elseBlock, typeHint)
-      AstNodeKind.Match(subject, cases) => try self._typecheckMatch(token, subject, cases, typeHint)
+      AstNodeKind.Match(subject, cases) => try self.typecheckMatch(token, subject, cases, typeHint)
       AstNodeKind.Try(expr, elseClause) => try self.typecheckTry(token, expr, elseClause, typeHint)
       _ => return Err(self.internalError(token.position, "all other node types should have already been handled"))
     }
@@ -5706,7 +5714,7 @@ pub type Typechecker {
       return Ok(res)
     }
 
-    val returnType = if fn.decorators.find(d => d.label.name == "noreturn") {
+    val returnType = if fn.isNoReturn {
       self.currentScope.terminator = Some(Terminator.Returning)
       Type(kind: TypeKind.Never)
     } else if fn.returnType.containsGenerics() {
@@ -6052,7 +6060,7 @@ pub type Typechecker {
         }
 
         val typedIndexMode = IndexingMode.Single(typedIdxExpr)
-        return Ok(TypedAstNode(token: token, ty: singleModeType, kind: TypedAstNodeKind.Indexing(TypedIndexingNode.ArrayLike(typedExpr, typedIndexMode))))
+        Ok(TypedAstNode(token: token, ty: singleModeType, kind: TypedAstNodeKind.Indexing(TypedIndexingNode.ArrayLike(typedExpr, typedIndexMode))))
       }
       IndexingMode.Range(startExpr, endExpr) => {
         val typedStartExpr = if startExpr |expr| {
@@ -6070,7 +6078,7 @@ pub type Typechecker {
           Some(e)
         } else None
         val typedIndexMode = IndexingMode.Range(typedStartExpr, typedEndExpr)
-        return Ok(TypedAstNode(token: token, ty: rangeModeType, kind: TypedAstNodeKind.Indexing(TypedIndexingNode.ArrayLike(typedExpr, typedIndexMode))))
+        Ok(TypedAstNode(token: token, ty: rangeModeType, kind: TypedAstNodeKind.Indexing(TypedIndexingNode.ArrayLike(typedExpr, typedIndexMode))))
       }
     }
   }

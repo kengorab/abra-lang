@@ -1,5 +1,11 @@
-Error at %FILE_NAME%:2:11
+Error at %TEST_DIR%/typechecker/match/error_forbidden_type_all_branches_never.abra:2:11
 Forbidden type for assignment
   |    val x = match 123 {
                ^
 Expression has type Never, which can never be used for assignment
+
+Error at %TEST_DIR%/typechecker/match/error_forbidden_type_all_branches_never.abra:6:3
+Unreachable code
+  |    0
+       ^
+Control flow exits before this code is reached

@@ -617,7 +617,7 @@ pub type Jsonifier {
         stdoutWriteln()
       }
 
-      TypedAstNodeKind.Match(isStatement, subject, cases) => {
+      TypedAstNodeKind.Match(isStatement, _, subject, cases) => {
         self.println("\"kind\": \"match\",")
 
         self.println("\"isStatement\": $isStatement,")

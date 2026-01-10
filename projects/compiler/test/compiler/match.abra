@@ -268,10 +268,18 @@ if true {
   }
   /// Expect: -1
   println(y)
+
+  val z = match Color.Green {
+    Color.Red => Color.Blue
+    Color.Blue => unreachable()
+    Color.Green => Color.Red
+    else => Color.Green
+  }
+  /// Expect: Color.Red
+  println(z)
 }
 
 // Testing terminator in block
-
 func matchExprCaseHasReturn(input: Int?): Int {
   val x = match input {
     None => return -1
@@ -297,3 +305,21 @@ println(matchStmtCaseHasReturn(None))
 /// Expect: 400
 /// Expect: 1
 println(matchStmtCaseHasReturn(Option.Some(value: 4)))
+
+// TODO (#629)
+// func matchCasesAllEndInReturn(color: Color): Color {
+//   match color {
+//     Color.Red => return Color.Red
+//     Color.Blue => return Color.Blue
+//     Color.Green => return Color.Green
+//     Color.RGB(r, g, b) => return Color.RGB(r, g, b)
+//   }
+// }
+// /// Expect: Color.Red
+// println(matchCasesAllEndInReturn(Color.Red))
+// /// Expect: Color.Blue
+// println(matchCasesAllEndInReturn(Color.Blue))
+// /// Expect: Color.Green
+// println(matchCasesAllEndInReturn(Color.Green))
+// /// Expect: Color.RGB(r: 1, g: 2, b: 3)
+// println(matchCasesAllEndInReturn(Color.RGB(r: 1, g: 2, b: 3)))
