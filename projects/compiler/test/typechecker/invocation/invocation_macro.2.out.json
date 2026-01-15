@@ -241,7 +241,7 @@
                 },
                 "indexBinding": {
                   "label": { "name": "idx", "position": [7, 10] },
-                  "mutable": true,
+                  "mutable": false,
                   "type": {
                     "kind": "primitive",
                     "primitive": "Int"

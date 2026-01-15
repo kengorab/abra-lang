@@ -149,10 +149,16 @@ enum Color {
   Green
   Blue
 }
+type Pixel { color: Color }
+
 if true {
   val colors = [Color.Red, Color.Green, Color.Blue]
   /// Expect: Option.None
   println(colors[3])
   /// Expect: Option.Some(value: "Color.Blue")
   println(colors[2]?.toString())
+
+  /// Expect: Option.None
+  val p: Pixel? = None
+  println(p?.color)
 }
