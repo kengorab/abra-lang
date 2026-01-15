@@ -1413,8 +1413,9 @@ pub type Generator {
           val fieldConcreteType = self.getConcreteTypeFromType(f.ty, newConcreteGenerics)
           val fieldIrType = self.getIrTypeForConcreteType(fieldConcreteType)
 
-          val selfItemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: selfVal, name: f.name.name, offset: idx * ALIGNMENT), None)
-          val otherItemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: otherVal, name: f.name.name, offset: idx * ALIGNMENT), None)
+          val offset = idx * ALIGNMENT
+          val selfItemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: selfVal, name: f.name.name, offset: offset), None)
+          val otherItemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: otherVal, name: f.name.name, offset: offset), None)
           (fieldConcreteType, selfItemVal, otherItemVal)
         })
 
@@ -1474,8 +1475,9 @@ pub type Generator {
               val fieldConcreteType = self.getConcreteTypeFromType(f.ty, newConcreteGenerics)
               val fieldIrType = self.getIrTypeForConcreteType(fieldConcreteType)
 
-              val selfItemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: selfVal, name: f.name.name, offset: idx * ALIGNMENT), None)
-              val otherItemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: otherVal, name: f.name.name, offset: idx * ALIGNMENT), None)
+              val offset = (idx + 1) * ALIGNMENT
+              val selfItemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: selfVal, name: f.name.name, offset: offset), None)
+              val otherItemVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: otherVal, name: f.name.name, offset: offset), None)
               (fieldConcreteType, selfItemVal, otherItemVal)
             })
             self.emit(Instruction(op: Operation.Return(Some(self.genEqLogicForStructuredData(fields)))))
@@ -1749,11 +1751,9 @@ pub type Generator {
         val nextFnRetInnerIrTy = self.getIrTypeForConcreteType(nextFnRetInnerConcreteTy)
 
         val idxSlot = if indexBinding |idxVariable| {
-          idxVariable.mutable = true  // TODO: this is kinda gross, should probably be fixed in the typechecker
-          val varName = self.varName(idxVariable)
-          val idxSlot = self.ssaValue(IrType.I64, Operation.NewLocal(ty: IrType.I64, captured: false, initialValue: Some(Value.Const(Const.Int(-1)))), Some(varName))
-          self.curCtx.locals[varName] = idxSlot
-          match idxSlot { Value.Ident(i) => Some(i), else => unreachable("ssaValue returns Ident") }
+          val counterSlot = self.ssaValue(IrType.I64, Operation.NewLocal(ty: IrType.I64, captured: false, initialValue: Some(Value.Const(Const.Int(-1)))), None)
+          val counterIdent = match counterSlot { Value.Ident(i) => i, else => unreachable("ssaValue returns Ident") }
+          Some((idxVariable, counterIdent))
         } else {
           None
         }
@@ -1775,10 +1775,13 @@ pub type Generator {
           val bindingConcreteGenerics = self.deriveConcreteGenericsOfForLoopBindingPattern(pattern, variables, nextFnRetInnerConcreteTy)
           self.genBindingPattern(pattern, variables, Some((nextVal, nextFnRetInnerConcreteTy)), bindingConcreteGenerics)
 
-          if idxSlot |idxSlot| {
-            val idxValue = self.ssaValue(IrType.I64, Operation.LoadVar(ty: IrType.I64, ident: idxSlot), None)
-            val idxInc = self.ssaValue(IrType.I64, Operation.Add(Value.Const(Const.Int(1)), idxValue), None)
-            self.emit(Instruction(op: Operation.StoreVar(ty: IrType.I64, value: idxInc, ident: idxSlot)))
+          if idxSlot |(idxVariable, counterSlot)| {
+            val counterVal = self.ssaValue(IrType.I64, Operation.LoadVar(ty: IrType.I64, ident: counterSlot), None)
+            val inc = self.ssaValue(IrType.I64, Operation.Add(Value.Const(Const.Int(1)), counterVal), None)
+            self.emit(Instruction(op: Operation.StoreVar(ty: IrType.I64, value: inc, ident: counterSlot)))
+
+            val varName = self.varName(idxVariable)
+            self.curCtx.locals[varName] = inc
           }
 
           val loopBodyConcreteGenerics: Map<String, ConcreteType> = {}
@@ -3605,52 +3608,53 @@ pub type Generator {
           concreteType = self.getConcreteTypeFromType(fnType, concreteGenerics)
         }
         AccessorPathSegment.Field(label, ty, field, isOptSafe) => {
-          val optSafeCtx = if isOptSafe {
+          if isOptSafe {
             if concreteType.instanceKind != InstanceKind.Enum(self.project.preludeOptionEnum) unreachable()
             concreteType = try concreteType.typeArgs[0] else unreachable()
+          }
+
+          val (fieldName, fieldOffset, fieldTy) = match concreteType.instanceKind {
+            InstanceKind.Struct(struct) => {
+              val (f, fieldIdx) = try struct.fields.findIndex(f => f.name.name == field.name.name) else unreachable("no such field '${field.name.name}'")
+              val offset = fieldIdx * ALIGNMENT
+              (f.name.name, offset, f.ty)
+            }
+            InstanceKind.Enum(enum_) => todo("enum field accessor: '${enum_.label.name}.${field.name.name}'")
+          }
+          val newConcreteGenerics = self.extractConcreteGenericsFromConcreteType(concreteType)
+          val fieldConcreteType = self.getConcreteTypeFromType(fieldTy, newConcreteGenerics)
+          val fieldIrType = self.getIrTypeForConcreteType(fieldConcreteType)
+
+          val optSafeCtx = if isOptSafe {
             val innerIrType = self.getIrTypeForConcreteType(concreteType)
             val cond = self.ssaValue(IrType.Bool, Operation.OptionIsNone(innerIrType, workingVal), None)
             val ifBody = self.withinBlock("opt_safe_is_none", false, () => {
-              Some(self.ssaValue(innerIrType, Operation.OptionNone(innerIrType), dst))
+              Some(self.ssaValue(innerIrType, Operation.OptionNone(fieldIrType), dst))
             })
 
             val prevBlock = self.curCtx.block
-
             self.curCtx.block = ("opt_safe_is_some", [])
             workingVal = self.ssaValue(innerIrType, Operation.OptionUnwrap(innerIrType, workingVal), None)
 
             Some((prevBlock, cond, ifBody))
           } else None
 
-          val fieldTy = match concreteType.instanceKind {
-            InstanceKind.Struct(struct) => {
-              val (f, fieldIdx) = try struct.fields.findIndex(f => f.name.name == field.name.name) else unreachable("no such field '${field.name.name}'")
-              val offset = fieldIdx * ALIGNMENT
-              val newConcreteGenerics = self.extractConcreteGenericsFromConcreteType(concreteType)
-              val fieldConcreteType = self.getConcreteTypeFromType(f.ty, newConcreteGenerics)
-              val fieldTy = self.getIrTypeForConcreteType(fieldConcreteType)
-
-              if idx == segs.length - 1 {
-                workingVal = if storeVal |res| {
-                  self.emit(Instruction(op: Operation.StoreField(ty: fieldTy, value: res, mem: workingVal, name: f.name.name, offset: offset)))
-                  Value.Unit
-                } else {
-                  val d = if optSafeCtx None else dst
-                  self.ssaValue(fieldTy, Operation.LoadField(ty: fieldTy, mem: workingVal, name: f.name.name, offset: offset), d)
-                }
-              } else {
-                workingVal = self.ssaValue(fieldTy, Operation.LoadField(ty: fieldTy, mem: workingVal, name: f.name.name, offset: offset), None)
-              }
-              concreteType = self.getConcreteTypeFromType(ty, newConcreteGenerics)
-
-              fieldTy
+          if idx == segs.length - 1 {
+            workingVal = if storeVal |res| {
+              self.emit(Instruction(op: Operation.StoreField(ty: fieldIrType, value: res, mem: workingVal, name: fieldName, offset: fieldOffset)))
+              Value.Unit
+            } else {
+              val d = if optSafeCtx None else dst
+              self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: workingVal, name: fieldName, offset: fieldOffset), d)
             }
-            InstanceKind.Enum(enum_) => todo("enum field accessor: '${enum_.label.name}.${field.name.name}'")
+          } else {
+            workingVal = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: workingVal, name: fieldName, offset: fieldOffset), None)
           }
+          concreteType = self.getConcreteTypeFromType(ty, newConcreteGenerics)
 
           if optSafeCtx |(prevBlock, ifCond, ifBlock)| {
             val wrappedIrTy = self.getIrTypeForConcreteType(concreteType)
-            val wrappedResult = self.ssaValue(wrappedIrTy, Operation.OptionSome(fieldTy, workingVal), None)
+            val wrappedResult = self.ssaValue(wrappedIrTy, Operation.OptionSome(fieldIrType, workingVal), None)
 
             val (name, instrs) = self.curCtx.block
             self.curCtx.block = prevBlock

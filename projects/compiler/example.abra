@@ -1,33 +1,27 @@
 enum Foo {
-  Bar
+  Foo
+  Bar//(a: String)
   Baz
-  Qux
 }
 
-// func foo(f: Foo) {
-//   val s = match f {
-//     Foo.Bar => 1
-//     Foo.Baz(s1, s2) => {
-//       println(s1, s2)
-//       s1.length + s2.length
-//     }
-//     Foo.Qux => 2
-//   }
-//   println(s)
-// }
+type Bar {
+  foo: Foo
 
-// foo(Foo.Baz("abc", "de"))
-
-func foo(f: Foo): Foo {
-  match f {
-    Foo.Bar => return Foo.Bar
-    Foo.Baz => return Foo.Bar
-    Foo.Qux => return Foo.Qux
-  }
+  func getFoo(self): Foo = self.foo
 }
 
-stdoutWriteln(foo(Foo.Bar).toString())
+val b: Bar? = None //Some(Bar(foo: Foo.Foo))
+if b?.getFoo() |f| {
+  println(f)
+} else {
+  println("nope")
+}
 
-// stdoutWriteln("hello")
+// val f: Foo? = None // Some(Foo.Foo)
 
-
+match b?.getFoo() {
+  None => println("none")
+  Foo.Bar => println("Foo.Bar")
+  Foo.Baz => println("Foo.Baz")
+  else => println("Foo.Foo")
+}
