@@ -40,3 +40,9 @@ jobs:
         cd projects/compiler
         abra build -o compiler_next ./src/compiler.test.abra
         COMPILER_BIN=./._abra/compiler_next node test/run-tests.js
+    - name: Run tests against ir-compiler-next
+      run: |
+        cd projects/compiler
+        abra build -o ir_compiler ./src/ir_compiler.test.abra
+        COMPILER_BIN=./._abra/ir_compiler abra build -o ir_compiler2 ./src/ir_compiler.test.abra
+        COMPILER_BIN=./._abra/ir_compiler2 node test/run-tests.js
