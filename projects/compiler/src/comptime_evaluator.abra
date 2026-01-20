@@ -420,12 +420,13 @@ func marshallArrayNodeToArray(items: TypedAstNode[]): VmValue {
     val marshalledExpr = marshallTypedAstNodeToExpr(item)
     bufPtr.storeAt(marshalledExpr, idx)
   }
+  val vmItems = items.map(marshallTypedAstNodeToExpr)
 
   VmValue.Instance(Instance(
     name: "Array",
     fields: [
       /* length */ VmValue.Int(items.length),
-      /* _buffer */ VmValue.Pointer(Pointer.reinterpret(bufPtr)),
+      /* _buffer */ VmValue.Pointer(vmItems),
       /* _capacity */ VmValue.Int(items.length)
     ]
   ))
@@ -437,10 +438,10 @@ func unmarshallInjectedCode(value: VmValue): Result<InjectedCode, String> {
 
   val chunksValue = instance.expectField(0).expectInstance("InjectedCode chunks is String[]")
   val chunksLength = chunksValue.expectField(0).expectInt("Array field 0 is length")
-  val chunksItems = chunksValue.expectField(1).expectPointer("Array field 1 is buffer")
+  val (chunksItems, _) = chunksValue.expectField(1).expectPointer("Array field 1 is buffer")
   val chunks: String[] = []
   for i in 0:chunksLength {
-    val chunkValue = Pointer.reinterpret<Byte, VmValue>(chunksItems).loadAt(i)
+    val chunkValue = try chunksItems[i] else unreachable("chunks should be of size $chunksLength but was actually ${chunksItems.length}")
     val chunk = try unmarshallString(chunkValue)
     chunks.push(chunk)
   }
@@ -451,9 +452,9 @@ func unmarshallInjectedCode(value: VmValue): Result<InjectedCode, String> {
   if importsSize != 0 {
     val importsEntries = importsValue.expectField(1).expectInstance("Map field 1 is _entries (MapEntry<String, String>[])")
     val importsEntriesLength = importsEntries.expectField(0).expectInt("Array field 0 is length")
-    val importsEntriesItems = importsEntries.expectField(1).expectPointer("Array field 1 is buffer")
+    val (importsEntriesItems, _) = importsEntries.expectField(1).expectPointer("Array field 1 is buffer")
     for i in 0:importsEntriesLength {
-      var next = Pointer.reinterpret<Byte, VmValue>(importsEntriesItems).loadAt(i)
+      var next = try importsEntriesItems[i] else unreachable("chunks should be of size $importsEntriesLength but was actually ${importsEntriesItems.length}")
 
       while next != VmValue.OptionNone {
         val entry = next.expectInstance("MapEntry is instance")

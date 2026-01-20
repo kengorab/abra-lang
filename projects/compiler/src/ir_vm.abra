@@ -28,7 +28,7 @@ pub enum VmValue {
   Float(float: Float)
   Bool(bool: Bool)
   ConstString(str: String)
-  Pointer(ptr: Pointer<Byte>)
+  Pointer(buf: VmValue[], null: Bool = false)
   Instance(instance: Instance)
   Function(fn: VmFunction)
   Capture(inner: CapturedValue)
@@ -36,10 +36,37 @@ pub enum VmValue {
   pub func expectInt(self, message: String): Int = match self { VmValue.Int(i) => i, else v => unreachable("expected int value but got '$v' ($message)") }
   pub func expectFloat(self, message: String): Float = match self { VmValue.Float(f) => f, else v => unreachable("expected float value but got '$v' ($message)") }
   pub func expectBool(self, message: String): Bool = match self { VmValue.Bool(b) => b, else v => unreachable("expected bool value but got '$v' ($message)") }
-  pub func expectPointer(self, message: String): Pointer<Byte> = match self { VmValue.Pointer(p) => p, else v => unreachable("expected pointer value but got '$v' ($message)") }
+  pub func expectPointer(self, message: String): (VmValue[], Bool) = match self { VmValue.Pointer(p, n) => (p, n), else v => unreachable("expected pointer value but got '$v' ($message)") }
   pub func expectInstance(self, message: String): Instance = match self { VmValue.Instance(i) => i, else v => unreachable("expected instance value but got '$v' ($message)") }
   pub func expectFunction(self, message: String): VmFunction = match self { VmValue.Function(f) => f, else v => unreachable("expected function value but got '$v' ($message)") }
   pub func expectCapture(self, message: String): CapturedValue = match self { VmValue.Capture(inner) => inner, else v => unreachable("expected captured value but got '$v' ($message)") }
+}
+
+func pointerValueToString(buffer: VmValue[]): String {
+  val iter = buffer.iterator()
+  val charsIter = CharsIterator(nextCodepoint: () => {
+    if iter.next() |next| {
+      val int = next.expectInt("pointerValueToString")
+      if int == 0 { -1 } else { int }
+    } else {
+      -1
+    }
+  })
+
+  val chars: Char[] = []
+  while charsIter.next() |ch| chars.push(ch)
+
+  String.fromChars(chars)
+}
+
+func pointerValueFromString(str: String): VmValue {
+  val byteVals: VmValue[] = []
+  for ch in str.chars() {
+    for i in ch.bytes() {
+      byteVals.push(VmValue.Int(i))
+    }
+  }
+  VmValue.Pointer(byteVals)
 }
 
 pub func unmarshallString(value: VmValue): Result<String, String> {
@@ -54,10 +81,9 @@ pub func unmarshallString(value: VmValue): Result<String, String> {
     VmValue.Instance(i) => {
       if !i.name.endsWith("_String") return Err("Could not unmarshall instance of '${i.name}' as String")
 
-      val length = i.expectField(0).expectInt("String length field is at idx 0, and is an Int")
-      val buffer = i.expectField(1).expectPointer("String length field is at idx 0, and is a Pointer<Byte>")
-
-      Ok(String(length: length, _buffer: buffer))
+      val (buffer, isNull) = i.expectField(1).expectPointer("String buffer field is at idx 1, and is a Pointer")
+      if isNull return Err("Cannot unmarshall String with null buffer")
+      Ok(pointerValueToString(buffer))
     }
     VmValue.Function => Err("Could not unmarshall value of function to String")
     VmValue.Capture => Err("Could not unmarshall captured value to String")
@@ -383,7 +409,7 @@ pub type VM {
           VmValue.Bool => unreachable("cannot load field '$name' of bool")
           VmValue.ConstString(s) => match name {
             "length" => VmValue.Int(s.length)
-            "_buffer" => VmValue.Pointer(s._buffer)
+            "_buffer" => pointerValueFromString(s)
             else => unreachable("no other fields for strings")
           }
           VmValue.Pointer => unreachable("cannot load field '$name' of pointer")
@@ -634,11 +660,11 @@ pub type VM {
             self.store(self.expectAssignee(inst), VmValue.Int(self.args.length))
           }
           Builtin.Argv => {
-            val argv = Pointer.malloc<VmValue>(self.args.length)
+            val argv: VmValue[] = []
             for arg, idx in self.args {
-              argv.storeAt(VmValue.Pointer(arg._buffer), idx)
+              argv.push(pointerValueFromString(arg))
             }
-            self.store(self.expectAssignee(inst), VmValue.Pointer(Pointer.reinterpret(argv)))
+            self.store(self.expectAssignee(inst), VmValue.Pointer(argv))
           }
           Builtin.Malloc(count, itemTy) => {
             val countVal = self.irValueToVmValue(count).expectInt("Builtin.Malloc count")
@@ -647,105 +673,58 @@ pub type VM {
                 VmValue.Instance(Instance(name: typeName, fields: Array.fill(countVal>>3, VmValue.Undefined)))
               }
               else => {
-                val itemSize = if itemTy == IrType.Byte 1 else 8
-                val numBytes = countVal * itemSize
-                val ptr = Pointer.malloc<Byte>(numBytes)
-                VmValue.Pointer(ptr)
+                VmValue.Pointer(Array.fill(countVal, VmValue.Int(0)))
               }
             }
             self.store(self.expectAssignee(inst), v)
           }
           Builtin.Null => {
-            self.store(self.expectAssignee(inst), VmValue.Pointer(Pointer.null()))
+            self.store(self.expectAssignee(inst), VmValue.Pointer([], null: true))
           }
           Builtin.IsNull(ptr) => {
-            val ptrVal = self.irValueToVmValue(ptr).expectPointer("Builtin.IsNull ptr")
-            self.store(self.expectAssignee(inst), VmValue.Bool(ptrVal.isNullPtr()))
+            val (_, isNull) = self.irValueToVmValue(ptr).expectPointer("Builtin.IsNull ptr")
+            self.store(self.expectAssignee(inst), VmValue.Bool(isNull))
           }
           Builtin.Realloc(ptr, count, itemTy) => {
-            val ptrVal = self.irValueToVmValue(ptr).expectPointer("Builtin.Realloc ptr")
+            val (items, isNull) = self.irValueToVmValue(ptr).expectPointer("Builtin.Realloc ptr")
+            if isNull unreachable("Builtin.Realloc ptr is null")
             val countVal = self.irValueToVmValue(count).expectInt("Builtin.Realloc count")
-            val itemSize = if !itemTy || itemTy == Some(IrType.Byte) 1 else 8
-            val numBytes = countVal * itemSize
-            val res = ptrVal.realloc(numBytes)
+
+            val res = Array.fill(countVal, VmValue.Int(0))
+            for item, idx in items {
+              res[idx] = item
+            }
             self.store(self.expectAssignee(inst), VmValue.Pointer(res))
           }
           Builtin.PointerAddress(ptr) => {
-            val ptrVal = self.irValueToVmValue(ptr).expectPointer("Builtin.PointerAddress ptr")
-            self.store(self.expectAssignee(inst), VmValue.Int(ptrVal.address()))
+            unreachable("pointer_address deprecated")
           }
           Builtin.Store(ptr, value, offset, itemTy) => {
-            val pointer = self.irValueToVmValue(ptr).expectPointer("Builtin.Store ptr")
+            val (buffer, isNull) = self.irValueToVmValue(ptr).expectPointer("Builtin.Store ptr")
+            if isNull unreachable("Builtin.Store ptr is null")
             val offsetVal = self.irValueToVmValue(offset).expectInt("Builtin.Store offset")
 
-            val v = self.irValueToVmValue(value)
-            match itemTy {
-              IrType.Unit => unreachable("values cannot be of type unit")
-              IrType.I64 => {
-                val int = v.expectInt("Builtin.Store i64")
-                Pointer.reinterpret<Byte, Int>(pointer).storeAt(int, offsetVal)
-              }
-              IrType.F64 => {
-                val float = v.expectFloat("Builtin.Store f64")
-                Pointer.reinterpret<Byte, Float>(pointer).storeAt(float, offsetVal)
-              }
-              IrType.Bool => {
-                val bool = v.expectBool("Builtin.Store bool")
-                Pointer.reinterpret<Byte, Int>(pointer).storeAt(if bool 1 else 0, offsetVal)
-              }
-              IrType.Byte => {
-                val int = v.expectInt("Builtin.Store byte")
-                Pointer.reinterpret<Byte, Byte>(pointer).storeAt(int.asByte(), offsetVal)
-              }
-              IrType.Composite(irTypeName, _) => {
-                val ptr = Pointer.addressOf(v)
-                Pointer.reinterpret<Byte, Int>(pointer).storeAt(ptr.address(), offsetVal)
-              }
-              IrType.Ptr => todo("Builtin.Store: ptr")
-            }
+            buffer[offsetVal] = self.irValueToVmValue(value)
           }
           Builtin.Load(ptr, offset, itemTy) => {
-            val pointer = self.irValueToVmValue(ptr).expectPointer("Builtin.Load ptr")
+            val (buffer, isNull) = self.irValueToVmValue(ptr).expectPointer("Builtin.Load ptr")
+            if isNull unreachable("Builtin.Load buffer is null")
             val offsetVal = self.irValueToVmValue(offset).expectInt("Builtin.Load offset")
 
-            match itemTy {
-              IrType.Unit => unreachable("values cannot be of type unit")
-              IrType.I64 => {
-                val int = Pointer.reinterpret<Byte, Int>(pointer).loadAt(offsetVal)
-                self.store(self.expectAssignee(inst), VmValue.Int(int))
-              }
-              IrType.F64 => {
-                val float = Pointer.reinterpret<Byte, Float>(pointer).loadAt(offsetVal)
-                self.store(self.expectAssignee(inst), VmValue.Float(float))
-              }
-              IrType.Bool => {
-                val int = Pointer.reinterpret<Byte, Int>(pointer).loadAt(offsetVal)
-                self.store(self.expectAssignee(inst), VmValue.Bool(int == 1))
-              }
-              IrType.Byte => {
-                val int = pointer.loadAt(offsetVal).asInt()
-                self.store(self.expectAssignee(inst), VmValue.Int(int))
-              }
-              IrType.Composite => {
-                val value = Pointer.reinterpret<Byte, VmValue>(pointer).loadAt(offsetVal)
-                self.store(self.expectAssignee(inst), value)
-              }
-              IrType.Ptr => todo("Builtin.Load: ptr")
-            }
+            val res = try buffer[offsetVal] else unreachable("illegal ptr_load: index $offsetVal out of bounds")
+            self.store(self.expectAssignee(inst), res)
           }
           Builtin.CopyFrom(dst, dstOffset, src, srcOffset, size, itemTy) => {
-            val dstVal = self.irValueToVmValue(dst).expectPointer("Builtin.CopyFrom dst")
+            val (dstBuffer, dstIsNull) = self.irValueToVmValue(dst).expectPointer("Builtin.CopyFrom dst")
+            if dstIsNull unreachable("Builtin.CopyFrom dst is null")
             val dstOffsetVal = self.irValueToVmValue(dstOffset).expectInt("Builtin.CopyFrom dstOffset")
-            val srcVal = self.irValueToVmValue(src).expectPointer("Builtin.CopyFrom src")
+            val (srcBuffer, srcIsNull) = self.irValueToVmValue(src).expectPointer("Builtin.CopyFrom src")
+            if srcIsNull unreachable("Builtin.CopyFrom src is null")
             val srcOffsetVal = self.irValueToVmValue(srcOffset).expectInt("Builtin.CopyFrom srcOffset")
             val sizeVal = self.irValueToVmValue(size).expectInt("Builtin.CopyFrom size")
 
-            match itemTy {
-              IrType.Unit => unreachable("values cannot be of type unit")
-              IrType.Byte => dstVal.copyFrom(dstOffsetVal, srcVal, srcOffsetVal, sizeVal)
-              IrType.I64 => dstVal.copyFrom(dstOffsetVal * 8, srcVal, srcOffsetVal * 8, sizeVal * 8)
-              IrType.Composite => dstVal.copyFrom(dstOffsetVal * 8, srcVal, srcOffsetVal * 8, sizeVal * 8)
-              else v => todo("CopyFrom: $v")
+            for idx in 0:sizeVal {
+              dstBuffer[dstOffsetVal + idx] = try srcBuffer[srcOffsetVal + idx] else unreachable("illegal copy_from: index $idx out of bounds")
             }
           }
           Builtin.I64ToString(int) => {
@@ -817,12 +796,14 @@ pub type VM {
     val fd = arg0.expectInt("externWrite fd")
 
     val arg1 = try args[1] else unreachable("write(fd: Int, buf: Pointer<Byte>, count: Int)")
-    val buf = arg1.expectPointer("externWrite buf")
+    val (buf, isNull) = arg1.expectPointer("externWrite buf")
+    if isNull unreachable("externWrite buf is null")
+    val str = pointerValueToString(buf)
 
     val arg2 = try args[2] else unreachable("write(fd: Int, buf: Pointer<Byte>, count: Int)")
     val count = arg2.expectInt("externWrite count")
 
-    val res = libc.write(fd, buf, count)
+    val res = libc.write(fd, str._buffer, count)
     self.returnValue = VmValue.Int(res)
   }
 
@@ -833,17 +814,24 @@ pub type VM {
 
   func externStrlen(self, args: VmValue[]) {
     val arg0 = try args[0] else unreachable("strlen(buf: Pointer<Byte>)")
-    val strPtr = arg0.expectPointer("externStrlen strPtr")
+    val (strBuffer, isNull) = arg0.expectPointer("externStrlen strPtr")
+    if isNull unreachable("externStrlen strPtr is null")
 
-    val res = libc.strlen(strPtr)
-    self.returnValue = VmValue.Int(res)
+    self.returnValue = VmValue.Int(strBuffer.length)
   }
 
   func externGetenv(self, args: VmValue[]) {
     val arg0 = try args[0] else unreachable("getenv(name: Pointer<Byte>)")
-    val strPtr = arg0.expectPointer("externGetenv strPtr")
+    val (strBuffer, isNull) = arg0.expectPointer("externGetenv strPtr")
+    if isNull unreachable("externGetenv strPtr is null")
+    val str = pointerValueToString(strBuffer)
 
-    val res = libc.getenv(strPtr)
-    self.returnValue = VmValue.Pointer(res)
+    val res = libc.getenv(str._buffer)
+    self.returnValue = if res.isNullPtr() {
+      VmValue.Pointer([], null: true)
+    } else {
+      val len = libc.strlen(res)
+      pointerValueFromString(String(length: len, _buffer: res))
+    }
   }
 }
