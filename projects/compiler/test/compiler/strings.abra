@@ -96,6 +96,15 @@ if true {
     println("$ch $idx")
   }
 
+  val mixedByteLengthChars = "a£￫😀".chars()
+  /// Expect: a 0
+  /// Expect: £ 1
+  /// Expect: ￫ 2
+  /// Expect: 😀 3
+  for ch, idx in mixedByteLengthChars {
+    println("$ch $idx")
+  }
+
   /// Expect: done
   println("done")
 }
@@ -140,6 +149,17 @@ if true {
 
   /// Expect: ello h
   println("${s[a:]} ${s[:a]}")
+
+  // TODO: uncomment these tests
+  // val mixedByteLengthString = "a£￫😀"
+  // /// Expect: £￫😀
+  // println(mixedByteLengthString[1:])
+  // /// Expect: ￫😀
+  // println(mixedByteLengthString[2:])
+  // /// Expect: 😀
+  // println(mixedByteLengthString[3:])
+  // /// Expect:
+  // println(mixedByteLengthString[4:])
 }
 
 // String#hash

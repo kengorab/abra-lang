@@ -1,27 +1,31 @@
-enum Foo {
-  Foo
-  Bar//(a: String)
-  Baz
-}
+if true {
+  val s = "hello"
 
-type Bar {
-  foo: Foo
+  /// Expect: ell ell
+  println("${s[1:4]} ${s[-4:4]}")
 
-  func getFoo(self): Foo = self.foo
-}
+  /// Expect:  end
+  println("${s[1:1]} end")
 
-val b: Bar? = None //Some(Bar(foo: Foo.Foo))
-if b?.getFoo() |f| {
-  println(f)
-} else {
-  println("nope")
-}
+  val a = 1
+  val b = 4
 
-// val f: Foo? = None // Some(Foo.Foo)
+  /// Expect: ell ell
+  println("${s[a:b]} ${s[-b:b]}")
 
-match b?.getFoo() {
-  None => println("none")
-  Foo.Bar => println("Foo.Bar")
-  Foo.Baz => println("Foo.Baz")
-  else => println("Foo.Foo")
+  /// Expect: ello h
+  println("${s[1:]} ${s[:1]}")
+
+  /// Expect: ello h
+  println("${s[a:]} ${s[:a]}")
+
+  val mixedByteLengthString = "a£￫😀"
+  /// Expect: £￫😀
+  println(mixedByteLengthString[1:])
+  /// Expect: ￫😀
+  println(mixedByteLengthString[2:])
+  /// Expect: 😀
+  println(mixedByteLengthString[3:])
+  /// Expect:
+  println(mixedByteLengthString[4:])
 }

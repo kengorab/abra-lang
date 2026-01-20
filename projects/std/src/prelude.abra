@@ -210,9 +210,7 @@ type Char {
 }
 
 type CharsIterator {
-  _bytes: Pointer<Byte>
-  _numBytes: Int
-  _i: Int = 0
+  pub nextCodepoint: () => Int
   _peekChar: Char? = None
 
   pub func peek(self): Char? {
@@ -234,28 +232,23 @@ type CharsIterator {
   }
 
   func _decodeChar(self): Char? {
-    if self._i >= self._numBytes return None
-
-    val b1 = self._bytes.loadAt(self._i).asInt()
-    self._i += 1
+    val b1 = self.nextCodepoint()
+    if b1 == -1 return None
     if b1 < 128 return Some(Char.fromInt(b1))
 
     // Begin multi-byte cases, obtain first continuation byte
-    if self._i >= self._numBytes unreachable("invalid utf-8 encoding: continuation byte expected given first byte ${b1.hex()}")
-    val b2 = self._bytes.loadAt(self._i).asInt()
-    self._i += 1
+    val b2 = self.nextCodepoint()
+    if b2 == -1 return None // invalid utf-8 encoding: continuation byte expected given first byte
 
     // 3-byte case
     if b1 >= 0b11100000 {
-      if self._i >= self._numBytes unreachable("invalid utf-8 encoding: continuation byte expected given first byte ${b1.hex()}")
-      val b3 = self._bytes.loadAt(self._i).asInt()
-      self._i += 1
+      val b3 = self.nextCodepoint()
+      if b3 == -1 return None // invalid utf-8 encoding: continuation byte expected given first byte
 
       // 4-byte case
       if b1 >= 0b11110000 {
-        if self._i >= self._numBytes unreachable("invalid utf-8 encoding: continuation byte expected given first byte ${b1.hex()}")
-        val b4 = self._bytes.loadAt(self._i).asInt()
-        self._i += 1
+        val b4 = self.nextCodepoint()
+        if b4 == -1 return None // invalid utf-8 encoding: continuation byte expected given first byte
 
         val ch = ((b1 && 0b00000111) << 18) || ((b2 && 0b00111111) << 12) || ((b3 && 0b00111111) << 6) || (b4 && 0b00111111)
         return Some(Char.fromInt(ch))
@@ -300,8 +293,6 @@ type String {
     for ch in chars {
       for b in ch.bytes() bytes.push(b)
     }
-
-    if bytes.length != chars.length todo("bytelength field on String")
 
     val str = String.withLength(bytes.length)
     for b, idx in bytes {
@@ -583,7 +574,15 @@ type String {
     newString
   }
 
-  pub func chars(self): CharsIterator = CharsIterator(_bytes: self._buffer, _numBytes: self.length)
+  pub func chars(self): CharsIterator {
+    var i = 0
+    CharsIterator(nextCodepoint: () => {
+      if i >= self.length return -1
+
+      i += 1
+      self._buffer.loadAt(i - 1).asInt()
+    })
+  }
 
   pub func get(self, index: Int): String {
     var idx = if index < 0 index + self.length else index
