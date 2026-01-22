@@ -186,7 +186,6 @@ pub enum Builtin {
   Null
   IsNull(ptr: Value)
   Realloc(ptr: Value, count: Value, itemTy: IrType? = None)
-  PointerAddress(ptr: Value),
   Store(ptr: Value, value: Value, offset: Value, itemTy: IrType)
   Load(ptr: Value, offset: Value, itemTy: IrType)
   CopyFrom(dst: Value, dstOffset: Value, src: Value, srcOffset: Value, size: Value, itemTy: IrType)
@@ -726,11 +725,6 @@ pub enum Operation {
               sb.write(", ")
               ty.render(sb)
             }
-          }
-          Builtin.PointerAddress(ptr) => {
-            sb.write("ptr_address, ")
-            ptr.render(sb)
-            sb.write(", ")
           }
           Builtin.Store(ptr, value, offset, itemTy) => {
             sb.write("ptr_store, ")
@@ -3057,14 +3051,6 @@ pub type Generator {
             "pointer_null" => {
               self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Null), dst)
             }
-            "pointer_reinterpret" => {
-              val ptr = self.intrinsicArgs1("pointer_reinterpret", args)
-              self.genExpression(ptr, innerConcreteGenerics, dst)
-            }
-            "pointer_addressof" => {
-              val ptr = self.intrinsicArgs1("pointer_addressof", args)
-              self.genExpression(ptr, innerConcreteGenerics, dst)
-            }
             "byte_from_int" => {
               val arg = self.intrinsicArgs1("byte_from_int", args)
               self.genExpression(arg, innerConcreteGenerics, dst)
@@ -3169,11 +3155,6 @@ pub type Generator {
               val countVal = self.genExpression(count, innerConcreteGenerics)
 
               self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.Realloc(ptr: ptrVal, count: countVal, itemTy: Some(itemTy))), dst)
-            }
-            "pointer_address" => {
-              val ptrVal = self.genExpression(selfVal, concreteGenerics)
-
-              self.ssaValue(IrType.Ptr, Operation.Builtin(ret: IrType.Ptr, builtin: Builtin.PointerAddress(ptr: ptrVal)), dst)
             }
             "pointer_store_at" => {
               val ptrVal = self.genExpression(selfVal, concreteGenerics)
