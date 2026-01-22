@@ -696,9 +696,6 @@ pub type VM {
             }
             self.store(self.expectAssignee(inst), VmValue.Pointer(res))
           }
-          Builtin.PointerAddress(ptr) => {
-            unreachable("pointer_address deprecated")
-          }
           Builtin.Store(ptr, value, offset, itemTy) => {
             val (buffer, isNull) = self.irValueToVmValue(ptr).expectPointer("Builtin.Store ptr")
             if isNull unreachable("Builtin.Store ptr is null")

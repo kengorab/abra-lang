@@ -564,10 +564,6 @@ pub type Compiler {
             self.emitIrValueToJsValue(ptr)
             self.sb.writeln("; // realloc (no-op)")
           }
-          Builtin.PointerAddress => {
-            // this is sort of meaningless for a js target
-            todo("Builtin.PointerAddress")
-          }
           Builtin.Store(ptr, value, offset, _) => {
             self.emitIrValueToJsValue(ptr)
             self.sb.write("[")

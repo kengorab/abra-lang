@@ -923,10 +923,6 @@ pub type Compiler {
 
             self.callRealloc(ptrVal, sizeVal, dst)
           }
-          Builtin.PointerAddress(ptr) => {
-            val ptrVal = self.irValueToQbeValue(ptr)
-            self.currentFn.block.buildCopy(ptrVal, dst)
-          }
           Builtin.Store(ptr, value, offset, itemTy) => {
             val ptrVal = self.irValueToQbeValue(ptr)
             val valueVal = self.irValueToQbeValue(value)
