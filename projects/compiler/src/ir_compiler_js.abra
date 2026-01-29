@@ -1,16 +1,7 @@
 import File from "fs"
-import StringBuilder, IR, IrFunction, IrType, Instruction, Operation, Value, Const, Ident, IdentKind, GlobalVariable, Builtin, CaptureSource, ClosureEnvLocation from "./ir"
+import Writer, IR, IrFunction, IrType, Instruction, Operation, Value, Const, Ident, IdentKind, GlobalVariable, Builtin, CaptureSource, ClosureEnvLocation from "./ir"
 import ModuleBuilder, QbeType from "./qbe"
 import "./qbe" as qbe
-import builtins from "./ir_compiler_builtins_js"
-
-pub type CompilationResult {
-  sb: StringBuilder
-
-  pub func writeToFile(self, file: File) {
-    file.writeln(self.sb.build())
-  }
-}
 
 val jsReservedWords = #{
   "abstract", "arguments", "async", "await", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue",
@@ -23,47 +14,42 @@ func jsIdentName(name: String): String = if jsReservedWords.contains(name) retur
 
 pub type Compiler {
   ir: IR
-  sb: StringBuilder
+  writer: Writer
   numTemps: Int = 0
   indentLevel: Int = 0
 
-  pub func compile(ir: IR): CompilationResult {
-    val sb = StringBuilder()
+  pub func compile(ir: IR, w: Writer) {
+    val compiler = Compiler(ir: ir, writer: w)
 
-    val compiler = Compiler(ir: ir, sb: sb)
-
-    sb.writeln("export default function(externs, args) {")
-    sb.write("const { ")
+    w.writeln("export default function(externs, builtins, args) {")
+    w.write("const { ")
     for fn in ir.functions {
       if !fn.extern continue
-      sb.write(jsIdentName(fn.name))
-      sb.write(", ")
+      w.write(jsIdentName(fn.name))
+      w.write(", ")
     }
-    sb.writeln("} = externs;")
-
-    sb.writeln(builtins)
-
-    sb.writeln("const \$\$args = args.map(a => \$te.encode(a));")
+    w.writeln("} = externs;")
+    w.writeln("const { \$mkstr, \$interp, \$mkargs, \$encodestr } = builtins;")
+    w.writeln("const \$\$args = \$mkargs(args);")
+    w.writeln()
 
     for g in ir.globals {
       compiler.compileGlobal(g)
     }
-    sb.writeln()
+    w.writeln()
 
     compiler.compileMainFunction(ir.mainFunction)
-    sb.writeln()
+    w.writeln()
 
     val mainFnName = jsIdentName(ir.mainFunction.name)
-    sb.writeln("$mainFnName();")
+    w.writeln("$mainFnName();")
 
     for fn in ir.functions {
       compiler.compileFunction(fn)
-      sb.writeln()
+      w.writeln()
     }
 
-    sb.writeln("}")
-
-    CompilationResult(sb: sb)
+    w.writeln("}")
   }
 
   func compileGlobal(self, global: GlobalVariable) {
@@ -72,19 +58,18 @@ pub type Compiler {
     val globalName = jsIdentName(global.name)
     if global.initialValue |init| {
       val keyword = if global.mutable "let" else "const"
-      self.sb.write("$keyword $globalName = ")
+      self.writer.write("$keyword $globalName = ")
       self.emitIrConstToJsValue(init)
-      self.sb.writeln(";")
+      self.writer.writeln(";")
     } else {
-      self.sb.writeln("let $globalName;")
+      self.writer.writeln("let $globalName;")
     }
   }
 
   func compileMainFunction(self, fn: IrFunction) {
-    self.sb
-      .write("function ")
-      .write(jsIdentName(fn.name))
-      .writeln("() {")
+    self.writer.write("function ")
+    self.writer.write(jsIdentName(fn.name))
+    self.writer.writeln("() {")
 
     self.indentLevel += 1
     for inst in fn.block[1] {
@@ -92,7 +77,7 @@ pub type Compiler {
     }
     self.indentLevel -= 1
 
-    self.sb.writeln("}")
+    self.writer.writeln("}")
   }
 
   func compileFunction(self, fn: IrFunction) {
@@ -101,19 +86,19 @@ pub type Compiler {
     self.numTemps = 0
 
     val fnName = jsIdentName(fn.name)
-    self.sb.write("function $fnName(")
+    self.writer.write("function $fnName(")
     if fn.isClosure {
-      self.sb.write("__env__")
-      if !fn.params.isEmpty() self.sb.write(", ")
+      self.writer.write("__env__")
+      if !fn.params.isEmpty() self.writer.write(", ")
     }
     for param, idx in fn.params {
       val paramName = match param.kind { IdentKind.Named(name, _) => name, else => unreachable("expected IdentKind.Named for param") }
-      self.sb.write(jsIdentName(paramName))
+      self.writer.write(jsIdentName(paramName))
       if idx != fn.params.length - 1 {
-        self.sb.write(", ")
+        self.writer.write(", ")
       }
     }
-    self.sb.writeln(") {")
+    self.writer.writeln(") {")
 
     self.indentLevel += 1
     for inst in fn.block[1] {
@@ -121,21 +106,21 @@ pub type Compiler {
     }
     self.indentLevel -= 1
 
-    self.sb.writeln("}")
+    self.writer.writeln("}")
   }
 
   func genConst(self, dst: String, const: Const) {
-    self.sb.write("const $dst = ")
+    self.writer.write("const $dst = ")
     self.emitIrConstToJsValue(const)
-    self.sb.writeln(";")
+    self.writer.writeln(";")
   }
 
   func genBinary(self, dst: String, op: String, left: Value, right: Value) {
-    self.sb.write("const $dst = ")
+    self.writer.write("const $dst = ")
     self.emitIrValueToJsValue(left)
-    self.sb.write(" $op ")
+    self.writer.write(" $op ")
     self.emitIrValueToJsValue(right)
-    self.sb.writeln(";")
+    self.writer.writeln(";")
   }
 
   func compileInstruction(self, inst: Instruction) {
@@ -145,20 +130,20 @@ pub type Compiler {
 
     match inst.op {
       Operation.NewLocal(ty, isCaptured, initialValue) => {
-        self.sb.write("let $dst")
+        self.writer.write("let $dst")
         if initialValue |init| {
-          self.sb.write(" = ")
+          self.writer.write(" = ")
           if isCaptured {
-            self.sb.write("{\$:")
+            self.writer.write("{\$:")
             self.emitIrValueToJsValue(init)
-            self.sb.write("}")
+            self.writer.write("}")
           } else {
             self.emitIrValueToJsValue(init)
           }
         } else {
           // no initial value to emit
         }
-        self.sb.writeln(";")
+        self.writer.writeln(";")
       }
       Operation.ConstInt(int) => self.genConst(dst, Const.Int(int))
       Operation.ConstFloat(float) => self.genConst(dst, Const.Float(float))
@@ -166,14 +151,14 @@ pub type Compiler {
       Operation.ConstChar(char) => self.genConst(dst, Const.Char(char))
       Operation.ConstString(str) => self.genConst(dst, Const.String(str))
       Operation.Minus(v) => {
-        self.sb.write("const $dst = -")
+        self.writer.write("const $dst = -")
         self.emitIrValueToJsValue(v)
-        self.sb.writeln(";")
+        self.writer.writeln(";")
       }
       Operation.Negate(v) => {
-        self.sb.write("const $dst = !")
+        self.writer.write("const $dst = !")
         self.emitIrValueToJsValue(v)
-        self.sb.writeln(";")
+        self.writer.writeln(";")
       }
       Operation.Add(l, r) => self.genBinary(dst, "+", l, r)
       Operation.Sub(l, r) => self.genBinary(dst, "-", l, r)
@@ -183,67 +168,67 @@ pub type Compiler {
       Operation.Pow(l, r) => self.genBinary(dst, "**", l, r)
       Operation.BitAnd(l, r) => self.genBinary(dst, "&", l, r)
       Operation.BoolAnd(l, r) => {
-        self.sb.writeln("let $dst;")
+        self.writer.writeln("let $dst;")
 
         self.emitIndent()
         val lTmp = self.nextTemp()
-        self.sb.write("const $lTmp = ")
+        self.writer.write("const $lTmp = ")
         self.emitIrValueToJsValue(l)
-        self.sb.writeln(";")
+        self.writer.writeln(";")
 
         self.emitIndent()
-        self.sb.writeln("if (!$lTmp)")
+        self.writer.writeln("if (!$lTmp)")
         self.emitIndent()
-        self.sb.writeln("  $dst = false;")
+        self.writer.writeln("  $dst = false;")
         self.emitIndent()
-        self.sb.writeln("else {")
+        self.writer.writeln("else {")
         for inst in r.body {
           self.emitIndent()
           self.compileInstruction(inst)
         }
-        self.sb.write("  $dst = ")
+        self.writer.write("  $dst = ")
         self.emitIrValueToJsValue(r.result)
-        self.sb.writeln(";")
+        self.writer.writeln(";")
         self.emitIndent()
-        self.sb.writeln("}")
+        self.writer.writeln("}")
 
       }
       Operation.BitOr(l, r) => self.genBinary(dst, "|", l, r)
       Operation.BoolOr(l, r) => {
-        self.sb.writeln("let $dst;")
+        self.writer.writeln("let $dst;")
 
         self.emitIndent()
         val lTmp = self.nextTemp()
-        self.sb.write("const $lTmp = ")
+        self.writer.write("const $lTmp = ")
         self.emitIrValueToJsValue(l)
-        self.sb.writeln(";")
+        self.writer.writeln(";")
 
         self.emitIndent()
-        self.sb.writeln("if ($lTmp)")
+        self.writer.writeln("if ($lTmp)")
         self.emitIndent()
-        self.sb.writeln("  $dst = true;")
+        self.writer.writeln("  $dst = true;")
         self.emitIndent()
-        self.sb.writeln("else {")
+        self.writer.writeln("else {")
         for inst in r.body {
           self.emitIndent()
           self.compileInstruction(inst)
         }
-        self.sb.write("  $dst = ")
+        self.writer.write("  $dst = ")
         self.emitIrValueToJsValue(r.result)
-        self.sb.writeln(";")
+        self.writer.writeln(";")
         self.emitIndent()
-        self.sb.writeln("}")
+        self.writer.writeln("}")
       }
       Operation.Xor(bitwise, l, r) => {
         if bitwise {
-          self.sb.write("const $dst = (")
+          self.writer.write("const $dst = (")
         } else {
-          self.sb.write("const $dst = !!(")
+          self.writer.write("const $dst = !!(")
         }
         self.emitIrValueToJsValue(l)
-        self.sb.write(" ^ ")
+        self.writer.write(" ^ ")
         self.emitIrValueToJsValue(r)
-        self.sb.writeln(");")
+        self.writer.writeln(");")
       }
       Operation.Eq(negate, l, r) => self.genBinary(dst, if negate "!==" else "===", l, r)
       Operation.Lt(l, r) => self.genBinary(dst, "<", l, r)
@@ -254,88 +239,88 @@ pub type Compiler {
       Operation.Shr(l, r) => self.genBinary(dst, ">>", l, r)
       Operation.LoadVar(ty, ident) => {
         val identName = jsIdentName(ident.kind.name())
-        self.sb.writeln("const $dst = $identName;")
+        self.writer.writeln("const $dst = $identName;")
       }
       Operation.LoadCapturedVar(ty, src, deref) => {
         match src {
           CaptureSource.WithinCapturingFn(idx, _, mutable) => {
             if mutable {
               if deref {
-                self.sb.writeln("const {\$:$dst} = __env__[$idx];")
+                self.writer.writeln("const {\$:$dst} = __env__[$idx];")
               } else {
-                self.sb.writeln("const $dst = __env__[$idx];")
+                self.writer.writeln("const $dst = __env__[$idx];")
               }
             } else {
-              self.sb.writeln("const $dst = __env__[$idx];")
+              self.writer.writeln("const $dst = __env__[$idx];")
             }
           }
           CaptureSource.OutsideFn(ident) => {
             val identName = jsIdentName(ident.kind.name())
             if deref {
-              self.sb.writeln("const {\$:$dst} = $identName;")
+              self.writer.writeln("const {\$:$dst} = $identName;")
             } else {
-              self.sb.writeln("const $dst = $identName;")
+              self.writer.writeln("const $dst = $identName;")
             }
           }
         }
       }
       Operation.LoadField(ty, mem, name, _) => {
-        self.sb.write("const $dst = ")
+        self.writer.write("const $dst = ")
         self.emitIrValueToJsValue(mem)
-        self.sb.writeln(".$name;")
+        self.writer.writeln(".$name;")
       }
       Operation.StoreVar(ty, value, ident) => {
-        self.sb.write(jsIdentName(ident.kind.name()))
-        self.sb.write(" = ")
+        self.writer.write(jsIdentName(ident.kind.name()))
+        self.writer.write(" = ")
         self.emitIrValueToJsValue(value)
-        self.sb.writeln(";")
+        self.writer.writeln(";")
       }
       Operation.StoreCapturedVar(ty, value, src) => {
         val name = match src {
           CaptureSource.WithinCapturingFn(idx, _, _) => "__env__[$idx]"
           CaptureSource.OutsideFn(ident) => jsIdentName(ident.kind.name())
         }
-        self.sb.write("$name.\$ = ")
+        self.writer.write("$name.\$ = ")
         self.emitIrValueToJsValue(value)
-        self.sb.writeln(";")
+        self.writer.writeln(";")
       }
       Operation.StoreGlobal(ty, value, global) => {
-        self.sb.write(jsIdentName(global.name))
-        self.sb.write(" = ")
+        self.writer.write(jsIdentName(global.name))
+        self.writer.write(" = ")
         self.emitIrValueToJsValue(value)
-        self.sb.writeln(";")
+        self.writer.writeln(";")
       }
       Operation.StoreField(ty, value, mem, name, _) => {
         self.emitIrValueToJsValue(mem)
-        self.sb.write(".$name = ")
+        self.writer.write(".$name = ")
         self.emitIrValueToJsValue(value)
-        self.sb.writeln(";")
+        self.writer.writeln(";")
       }
       Operation.If(ty, cond, thenBlock, elseBlock) => {
         val isStmt = ty == IrType.Unit
 
         if !isStmt {
-          self.sb.writeln("let $dst;")
+          self.writer.writeln("let $dst;")
           self.emitIndent()
         }
 
         val condVal = self.irValueToJsValue(cond)
-        self.sb.writeln("if ($condVal) {")
+        self.writer.writeln("if ($condVal) {")
         self.indentLevel += 1
         for inst, idx in thenBlock.body {
           self.compileInstruction(inst)
         }
         if thenBlock.result |v| {
           self.emitIndent()
-          self.sb.write("$dst = ")
+          self.writer.write("$dst = ")
           self.emitIrValueToJsValue(v)
-          self.sb.writeln(";")
+          self.writer.writeln(";")
         }
         self.indentLevel -= 1
 
         if !elseBlock.body.isEmpty() || !!elseBlock.result {
           self.emitIndent()
-          self.sb.writeln("} else {")
+          self.writer.writeln("} else {")
 
           self.indentLevel += 1
           for inst, idx in elseBlock.body {
@@ -343,25 +328,25 @@ pub type Compiler {
           }
           if elseBlock.result |v| {
             self.emitIndent()
-            self.sb.write("$dst = ")
+            self.writer.write("$dst = ")
             self.emitIrValueToJsValue(v)
-            self.sb.writeln(";")
+            self.writer.writeln(";")
           }
           self.indentLevel -= 1
         }
 
         self.emitIndent()
-        self.sb.writeln("}")
+        self.writer.writeln("}")
       }
       Operation.WhileLoopStart => {
-        self.sb.writeln("while (true) {")
+        self.writer.writeln("while (true) {")
         self.indentLevel += 1
       }
       Operation.While(cond, body) => {
         self.emitIndent()
-        self.sb.write("if (!")
+        self.writer.write("if (!")
         self.emitIrValueToJsValue(cond)
-        self.sb.writeln(") break;")
+        self.writer.writeln(") break;")
 
         for inst in body.body {
           self.compileInstruction(inst)
@@ -369,24 +354,24 @@ pub type Compiler {
         self.indentLevel -= 1
 
         self.emitIndent()
-        self.sb.writeln("}")
+        self.writer.writeln("}")
       }
       Operation.ForRanged(start, end, iteratee, idx, body) => {
         val iterateeName = jsIdentName(iteratee.kind.name())
 
-        self.sb.write("for (let $iterateeName = ")
+        self.writer.write("for (let $iterateeName = ")
         self.emitIrValueToJsValue(start)
         if idx |idx| {
           val idxName = jsIdentName(idx.kind.name())
-          self.sb.write(", $idxName = 0")
+          self.writer.write(", $idxName = 0")
         }
 
-        self.sb.write(";; $iterateeName += 1")
+        self.writer.write(";; $iterateeName += 1")
         if idx |idx| {
           val idxName = jsIdentName(idx.kind.name())
-          self.sb.write(", $idxName += 1")
+          self.writer.write(", $idxName += 1")
         }
-        self.sb.writeln(") {")
+        self.writer.writeln(") {")
         self.indentLevel += 1
 
         for inst in end.body {
@@ -394,110 +379,110 @@ pub type Compiler {
         }
 
         self.emitIndent()
-        self.sb.write("if ($iterateeName >= ")
+        self.writer.write("if ($iterateeName >= ")
         self.emitIrValueToJsValue(end.result)
-        self.sb.writeln(") break;")
+        self.writer.writeln(") break;")
 
         for inst in body.body {
           self.compileInstruction(inst)
         }
 
         self.indentLevel -= 1
-        self.sb.writeln("}")
+        self.writer.writeln("}")
       }
       Operation.FunctionPointer(fnName) => {
-        self.sb.writeln("const $dst = $fnName;")
+        self.writer.writeln("const $dst = $fnName;")
       }
       Operation.CreateClosure(fnName, captures, capturedSelf) => {
-        self.sb.write("const $dst = (...args) => $fnName(")
+        self.writer.write("const $dst = (...args) => $fnName(")
         if capturedSelf |v| {
           self.emitIrValueToJsValue(v)
-          self.sb.write(",")
+          self.writer.write(",")
         }
         if !captures.isEmpty() {
-          self.sb.write("[")
+          self.writer.write("[")
           for c, idx in captures {
             self.emitIrValueToJsValue(c)
             if idx != captures.length - 1 {
-              self.sb.write(", ")
+              self.writer.write(", ")
             }
           }
-          self.sb.write("],")
+          self.writer.write("],")
         }
-        self.sb.writeln("...args);")
+        self.writer.writeln("...args);")
       }
       Operation.Call(ret, fnName, args, envLocation) => {
         if ret != IrType.Unit {
-          self.sb.write("const $dst = ")
+          self.writer.write("const $dst = ")
         }
 
-        self.sb.write("$fnName(")
+        self.writer.write("$fnName(")
         match envLocation {
           None => {}
           ClosureEnvLocation.Passthrough => {
-            self.sb.write("__env__")
+            self.writer.write("__env__")
             if !args.isEmpty() {
-              self.sb.write(", ")
+              self.writer.write(", ")
             }
           }
         }
         for arg, idx in args {
           self.emitIrValueToJsValue(arg)
           if idx != args.length - 1 {
-            self.sb.write(", ")
+            self.writer.write(", ")
           }
         }
-        self.sb.writeln(");")
+        self.writer.writeln(");")
       }
       Operation.CallValue(ret, fn, args) => {
         if ret != IrType.Unit {
-          self.sb.write("const $dst = ")
+          self.writer.write("const $dst = ")
         }
 
         self.emitIrValueToJsValue(fn)
-        self.sb.write("(")
+        self.writer.write("(")
         for arg, idx in args {
           self.emitIrValueToJsValue(arg)
           if idx != args.length - 1 {
-            self.sb.write(", ")
+            self.writer.write(", ")
           }
         }
-        self.sb.writeln(");")
+        self.writer.writeln(");")
       }
-      Operation.Break => self.sb.writeln("break;")
-      Operation.Continue => self.sb.writeln("continue;")
+      Operation.Break => self.writer.writeln("break;")
+      Operation.Continue => self.writer.writeln("continue;")
       Operation.Return(value) => {
-        self.sb.write("return")
+        self.writer.write("return")
         if value |v| {
-          self.sb.write(" ")
+          self.writer.write(" ")
           self.emitIrValueToJsValue(v)
         }
-        self.sb.writeln(";")
+        self.writer.writeln(";")
       }
       Operation.Unreachable(message) => {
-        self.sb.write("throw new Error(\"$message\")")
+        self.writer.write("throw new Error(\"$message\")")
       }
       Operation.GetEnumVariantIdx(value, numVariants) => {
         val jsVal = self.irValueToJsValue(value)
-        self.sb.writeln("const $dst = typeof $jsVal === 'number' ? $jsVal : $jsVal.\$idx;")
+        self.writer.writeln("const $dst = typeof $jsVal === 'number' ? $jsVal : $jsVal.\$idx;")
       }
       Operation.OptionNone => {
-        self.sb.writeln("const $dst = null;")
+        self.writer.writeln("const $dst = null;")
       }
       Operation.OptionSome(_, value) => {
-        self.sb.write("const $dst = ")
+        self.writer.write("const $dst = ")
         self.emitIrValueToJsValue(value)
-        self.sb.writeln(";")
+        self.writer.writeln(";")
       }
       Operation.OptionIsNone(_, value) => {
-        self.sb.write("const $dst = ")
+        self.writer.write("const $dst = ")
         self.emitIrValueToJsValue(value)
-        self.sb.writeln(" === null;")
+        self.writer.writeln(" === null;")
       }
       Operation.OptionUnwrap(_, value) => {
-        self.sb.write("const $dst = ")
+        self.writer.write("const $dst = ")
         self.emitIrValueToJsValue(value)
-        self.sb.writeln(";")
+        self.writer.writeln(";")
       }
       Operation.StructuredToString(prefix, lenVal, fields) => {
         val strIrTy = IrType.Composite(self.ir.knowns.stringType().name, isEnum: false)
@@ -517,188 +502,188 @@ pub type Compiler {
         strTemplateLiteralParts.push("`")
 
         val buf = self.nextTemp()
-        self.sb.writeln("const $buf = \$interp${strTemplateLiteralParts.join()};")
+        self.writer.writeln("const $buf = \$interp${strTemplateLiteralParts.join()};")
 
         val strInitFn = self.ir.knowns.stringInitializerFn()
         self.emitIndent()
         val len = self.irValueToJsValue(lenVal)
-        self.sb.writeln("const $dst = ${strInitFn.name}($len, $buf);")
+        self.writer.writeln("const $dst = ${strInitFn.name}($len, $buf);")
       }
       Operation.Builtin(ret, builtin) => {
         match builtin {
           Builtin.Argc => {
-            self.sb.writeln("const $dst = \$\$args.length;")
+            self.writer.writeln("const $dst = \$\$args.length;")
           }
           Builtin.Argv => {
-            self.sb.writeln("const $dst = \$\$args;")
+            self.writer.writeln("const $dst = \$\$args;")
           }
           Builtin.Malloc(count, itemTy) => {
-            self.sb.write("const $dst = ")
+            self.writer.write("const $dst = ")
             // If there's no type being malloc'd, then it can be modeled as an object. If the type is Byte then it's
             // modeled as a Uint8Array; otherwise it's just a simple array.
             match ret {
               IrType.Composite => {
-                self.sb.write("{};")
+                self.writer.write("{};")
               }
               else => match itemTy {
                 IrType.Byte => {
-                  self.sb.write("new Uint8Array(")
+                  self.writer.write("new Uint8Array(")
                   self.emitIrValueToJsValue(count)
-                  self.sb.write(");")
+                  self.writer.write(");")
                 }
-                else => self.sb.write("[];")
+                else => self.writer.write("[];")
               }
             }
-            self.sb.writeln(" // builtin(malloc)")
+            self.writer.writeln(" // builtin(malloc)")
           }
           Builtin.Null => {
-            self.sb.writeln("const $dst = null; // pointer_null")
+            self.writer.writeln("const $dst = null; // pointer_null")
           }
           Builtin.IsNull(ptr) => {
-            self.sb.write("const $dst = ")
+            self.writer.write("const $dst = ")
             self.emitIrValueToJsValue(ptr)
-            self.sb.writeln(" === null; // pointer_is_null")
+            self.writer.writeln(" === null; // pointer_is_null")
           }
           Builtin.Realloc(ptr, count, _) => {
-            self.sb.write("const $dst = ")
+            self.writer.write("const $dst = ")
             self.emitIrValueToJsValue(ptr)
-            self.sb.writeln("; // realloc (no-op)")
+            self.writer.writeln("; // realloc (no-op)")
           }
           Builtin.Store(ptr, value, offset, _) => {
             self.emitIrValueToJsValue(ptr)
-            self.sb.write("[")
+            self.writer.write("[")
             self.emitIrValueToJsValue(offset)
-            self.sb.write("] = ")
+            self.writer.write("] = ")
             self.emitIrValueToJsValue(value)
-            self.sb.writeln("; // builtin(ptr_store)")
+            self.writer.writeln("; // builtin(ptr_store)")
           }
           Builtin.Load(ptr, offset, _) => {
-            self.sb.write("const $dst = ")
+            self.writer.write("const $dst = ")
             self.emitIrValueToJsValue(ptr)
-            self.sb.write("[")
+            self.writer.write("[")
             self.emitIrValueToJsValue(offset)
-            self.sb.writeln("]; // builtin(ptr_load)")
+            self.writer.writeln("]; // builtin(ptr_load)")
           }
           Builtin.CopyFrom(dst, dstOffset, src, srcOffset, count, _) => {
             val countVal = self.irValueToJsValue(count)
-            self.sb.writeln("for (let i = 0; i < $countVal; i++) {")
+            self.writer.writeln("for (let i = 0; i < $countVal; i++) {")
             self.indentLevel += 1
 
             self.emitIndent()
             self.emitIrValueToJsValue(dst)
-            self.sb.write("[")
+            self.writer.write("[")
             self.emitIrValueToJsValue(dstOffset)
-            self.sb.write(" + i] = ")
+            self.writer.write(" + i] = ")
             self.emitIrValueToJsValue(src)
-            self.sb.write("[")
+            self.writer.write("[")
             self.emitIrValueToJsValue(srcOffset)
-            self.sb.writeln(" + i]; // builtin(copy_from)")
+            self.writer.writeln(" + i]; // builtin(copy_from)")
 
             self.indentLevel -= 1
             self.emitIndent()
-            self.sb.writeln("}")
+            self.writer.writeln("}")
           }
           Builtin.I64ToString(int) => {
             val strInitFn = self.ir.knowns.stringInitializerFn()
 
             val strTmp = self.nextTemp()
-            self.sb.write("const $strTmp = \$te.encode(")
+            self.writer.write("const $strTmp = \$encodestr(")
             self.emitIrValueToJsValue(int)
-            self.sb.writeln(".toString());")
+            self.writer.writeln(".toString());")
 
             self.emitIndent()
-            self.sb.writeln("const $dst = ${strInitFn.name}($strTmp.length, $strTmp);")
+            self.writer.writeln("const $dst = ${strInitFn.name}($strTmp.length-1, $strTmp);")
           }
           Builtin.U64ToString(int) => {
             val strInitFn = self.ir.knowns.stringInitializerFn()
 
             val strTmp = self.nextTemp()
-            self.sb.write("const $strTmp = \$te.encode(BigInt.asUintN(64, BigInt(")
+            self.writer.write("const $strTmp = \$encodestr(BigInt.asUintN(64, BigInt(")
             self.emitIrValueToJsValue(int)
-            self.sb.writeln(")).toString());")
+            self.writer.writeln(")).toString());")
 
             self.emitIndent()
-            self.sb.writeln("const $dst = ${strInitFn.name}($strTmp.length, $strTmp);")
+            self.writer.writeln("const $dst = ${strInitFn.name}($strTmp.length-1, $strTmp);")
           }
           Builtin.F64ToString(float) => {
             val strInitFn = self.ir.knowns.stringInitializerFn()
 
             val floatVal = self.irValueToJsValue(float)
 
-            self.sb.writeln("let $dst;")
+            self.writer.writeln("let $dst;")
             self.emitIndent()
-            self.sb.writeln("if ($floatVal === -0) {")
+            self.writer.writeln("if ($floatVal === -0) {")
             self.emitIndent()
-            self.sb.writeln("  $dst = ${self.makeConstString("-0")};")
+            self.writer.writeln("  $dst = ${self.makeConstString("-0")};")
             self.emitIndent()
-            self.sb.writeln("} else {")
+            self.writer.writeln("} else {")
 
             self.indentLevel += 1
             val strTmp = self.nextTemp()
             self.emitIndent()
-            self.sb.writeln("const $strTmp = \$te.encode($floatVal.toPrecision(6).replace(/0+$/, '').replace(/\\.$/, ''));")
+            self.writer.writeln("const $strTmp = \$encodestr($floatVal.toPrecision(6).replace(/0+$/, '').replace(/\\.$/, ''));")
 
             self.emitIndent()
-            self.sb.writeln("$dst = ${strInitFn.name}($strTmp.length, $strTmp);")
+            self.writer.writeln("$dst = ${strInitFn.name}($strTmp.length-1, $strTmp);")
             self.indentLevel -= 1
 
             self.emitIndent()
-            self.sb.writeln("}")
+            self.writer.writeln("}")
           }
           Builtin.BoolToString(bool) => {
             val strInitFn = self.ir.knowns.stringInitializerFn()
 
             val strTmp = self.nextTemp()
-            self.sb.write("const $strTmp = \$te.encode(")
+            self.writer.write("const $strTmp = \$encodestr(")
             self.emitIrValueToJsValue(bool)
-            self.sb.writeln(".toString());")
+            self.writer.writeln(".toString());")
 
             self.emitIndent()
-            self.sb.writeln("const $dst = ${strInitFn.name}($strTmp.length, $strTmp);")
+            self.writer.writeln("const $dst = ${strInitFn.name}($strTmp.length-1, $strTmp);")
           }
           Builtin.IntAsFloat(int) => {
-            self.sb.write("const $dst = ")
+            self.writer.write("const $dst = ")
             self.emitIrValueToJsValue(int)
-            self.sb.writeln(";")
+            self.writer.writeln(";")
           }
           Builtin.FloatAsInt(float) => {
-            self.sb.write("const $dst = Math.trunc(")
+            self.writer.write("const $dst = Math.trunc(")
             self.emitIrValueToJsValue(float)
-            self.sb.writeln(");")
+            self.writer.writeln(");")
           }
           Builtin.FloatCeil(float) => {
-            self.sb.write("const $dst = Math.ceil(")
+            self.writer.write("const $dst = Math.ceil(")
             self.emitIrValueToJsValue(float)
-            self.sb.writeln(");")
+            self.writer.writeln(");")
           }
           Builtin.FloatFloor(float) => {
-            self.sb.write("const $dst = Math.floor(")
+            self.writer.write("const $dst = Math.floor(")
             self.emitIrValueToJsValue(float)
-            self.sb.writeln(");")
+            self.writer.writeln(");")
           }
           Builtin.FloatRound(float) => {
-            self.sb.write("const $dst = Math.round(")
+            self.writer.write("const $dst = Math.round(")
             self.emitIrValueToJsValue(float)
-            self.sb.writeln(");")
+            self.writer.writeln(");")
           }
           Builtin.FloatBitsToInt(float) => {
             val floatArray = self.nextTemp()
-            self.sb.writeln("const $floatArray = new Float32Array(1);")
+            self.writer.writeln("const $floatArray = new Float32Array(1);")
             val intArray = self.nextTemp()
-            self.sb.writeln("const $intArray = new Uint32Array($floatArray.buffer);")
-            self.sb.write("$floatArray[0] = ")
+            self.writer.writeln("const $intArray = new Uint32Array($floatArray.buffer);")
+            self.writer.write("$floatArray[0] = ")
             self.emitIrValueToJsValue(float)
-            self.sb.writeln(";")
+            self.writer.writeln(";")
 
-            self.sb.writeln("const $dst = $intArray[0];")
+            self.writer.writeln("const $dst = $intArray[0];")
           }
-          Builtin.Uninitialized => self.sb.writeln("const $dst = undefined;")
+          Builtin.Uninitialized => self.writer.writeln("const $dst = undefined;")
           // TODO: real implementations for callstack, modulenames, and functionnames
-          Builtin.Callstack => self.sb.writeln("const $dst = undefined;")
-          Builtin.CallstackPtr => self.sb.writeln("const $dst = 0;")
-          Builtin.ModuleNames => self.sb.writeln("const $dst = undefined;")
-          Builtin.FunctionNames => self.sb.writeln("const $dst = undefined;")
-          Builtin.Errno => self.sb.writeln("const $dst = errno();")
+          Builtin.Callstack => self.writer.writeln("const $dst = undefined;")
+          Builtin.CallstackPtr => self.writer.writeln("const $dst = 0;")
+          Builtin.ModuleNames => self.writer.writeln("const $dst = undefined;")
+          Builtin.FunctionNames => self.writer.writeln("const $dst = undefined;")
+          Builtin.Errno => self.writer.writeln("const $dst = externs.errno();")
         }
       }
     }
@@ -711,10 +696,10 @@ pub type Compiler {
   }
 
   func emitIndent(self) {
-    self.sb.write("  ".repeat(self.indentLevel))
+    self.writer.write("  ".repeat(self.indentLevel))
   }
 
-  func emitIrConstToJsValue(self, c: Const) = self.sb.write(self.irConstToJsValue(c))
+  func emitIrConstToJsValue(self, c: Const) = self.writer.write(self.irConstToJsValue(c))
 
   func irConstToJsValue(self, const: Const): String = match const {
     Const.Int(i) => {
@@ -737,7 +722,7 @@ pub type Compiler {
     "\$mkstr(${s.length}, \"$str\")"
   }
 
-  func emitIrValueToJsValue(self, v: Value) = self.sb.write(self.irValueToJsValue(v))
+  func emitIrValueToJsValue(self, v: Value) = self.writer.write(self.irValueToJsValue(v))
 
   func irValueToJsValue(self, v: Value): String {
     match v {

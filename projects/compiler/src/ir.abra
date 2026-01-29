@@ -6,17 +6,13 @@ import TypedAstNodeKind, TypedInvokee, FunctionKind, TypeKind, ScopeKind, Instan
 import "./typechecker" as tc
 
 // TODO: move to stdlib
-pub type StringBuilder {
-  chunks: String[] = []
+pub type Writer {
+  pub write: (String) => Unit
 
-  pub func write(self, str: String): StringBuilder {
-    if !str.isEmpty() self.chunks.push(str)
-    self
+  pub func writeln(self, str: String = "") {
+    self.write(str)
+    self.write("\n")
   }
-
-  pub func writeln(self, str: String = ""): StringBuilder = self.write(str).write("\n")
-
-  pub func build(self): String = self.chunks.join("")
 }
 
 pub type Knowns {
@@ -34,23 +30,23 @@ pub type IR {
   pub globals: GlobalVariable[]
   pub knowns: Knowns = Knowns()
 
-  pub func render(self, sb: StringBuilder) {
+  pub func render(self, w: Writer) {
     for t in self.types {
-      t.render(sb)
-      sb.writeln()
+      t.render(w)
+      w.writeln()
     }
 
     for g in self.globals {
-      g.render(sb)
-      sb.writeln()
+      g.render(w)
+      w.writeln()
     }
 
-    sb.writeln()
-    self.mainFunction.render(sb)
+    w.writeln()
+    self.mainFunction.render(w)
 
     for f in self.functions {
-      sb.writeln()
-      f.render(sb)
+      w.writeln()
+      f.render(w)
     }
   }
 }
@@ -64,30 +60,30 @@ pub type IrFunction {
   pub isClosure: Bool
   pub numLocals: Int
 
-  pub func render(self, sb: StringBuilder) {
-    if self.extern |name| sb.writeln("@extern($name)")
+  pub func render(self, w: Writer) {
+    if self.extern |name| w.writeln("@extern($name)")
 
-    sb.write("function ")
-    sb.write(self.name)
+    w.write("function ")
+    w.write(self.name)
 
-    sb.write("(")
+    w.write("(")
     for p, idx in self.params {
-      p.render(sb)
+      p.render(w)
       if idx != self.params.length - 1 {
-        sb.write(", ")
+        w.write(", ")
       }
     }
-    sb.write(") ")
+    w.write(") ")
 
-    self.ret.render(sb)
-    sb.writeln()
+    self.ret.render(w)
+    w.writeln()
 
     val (label, block) = self.block
-    sb.writeln("$label:")
+    w.writeln("$label:")
     for inst in block {
-      sb.write("  ")
-      inst.render(sb)
-      sb.writeln()
+      w.write("  ")
+      inst.render(w)
+      w.writeln()
     }
   }
 }
@@ -96,13 +92,13 @@ pub type Instruction {
   pub assignee: Ident? = None
   pub op: Operation
 
-  pub func render(self, sb: StringBuilder) {
+  pub func render(self, w: Writer) {
     if self.assignee |a| {
-      a.render(sb)
-      sb.write(" = ")
+      a.render(w)
+      w.write(" = ")
     }
 
-    self.op.render(sb)
+    self.op.render(w)
   }
 }
 
@@ -121,10 +117,10 @@ pub type Ident {
   pub kind: IdentKind
   compileTimeValue: Const? = None
 
-  pub func render(self, sb: StringBuilder) {
-    self.ty.render(sb)
-    sb.write(" %")
-    sb.write(self.kind.name())
+  pub func render(self, w: Writer) {
+    self.ty.render(w)
+    w.write(" %")
+    w.write(self.kind.name())
   }
 }
 
@@ -135,28 +131,30 @@ pub enum Const {
   Char(value: Int) // 64-bit repr of char
   String(value: String)
 
-  pub func render(self, sb: StringBuilder) {
+  pub func render(self, w: Writer) {
     match self {
       Const.Int(v) => {
-        IrType.I64.render(sb)
-        sb.write(" ").write(v.toString())
+        IrType.I64.render(w)
+        w.write(" ")
+        w.write(v.toString())
       }
       Const.Float(v) => {
-        IrType.F64.render(sb)
-        sb.write(" ").write(v.toString())
+        IrType.F64.render(w)
+        w.write(" ")
+        w.write(v.toString())
       }
       Const.Bool(b) => {
-        IrType.Bool.render(sb)
-        sb.write(" $b")
+        IrType.Bool.render(w)
+        w.write(" $b")
       }
       Const.Char(intVal) => {
-        IrType.I64.render(sb)
-        sb.write(" ${Char.fromInt(intVal)}")
+        IrType.I64.render(w)
+        w.write(" ${Char.fromInt(intVal)}")
       }
       Const.String(s) => {
-        sb.write("\"")
-          .write(s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r"))
-          .write("\"")
+        w.write("\"")
+        w.write(s.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"").replaceAll("\n", "\\n").replaceAll("\r", "\\r"))
+        w.write("\"")
       }
     }
   }
@@ -168,14 +166,15 @@ pub enum Value {
   Ident(ident: Ident)
   Global(global: GlobalVariable)
 
-  pub func render(self, sb: StringBuilder) {
+  pub func render(self, w: Writer) {
     match self {
       Value.Unit => {}
-      Value.Const(const) => const.render(sb)
-      Value.Ident(i) => i.render(sb)
+      Value.Const(const) => const.render(w)
+      Value.Ident(i) => i.render(w)
       Value.Global(g) => {
-        g.ty.render(sb)
-        sb.write(" $").write(g.name)
+        g.ty.render(w)
+        w.write(" $")
+        w.write(g.name)
       }
     }
   }
@@ -291,523 +290,524 @@ pub enum Operation {
   StructuredToString(prefix: String, lenVal: Value, fields: (IrType, String, Value)[])
   Builtin(ret: IrType, builtin: Builtin)
 
-  pub func render(self, sb: StringBuilder) {
+  pub func render(self, w: Writer) {
     match self {
       Operation.NewLocal(ty, captured, initialValue) => {
-        sb.write("local(")
-        ty.render(sb)
+        w.write("local(")
+        ty.render(w)
         if captured {
-          sb.write(" (captured)")
+          w.write(" (captured)")
         }
         if initialValue |v| {
-          sb.write(", ")
-          v.render(sb)
+          w.write(", ")
+          v.render(w)
         }
-        sb.write(")")
+        w.write(")")
       }
       Operation.ConstInt(int) => {
-        IrType.I64.render(sb)
-        sb.write(" $int")
+        IrType.I64.render(w)
+        w.write(" $int")
       }
       Operation.ConstFloat(float) => {
-        IrType.F64.render(sb)
-        sb.write(" $float")
+        IrType.F64.render(w)
+        w.write(" $float")
       }
       Operation.ConstString(str) => {
-        sb.write("string \"$str\"")
+        w.write("string \"$str\"")
       }
       Operation.ConstBool(b) => {
-        IrType.Bool.render(sb)
-        sb.write(" $b")
+        IrType.Bool.render(w)
+        w.write(" $b")
       }
       Operation.ConstChar(c) => {
-        IrType.I64.render(sb)
-        sb.write(" '$c'")
+        IrType.I64.render(w)
+        w.write(" '$c'")
       }
       Operation.Minus(v) => {
-        sb.write("minus(")
-        v.render(sb)
-        sb.write(")")
+        w.write("minus(")
+        v.render(w)
+        w.write(")")
       }
       Operation.Negate(v) => {
-        sb.write("negate(")
-        v.render(sb)
-        sb.write(")")
+        w.write("negate(")
+        v.render(w)
+        w.write(")")
       }
       Operation.Add(l, r) => {
-        sb.write("add(")
-        l.render(sb)
-        sb.write(", ")
-        r.render(sb)
-        sb.write(")")
+        w.write("add(")
+        l.render(w)
+        w.write(", ")
+        r.render(w)
+        w.write(")")
       }
       Operation.Mul(l, r) => {
-        sb.write("mul(")
-        l.render(sb)
-        sb.write(", ")
-        r.render(sb)
-        sb.write(")")
+        w.write("mul(")
+        l.render(w)
+        w.write(", ")
+        r.render(w)
+        w.write(")")
       }
       Operation.Div(l, r) => {
-        sb.write("div(")
-        l.render(sb)
-        sb.write(", ")
-        r.render(sb)
-        sb.write(")")
+        w.write("div(")
+        l.render(w)
+        w.write(", ")
+        r.render(w)
+        w.write(")")
       }
       Operation.Mod(l, r) => {
-        sb.write("mod(")
-        l.render(sb)
-        sb.write(", ")
-        r.render(sb)
-        sb.write(")")
+        w.write("mod(")
+        l.render(w)
+        w.write(", ")
+        r.render(w)
+        w.write(")")
       }
       Operation.Pow(l, r) => {
-        sb.write("pow(")
-        l.render(sb)
-        sb.write(", ")
-        r.render(sb)
-        sb.write(")")
+        w.write("pow(")
+        l.render(w)
+        w.write(", ")
+        r.render(w)
+        w.write(")")
       }
       Operation.BitAnd(l, r) => {
-        sb.write("bitand(")
-        l.render(sb)
-        sb.write(", ")
-        r.render(sb)
-        sb.write(")")
+        w.write("bitand(")
+        l.render(w)
+        w.write(", ")
+        r.render(w)
+        w.write(")")
       }
       Operation.BoolAnd(l, r) => {
         for instr in r.body {
-          instr.render(sb)
-          sb.writeln()
+          instr.render(w)
+          w.writeln()
         }
-        sb.write("and(")
-        l.render(sb)
-        sb.write(", ")
-        r.result.render(sb)
-        sb.write(")")
+        w.write("and(")
+        l.render(w)
+        w.write(", ")
+        r.result.render(w)
+        w.write(")")
       }
       Operation.BitOr(l, r) => {
-        sb.write("bitor(")
-        l.render(sb)
-        sb.write(", ")
-        r.render(sb)
-        sb.write(")")
+        w.write("bitor(")
+        l.render(w)
+        w.write(", ")
+        r.render(w)
+        w.write(")")
       }
       Operation.BoolOr(l, r) => {
         for instr in r.body {
-          instr.render(sb)
-          sb.writeln()
+          instr.render(w)
+          w.writeln()
         }
-        sb.write("or(")
-        l.render(sb)
-        sb.write(", ")
-        r.result.render(sb)
-        sb.write(")")
+        w.write("or(")
+        l.render(w)
+        w.write(", ")
+        r.result.render(w)
+        w.write(")")
       }
       Operation.Xor(_, l, r) => {
-        sb.write("xor(")
-        l.render(sb)
-        sb.write(", ")
-        r.render(sb)
-        sb.write(")")
+        w.write("xor(")
+        l.render(w)
+        w.write(", ")
+        r.render(w)
+        w.write(")")
       }
       Operation.Eq(negate, left, right) => {
-        if negate sb.write("neq(") else sb.write("eq(")
-        left.render(sb)
-        sb.write(", ")
-        right.render(sb)
-        sb.write(")")
+        if negate w.write("neq(") else w.write("eq(")
+        left.render(w)
+        w.write(", ")
+        right.render(w)
+        w.write(")")
       }
       Operation.Lt(left, right) => {
-        sb.write("lt(")
-        left.render(sb)
-        sb.write(", ")
-        right.render(sb)
-        sb.write(")")
+        w.write("lt(")
+        left.render(w)
+        w.write(", ")
+        right.render(w)
+        w.write(")")
       }
       Operation.Lte(left, right) => {
-        sb.write("lte(")
-        left.render(sb)
-        sb.write(", ")
-        right.render(sb)
-        sb.write(")")
+        w.write("lte(")
+        left.render(w)
+        w.write(", ")
+        right.render(w)
+        w.write(")")
       }
       Operation.Shl(left, right) => {
-        sb.write("shl(")
-        left.render(sb)
-        sb.write(", ")
-        right.render(sb)
-        sb.write(")")
+        w.write("shl(")
+        left.render(w)
+        w.write(", ")
+        right.render(w)
+        w.write(")")
       }
       Operation.Gt(left, right) => {
-        sb.write("gt(")
-        left.render(sb)
-        sb.write(", ")
-        right.render(sb)
-        sb.write(")")
+        w.write("gt(")
+        left.render(w)
+        w.write(", ")
+        right.render(w)
+        w.write(")")
       }
       Operation.Gte(left, right) => {
-        sb.write("gte(")
-        left.render(sb)
-        sb.write(", ")
-        right.render(sb)
-        sb.write(")")
+        w.write("gte(")
+        left.render(w)
+        w.write(", ")
+        right.render(w)
+        w.write(")")
       }
       Operation.Shr(left, right) => {
-        sb.write("shr(")
-        left.render(sb)
-        sb.write(", ")
-        right.render(sb)
-        sb.write(")")
+        w.write("shr(")
+        left.render(w)
+        w.write(", ")
+        right.render(w)
+        w.write(")")
       }
       Operation.LoadVar(ty, mem) => {
-        sb.write("load_var(")
-        ty.render(sb)
-        sb.write(", ")
-        mem.render(sb)
-        sb.write(")")
+        w.write("load_var(")
+        ty.render(w)
+        w.write(", ")
+        mem.render(w)
+        w.write(")")
       }
       Operation.LoadCapturedVar(ty, src, deref) => {
-        sb.write("load_captured_var(")
-        ty.render(sb)
-        sb.write(", ")
+        w.write("load_captured_var(")
+        ty.render(w)
+        w.write(", ")
         match src {
           CaptureSource.WithinCapturingFn(idx, name, mutable) => {
-            sb.write("$idx ($name")
+            w.write("$idx ($name")
             if mutable {
-              sb.write(" (mutable)")
+              w.write(" (mutable)")
             }
-            sb.write(")")
+            w.write(")")
           }
           CaptureSource.OutsideFn(ident) => {
-            ident.render(sb)
+            ident.render(w)
           }
         }
         if deref {
-          sb.write(", deref")
+          w.write(", deref")
         }
-        sb.write(")")
+        w.write(")")
       }
       Operation.LoadField(ty, mem, name, offset) => {
-        sb.write("load(")
-        ty.render(sb)
-        sb.write(", ")
-        mem.render(sb)
-        sb.write(", $name ($offset))")
+        w.write("load(")
+        ty.render(w)
+        w.write(", ")
+        mem.render(w)
+        w.write(", $name ($offset))")
       }
       Operation.StoreVar(ty, value, ident) => {
-        sb.write("store_var(")
-        ty.render(sb)
-        sb.write(", ")
-        value.render(sb)
-        sb.write(", ")
-        ident.render(sb)
-        sb.write(")")
+        w.write("store_var(")
+        ty.render(w)
+        w.write(", ")
+        value.render(w)
+        w.write(", ")
+        ident.render(w)
+        w.write(")")
       }
       Operation.StoreCapturedVar(ty, value, src) => {
-        sb.write("store_captured_var(")
-        ty.render(sb)
-        sb.write(", ")
-        value.render(sb)
+        w.write("store_captured_var(")
+        ty.render(w)
+        w.write(", ")
+        value.render(w)
         match src {
           CaptureSource.WithinCapturingFn(idx, name, _) => {
-            sb.write("$idx ($name)")
+            w.write("$idx ($name)")
           }
           CaptureSource.OutsideFn(ident) => {
-            ident.render(sb)
+            ident.render(w)
           }
         }
-        sb.write(")")
+        w.write(")")
       }
       Operation.StoreGlobal(ty, value, global) => {
-        sb.write("store_global(")
-        ty.render(sb)
-        sb.write(", ")
-        value.render(sb)
-        sb.write(", ")
-        global.render(sb)
-        sb.write(")")
+        w.write("store_global(")
+        ty.render(w)
+        w.write(", ")
+        value.render(w)
+        w.write(", ")
+        global.render(w)
+        w.write(")")
       }
       Operation.StoreField(ty, value, mem, name, offset) => {
-        sb.write("store(")
-        ty.render(sb)
-        sb.write(", ")
-        value.render(sb)
-        sb.write(", ")
-        mem.render(sb)
-        sb.write(", $name ($offset))")
+        w.write("store(")
+        ty.render(w)
+        w.write(", ")
+        value.render(w)
+        w.write(", ")
+        mem.render(w)
+        w.write(", $name ($offset))")
       }
       Operation.If(ty, cond, thenBlock, elseBlock) => {
-        sb.write("if(")
-        cond.render(sb)
-        sb.write(", .${thenBlock.name}")
+        w.write("if(")
+        cond.render(w)
+        w.write(", .${thenBlock.name}")
         if thenBlock.result |v| {
-          sb.write(" (")
-          v.render(sb)
-          sb.write(")")
+          w.write(" (")
+          v.render(w)
+          w.write(")")
         }
         if !elseBlock.body.isEmpty() || !!elseBlock.result {
-          sb.write(", .${elseBlock.name}")
+          w.write(", .${elseBlock.name}")
           if elseBlock.result |v| {
-            sb.write(" (")
-            v.render(sb)
-            sb.write(")")
+            w.write(" (")
+            v.render(w)
+            w.write(")")
           }
         }
-        sb.writeln(")")
+        w.writeln(")")
 
-        sb.writeln(".${thenBlock.name}:")
+        w.writeln(".${thenBlock.name}:")
         for instr in thenBlock.body {
-          sb.write("  ")
-          instr.render(sb)
-          sb.writeln()
+          w.write("  ")
+          instr.render(w)
+          w.writeln()
         }
         if !elseBlock.body.isEmpty() {
-          sb.writeln(".${elseBlock.name}:")
+          w.writeln(".${elseBlock.name}:")
           for instr in elseBlock.body {
-            sb.write("  ")
-            instr.render(sb)
-            sb.writeln()
+            w.write("  ")
+            instr.render(w)
+            w.writeln()
           }
         }
-        sb.write("# endif")
+        w.write("# endif")
       }
-      Operation.WhileLoopStart(name) => sb.write("while_loop_start(.$name)")
+      Operation.WhileLoopStart(name) => w.write("while_loop_start(.$name)")
       Operation.While(cond, body) => {
-        sb.write("while(")
-        cond.render(sb)
-        sb.writeln(", .${body.name})")
+        w.write("while(")
+        cond.render(w)
+        w.writeln(", .${body.name})")
 
-        sb.writeln(".${body.name}:")
+        w.writeln(".${body.name}:")
         for instr in body.body {
-          sb.write("  ")
-          instr.render(sb)
-          sb.writeln()
+          w.write("  ")
+          instr.render(w)
+          w.writeln()
         }
-        sb.write("# endwhile")
+        w.write("# endwhile")
       }
       Operation.ForRanged(start, end, iteratee, idx, body) => {
-        sb.writeln("# forstart")
+        w.writeln("# forstart")
         for inst in end.body {
-          inst.render(sb)
-          sb.writeln()
+          inst.render(w)
+          w.writeln()
         }
-        sb.write("  for(" )
-        iteratee.render(sb)
-        sb.write(" = ")
-        start.render(sb)
+        w.write("  for(" )
+        iteratee.render(w)
+        w.write(" = ")
+        start.render(w)
         if idx |idx| {
-          sb.write("; (")
-          idx.render(sb)
-          sb.write(")")
+          w.write("; (")
+          idx.render(w)
+          w.write(")")
         }
-        sb.write(", ${iteratee.kind.name()} < ")
-        end.result.render(sb)
-        sb.writeln(", .${body.name})")
-        sb.writeln(".${body.name}:")
+        w.write(", ${iteratee.kind.name()} < ")
+        end.result.render(w)
+        w.writeln(", .${body.name})")
+        w.writeln(".${body.name}:")
         for instr in body.body {
-          sb.write("  ")
-          instr.render(sb)
-          sb.writeln()
+          w.write("  ")
+          instr.render(w)
+          w.writeln()
         }
-        sb.write("# endfor")
+        w.write("# endfor")
       }
       Operation.FunctionPointer(fnName) => {
-        sb.write("fn_ptr($fnName)")
+        w.write("fn_ptr($fnName)")
       }
       Operation.CreateClosure(fnName, captures, capturedSelf) => {
-        sb.write("create_closure($fnName, [")
+        w.write("create_closure($fnName, [")
         for c, idx in captures {
-          c.render(sb)
-          if idx != captures.length - 1 { sb.write(", ") }
+          c.render(w)
+          if idx != captures.length - 1 { w.write(", ") }
         }
-        sb.write("], self=")
-        if capturedSelf |v| v.render(sb) else sb.write("None")
-        sb.write(")")
+        w.write("], self=")
+        if capturedSelf |v| v.render(w) else w.write("None")
+        w.write(")")
       }
       Operation.Call(ret, fnName, args, _) => {
-        sb.write("call(")
-        ret.render(sb)
-        sb.write(", ").write(fnName)
+        w.write("call(")
+        ret.render(w)
+        w.write(", ")
+        w.write(fnName)
         for arg, idx in args {
-          sb.write(", ")
-          arg.render(sb)
+          w.write(", ")
+          arg.render(w)
         }
-        sb.write(")")
+        w.write(")")
       }
       Operation.CallValue(ret, fnVal, args) => {
-        sb.write("call(")
-        ret.render(sb)
-        sb.write(", ")
-        fnVal.render(sb)
+        w.write("call(")
+        ret.render(w)
+        w.write(", ")
+        fnVal.render(w)
         for arg, idx in args {
-          sb.write(", ")
-          arg.render(sb)
+          w.write(", ")
+          arg.render(w)
         }
-        sb.write(")")
+        w.write(")")
       }
-      Operation.Break => sb.write("break")
-      Operation.Continue => sb.write("continue")
+      Operation.Break => w.write("break")
+      Operation.Continue => w.write("continue")
       Operation.Return(v) => {
-        sb.write("return(")
-        if v |v| v.render(sb)
-        sb.write(")")
+        w.write("return(")
+        if v |v| v.render(w)
+        w.write(")")
       }
-      Operation.Unreachable(message) => sb.write("unreachable('$message')")
+      Operation.Unreachable(message) => w.write("unreachable('$message')")
       Operation.GetEnumVariantIdx(value, numVariants) => {
-        sb.write("get_enum_variant_idx(")
-        value.render(sb)
-        sb.write(", numVariants=$numVariants)")
+        w.write("get_enum_variant_idx(")
+        value.render(w)
+        w.write(", numVariants=$numVariants)")
       }
       Operation.OptionNone(innerTy) => {
-        sb.write("option_none(")
-        innerTy.render(sb)
-        sb.write(")")
+        w.write("option_none(")
+        innerTy.render(w)
+        w.write(")")
       }
       Operation.OptionSome(innerTy, value) => {
-        sb.write("option_some(")
-        innerTy.render(sb)
-        sb.write(", ")
-        value.render(sb)
-        sb.write(")")
+        w.write("option_some(")
+        innerTy.render(w)
+        w.write(", ")
+        value.render(w)
+        w.write(")")
       }
       Operation.OptionIsNone(innerTy, value) => {
-        sb.write("option_is_none(")
-        innerTy.render(sb)
-        sb.write(", ")
-        value.render(sb)
-        sb.write(")")
+        w.write("option_is_none(")
+        innerTy.render(w)
+        w.write(", ")
+        value.render(w)
+        w.write(")")
       }
       Operation.OptionUnwrap(innerTy, value) => {
-        sb.write("option_unwrap(")
-        innerTy.render(sb)
-        sb.write(", ")
-        value.render(sb)
-        sb.write(")")
+        w.write("option_unwrap(")
+        innerTy.render(w)
+        w.write(", ")
+        value.render(w)
+        w.write(")")
       }
       Operation.StructuredToString(prefix, lenVal, fields) => {
-        sb.write("structured_to_string($prefix, ")
-        lenVal.render(sb)
+        w.write("structured_to_string($prefix, ")
+        lenVal.render(w)
 
         for (fieldIrTy, fieldName, fieldToStringVal) in fields {
-          sb.write(", ")
-          fieldIrTy.render(sb)
-          sb.write(" $fieldName ")
-          fieldToStringVal.render(sb)
+          w.write(", ")
+          fieldIrTy.render(w)
+          w.write(" $fieldName ")
+          fieldToStringVal.render(w)
         }
-        sb.write(")")
+        w.write(")")
       }
       Operation.Builtin(ret, builtin) => {
-        sb.write("builtin(")
-        ret.render(sb)
-        sb.write(", ")
+        w.write("builtin(")
+        ret.render(w)
+        w.write(", ")
         match builtin {
           Builtin.Malloc(size, itemTy) => {
-            sb.write("malloc, ")
-            size.render(sb)
-            sb.write(", ")
-            itemTy.render(sb)
+            w.write("malloc, ")
+            size.render(w)
+            w.write(", ")
+            itemTy.render(w)
           }
           Builtin.Null => {
-            sb.write("ptr_null")
+            w.write("ptr_null")
           }
           Builtin.IsNull(ptr) => {
-            sb.write("ptr_is_null, ")
-            ptr.render(sb)
+            w.write("ptr_is_null, ")
+            ptr.render(w)
           }
           Builtin.Realloc(ptr, count, itemTy) => {
-            sb.write("realloc, ")
-            ptr.render(sb)
-            sb.write(", ")
-            count.render(sb)
+            w.write("realloc, ")
+            ptr.render(w)
+            w.write(", ")
+            count.render(w)
             if itemTy |ty| {
-              sb.write(", ")
-              ty.render(sb)
+              w.write(", ")
+              ty.render(w)
             }
           }
           Builtin.Store(ptr, value, offset, itemTy) => {
-            sb.write("ptr_store, ")
-            ptr.render(sb)
-            sb.write(", ")
-            value.render(sb)
-            sb.write(", ")
-            offset.render(sb)
-            sb.write(", ")
-            itemTy.render(sb)
+            w.write("ptr_store, ")
+            ptr.render(w)
+            w.write(", ")
+            value.render(w)
+            w.write(", ")
+            offset.render(w)
+            w.write(", ")
+            itemTy.render(w)
           }
           Builtin.Load(ptr, offset, itemTy) => {
-            sb.write("ptr_load, ")
-            ptr.render(sb)
-            sb.write(", ")
-            offset.render(sb)
-            sb.write(", ")
-            itemTy.render(sb)
+            w.write("ptr_load, ")
+            ptr.render(w)
+            w.write(", ")
+            offset.render(w)
+            w.write(", ")
+            itemTy.render(w)
           }
           Builtin.CopyFrom(dst, dstOffset, src, srcOffset, size, itemTy) => {
-            sb.write("copy_from, ")
-            dst.render(sb)
-            sb.write(", ")
-            dstOffset.render(sb)
-            sb.write(", ")
-            src.render(sb)
-            sb.write(", ")
-            srcOffset.render(sb)
-            sb.write(", ")
-            size.render(sb)
-            sb.write(", ")
-            itemTy.render(sb)
+            w.write("copy_from, ")
+            dst.render(w)
+            w.write(", ")
+            dstOffset.render(w)
+            w.write(", ")
+            src.render(w)
+            w.write(", ")
+            srcOffset.render(w)
+            w.write(", ")
+            size.render(w)
+            w.write(", ")
+            itemTy.render(w)
           }
           Builtin.I64ToString(int) => {
-            sb.write("i64_to_string, ")
-            int.render(sb)
+            w.write("i64_to_string, ")
+            int.render(w)
           }
           Builtin.U64ToString(int) => {
-            sb.write("u64_to_string, ")
-            int.render(sb)
+            w.write("u64_to_string, ")
+            int.render(w)
           }
           Builtin.F64ToString(int) => {
-            sb.write("f64_to_string, ")
-            int.render(sb)
+            w.write("f64_to_string, ")
+            int.render(w)
           }
           Builtin.BoolToString(int) => {
-            sb.write("bool_to_string, ")
-            int.render(sb)
+            w.write("bool_to_string, ")
+            int.render(w)
           }
           Builtin.IntAsFloat(float) => {
-            sb.write("int_as_float, ")
-            float.render(sb)
+            w.write("int_as_float, ")
+            float.render(w)
           }
           Builtin.FloatAsInt(float) => {
-            sb.write("float_as_int, ")
-            float.render(sb)
+            w.write("float_as_int, ")
+            float.render(w)
           }
           Builtin.FloatCeil(float) => {
-            sb.write("float_ceil, ")
-            float.render(sb)
+            w.write("float_ceil, ")
+            float.render(w)
           }
           Builtin.FloatFloor(float) => {
-            sb.write("float_floor, ")
-            float.render(sb)
+            w.write("float_floor, ")
+            float.render(w)
           }
           Builtin.FloatRound(float) => {
-            sb.write("float_round, ")
-            float.render(sb)
+            w.write("float_round, ")
+            float.render(w)
           }
           Builtin.FloatBitsToInt(float) => {
-            sb.write("float_bits_to_int, ")
-            float.render(sb)
+            w.write("float_bits_to_int, ")
+            float.render(w)
           }
-          Builtin.Uninitialized => sb.write("uninitialized")
-          Builtin.Argc => sb.write("argc")
-          Builtin.Argv => sb.write("argv")
-          Builtin.Callstack => sb.write("callstack")
-          Builtin.CallstackPtr => sb.write("callstack_ptr")
-          Builtin.ModuleNames => sb.write("module_names")
-          Builtin.FunctionNames => sb.write("function_names")
-          Builtin.Errno => sb.write("errno")
+          Builtin.Uninitialized => w.write("uninitialized")
+          Builtin.Argc => w.write("argc")
+          Builtin.Argv => w.write("argv")
+          Builtin.Callstack => w.write("callstack")
+          Builtin.CallstackPtr => w.write("callstack_ptr")
+          Builtin.ModuleNames => w.write("module_names")
+          Builtin.FunctionNames => w.write("function_names")
+          Builtin.Errno => w.write("errno")
         }
-        sb.write(")")
+        w.write(")")
       }
     }
   }
@@ -822,15 +822,15 @@ pub enum IrType {
   Composite(name: String, isEnum: Bool)
   Ptr
 
-  pub func render(self, sb: StringBuilder) {
+  pub func render(self, w: Writer) {
     match self {
-      IrType.Unit => sb.write("unit")
-      IrType.I64 => sb.write("i64")
-      IrType.F64 => sb.write("f64")
-      IrType.Bool => sb.write("bool")
-      IrType.Byte => sb.write("byte")
-      IrType.Composite(name, _) => sb.write(name)
-      IrType.Ptr => sb.write("ptr")
+      IrType.Unit => w.write("unit")
+      IrType.I64 => w.write("i64")
+      IrType.F64 => w.write("f64")
+      IrType.Bool => w.write("bool")
+      IrType.Byte => w.write("byte")
+      IrType.Composite(name, _) => w.write(name)
+      IrType.Ptr => w.write("ptr")
     }
   }
 }
@@ -839,20 +839,20 @@ pub type CompositeType {
   pub name: String
   pub fields: (String, IrType)[]
 
-  pub func render(self, sb: StringBuilder) {
-    sb.write("type ")
-      .write(self.name)
-      .write(" = struct {")
-    if !self.fields.isEmpty() sb.writeln()
+  pub func render(self, w: Writer) {
+    w.write("type ")
+    w.write(self.name)
+    w.write(" = struct {")
+    if !self.fields.isEmpty() w.writeln()
 
     for (name, ty) in self.fields {
-      sb.write("\n")
-        .write("  ")
-        .write(name)
-        .write(": ")
-      ty.render(sb)
+      w.write("\n")
+      w.write("  ")
+      w.write(name)
+      w.write(": ")
+      ty.render(w)
     }
-    sb.writeln("}")
+    w.writeln("}")
   }
 }
 
@@ -863,25 +863,25 @@ pub type GlobalVariable {
   pub initialValue: Const? = None
   pub referenced: Bool = false
 
-  pub func render(self, sb: StringBuilder) {
-    sb.write("global ")
+  pub func render(self, w: Writer) {
+    w.write("global ")
 
     if self.mutable {
-      sb.write("mutable ")
+      w.write("mutable ")
     } else {
-      sb.write("const ")
+      w.write("const ")
     }
 
-    self.ty.render(sb)
-    sb.write(" ${self.name}")
+    self.ty.render(w)
+    w.write(" ${self.name}")
 
     if self.initialValue |v| {
-      sb.write(" = ")
-      v.render(sb)
+      w.write(" = ")
+      v.render(w)
     }
 
     if !self.referenced {
-      sb.write(" # not referenced")
+      w.write(" # not referenced")
     }
   }
 }

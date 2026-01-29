@@ -1,16 +1,55 @@
+import crypto from "crypto";
 import main from "./._abra/_main.mjs";
+import fs from "fs";
 
 const $td = new TextDecoder();
 const $te = new TextEncoder();
 
-function _decodeString(buf) {
+function $mkstr(length, _buffer) {
+  return { length, _buffer: $encodestr(_buffer) };
+}
+
+function $interp(strs, ...exprs) {
+  let totalLength = 0;
+  const bufs = []
+  for (let i = 0; i < strs.length; i++) {
+    const strBuf = $encodestr(strs[i]);
+    const len = strlen(strBuf);
+    totalLength += len;
+    bufs.push([len, strBuf]);
+    if (exprs[i]) {
+      const { length, _buffer } = exprs[i];
+      totalLength += length;
+      bufs.push([length, _buffer]);
+    }
+  }
+  const res = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const [len, buf] of bufs) {
+    res.set(buf.subarray(0, len), offset);
+    offset += len;
+  }
+  return res
+}
+
+function $mkargs(args) {
+  return args.map(a => $encodestr(a));
+}
+
+function $decodestr(buf) {
   let i = buf.length - 1;
   while (i >= 0 && buf[i] === 0) { i--; }
   return $td.decode(buf.slice(0, i + 1));
 }
 
+function $encodestr(str) {
+  return $te.encode(str + '\0');
+}
+
+const builtins = { $mkstr, $interp, $mkargs, $decodestr, $encodestr };
+
 function write(fd, buf, _count) {
-  const str = _decodeString(buf)
+  const str = $decodestr(buf)
 
   if (fd === 1) {
     process.stdout.write(str);
@@ -20,27 +59,102 @@ function write(fd, buf, _count) {
 }
 
 function strlen(str) {
-  return str.length;
+  return str.indexOf(0);
 }
 
 function getenv(key) {
-  const keyStr = _decodeString(key)
+  const keyStr = $decodestr(key)
 
   const val = process.env[keyStr];
   if (!val) return null;
 
-  return $te.encode(val)
+  return $encodestr(val)
 }
 
+const EBADF = 1;
+const EINVAL = 2;
+let err = 0;
 function errno() {
-  return 0;
+  return err;
 }
 
-const externs = {
-  write,
-  strlen,
-  getenv,
-  errno,
-};
+function strerror(errno) {
+  switch (errno) {
+    case EBADF: return $encodestr("not an open file descriptor");
+    case EINVAL: return $encodestr("invalid");
+    default: return $encodestr("");
+  }
+}
 
-main(externs, process.argv.slice(1));
+function exit(status) {
+  process.exit(status);
+}
+
+function getcwd(outbuf, count) {
+  const cwd = $encodestr(process.cwd());
+
+  outbuf.set(cwd)
+}
+
+const openFiles = []
+
+function open(buf, flags, mode) {
+  const pathName = $td.decode(buf)
+  const fd = openFiles.length;
+  openFiles.push(pathName.substring(0, pathName.indexOf('\0')));
+  return fd;
+}
+
+function close(fd) {
+  openFiles[fd] = null;
+}
+
+const LSEEK_SEEK_SET = 0;
+const LSEEK_SEEK_CUR = 1;
+const LSEEK_SEEK_END = 2;
+function lseek(fd, offset, whence) {
+  if (whence === LSEEK_SEEK_SET) {
+    return 0;
+  }
+  if (whence === LSEEK_SEEK_CUR) {
+    // TODO
+    return -1;
+  }
+  if (whence !== LSEEK_SEEK_END) {
+    err = EINVAL;
+    return -1;
+  }
+
+  const filePath = openFiles[fd]
+  if (!filePath) {
+    err = EBADF;
+    return -1;
+  }
+  const stats = fs.statSync(filePath)
+
+  if (offset >= stats.size) {
+    err = EINVAL;
+    return -1;
+  }
+
+  return stats.size - offset;
+}
+
+function read(fd, outbuf, count) {
+  const filePath = openFiles[fd]
+  if (!filePath) {
+    err = EBADF;
+    return -1;
+  }
+
+  const fileBuf = fs.readFileSync(filePath)
+  outbuf.set(fileBuf)
+}
+
+function rand() {
+  return crypto.randomInt(Number.MAX_SAFE_INTEGER)
+}
+
+const externs = { write, getenv, strlen, exit, errno, getcwd, open, lseek, read, close, strerror, rand };
+
+main(externs, builtins, process.argv.slice(1));

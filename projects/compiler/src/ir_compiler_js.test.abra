@@ -15,7 +15,7 @@ import "fs" as fs
 import "process" as process
 import getAbsolutePath from "./utils"
 import ModuleLoader, Project, Typechecker, TypedModule from "./typechecker"
-import Generator, StringBuilder from "./ir"
+import Generator, Writer from "./ir"
 import Compiler from "./ir_compiler_js"
 import ComptimeFunctionEvaluator from "./comptime_evaluator"
 
@@ -75,7 +75,6 @@ func main() {
 
     val ir = Generator.generateIR(project, foldConstants: true)
 
-    val result = Compiler.compile(ir)
     // TODO: right now the code assumes that the output file and directory will exist prior to writing
     // to it. Instead, we should create the directory and file if we need to.
     val cwd = fs.getCurrentWorkingDirectory()
@@ -89,7 +88,8 @@ func main() {
       }
     }
 
-    result.writeToFile(outFile)
+    val writer = Writer(write: str => outFile.write(str))
+    Compiler.compile(ir, writer)
   } else {
     stdoutWriteln("Missing required argument <file-name>")
     process.exit(1)

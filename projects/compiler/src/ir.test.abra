@@ -15,7 +15,7 @@ import "fs" as fs
 import "process" as process
 import getAbsolutePath from "./utils"
 import ModuleLoader, Project, Typechecker, TypedModule from "./typechecker"
-import Generator, StringBuilder from "./ir"
+import Generator, Writer from "./ir"
 import ComptimeFunctionEvaluator from "./comptime_evaluator"
 
 func main() {
@@ -74,9 +74,8 @@ func main() {
 
     val ir = Generator.generateIR(project)
 
-    val sb = StringBuilder()
-    ir.render(sb)
-    stdoutWriteln(sb.build())
+    val w = Writer(write: str => stdoutWrite(str))
+    ir.render(w)
   } else {
     stdoutWriteln("Missing required argument <file-name>")
     process.exit(1)
