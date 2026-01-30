@@ -1,23 +1,17 @@
-// When executed directly, this will perform typechecking and compilation, using qbe[^1] as a
-// simple backend. This file assumes it'll be called via the top-level `abra` script in the
-// directory above, as that script takes the output ssa file and runs it through qbe, and then
-// through clang to produce a binary, and then executes that binary.
-// Eventually, that wrapper script will be unnecessary, but there currently isn't a way to shell
-// out from within Abra.
+// When executed directly, this will perform typechecking and compilation, using javascript as
+// the compilation target.
 //
-// This is split out into a separate runnable file so that the test-specific code is never compiled into
-// the actual resulting binary; this results in a separate binary being compiled which is only used for
-// testing.
-//
-// [^1] https://c9x.me/compile
+// Example usage (from projects/compiler):
+//   abra ./src/target-js/ir_compiler_js.cmd.abra ./example.abra
+//   node ./._abra/_main_wrapper.mjs
 
 import "fs" as fs
 import "process" as process
-import getAbsolutePath from "./utils"
-import ModuleLoader, Project, Typechecker, TypedModule from "./typechecker"
-import Generator, Writer from "./ir"
+import getAbsolutePath from "../utils"
+import ModuleLoader, Project, Typechecker, TypedModule from "../typechecker"
+import Generator, Writer from "../ir"
 import Compiler from "./ir_compiler_js"
-import ComptimeFunctionEvaluator from "./comptime_evaluator"
+import ComptimeFunctionEvaluator from "../comptime_evaluator"
 
 func main() {
   val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {

@@ -73,13 +73,12 @@ class TestRunner {
       const testName = testPathSegs[testPathSegs.length - 1].replace('.abra', '')
 
       if (target === 'js') {
-        await fs.writeFile(`${process.cwd()}/._abra/${testName}.mjs`, '', { encoding: 'utf-8' })
-        const jsHarness = await fs.readFile(`${process.cwd()}/example.mjs`)
-          .then(buf => buf.toString().replace('._abra/_main.mjs', `${testName}.mjs`))
-        await fs.writeFile(`${process.cwd()}/._abra/${testName}_harness.mjs`, jsHarness, { encoding: 'utf-8' })
+        const testMjsPath = `${process.cwd()}/._abra/${testName}.mjs`
+        const jsWrapperPath = `${process.cwd()}/test/js_harness_node.mjs`
 
+        await fs.writeFile(testMjsPath, '', { encoding: 'utf-8' })
         await runCommand(compilerBin, [testFilePath, testName])
-        return runCommand('node', [`${process.cwd()}/._abra/${testName}_harness.mjs`, ...args], env)
+        return runCommand('node', [jsWrapperPath, testMjsPath, '--', ...args], env)
       } else if (target === 'vm') {
         return runCommand(compilerBin, [testFilePath, ...args], env)
       } else if (target === 'native') {

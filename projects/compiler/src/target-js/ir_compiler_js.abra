@@ -1,7 +1,5 @@
 import File from "fs"
-import Writer, IR, IrFunction, IrType, Instruction, Operation, Value, Const, Ident, IdentKind, GlobalVariable, Builtin, CaptureSource, ClosureEnvLocation from "./ir"
-import ModuleBuilder, QbeType from "./qbe"
-import "./qbe" as qbe
+import Writer, IR, IrFunction, IrType, Instruction, Operation, Value, Const, Ident, IdentKind, GlobalVariable, Builtin, CaptureSource, ClosureEnvLocation from "../ir"
 
 val jsReservedWords = #{
   "abstract", "arguments", "async", "await", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue",

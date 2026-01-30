@@ -3,10 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Example</title>
+    <title>Web Test</title>
 
     <script type="module">
-      import main from './._abra/_main.mjs';
+      const queryParams = new URLSearchParams(window.location.search);
+      const file = queryParams.get('file') || '_main';
+      const { default: main } = await import(`./../._abra/${file}.mjs`);
 
       const $td = new TextDecoder();
       const $te = new TextEncoder();
