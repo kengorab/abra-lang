@@ -909,7 +909,7 @@ const runners = [
   },
   {
     suite: 'ir_compiler_js',
-    runner: new TestRunner('js_ir_compiler_test', `${__dirname}/../src/ir_compiler_js.test.abra`, { target: 'js' }),
+    runner: new TestRunner('js_ir_compiler_test', `${__dirname}/../src/target-js/ir_compiler_js.cmd.abra`, { target: 'js' }),
     tests: IR_COMPILER_TESTS,
   },
 ]

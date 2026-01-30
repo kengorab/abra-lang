@@ -15,7 +15,7 @@ import "fs" as fs
 import "process" as process
 import getAbsolutePath from "./utils"
 import ModuleLoader, Project, Typechecker, TypedModule from "./typechecker"
-import Generator, StringBuilder from "./ir"
+import Generator from "./ir"
 import VM, VmValue, unmarshallString from "./ir_vm"
 import ComptimeFunctionEvaluator from "./comptime_evaluator"
 
