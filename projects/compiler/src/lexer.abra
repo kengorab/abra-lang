@@ -23,6 +23,7 @@ pub enum TokenKind {
 
   // Identifiers/keywords
   Ident(name: String)
+  SpecialIdent(name: String)
   If
   Else
   Val
@@ -98,6 +99,7 @@ pub enum TokenKind {
     TokenKind.StringInterpolation => "string"
     TokenKind.Char => "char"
     TokenKind.Ident(name) => if name == "_" { "_" } else "identifier"
+    TokenKind.SpecialIdent(name) => if name == "_" { "_" } else "identifier"
     TokenKind.If => "if"
     TokenKind.Else => "else"
     TokenKind.Val => "val"
@@ -621,7 +623,7 @@ pub type Lexer {
     Ok(Char.fromInt(value))
   }
 
-  func _tokenizeIdentifier(self, startPos: Position): Token {
+  func tokenizeWord(self): String {
     val identStart = self._cursor
     var ch = self._input[self._cursor]
 
@@ -630,7 +632,19 @@ pub type Lexer {
       ch = self._input[self._cursor]
     }
 
-    val ident = self._input[identStart:self._cursor]
+    self._input[identStart:self._cursor]
+  }
+
+  func _tokenizeIdentifier(self, startPos: Position): Token {
+    // val identStart = self._cursor
+    // var ch = self._input[self._cursor]
+
+    // while ch.isAlphanumeric() || ch == "_" {
+    //   self._advance()
+    //   ch = self._input[self._cursor]
+    // }
+
+    val ident = self.tokenizeWord() // self._input[identStart:self._cursor]
     val tokenKind = match ident {
       "true" => TokenKind.Bool(true)
       "false" => TokenKind.Bool(false)
@@ -712,12 +726,16 @@ pub type Lexer {
         self._advance() // consume '#'
         if self._cursor >= self._input.length {
           return Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedEof))
-        } else if self._input[self._cursor] != "{" {
+        }
+
+        if self._input[self._cursor] == "{" {
+          TokenKind.HashBrace
+        } else if self._input[self._cursor].isAlphanumeric() {
+          return Ok(Token(position: startPos, kind: TokenKind.SpecialIdent(self.tokenizeWord())))
+        } else {
           val ch = self._input[self._cursor]
           return Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedChar(ch)))
         }
-
-        TokenKind.HashBrace
       }
       "@" => TokenKind.At
       _ => return Err(LexerError(position: startPos, kind: LexerErrorKind.UnexpectedChar(ch)))

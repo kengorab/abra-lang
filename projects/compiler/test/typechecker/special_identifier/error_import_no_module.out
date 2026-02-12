@@ -1,0 +1,11 @@
+Error at %TEST_DIR%/typechecker/special_identifier/error_import_no_module.abra:1:17
+Could not import module
+  |  val x = #import("./mod_").a
+                     ^
+No file exists at path '%TEST_DIR%/typechecker/special_identifier/mod_.abra'
+
+Error at %TEST_DIR%/typechecker/special_identifier/error_import_no_module.abra:1:27
+Invalid import
+  |  val x = #import("./mod_").a
+                               ^
+There's no exported value named 'a' in module '%TEST_DIR%/typechecker/special_identifier/mod_.abra'
