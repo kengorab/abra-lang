@@ -1,5 +1,18 @@
 {
-  "imports": [],
+  "imports": [
+    {
+      "token": {
+        "position": [7, 34],
+        "kind": {
+          "name": "String",
+          "value": "foo"
+        }
+      },
+      "moduleName": { "name": "foo", "position": [7, 34] },
+      "importKind": {
+      }
+    }
+  ],
   "nodes": [
     {
       "token": {
@@ -231,6 +244,88 @@
       "kind": {
         "name": "identifier",
         "ident": "__"
+      }
+    },
+    {
+      "token": {
+        "position": [7, 1],
+        "kind": {
+          "name": "SpecialIdent",
+          "value": "a"
+        }
+      },
+      "kind": {
+        "name": "specialIdentifier",
+        "kind": "unknown",
+        "ident": "a"
+      }
+    },
+    {
+      "token": {
+        "position": [7, 4],
+        "kind": {
+          "name": "SpecialIdent",
+          "value": "b_c"
+        }
+      },
+      "kind": {
+        "name": "specialIdentifier",
+        "kind": "unknown",
+        "ident": "b_c"
+      }
+    },
+    {
+      "token": {
+        "position": [7, 9],
+        "kind": {
+          "name": "SpecialIdent",
+          "value": "DeF"
+        }
+      },
+      "kind": {
+        "name": "specialIdentifier",
+        "kind": "unknown",
+        "ident": "DeF"
+      }
+    },
+    {
+      "token": {
+        "position": [7, 14],
+        "kind": {
+          "name": "SpecialIdent",
+          "value": "line"
+        }
+      },
+      "kind": {
+        "name": "specialIdentifier",
+        "kind": "line"
+      }
+    },
+    {
+      "token": {
+        "position": [7, 20],
+        "kind": {
+          "name": "SpecialIdent",
+          "value": "file"
+        }
+      },
+      "kind": {
+        "name": "specialIdentifier",
+        "kind": "file"
+      }
+    },
+    {
+      "token": {
+        "position": [7, 26],
+        "kind": {
+          "name": "SpecialIdent",
+          "value": "import"
+        }
+      },
+      "kind": {
+        "name": "specialIdentifier",
+        "kind": "import",
+        "module": "foo"
       }
     }
   ]

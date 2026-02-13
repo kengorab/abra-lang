@@ -7,6 +7,7 @@ pub type ParsedModule {
 }
 
 pub enum ImportKind {
+  Bare
   List(imports: Label[])
   Alias(alias: Label)
 }
@@ -122,6 +123,20 @@ pub enum IdentifierKind {
   Self
   None_
   Discard
+}
+
+pub enum SpecialIdentifierKind {
+  Line
+  File
+  Import(mod: String)
+  Unknown(name: String)
+
+  pub func name(self): String = match self {
+    SpecialIdentifierKind.Line => "line"
+    SpecialIdentifierKind.File => "file"
+    SpecialIdentifierKind.Import => "import"
+    SpecialIdentifierKind.Unknown(name) => name
+  }
 }
 
 pub type Label {
@@ -274,6 +289,7 @@ pub enum AstNodeKind {
   Binary(value: BinaryAstNode)
   Grouped(inner: AstNode)
   Identifier(kind: IdentifierKind)
+  SpecialIdentifier(ident: SpecialIdentifierKind)
   Accessor(value: AccessorAstNode)
   Invocation(value: InvocationAstNode)
   Array(items: AstNode[])
@@ -351,6 +367,7 @@ pub type ParseError {
 
 pub type Parser {
   _tokens: Token[]
+  _imports: ImportNode[] = []
   _cursor: Int = 0
   _seenDecorators: DecoratorNode[] = []
   _pubToken: Token? = None
@@ -358,7 +375,7 @@ pub type Parser {
   pub func parse(tokens: Token[]): Result<ParsedModule, ParseError> {
     val parser = Parser(_tokens: tokens)
 
-    val imports: ImportNode[] = []
+    // val imports: ImportNode[] = []
     val nodes: AstNode[] = []
 
     var importsAllowed = true
@@ -369,7 +386,7 @@ pub type Parser {
         }
 
         val importNode = try parser._parseImport()
-        imports.push(importNode)
+        parser._imports.push(importNode)
         continue
       }
       importsAllowed = false
@@ -380,7 +397,7 @@ pub type Parser {
       }
     }
 
-    Ok(ParsedModule(imports: imports, nodes: nodes))
+    Ok(ParsedModule(imports: parser._imports, nodes: nodes))
   }
 
   func _peek(self, ahead = 0): Token? = self._tokens[self._cursor + ahead]
@@ -1118,6 +1135,7 @@ pub type Parser {
       TokenKind.Minus => self._parseUnary()
       TokenKind.Bang => self._parseUnary()
       TokenKind.Ident(name) => self._parseIdentifier(kind: if name == "_" IdentifierKind.Discard else IdentifierKind.Named(name))
+      TokenKind.SpecialIdent(name) => self._parseSpecialIdentifier(name)
       TokenKind.None_ => self._parseIdentifier(kind: IdentifierKind.None_)
       TokenKind.Self => self._parseIdentifier(kind: IdentifierKind.Self)
       TokenKind.LBrack => self._parseArray()
@@ -1313,6 +1331,33 @@ pub type Parser {
     if res |invocationNode| return Ok(invocationNode)
 
     Ok(identNode)
+  }
+
+  func _parseSpecialIdentifier(self, name: String): Result<AstNode, ParseError> {
+    val token = try self._expectNext()
+
+    val kind = match name {
+      "line" => SpecialIdentifierKind.Line
+      "file" => SpecialIdentifierKind.File
+      "import" => {
+        // The `true` in LParen is disregarded within _expectNextTokenKind
+        try self._expectNextTokenKind(TokenKind.LParen(true))
+
+        val nextToken = try self._expectNext()
+        val mod = match nextToken.kind {
+          TokenKind.String(name) => Label(name: name, position: nextToken.position)
+          _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String("")], nextToken.kind)))
+        }
+        self._imports.push(ImportNode(token: nextToken, kind: ImportKind.Bare, moduleName: mod))
+
+        try self._expectNextTokenKind(TokenKind.RParen)
+
+        SpecialIdentifierKind.Import(mod.name)
+      }
+      else => SpecialIdentifierKind.Unknown(name)
+    }
+
+    Ok(AstNode(token: token, kind: AstNodeKind.SpecialIdentifier(kind)))
   }
 
   func _parseArray(self): Result<AstNode, ParseError> {

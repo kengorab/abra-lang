@@ -1,0 +1,4 @@
+Error at %TEST_DIR%/typechecker/special_identifier/error_unknown_identifier.abra:1:9
+Unknown special identifier 'hmm'
+  |  val x = #hmm
+             ^

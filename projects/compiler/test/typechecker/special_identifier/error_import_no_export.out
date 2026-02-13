@@ -1,0 +1,5 @@
+Error at %TEST_DIR%/typechecker/special_identifier/error_import_no_export.abra:1:27
+Invalid import
+  |  val x = #import("./_mod").b
+                               ^
+There's no exported value named 'b' in module '%TEST_DIR%/typechecker/special_identifier/_mod.abra'

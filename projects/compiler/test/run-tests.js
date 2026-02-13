@@ -10,6 +10,8 @@ const LEXER_TESTS = [
   { test: "lexer/ints_error_invalid_binary_eof.abra", assertions: "lexer/ints_error_invalid_binary_eof.out" },
   { test: "lexer/ints_error_invalid_octal_first.abra", assertions: "lexer/ints_error_invalid_octal_first.out" },
   { test: "lexer/ints_error_invalid_octal_eof.abra", assertions: "lexer/ints_error_invalid_octal_eof.out" },
+  // Identifiers
+  { test: "lexer/identifiers.abra", assertions: "lexer/identifiers.out.json" },
   // Floats
   { test: "lexer/floats.abra", assertions: "lexer/floats.out.json" },
   { test: "lexer/floats_error_extra_period.abra", assertions: "lexer/floats_error_extra_period.out" },
@@ -328,6 +330,13 @@ const TYPECHECKER_TESTS = [
   { test: "typechecker/identifier/error_type_mismatch.abra", assertions: "typechecker/identifier/error_type_mismatch.out" },
   { test: "typechecker/identifier/error_type_mismatch_None.abra", assertions: "typechecker/identifier/error_type_mismatch_None.out" },
   { test: "typechecker/identifier/error_unknown_ident.abra", assertions: "typechecker/identifier/error_unknown_ident.out" },
+
+  // Special identifier
+  { test: "typechecker/special_identifier/special_identifier.abra", assertions: "typechecker/special_identifier/special_identifier.out.json" },
+  { test: "typechecker/special_identifier/error_import_no_export.abra", assertions: "typechecker/special_identifier/error_import_no_export.out" },
+  { test: "typechecker/special_identifier/error_import_no_module.abra", assertions: "typechecker/special_identifier/error_import_no_module.out" },
+  { test: "typechecker/special_identifier/error_unknown_identifier.abra", assertions: "typechecker/special_identifier/error_unknown_identifier.out" },
+
   // Array
   { test: "typechecker/array/array.abra", assertions: "typechecker/array/array.out.json" },
   { test: "typechecker/array/error_bindingdecl_empty.abra", assertions: "typechecker/array/error_bindingdecl_empty.out" },

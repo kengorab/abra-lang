@@ -1,0 +1,11 @@
+val l = #line
+val _: Int = l
+
+val f = #file
+val _: String = f
+
+val stdoutFileno = #import("libc").STDOUT_FILENO
+val _: Int = stdoutFileno
+
+val a = #import("./_mod").a
+val _: Int = a

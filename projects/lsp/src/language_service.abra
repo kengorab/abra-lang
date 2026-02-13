@@ -1,7 +1,7 @@
 import "fs" as fs
 import JsonValue from "json"
 import log from "./log"
-import Label from "../../compiler/src/parser"
+import Label, SpecialIdentifierKind from "../../compiler/src/parser"
 import TypedModule, ModuleLoader, Project, Typechecker, LexerOrParseError, IdentifierMeta, IdentifierKindMeta, IdentifierMetaModule from "../../compiler/src/typechecker"
 import RequestMessage, NotificationMessage, ResponseMessage, ResponseResult, ResponseError, ResponseErrorCode, ServerCapabilities, TextDocumentSyncOptions, TextDocumentSyncKind, SaveOptions, ServerInfo, TextDocumentItem, TextDocumentIdentifier, VersionedTextDocumentIdentifier, TextDocumentContentChangeEvent, Diagnostic, DiagnosticSeverity, Position, Range, MarkupContent, MarkupKind, DocumentSymbol, SymbolKind from "./lsp_spec"
 import ComptimeFunctionEvaluator from "../../compiler/src/comptime_evaluator"
@@ -191,6 +191,39 @@ pub type AbraLanguageService {
             IdentifierMetaModule.Module(mod) => mod
           }
           lines.push("`$parentRepr` defined in `$mod`")
+        }
+
+        lines
+      }
+      IdentifierKindMeta.SpecialIdentifier(kind, replacement) => {
+        val lines = ["Special identifier `${ident.name}`\\n"]
+
+        match kind {
+          SpecialIdentifierKind.Line => {
+            lines.push("The line number in this source file")
+            lines.push("\\n")
+            lines.push("Replaced at compile-time with: `$replacement`")
+          }
+          SpecialIdentifierKind.File => {
+            lines.push("The absolute path of this source file")
+            lines.push("\\n")
+            lines.push("Replaced at compile-time with: ")
+            lines.push("```abra")
+            lines.push("\\\"$replacement\\\"")
+            lines.push("```")
+          }
+          SpecialIdentifierKind.Import(modName) => {
+            lines.push("A compile-time reference to the module \\\"$modName\\\"")
+            lines.push("\\n")
+            lines.push("This is equivalent to having the following:")
+            lines.push("```abra")
+            lines.push("import \\\"$modName\\\" as modAlias")
+            lines.push("modAlias.$replacement")
+            lines.push("```")
+          }
+          SpecialIdentifierKind.Unknown(unknown) => {
+            return ResponseMessage.Success(id: id, result: None)
+          }
         }
 
         lines

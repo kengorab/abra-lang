@@ -1,5 +1,5 @@
 import Token, TokenKind, StringInterpolationChunk from "./lexer"
-import Label, ImportKind, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode, BindingPattern, MatchCaseKind, DecoratorNode, EnumVariant, ForIterKind from "./parser"
+import Label, ImportKind, ParsedModule, AstNode, AstNodeKind, LiteralAstNode, IdentifierKind, SpecialIdentifierKind, IndexingMode, TypeIdentifier, AssignmentMode, BindingPattern, MatchCaseKind, DecoratorNode, EnumVariant, ForIterKind from "./parser"
 
 pub func printTokenAsJson(token: Token, indentLevelStart: Int, currentIndentLevel: Int) {
   val startIndent = "  ".repeat(indentLevelStart)
@@ -65,6 +65,10 @@ func printTokenKindAsJson(kind: TokenKind, indentLevelStart: Int, currentIndentL
     }
     TokenKind.Ident(name) => {
       stdoutWriteln("$fieldsIndent\"name\": \"Ident\",")
+      stdoutWriteln("$fieldsIndent\"value\": \"$name\"")
+    }
+    TokenKind.SpecialIdent(name) => {
+      stdoutWriteln("$fieldsIndent\"name\": \"SpecialIdent\",")
       stdoutWriteln("$fieldsIndent\"value\": \"$name\"")
     }
     TokenKind.If => stdoutWriteln("$fieldsIndent\"name\": \"If\"")
@@ -400,6 +404,16 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         IdentifierKind.None_ => stdoutWriteln("\"None\"")
         IdentifierKind.Self => stdoutWriteln("\"self\"")
         IdentifierKind.Discard => stdoutWriteln("\"_\"")
+      }
+    }
+    AstNodeKind.SpecialIdentifier(kind) => {
+      stdoutWriteln("$fieldsIndent\"name\": \"specialIdentifier\",")
+      stdoutWrite("$fieldsIndent\"kind\": ")
+      match kind {
+        SpecialIdentifierKind.Line => stdoutWriteln("\"line\"")
+        SpecialIdentifierKind.File => stdoutWriteln("\"file\"")
+        SpecialIdentifierKind.Import(moduleName) => stdoutWriteln("\"import\",\n$fieldsIndent\"module\": \"$moduleName\"")
+        SpecialIdentifierKind.Unknown(name) => stdoutWriteln("\"unknown\",\n$fieldsIndent\"ident\": \"$name\"")
       }
     }
     AstNodeKind.Accessor(accessorNode) => {

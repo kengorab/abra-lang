@@ -2,7 +2,7 @@ import "fs" as fs
 import "meta" as meta
 import getAbsolutePath, resolveRelativePath, getCursorLine from "./utils"
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
-import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode, ImportKind, DecoratorNode, LambdaNode, MatchCase, MatchCaseKind, ForIterKind from "./parser"
+import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, SpecialIdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode, ImportKind, DecoratorNode, LambdaNode, MatchCase, MatchCaseKind, ForIterKind from "./parser"
 
 enum TokenizeAndParseError {
   ReadFileError(path: String)
@@ -97,6 +97,7 @@ pub enum IdentifierKindMeta {
   Module(moduleFilePath: String)
   Field(fieldTy: String, parentTypeRepr: String)
   EnumVariant(parentRepr: String, fields: String[])
+  SpecialIdentifier(kind: SpecialIdentifierKind, replacement: String)
 }
 
 pub enum IdentifierMetaModule {
@@ -1651,6 +1652,14 @@ type TypeError {
         lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("Macros must return an instance of 'meta.${injectedCodeStruct.label.name}'")
       }
+      TypeErrorKind.UnknownSpecialIdentifier(name) => {
+        lines.push("Unknown special identifier '$name'")
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
+      }
+      TypeErrorKind.InvalidSpecialIdentifierUsage(kind) => {
+        lines.push("Invalid usage of special identifier '${kind.name()}'")
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
+      }
     }
 
     lines.join("\n")
@@ -1768,6 +1777,8 @@ enum TypeErrorKind {
   ErrorWithinMacroOutput(macroName: String, generatedContents: String, innerError: ErrorWithinMacroOutputKind)
   InvalidMacroParamType(exprStruct: Struct)
   InvalidMacroReturnType(injectedCodeStruct: Struct)
+  UnknownSpecialIdentifier(name: String)
+  InvalidSpecialIdentifierUsage(name: SpecialIdentifierKind)
 }
 
 type ExprInfoCaptor {
@@ -3506,20 +3517,29 @@ pub type Typechecker {
     }
   }
 
+  func resolveImportPathAbs(self, importNodePath: String, modulePathAbs: String?): (Bool, String) {
+    val isRelativeImport = importNodePath.startsWith(".")
+    val path = if !importNodePath.endsWith(".abra") {
+      importNodePath + ".abra"
+    } else {
+      importNodePath
+    }
+
+    val importPathAbs = if !isRelativeImport {
+      self.moduleLoader.stdRoot + "/" + path
+    } else {
+      if !modulePathAbs unreachable("missing absolute path for non-relative import '$path'")
+
+      self.moduleLoader.resolvePath(modulePath: path, relativeTo: modulePathAbs)
+    }
+
+    (isRelativeImport, importPathAbs)
+  }
+
   func typecheckDeclarationsInImportedModules(self, modulePathAbs: String?, parsedModule: ParsedModule): Result<(TypedModule, ImportNode)[], Position> {
     val imports: (TypedModule, ImportNode)[] = []
     for importNode in parsedModule.imports {
-      var importNodePath = importNode.moduleName.name
-      val isRelativeImport = importNodePath.startsWith(".")
-      if !importNodePath.endsWith(".abra") importNodePath += ".abra"
-
-      val importPathAbs = if !isRelativeImport {
-        self.moduleLoader.stdRoot + "/" + importNodePath
-      } else {
-        if !modulePathAbs unreachable("missing absolute path for non-relative import '$importNodePath'")
-
-        self.moduleLoader.resolvePath(modulePath: importNodePath, relativeTo: modulePathAbs)
-      }
+      val (isRelativeImport, importPathAbs) = self.resolveImportPathAbs(importNode.moduleName.name, modulePathAbs)
 
       val typedImportModule = if self.project.modules[importPathAbs] |m| {
         if m.state == TypedModuleState.NotStarted {
@@ -4677,6 +4697,7 @@ pub type Typechecker {
         TypedAstNode(token: token, ty: expr.ty, kind: TypedAstNodeKind.Grouped(expr))
       }
       AstNodeKind.Identifier(kind) => try self.typecheckIdentifier(token, kind, typeHint)
+      AstNodeKind.SpecialIdentifier(kind) => try self.typecheckSpecialIdentifier(token, kind)
       AstNodeKind.Accessor(node) => try self.typecheckAccessor(token, node, typeHint, isInvocation: false)
       AstNodeKind.Invocation(node) => try self.typecheckInvocation(token, node, typeHint)
       AstNodeKind.Array(items) => try self.typecheckArray(token, items, typeHint)
@@ -4959,6 +4980,47 @@ pub type Typechecker {
     Ok(TypedAstNode(token: token, ty: variable.ty, kind: TypedAstNodeKind.Identifier(name, variable, fnTypeHint, varImportMod)))
   }
 
+  func typecheckSpecialIdentifier(self, token: Token, kind: SpecialIdentifierKind): Result<TypedAstNode, TypeError> {
+    var lspIdentKind: IdentifierKindMeta? = None
+    val replacement = match kind {
+      SpecialIdentifierKind.Line => {
+        val line = token.position.line
+
+        if self.lspMode {
+          lspIdentKind = Some(IdentifierKindMeta.SpecialIdentifier(kind: kind, replacement: "$line"))
+        }
+
+        TypedAstNode(
+          token: Token(position: token.position, kind: TokenKind.Int(line)),
+          ty: Type(kind: TypeKind.PrimitiveInt),
+          kind: TypedAstNodeKind.Literal(LiteralAstNode.Int(line)),
+        )
+      }
+      SpecialIdentifierKind.File => {
+        val fileName = self.currentModule.name
+
+        if self.lspMode {
+          lspIdentKind = Some(IdentifierKindMeta.SpecialIdentifier(kind: kind, replacement: fileName))
+        }
+
+        TypedAstNode(
+          token: Token(position: token.position, kind: TokenKind.String(fileName)),
+          ty: Type(kind: TypeKind.PrimitiveString),
+          kind: TypedAstNodeKind.Literal(LiteralAstNode.String(fileName)),
+        )
+      }
+      SpecialIdentifierKind.Import => return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidSpecialIdentifierUsage(kind)))
+      SpecialIdentifierKind.Unknown(name) => return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownSpecialIdentifier(name)))
+    }
+
+    if lspIdentKind |identKind| {
+      val ident = IdentifierMeta(name: kind.name(), kind: identKind)
+      self._addLSPIdent(token.position, ident)
+    }
+
+    Ok(replacement)
+  }
+
   func resolveAccessorPathSegment(self, ty: Type, label: Label, typeHint: Type?, isInvocation: Bool, optSafe = false): Result<AccessorPathSegment?, TypeError> {
     val foundSegment = match ty.kind {
       TypeKind.CouldNotDetermine => None
@@ -5181,8 +5243,27 @@ pub type Typechecker {
     val _mod = match root.kind {
       AstNodeKind.Identifier(identKind) => {
         match identKind {
-          IdentifierKind.Named(name) => self.findModuleByAlias(name)
+          IdentifierKind.Named(name) => {
+            if self.findModuleByAlias(name) |(mod, alias)| Some((mod, Some(alias))) else None
+          }
           _ => None
+        }
+      }
+      AstNodeKind.SpecialIdentifier(kind) => match kind {
+        SpecialIdentifierKind.Import(modPath) => {
+          val currentModulePathAbs = self.currentModule.name
+          val (_, importPathAbs) = self.resolveImportPathAbs(modPath, Some(currentModulePathAbs))
+
+        if self.lspMode {
+          val identKind = IdentifierKindMeta.SpecialIdentifier(kind: kind, replacement: field[1].name)
+          val ident = IdentifierMeta(name: kind.name(), kind: identKind)
+          self._addLSPIdent(root.token.position, ident)
+        }
+
+          if self.project.modules[importPathAbs] |mod| Some((mod, None)) else None
+        }
+        else => {
+          None
         }
       }
       _ => None
@@ -5196,7 +5277,13 @@ pub type Typechecker {
 
       val exportVar = match mod.exports[label.name] {
         None => {
-          self.addTypeError(TypeError(position: label.position, kind: TypeErrorKind.UnknownImportForAlias(label.name, aliasLabel)))
+          val kind = if aliasLabel |alias| {
+            TypeErrorKind.UnknownImportForAlias(label.name, alias)
+          } else {
+            TypeErrorKind.UnknownImport(moduleName: mod.name, importName: label.name)
+          }
+          self.addTypeError(TypeError(position: label.position, kind: kind))
+
           return (None, true)
         }
         Export.Variable(v) => v

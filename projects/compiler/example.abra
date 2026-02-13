@@ -1,1 +1,11 @@
-println("hello!")
+val l = #line
+println("line = $l")
+
+val f = #file
+println("file = '$f'")
+
+val x = #import("libc").STDOUT_FILENO
+println(x)
+
+val n = #import("libc").rand()
+println(n)
