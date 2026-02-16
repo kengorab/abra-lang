@@ -5861,10 +5861,7 @@ pub type Typechecker {
           if colStart <= invokeePosition.col && invokeePosition.col <= colEnd {
             match ident.kind {
               IdentifierKindMeta.Function(_, params, _, _) => {
-                val imports = injectedCode.imports.entries()
-                  .map(_i => "import \"${_i[0]}\" as ${_i[1]}")
-                  .join("\n")
-                ident.kind = IdentifierKindMeta.Macro(params, "$imports\n\n$contents")
+                ident.kind = IdentifierKindMeta.Macro(params, contents)
               }
             }
             break

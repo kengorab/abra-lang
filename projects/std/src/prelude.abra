@@ -1525,17 +1525,14 @@ pub func todo(message = "") {
 
 @macro
 pub func debug(value: Expr): InjectedCode {
-  val c = InjectedCode.new()
-  val libcMod = c.addImport("libc")
-
-  c
+  InjectedCode.new()
     .appendln("(if true {")
     .append("  val dbg = \"").appendExpr(value).appendln(" = \"")
-    .appendln("  $libcMod.write($libcMod.STDOUT_FILENO, dbg._buffer, dbg.length)")
+    .appendln("  #import(\"libc\").write(#import(\"libc\").STDOUT_FILENO, dbg._buffer, dbg.length)")
     .append("  val exp = ").appendExprln(value)
     .appendln("  val str = exp.toString()")
-    .appendln("  $libcMod.write($libcMod.STDOUT_FILENO, str._buffer, str.length)")
-    .appendln("  $libcMod.write($libcMod.STDOUT_FILENO, \"\\n\"._buffer, 1)")
+    .appendln("  #import(\"libc\").write(#import(\"libc\").STDOUT_FILENO, str._buffer, str.length)")
+    .appendln("  #import(\"libc\").write(#import(\"libc\").STDOUT_FILENO, \"\\n\"._buffer, 1)")
     .appendln("  exp")
     .appendln("} else { unreachable(\"will get optimized away\") })")
 }
@@ -1543,18 +1540,16 @@ pub func debug(value: Expr): InjectedCode {
 @macro
 pub func println(*values: Expr[]): InjectedCode {
   val c = InjectedCode.new()
-  val libcMod = c.addImport("libc")
-
   c.appendln("if true {")
   for value, idx in values {
     val isLast = idx == values.length - 1
 
     c.append("  val _${idx} = (").appendExpr(value).appendln(").toString()")
-    c.appendln("  $libcMod.write($libcMod.STDOUT_FILENO, _${idx}._buffer, _${idx}.length)")
+    c.appendln("  #import(\"libc\").write(#import(\"libc\").STDOUT_FILENO, _${idx}._buffer, _${idx}.length)")
     if isLast {
-      c.appendln("  $libcMod.write($libcMod.STDOUT_FILENO, \"\\n\"._buffer, 1)")
+      c.appendln("  #import(\"libc\").write(#import(\"libc\").STDOUT_FILENO, \"\\n\"._buffer, 1)")
     } else {
-      c.appendln("  $libcMod.write($libcMod.STDOUT_FILENO, \" \"._buffer, 1)")
+      c.appendln("  #import(\"libc\").write(#import(\"libc\").STDOUT_FILENO, \" \"._buffer, 1)")
     }
   }
 
