@@ -8,4 +8,4 @@ val x = #import("libc").STDOUT_FILENO
 println(x)
 
 val n = #import("libc").rand()
-println(n)
+debug(n)
