@@ -5879,14 +5879,6 @@ pub type Typechecker {
       self.addTypeError(TypeError(position: token.position, kind: kind))
       return TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
     }
-
-    for (mod, alias) in injectedCode.imports {
-      parsedModule.imports.push(ImportNode(
-        token: Token(position: Position(line: -1, col: -1), kind: TokenKind.Import),
-        kind: ImportKind.Alias(Label(name: alias, position: Position(line: -1, col: -1))),
-        moduleName: Label(name: mod, position: Position(line: -1, col: -1)),
-      ))
-    }
     val imports = try self.typecheckDeclarationsInImportedModules(None, parsedModule) else |position| {
       val kind = TypeErrorKind.ErrorWithinMacroOutput(macroName: fn.label.name, generatedContents: contents, innerError: ErrorWithinMacroOutputKind.TypeError(TypeError(position: position, kind: TypeErrorKind.CircularDependency)))
       self.addTypeError(TypeError(position: token.position, kind: kind))

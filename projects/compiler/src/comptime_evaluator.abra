@@ -446,29 +446,5 @@ func unmarshallInjectedCode(value: VmValue): Result<InjectedCode, String> {
     chunks.push(chunk)
   }
 
-  val imports: Map<String, String> = {}
-  val importsValue = instance.expectField(1).expectInstance("InjectedCode imports is Map<String, String>")
-  val importsSize = importsValue.expectField(0).expectInt("Map field 0 is size")
-  if importsSize != 0 {
-    val importsEntries = importsValue.expectField(1).expectInstance("Map field 1 is _entries (MapEntry<String, String>[])")
-    val importsEntriesLength = importsEntries.expectField(0).expectInt("Array field 0 is length")
-    val (importsEntriesItems, _) = importsEntries.expectField(1).expectPointer("Array field 1 is buffer")
-    for i in 0:importsEntriesLength {
-      var next = try importsEntriesItems[i] else unreachable("chunks should be of size $importsEntriesLength but was actually ${importsEntriesItems.length}")
-
-      while next != VmValue.OptionNone {
-        val entry = next.expectInstance("MapEntry is instance")
-        val entryIsEmpty = entry.expectField(3).expectBool("MapEntry field 3 is _empty")
-        if entryIsEmpty break
-
-        val entryKey = try unmarshallString(entry.expectField(0))
-        val entryValue = try unmarshallString(entry.expectField(1))
-        imports[entryKey] = entryValue
-
-        next = entry.expectField(2)
-      }
-    }
-  }
-
-  Ok(InjectedCode(chunks: chunks, imports: imports))
+  Ok(InjectedCode(chunks: chunks))
 }

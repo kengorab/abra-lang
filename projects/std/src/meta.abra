@@ -2,17 +2,8 @@ pub decorator macro { }
 
 pub type InjectedCode {
   pub chunks: String[] = []
-  pub imports: Map<String, String> = {}
 
   pub func new(): InjectedCode = InjectedCode()
-
-  pub func addImport(self, module: String): String {
-    if self.imports[module] |alias| return alias
-
-    val alias = "__imp_${module}_${String.random(4)}__"
-    self.imports[module] = alias
-    alias
-  }
 
   pub func append(self, str: String): InjectedCode {
     self.chunks.push(str)
