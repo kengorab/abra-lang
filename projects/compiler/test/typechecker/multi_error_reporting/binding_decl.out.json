@@ -159,7 +159,7 @@
                     "kind": "could not determine"
                   },
                   "node": {
-                    "kind": "placeholder"
+                    ERROR: There should never be a Placeholder node emitted
                   }
                 }
               }

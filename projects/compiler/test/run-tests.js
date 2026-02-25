@@ -888,17 +888,17 @@ const IR_COMPILER_TESTS = [
 const runners = [
   {
     suite: 'lexer',
-    runner: new TestRunner('lexer_test', `${__dirname}/../src/lexer.test.abra`),
+    runner: new TestRunner('lexer_test', `${__dirname}/../../cli/main.abra`, { cliMode: 'TOKENS_ONLY' }),
     tests: LEXER_TESTS,
   },
   {
     suite: 'parser',
-    runner: new TestRunner('parser_test', `${__dirname}/../src/parser.test.abra`),
+    runner: new TestRunner('parser_test', `${__dirname}/../../cli/main.abra`, { cliMode: 'AST' }),
     tests: PARSER_TESTS,
   },
   {
     suite: 'typechecker',
-    runner: new TestRunner('typechecker_test', `${__dirname}/../src/typechecker.test.abra`),
+    runner: new TestRunner('typechecker_test', `${__dirname}/../../cli/main.abra`, { cliMode: 'TYPED_AST' }),
     tests: TYPECHECKER_TESTS,
   },
   {

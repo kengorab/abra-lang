@@ -1,10 +1,12 @@
 import "process" as process
 import BuildCmd, build from "./cmd/build"
+import "./cmd/emit_ir/cmd" as emitIr
 
 enum SubcommandParseError {
   NoCommand
   MissingRequiredValue(name: String, subcommand: String? = None)
   MissingRequiredPositionalArg(name: String, subcommand: String? = None)
+  InvalidArgumentValue(name: String, value: String, options: String[] = [])
   UnknownFlag(name: String, subcommand: String? = None)
 }
 
@@ -17,6 +19,7 @@ enum Subcommand {
   Help
   Build(inner: BuildCmd)
   Default(inner: DefaultCmd)
+  EmitIr(inner: emitIr.EmitIrCmd)
 
   func printUsage() {
     stdoutWriteln("USAGE")
@@ -46,6 +49,20 @@ enum Subcommand {
     stdoutWriteln("      <file-path>         Path to the abra root source file to build")
     stdoutWriteln("      <program-args>...   Arguments to pass to the built abra program if [-r/--run] is passed;")
     stdoutWriteln("                          will be discarded if [-r/--run] is not passed")
+    stdoutWriteln()
+    stdoutWriteln("  emit-ir                 Outputs intermediate representation, depending on <mode>")
+    stdoutWriteln("    USAGE")
+    stdoutWriteln("      abra emit-ir [OPTIONS] <input-path>")
+    stdoutWriteln("    OPTIONS")
+    stdoutWriteln("      -m/--mode           Which info to emit for file at <input-path>, available options are:")
+    stdoutWriteln("                            TOKENS_ONLY    The tokenized representation")
+    stdoutWriteln("                            AST            The parsed Abstract Syntax Tree")
+    stdoutWriteln("                            TYPED_AST      The parsed Abstract Syntax Tree, with type information added")
+    stdoutWriteln("                            IR             The target-agnostic intermediate representation (default)")
+    stdoutWriteln("      -i/--ignore-errors  Ignore errors when building selected info, emit info anyway (default false)")
+    stdoutWriteln("                          Note: only applicable for TYPED_AST mode, will be ignored otherwise")
+    stdoutWriteln("    ARGS")
+    stdoutWriteln("      <file-path>         Path to the abra root source file to build")
   }
 
   func parse(programArguments: String[]): Result<Subcommand, SubcommandParseError> {
@@ -87,6 +104,39 @@ enum Subcommand {
         val cmd = BuildCmd(outputFile: outputFile, run: run, inputFile: inputFile, programArguments: programArgs)
         Ok(Subcommand.Build(cmd))
       }
+      "emit-ir" => {
+        var inputFileArg: String? = None
+        var mode = emitIr.EmitIrMode.Ir
+        var ignoreErrors = false
+
+        while true {
+          val arg = try args.next() else break
+          if arg == "-m" || arg == "--mode" {
+            val modeStr = try args.next() else return Err(SubcommandParseError.MissingRequiredValue(arg, Some("emit-ir")))
+            mode = match modeStr {
+              "TOKENS_ONLY" => emitIr.EmitIrMode.TokensOnly
+              "AST" => emitIr.EmitIrMode.Ast
+              "TYPED_AST" => emitIr.EmitIrMode.TypedAst
+              "IR" => emitIr.EmitIrMode.Ir
+              else => return Err(SubcommandParseError.InvalidArgumentValue(arg, modeStr, ["TOKENS_ONLY", "AST", "TYPED_AST", "IR"]))
+            }
+            continue
+          }
+
+          if arg == "-i" || arg == "--ignore-errors" {
+            ignoreErrors = true
+            continue
+          }
+
+          if arg.startsWith("-") return Err(SubcommandParseError.UnknownFlag(arg, Some("emit-ir")))
+
+          inputFileArg = Some(arg)
+          break
+        }
+        val inputFile = try inputFileArg else return Err(SubcommandParseError.MissingRequiredPositionalArg("input file", Some("emit-ir")))
+
+        Ok(Subcommand.EmitIr(emitIr.EmitIrCmd(mode: mode, inputFile: inputFile, ignoreErrors: ignoreErrors)))
+      }
       else arg => {
         if arg.startsWith("-") return Err(SubcommandParseError.UnknownFlag(arg))
 
@@ -101,7 +151,7 @@ enum Subcommand {
 }
 
 func handleDefault(cmd: DefaultCmd) {
-  
+
 }
 
 func main() {
@@ -115,6 +165,16 @@ func main() {
       SubcommandParseError.MissingRequiredPositionalArg(name, cmd) => {
         val suffix = if cmd |cmd| " for command '$cmd'" else ""
         "value required for positional argument '$name'$suffix"
+      }
+      SubcommandParseError.InvalidArgumentValue(name, value, options) => {
+        val first = "invalid value for argument '$name': '$value'"
+
+        if !options.isEmpty() {
+          val second = "valid options include ${options.map(o => "'$o'").join(", ")}"
+          first + "\n" + second
+        } else {
+          first
+        }
       }
       SubcommandParseError.UnknownFlag(name, cmd) => {
         val suffix = if cmd |cmd| " for command '$cmd'" else ""
@@ -131,6 +191,7 @@ func main() {
     Subcommand.Help => Subcommand.printUsage()
     Subcommand.Build(cmd) => build(cmd)
     Subcommand.Default(cmd) => handleDefault(cmd)
+    Subcommand.EmitIr(cmd) => emitIr.run(cmd)
   }
 }
 main()
