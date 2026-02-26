@@ -1172,20 +1172,21 @@ pub type Generator {
         self.emit(Instruction(op: Operation.Return(Some(ident))))
       }
     } else {
+      var retVal: Value? = None
+      val doReturn = fn.scope.terminator != Some(tc.Terminator.Returning)
       for node, idx in fn.body {
-        if idx == fn.body.length - 1 && fn.scope.terminator != Some(tc.Terminator.Returning) {
-          if retTy != IrType.Unit {
-            val retVal = self.genExpression(node, ctx.concreteGenerics)
-            if node.ty.kind != tc.TypeKind.Never {
-              self.emit(Instruction(op: Operation.Return(Some(retVal))))
-            }
-          } else {
-            self.genStatement(node, ctx.concreteGenerics)
-            self.emit(Instruction(op: Operation.Return()))
+        if idx == fn.body.length - 1 && doReturn && retTy != IrType.Unit {
+          val v = self.genExpression(node, ctx.concreteGenerics)
+          if node.ty.kind != tc.TypeKind.Never {
+            retVal = Some(v)
           }
         } else {
           self.genStatement(node, ctx.concreteGenerics)
         }
+      }
+
+      if doReturn {
+        self.emit(Instruction(op: Operation.Return(retVal)))
       }
     }
 
