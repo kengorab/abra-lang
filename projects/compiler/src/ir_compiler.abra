@@ -737,7 +737,6 @@ pub type Compiler {
           }
         }
         val argVals = args.map(a => self.irValueToQbeValue(a))
-          val closureMem = self.callMalloc(qbe.Value.Int(1))
         if self.irTypeToQbeReturnType(ret) |ret| {
           if fnName == "open" {
             // ew
