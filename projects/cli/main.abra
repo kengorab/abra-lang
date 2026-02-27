@@ -188,7 +188,7 @@ func main() {
 
   match cmd {
     Subcommand.Help => Subcommand.printUsage()
-    Subcommand.Build(cmd) => cmdBuild.run(cmd)
+    Subcommand.Build(cmd) => cmdBuild.runBuild(cmd)
     Subcommand.Default(cmd) => handleDefault(cmd)
     Subcommand.EmitIr(cmd) => cmdEmitIr.run(cmd)
   }

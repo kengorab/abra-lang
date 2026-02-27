@@ -16,7 +16,7 @@ pub enum BuildTarget {
   JavaScript
 }
 
-pub func run(cmd: BuildCmd) {
+pub func runBuild(cmd: BuildCmd) {
   val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {
     stdoutWriteln("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
     process.exit(1)
