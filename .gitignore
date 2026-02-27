@@ -1,5 +1,6 @@
 .idea
 .DS_Store
 **/._abra
+**/.abra
 projects/compiler/ext/bdwgc
 projects/compiler/scripts/*.tar.gz
