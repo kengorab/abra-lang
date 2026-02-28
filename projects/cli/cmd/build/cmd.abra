@@ -16,29 +16,30 @@ pub enum BuildTarget {
   JavaScript
 }
 
-pub func runBuild(cmd: BuildCmd) {
-  val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {
-    stdoutWriteln("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
+pub func runBuild(cmd: BuildCmd): String? {
+  val abraRoot = try process.getEnvVar("ABRA_ROOT") else {
+    stdoutWriteln("Could not find ABRA_ROOT (make sure \$ABRA_ROOT environment variable is set)")
     process.exit(1)
   }
+  val abraStdRoot = try process.getEnvVar("ABRA_STD") else "$abraRoot/std"
 
   val inputPath = Path.fromString(cmd.inputFile)
-  val (entryMod, project) = try typecheck(abraStdRoot, inputPath) else return
+  val (entryMod, project) = try typecheck(abraStdRoot, inputPath) else return None
 
   val builder = try Compiler.compile(project, entryMod) else |e| {
-    stdoutWriteln(e.getMessage())
+    println(e.getMessage())
     process.exit(1)
   }
 
   var compilationUnitName = if cmd.outputFile |outputFile| {
     val outputPath = Path.fromString(outputFile)
     try outputPath.segments[-1] else {
-      stdoutWriteln("Empty output file provided, cannot proceed")
+      println("Empty output file provided, cannot proceed")
       process.exit(1)
     }
   } else {
     val lastSegment = try inputPath.segments[-1] else {
-      stdoutWriteln("Empty input file provided, cannot proceed")
+      println("Empty input file provided, cannot proceed")
       process.exit(1)
     }
     lastSegment.replaceAll(".abra", "") // todo: better Path API to get extensionless segment
@@ -46,11 +47,16 @@ pub func runBuild(cmd: BuildCmd) {
 
   val cwd = fs.getCurrentWorkingDirectory()
   val dotAbraDir = "$cwd/.abra"
-  // todo: create .abra file if not exists
+  if !fs.File.exists(dotAbraDir) {
+    if !fs.createDir(dotAbraDir) {
+      println("Error creating .abra directory at '$cwd', cannot proceed")
+      process.exit(1)
+    }
+  }
 
   val ssaOutPath = "$dotAbraDir/$compilationUnitName.ssa"
   val ssaOutFile = try fs.File.create(ssaOutPath) else |e| {
-    stdoutWriteln(e.toString())
+    println(e.toString())
     process.exit(1)
   }
 
@@ -63,14 +69,17 @@ pub func runBuild(cmd: BuildCmd) {
     .addArg(ssaOutPath)
     .execAndCaptureOutput()
   if !qbeCmdRes.status.isSuccess() {
-    stdoutWriteln("qbe error:")
-    stdoutWriteln(qbeCmdRes.stderr)
+    if !qbeCmdRes.stderr.isEmpty() {
+      println(qbeCmdRes.stderr)
+    } else {
+      println(qbeCmdRes.stdout)
+    }
     process.exit(1)
   }
 
   val execOutPath = cmd.outputFile ?: "$dotAbraDir/$compilationUnitName"
   val clangCmdRes = process.Command(program: "clang") // todo: switch to gcc?
-    .addArg("/Users/kengorab/.abra/include/libgc.a") // todo: replace with path to abra installation
+    .addArg("$abraRoot/include/libgc.a")
     .addArg(objOutPath)
     .addArg("-o").addArg(execOutPath)
     .addArg("-lm")
@@ -78,8 +87,13 @@ pub func runBuild(cmd: BuildCmd) {
     .addArg("-Wl,-w")
     .execAndCaptureOutput()
   if !clangCmdRes.status.isSuccess() {
-    stdoutWriteln("clang error:")
-    stdoutWriteln(clangCmdRes.stderr)
+    if !clangCmdRes.stderr.isEmpty() {
+      println(clangCmdRes.stderr)
+    } else {
+      println(clangCmdRes.stdout)
+    }
     process.exit(1)
   }
+
+  Some(execOutPath)
 }

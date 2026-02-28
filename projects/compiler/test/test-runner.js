@@ -91,7 +91,7 @@ class TestRunner {
   async _runCompilerTest(bin, testFile, args = [], env = {}) {
     const testFilePath = `${__dirname}/${testFile}`
 
-    async function buildAndRunTestBin(testFilePath, compilerBin, args, env, target) {
+    async function buildAndRunTestBin(testFilePath, compilerBin, args, env, target, cliMode) {
       const testPathSegs = testFilePath.split('/')
       const testName = testPathSegs[testPathSegs.length - 1].replace('.abra', '')
 
@@ -105,8 +105,13 @@ class TestRunner {
       } else if (target === 'vm') {
         return runCommand(compilerBin, [testFilePath, ...args], env)
       } else if (target === 'native') {
-        await runCommand('abra', ['build', '-o', testName, testFilePath], { COMPILER_BIN: compilerBin })
-        return runCommand(`${process.cwd()}/._abra/${testName}`, args, env)
+        if (cliMode === 'COMPILER') {
+          await runCommand(compilerBin, ['build', testFilePath])
+          return runCommand(`${process.cwd()}/.abra/${testName}`, args, env)
+        } else {
+          await runCommand('abra', ['build', '-o', testName, testFilePath], { COMPILER_BIN: compilerBin })
+          return runCommand(`${process.cwd()}/._abra/${testName}`, args, env)
+        }
       } else {
         throw new Error(`Unsupported target ${target}`)
       }
@@ -114,7 +119,7 @@ class TestRunner {
 
     try {
       const [actual, expectedOutput] = await Promise.all([
-        buildAndRunTestBin(testFilePath, bin, args, env, this.target),
+        buildAndRunTestBin(testFilePath, bin, args, env, this.target, this.cliMode),
         fs.readFile(testFilePath, { encoding: 'utf8' }),
       ])
 

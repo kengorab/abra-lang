@@ -1,5 +1,6 @@
 import "process" as process
 import "./cmd/build/cmd" as cmdBuild
+import "./cmd/build_and_run/cmd" as cmdBuildAndRun
 import "./cmd/emit_ir/cmd" as cmdEmitIr
 
 enum SubcommandParseError {
@@ -17,7 +18,7 @@ type DefaultCmd {
 
 enum Subcommand {
   Help
-  Default(inner: DefaultCmd)
+  BuildAndRun(inner: cmdBuildAndRun.BuildAndRunCmd)
   Build(inner: cmdBuild.BuildCmd)
   EmitIr(inner: cmdEmitIr.EmitIrCmd)
 
@@ -93,6 +94,7 @@ enum Subcommand {
           if arg == "-o" {
             val dir = try args.next() else return Err(SubcommandParseError.MissingRequiredValue("-o", Some("build")))
             outputFile = Some(dir)
+            continue
           }
           if arg.startsWith("-") return Err(SubcommandParseError.UnknownFlag(arg, Some("build")))
 
@@ -142,15 +144,11 @@ enum Subcommand {
         val programArgs: String[] = []
         while args.next() |arg| programArgs.push(arg)
 
-        val cmd = DefaultCmd(inputFile: arg, programArguments: programArgs)
-        Ok(Subcommand.Default(cmd))
+        val cmd = cmdBuildAndRun.BuildAndRunCmd(inputFile: arg, programArguments: programArgs)
+        Ok(Subcommand.BuildAndRun(cmd))
       }
     }
   }
-}
-
-func handleDefault(cmd: DefaultCmd) {
-
 }
 
 func main() {
@@ -189,7 +187,7 @@ func main() {
   match cmd {
     Subcommand.Help => Subcommand.printUsage()
     Subcommand.Build(cmd) => cmdBuild.runBuild(cmd)
-    Subcommand.Default(cmd) => handleDefault(cmd)
+    Subcommand.BuildAndRun(cmd) => cmdBuildAndRun.buildAndRun(cmd)
     Subcommand.EmitIr(cmd) => cmdEmitIr.run(cmd)
   }
 }

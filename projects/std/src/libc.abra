@@ -31,6 +31,14 @@ pub func errno(): Int
 @external("strerror")
 pub func strerror(errno: Int): Pointer<Byte>
 
+pub func getErrorString(): String {
+  val buf = strerror(errno())
+  val len = strlen(buf)
+  val str = String.withLength(len)
+  str._buffer.copyFrom(0, buf, 0, len)
+  str
+}
+
 pub val O_RDONLY = 0
 pub val O_WRONLY = 1
 pub val O_RDWR   = 2
@@ -55,6 +63,9 @@ pub func read(fd: Int, buf: Pointer<Byte>, count: Int): Int
 
 @external("stat")
 pub func stat(pathname: Pointer<Byte>, statbuf: Pointer<Byte>): Int
+
+@external("mkdir")
+pub func mkdir(pathname: Pointer<Byte>, mode: Int): Int
 
 pub val STDIN_FILENO  = 0
 pub val STDOUT_FILENO = 1

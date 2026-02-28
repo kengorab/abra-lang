@@ -903,7 +903,7 @@ const runners = [
   },
   {
     suite: 'compiler',
-    runner: new TestRunner('compiler_test', `${__dirname}/../src/compiler.test.abra`),
+    runner: new TestRunner('compiler_test', `${__dirname}/../../cli/main.abra`, { cliMode: 'COMPILER' }),
     tests: COMPILER_TESTS,
   },
   {
