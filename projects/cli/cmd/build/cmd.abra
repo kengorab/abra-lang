@@ -60,6 +60,20 @@ pub func runBuild(cmd: BuildCmd): String? {
     process.exit(1)
   }
 
+  val lsRes = process.Command(program: "ls")
+    .addArg("-la")
+    .addArg(dotAbraDir)
+    .execAndCaptureOutput()
+  if !lsRes.status.isSuccess() {
+    if !lsRes.stderr.isEmpty() {
+      println(lsRes.stderr)
+    } else {
+      println(lsRes.stdout)
+    }
+    process.exit(1)
+  }
+  println(lsRes.stdout)
+
   builder.writeToFile(ssaOutFile)
   ssaOutFile.close()
 
