@@ -147,6 +147,6 @@ pub func getCurrentWorkingDirectory(): String {
 }
 
 pub func createDir(path: String): Bool {
-  val mode = 448 // 448 is 0700
+  val mode = 493 // 493 is 0755
   libc.mkdir(path._buffer, mode) == 0
 }
