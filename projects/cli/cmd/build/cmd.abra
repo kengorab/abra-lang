@@ -46,6 +46,14 @@ pub func runBuild(cmd: BuildCmd): String? {
   }
 
   val cwd = fs.getCurrentWorkingDirectory()
+  println("before creating dotAbraDir")
+  stdoutWriteln(process.Command(program: "ls")
+    .addArg("-la")
+    .addArg(cwd)
+    .execAndCaptureOutput()
+    .stdout
+  )
+
   val dotAbraDir = "$cwd/.abra"
   if !fs.File.exists(dotAbraDir) {
     if !fs.createDir(dotAbraDir) {
@@ -53,6 +61,14 @@ pub func runBuild(cmd: BuildCmd): String? {
       process.exit(1)
     }
   }
+
+  println("after creating $dotAbraDir")
+  stdoutWriteln(process.Command(program: "ls")
+    .addArg("-la")
+    .addArg(cwd)
+    .execAndCaptureOutput()
+    .stdout
+  )
 
   val ssaOutPath = "$dotAbraDir/$compilationUnitName.ssa"
   debug(ssaOutPath)
