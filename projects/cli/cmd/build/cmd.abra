@@ -55,10 +55,12 @@ pub func runBuild(cmd: BuildCmd): String? {
   }
 
   val ssaOutPath = "$dotAbraDir/$compilationUnitName.ssa"
+  debug(ssaOutPath)
   val ssaOutFile = try fs.File.create(ssaOutPath) else |e| {
     println(e.toString())
     process.exit(1)
   }
+  debug(ssaOutFile)
 
   val lsRes = process.Command(program: "ls")
     .addArg("-la")
