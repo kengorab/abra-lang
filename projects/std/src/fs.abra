@@ -75,7 +75,7 @@ pub type File {
 
     val mode = 420 // 420 is 0644, but octal numbers aren't supported yet...
     val fd = libc.open(path._buffer, oflag, mode)
-    if fd == -1 {
+    if fd == 0xFFFFFFFF {
       val errMsg = libc.getErrorString()
       return Err(error: FileIOError.CouldNotOpen(message: "Could not open '$path' for writing: $errMsg"))
     }
