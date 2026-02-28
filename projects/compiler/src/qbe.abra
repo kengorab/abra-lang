@@ -638,13 +638,22 @@ pub type Block {
     Ok(local)
   }
 
-  pub func buildCallRaw(self, fnName: String, returnType: QbeType, arguments: Value[], dst: String? = None, env: Value? = None): Result<Value, String> {
+  pub func buildCallRaw(self, fnName: String, returnType: QbeType, arguments: Value[], dst: String? = None, env: Value? = None): Value {
     val dest = dst ?: self._nextLocal()
     val local = Value.Ident(dest, returnType)
 
     self.append(Instruction.Call(dst: Some(Dest(name: local.repr(), ty: returnType)), fn: Value.Global(fnName, QbeType.Pointer), args: arguments, env: env))
 
-    Ok(local)
+    local
+  }
+
+  pub func buildCallRawVariadic(self, fnName: String, returnType: QbeType, arguments: Value[], varargsIdx: Int, dst: String? = None, env: Value? = None): Value {
+    val dest = dst ?: self._nextLocal()
+    val local = Value.Ident(dest, returnType)
+
+    self.append(Instruction.CallVarargs(dst: Some(Dest(name: local.repr(), ty: returnType)), fn: Value.Global(fnName, QbeType.Pointer), varargsIdx: varargsIdx, args: arguments, env: None))
+
+    local
   }
 
   pub func buildVoidCall(self, callable: Callable, arguments: Value[], envPtr: Value? = None) {

@@ -1,10 +1,12 @@
 import "process" as process
-import BuildCmd, build from "./cmd/build"
+import "./cmd/build/cmd" as cmdBuild
+import "./cmd/emit_ir/cmd" as cmdEmitIr
 
 enum SubcommandParseError {
   NoCommand
   MissingRequiredValue(name: String, subcommand: String? = None)
   MissingRequiredPositionalArg(name: String, subcommand: String? = None)
+  InvalidArgumentValue(name: String, value: String, options: String[] = [])
   UnknownFlag(name: String, subcommand: String? = None)
 }
 
@@ -15,8 +17,9 @@ type DefaultCmd {
 
 enum Subcommand {
   Help
-  Build(inner: BuildCmd)
   Default(inner: DefaultCmd)
+  Build(inner: cmdBuild.BuildCmd)
+  EmitIr(inner: cmdEmitIr.EmitIrCmd)
 
   func printUsage() {
     stdoutWriteln("USAGE")
@@ -38,14 +41,28 @@ enum Subcommand {
     stdoutWriteln()
     stdoutWriteln("  build                   Compiles the abra source file to selected target")
     stdoutWriteln("    USAGE")
-    stdoutWriteln("      abra build [OPTIONS] <input-path> [<program-args>...]")
+    stdoutWriteln("      abra build [OPTIONS] <input-path>")
     stdoutWriteln("    OPTIONS")
-    stdoutWriteln("      -r/--run            Run after building, forwarding <program-args>")
-    stdoutWriteln("      -o <out-path>       Where the built artifact should be placed")
+    stdoutWriteln("      -t/--target         Compile target, available options are:")
+    stdoutWriteln("                            bin    Native binary (default option)")
+    stdoutWriteln("                            js     JavaScript")
+    stdoutWriteln("      -o <out-path>       Where the built artifact should be placed (defaults to ./.abra/<input>)")
     stdoutWriteln("    ARGS")
     stdoutWriteln("      <file-path>         Path to the abra root source file to build")
-    stdoutWriteln("      <program-args>...   Arguments to pass to the built abra program if [-r/--run] is passed;")
-    stdoutWriteln("                          will be discarded if [-r/--run] is not passed")
+    stdoutWriteln()
+    stdoutWriteln("  emit-ir                 Outputs intermediate representation, depending on <mode>")
+    stdoutWriteln("    USAGE")
+    stdoutWriteln("      abra emit-ir [OPTIONS] <input-path>")
+    stdoutWriteln("    OPTIONS")
+    stdoutWriteln("      -m/--mode           Which info to emit for file at <input-path>, available options are:")
+    stdoutWriteln("                            TOKENS_ONLY    The tokenized representation")
+    stdoutWriteln("                            AST            The parsed Abstract Syntax Tree")
+    stdoutWriteln("                            TYPED_AST      The parsed Abstract Syntax Tree, with type information added")
+    stdoutWriteln("                            IR             The target-agnostic intermediate representation (default option)")
+    stdoutWriteln("      -i/--ignore-errors  Ignore errors when building selected info, emit info anyway (defaults to false)")
+    stdoutWriteln("                          Note: only applicable for TYPED_AST mode, will be ignored otherwise")
+    stdoutWriteln("    ARGS")
+    stdoutWriteln("      <file-path>         Path to the abra root source file to build")
   }
 
   func parse(programArguments: String[]): Result<Subcommand, SubcommandParseError> {
@@ -59,33 +76,65 @@ enum Subcommand {
       "-h" => Ok(Subcommand.Help)
       "build" => {
         var outputFile: String? = None
-        var run = false
         var inputFileArg: String? = None
+        var buildTarget = cmdBuild.BuildTarget.NativeBin
 
         while true {
-          match args.next() {
-            "-o" => {
-              val dir = try args.next() else return Err(SubcommandParseError.MissingRequiredValue("-o", Some("build")))
-              outputFile = Some(dir)
+          val arg = try args.next() else break
+          if arg == "-t" || arg == "--target" {
+            val modeStr = try args.next() else return Err(SubcommandParseError.MissingRequiredValue(arg, Some("build")))
+            buildTarget = match modeStr {
+              "bin" => cmdBuild.BuildTarget.NativeBin
+              "js" => cmdBuild.BuildTarget.JavaScript
+              else => return Err(SubcommandParseError.InvalidArgumentValue(arg, modeStr, ["bin", "js"]))
             }
-            "-r" => run = true
-            "--run" => run = true
-            None => break
-            else arg => {
-              if arg.startsWith("-") return Err(SubcommandParseError.UnknownFlag(arg, Some("build")))
-
-              inputFileArg = Some(arg)
-              break
-            }
+            continue
           }
+          if arg == "-o" {
+            val dir = try args.next() else return Err(SubcommandParseError.MissingRequiredValue("-o", Some("build")))
+            outputFile = Some(dir)
+          }
+          if arg.startsWith("-") return Err(SubcommandParseError.UnknownFlag(arg, Some("build")))
+
+          inputFileArg = Some(arg)
+          break
         }
         val inputFile = try inputFileArg else return Err(SubcommandParseError.MissingRequiredPositionalArg("input file", Some("build")))
 
-        val programArgs: String[] = []
-        while args.next() |arg| programArgs.push(arg)
-
-        val cmd = BuildCmd(outputFile: outputFile, run: run, inputFile: inputFile, programArguments: programArgs)
+        val cmd = cmdBuild.BuildCmd(outputFile: outputFile, inputFile: inputFile, target: buildTarget)
         Ok(Subcommand.Build(cmd))
+      }
+      "emit-ir" => {
+        var inputFileArg: String? = None
+        var mode = cmdEmitIr.EmitIrMode.Ir
+        var ignoreErrors = false
+
+        while true {
+          val arg = try args.next() else break
+          if arg == "-m" || arg == "--mode" {
+            val modeStr = try args.next() else return Err(SubcommandParseError.MissingRequiredValue(arg, Some("emit-ir")))
+            mode = match modeStr {
+              "TOKENS_ONLY" => cmdEmitIr.EmitIrMode.TokensOnly
+              "AST" => cmdEmitIr.EmitIrMode.Ast
+              "TYPED_AST" => cmdEmitIr.EmitIrMode.TypedAst
+              "IR" => cmdEmitIr.EmitIrMode.Ir
+              else => return Err(SubcommandParseError.InvalidArgumentValue(arg, modeStr, ["TOKENS_ONLY", "AST", "TYPED_AST", "IR"]))
+            }
+            continue
+          }
+          if arg == "-i" || arg == "--ignore-errors" {
+            ignoreErrors = true
+            continue
+          }
+
+          if arg.startsWith("-") return Err(SubcommandParseError.UnknownFlag(arg, Some("emit-ir")))
+
+          inputFileArg = Some(arg)
+          break
+        }
+        val inputFile = try inputFileArg else return Err(SubcommandParseError.MissingRequiredPositionalArg("input file", Some("emit-ir")))
+
+        Ok(Subcommand.EmitIr(cmdEmitIr.EmitIrCmd(mode: mode, inputFile: inputFile, ignoreErrors: ignoreErrors)))
       }
       else arg => {
         if arg.startsWith("-") return Err(SubcommandParseError.UnknownFlag(arg))
@@ -101,7 +150,7 @@ enum Subcommand {
 }
 
 func handleDefault(cmd: DefaultCmd) {
-  
+
 }
 
 func main() {
@@ -116,6 +165,16 @@ func main() {
         val suffix = if cmd |cmd| " for command '$cmd'" else ""
         "value required for positional argument '$name'$suffix"
       }
+      SubcommandParseError.InvalidArgumentValue(name, value, options) => {
+        val first = "invalid value for argument '$name': '$value'"
+
+        if !options.isEmpty() {
+          val second = "valid options include ${options.map(o => "'$o'").join(", ")}"
+          first + "\n" + second
+        } else {
+          first
+        }
+      }
       SubcommandParseError.UnknownFlag(name, cmd) => {
         val suffix = if cmd |cmd| " for command '$cmd'" else ""
         "unknown flag '$name'$suffix"
@@ -129,8 +188,9 @@ func main() {
 
   match cmd {
     Subcommand.Help => Subcommand.printUsage()
-    Subcommand.Build(cmd) => build(cmd)
+    Subcommand.Build(cmd) => cmdBuild.runBuild(cmd)
     Subcommand.Default(cmd) => handleDefault(cmd)
+    Subcommand.EmitIr(cmd) => cmdEmitIr.run(cmd)
   }
 }
 main()

@@ -1,0 +1,102 @@
+import "fs" as fs
+import "process" as process
+import Path from "path"
+import Lexer, Token from "../../../compiler/src/lexer"
+import printTokensAsJson from "./jsonify_token"
+import Parser from "../../../compiler/src/parser"
+import printParsedModuleAsJson from "./jsonify_ast"
+import typecheck from "../common"
+import printTypedAst from "./jsonify_typed_ast"
+import Generator, Writer from "../../../compiler/src/ir"
+
+pub type EmitIrCmd {
+  pub mode: EmitIrMode
+  pub inputFile: String
+  pub ignoreErrors: Bool
+}
+
+pub enum EmitIrMode {
+  TokensOnly
+  Ast
+  TypedAst
+  Ir
+}
+
+pub func run(cmd: EmitIrCmd) {
+  match cmd.mode {
+    EmitIrMode.TokensOnly => emitTokens(cmd.inputFile)
+    EmitIrMode.Ast => emitAst(cmd.inputFile)
+    EmitIrMode.TypedAst => emitTypedAst(cmd.inputFile, cmd.ignoreErrors)
+    EmitIrMode.Ir => emitIr(cmd.inputFile)
+  }
+}
+
+func emitTokens(inputFile: String) {
+  val contents = try fs.readFile(inputFile) else |e| {
+    println("Could not read file: '$e'")
+    process.exit(1)
+  }
+
+  val tokens = try Lexer.tokenize(contents) else |error| {
+    stdoutWrite(error.getMessage(inputFile, contents))
+    return
+  }
+
+  printTokensAsJson(tokens)
+}
+
+func emitAst(inputFile: String) {
+  val contents = try fs.readFile(inputFile) else |e| {
+    println("Could not read file: '$e'")
+    process.exit(1)
+  }
+
+  val tokens = try Lexer.tokenize(contents) else |error| {
+    stdoutWrite(error.getMessage(inputFile, contents))
+    return
+  }
+
+  val parsedModule = try Parser.parse(tokens) else |error| {
+    stdoutWrite(error.getMessage(inputFile, contents))
+    return
+  }
+
+  printParsedModuleAsJson(parsedModule)
+}
+
+func emitTypedAst(inputFile: String, ignoreErrors: Bool) {
+  val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {
+    stdoutWriteln("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
+    process.exit(1)
+  }
+
+  val inputPath = Path.fromString(inputFile)
+  val (entryMod, project) = try typecheck(abraStdRoot, inputPath, ignoreErrors, exitOnError: false) else return
+
+  val allModules = project.sortedModules(entryMod)
+
+  val filteredModules = allModules.filter(m => {
+    !m.name.endsWith("/_intrinsics.abra") &&
+    !m.name.endsWith("/libc.abra") &&
+    !m.name.endsWith("/io.abra") &&
+    !m.name.endsWith("/process.abra") &&
+    !m.name.endsWith("/prelude.abra") &&
+    !m.name.endsWith("/meta.abra")
+  })
+  printTypedAst(filteredModules)
+}
+
+func emitIr(inputFile: String) {
+  val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {
+    stdoutWriteln("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
+    process.exit(1)
+  }
+
+  val inputPath = Path.fromString(inputFile)
+  val (_, project) = try typecheck(abraStdRoot, inputPath, ignoreErrors: false, exitOnError: false) else return
+
+  val ir = Generator.generateIR(project)
+
+  val w = Writer(write: str => stdoutWrite(str))
+  ir.render(w)
+}

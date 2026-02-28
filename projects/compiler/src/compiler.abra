@@ -198,7 +198,7 @@ pub type Compiler {
     val (fnNamesPtr, fnNamesIdx) = builder.addData(QbeData(name: "__fnnames", kind: QbeDataKind.Strings([])))
 
     // Seed the RNG, for any future calls to `libc.rand()`
-    val timeVal = match mainFn.block.buildCallRaw("time", QbeType.U64, [Value.Int(0)]) { Ok(v) => v, Err(e) => return Err(CompilationError(modulePath: "<entrypoint>", error: CompileError(position: Position.bogus(), kind: CompileErrorKind.QbeError(e)))) }
+    val timeVal = mainFn.block.buildCallRaw("time", QbeType.U64, [Value.Int(0)])
     mainFn.block.buildVoidCallRaw("srand", [timeVal])
 
     mainFn.block.buildVoidCallRaw("GC_init", [])
@@ -859,7 +859,7 @@ pub type Compiler {
               if !self._typeIsFloat(right.ty)
                 rightVal = self._currentFn.block.buildLToF(rightVal)
 
-              val res = try self._currentFn.block.buildCallRaw("fmod", QbeType.F64, [leftVal, rightVal]) else |e| return qbeError(e)
+              val res = self._currentFn.block.buildCallRaw("fmod", QbeType.F64, [leftVal, rightVal])
               Ok(res)
             }
           }
@@ -870,7 +870,7 @@ pub type Compiler {
             if self._typeIsInt(left.ty) && self._typeIsInt(right.ty) {
               leftVal = self._currentFn.block.buildLToF(leftVal)
               rightVal = self._currentFn.block.buildLToF(rightVal)
-              val res = try self._currentFn.block.buildCallRaw("pow", QbeType.F64, [leftVal, rightVal]) else |e| return qbeError(e)
+              val res = self._currentFn.block.buildCallRaw("pow", QbeType.F64, [leftVal, rightVal])
               Ok(res)
             } else {
               // if a < 0 { -(-a ** b) } else { a ** b }
@@ -887,12 +887,12 @@ pub type Compiler {
 
               self._currentFn.block.registerLabel(labelThen)
               val leftValNeg = try self._currentFn.block.buildMul(leftVal, Value.Float(-1.0)) else |e| return qbeError(e)
-              val thenValNeg = try self._currentFn.block.buildCallRaw("pow", QbeType.F64, [leftValNeg, rightVal]) else |e| return qbeError(e)
+              val thenValNeg = self._currentFn.block.buildCallRaw("pow", QbeType.F64, [leftValNeg, rightVal])
               val thenVal = try self._currentFn.block.buildMul(thenValNeg, Value.Float(-1.0)) else |e| return qbeError(e)
               self._currentFn.block.buildJmp(labelCont)
 
               self._currentFn.block.registerLabel(labelElse)
-              val elseVal = try self._currentFn.block.buildCallRaw("pow", QbeType.F64, [leftVal, rightVal]) else |e| return qbeError(e)
+              val elseVal = self._currentFn.block.buildCallRaw("pow", QbeType.F64, [leftVal, rightVal])
               self._currentFn.block.buildJmp(labelCont)
 
               self._currentFn.block.registerLabel(labelCont)
@@ -2610,8 +2610,11 @@ pub type Compiler {
 
     val returnTypeQbe = try self._getQbeTypeForType(fn.returnType)
     val res = if returnTypeQbe |returnTy| {
-      val res = try self._currentFn.block.buildCallRaw(cFnName, returnTy, args) else |e| return qbeError(e)
-      res
+      if cFnName == "open" {
+        self._currentFn.block.buildCallRawVariadic(cFnName, returnTy, args, 2)
+      } else {
+        self._currentFn.block.buildCallRaw(cFnName, returnTy, args)
+      }
     } else {
       self._currentFn.block.buildVoidCallRaw(cFnName, args)
       Value.Ident("bogus", QbeType.F32)
@@ -2804,7 +2807,7 @@ pub type Compiler {
           "Darwin" => "__error"
           _ sysname => todo("[errno] unsupported system " + sysname)
         }
-        val errnoPtr = try self._currentFn.block.buildCallRaw(errnoFnName, QbeType.Pointer, []) else |e| return qbeError(e)
+        val errnoPtr = self._currentFn.block.buildCallRaw(errnoFnName, QbeType.Pointer, [])
         val errnoVal = self._currentFn.block.buildLoadW(errnoPtr)
         self._currentFn.block.buildExt(value: errnoVal, signed: false)
       }
@@ -2859,21 +2862,21 @@ pub type Compiler {
         val arg = self._intrinsicArgs1(intrinsicFnName, arguments)
         val argVal = try self._compileExpression(arg)
 
-        val floorRes = try self._currentFn.block.buildCallRaw("floor", QbeType.F64, [argVal]) else |e| return qbeError(e)
+        val floorRes = self._currentFn.block.buildCallRaw("floor", QbeType.F64, [argVal])
         self._currentFn.block.buildFToL(floorRes)
       }
       "float_ceil" => {
         val arg = self._intrinsicArgs1(intrinsicFnName, arguments)
         val argVal = try self._compileExpression(arg)
 
-        val ceilRes = try self._currentFn.block.buildCallRaw("ceil", QbeType.F64, [argVal]) else |e| return qbeError(e)
+        val ceilRes = self._currentFn.block.buildCallRaw("ceil", QbeType.F64, [argVal])
         self._currentFn.block.buildFToL(ceilRes)
       }
       "float_round" => {
         val arg = self._intrinsicArgs1(intrinsicFnName, arguments)
         val argVal = try self._compileExpression(arg)
 
-        val roundRes = try self._currentFn.block.buildCallRaw("round", QbeType.F64, [argVal]) else |e| return qbeError(e)
+        val roundRes = self._currentFn.block.buildCallRaw("round", QbeType.F64, [argVal])
         self._currentFn.block.buildFToL(roundRes)
       }
       "argc" => {

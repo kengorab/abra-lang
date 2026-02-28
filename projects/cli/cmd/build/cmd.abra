@@ -1,0 +1,85 @@
+import "process" as process
+import "fs" as fs
+import "libc" as libc
+import Path from "path"
+import Compiler from "../../../compiler/src/compiler"
+import typecheck from "../common"
+
+pub type BuildCmd {
+  pub outputFile: String?
+  pub inputFile: String
+  pub target: BuildTarget
+}
+
+pub enum BuildTarget {
+  NativeBin
+  JavaScript
+}
+
+pub func runBuild(cmd: BuildCmd) {
+  val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {
+    stdoutWriteln("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
+    process.exit(1)
+  }
+
+  val inputPath = Path.fromString(cmd.inputFile)
+  val (entryMod, project) = try typecheck(abraStdRoot, inputPath) else return
+
+  val builder = try Compiler.compile(project, entryMod) else |e| {
+    stdoutWriteln(e.getMessage())
+    process.exit(1)
+  }
+
+  var compilationUnitName = if cmd.outputFile |outputFile| {
+    val outputPath = Path.fromString(outputFile)
+    try outputPath.segments[-1] else {
+      stdoutWriteln("Empty output file provided, cannot proceed")
+      process.exit(1)
+    }
+  } else {
+    val lastSegment = try inputPath.segments[-1] else {
+      stdoutWriteln("Empty input file provided, cannot proceed")
+      process.exit(1)
+    }
+    lastSegment.replaceAll(".abra", "") // todo: better Path API to get extensionless segment
+  }
+
+  val cwd = fs.getCurrentWorkingDirectory()
+  val dotAbraDir = "$cwd/.abra"
+  // todo: create .abra file if not exists
+
+  val ssaOutPath = "$dotAbraDir/$compilationUnitName.ssa"
+  val ssaOutFile = try fs.File.create(ssaOutPath) else |e| {
+    stdoutWriteln(e.toString())
+    process.exit(1)
+  }
+
+  builder.writeToFile(ssaOutFile)
+  ssaOutFile.close()
+
+  val objOutPath = "$dotAbraDir/$compilationUnitName.s"
+  val qbeCmdRes = process.Command(program: "qbe")
+    .addArg("-o").addArg(objOutPath)
+    .addArg(ssaOutPath)
+    .execAndCaptureOutput()
+  if !qbeCmdRes.status.isSuccess() {
+    stdoutWriteln("qbe error:")
+    stdoutWriteln(qbeCmdRes.stderr)
+    process.exit(1)
+  }
+
+  val execOutPath = cmd.outputFile ?: "$dotAbraDir/$compilationUnitName"
+  val clangCmdRes = process.Command(program: "clang") // todo: switch to gcc?
+    .addArg("/Users/kengorab/.abra/include/libgc.a") // todo: replace with path to abra installation
+    .addArg(objOutPath)
+    .addArg("-o").addArg(execOutPath)
+    .addArg("-lm")
+    .addArg("-Wno-override-module")
+    .addArg("-Wl,-w")
+    .execAndCaptureOutput()
+  if !clangCmdRes.status.isSuccess() {
+    stdoutWriteln("clang error:")
+    stdoutWriteln(clangCmdRes.stderr)
+    process.exit(1)
+  }
+}

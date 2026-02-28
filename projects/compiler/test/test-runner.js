@@ -2,47 +2,70 @@ const childProcess = require('child_process')
 const fs = require('fs/promises')
 
 class TestRunner {
-  constructor(runnerName, harnessPath, { target = 'native' } = {}) {
+  constructor(runnerName, harnessPath, { target = 'native', cliMode = null } = {}) {
     this.runnerName = runnerName
     this.harnessPath = harnessPath
     this.target = target
+    this.cliMode = cliMode
   }
 
   async runTests(tests, updateSnapshotWhenFailed) {
-    console.log(`Running tests for ${this.runnerName}:`)
-    const runnerBin = `${process.cwd()}/._abra/${this.runnerName}`
+    console.log(`Running test suite ${this.runnerName}:`)
     try {
-      console.log(`  Compiling test harness '${this.harnessPath}'\n`)
+      if (this.cliMode) {
+        console.log(`  Compiling cli '${this.harnessPath}'`)
+        this.runnerName += '_cli'
+      } else {
+        console.log(`  Compiling test harness '${this.harnessPath}'`)
+      }
       await runCommand('abra', ['build', '-o', this.runnerName, this.harnessPath])
+      console.log('  Done\n')
     } catch (err) {
       console.log(red('  Failed to compile test harness:'))
       const errFmt = err.toString().split('\n').map(line => `    ${line}`).join('\n')
       console.log(red(errFmt))
       return { numPass: 0, numFail: 0, numErr: tests.length }
     }
+    const runnerBin = `${process.cwd()}/._abra/${this.runnerName}`
 
     const results = []
     for (const { test, assertions, args, env, printModulesOnErr = false } of tests) {
+      let result
       if (!!assertions) {
-        const args = printModulesOnErr ? ['--print-mods-on-err'] : []
-        const result = await this._runTest(runnerBin, test, assertions, args, updateSnapshotWhenFailed)
-        results.push(result)
+        result = await this._runTest(runnerBin, test, assertions, printModulesOnErr, updateSnapshotWhenFailed)
       } else {
-        const result = await this._runCompilerTest(runnerBin, test, args, env)
-        results.push(result)
+        result = await this._runCompilerTest(runnerBin, test, args, env)
       }
+      results.push(result)
     }
 
     return this._outputResults(results)
   }
 
-  async _runTest(bin, testFile, outputFile, args = [], updateSnapshotWhenFailed) {
+  async _runTest(bin, testFile, outputFile, printModulesOnErr, updateSnapshotWhenFailed) {
     const testFilePath = `${__dirname}/${testFile}`
     const outputFilePath = `${__dirname}/${outputFile}`
 
     try {
+      const cmdArgs = ['emit-ir', '--mode']
+      switch (this.cliMode) {
+        default:
+          throw new Error(`Invalid cli mode '${this.cliMode}'`)
+        case 'TOKENS_ONLY':
+        case 'AST':
+          cmdArgs.push(this.cliMode)
+          break
+        case 'TYPED_AST':
+          cmdArgs.push(this.cliMode)
+          if (printModulesOnErr) {
+            cmdArgs.push('--ignore-errors')
+          }
+          break;
+      }
+      cmdArgs.push(testFilePath)
+
       const [actual, expectedOutput] = await Promise.all([
-        runCommand(bin, [testFilePath, ...args]),
+        runCommand(bin, cmdArgs),
         fs.readFile(outputFilePath, { encoding: 'utf8' }),
       ])
 

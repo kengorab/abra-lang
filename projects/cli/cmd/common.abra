@@ -1,0 +1,61 @@
+import "process" as process
+import Path from "path"
+import ModuleLoader, Project, Typechecker, TypedModule from "../../compiler/src/typechecker"
+import ComptimeFunctionEvaluator from "../../compiler/src/comptime_evaluator"
+
+pub func typecheck(stdRoot: String, filePath: Path, ignoreErrors = true, exitOnError = true): (TypedModule, Project)? {
+  val moduleLoader = ModuleLoader(stdRoot: stdRoot)
+  val project = Project()
+  val comptimeFuncEvaluator = ComptimeFunctionEvaluator.init(project)
+  val typechecker = Typechecker(
+    moduleLoader: moduleLoader,
+    project: project,
+    comptimeFuncEvaluator: comptimeFuncEvaluator.eval,
+  )
+
+  val entryMod = typechecker.typecheckEntrypoint(filePath.asString())
+  val allModules = project.sortedModules(entryMod)
+
+  if !ignoreErrors {
+    val readFileErrors: String[] = []
+    val errorMessages: String[] = []
+    for mod in project.modules.values().sortBy(m => -m.id) {
+      if mod.readFileError {
+        readFileErrors.push(mod.name)
+        continue
+      }
+      val contents = try moduleLoader.loadFileContents(mod.name) else {
+        readFileErrors.push(mod.name)
+        continue
+      }
+
+      for err in mod.lexParseErrors {
+        errorMessages.push(err.getMessage(mod.name, contents))
+      }
+
+      for err in mod.typeErrors {
+        errorMessages.push(err.getMessage(mod.name, contents))
+      }
+    }
+
+    if !errorMessages.isEmpty() {
+      for msg, idx in errorMessages {
+        stdoutWriteln(msg)
+        if idx != errorMessages.length - 1 stdoutWriteln("") // spacer
+      }
+
+      if !exitOnError return None
+      process.exit(1)
+    } else if !readFileErrors.isEmpty() {
+      for path, idx in readFileErrors {
+        stdoutWriteln("Could not read file '$path'")
+        if idx != readFileErrors.length - 1 stdoutWriteln("") // spacer
+      }
+
+      if !exitOnError return None
+      process.exit(1)
+    }
+  }
+
+  Some((entryMod, project))
+}

@@ -262,7 +262,7 @@ pub type Compiler {
             right = self.currentFn.block.buildLToF(right, true, Some(self.nextTemp()))
           }
 
-          try self.currentFn.block.buildCallRaw("fmod", qbe.QbeType.F64, [left, right], dst) else |e| unreachable(e)
+          self.currentFn.block.buildCallRaw("fmod", qbe.QbeType.F64, [left, right], dst)
         }
       }
       Operation.Pow(l, r) => {
@@ -278,7 +278,7 @@ pub type Compiler {
         }
 
         if bothInts {
-          try self.currentFn.block.buildCallRaw("pow", qbe.QbeType.F64, [left, right], dst) else |e| unreachable(e)
+          self.currentFn.block.buildCallRaw("pow", qbe.QbeType.F64, [left, right], dst)
         } else {
           // if a < 0 { -(-a ** b) } else { a ** b }
           val labelThen = self.currentFn.block.addLabel("fpow_neg")
@@ -289,12 +289,12 @@ pub type Compiler {
 
           self.currentFn.block.registerLabel(labelThen)
           val leftValNeg = try self.currentFn.block.buildMul(left, qbe.Value.Float(-1.0), Some(self.nextTemp())) else |e| unreachable(e)
-          val thenValNeg = try self.currentFn.block.buildCallRaw("pow", QbeType.F64, [leftValNeg, right], Some(self.nextTemp())) else |e| unreachable(e)
+          val thenValNeg = self.currentFn.block.buildCallRaw("pow", QbeType.F64, [leftValNeg, right], Some(self.nextTemp()))
           val thenVal = try self.currentFn.block.buildMul(thenValNeg, qbe.Value.Float(-1.0), Some(self.nextTemp())) else |e| unreachable(e)
           self.currentFn.block.buildJmp(labelCont)
 
           self.currentFn.block.registerLabel(labelElse)
-          val elseVal = try self.currentFn.block.buildCallRaw("pow", QbeType.F64, [left, right], Some(self.nextTemp())) else |e| unreachable(e)
+          val elseVal = self.currentFn.block.buildCallRaw("pow", QbeType.F64, [left, right], Some(self.nextTemp()))
           self.currentFn.block.buildJmp(labelCont)
 
           self.currentFn.block.registerLabel(labelCont)
@@ -738,7 +738,12 @@ pub type Compiler {
         }
         val argVals = args.map(a => self.irValueToQbeValue(a))
         if self.irTypeToQbeReturnType(ret) |ret| {
-          try self.currentFn.block.buildCallRaw(fnName, ret, argVals, dst, env) else |e| unreachable(e)
+          if fnName == "open" {
+            // ew
+            self.currentFn.block.buildCallRawVariadic(fnName, ret, argVals, 2, dst, env)
+          } else {
+            self.currentFn.block.buildCallRaw(fnName, ret, argVals, dst, env)
+          }
         } else {
           self.currentFn.block.buildVoidCallRaw(fnName, argVals, env)
         }
@@ -975,7 +980,7 @@ pub type Compiler {
 
             val intVal = self.irValueToQbeValue(int)
             val lenPtr = self.currentFn.block.buildAlloc8(1, Some("lenptr"))
-            val mem = try self.currentFn.block.buildCallRaw(i64ToString.name, qbe.QbeType.Pointer, [intVal, lenPtr], Some(self.nextTemp())) else |e| unreachable(e)
+            val mem = self.currentFn.block.buildCallRaw(i64ToString.name, qbe.QbeType.Pointer, [intVal, lenPtr], Some(self.nextTemp()))
             val lenVal = self.currentFn.block.buildLoadL(lenPtr, Some(self.nextTemp()))
             self.constructString(mem, lenVal, dst)
           }
@@ -984,7 +989,7 @@ pub type Compiler {
 
             val intVal = self.irValueToQbeValue(int)
             val lenPtr = self.currentFn.block.buildAlloc8(1, Some("lenptr"))
-            val mem = try self.currentFn.block.buildCallRaw(u64ToString.name, qbe.QbeType.Pointer, [intVal, lenPtr], Some(self.nextTemp())) else |e| unreachable(e)
+            val mem = self.currentFn.block.buildCallRaw(u64ToString.name, qbe.QbeType.Pointer, [intVal, lenPtr], Some(self.nextTemp()))
             val lenVal = self.currentFn.block.buildLoadL(lenPtr, Some(self.nextTemp()))
             self.constructString(mem, lenVal, dst)
           }
@@ -993,7 +998,7 @@ pub type Compiler {
 
             val floatVal = self.irValueToQbeValue(float)
             val lenPtr = self.currentFn.block.buildAlloc8(1, Some("lenptr"))
-            val mem = try self.currentFn.block.buildCallRaw(f64ToString.name, qbe.QbeType.Pointer, [floatVal, lenPtr], Some(self.nextTemp())) else |e| unreachable(e)
+            val mem = self.currentFn.block.buildCallRaw(f64ToString.name, qbe.QbeType.Pointer, [floatVal, lenPtr], Some(self.nextTemp()))
             val lenVal = self.currentFn.block.buildLoadL(lenPtr, Some(self.nextTemp()))
             self.constructString(mem, lenVal, dst)
           }
@@ -1031,19 +1036,19 @@ pub type Compiler {
           Builtin.FloatCeil(float) => {
             val floatVal = self.irValueToQbeValue(float)
 
-            val ceilRes = try self.currentFn.block.buildCallRaw("ceil", QbeType.F64, [floatVal], Some(self.nextTemp())) else |e| unreachable(e)
+            val ceilRes = self.currentFn.block.buildCallRaw("ceil", QbeType.F64, [floatVal], Some(self.nextTemp()))
             self.currentFn.block.buildFToL(ceilRes, true, dst)
           }
           Builtin.FloatFloor(float) => {
             val floatVal = self.irValueToQbeValue(float)
 
-            val floorRes = try self.currentFn.block.buildCallRaw("floor", QbeType.F64, [floatVal], Some(self.nextTemp())) else |e| unreachable(e)
+            val floorRes = self.currentFn.block.buildCallRaw("floor", QbeType.F64, [floatVal], Some(self.nextTemp()))
             self.currentFn.block.buildFToL(floorRes, true, dst)
           }
           Builtin.FloatRound(float) => {
             val floatVal = self.irValueToQbeValue(float)
 
-            val roundRes = try self.currentFn.block.buildCallRaw("round", QbeType.F64, [floatVal], Some(self.nextTemp())) else |e| unreachable(e)
+            val roundRes = self.currentFn.block.buildCallRaw("round", QbeType.F64, [floatVal], Some(self.nextTemp()))
             self.currentFn.block.buildFToL(roundRes, true, dst)
           }
           Builtin.FloatBitsToInt(float) => {
@@ -1073,7 +1078,7 @@ pub type Compiler {
               "Darwin" => "__error"
               else sysname => todo("[errno] unsupported system $sysname")
             }
-            val errnoPtr = try self.currentFn.block.buildCallRaw(errnoFnName, QbeType.Pointer, [], Some(self.nextTemp())) else |e| unreachable(e)
+            val errnoPtr = self.currentFn.block.buildCallRaw(errnoFnName, QbeType.Pointer, [], Some(self.nextTemp()))
             val errnoVal = self.currentFn.block.buildLoadW(errnoPtr, Some(self.nextTemp()))
             self.currentFn.block.buildExt(value: errnoVal, signed: false, dst: dst)
           }
@@ -1318,7 +1323,7 @@ pub type Compiler {
   func constructString(self, ptrVal: qbe.Value, lenVal: qbe.Value, dst: String? = None): qbe.Value {
     val strTy = self.irTypeToQbeType(IrType.Composite(self.ir.knowns.stringType().name, isEnum: false))
     val strInitFn = self.ir.knowns.stringInitializerFn()
-    try self.currentFn.block.buildCallRaw(strInitFn.name, strTy, [lenVal, ptrVal], dst) else |e| unreachable(e)
+    self.currentFn.block.buildCallRaw(strInitFn.name, strTy, [lenVal, ptrVal], dst)
   }
 
   func callMalloc(self, sizeVal: qbe.Value, dst: String? = None): qbe.Value {
