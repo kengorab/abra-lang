@@ -74,6 +74,21 @@ pub func runBuild(cmd: BuildCmd): String? {
     } else {
       println(qbeCmdRes.stdout)
     }
+
+    val lsRes = process.Command(program: "ls")
+      .addArg("-la")
+      .addArg(dotAbraDir)
+      .execAndCaptureOutput()
+    if !lsRes.status.isSuccess() {
+      if !lsRes.stderr.isEmpty() {
+        println(lsRes.stderr)
+      } else {
+        println(lsRes.stdout)
+      }
+      process.exit(1)
+    }
+    println(lsRes.stdout)
+
     process.exit(1)
   }
 
