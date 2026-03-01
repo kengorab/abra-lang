@@ -82,6 +82,34 @@ pub func runBuild(cmd: BuildCmd): String? {
   debug(chars)
   val ssaOutFile = try fs.File.create(ssaOutPath) else |e| {
     println(e.toString())
+
+    val touchRes = process.Command(program: "touch")
+      .addArg(ssaOutPath)
+      .execAndCaptureOutput()
+    if !touchRes.status.isSuccess() {
+      if !touchRes.stderr.isEmpty() {
+        println(touchRes.stderr)
+      } else {
+        println(touchRes.stdout)
+      }
+      process.exit(1)
+    }
+    println(touchRes.stdout)
+
+    val lsRes = process.Command(program: "ls")
+      .addArg("-la")
+      .addArg(dotAbraDir)
+      .execAndCaptureOutput()
+    if !lsRes.status.isSuccess() {
+      if !lsRes.stderr.isEmpty() {
+        println(lsRes.stderr)
+      } else {
+        println(lsRes.stdout)
+      }
+      process.exit(1)
+    }
+    println(lsRes.stdout)
+
     process.exit(1)
   }
   debug(ssaOutFile)
