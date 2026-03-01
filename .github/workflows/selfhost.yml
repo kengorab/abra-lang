@@ -32,7 +32,7 @@ jobs:
         # echo "ABRA_HOME=`realpath $(pwd)/abra-linux/std`" >> $GITHUB_ENV
         echo "ABRA_HOME=`realpath $(pwd)/projects/std/src`" >> $GITHUB_ENV
         echo "ABRA_STD=`realpath $(pwd)/projects/std/src`" >> $GITHUB_ENV
-        echo "ABRA_ROOT=`realpath $(pwd)/abra-installation`" >> $GITHUB_ENV
+        echo "ABRA_ROOT=`realpath $(pwd)/abra-linux`" >> $GITHUB_ENV
     - name: Run tests
       run: |
         cd projects/compiler
