@@ -42,8 +42,8 @@ pub func getErrorString(): String {
 pub val O_RDONLY = 0
 pub val O_WRONLY = 1
 pub val O_RDWR   = 2
-pub val O_CREAT  = 512
-pub val O_TRUNC  = 1024
+pub val O_CREAT  = 64 //512
+pub val O_TRUNC  = 512 //1024
 
 @external("open")
 pub func open(pathname: Pointer<Byte>, flags: Int, mode: Int): Int
