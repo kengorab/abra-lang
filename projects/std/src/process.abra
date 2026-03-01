@@ -253,7 +253,13 @@ pub type Command {
     val stderrPipe = try io.makePipe() else |e| unreachable(""+e)
 
     val pid = libc.fork()
-    if pid < 0 unreachable("fork failed")
+    if pid < 0 {
+      libc.close(stdoutPipe.readerFd)
+      libc.close(stdoutPipe.writerFd)
+      libc.close(stderrPipe.readerFd)
+      libc.close(stderrPipe.writerFd)
+      unreachable("fork failed")
+    }
 
     if pid == 0 {
       val arguments = [self.program._buffer]
@@ -263,49 +269,62 @@ pub type Command {
       arguments.push(libc.NULL())
 
       libc.close(stdoutPipe.readerFd)
-      if libc.dup2(stdoutPipe.writerFd, libc.STDOUT_FILENO) < 0 unreachable("failed to set up stdout redirect")
+      if libc.dup2(stdoutPipe.writerFd, libc.STDOUT_FILENO) < 0 {
+        libc.close(stdoutPipe.writerFd)
+        libc.close(stderrPipe.readerFd)
+        libc.close(stderrPipe.writerFd)
+        unreachable("failed to set up stdout redirect")
+      }
       libc.close(stdoutPipe.writerFd)
 
       libc.close(stderrPipe.readerFd)
-      if libc.dup2(stderrPipe.writerFd, libc.STDERR_FILENO) < 0 unreachable("failed to set up stderr redirect")
+      if libc.dup2(stderrPipe.writerFd, libc.STDERR_FILENO) < 0 {
+        libc.close(stderrPipe.writerFd)
+        unreachable("failed to set up stderr redirect")
+      }
       libc.close(stderrPipe.writerFd)
 
-      libc.execvp(self.program._buffer, arguments._buffer)
-      unreachable("current process is replaced by program execution")
+      // Replace this child process with a new process; if that process fails it'll be captured by the parent.
+      // If the execvp itself fails, write out the message and exit(1); this will also be captured by the parent.
+      val r = libc.execvp(self.program._buffer, arguments._buffer)
+      stdoutWrite("execvp error: ")
+      stdoutWriteln(libc.getErrorString())
+      exit(1)
     } else {
       libc.close(stdoutPipe.writerFd)
       libc.close(stderrPipe.writerFd)
 
       val stdout = io.BufferedReader(fd: stdoutPipe.readerFd)
-      val stdoutOutput = (try stdout.readAllToString() else unreachable("failed to read from stdoutPipe write end")).trimEnd()
-
       val stderr = io.BufferedReader(fd: stderrPipe.readerFd)
-      val stderrOutput = (try stderr.readAllToString() else unreachable("failed to read from stderrPipe write end")).trimEnd()
 
-      libc.close(stdoutPipe.readerFd)
-      libc.close(stderrPipe.readerFd)
-
+      var cmdStatus = ExitStatus.Success
       val status = Pointer.malloc<Int>(1)
       while true {
         if libc.wait(status) < 0 unreachable("failed to wait on child process")
 
         val wstatus = status.loadAt(0)
         if libc.WIFEXITED(wstatus) {
-          val exitStatus = libc.WEXITSTATUS(wstatus)
-          if exitStatus != 0 {
-            return CommandOutput(status: ExitStatus.Failure(code: exitStatus), stdout: stdoutOutput, stderr: stderrOutput)
+          val status = libc.WEXITSTATUS(wstatus)
+          if status != 0 {
+            cmdStatus = ExitStatus.Failure(code: status)
+            break
           }
 
           break
         }
 
         if libc.WIFSIGNALED(wstatus) {
-          val signal = libc.WTERMSIG(wstatus)
-          return CommandOutput(status: ExitStatus.Signaled(signal: signal), stdout: stdoutOutput, stderr: stderrOutput)
+          cmdStatus = ExitStatus.Signaled(signal: libc.WTERMSIG(wstatus))
+          break
         }
       }
 
-      CommandOutput(status: ExitStatus.Success, stdout: stdoutOutput, stderr: stderrOutput)
+      val stdoutOutput = try stdout.readAllToString() else unreachable("failed to read from stdoutPipe write end")
+      val stderrOutput = try stderr.readAllToString() else unreachable("failed to read from stderrPipe write end")
+      libc.close(stdoutPipe.readerFd)
+      libc.close(stderrPipe.readerFd)
+
+      CommandOutput(status: cmdStatus, stdout: stdoutOutput.trim(), stderr: stderrOutput.trim())
     }
   }
 }

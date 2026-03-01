@@ -1,0 +1,29 @@
+import "process" as process
+import "../build/cmd" as cmdBuild
+
+pub type BuildAndRunCmd {
+  pub inputFile: String
+  pub programArguments: String[]
+}
+
+pub func buildAndRun(cmd: BuildAndRunCmd) {
+  var buildCmd = cmdBuild.BuildCmd(
+    outputFile: None,
+    inputFile: cmd.inputFile,
+    target: cmdBuild.BuildTarget.NativeBin,
+  )
+  val execOutPath = try cmdBuild.runBuild(buildCmd) else return
+
+  val runCmd = process.Command(program: execOutPath, arguments: cmd.programArguments)
+  val res = runCmd.execAndCaptureOutput()
+  if !res.status.isSuccess() {
+    if !res.stderr.isEmpty() {
+      println(res.stderr)
+    } else {
+      println(res.stdout)
+    }
+    process.exit(1)
+  }
+
+  stdoutWriteln(res.stdout)
+}

@@ -11,27 +11,27 @@ pub enum FileIOError {
 pub func readFile(path: String): Result<String, FileIOError> {
   val fd = libc.open(path._buffer, libc.O_RDONLY, 0)
   if fd == -1 {
-    val errMsg = _strerror(libc.errno())
+    val errMsg = libc.getErrorString()
     return Err(error: FileIOError.CouldNotOpen(message: "Could not open '$path': $errMsg"))
   }
 
   val len = libc.lseek(fd, 0, libc.SEEK_END)
   if len == -1 {
-    val errMsg = _strerror(libc.errno())
+    val errMsg = libc.getErrorString()
     return Err(error: FileIOError.CouldNotSeek(message: "Could not seek '$path': $errMsg"))
   }
   if libc.lseek(fd, 0, libc.SEEK_SET) == -1 {
-    val errMsg = _strerror(libc.errno())
+    val errMsg = libc.getErrorString()
     return Err(error: FileIOError.CouldNotSeek(message: "Could not seek '$path': $errMsg"))
   }
 
   val str = String.withLength(len)
   if libc.read(fd, str._buffer, len) == -1 {
-    val errMsg = _strerror(libc.errno())
+    val errMsg = libc.getErrorString()
     return Err(error: FileIOError.CouldNotRead(message: "Could not read '$path': $errMsg"))
   }
   if libc.close(fd) == -1 {
-    val errMsg = _strerror(libc.errno())
+    val errMsg = libc.getErrorString()
     return Err(error: FileIOError.CouldNotClose(message: "Could not close '$path': $errMsg"))
   }
 
@@ -61,7 +61,7 @@ pub type File {
     val oflag = accessMode._toUnderlying()
     val fd = libc.open(path._buffer, oflag, 0)
     if fd == -1 {
-      val errMsg = _strerror(libc.errno())
+      val errMsg = libc.getErrorString()
       return Err(error: FileIOError.CouldNotOpen(message: "Could not open '$path' for reading: $errMsg"))
     }
 
@@ -75,17 +75,23 @@ pub type File {
 
     val mode = 420 // 420 is 0644, but octal numbers aren't supported yet...
     val fd = libc.open(path._buffer, oflag, mode)
-    if fd == -1 {
-      val errMsg = _strerror(libc.errno())
+    if fd == 0xFFFFFFFF {
+      val errMsg = libc.getErrorString()
       return Err(error: FileIOError.CouldNotOpen(message: "Could not open '$path' for writing: $errMsg"))
     }
 
     Ok(File(_fd: fd, accessMode: accessMode, path: path))
   }
 
+  pub func exists(path: String): Bool {
+    val stat = Pointer.malloc<Byte>(144)
+
+    libc.stat(path._buffer, stat) == 0
+  }
+
   pub func close(self): Result<Int, FileIOError> {
     if libc.close(self._fd) == -1 {
-      val errMsg = _strerror(libc.errno())
+      val errMsg = libc.getErrorString()
       return Err(error: FileIOError.CouldNotClose(message: "Could not close '${self.path}': $errMsg"))
     }
 
@@ -108,7 +114,7 @@ pub func openFile(path: String, accessMode: AccessMode): Result<File, FileIOErro
   val oflag = accessMode._toUnderlying()
   val fd = libc.open(path._buffer, oflag, 0)
   if fd == -1 {
-    val errMsg = _strerror(libc.errno())
+    val errMsg = libc.getErrorString()
     return Err(error: FileIOError.CouldNotOpen(message: "Could not open '$path': $errMsg"))
   }
 
@@ -122,7 +128,7 @@ pub func createFile(path: String, accessMode: AccessMode): Result<File, FileIOEr
   val mode = 420 // 420 is 0644, but octal numbers aren't supported yet...
   val fd = libc.open(path._buffer, oflag, mode)
   if fd == -1 {
-    val errMsg = _strerror(libc.errno())
+    val errMsg = libc.getErrorString()
     return Err(error: FileIOError.CouldNotOpen(message: "Could not open '$path': $errMsg"))
   }
 
@@ -140,10 +146,7 @@ pub func getCurrentWorkingDirectory(): String {
   str
 }
 
-func _strerror(errno: Int): String {
-  val buf = libc.strerror(errno)
-  val len = libc.strlen(buf)
-  val str = String.withLength(len)
-  str._buffer.copyFrom(0, buf, 0, len)
-  str
+pub func createDir(path: String): Bool {
+  val mode = 493 // 493 is 0755
+  libc.mkdir(path._buffer, mode) == 0
 }

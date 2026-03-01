@@ -15,10 +15,10 @@ pub type Pipe {
 }
 
 pub func makePipe(): Result<Pipe, MakePipeError> {
-  val pipefds = Pointer.malloc<Int>(1) 
+  val pipefds = Pointer.malloc<Int>(1)
   if libc.pipe(pipefds) == -1 {
     val errno = libc.errno()
-    val msg = strerror(errno)
+    val msg = libc.getErrorString()
     val err = if errno == libc.EFAULT {
       MakePipeError.BadAddress(message: msg)
     } else if errno == libc.EMFILE {
@@ -39,24 +39,16 @@ pub func makePipe(): Result<Pipe, MakePipeError> {
   Ok(Pipe(writerFd: pipeFdWrite, readerFd: pipeFdRead))
 }
 
-func strerror(errno: Int): String {
-  val buf = libc.strerror(errno)
-  val len = libc.strlen(buf)
-  val str = String.withLength(len)
-  str._buffer.copyFrom(0, buf, 0, len)
-  str
-}
-
 pub type BufferedReader {
   fd: Int
   bufSize: Int = 1024
 
   pub func readAllToString(self): Result<String, Int> {
     val readBuffer: String[] = []
-    val buf = Pointer.malloc<Byte>(self.bufSize)
     while true {
+      val buf = Pointer.malloc<Byte>(self.bufSize)
       val bytesRead = libc.read(self.fd, buf, self.bufSize) // todo: handle error
-      if bytesRead == -1 unreachable(strerror(libc.errno()))
+      if bytesRead == -1 unreachable(libc.getErrorString())
 
       readBuffer.push(String(length: bytesRead, _buffer: buf))
       if bytesRead < self.bufSize break

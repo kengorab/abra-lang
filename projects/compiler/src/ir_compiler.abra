@@ -721,7 +721,6 @@ pub type Compiler {
         val cursor = try self.currentFn.block.buildAdd(qbe.Value.Int(8), closureMem, Some(self.nextTemp())) else |e| unreachable(e)
         self.currentFn.block.buildStoreL(qbe.Value.Global(fnName, qbe.QbeType.Pointer), cursor)
 
-
         for capture, idx in captures {
           val cursor = try self.currentFn.block.buildAdd(qbe.Value.Int((idx + 2) * 8), closureMem, Some(self.nextTemp())) else |e| unreachable(e)
           val captureVal = self.irValueToQbeValue(capture)
