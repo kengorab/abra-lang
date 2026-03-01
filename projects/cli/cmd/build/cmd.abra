@@ -60,6 +60,11 @@ pub func runBuild(cmd: BuildCmd): String? {
       println("Error creating .abra directory at '$cwd', cannot proceed")
       process.exit(1)
     }
+
+    if !fs.File.exists(dotAbraDir) {
+      println("huh??")
+      process.exit(1)
+    }
   }
 
   println("after creating $dotAbraDir")
