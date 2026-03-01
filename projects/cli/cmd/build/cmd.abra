@@ -162,12 +162,12 @@ pub func runBuild(cmd: BuildCmd): String? {
 
   val execOutPath = cmd.outputFile ?: "$dotAbraDir/$compilationUnitName"
   val clangCmdRes = process.Command(program: "clang") // todo: switch to gcc?
-    .addArg("$abraRoot/include/libgc.a")
     .addArg(objOutPath)
+    .addArg("$abraRoot/include/libgc.a")
     .addArg("-o").addArg(execOutPath)
     .addArg("-lm")
     .addArg("-Wno-override-module")
-    .addArg("-Wl,-w")
+    // .addArg("-Wl,-w")
     .execAndCaptureOutput()
   if !clangCmdRes.status.isSuccess() {
     if !clangCmdRes.stderr.isEmpty() {
