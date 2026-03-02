@@ -129,12 +129,14 @@ pub enum SpecialIdentifierKind {
   Line
   File
   Import(mod: String)
+  OS
   Unknown(name: String)
 
   pub func name(self): String = match self {
     SpecialIdentifierKind.Line => "line"
     SpecialIdentifierKind.File => "file"
     SpecialIdentifierKind.Import => "import"
+    SpecialIdentifierKind.OS => "os"
     SpecialIdentifierKind.Unknown(name) => name
   }
 }
@@ -1354,6 +1356,7 @@ pub type Parser {
 
         SpecialIdentifierKind.Import(mod.name)
       }
+      "os" => SpecialIdentifierKind.OS
       else => SpecialIdentifierKind.Unknown(name)
     }
 

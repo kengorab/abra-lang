@@ -99,7 +99,7 @@ pub enum TokenKind {
     TokenKind.StringInterpolation => "string"
     TokenKind.Char => "char"
     TokenKind.Ident(name) => if name == "_" { "_" } else "identifier"
-    TokenKind.SpecialIdent(name) => if name == "_" { "_" } else "identifier"
+    TokenKind.SpecialIdent(name) => "identifier"
     TokenKind.If => "if"
     TokenKind.Else => "else"
     TokenKind.Val => "val"
