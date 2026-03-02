@@ -1604,6 +1604,8 @@ pub type Generator {
           val condVal = match cond { Const.Bool(b) => b, else => todo("non-boolean if-conditions") }
           val block = if condVal ifBlock else elseBlock
           if condBinding |binding| self.genConditionBinding(concreteGenerics, optInnerTy, condBindingVal, binding)
+
+          // TODO(#639): fix terminators in comptime-chosen block
           for node, idx in block {
             self.genStatement(node, concreteGenerics)
           }
@@ -2036,9 +2038,40 @@ pub type Generator {
 
     // The subjVal value can potentially be updated as the match's cases are built out, depending on the context.
     var subjVal = self.genExpression(subjectNode, concreteGenerics)
-    val subjValOrig = subjVal
     val subjectConcreteType = self.getConcreteTypeFromType(subjectNode.ty, concreteGenerics)
     val subjectConcreteGenerics = self.extractConcreteGenericsFromConcreteType(subjectConcreteType)
+
+    if self.valueAsCompileTime(subjVal) |const| {
+      for case in cases {
+        val caseLit = match case.kind { TypedMatchCaseKind.Literal(lit) => lit, else => continue }
+        val isMatch = match caseLit {
+          LiteralAstNode.Int(caseVal) => match const { Const.Int(v) => caseVal == v, else => continue }
+          LiteralAstNode.Float(caseVal) => match const { Const.Float(v) => caseVal == v, else => continue }
+          LiteralAstNode.Bool(caseVal) => match const { Const.Bool(v) => caseVal == v, else => continue }
+          LiteralAstNode.Char(caseVal) => match const { Const.Char(v) => caseVal == v, else => continue }
+          LiteralAstNode.String(caseVal) => match const { Const.String(v) => caseVal == v, else => continue }
+        }
+        if !isMatch continue
+
+        if case.binding |variable| {
+          val vars = { (variable.label.name): variable }
+          self.genBindingPattern(BindingPattern.Variable(variable.label), vars, Some((subjVal, subjectConcreteType)), subjectConcreteGenerics)
+        }
+
+        // TODO(#639): fix terminators in comptime-chosen block
+        for node, idx in case.body {
+          if !isStatement && idx == case.body.length - 1 && !case.terminator {
+            return self.genExpression(node, concreteGenerics, dst)
+          } else {
+            self.genStatement(node, concreteGenerics)
+          }
+        }
+
+        return Value.Unit
+      }
+    }
+
+    val subjValOrig = subjVal
     val subjectOptInnerType = if self.project.typeIsOption(subjectNode.ty) |innerType| {
       val innerConcreteType = self.getConcreteTypeFromType(innerType, concreteGenerics)
       val innerIrType = self.getIrTypeForConcreteType(innerConcreteType)
@@ -2375,6 +2408,8 @@ pub type Generator {
           val condVal = match cond { Const.Bool(b) => b, else => todo("non-boolean if-conditions") }
           val block = if condVal ifBlock else elseBlock
           if condBinding |binding| self.genConditionBinding(concreteGenerics, optInnerTy, condBindingVal, binding)
+
+          // TODO(#639): fix terminators in comptime-chosen block
           for node, idx in block {
             if idx == block.length - 1 && !ifBlockTerminator {
               return self.genExpression(node, concreteGenerics, dst)
@@ -2931,19 +2966,17 @@ pub type Generator {
   }
 
   func genEqLogic(self, concreteType: ConcreteType, left: Value, right: Value, negate: Bool, dst: String?): Value {
-    val eqMethod = self.getMethodByName(concreteType.instanceKind, "eq", staticMethod: false)
-    if eqMethod.isGenerated {
-      if self.valuesAsCompileTime(left, right) |(lval, rval)| {
-        val const = match lval {
-          Const.Int(l) => match rval { Const.Int(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-          Const.Float(l) => match rval { Const.Float(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-          Const.Bool(l) => match rval { Const.Bool(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-          Const.Char(l) => match rval { Const.Char(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-          Const.String(l) => match rval { Const.String(r) => Const.Bool((l == r) ^ negate), else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-        }
-
-        return self.ssaValueComptime(const, dst)
+    if self.valuesAsCompileTime(left, right) |(lval, rval)| {
+      val eq = match lval {
+        Const.Int(l) => match rval { Const.Int(r) => l == r, else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
+        Const.Float(l) => match rval { Const.Float(r) => l == r, else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
+        Const.Bool(l) => match rval { Const.Bool(r) => l == r, else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
+        Const.Char(l) => match rval { Const.Char(r) => l == r, else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
+        Const.String(l) => match rval { Const.String(r) => l == r, else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
       }
+      val const = Const.Bool(if negate !eq else eq)
+
+      return self.ssaValueComptime(const, dst)
     }
 
     val irTy = self.getIrTypeForConcreteType(concreteType)
@@ -3534,7 +3567,7 @@ pub type Generator {
           val innerIrType = self.getIrTypeForConcreteType(typeArg)
           self.ssaValue(irType, Operation.OptionNone(innerIrType), dst)
         } else {
-          val global = self.getOrAddConstEnumVariant(concreteType, variant, variantIdx)
+          val global = self.getOrAddConstEnumVariant(concreteType, variant)
           global.initialValue = Some(Const.Int(variantIdx))
           global.referenced = true
           Value.Global(global)
@@ -4141,7 +4174,7 @@ pub type Generator {
     self.functionsByName[fnName] = fn
   }
 
-  func getOrAddConstEnumVariant(self, concreteType: ConcreteType, variant: tc.TypedEnumVariant, variantIdx: Int): GlobalVariable {
+  func getOrAddConstEnumVariant(self, concreteType: ConcreteType, variant: tc.TypedEnumVariant): GlobalVariable {
     val typeName = self.typeName(concreteType, withTypeArgs: true)
     val globalName = "_${typeName}_${variant.label.name}"
     if self.globals[globalName] |g| return g

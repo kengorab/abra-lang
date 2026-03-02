@@ -37,10 +37,7 @@ pub type Uname {
   pub machine: String
 }
 
-var _uname: Uname? = None
 pub func uname(): Uname {
-  if _uname |uname| return uname
-
   // On macOS, each field in the utsname struct is a char[256]; on other platforms it's different, so
   // this can be wasteful of memory.
   var utsnameBuf = Pointer.malloc<Byte>(256 * 5)
@@ -78,9 +75,7 @@ pub func uname(): Uname {
   val machine = String.withLength(machineLen)
   machine._buffer.copyFrom(0, utsnameBuf, cursor, machineLen)
 
-  val uname = Uname(sysname: sysname, nodename: nodename, release: release, version: version, machine: machine)
-  _uname = Some(uname)
-  uname
+  Uname(sysname: sysname, nodename: nodename, release: release, version: version, machine: machine)
 }
 
 // todo: don't duplicate this, but for now it doesn't matter

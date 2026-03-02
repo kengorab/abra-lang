@@ -271,12 +271,14 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
     AstNodeKind.SpecialIdentifier(kind) => {
       stdoutWriteln("$fieldsIndent\"name\": \"specialIdentifier\",")
       stdoutWrite("$fieldsIndent\"kind\": ")
-      match kind {
-        SpecialIdentifierKind.Line => stdoutWriteln("\"line\"")
-        SpecialIdentifierKind.File => stdoutWriteln("\"file\"")
-        SpecialIdentifierKind.Import(moduleName) => stdoutWriteln("\"import\",\n$fieldsIndent\"module\": \"$moduleName\"")
-        SpecialIdentifierKind.Unknown(name) => stdoutWriteln("\"unknown\",\n$fieldsIndent\"ident\": \"$name\"")
+      val str = match kind {
+        SpecialIdentifierKind.Line => "\"line\""
+        SpecialIdentifierKind.File => "\"file\""
+        SpecialIdentifierKind.Import(moduleName) => "\"import\",\n$fieldsIndent\"module\": \"$moduleName\""
+        SpecialIdentifierKind.OS => "\"os\""
+        SpecialIdentifierKind.Unknown(name) => "\"unknown\",\n$fieldsIndent\"ident\": \"$name\""
       }
+      stdoutWriteln(str)
     }
     AstNodeKind.Accessor(accessorNode) => {
       stdoutWriteln("$fieldsIndent\"name\": \"accessor\",")

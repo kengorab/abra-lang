@@ -112,6 +112,7 @@ enum Color2 {
   Red
   Green
   Blue
+  RGB(r: Int, g: Int, b: Int)
 
   func toString(self): String = "custom Color2#toString implementation"
   func hash(self): Int = 17
@@ -129,10 +130,16 @@ println(Color2.Red)
 /// Expect: 17
 println(Color2.Green.hash())
 
+// TODO: Uncomment this once the ir-based compiler becomes the sole compiler
+// // Test custom eq method, with constant eval
+// // Constant eval means that the #eq method doesn't get called, and thus no "[Color2#eq] here" message gets printed
+// /// Expect: false
+// println(Color2.Blue == Color2.Red)
+
 // Test custom eq method
 /// Expect: [Color2#eq] here
 /// Expect: false
-println(Color2.Blue == Color2.Blue)
+println(Color2.Blue == Color2.RGB(r: 1, g: 2, b: 3))
 
 // Test generic enum
 

@@ -1,5 +1,6 @@
 import "fs" as fs
 import "meta" as meta
+import "process" as process
 import getAbsolutePath, resolveRelativePath, getCursorLine from "./utils"
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
 import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, SpecialIdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode, ImportKind, DecoratorNode, LambdaNode, MatchCase, MatchCaseKind, ForIterKind from "./parser"
@@ -1801,6 +1802,7 @@ pub type Typechecker {
   typecheckingBuiltin: BuiltinModule? = None
   pub lspMode: Bool = false
   typeErrorSink: TypeError[]? = None
+  osName: String? = None
 
   pub func typecheckEntrypoint(self, modulePathAbs: String): TypedModule {
     val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
@@ -5010,6 +5012,18 @@ pub type Typechecker {
         )
       }
       SpecialIdentifierKind.Import => return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidSpecialIdentifierUsage(kind)))
+      SpecialIdentifierKind.OS => {
+        val osName = try self.osName else {
+          val name = process.uname().sysname
+          self.osName = Some(name)
+          name
+        }
+        TypedAstNode(
+          token: Token(position: token.position, kind: TokenKind.String(osName)),
+          ty: Type(kind: TypeKind.PrimitiveString),
+          kind: TypedAstNodeKind.Literal(LiteralAstNode.String(osName)),
+        )
+      }
       SpecialIdentifierKind.Unknown(name) => return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownSpecialIdentifier(name)))
     }
 
