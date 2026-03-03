@@ -1,6 +1,5 @@
 import "process" as process
 import "fs" as fs
-import "libc" as libc
 import Path from "path"
 import Compiler from "../../../compiler/src/compiler"
 import typecheck from "../common"
@@ -18,7 +17,7 @@ pub enum BuildTarget {
 
 pub func runBuild(cmd: BuildCmd): String? {
   val abraRoot = try process.getEnvVar("ABRA_ROOT") else {
-    stdoutWriteln("Could not find ABRA_ROOT (make sure \$ABRA_ROOT environment variable is set)")
+    println("Could not find ABRA_ROOT (make sure ABRA_ROOT environment variable is set)")
     process.exit(1)
   }
   val abraStdRoot = try process.getEnvVar("ABRA_STD") else "$abraRoot/std"
@@ -78,11 +77,14 @@ pub func runBuild(cmd: BuildCmd): String? {
   }
 
   val execOutPath = cmd.outputFile ?: "$dotAbraDir/$compilationUnitName"
-  // todo: switch to gcc?
+  // There are some differences in behavior on macOS vs linux:
+  //  1. Ignore linker warnings (-Wl,-w); libgc.a has warnings on macOS.
+  //  2. On macOS, libgc.a needs to be first (this is not the case on linux).
   val clangCmdArgs = match #os {
-    "Darwin" => ["$abraRoot/include/libgc.a", objOutPath, "-o", execOutPath, "-Wl,-w", "-lm", "-Wno-override-module"]
+    "Darwin" => ["$abraRoot/include/libgc.a", objOutPath, "-o", execOutPath, "-lm", "-Wno-override-module", "-Wl,-w"]
     else =>     [objOutPath, "$abraRoot/include/libgc.a", "-o", execOutPath, "-lm", "-Wno-override-module"]
   }
+  // todo: switch to gcc?
   val clangCmd = process.Command(program: "clang", arguments: clangCmdArgs)
   val clangCmdRes = clangCmd.execAndCaptureOutput()
   if !clangCmdRes.status.isSuccess() {
