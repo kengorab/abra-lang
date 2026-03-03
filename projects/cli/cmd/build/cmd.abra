@@ -46,87 +46,19 @@ pub func runBuild(cmd: BuildCmd): String? {
   }
 
   val cwd = fs.getCurrentWorkingDirectory()
-  println("before creating dotAbraDir")
-  stdoutWriteln(process.Command(program: "ls")
-    .addArg("-la")
-    .addArg(cwd)
-    .execAndCaptureOutput()
-    .stdout
-  )
-
   val dotAbraDir = "$cwd/.abra"
   if !fs.File.exists(dotAbraDir) {
     if !fs.createDir(dotAbraDir) {
       println("Error creating .abra directory at '$cwd', cannot proceed")
       process.exit(1)
     }
-
-    if !fs.File.exists(dotAbraDir) {
-      println("huh??")
-      process.exit(1)
-    }
   }
-
-  println("after creating $dotAbraDir")
-  stdoutWriteln(process.Command(program: "ls")
-    .addArg("-la")
-    .addArg(cwd)
-    .execAndCaptureOutput()
-    .stdout
-  )
 
   val ssaOutPath = "$dotAbraDir/$compilationUnitName.ssa"
-  debug(ssaOutPath)
-  val chars: Char[] = []
-  for ch in ssaOutPath.chars() chars.push(ch)
-  debug(chars)
   val ssaOutFile = try fs.File.create(ssaOutPath) else |e| {
     println(e.toString())
-
-    val touchRes = process.Command(program: "touch")
-      .addArg(ssaOutPath)
-      .execAndCaptureOutput()
-    if !touchRes.status.isSuccess() {
-      if !touchRes.stderr.isEmpty() {
-        println(touchRes.stderr)
-      } else {
-        println(touchRes.stdout)
-      }
-      process.exit(1)
-    }
-    println(touchRes.stdout)
-
-    val lsRes = process.Command(program: "ls")
-      .addArg("-la")
-      .addArg(dotAbraDir)
-      .execAndCaptureOutput()
-    if !lsRes.status.isSuccess() {
-      if !lsRes.stderr.isEmpty() {
-        println(lsRes.stderr)
-      } else {
-        println(lsRes.stdout)
-      }
-      process.exit(1)
-    }
-    println(lsRes.stdout)
-
     process.exit(1)
   }
-  debug(ssaOutFile)
-
-  val lsRes = process.Command(program: "ls")
-    .addArg("-la")
-    .addArg(dotAbraDir)
-    .execAndCaptureOutput()
-  if !lsRes.status.isSuccess() {
-    if !lsRes.stderr.isEmpty() {
-      println(lsRes.stderr)
-    } else {
-      println(lsRes.stdout)
-    }
-    process.exit(1)
-  }
-  println(lsRes.stdout)
 
   builder.writeToFile(ssaOutFile)
   ssaOutFile.close()
@@ -142,33 +74,17 @@ pub func runBuild(cmd: BuildCmd): String? {
     } else {
       println(qbeCmdRes.stdout)
     }
-
-    val lsRes = process.Command(program: "ls")
-      .addArg("-la")
-      .addArg(dotAbraDir)
-      .execAndCaptureOutput()
-    if !lsRes.status.isSuccess() {
-      if !lsRes.stderr.isEmpty() {
-        println(lsRes.stderr)
-      } else {
-        println(lsRes.stdout)
-      }
-      process.exit(1)
-    }
-    println(lsRes.stdout)
-
     process.exit(1)
   }
 
   val execOutPath = cmd.outputFile ?: "$dotAbraDir/$compilationUnitName"
-  val clangCmdRes = process.Command(program: "clang") // todo: switch to gcc?
-    .addArg(objOutPath)
-    .addArg("$abraRoot/include/libgc.a")
-    .addArg("-o").addArg(execOutPath)
-    .addArg("-lm")
-    .addArg("-Wno-override-module")
-    // .addArg("-Wl,-w")
-    .execAndCaptureOutput()
+  // todo: switch to gcc?
+  val clangCmdArgs = match #os {
+    "Darwin" => ["$abraRoot/include/libgc.a", objOutPath, "-o", execOutPath, "-Wl,-w", "-lm", "-Wno-override-module"]
+    else =>     [objOutPath, "$abraRoot/include/libgc.a", "-o", execOutPath, "-lm", "-Wno-override-module"]
+  }
+  val clangCmd = process.Command(program: "clang", arguments: clangCmdArgs)
+  val clangCmdRes = clangCmd.execAndCaptureOutput()
   if !clangCmdRes.status.isSuccess() {
     if !clangCmdRes.stderr.isEmpty() {
       println(clangCmdRes.stderr)
