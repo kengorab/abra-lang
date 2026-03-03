@@ -327,6 +327,19 @@
         "kind": "import",
         "module": "foo"
       }
+    },
+    {
+      "token": {
+        "position": [7, 41],
+        "kind": {
+          "name": "SpecialIdent",
+          "value": "os"
+        }
+      },
+      "kind": {
+        "name": "specialIdentifier",
+        "kind": "os"
+      }
     }
   ]
 }
