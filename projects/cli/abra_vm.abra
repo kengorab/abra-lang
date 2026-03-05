@@ -1,0 +1,46 @@
+import "process" as process
+import Path from "path"
+import typecheck from "./cmd/common"
+import "../compiler/src/ir" as ir
+import "../compiler/src/ir_vm" as vm
+
+func printUsage() {
+  println("USAGE")
+  println("  abra_vm <input-file>")
+}
+
+func main() {
+  val abraRoot = try process.getEnvVar("ABRA_ROOT") else {
+    println("Could not find ABRA_ROOT (make sure ABRA_ROOT environment variable is set)")
+    process.exit(1)
+  }
+  val abraStdRoot = try process.getEnvVar("ABRA_STD") else "$abraRoot/std"
+
+  val args = process.args()
+  val _ = try args[0] else unreachable("prog name is always first arg")
+  val inputFile = try args[1] else {
+    println("Missing required argument <input-file>")
+    println()
+    printUsage()
+    process.exit(1)
+  }
+
+  if inputFile == "-h" || inputFile == "--help" {
+    printUsage()
+    process.exit(0)
+  }
+
+  if inputFile.startsWith("-") {
+    println("Unexpected argument '$inputFile'")
+    printUsage()
+    process.exit(1)
+  }
+
+  val inputPath = Path.fromString(inputFile)
+  val (entryMod, project) = try typecheck(abraStdRoot, inputPath) else return
+
+  val IR = ir.Generator.generateIR(project, foldConstants: true)
+  vm.VM.evalIR(IR, args[1:])
+}
+
+main()

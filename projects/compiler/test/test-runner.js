@@ -1,6 +1,9 @@
 const childProcess = require('child_process')
 const fs = require('fs/promises')
 
+const ABRA_CLI = process.env['ABRA_CLI'] || 'abra'
+const EXEC_OUT_DIR = process.env['EXEC_OUT_DIR'] || '._abra'
+
 class TestRunner {
   constructor(runnerName, harnessPath, { target = 'native', cliMode = null } = {}) {
     this.runnerName = runnerName
@@ -18,7 +21,7 @@ class TestRunner {
       } else {
         console.log(`  Compiling test harness '${this.harnessPath}'`)
       }
-      await runCommand('abra', ['build', '-o', this.runnerName, this.harnessPath])
+      await runCommand(ABRA_CLI, ['build', '-o', this.runnerName, this.harnessPath])
       console.log('  Done\n')
     } catch (err) {
       console.log(red('  Failed to compile test harness:'))
@@ -26,7 +29,7 @@ class TestRunner {
       console.log(red(errFmt))
       return { numPass: 0, numFail: 0, numErr: tests.length }
     }
-    const runnerBin = `${process.cwd()}/._abra/${this.runnerName}`
+    const runnerBin = `${process.cwd()}/${EXEC_OUT_DIR}/${this.runnerName}`
 
     const results = []
     for (const { test, assertions, args, env, printModulesOnErr = false } of tests) {
@@ -96,21 +99,22 @@ class TestRunner {
       const testName = testPathSegs[testPathSegs.length - 1].replace('.abra', '')
 
       if (target === 'js') {
-        const testMjsPath = `${process.cwd()}/._abra/${testName}.mjs`
+        const testMjsPath = `${process.cwd()}/.abra/${testName}.mjs`
         const jsWrapperPath = `${process.cwd()}/test/js_harness_node.mjs`
 
-        await fs.writeFile(testMjsPath, '', { encoding: 'utf-8' })
-        await runCommand(compilerBin, [testFilePath, testName])
+        await runCommand(compilerBin, ['build', '-t', 'js', testFilePath])
         return runCommand('node', [jsWrapperPath, testMjsPath, '--', ...args], env)
       } else if (target === 'vm') {
         return runCommand(compilerBin, [testFilePath, ...args], env)
       } else if (target === 'native') {
         if (cliMode === 'COMPILER') {
-          await runCommand(compilerBin, ['build', testFilePath])
+          await runCommand(compilerBin, ['build', '-t', 'bin-old', testFilePath])
+          return runCommand(`${process.cwd()}/.abra/${testName}`, args, env)
+        } else if (cliMode === 'IR_COMPILER') {
+          await runCommand(compilerBin, ['build', '-t', 'bin', testFilePath])
           return runCommand(`${process.cwd()}/.abra/${testName}`, args, env)
         } else {
-          await runCommand('abra', ['build', '-o', testName, testFilePath], { COMPILER_BIN: compilerBin })
-          return runCommand(`${process.cwd()}/._abra/${testName}`, args, env)
+          throw new Error('unreachable')
         }
       } else {
         throw new Error(`Unsupported target ${target}`)

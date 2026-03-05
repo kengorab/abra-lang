@@ -1,8 +1,12 @@
 import "process" as process
 import "fs" as fs
 import Path from "path"
-import Compiler from "../../../compiler/src/compiler"
 import typecheck from "../common"
+import "../../../compiler/src/typechecker" as tc
+import "../../../compiler/src/compiler" as c
+import "../../../compiler/src/ir" as ir
+import "../../../compiler/src/ir_compiler" as irNative
+import "../../../compiler/src/target-js/ir_compiler_js" as irJs
 
 pub type BuildCmd {
   pub outputFile: String?
@@ -12,6 +16,7 @@ pub type BuildCmd {
 
 pub enum BuildTarget {
   NativeBin
+  LegacyBin
   JavaScript
 }
 
@@ -24,11 +29,6 @@ pub func runBuild(cmd: BuildCmd): String? {
 
   val inputPath = Path.fromString(cmd.inputFile)
   val (entryMod, project) = try typecheck(abraStdRoot, inputPath) else return None
-
-  val builder = try Compiler.compile(project, entryMod) else |e| {
-    println(e.getMessage())
-    process.exit(1)
-  }
 
   var compilationUnitName = if cmd.outputFile |outputFile| {
     val outputPath = Path.fromString(outputFile)
@@ -53,19 +53,70 @@ pub func runBuild(cmd: BuildCmd): String? {
     }
   }
 
-  val ssaOutPath = "$dotAbraDir/$compilationUnitName.ssa"
-  val ssaOutFile = try fs.File.create(ssaOutPath) else |e| {
-    println(e.toString())
-    process.exit(1)
+  match cmd.target {
+    BuildTarget.JavaScript => {
+      val outPath = if cmd.outputFile |outFile| {
+        if outFile.endsWith(".mjs") outFile else "$outFile.mjs"
+      } else {
+        "$dotAbraDir/$compilationUnitName.mjs"
+      }
+      val outFile = try fs.File.create(outPath) else |e| {
+        println(e.toString())
+        process.exit(1)
+      }
+      val IR = ir.Generator.generateIR(project, foldConstants: true)
+
+      val writer = ir.Writer(write: str => outFile.write(str))
+      irJs.Compiler.compile(IR, writer)
+
+      Some(outPath)
+    }
+    BuildTarget.NativeBin => {
+      val ssaOutPath = "$dotAbraDir/$compilationUnitName.ssa"
+      val objOutPath = "$dotAbraDir/$compilationUnitName.s"
+      val execOutPath = cmd.outputFile ?: "$dotAbraDir/$compilationUnitName"
+
+      val ssaOutFile = try fs.File.create(ssaOutPath) else |e| {
+        println(e.toString())
+        process.exit(1)
+      }
+
+      val IR = ir.Generator.generateIR(project, foldConstants: true)
+      val result = irNative.Compiler.compile(IR)
+      result.writeToFile(ssaOutFile)
+      ssaOutFile.close()
+
+      compileSsa(ssaOutPath, objOutPath, abraRoot, execOutPath)
+
+      Some(execOutPath)
+    }
+    BuildTarget.LegacyBin => {
+      val ssaOutPath = "$dotAbraDir/$compilationUnitName.ssa"
+      val objOutPath = "$dotAbraDir/$compilationUnitName.s"
+      val execOutPath = cmd.outputFile ?: "$dotAbraDir/$compilationUnitName"
+
+      val ssaOutFile = try fs.File.create(ssaOutPath) else |e| {
+        println(e.toString())
+        process.exit(1)
+      }
+      val builder = try c.Compiler.compile(project, entryMod) else |e| {
+        println(e.getMessage())
+        process.exit(1)
+      }
+      builder.writeToFile(ssaOutFile)
+      ssaOutFile.close()
+
+      compileSsa(ssaOutPath, objOutPath, abraRoot, execOutPath)
+
+      Some(execOutPath)
+    }
   }
+}
 
-  builder.writeToFile(ssaOutFile)
-  ssaOutFile.close()
-
-  val objOutPath = "$dotAbraDir/$compilationUnitName.s"
+func compileSsa(ssaPath: String, objOutPath: String, abraRoot: String, execOutPath: String) {
   val qbeCmdRes = process.Command(program: "qbe")
     .addArg("-o").addArg(objOutPath)
-    .addArg(ssaOutPath)
+    .addArg(ssaPath)
     .execAndCaptureOutput()
   if !qbeCmdRes.status.isSuccess() {
     if !qbeCmdRes.stderr.isEmpty() {
@@ -76,7 +127,6 @@ pub func runBuild(cmd: BuildCmd): String? {
     process.exit(1)
   }
 
-  val execOutPath = cmd.outputFile ?: "$dotAbraDir/$compilationUnitName"
   // There are some differences in behavior on macOS vs linux:
   //  1. Ignore linker warnings (-Wl,-w); libgc.a has warnings on macOS.
   //  2. On macOS, libgc.a needs to be first (this is not the case on linux).
@@ -95,6 +145,4 @@ pub func runBuild(cmd: BuildCmd): String? {
     }
     process.exit(1)
   }
-
-  Some(execOutPath)
 }

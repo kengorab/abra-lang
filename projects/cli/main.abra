@@ -45,8 +45,9 @@ enum Subcommand {
     stdoutWriteln("      abra build [OPTIONS] <input-path>")
     stdoutWriteln("    OPTIONS")
     stdoutWriteln("      -t/--target         Compile target, available options are:")
-    stdoutWriteln("                            bin    Native binary (default option)")
-    stdoutWriteln("                            js     JavaScript")
+    stdoutWriteln("                            bin        Native binary (default option)")
+    stdoutWriteln("                            bin-old    Native binary, using old compiler architecture")
+    stdoutWriteln("                            js         JavaScript")
     stdoutWriteln("      -o <out-path>       Where the built artifact should be placed (defaults to ./.abra/<input>)")
     stdoutWriteln("    ARGS")
     stdoutWriteln("      <file-path>         Path to the abra root source file to build")
@@ -69,7 +70,7 @@ enum Subcommand {
   func parse(programArguments: String[]): Result<Subcommand, SubcommandParseError> {
     val args = programArguments.iterator()
 
-    val progName = try args.next() else unreachable("prog name is always first arg")
+    val _ = try args.next() else unreachable("prog name is always first arg")
 
     val subcommand = try args.next() else return Err(SubcommandParseError.NoCommand)
     match subcommand {
@@ -86,8 +87,9 @@ enum Subcommand {
             val modeStr = try args.next() else return Err(SubcommandParseError.MissingRequiredValue(arg, Some("build")))
             buildTarget = match modeStr {
               "bin" => cmdBuild.BuildTarget.NativeBin
+              "bin-old" => cmdBuild.BuildTarget.LegacyBin
               "js" => cmdBuild.BuildTarget.JavaScript
-              else => return Err(SubcommandParseError.InvalidArgumentValue(arg, modeStr, ["bin", "js"]))
+              else => return Err(SubcommandParseError.InvalidArgumentValue(arg, modeStr, ["bin", "bin-old", "js"]))
             }
             continue
           }

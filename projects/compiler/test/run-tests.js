@@ -908,17 +908,17 @@ const runners = [
   },
   {
     suite: 'ir_vm',
-    runner: new TestRunner('vm_test', `${__dirname}/../src/ir_vm.test.abra`, { target: 'vm' }),
+    runner: new TestRunner('vm_test', `${__dirname}/../../cli/abra_vm.abra`, { target: 'vm' }),
     tests: IR_COMPILER_TESTS,
   },
   {
     suite: 'ir_compiler',
-    runner: new TestRunner('native_ir_compiler_test', `${__dirname}/../src/ir_compiler.test.abra`, { target: 'native' }),
+    runner: new TestRunner('compiler_test', `${__dirname}/../../cli/main.abra`, { cliMode: 'IR_COMPILER' }),
     tests: IR_COMPILER_TESTS,
   },
   {
     suite: 'ir_compiler_js',
-    runner: new TestRunner('js_ir_compiler_test', `${__dirname}/../src/target-js/ir_compiler_js.cmd.abra`, { target: 'js' }),
+    runner: new TestRunner('js_ir_compiler_test', `${__dirname}/../../cli/main.abra`, { target: 'js' }),
     tests: IR_COMPILER_TESTS,
   },
 ]
