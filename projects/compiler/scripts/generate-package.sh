@@ -27,10 +27,9 @@ if [ -d "$pkg_dir" ]; then
 fi
 mkdir "$pkg_dir"
 
-abra build -o compiler "$script_dir/../src/compiler.test.abra"
-cp ./._abra/compiler "$pkg_dir/compiler"
+abra build -o abra-cli "$script_dir/../../cli/main.abra"
+cp ./._abra/abra-cli "$pkg_dir/abra"
 
-cp "$script_dir/abraw" "$pkg_dir/abra"
 echo -n "$version" > "$pkg_dir/version"
 
 mkdir "$pkg_dir/include"
