@@ -37,14 +37,19 @@ jobs:
       run: |
         cd projects/compiler
         node test/run-tests.js
-    - name: Run tests against compiler-next
+    - name: Build abra-next
+      run: |
+        cd projects/cli
+        abra build -o cli ./main.abra
+        ./._abra/cli build -o abra-next -t bin-old ./main.abra
+    - name: Run tests against abra-next (compiler)
       run: |
         cd projects/compiler
-        abra build -o compiler_next ./src/compiler.test.abra
-        COMPILER_BIN=./._abra/compiler_next node test/run-tests.js
-    - name: Run tests against ir-compiler-next
+        ABRA_CLI=./../cli/abra-next EXEC_OUT_DIR=. node test/run-tests.js
+    - name: Run tests against abra-next (ir-compiler)
       run: |
-        cd projects/compiler
-        abra build -o ir_compiler ./src/ir_compiler.test.abra
-        COMPILER_BIN=./._abra/ir_compiler abra build -o ir_compiler2 ./src/ir_compiler.test.abra
-        COMPILER_BIN=./._abra/ir_compiler2 node test/run-tests.js
+        cd projects/cli
+        ./abra-next build -o abra-next2 -t bin ./main.abra
+
+        cd ../compiler
+        ABRA_CLI=./../cli/abra-next2 EXEC_OUT_DIR=. node test/run-tests.js
