@@ -77,7 +77,7 @@ class InlineTestRunner {
       results.push(result)
     }
 
-    return outputResults(results)
+    return outputResults(results, true)
   }
 
   async runTest(testFile, args = [], env = {}) {
