@@ -5,7 +5,7 @@ import Lexer, Token from "../../../compiler/src/lexer"
 import printTokensAsJson from "./jsonify_token"
 import Parser from "../../../compiler/src/parser"
 import printParsedModuleAsJson from "./jsonify_ast"
-import typecheck from "../common"
+import typecheck, getAbraEnvVarsOrExit from "../common"
 import printTypedAst from "./jsonify_typed_ast"
 import Generator, Writer from "../../../compiler/src/ir"
 
@@ -65,10 +65,7 @@ func emitAst(inputFile: String) {
 }
 
 func emitTypedAst(inputFile: String, ignoreErrors: Bool) {
-  val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {
-    stdoutWriteln("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
-    process.exit(1)
-  }
+  val (_, abraStdRoot) = getAbraEnvVarsOrExit()
 
   val inputPath = Path.fromString(inputFile)
   val (entryMod, project) = try typecheck(abraStdRoot, inputPath, ignoreErrors, exitOnError: false) else return
@@ -87,10 +84,7 @@ func emitTypedAst(inputFile: String, ignoreErrors: Bool) {
 }
 
 func emitIr(inputFile: String) {
-  val abraStdRoot = try process.getEnvVar("ABRA_HOME") else {
-    stdoutWriteln("Could not find ABRA_HOME (make sure \$ABRA_HOME environment variable is set)")
-    process.exit(1)
-  }
+  val (_, abraStdRoot) = getAbraEnvVarsOrExit()
 
   val inputPath = Path.fromString(inputFile)
   val (_, project) = try typecheck(abraStdRoot, inputPath, ignoreErrors: false, exitOnError: false) else return

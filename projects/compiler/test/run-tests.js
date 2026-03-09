@@ -1,4 +1,4 @@
-const { TestRunner, yellow, green, magenta } = require('./test-runner')
+const { runCommand, SnapshotTestRunner, InlineTestRunner, TestRunner, yellow, green, magenta } = require('./test-runner')
 
 const LEXER_TESTS = [
   // Ints
@@ -885,49 +885,23 @@ const IR_COMPILER_TESTS = [
   { test: "compiler/json.abra" },
 ]
 
-const runners = [
-  {
-    suite: 'lexer',
-    runner: new TestRunner('lexer_test', `${__dirname}/../../cli/main.abra`, { cliMode: 'TOKENS_ONLY' }),
-    tests: LEXER_TESTS,
-  },
-  {
-    suite: 'parser',
-    runner: new TestRunner('parser_test', `${__dirname}/../../cli/main.abra`, { cliMode: 'AST' }),
-    tests: PARSER_TESTS,
-  },
-  {
-    suite: 'typechecker',
-    runner: new TestRunner('typechecker_test', `${__dirname}/../../cli/main.abra`, { cliMode: 'TYPED_AST' }),
-    tests: TYPECHECKER_TESTS,
-  },
-  {
-    suite: 'compiler',
-    runner: new TestRunner('compiler_test', `${__dirname}/../../cli/main.abra`, { cliMode: 'COMPILER' }),
-    tests: COMPILER_TESTS,
-  },
-  {
-    suite: 'ir_vm',
-    runner: new TestRunner('vm_test', `${__dirname}/../../cli/abra_vm.abra`, { target: 'vm' }),
-    tests: IR_COMPILER_TESTS,
-  },
-  {
-    suite: 'ir_compiler',
-    runner: new TestRunner('compiler_test', `${__dirname}/../../cli/main.abra`, { cliMode: 'IR_COMPILER' }),
-    tests: IR_COMPILER_TESTS,
-  },
-  {
-    suite: 'ir_compiler_js',
-    runner: new TestRunner('js_ir_compiler_test', `${__dirname}/../../cli/main.abra`, { target: 'js' }),
-    tests: IR_COMPILER_TESTS,
-  },
-]
+const ABRA_CLI = process.env['ABRA_CLI'] || 'abra'
 
 async function main() {
   const args = [...process.argv]
   let testFilter = null
   let suiteFilter = null
   let updateSnapshots = false
+
+  const runners = [
+    { suite: 'lexer', tests: LEXER_TESTS },
+    { suite: 'parser', tests: PARSER_TESTS },
+    { suite: 'typechecker', tests: TYPECHECKER_TESTS },
+    { suite: 'compiler', tests: COMPILER_TESTS },
+    { suite: 'ir_vm', tests: IR_COMPILER_TESTS },
+    { suite: 'ir_compiler', tests: IR_COMPILER_TESTS },
+    { suite: 'ir_compiler_js', tests: IR_COMPILER_TESTS },
+  ]
 
   while (args.length) {
     const arg = args.shift()
@@ -969,20 +943,63 @@ async function main() {
   let numUpdated = 0
   let numTests = 0
 
-  for (const { suite, runner, tests } of runners) {
+  let cliBinPath = null
+  let vmBinPath = null
+
+  for (const { suite, tests } of runners) {
     if (suiteFilter && suite !== suiteFilter) continue
 
     const testsToRun = testFilter
       ? tests.filter(t => t.test === testFilter) ?? []
       : tests
     numTests += testsToRun.length
+
+    console.log(`Running test suite: ${suite}`)
+    if (suite === 'ir_vm' && !vmBinPath) {
+      const cwd = process.cwd()
+
+      console.log('  Building VM bin...')
+      await runCommand(ABRA_CLI, ['build', `${__dirname}/../../cli/abra_vm.abra`])
+      vmBinPath = `${cwd}/.abra/abra_vm`
+      console.log('  ...done')
+    } else if (!cliBinPath) {
+      const cwd = process.cwd()
+
+      console.log('  Building CLI bin...')
+      await runCommand(ABRA_CLI, ['build', `${__dirname}/../../cli/main.abra`])
+      cliBinPath = `${cwd}/.abra/main`
+      console.log('  ...done')
+    }
+
+    const runner = (() => {
+      switch (suite) {
+        case 'lexer':
+          return new SnapshotTestRunner(cliBinPath, 'TOKENS_ONLY')
+        case 'parser':
+          return new SnapshotTestRunner(cliBinPath, 'AST')
+        case 'typechecker':
+          return new SnapshotTestRunner(cliBinPath, 'TYPED_AST')
+        case 'compiler':
+          return new InlineTestRunner(cliBinPath, 'compiler')
+        case 'ir_vm':
+          return new InlineTestRunner(vmBinPath, 'vm')
+        case 'ir_compiler':
+          return new InlineTestRunner(cliBinPath, 'ir_compiler')
+        case 'ir_compiler_js':
+          return new InlineTestRunner(cliBinPath, 'js')
+        default:
+          throw new Error(`unreachable: unimplemented test runner for suite ${suite}`)
+      }
+    })();
+
     const results = await runner.runTests(testsToRun, updateSnapshots)
     numPass += results.numPass
     numFail += results.numFail
     numErr += results.numErr
 
-    if (updateSnapshots)
+    if (updateSnapshots) {
       numUpdated += (results.numUpdated ?? 0)
+    }
   }
 
   console.log('\nTotals:')
@@ -998,8 +1015,9 @@ async function main() {
     console.log(numUpdated > 0 ? yellow(msg) : msg)
   }
 
-  if (numPass !== numTests)
+  if (numPass !== numTests) {
     return process.exit(1)
+  }
 }
 
 main()

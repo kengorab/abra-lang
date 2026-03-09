@@ -27,15 +27,15 @@ if [ -d "$pkg_dir" ]; then
 fi
 mkdir "$pkg_dir"
 
-abra build -o abra-cli "$script_dir/../../cli/main.abra"
-cp ./._abra/abra-cli "$pkg_dir/abra"
+abra build -o abra-cli "$script_dir/../projects/cli/main.abra"
+cp ./abra-cli "$pkg_dir/abra"
 
 echo -n "$version" > "$pkg_dir/version"
 
 mkdir "$pkg_dir/include"
-cp "$script_dir/../ext/bdwgc/libgc.a" "$pkg_dir/include/."
+cp "$script_dir/../projects/compiler/ext/bdwgc/libgc.a" "$pkg_dir/include/."
 
-cp -r "$script_dir/../../std/src" "$pkg_dir/std"
+cp -r "$script_dir/../projects/std/src" "$pkg_dir/std"
 
 cd "$pkg_dir"
 tarfile="abra-$platform.tar.gz"
