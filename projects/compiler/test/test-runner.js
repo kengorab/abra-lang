@@ -89,6 +89,7 @@ class InlineTestRunner {
         fs.readFile(testFilePath, { encoding: 'utf8' }),
       ])
 
+      const stdDir = process.env.ABRA_STD ? process.env.ABRA_STD : `${process.env.ABRA_ROOT}/std`
       const re = /^\s*\/\/\/ Expect: (.*)$/
       const expectations = expectedOutput.split('\n')
         .map((line, idx) => {
@@ -97,7 +98,7 @@ class InlineTestRunner {
 
           const expectation = match[1]
             .replaceAll('%TEST_DIR%', __dirname)
-            .replaceAll('%STD_DIR%', `${process.env.ABRA_ROOT}/std`)
+            .replaceAll('%STD_DIR%', stdDir)
           return [idx + 1, expectation]
         })
         .filter(line => !!line)
