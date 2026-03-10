@@ -39,7 +39,7 @@ jobs:
       run: |
         cd projects/cli
         abra build -o cli ./main.abra
-        ./._abra/cli build -o abra-next -t bin-old ./main.abra
+        ./cli build -o abra-next -t bin-old ./main.abra
     - name: Run tests against abra-next (compiler)
       run: |
         cd projects/compiler
