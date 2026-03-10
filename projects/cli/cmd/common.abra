@@ -3,6 +3,16 @@ import Path from "path"
 import ModuleLoader, Project, Typechecker, TypedModule from "../../compiler/src/typechecker"
 import ComptimeFunctionEvaluator from "../../compiler/src/comptime_evaluator"
 
+pub func getAbraEnvVarsOrExit(): (String, String) {
+  val abraRoot = try process.getEnvVar("ABRA_ROOT") else {
+    println("Could not find ABRA_ROOT (make sure ABRA_ROOT environment variable is set)")
+    process.exit(1)
+  }
+  val abraStdRoot = try process.getEnvVar("ABRA_STD") else "$abraRoot/std"
+
+  (abraRoot, abraStdRoot)
+}
+
 pub func typecheck(stdRoot: String, filePath: Path, ignoreErrors = true, exitOnError = true): (TypedModule, Project)? {
   val moduleLoader = ModuleLoader(stdRoot: stdRoot)
   val project = Project()

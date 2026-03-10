@@ -1,7 +1,7 @@
 import "process" as process
 import "fs" as fs
 import Path from "path"
-import typecheck from "../common"
+import typecheck, getAbraEnvVarsOrExit from "../common"
 import "../../../compiler/src/typechecker" as tc
 import "../../../compiler/src/compiler" as c
 import "../../../compiler/src/ir" as ir
@@ -21,11 +21,7 @@ pub enum BuildTarget {
 }
 
 pub func runBuild(cmd: BuildCmd): String? {
-  val abraRoot = try process.getEnvVar("ABRA_ROOT") else {
-    println("Could not find ABRA_ROOT (make sure ABRA_ROOT environment variable is set)")
-    process.exit(1)
-  }
-  val abraStdRoot = try process.getEnvVar("ABRA_STD") else "$abraRoot/std"
+  val (abraRoot, abraStdRoot) = getAbraEnvVarsOrExit()
 
   val inputPath = Path.fromString(cmd.inputFile)
   val (entryMod, project) = try typecheck(abraStdRoot, inputPath) else return None

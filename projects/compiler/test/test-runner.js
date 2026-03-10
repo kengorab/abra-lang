@@ -1,65 +1,37 @@
 const childProcess = require('child_process')
 const fs = require('fs/promises')
 
-const ABRA_CLI = process.env['ABRA_CLI'] || 'abra'
-const EXEC_OUT_DIR = process.env['EXEC_OUT_DIR'] || '._abra'
-
-class TestRunner {
-  constructor(runnerName, harnessPath, { target = 'native', cliMode = null } = {}) {
-    this.runnerName = runnerName
-    this.harnessPath = harnessPath
-    this.target = target
-    this.cliMode = cliMode
+class SnapshotTestRunner {
+  constructor(cliBinPath, mode) {
+    this.cliBinPath = cliBinPath;
+    this.mode = mode;
   }
 
   async runTests(tests, updateSnapshotWhenFailed) {
-    console.log(`Running test suite ${this.runnerName}:`)
-    try {
-      if (this.cliMode) {
-        console.log(`  Compiling cli '${this.harnessPath}'`)
-        this.runnerName += '_cli'
-      } else {
-        console.log(`  Compiling test harness '${this.harnessPath}'`)
-      }
-      await runCommand(ABRA_CLI, ['build', '-o', this.runnerName, this.harnessPath])
-      console.log('  Done\n')
-    } catch (err) {
-      console.log(red('  Failed to compile test harness:'))
-      const errFmt = err.toString().split('\n').map(line => `    ${line}`).join('\n')
-      console.log(red(errFmt))
-      return { numPass: 0, numFail: 0, numErr: tests.length }
-    }
-    const runnerBin = `${process.cwd()}/${EXEC_OUT_DIR}/${this.runnerName}`
-
     const results = []
-    for (const { test, assertions, args, env, printModulesOnErr = false } of tests) {
-      let result
-      if (!!assertions) {
-        result = await this._runTest(runnerBin, test, assertions, printModulesOnErr, updateSnapshotWhenFailed)
-      } else {
-        result = await this._runCompilerTest(runnerBin, test, args, env)
-      }
+    for (const { test, assertions, printModulesOnErr = false } of tests) {
+      const result = await this.runTest(test, assertions, printModulesOnErr, updateSnapshotWhenFailed)
       results.push(result)
     }
 
-    return this._outputResults(results)
+    return outputResults(results)
   }
 
-  async _runTest(bin, testFile, outputFile, printModulesOnErr, updateSnapshotWhenFailed) {
+  async runTest(testFile, outputFile, printModulesOnErr, updateSnapshotWhenFailed) {
     const testFilePath = `${__dirname}/${testFile}`
     const outputFilePath = `${__dirname}/${outputFile}`
 
     try {
       const cmdArgs = ['emit-ir', '--mode']
-      switch (this.cliMode) {
+      switch (this.mode) {
         default:
-          throw new Error(`Invalid cli mode '${this.cliMode}'`)
+          throw new Error(`Invalid mode '${this.mode}'`)
         case 'TOKENS_ONLY':
         case 'AST':
-          cmdArgs.push(this.cliMode)
+          cmdArgs.push(this.mode)
           break
         case 'TYPED_AST':
-          cmdArgs.push(this.cliMode)
+          cmdArgs.push(this.mode)
           if (printModulesOnErr) {
             cmdArgs.push('--ignore-errors')
           }
@@ -68,7 +40,7 @@ class TestRunner {
       cmdArgs.push(testFilePath)
 
       const [actual, expectedOutput] = await Promise.all([
-        runCommand(bin, cmdArgs),
+        runCommand(this.cliBinPath, cmdArgs),
         fs.readFile(outputFilePath, { encoding: 'utf8' }),
       ])
 
@@ -90,43 +62,34 @@ class TestRunner {
       return { status: 'error', testFile, error }
     }
   }
+}
 
-  async _runCompilerTest(bin, testFile, args = [], env = {}) {
-    const testFilePath = `${__dirname}/${testFile}`
+class InlineTestRunner {
+  constructor(cliBinPath, mode) {
+    this.cliBinPath = cliBinPath;
+    this.mode = mode;
+  }
 
-    async function buildAndRunTestBin(testFilePath, compilerBin, args, env, target, cliMode) {
-      const testPathSegs = testFilePath.split('/')
-      const testName = testPathSegs[testPathSegs.length - 1].replace('.abra', '')
-
-      if (target === 'js') {
-        const testMjsPath = `${process.cwd()}/.abra/${testName}.mjs`
-        const jsWrapperPath = `${process.cwd()}/test/js_harness_node.mjs`
-
-        await runCommand(compilerBin, ['build', '-t', 'js', testFilePath])
-        return runCommand('node', [jsWrapperPath, testMjsPath, '--', ...args], env)
-      } else if (target === 'vm') {
-        return runCommand(compilerBin, [testFilePath, ...args], env)
-      } else if (target === 'native') {
-        if (cliMode === 'COMPILER') {
-          await runCommand(compilerBin, ['build', '-t', 'bin-old', testFilePath])
-          return runCommand(`${process.cwd()}/.abra/${testName}`, args, env)
-        } else if (cliMode === 'IR_COMPILER') {
-          await runCommand(compilerBin, ['build', '-t', 'bin', testFilePath])
-          return runCommand(`${process.cwd()}/.abra/${testName}`, args, env)
-        } else {
-          throw new Error('unreachable')
-        }
-      } else {
-        throw new Error(`Unsupported target ${target}`)
-      }
+  async runTests(tests) {
+    const results = []
+    for (const { test, args, env } of tests) {
+      const result = await this.runTest(test, args, env)
+      results.push(result)
     }
+
+    return outputResults(results)
+  }
+
+  async runTest(testFile, args = [], env = {}) {
+    const testFilePath = `${__dirname}/${testFile}`
 
     try {
       const [actual, expectedOutput] = await Promise.all([
-        buildAndRunTestBin(testFilePath, bin, args, env, this.target, this.cliMode),
+        this.buildAndRunTest(testFilePath, args, env),
         fs.readFile(testFilePath, { encoding: 'utf8' }),
       ])
 
+      const stdDir = process.env.ABRA_STD ? process.env.ABRA_STD : `${process.env.ABRA_ROOT}/std`
       const re = /^\s*\/\/\/ Expect: (.*)$/
       const expectations = expectedOutput.split('\n')
         .map((line, idx) => {
@@ -135,7 +98,7 @@ class TestRunner {
 
           const expectation = match[1]
             .replaceAll('%TEST_DIR%', __dirname)
-            .replaceAll('%STD_DIR%', process.env.ABRA_HOME)
+            .replaceAll('%STD_DIR%', stdDir)
           return [idx + 1, expectation]
         })
         .filter(line => !!line)
@@ -156,56 +119,85 @@ class TestRunner {
     }
   }
 
-  _outputResults(results) {
-    let numPass = 0
-    let numFail = 0
-    let numErr = 0
-    let numUpdated = 0
+  async buildAndRunTest(testFilePath, args, env) {
+    const testPathSegs = testFilePath.split('/')
+    const testName = testPathSegs[testPathSegs.length - 1].replace('.abra', '')
 
-    for (const result of results) {
-      switch (result.status) {
-        case 'pass': {
-          numPass += 1
-          console.log(green(`  [PASS] ${result.testFile}`))
-          break
-        }
-        case 'fail': {
-          numFail += 1
-          console.log(magenta(`  [FAIL] ${result.testFile}`))
-          // console.log('EXPECTED')
-          // console.log(result.expected)
-          // console.log('ACTUAL')
-          // console.log(result.actual)
-          break
-        }
-        case 'error': {
-          numErr += 1
-          console.log(red(`  [ERROR] ${result.testFile}`))
+    switch (this.mode) {
+      case 'js': {
+        const testMjsPath = `${process.cwd()}/.abra/${testName}.mjs`
+        const jsWrapperPath = `${process.cwd()}/test/js_harness_node.mjs`
 
-          const errFmt = result.error.toString().split('\n').map(line => `    ${line}`).join('\n')
-          console.log(red(errFmt))
-          break
+        await runCommand(this.cliBinPath, ['build', '-t', 'js', testFilePath])
+        return runCommand('node', [jsWrapperPath, testMjsPath, '--', ...args], env)
+      }
+      case 'vm': {
+        return runCommand(this.cliBinPath, [testFilePath, ...args], env)
+      }
+      case 'ir_compiler': {
+        await runCommand(this.cliBinPath, ['build', '-t', 'bin', testFilePath])
+        return runCommand(`${process.cwd()}/.abra/${testName}`, args, env)
+      }
+      case 'compiler': {
+        await runCommand(this.cliBinPath, ['build', '-t', 'bin-old', testFilePath])
+        return runCommand(`${process.cwd()}/.abra/${testName}`, args, env)
+      }
+      default: throw new Error(`Unsupported mode ${this.mode}`)
+    }
+  }
+}
+
+function outputResults(results, printExpectedAndActual = false) {
+  let numPass = 0
+  let numFail = 0
+  let numErr = 0
+  let numUpdated = 0
+
+  for (const result of results) {
+    switch (result.status) {
+      case 'pass': {
+        numPass += 1
+        console.log(green(`  [PASS] ${result.testFile}`))
+        break
+      }
+      case 'fail': {
+        numFail += 1
+        console.log(magenta(`  [FAIL] ${result.testFile}`))
+        if (printExpectedAndActual) {
+          console.log('EXPECTED')
+          console.log(result.expected)
+          console.log('ACTUAL')
+          console.log(result.actual)
         }
-        case 'updated': {
-          numUpdated += 1
-          console.log(yellow(`  [UPDATED] ${result.testFile}`))
-          break
-        }
+        break
+      }
+      case 'error': {
+        numErr += 1
+        console.log(red(`  [ERROR] ${result.testFile}`))
+
+        const errFmt = result.error.toString().split('\n').map(line => `    ${line}`).join('\n')
+        console.log(red(errFmt))
+        break
+      }
+      case 'updated': {
+        numUpdated += 1
+        console.log(yellow(`  [UPDATED] ${result.testFile}`))
+        break
       }
     }
-
-    console.log()
-    const passMsg = `  Pass: ${numPass} / ${results.length}`
-    console.log(numPass === results.length ? green(passMsg) : passMsg)
-    const failMsg = `  Fail: ${numFail} / ${results.length}`
-    console.log(numFail > 0 ? magenta(failMsg) : failMsg)
-    const errMsg = `  Error: ${numErr} / ${results.length}`
-    console.log(numErr > 0 ? magenta(errMsg) : errMsg)
-    const updatedMsg = `  Updated: ${numUpdated} / ${results.length}`
-    console.log(numUpdated > 0 ? yellow(updatedMsg) : updatedMsg)
-
-    return { numPass, numFail, numErr, numUpdated }
   }
+
+  console.log()
+  const passMsg = `  Pass: ${numPass} / ${results.length}`
+  console.log(numPass === results.length ? green(passMsg) : passMsg)
+  const failMsg = `  Fail: ${numFail} / ${results.length}`
+  console.log(numFail > 0 ? magenta(failMsg) : failMsg)
+  const errMsg = `  Error: ${numErr} / ${results.length}`
+  console.log(numErr > 0 ? magenta(errMsg) : errMsg)
+  const updatedMsg = `  Updated: ${numUpdated} / ${results.length}`
+  console.log(numUpdated > 0 ? yellow(updatedMsg) : updatedMsg)
+
+  return { numPass, numFail, numErr, numUpdated }
 }
 
 function runCommand(command, args, envVars = {}) {
@@ -243,4 +235,4 @@ const green = str => `${colors.green}${str}${colors.reset}`
 const yellow = str => `${colors.yellow}${str}${colors.reset}`
 const magenta = str => `${colors.magenta}${str}${colors.reset}`
 
-module.exports = { TestRunner, red, yellow, green, magenta }
+module.exports = { SnapshotTestRunner, InlineTestRunner, runCommand, red, yellow, green, magenta }

@@ -1,11 +1,9 @@
-val O_RDONLY = 0
-val O_WRONLY = 1
-val O_RDWR   = 2
-val O_CREAT  = match #os { "Darwin" => 512, else => 64 }
-val O_TRUNC  = match #os { "Darwin" => 1024, else => 512 }
+val arr: Either<Int, Float>[] = [Either.Left(0), Either.Right(1.2)]
+println(arr)
 
-debug(O_RDONLY)
-debug(O_WRONLY)
-debug(O_RDWR)
-debug(O_CREAT)
-debug(O_TRUNC)
+val s = match arr[1] {
+  None => "none"
+  Either.Left(i) => "$i"
+  Either.Right(f) => "$f"
+}
+println(s)
