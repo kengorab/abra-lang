@@ -2096,14 +2096,20 @@ pub type Generator {
                 val fields = match variant.kind { EnumVariantKind.Container(fields) => fields, else => [] }
                 val vars = Map.fromPairs(destructuredVariables.map(v => (v.label.name, v)))
 
+                val concreteGenerics = if subjectOptInnerType |(innerConcreteType, _)|{
+                  self.extractConcreteGenericsFromConcreteType(innerConcreteType)
+                } else {
+                  subjectConcreteGenerics
+                }
+
                 for field, idx in fields {
                   val variable = try destructuredVariables[idx] else unreachable("fields.length != destructuredVariables.length (${node.token.position})")
-                  val fieldConcreteType = self.getConcreteTypeFromType(field.ty, subjectConcreteGenerics)
+                  val fieldConcreteType = self.getConcreteTypeFromType(field.ty, concreteGenerics)
                   val fieldIrType = self.getIrTypeForConcreteType(fieldConcreteType)
 
                   val offset = (idx + 1) * ALIGNMENT
                   val fieldSubject = self.ssaValue(fieldIrType, Operation.LoadField(ty: fieldIrType, mem: subjVal, name: field.name.name, offset: offset), None)
-                  self.genBindingPattern(BindingPattern.Variable(variable.label), vars, Some((fieldSubject, fieldConcreteType)), subjectConcreteGenerics)
+                  self.genBindingPattern(BindingPattern.Variable(variable.label), vars, Some((fieldSubject, fieldConcreteType)), concreteGenerics)
                 }
               }
             }

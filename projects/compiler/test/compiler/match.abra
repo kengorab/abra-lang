@@ -306,6 +306,19 @@ println(matchStmtCaseHasReturn(None))
 /// Expect: 1
 println(matchStmtCaseHasReturn(Option.Some(value: 4)))
 
+/// Expect: 0
+/// Expect: 1.2
+/// Expect: none
+val arrayOfEithers: Either<Int, Float>[] = [Either.Left(0), Either.Right(1.2)]
+for i in 0:3 {
+  val s = match arrayOfEithers[i] {
+    None => "none"
+    Either.Left(i) => "$i"
+    Either.Right(f) => "$f"
+  }
+  println(s)
+}
+
 // TODO (#629)
 // func matchCasesAllEndInReturn(color: Color): Color {
 //   match color {
