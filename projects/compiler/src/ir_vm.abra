@@ -66,6 +66,8 @@ func pointerValueFromString(str: String): VmValue {
       byteVals.push(VmValue.Int(i))
     }
   }
+  byteVals.push(VmValue.Int(0)) // NULL-terminator
+
   VmValue.Pointer(byteVals)
 }
 
@@ -786,6 +788,7 @@ pub type VM {
       "rand" => self.externRand(args)
       "strlen" => self.externStrlen(args)
       "getenv" => self.externGetenv(args)
+      "uname" => self.externUname(args)
       else => {
         if self.externs[name] |fn| {
           self.returnValue = fn(args)
@@ -822,7 +825,14 @@ pub type VM {
     val (strBuffer, isNull) = arg0.expectPointer("externStrlen strPtr")
     if isNull unreachable("externStrlen strPtr is null")
 
-    self.returnValue = VmValue.Int(strBuffer.length)
+    for v, i in strBuffer {
+      if v == VmValue.Int(0) {
+        self.returnValue = VmValue.Int(i)
+        return
+      }
+    }
+
+    unreachable("string not NULL-terminated")
   }
 
   func externGetenv(self, args: VmValue[]) {
@@ -838,5 +848,24 @@ pub type VM {
       val len = libc.strlen(res)
       pointerValueFromString(String(length: len, _buffer: res))
     }
+  }
+
+  func externUname(self, args: VmValue[]) {
+    val arg0 = try args[0] else unreachable("uname(buf: Pointer<Byte>)")
+    val (buffer, isNull) = arg0.expectPointer("externUname buf")
+    if isNull unreachable("externUname buf is null")
+
+    val uname = process.uname()
+    for str, i in [uname.sysname, uname.nodename, uname.release, uname.version, uname.machine] {
+      var cursor = 256 * i
+      for ch in str.chars() {
+        for b in ch.bytes() {
+          buffer[cursor] = VmValue.Int(b)
+          cursor += 1
+        }
+      }
+    }
+
+    self.returnValue = VmValue.Int(0)
   }
 }
