@@ -52,28 +52,29 @@ pub func uname(): Uname {
   // each field differs per platform. After extracting the first string, skip over the \0 padding bytes
   // until we reach the start of the next string. From that offset, we can determine the size of each field,
   // and extract the remaining fields more efficiently.
-  var offset = sysnameLen
+  var offset = sysnameLen + 1
   while utsnameBuf.loadAt(offset).asInt() == 0 { offset += 1 }
-  var cursor = offset
+  val fieldSize = offset
 
+  utsnameBuf = utsnameBuf.offset(fieldSize)
   val nodenameLen = libc.strlen(utsnameBuf)
   val nodename = String.withLength(nodenameLen)
-  nodename._buffer.copyFrom(0, utsnameBuf, cursor, nodenameLen)
-  cursor += sysnameLen
+  nodename._buffer.copyFrom(0, utsnameBuf, 0, nodenameLen)
 
+  utsnameBuf = utsnameBuf.offset(fieldSize)
   val releaseLen = libc.strlen(utsnameBuf)
   val release = String.withLength(releaseLen)
-  release._buffer.copyFrom(0, utsnameBuf, cursor, releaseLen)
-  cursor += sysnameLen
+  release._buffer.copyFrom(0, utsnameBuf, 0, releaseLen)
 
+  utsnameBuf = utsnameBuf.offset(fieldSize)
   val versionLen = libc.strlen(utsnameBuf)
   val version = String.withLength(versionLen)
-  version._buffer.copyFrom(0, utsnameBuf, cursor, versionLen)
-  cursor += sysnameLen
+  version._buffer.copyFrom(0, utsnameBuf, 0, versionLen)
 
+  utsnameBuf = utsnameBuf.offset(fieldSize)
   val machineLen = libc.strlen(utsnameBuf)
   val machine = String.withLength(machineLen)
-  machine._buffer.copyFrom(0, utsnameBuf, cursor, machineLen)
+  machine._buffer.copyFrom(0, utsnameBuf, 0, machineLen)
 
   Uname(sysname: sysname, nodename: nodename, release: release, version: version, machine: machine)
 }
