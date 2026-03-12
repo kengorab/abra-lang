@@ -562,6 +562,13 @@ pub type Compiler {
             self.emitIrValueToJsValue(offset)
             self.writer.writeln("]; // builtin(ptr_load)")
           }
+          Builtin.PtrOffset(ptr, offset, _) => {
+            self.writer.write("const $dst = ")
+            self.emitIrValueToJsValue(ptr)
+            self.writer.write(".subarray(")
+            self.emitIrValueToJsValue(offset)
+            self.writer.writeln("); // builtin(ptr_offset)")
+          }
           Builtin.CopyFrom(dst, dstOffset, src, srcOffset, count, _) => {
             val countVal = self.irValueToJsValue(count)
             self.writer.writeln("for (let i = 0; i < $countVal; i++) {")

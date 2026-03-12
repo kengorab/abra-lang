@@ -9,3 +9,5 @@ val uname = process.uname()
 println(uname.sysname)
 /// Expect: arm64
 println(uname.machine)
+
+println(uname)

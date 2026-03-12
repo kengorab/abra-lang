@@ -187,6 +187,7 @@ pub enum Builtin {
   Realloc(ptr: Value, count: Value, itemTy: IrType? = None)
   Store(ptr: Value, value: Value, offset: Value, itemTy: IrType)
   Load(ptr: Value, offset: Value, itemTy: IrType)
+  PtrOffset(ptr: Value, offset: Value, itemTy: IrType)
   CopyFrom(dst: Value, dstOffset: Value, src: Value, srcOffset: Value, size: Value, itemTy: IrType)
   I64ToString(intVal: Value)
   U64ToString(intVal: Value)
@@ -738,6 +739,14 @@ pub enum Operation {
           }
           Builtin.Load(ptr, offset, itemTy) => {
             w.write("ptr_load, ")
+            ptr.render(w)
+            w.write(", ")
+            offset.render(w)
+            w.write(", ")
+            itemTy.render(w)
+          }
+          Builtin.PtrOffset(ptr, offset, itemTy) => {
+            w.write("ptr_offset, ")
             ptr.render(w)
             w.write(", ")
             offset.render(w)
@@ -1306,6 +1315,12 @@ pub type Generator {
 
           val ident = self.ssaValue(strTy, Operation.Builtin(ret: strTy, builtin: builtin), None)
           self.emit(Instruction(op: Operation.Return(Some(ident))))
+          return
+        }
+
+        if self.isFunctionStruct(s) {
+          val fnToString = self.ssaValue(strTy, Operation.ConstString("<#function>"), None)
+          self.emit(Instruction(op: Operation.Return(Some(fnToString))))
           return
         }
 
@@ -3216,6 +3231,15 @@ pub type Generator {
 
               self.ssaValue(itemTy, Operation.Builtin(ret: itemTy, builtin: Builtin.Load(ptr: ptrVal, offset: offsetVal, itemTy: itemTy)), dst)
             }
+            "pointer_offset" => {
+              val ptrVal = self.genExpression(selfVal, concreteGenerics)
+              val offset = self.intrinsicArgs1("pointer_offset", args)
+
+              val itemTy = self.getIrTypeForConcreteType(try innerConcreteGenerics["T"] else unreachable("(pointer_offset) could not resolve T for Pointer<T>"))
+              val offsetVal = self.genExpression(offset, innerConcreteGenerics)
+
+              self.ssaValue(itemTy, Operation.Builtin(ret: itemTy, builtin: Builtin.PtrOffset(ptr: ptrVal, offset: offsetVal, itemTy: itemTy)), dst)
+            }
             "pointer_copy_from" => {
               val ptrVal = self.genExpression(selfVal, concreteGenerics)
               val (dstOffset, src, srcOffset, size) = self.intrinsicArgs4("pointer_copy_from", args)
@@ -4240,7 +4264,11 @@ pub type Generator {
     })
   }
 
-  func isTupleStruct(self, struct: tc.Struct): Bool = if self.tupleStructs[struct.label.name] |s| s == struct else false
+  func isTupleStruct(self, struct: tc.Struct): Bool {
+    val tupleStruct = try self.tupleStructs[struct.label.name] else return false
+
+    tupleStruct == struct
+  }
 
   func functionStruct(self, arity: Int, returns: Bool): tc.Struct {
     val name = if returns "Function${arity + 1}" else "UFunction${arity}"
@@ -4251,6 +4279,12 @@ pub type Generator {
       val typeParams = (if returns { ["Ret"] } else []).concat(alphabet[:arity].split(""))
       tc.Struct.makeDummy(moduleId: dummyModuleId, name: name, typeParams: typeParams, fields: [])
     })
+  }
+
+  func isFunctionStruct(self, struct: tc.Struct): Bool {
+    val fnStruct = try self.functionStructs[struct.label.name] else return false
+
+    fnStruct == struct
   }
 
   func getConcreteTypeFromType(self, ty: tc.Type, concreteGenerics: Map<String, ConcreteType>): ConcreteType {

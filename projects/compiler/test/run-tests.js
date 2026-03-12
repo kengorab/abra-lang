@@ -834,32 +834,6 @@ const TYPECHECKER_TESTS = [
   { test: "typechecker/multi_error_reporting/binding_decl.abra", assertions: "typechecker/multi_error_reporting/binding_decl.out.json", printModulesOnErr: true },
 ]
 
-const COMPILER_TESTS = [
-  { test: "compiler/ints.abra" },
-  { test: "compiler/floats.abra" },
-  { test: "compiler/bools.abra" },
-  { test: "compiler/chars.abra" },
-  { test: "compiler/strings.abra" },
-  { test: "compiler/arrays.abra" },
-  { test: "compiler/functions.abra" },
-  { test: "compiler/functions'.abra" },
-  { test: "compiler/macros.abra" },
-  { test: "compiler/optionals.abra" },
-  { test: "compiler/ifs.abra" },
-  { test: "compiler/loops.abra" },
-  { test: "compiler/types.abra" },
-  { test: "compiler/enums.abra" },
-  { test: "compiler/tuples.abra" },
-  { test: "compiler/maps.abra" },
-  { test: "compiler/sets.abra" },
-  { test: "compiler/match.abra" },
-  { test: "compiler/try_result.abra" },
-  { test: "compiler/try_option.abra" },
-  { test: "compiler/process.abra", args: ['-f', 'bar', '--baz', 'qux'], env: { FOO: 'bar' } },
-  { test: "compiler/process_callstack.abra" },
-  { test: "compiler/json.abra" },
-]
-
 const IR_COMPILER_TESTS = [
   { test: "compiler/ints.abra" },
   { test: "compiler/floats.abra" },
@@ -867,8 +841,7 @@ const IR_COMPILER_TESTS = [
   { test: "compiler/chars.abra" },
   { test: "compiler/strings.abra" },
   { test: "compiler/arrays.abra" },
-  // { test: "compiler/functions.abra" },
-  { test: "compiler/functions'.abra" },
+  { test: "compiler/functions.abra" },
   { test: "compiler/optionals.abra" },
   { test: "compiler/ifs.abra" },
   { test: "compiler/loops.abra" },
@@ -882,6 +855,9 @@ const IR_COMPILER_TESTS = [
   { test: "compiler/try_option.abra" },
   { test: "compiler/process.abra", args: ['-f', 'bar', '--baz', 'qux'], env: { FOO: 'bar' } },
   // { test: "compiler/process_callstack.abra" },
+  // process.platform === 'darwin'
+  //   ? { test: "compiler/process_macos.abra" }
+  //   : { test: "compiler/process_linux.abra" },
   { test: "compiler/json.abra" },
 ]
 
@@ -892,15 +868,15 @@ async function main() {
   let testFilter = null
   let suiteFilter = null
   let updateSnapshots = false
+  let printExpectedAndActual = false
 
   const runners = [
     { suite: 'lexer', tests: LEXER_TESTS },
     { suite: 'parser', tests: PARSER_TESTS },
     { suite: 'typechecker', tests: TYPECHECKER_TESTS },
-    { suite: 'compiler', tests: COMPILER_TESTS },
-    { suite: 'ir_vm', tests: IR_COMPILER_TESTS },
-    { suite: 'ir_compiler', tests: IR_COMPILER_TESTS },
-    { suite: 'ir_compiler_js', tests: IR_COMPILER_TESTS },
+    { suite: 'compiler', tests: IR_COMPILER_TESTS },
+    { suite: 'compiler_js', tests: IR_COMPILER_TESTS },
+    { suite: 'vm', tests: IR_COMPILER_TESTS },
   ]
 
   while (args.length) {
@@ -912,6 +888,10 @@ async function main() {
           console.log('-t flag requires argument')
           process.exit(1)
         }
+        break
+      }
+      case '-p': {
+        printExpectedAndActual = true
         break
       }
       case '-s': {
@@ -955,7 +935,7 @@ async function main() {
     numTests += testsToRun.length
 
     console.log(`Running test suite: ${suite}`)
-    if (suite === 'ir_vm' && !vmBinPath) {
+    if (suite === 'vm' && !vmBinPath) {
       const cwd = process.cwd()
 
       console.log('  Building VM bin...')
@@ -979,20 +959,18 @@ async function main() {
           return new SnapshotTestRunner(cliBinPath, 'AST')
         case 'typechecker':
           return new SnapshotTestRunner(cliBinPath, 'TYPED_AST')
+        case 'vm':
+          return new InlineTestRunner(vmBinPath, 'vm')
         case 'compiler':
           return new InlineTestRunner(cliBinPath, 'compiler')
-        case 'ir_vm':
-          return new InlineTestRunner(vmBinPath, 'vm')
-        case 'ir_compiler':
-          return new InlineTestRunner(cliBinPath, 'ir_compiler')
-        case 'ir_compiler_js':
+        case 'compiler_js':
           return new InlineTestRunner(cliBinPath, 'js')
         default:
           throw new Error(`unreachable: unimplemented test runner for suite ${suite}`)
       }
     })();
 
-    const results = await runner.runTests(testsToRun, updateSnapshots)
+    const results = await runner.runTests(testsToRun, printExpectedAndActual, updateSnapshots)
     numPass += results.numPass
     numFail += results.numFail
     numErr += results.numErr
