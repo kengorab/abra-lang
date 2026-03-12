@@ -3,7 +3,6 @@ import "fs" as fs
 import Path from "path"
 import typecheck, getAbraEnvVarsOrExit from "../common"
 import "../../../compiler/src/typechecker" as tc
-import "../../../compiler/src/compiler" as c
 import "../../../compiler/src/ir" as ir
 import "../../../compiler/src/ir_compiler" as irNative
 import "../../../compiler/src/target-js/ir_compiler_js" as irJs
@@ -16,7 +15,6 @@ pub type BuildCmd {
 
 pub enum BuildTarget {
   NativeBin
-  LegacyBin
   JavaScript
 }
 
@@ -80,26 +78,6 @@ pub func runBuild(cmd: BuildCmd): String? {
       val IR = ir.Generator.generateIR(project, foldConstants: true)
       val result = irNative.Compiler.compile(IR)
       result.writeToFile(ssaOutFile)
-      ssaOutFile.close()
-
-      compileSsa(ssaOutPath, objOutPath, abraRoot, execOutPath)
-
-      Some(execOutPath)
-    }
-    BuildTarget.LegacyBin => {
-      val ssaOutPath = "$dotAbraDir/$compilationUnitName.ssa"
-      val objOutPath = "$dotAbraDir/$compilationUnitName.s"
-      val execOutPath = cmd.outputFile ?: "$dotAbraDir/$compilationUnitName"
-
-      val ssaOutFile = try fs.File.create(ssaOutPath) else |e| {
-        println(e.toString())
-        process.exit(1)
-      }
-      val builder = try c.Compiler.compile(project, entryMod) else |e| {
-        println(e.getMessage())
-        process.exit(1)
-      }
-      builder.writeToFile(ssaOutFile)
       ssaOutFile.close()
 
       compileSsa(ssaOutPath, objOutPath, abraRoot, execOutPath)

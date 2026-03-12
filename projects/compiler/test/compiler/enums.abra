@@ -130,11 +130,10 @@ println(Color2.Red)
 /// Expect: 17
 println(Color2.Green.hash())
 
-// TODO: Uncomment this once the ir-based compiler becomes the sole compiler
-// // Test custom eq method, with constant eval
-// // Constant eval means that the #eq method doesn't get called, and thus no "[Color2#eq] here" message gets printed
-// /// Expect: false
-// println(Color2.Blue == Color2.Red)
+// Test custom eq method, with constant eval
+// Constant eval means that the #eq method doesn't get called, and thus no "[Color2#eq] here" message gets printed
+/// Expect: false
+println(Color2.Blue == Color2.Red)
 
 // Test custom eq method
 /// Expect: [Color2#eq] here

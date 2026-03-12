@@ -7,14 +7,14 @@ class SnapshotTestRunner {
     this.mode = mode;
   }
 
-  async runTests(tests, updateSnapshotWhenFailed) {
+  async runTests(tests, printExpectedAndActual, updateSnapshotWhenFailed) {
     const results = []
     for (const { test, assertions, printModulesOnErr = false } of tests) {
       const result = await this.runTest(test, assertions, printModulesOnErr, updateSnapshotWhenFailed)
       results.push(result)
     }
 
-    return outputResults(results)
+    return outputResults(results, printExpectedAndActual)
   }
 
   async runTest(testFile, outputFile, printModulesOnErr, updateSnapshotWhenFailed) {
@@ -70,14 +70,14 @@ class InlineTestRunner {
     this.mode = mode;
   }
 
-  async runTests(tests) {
+  async runTests(tests, printExpectedAndActual) {
     const results = []
     for (const { test, args, env } of tests) {
       const result = await this.runTest(test, args, env)
       results.push(result)
     }
 
-    return outputResults(results)
+    return outputResults(results, printExpectedAndActual)
   }
 
   async runTest(testFile, args = [], env = {}) {
@@ -134,12 +134,8 @@ class InlineTestRunner {
       case 'vm': {
         return runCommand(this.cliBinPath, [testFilePath, ...args], env)
       }
-      case 'ir_compiler': {
-        await runCommand(this.cliBinPath, ['build', '-t', 'bin', testFilePath])
-        return runCommand(`${process.cwd()}/.abra/${testName}`, args, env)
-      }
       case 'compiler': {
-        await runCommand(this.cliBinPath, ['build', '-t', 'bin-old', testFilePath])
+        await runCommand(this.cliBinPath, ['build', '-t', 'bin', testFilePath])
         return runCommand(`${process.cwd()}/.abra/${testName}`, args, env)
       }
       default: throw new Error(`Unsupported mode ${this.mode}`)
@@ -147,7 +143,7 @@ class InlineTestRunner {
   }
 }
 
-function outputResults(results, printExpectedAndActual = false) {
+function outputResults(results, printExpectedAndActual) {
   let numPass = 0
   let numFail = 0
   let numErr = 0

@@ -711,6 +711,14 @@ pub type VM {
             val res = try buffer[offsetVal] else unreachable("illegal ptr_load: index $offsetVal out of bounds")
             self.store(self.expectAssignee(inst), res)
           }
+          Builtin.PtrOffset(ptr, offset, itemTy) => {
+            val (buffer, isNull) = self.irValueToVmValue(ptr).expectPointer("Builtin.Load ptr")
+            if isNull unreachable("Builtin.PtrOffset buffer is null")
+            val offsetVal = self.irValueToVmValue(offset).expectInt("Builtin.PtrOffset offset")
+
+            val res = VmValue.Pointer(buffer[offsetVal:])
+            self.store(self.expectAssignee(inst), res)
+          }
           Builtin.CopyFrom(dst, dstOffset, src, srcOffset, size, itemTy) => {
             val (dstBuffer, dstIsNull) = self.irValueToVmValue(dst).expectPointer("Builtin.CopyFrom dst")
             if dstIsNull unreachable("Builtin.CopyFrom dst is null")

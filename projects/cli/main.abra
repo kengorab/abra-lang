@@ -46,7 +46,6 @@ enum Subcommand {
     stdoutWriteln("    OPTIONS")
     stdoutWriteln("      -t/--target         Compile target, available options are:")
     stdoutWriteln("                            bin        Native binary (default option)")
-    stdoutWriteln("                            bin-old    Native binary, using old compiler architecture")
     stdoutWriteln("                            js         JavaScript")
     stdoutWriteln("      -o <out-path>       Where the built artifact should be placed (defaults to ./.abra/<input>)")
     stdoutWriteln("    ARGS")
@@ -87,9 +86,8 @@ enum Subcommand {
             val modeStr = try args.next() else return Err(SubcommandParseError.MissingRequiredValue(arg, Some("build")))
             buildTarget = match modeStr {
               "bin" => cmdBuild.BuildTarget.NativeBin
-              "bin-old" => cmdBuild.BuildTarget.LegacyBin
               "js" => cmdBuild.BuildTarget.JavaScript
-              else => return Err(SubcommandParseError.InvalidArgumentValue(arg, modeStr, ["bin", "bin-old", "js"]))
+              else => return Err(SubcommandParseError.InvalidArgumentValue(arg, modeStr, ["bin", "js"]))
             }
             continue
           }

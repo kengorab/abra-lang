@@ -72,6 +72,9 @@ pub type Pointer<T> {
   @intrinsic("pointer_load_at")
   pub func loadAt(self, offset: Int): T
 
+  @intrinsic("pointer_offset")
+  pub func offset(self, offset: Int): Pointer<T>
+
   @intrinsic("pointer_copy_from")
   pub func copyFrom(self, dstOffset: Int, srcPtr: Pointer<T>, srcOffset: Int, size: Int)
 }

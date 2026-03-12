@@ -964,6 +964,18 @@ pub type Compiler {
               self.currentFn.block.buildLoad(qbeTy, mem, dst)
             }
           }
+          Builtin.PtrOffset(ptr, offset, itemTy) => {
+            val ptrVal = self.irValueToQbeValue(ptr)
+            val offsetVal = self.irValueToQbeValue(offset)
+
+            val (size, qbeTy) = sizeOfType(itemTy)
+            if offsetVal == qbe.Value.Int(0) {
+              self.currentFn.block.buildCopy(ptrVal, dst)
+            } else {
+              val sizeVal = try self.currentFn.block.buildMul(qbe.Value.Int(size), offsetVal, Some(self.nextTemp())) else |e| unreachable(e)
+              try self.currentFn.block.buildAdd(sizeVal, ptrVal, dst) else |e| unreachable(e)
+            }
+          }
           Builtin.CopyFrom(dst, dstOffset, src, srcOffset, count, itemTy) => {
             val dstVal = self.irValueToQbeValue(dst)
             val dstOffsetVal = self.irValueToQbeValue(dstOffset)
