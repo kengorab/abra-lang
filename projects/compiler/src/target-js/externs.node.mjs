@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import fs from "fs";
+import os from "os";
 import { $decodestr, $encodestr } from "./builtins.mjs";
 
 export function write(fd, buf, _count) {
@@ -106,4 +107,17 @@ export function read(fd, outbuf, count) {
 
 export function rand() {
   return crypto.randomInt(Number.MAX_SAFE_INTEGER)
+}
+
+export function uname(buf) {
+  // sysname
+  buf.set($encodestr(os.type()), 256 * 0)
+  // nodename
+  buf.set($encodestr(os.hostname()), 256 * 1)
+  // release
+  buf.set($encodestr(os.release()), 256 * 2)
+  // version
+  buf.set($encodestr(os.version()), 256 * 3)
+  // machine
+  buf.set($encodestr(os.machine()), 256 * 4)
 }

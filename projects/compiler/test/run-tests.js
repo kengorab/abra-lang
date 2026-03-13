@@ -855,9 +855,9 @@ const IR_COMPILER_TESTS = [
   { test: "compiler/try_option.abra" },
   { test: "compiler/process.abra", args: ['-f', 'bar', '--baz', 'qux'], env: { FOO: 'bar' } },
   // { test: "compiler/process_callstack.abra" },
-  // process.platform === 'darwin'
-  //   ? { test: "compiler/process_macos.abra" }
-  //   : { test: "compiler/process_linux.abra" },
+  process.platform === 'darwin'
+    ? { test: "compiler/process_macos.abra" }
+    : { test: "compiler/process_linux.abra" },
   { test: "compiler/json.abra" },
 ]
 

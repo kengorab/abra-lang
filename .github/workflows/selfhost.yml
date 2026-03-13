@@ -35,19 +35,11 @@ jobs:
       run: |
         cd projects/compiler
         node test/run-tests.js
-    - name: Build abra-next
+    - name: Run tests against abra-next
       run: |
         cd projects/cli
         abra build -o cli ./main.abra
         ./cli build -o abra-next ./main.abra
-    - name: Run tests against abra-next (compiler)
-      run: |
-        cd projects/compiler
-        ABRA_CLI=./../cli/abra-next node test/run-tests.js
-    - name: Run tests against abra-next (ir-compiler)
-      run: |
-        cd projects/cli
-        ./abra-next build -o abra-next2 ./main.abra
 
         cd ../compiler
-        ABRA_CLI=./../cli/abra-next2 node test/run-tests.js
+        ABRA_CLI=./../cli/abra-next node test/run-tests.js

@@ -1,17 +1,5 @@
-func genericClosureCaller<T>(arg: T[], fn: (T[]) => Unit) = fn(arg)
+import "process" as process
 
-(() => {
-  var capturedInt = 1
-// func closure3<T>(arr: T[], extra = 0) {
-//   capturedInt += arr.length + extra
-// }
-  /// Expect: 1
-  println(capturedInt)
-  genericClosureCaller(
-    [1, 2, 3],
-    (arr, extra = 0) => {
-      capturedInt += arr.length + extra
-      1
-    }
-  )
-})()
+val uname = process.uname()
+
+println(uname)
