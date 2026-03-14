@@ -340,6 +340,20 @@
         "name": "specialIdentifier",
         "kind": "os"
       }
+    },
+    {
+      "token": {
+        "position": [7, 45],
+        "kind": {
+          "name": "SpecialIdent",
+          "value": "embed"
+        }
+      },
+      "kind": {
+        "name": "specialIdentifier",
+        "kind": "embed",
+        "fileName": "./foo"
+      }
     }
   ]
 }
