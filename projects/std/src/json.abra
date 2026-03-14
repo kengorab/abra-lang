@@ -96,8 +96,7 @@ pub type JsonObject {
     }
   }
 
-  pub func getNumber(self, key: String): Either<Int, Float>? =
-    match self.getNumberRequired(key) { Ok(v) => Some(v), Err => None }
+  pub func getNumber(self, key: String): Either<Int, Float>? = self.getNumberRequired(key).asOption()
 
   pub func getStringRequired(self, key: String): Result<String, JsonError> {
     match self._map[key] {
@@ -107,8 +106,7 @@ pub type JsonObject {
     }
   }
 
-  pub func getString(self, key: String): String? =
-    match self.getStringRequired(key) { Ok(v) => Some(v), Err => None }
+  pub func getString(self, key: String): String? = self.getStringRequired(key).asOption()
 
   pub func getBooleanRequired(self, key: String): Result<Bool, JsonError> {
     match self._map[key] {
@@ -118,8 +116,7 @@ pub type JsonObject {
     }
   }
 
-  pub func getBoolean(self, key: String): Bool? =
-    match self.getBooleanRequired(key) { Ok(v) => Some(v), Err => None }
+  pub func getBoolean(self, key: String): Bool? = self.getBooleanRequired(key).asOption()
 
   pub func getArrayRequired(self, key: String): Result<JsonValue[], JsonError> {
     match self._map[key] {
@@ -129,8 +126,7 @@ pub type JsonObject {
     }
   }
 
-  pub func getArray(self, key: String): JsonValue[]? =
-    match self.getArrayRequired(key) { Ok(v) => Some(v), Err => None }
+  pub func getArray(self, key: String): JsonValue[]? = self.getArrayRequired(key).asOption()
 
   pub func getObjectRequired(self, key: String): Result<JsonObject, JsonError> {
     match self._map[key] {
@@ -140,8 +136,7 @@ pub type JsonObject {
     }
   }
 
-  pub func getObject(self, key: String): JsonObject? =
-    match self.getObjectRequired(key) { Ok(v) => Some(v), Err => None }
+  pub func getObject(self, key: String): JsonObject? = self.getObjectRequired(key).asOption()
 }
 
 pub enum JsonValueKind {

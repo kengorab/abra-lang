@@ -1,5 +1,4 @@
 import "process" as process
 
-val uname = process.uname()
-
-println(uname)
+val foo = #embed("./.gitignore")
+println(foo)

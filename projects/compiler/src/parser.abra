@@ -130,6 +130,7 @@ pub enum SpecialIdentifierKind {
   File
   Import(mod: String)
   OS
+  Embed(filePath: String)
   Unknown(name: String)
 
   pub func name(self): String = match self {
@@ -137,6 +138,7 @@ pub enum SpecialIdentifierKind {
     SpecialIdentifierKind.File => "file"
     SpecialIdentifierKind.Import => "import"
     SpecialIdentifierKind.OS => "os"
+    SpecialIdentifierKind.Embed => "embed"
     SpecialIdentifierKind.Unknown(name) => name
   }
 }
@@ -377,7 +379,6 @@ pub type Parser {
   pub func parse(tokens: Token[]): Result<ParsedModule, ParseError> {
     val parser = Parser(_tokens: tokens)
 
-    // val imports: ImportNode[] = []
     val nodes: AstNode[] = []
 
     var importsAllowed = true
@@ -393,10 +394,8 @@ pub type Parser {
       }
       importsAllowed = false
 
-      match parser._parseStatement() {
-        Ok(node) => nodes.push(node)
-        Err(e) => return Err(e)
-      }
+      val node = try parser._parseStatement()
+      nodes.push(node)
     }
 
     Ok(ParsedModule(imports: parser._imports, nodes: nodes))
@@ -1357,6 +1356,20 @@ pub type Parser {
         SpecialIdentifierKind.Import(mod.name)
       }
       "os" => SpecialIdentifierKind.OS
+      "embed" => {
+        // The `true` in LParen is disregarded within _expectNextTokenKind
+        try self._expectNextTokenKind(TokenKind.LParen(true))
+
+        val nextToken = try self._expectNext()
+        val filePath = match nextToken.kind {
+          TokenKind.String(filePath) => filePath
+          _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String("")], nextToken.kind)))
+        }
+
+        try self._expectNextTokenKind(TokenKind.RParen)
+
+        SpecialIdentifierKind.Embed(filePath)
+      }
       else => SpecialIdentifierKind.Unknown(name)
     }
 

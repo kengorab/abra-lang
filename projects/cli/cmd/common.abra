@@ -13,7 +13,7 @@ pub func getAbraEnvVarsOrExit(): (String, String) {
   (abraRoot, abraStdRoot)
 }
 
-pub func typecheck(stdRoot: String, filePath: Path, ignoreErrors = true, exitOnError = true): (TypedModule, Project)? {
+pub func typecheck(stdRoot: String, filePath: Path, ignoreErrors = false, exitOnError = true): (TypedModule, Project)? {
   val moduleLoader = ModuleLoader(stdRoot: stdRoot)
   val project = Project()
   val comptimeFuncEvaluator = ComptimeFunctionEvaluator.init(project)

@@ -1,0 +1,5 @@
+Error at %TEST_DIR%/typechecker/special_identifier/error_embed_no_file.abra:1:9
+Could not embed file
+  |  val x = #embed("./no-such-file")
+             ^
+No file exists at path '%TEST_DIR%/typechecker/special_identifier/no-such-file'

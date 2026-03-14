@@ -333,6 +333,7 @@ const TYPECHECKER_TESTS = [
 
   // Special identifier
   { test: "typechecker/special_identifier/special_identifier.abra", assertions: "typechecker/special_identifier/special_identifier.out.json" },
+  { test: "typechecker/special_identifier/error_embed_no_file.abra", assertions: "typechecker/special_identifier/error_embed_no_file.out" },
   { test: "typechecker/special_identifier/error_import_no_export.abra", assertions: "typechecker/special_identifier/error_import_no_export.out" },
   { test: "typechecker/special_identifier/error_import_no_module.abra", assertions: "typechecker/special_identifier/error_import_no_module.out" },
   { test: "typechecker/special_identifier/error_unknown_identifier.abra", assertions: "typechecker/special_identifier/error_unknown_identifier.out" },
