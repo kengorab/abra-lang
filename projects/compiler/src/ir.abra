@@ -2478,7 +2478,7 @@ pub type Generator {
         self.genMatch(node, isStatement, isExhaustive, subjectNode, cases, concreteGenerics, dst)
       }
       TypedAstNodeKind.Try(expr, elseClause) => self.genTry(concreteGenerics, expr, elseClause, dst)
-      else => todo("Other expressions (${node.token})")
+      else => todo("Other expressions (${node.token} : ${self.curCtx.fn.name})")
     }
   }
 

@@ -276,6 +276,7 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         SpecialIdentifierKind.File => "\"file\""
         SpecialIdentifierKind.Import(moduleName) => "\"import\",\n$fieldsIndent\"module\": \"$moduleName\""
         SpecialIdentifierKind.OS => "\"os\""
+        SpecialIdentifierKind.Embed(fileName) => "\"embed\",\n$fieldsIndent\"fileName\": \"$fileName\""
         SpecialIdentifierKind.Unknown(name) => "\"unknown\",\n$fieldsIndent\"ident\": \"$name\""
       }
       stdoutWriteln(str)

@@ -1,7 +1,7 @@
 import "fs" as fs
 import "meta" as meta
 import "process" as process
-import getAbsolutePath, resolveRelativePath, getCursorLine from "./utils"
+import getAbsolutePath, resolveAbsolutePath, getCursorLine from "./utils"
 import Lexer, LexerError, Token, TokenKind, Position from "./lexer"
 import Parser, ParsedModule, ParseError, AstNode, AstNodeKind, LiteralAstNode, UnaryAstNode, UnaryOp, BinaryAstNode, BinaryOp, BindingDeclarationNode, BindingPattern, TypeIdentifier, Label, IdentifierKind, SpecialIdentifierKind, FunctionDeclarationNode, FunctionParam, InvocationAstNode, InvocationArgument, TypeDeclarationNode, EnumDeclarationNode, EnumVariant, AccessorAstNode, IndexingMode, AssignOp, AssignmentMode, ImportNode, ImportKind, DecoratorNode, LambdaNode, MatchCase, MatchCaseKind, ForIterKind from "./parser"
 
@@ -19,15 +19,6 @@ pub type ModuleLoader {
   func usingVirtualFileSystem(stdRoot: String, fileMap: Map<String, String>): ModuleLoader =
     ModuleLoader(stdRoot: stdRoot, _virtualFileSystem: Some(fileMap))
 
-  func resolvePath(self, modulePath: String, relativeTo: String?): String {
-    if relativeTo |relativeTo| {
-      val pathParts = resolveRelativePath(path: modulePath, relativeTo: relativeTo)
-      "/" + pathParts.join("/")
-    } else {
-      modulePath
-    }
-  }
-
   func hasSeenModule(self, modulePathAbs: String): Bool = self.parsedModules.containsKey(modulePathAbs)
 
   pub func invalidateModule(self, modulePathAbs: String) {
@@ -40,10 +31,7 @@ pub type ModuleLoader {
       if inMemContents return inMemContents
     }
 
-    match fs.readFile(modulePathAbs) {
-      Ok(contents) => Some(contents)
-      Err => None
-    }
+    fs.readFile(modulePathAbs).asOption()
   }
 
   func tokenizeAndParse(self, modulePath: String): Result<ParsedModule, TokenizeAndParseError> {
@@ -1661,6 +1649,11 @@ type TypeError {
         lines.push("Invalid usage of special identifier '${kind.name()}'")
         lines.push(getCursorLine(self.position.line, self.position.col, contents))
       }
+      TypeErrorKind.InvalidEmbedTarget(absolutePath) => {
+        lines.push("Could not embed file")
+        lines.push(getCursorLine(self.position.line, self.position.col, contents))
+        lines.push("No file exists at path '$absolutePath'")
+      }
     }
 
     lines.join("\n")
@@ -1780,6 +1773,7 @@ enum TypeErrorKind {
   InvalidMacroReturnType(injectedCodeStruct: Struct)
   UnknownSpecialIdentifier(name: String)
   InvalidSpecialIdentifierUsage(name: SpecialIdentifierKind)
+  InvalidEmbedTarget(filePath: String)
 }
 
 type ExprInfoCaptor {
@@ -1803,6 +1797,7 @@ pub type Typechecker {
   pub lspMode: Bool = false
   typeErrorSink: TypeError[]? = None
   osName: String? = None
+  embeddedFiles: Map<String, String> = {}
 
   pub func typecheckEntrypoint(self, modulePathAbs: String): TypedModule {
     val preludeModulePathSegs = getAbsolutePath(self.moduleLoader.stdRoot + "/prelude.abra")
@@ -3520,19 +3515,19 @@ pub type Typechecker {
   }
 
   func resolveImportPathAbs(self, importNodePath: String, modulePathAbs: String?): (Bool, String) {
-    val isRelativeImport = importNodePath.startsWith(".")
     val path = if !importNodePath.endsWith(".abra") {
       importNodePath + ".abra"
     } else {
       importNodePath
     }
 
+    val isRelativeImport = importNodePath.startsWith(".")
     val importPathAbs = if !isRelativeImport {
       self.moduleLoader.stdRoot + "/" + path
     } else {
       if !modulePathAbs unreachable("missing absolute path for non-relative import '$path'")
 
-      self.moduleLoader.resolvePath(modulePath: path, relativeTo: modulePathAbs)
+      resolveAbsolutePath(path: path, relativeTo: modulePathAbs)
     }
 
     (isRelativeImport, importPathAbs)
@@ -5024,6 +5019,29 @@ pub type Typechecker {
           kind: TypedAstNodeKind.Literal(LiteralAstNode.String(osName)),
         )
       }
+      SpecialIdentifierKind.Embed(filePath) => {
+        if self.lspMode {
+          lspIdentKind = Some(IdentifierKindMeta.SpecialIdentifier(kind: kind, replacement: filePath))
+        }
+
+        val isRelativeImport = filePath.startsWith(".")
+        val relativeTo = if isRelativeImport Some(self.currentModule.name) else None
+        val absolutePath = resolveAbsolutePath(path: filePath, relativeTo: relativeTo)
+
+        val contents = try self.embeddedFiles[absolutePath] else {
+          val contents = try fs.readFile(absolutePath) else {
+            return Err(TypeError(position: token.position, kind: TypeErrorKind.InvalidEmbedTarget(absolutePath)))
+          }
+          self.embeddedFiles[absolutePath] = contents
+          contents
+        }
+
+        TypedAstNode(
+          token: Token(position: token.position, kind: TokenKind.String(contents)),
+          ty: Type(kind: TypeKind.PrimitiveString),
+          kind: TypedAstNodeKind.Literal(LiteralAstNode.String(contents)),
+        )
+      }
       SpecialIdentifierKind.Unknown(name) => return Err(TypeError(position: token.position, kind: TypeErrorKind.UnknownSpecialIdentifier(name)))
     }
 
@@ -5268,17 +5286,15 @@ pub type Typechecker {
           val currentModulePathAbs = self.currentModule.name
           val (_, importPathAbs) = self.resolveImportPathAbs(modPath, Some(currentModulePathAbs))
 
-        if self.lspMode {
-          val identKind = IdentifierKindMeta.SpecialIdentifier(kind: kind, replacement: field[1].name)
-          val ident = IdentifierMeta(name: kind.name(), kind: identKind)
-          self._addLSPIdent(root.token.position, ident)
-        }
+          if self.lspMode {
+            val identKind = IdentifierKindMeta.SpecialIdentifier(kind: kind, replacement: field[1].name)
+            val ident = IdentifierMeta(name: kind.name(), kind: identKind)
+            self._addLSPIdent(root.token.position, ident)
+          }
 
           if self.project.modules[importPathAbs] |mod| Some((mod, None)) else None
         }
-        else => {
-          None
-        }
+        else => None
       }
       _ => None
     }

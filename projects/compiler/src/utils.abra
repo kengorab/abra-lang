@@ -37,7 +37,7 @@ pub func getAbsolutePath(fileName: String): String[] {
 }
 
 // TODO: Move this elsewhere, probably into std somewhere
-pub func resolveRelativePath(path: String, relativeTo: String): String[] {
+func resolveRelativePath(path: String, relativeTo: String): String[] {
   val absParentPath = getAbsolutePath(fileName: relativeTo)
   absParentPath.pop() // remove file part to obtain parent dir
 
@@ -54,6 +54,16 @@ pub func resolveRelativePath(path: String, relativeTo: String): String[] {
   }
 
   absParentPath
+}
+
+// TODO: Move this elsewhere, probably into std somewhere
+pub func resolveAbsolutePath(path: String, relativeTo: String?): String {
+  if relativeTo |relativeTo| {
+    val pathParts = resolveRelativePath(path: path, relativeTo: relativeTo)
+    "/" + pathParts.join("/")
+  } else {
+    path
+  }
 }
 
 pub func getCursorLine(lineNum: Int, colNum: Int, contents: String, cursorLength = 1): String {

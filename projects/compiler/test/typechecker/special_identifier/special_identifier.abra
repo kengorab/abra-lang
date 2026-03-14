@@ -9,3 +9,6 @@ val _: Int = stdoutFileno
 
 val a = #import("./_mod").a
 val _: Int = a
+
+val str = #embed("./_mod.abra")
+val _: String = str

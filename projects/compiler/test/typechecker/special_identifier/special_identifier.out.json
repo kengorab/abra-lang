@@ -428,6 +428,98 @@
             }
           }
         }
+      },
+      {
+        "token": {
+          "position": [13, 1],
+          "kind": {
+            "name": "Val"
+          }
+        },
+        "type": {
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "bindingDeclaration",
+          "pattern": {
+            "kind": "variable",
+            "label": { "name": "str", "position": [13, 5] }
+          },
+          "variables": [
+            {
+              "label": { "name": "str", "position": [13, 5] },
+              "mutable": false,
+              "type": {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            }
+          ],
+          "expr": {
+            "token": {
+              "position": [13, 11],
+              "kind": {
+                "name": "String",
+                "value": "pub val a = 123"
+              }
+            },
+            "type": {
+              "kind": "primitive",
+              "primitive": "String"
+            },
+            "node": {
+              "kind": "literal",
+              "value": "pub val a = 123"
+            }
+          }
+        }
+      },
+      {
+        "token": {
+          "position": [14, 1],
+          "kind": {
+            "name": "Val"
+          }
+        },
+        "type": {
+          "kind": "primitive",
+          "primitive": "Unit"
+        },
+        "node": {
+          "kind": "bindingDeclaration",
+          "pattern": {
+            "kind": "variable",
+            "label": { "name": "_", "position": [14, 5] }
+          },
+          "variables": [
+            {
+              "label": { "name": "_", "position": [14, 5] },
+              "mutable": false,
+              "type": {
+                "kind": "primitive",
+                "primitive": "String"
+              }
+            }
+          ],
+          "expr": {
+            "token": {
+              "position": [14, 17],
+              "kind": {
+                "name": "Ident",
+                "value": "str"
+              }
+            },
+            "type": {
+              "kind": "primitive",
+              "primitive": "String"
+            },
+            "node": {
+              "kind": "identifier",
+              "name": "str"
+            }
+          }
+        }
       }
     ]
   }
