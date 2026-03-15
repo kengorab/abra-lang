@@ -16,6 +16,12 @@ pub type ComptimeFunctionEvaluator {
   }
 
   pub func eval(self, fn: Function, arguments: TypedAstNode?[], resolvedGenerics: Map<String, Type>): Result<InjectedCode, String> {
+    for mod in self.project.modules.values() {
+      if mod.readFileError || !mod.lexParseErrors.isEmpty() || !mod.typeErrors.isEmpty() {
+        return Err("Module '${mod.name}' has error, cannot proceed with eval")
+      }
+    }
+
     self.gen.generate()
 
     val irFn = self.gen.genTcFunction(fn, resolvedGenerics)

@@ -1,6 +1,6 @@
 import * as path from 'path';
-import * as externs from '../src/target-js/externs.node.mjs';
-import * as builtins from '../src/target-js/builtins.mjs';
+import * as externs from '../src/target_js/externs.node.mjs';
+import * as builtins from '../src/target_js/builtins.mjs';
 
 const args = process.argv;
 const [, , target] = args.splice(0, 3);

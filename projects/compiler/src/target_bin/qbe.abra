@@ -1,4 +1,4 @@
-import File from "fs"
+import "fs" as fs
 
 pub type ModuleBuilder {
   _data: QbeData[] = []
@@ -7,7 +7,7 @@ pub type ModuleBuilder {
   _functions: QbeFunction[] = []
   _functionsByName: Map<String, QbeFunction> = {}
 
-  pub func writeToFile(self, file: File) {
+  pub func writeToFile(self, file: fs.File) {
     for data, idx in self._data {
       data.encode(file)
       file.writeln()
@@ -66,7 +66,7 @@ pub type QbeData {
   align: Int? = None
   pub kind: QbeDataKind
 
-  func encode(self, file: File) {
+  func encode(self, file: fs.File) {
     file.write("data $")
     file.write(self.name)
     file.write(" =")
@@ -86,7 +86,7 @@ pub enum QbeDataKind {
   String(str: String)
   Strings(strings: String[])
 
-  func encode(self, file: File) {
+  func encode(self, file: fs.File) {
     match self {
       QbeDataKind.Zeros(size) => {
         file.write("z $size")
@@ -140,7 +140,7 @@ pub type Block {
     Block(name: name, currentLabel: start, body: [], labelsByLine: { (0): [start] }, _usedLabels: #{start}, _labelNames: { "start": 1 }, comments: {}, numLocals: 0)
   }
 
-  func encode(self, file: File) {
+  func encode(self, file: fs.File) {
     for instr, idx in self.body {
       if self.labelsByLine[idx] |labels| {
         for label in labels {
@@ -762,7 +762,7 @@ pub enum QbeType {
     }
   }
 
-  func encode(self, file: File) {
+  func encode(self, file: fs.File) {
     file.write(self.repr())
   }
 }
@@ -782,7 +782,7 @@ pub type QbeFunction {
     QbeFunction(name: name, block: Block.new(name), returnType: returnType, _parameters: parameters, variadicIdx: variadicIdx)
   }
 
-  func encode(self, file: File) {
+  func encode(self, file: fs.File) {
     for comment in self._comments {
       file.writeln("# $comment")
     }
@@ -842,7 +842,7 @@ pub enum Value {
   IntU64(value: Int)
   Float(value: Float)
 
-  func encode(self, file: File) {
+  func encode(self, file: fs.File) {
     match self {
       Value.Ident(name, _) => file.write("%$name")
       Value.Global(name, _) => file.write("\$$name")
@@ -878,7 +878,7 @@ pub type Dest {
   name: String
   ty: QbeType
 
-  func encode(self, file: File) {
+  func encode(self, file: fs.File) {
     file.write(self.name)
     file.write(" =")
     self.ty.encode(file)
@@ -938,7 +938,7 @@ enum Instruction {
   Return(value: Value?)
   Hlt
 
-  func encode(self, file: File) {
+  func encode(self, file: fs.File) {
     match self {
       Instruction.Add(dst, l, r) => {
         dst.encode(file)

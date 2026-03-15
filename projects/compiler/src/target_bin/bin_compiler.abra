@@ -1,17 +1,36 @@
-import File from "fs"
+import "fs" as fs
 import "process" as process
-import IR, IrFunction, IrType, Instruction, Operation, Ident, Value, Const, IdentKind, GlobalVariable, Builtin, ClosureEnvLocation, CaptureSource from "./ir"
-import ModuleBuilder, QbeType from "./qbe"
+import IR, IrFunction, IrType, Instruction, Operation, Ident, Value, Const, IdentKind, GlobalVariable, Builtin, ClosureEnvLocation, CaptureSource from "../ir"
+import QbeType from "./qbe"
 import "./qbe" as qbe
-import i64ToString, u64ToString, f64ToString from "./ir_compiler_builtins"
+
+type BuiltinFunction {
+  pub name: String
+  pub code: String
+}
+
+pub val i64ToString = BuiltinFunction(
+  name: "builtin_i64_to_string",
+  code: #embed("./builtins/i64_to_string.ssa"),
+)
+
+pub val u64ToString = BuiltinFunction(
+  name: "builtin_u64_to_string",
+  code: #embed("./builtins/u64_to_string.ssa"),
+)
+
+pub val f64ToString = BuiltinFunction(
+  name: "builtin_f64_to_string",
+  code: #embed("./builtins/f64_to_string.ssa"),
+)
 
 pub type CompilationResult {
-  builder: ModuleBuilder
+  builder: qbe.ModuleBuilder
   builtinI64ToStringUsed: Bool
   builtinU64ToStringUsed: Bool
   builtinF64ToStringUsed: Bool
 
-  pub func writeToFile(self, file: File) {
+  pub func writeToFile(self, file: fs.File) {
     self.builder.writeToFile(file)
 
     if self.builtinI64ToStringUsed {
@@ -30,7 +49,7 @@ pub type CompilationResult {
 
 pub type Compiler {
   ir: IR
-  builder: ModuleBuilder
+  builder: qbe.ModuleBuilder
   currentFn: qbe.QbeFunction
   argcPtr: qbe.Value
   argvPtr: qbe.Value
@@ -46,7 +65,7 @@ pub type Compiler {
   callFunctions: Map<String, qbe.QbeFunction> = {}
 
   pub func compile(ir: IR): CompilationResult {
-    val builder = ModuleBuilder()
+    val builder = qbe.ModuleBuilder()
 
     val (argcPtr, _) = builder.addData(qbe.QbeData(name: "__argc", kind: qbe.QbeDataKind.Constants([(QbeType.U64, qbe.Value.Int(0))])))
     val (argvPtr, _) = builder.addData(qbe.QbeData(name: "__argv", kind: qbe.QbeDataKind.Constants([(QbeType.U64, qbe.Value.Int(0))])))

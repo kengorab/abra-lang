@@ -4,8 +4,8 @@ import Path from "path"
 import typecheck, getAbraEnvVarsOrExit from "../common"
 import "../../../compiler/src/typechecker" as tc
 import "../../../compiler/src/ir" as ir
-import "../../../compiler/src/ir_compiler" as irNative
-import "../../../compiler/src/target-js/ir_compiler_js" as irJs
+import "../../../compiler/src/target_bin/bin_compiler" as bin
+import "../../../compiler/src/target_js/js_compiler" as js
 
 pub type BuildCmd {
   pub outputFile: String?
@@ -61,7 +61,7 @@ pub func runBuild(cmd: BuildCmd): String? {
       val IR = ir.Generator.generateIR(project, foldConstants: true)
 
       val writer = ir.Writer(write: str => outFile.write(str))
-      irJs.Compiler.compile(IR, writer)
+      js.Compiler.compile(IR, writer)
 
       Some(outPath)
     }
@@ -76,7 +76,7 @@ pub func runBuild(cmd: BuildCmd): String? {
       }
 
       val IR = ir.Generator.generateIR(project, foldConstants: true)
-      val result = irNative.Compiler.compile(IR)
+      val result = bin.Compiler.compile(IR)
       result.writeToFile(ssaOutFile)
       ssaOutFile.close()
 
