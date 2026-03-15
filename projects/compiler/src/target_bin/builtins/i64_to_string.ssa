@@ -1,0 +1,9 @@
+data $fmt_lld = { b "%lld", b 0 }
+
+function l $builtin_i64_to_string(l %int, l %lenptr) {
+@start
+  %_t0 =l call $GC_malloc(l 21) # max size of 64 bit signed integer, incl '-' and NULL
+  %_t1 =l call $snprintf(l %_t0, l 21, l $fmt_lld, ..., l %int)
+  storel %_t1, %lenptr
+  ret %_t0
+}

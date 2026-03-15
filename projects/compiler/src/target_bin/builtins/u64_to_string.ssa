@@ -1,0 +1,9 @@
+data $fmt_llu = { b "%llu", b 0 }
+
+function l $builtin_u64_to_string(l %int, l %lenptr) {
+@start
+  %_t0 =l call $GC_malloc(l 26) # max size of 64 bit unsigned integer, incl NULL
+  %_t1 =l call $snprintf(l %_t0, l 26, l $fmt_llu, ..., l %int)
+  storel %_t1, %lenptr
+  ret %_t0
+}
