@@ -336,7 +336,7 @@ pub type JsonParser {
 
             Char.fromInt(num)
           }
-          _ => return Err(JsonParseError.InvalidCharacterInString)
+          else => return Err(JsonParseError.InvalidCharacterInString)
         }
       } else if 0x20 <= ch.asInt() && ch.asInt() <= 0x10ffff {
         ch
