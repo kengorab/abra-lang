@@ -1,9 +1,9 @@
 match 123 {
-  _ => "asdf"
+  else => "asdf"
 }
 
 match 123 {
-  _ => {}
+  else => {}
 }
 
 // Verify partial matches allowed in statement

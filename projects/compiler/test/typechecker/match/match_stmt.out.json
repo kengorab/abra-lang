@@ -40,7 +40,7 @@
             "body": [
               {
                 "token": {
-                  "position": [2, 8],
+                  "position": [2, 11],
                   "kind": {
                     "name": "String",
                     "value": "asdf"

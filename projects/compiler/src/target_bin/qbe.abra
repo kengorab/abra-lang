@@ -474,10 +474,10 @@ pub type Block {
 
   pub func buildLoad(self, ty: QbeType, mem: Value, dst: String? = None): Value {
     match ty {
-      QbeType.U8 => self.buildLoadB(mem, dst)
-      QbeType.U16 => self.buildLoadW(mem, dst)
-      QbeType.U32 => self.buildLoadW(mem, dst)
-      QbeType.U64 => self.buildLoadL(mem, dst)
+      QbeType.U8 => self.buildLoadB(mem, dst),
+      QbeType.U16 => self.buildLoadW(mem, dst),
+      QbeType.U32 => self.buildLoadW(mem, dst),
+      QbeType.U64 => self.buildLoadL(mem, dst),
       QbeType.Pointer => {
         val dest = dst ?: self._nextLocal()
         val local = Value.Ident(dest, ty)
@@ -486,8 +486,8 @@ pub type Block {
 
         local
       }
-      QbeType.F32 => self.buildLoadS(mem, dst)
-      QbeType.F64 => self.buildLoadD(mem, dst)
+      QbeType.F32 => self.buildLoadS(mem, dst),
+      QbeType.F64 => self.buildLoadD(mem, dst),
     }
   }
 
@@ -540,13 +540,13 @@ pub type Block {
 
   pub func buildStore(self, ty: QbeType, value: Value, mem: Value) {
     match ty {
-      QbeType.U8 => self.buildStoreB(value, mem)
-      QbeType.U16 => self.buildStoreW(value, mem)
-      QbeType.U32 => self.buildStoreW(value, mem)
-      QbeType.U64 => self.buildStoreL(value, mem)
-      QbeType.Pointer => self.buildStoreL(value, mem)
-      QbeType.F32 => self.buildStoreS(value, mem)
-      QbeType.F64 => self.buildStoreD(value, mem)
+      QbeType.U8 => self.buildStoreB(value, mem),
+      QbeType.U16 => self.buildStoreW(value, mem),
+      QbeType.U32 => self.buildStoreW(value, mem),
+      QbeType.U64 => self.buildStoreL(value, mem),
+      QbeType.Pointer => self.buildStoreL(value, mem),
+      QbeType.F32 => self.buildStoreS(value, mem),
+      QbeType.F64 => self.buildStoreD(value, mem),
     }
   }
 
@@ -613,8 +613,8 @@ pub type Block {
     val dest = dst ?: self._nextLocal()
 
     val returnType = match callable {
-      Callable.Function(fn) => fn.returnType
-      Callable.Value(_, returnType) => returnType
+      Callable.Function(fn) => fn.returnType,
+      Callable.Value(_, returnType) => returnType,
     }
     val fnReturnType = try returnType else return Err("function value ($callable) has no return type; cannot store result into destination '%$dest'")
 
@@ -728,37 +728,37 @@ pub enum QbeType {
 
   pub func size(self): Int {
     match self {
-      QbeType.U8 => 1
-      QbeType.U16 => 2
-      QbeType.U32 => 4
-      QbeType.U64 => 8
-      QbeType.Pointer => 8
-      QbeType.F32 => 4
-      QbeType.F64 => 8
+      QbeType.U8 => 1,
+      QbeType.U16 => 2,
+      QbeType.U32 => 4,
+      QbeType.U64 => 8,
+      QbeType.Pointer => 8,
+      QbeType.F32 => 4,
+      QbeType.F64 => 8,
     }
   }
 
   pub func repr(self): String {
     match self {
-      QbeType.U8 => "b"
-      QbeType.U16 => "h"
-      QbeType.U32 => "w"
-      QbeType.U64 => "l"
-      QbeType.Pointer => "l"
-      QbeType.F32 => "s"
-      QbeType.F64 => "d"
+      QbeType.U8 => "b",
+      QbeType.U16 => "h",
+      QbeType.U32 => "w",
+      QbeType.U64 => "l",
+      QbeType.Pointer => "l",
+      QbeType.F32 => "s",
+      QbeType.F64 => "d",
     }
   }
 
   pub func zeroValue(self): Value {
     match self {
-      QbeType.U8 => Value.Int32(0)
-      QbeType.U16 => Value.Int32(0)
-      QbeType.U32 => Value.Int32(0)
-      QbeType.U64 => Value.Int(0)
-      QbeType.Pointer => Value.Int(0)
-      QbeType.F32 => Value.Float(0.0)
-      QbeType.F64 => Value.Float(0.0)
+      QbeType.U8 => Value.Int32(0),
+      QbeType.U16 => Value.Int32(0),
+      QbeType.U32 => Value.Int32(0),
+      QbeType.U64 => Value.Int(0),
+      QbeType.Pointer => Value.Int(0),
+      QbeType.F32 => Value.Float(0.0),
+      QbeType.F64 => Value.Float(0.0),
     }
   }
 
@@ -844,32 +844,32 @@ pub enum Value {
 
   func encode(self, file: fs.File) {
     match self {
-      Value.Ident(name, _) => file.write("%$name")
-      Value.Global(name, _) => file.write("\$$name")
-      Value.Int32(value) => file.write(value.toString())
-      Value.Int(value) => file.write(value.toString())
-      Value.Float(value) => file.write("d_$value")
-      Value.IntU64(value) => file.write(value.unsignedToString())
+      Value.Ident(name, _) => file.write("%$name"),
+      Value.Global(name, _) => file.write("\$$name"),
+      Value.Int32(value) => file.write(value.toString()),
+      Value.Int(value) => file.write(value.toString()),
+      Value.Float(value) => file.write("d_$value"),
+      Value.IntU64(value) => file.write(value.unsignedToString()),
     }
   }
 
   pub func ty(self): QbeType = match self {
-      Value.Ident(_, ty) => ty
-      Value.Global(_, ty) => ty
-      Value.Int32 => QbeType.U32
-      Value.Int => QbeType.U64
-      Value.IntU64 => QbeType.U64
-      Value.Float => QbeType.F64
+      Value.Ident(_, ty) => ty,
+      Value.Global(_, ty) => ty,
+      Value.Int32 => QbeType.U32,
+      Value.Int => QbeType.U64,
+      Value.IntU64 => QbeType.U64,
+      Value.Float => QbeType.F64,
   }
 
   pub func repr(self): String {
     match self {
-      Value.Ident(name, _) => "%$name"
-      Value.Global(name, _) => "\$$name"
-      Value.Int32(v) => v.toString()
-      Value.Int(v) => v.toString()
-      Value.IntU64(v) => v.unsignedToString()
-      Value.Float(v) => v.toString()
+      Value.Ident(name, _) => "%$name",
+      Value.Global(name, _) => "\$$name",
+      Value.Int32(v) => v.toString(),
+      Value.Int(v) => v.toString(),
+      Value.IntU64(v) => v.unsignedToString(),
+      Value.Float(v) => v.toString(),
     }
   }
 }
@@ -1045,13 +1045,13 @@ enum Instruction {
       Instruction.CompareEq(dst, l, r) => {
         dst.encode(file)
         val instr = match l.ty() {
-          QbeType.U8 => "ceqw"
-          QbeType.U16 => "ceqw"
-          QbeType.U32 => "ceqw"
-          QbeType.U64 => "ceql"
-          QbeType.Pointer => "ceql"
-          QbeType.F32 => "ceqs"
-          QbeType.F64 => "ceqd"
+          QbeType.U8 => "ceqw",
+          QbeType.U16 => "ceqw",
+          QbeType.U32 => "ceqw",
+          QbeType.U64 => "ceql",
+          QbeType.Pointer => "ceql",
+          QbeType.F32 => "ceqs",
+          QbeType.F64 => "ceqd",
         }
         file.write(" $instr ")
         l.encode(file)
@@ -1062,13 +1062,13 @@ enum Instruction {
       Instruction.CompareNeq(dst, l, r) => {
         dst.encode(file)
         val instr = match l.ty() {
-          QbeType.U8 => "cnew"
-          QbeType.U16 => "cnew"
-          QbeType.U32 => "cnew"
-          QbeType.U64 => "cnel"
-          QbeType.Pointer => "cnel"
-          QbeType.F32 => "cnes"
-          QbeType.F64 => "cned"
+          QbeType.U8 => "cnew",
+          QbeType.U16 => "cnew",
+          QbeType.U32 => "cnew",
+          QbeType.U64 => "cnel",
+          QbeType.Pointer => "cnel",
+          QbeType.F32 => "cnes",
+          QbeType.F64 => "cned",
         }
         file.write(" $instr ")
         l.encode(file)
@@ -1079,13 +1079,13 @@ enum Instruction {
       Instruction.CompareLt(dst, l, r) => {
         dst.encode(file)
         val instr = match l.ty() {
-          QbeType.U8 => "csltw"
-          QbeType.U16 => "csltw"
-          QbeType.U32 => "csltw"
-          QbeType.U64 => "csltl"
-          QbeType.Pointer => "csltl"
-          QbeType.F32 => "clts"
-          QbeType.F64 => "cltd"
+          QbeType.U8 => "csltw",
+          QbeType.U16 => "csltw",
+          QbeType.U32 => "csltw",
+          QbeType.U64 => "csltl",
+          QbeType.Pointer => "csltl",
+          QbeType.F32 => "clts",
+          QbeType.F64 => "cltd",
         }
         file.write(" $instr ")
         l.encode(file)
@@ -1096,13 +1096,13 @@ enum Instruction {
       Instruction.CompareLte(dst, l, r) => {
         dst.encode(file)
         val instr = match l.ty() {
-          QbeType.U8 => "cslew"
-          QbeType.U16 => "cslew"
-          QbeType.U32 => "cslew"
-          QbeType.U64 => "cslel"
-          QbeType.Pointer => "cslel"
-          QbeType.F32 => "cles"
-          QbeType.F64 => "cled"
+          QbeType.U8 => "cslew",
+          QbeType.U16 => "cslew",
+          QbeType.U32 => "cslew",
+          QbeType.U64 => "cslel",
+          QbeType.Pointer => "cslel",
+          QbeType.F32 => "cles",
+          QbeType.F64 => "cled",
         }
         file.write(" $instr ")
         l.encode(file)
@@ -1113,13 +1113,13 @@ enum Instruction {
       Instruction.CompareGt(dst, l, r) => {
         dst.encode(file)
         val instr = match l.ty() {
-          QbeType.U8 => "csgtw"
-          QbeType.U16 => "csgtw"
-          QbeType.U32 => "csgtw"
-          QbeType.U64 => "csgtl"
-          QbeType.Pointer => "csgtl"
-          QbeType.F32 => "cgts"
-          QbeType.F64 => "cgtd"
+          QbeType.U8 => "csgtw",
+          QbeType.U16 => "csgtw",
+          QbeType.U32 => "csgtw",
+          QbeType.U64 => "csgtl",
+          QbeType.Pointer => "csgtl",
+          QbeType.F32 => "cgts",
+          QbeType.F64 => "cgtd",
         }
         file.write(" $instr ")
         l.encode(file)
@@ -1130,13 +1130,13 @@ enum Instruction {
       Instruction.CompareGte(dst, l, r) => {
         dst.encode(file)
         val instr = match l.ty() {
-          QbeType.U8 => "csgew"
-          QbeType.U16 => "csgew"
-          QbeType.U32 => "csgew"
-          QbeType.U64 => "csgel"
-          QbeType.Pointer => "csgel"
-          QbeType.F32 => "cges"
-          QbeType.F64 => "cged"
+          QbeType.U8 => "csgew",
+          QbeType.U16 => "csgew",
+          QbeType.U32 => "csgew",
+          QbeType.U64 => "csgel",
+          QbeType.Pointer => "csgel",
+          QbeType.F32 => "cges",
+          QbeType.F64 => "cged",
         }
         file.write(" $instr ")
         l.encode(file)

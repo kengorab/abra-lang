@@ -107,8 +107,8 @@ pub enum IdentKind {
   Named(name: String, idx: Int)
 
   pub func name(self): String = match self {
-    IdentKind.Anon(idx) => "_$idx"
-    IdentKind.Named(name, _) => name
+    IdentKind.Anon(idx) => "_$idx",
+    IdentKind.Named(name, _) => name,
   }
 }
 
@@ -169,8 +169,8 @@ pub enum Value {
   pub func render(self, w: Writer) {
     match self {
       Value.Unit => {}
-      Value.Const(const) => const.render(w)
-      Value.Ident(i) => i.render(w)
+      Value.Const(const) => const.render(w),
+      Value.Ident(i) => i.render(w),
       Value.Global(g) => {
         g.ty.render(w)
         w.write(" $")
@@ -573,7 +573,7 @@ pub enum Operation {
         }
         w.write("# endif")
       }
-      Operation.WhileLoopStart(name) => w.write("while_loop_start(.$name)")
+      Operation.WhileLoopStart(name) => w.write("while_loop_start(.$name)"),
       Operation.While(cond, body) => {
         w.write("while(")
         cond.render(w)
@@ -648,14 +648,14 @@ pub enum Operation {
         }
         w.write(")")
       }
-      Operation.Break => w.write("break")
-      Operation.Continue => w.write("continue")
+      Operation.Break => w.write("break"),
+      Operation.Continue => w.write("continue"),
       Operation.Return(v) => {
         w.write("return(")
         if v |v| v.render(w)
         w.write(")")
       }
-      Operation.Unreachable(message) => w.write("unreachable('$message')")
+      Operation.Unreachable(message) => w.write("unreachable('$message')"),
       Operation.GetEnumVariantIdx(value, numVariants) => {
         w.write("get_enum_variant_idx(")
         value.render(w)
@@ -807,14 +807,14 @@ pub enum Operation {
             w.write("float_bits_to_int, ")
             float.render(w)
           }
-          Builtin.Uninitialized => w.write("uninitialized")
-          Builtin.Argc => w.write("argc")
-          Builtin.Argv => w.write("argv")
-          Builtin.Callstack => w.write("callstack")
-          Builtin.CallstackPtr => w.write("callstack_ptr")
-          Builtin.ModuleNames => w.write("module_names")
-          Builtin.FunctionNames => w.write("function_names")
-          Builtin.Errno => w.write("errno")
+          Builtin.Uninitialized => w.write("uninitialized"),
+          Builtin.Argc => w.write("argc"),
+          Builtin.Argv => w.write("argv"),
+          Builtin.Callstack => w.write("callstack"),
+          Builtin.CallstackPtr => w.write("callstack_ptr"),
+          Builtin.ModuleNames => w.write("module_names"),
+          Builtin.FunctionNames => w.write("function_names"),
+          Builtin.Errno => w.write("errno"),
         }
         w.write(")")
       }
@@ -833,13 +833,13 @@ pub enum IrType {
 
   pub func render(self, w: Writer) {
     match self {
-      IrType.Unit => w.write("unit")
-      IrType.I64 => w.write("i64")
-      IrType.F64 => w.write("f64")
-      IrType.Bool => w.write("bool")
-      IrType.Byte => w.write("byte")
-      IrType.Composite(name, _) => w.write(name)
-      IrType.Ptr => w.write("ptr")
+      IrType.Unit => w.write("unit"),
+      IrType.I64 => w.write("i64"),
+      IrType.F64 => w.write("f64"),
+      IrType.Bool => w.write("bool"),
+      IrType.Byte => w.write("byte"),
+      IrType.Composite(name, _) => w.write(name),
+      IrType.Ptr => w.write("ptr"),
     }
   }
 }
@@ -946,8 +946,8 @@ pub type ConcreteType {
 
   func toString(self): String {
     val base = match self.instanceKind {
-      InstanceKind.Struct(s) => s.label.name
-      InstanceKind.Enum(e) => e.label.name
+      InstanceKind.Struct(s) => s.label.name,
+      InstanceKind.Enum(e) => e.label.name,
     }
 
     val typeArgs = self.typeArgs.map(t => t.toString())
@@ -1062,7 +1062,7 @@ pub type Generator {
     if self.functionsByName[ctx.fnName] |f| return f
 
     val fn = match ctx.callable {
-      CallableToCompile.Function(fn) => fn
+      CallableToCompile.Function(fn) => fn,
       CallableToCompile.Initializer(concreteType) => {
         return self.getOrGenInitializerFn(concreteType, None, ctx.concreteGenerics, ctx.paramsNeedingDefaultValue)
       }
@@ -1072,7 +1072,7 @@ pub type Generator {
     }
 
     val retTy = match fn.returnType.kind {
-      TypeKind.PrimitiveUnit => IrType.Unit
+      TypeKind.PrimitiveUnit => IrType.Unit,
       TypeKind.Generic(name) => {
         val concreteGeneric = try ctx.concreteGenerics[name] else unreachable("genFunction, no generic")
         self.getIrTypeForConcreteType(concreteGeneric)
@@ -1097,7 +1097,7 @@ pub type Generator {
         irFunc.params.push(selfParamIdent)
         Some(Value.Ident(selfParamIdent))
       }
-      else => None
+      else => None,
     }
 
     var anyParamNeedsDefault = false
@@ -1215,8 +1215,8 @@ pub type Generator {
       InstanceKind.Enum(e) => {
         val variant = try enumVariant else unreachable()
         val fields = match variant.kind {
-          EnumVariantKind.Constant => unreachable("Constant enum variants implemented elsewhere")
-          EnumVariantKind.Container(fields) => fields
+          EnumVariantKind.Constant => unreachable("Constant enum variants implemented elsewhere"),
+          EnumVariantKind.Container(fields) => fields,
         }
         val fnName = self.enumVariantInitFnName(concreteType, variant, fieldsNeedingDefaultValue)
         val (_, variantIdx) = try e.variants.findIndex(v => v.label.name == variant.label.name) else unreachable("${e.label.name}.${variant.label.name} must exist")
@@ -1366,7 +1366,7 @@ pub type Generator {
         val containerVariants: (Int, String, tc.Field[])[] = []
         for variant, idx in e.variants {
           val variantName = match variant.kind {
-            EnumVariantKind.Constant => variant.label.name
+            EnumVariantKind.Constant => variant.label.name,
             EnumVariantKind.Container(containerFields) => {
               containerVariants.push((idx, variant.label.name, containerFields))
               continue
@@ -1475,8 +1475,8 @@ pub type Generator {
 
         for variant, idx in e.variants {
           val containerFields = match variant.kind {
-            EnumVariantKind.Constant => continue
-            EnumVariantKind.Container(fields) => fields
+            EnumVariantKind.Constant => continue,
+            EnumVariantKind.Container(fields) => fields,
           }
 
           val cond = self.ssaValue(IrType.Bool, Operation.Eq(negate: false, left: selfVariantIdx, right: Value.Const(Const.Int(idx))), None)
@@ -1551,7 +1551,7 @@ pub type Generator {
         val containerVariants: (Int, String, tc.Field[])[] = []
         for variant, idx in e.variants {
           val variantName = match variant.kind {
-            EnumVariantKind.Constant => variant.label.name
+            EnumVariantKind.Constant => variant.label.name,
             EnumVariantKind.Container(containerFields) => {
               containerVariants.push((idx, variant.label.name, containerFields))
               continue
@@ -1647,7 +1647,7 @@ pub type Generator {
 
         self.emit(Instruction(op: Operation.If(IrType.Unit, condVal, ifBody, elseBody)))
       }
-      TypedAstNodeKind.Match(isStatement, isExhaustive, subjectNode, cases) => self.genMatch(node, isStatement, isExhaustive, subjectNode, cases, concreteGenerics, None)
+      TypedAstNodeKind.Match(isStatement, isExhaustive, subjectNode, cases) => self.genMatch(node, isStatement, isExhaustive, subjectNode, cases, concreteGenerics, None),
       TypedAstNodeKind.While(condNode, condBinding, block, terminator) => {
         val optInnerTy = self.project.typeIsOption(condNode.ty)
 
@@ -1676,13 +1676,13 @@ pub type Generator {
 
         self.emit(Instruction(op: Operation.While(cond: cond, body: body)))
       }
-      TypedAstNodeKind.For(typedForIterKind, itemBinding, indexBinding, block, terminator) => self.genForLoop(pos, concreteGenerics, typedForIterKind, itemBinding, indexBinding, block, terminator)
-      TypedAstNodeKind.BindingDeclaration(node) => self.genBindingDeclaration(node, concreteGenerics)
+      TypedAstNodeKind.For(typedForIterKind, itemBinding, indexBinding, block, terminator) => self.genForLoop(pos, concreteGenerics, typedForIterKind, itemBinding, indexBinding, block, terminator),
+      TypedAstNodeKind.BindingDeclaration(node) => self.genBindingDeclaration(node, concreteGenerics),
       TypedAstNodeKind.FunctionDeclaration => { /* todo: TypedAstNodeKind.FunctionDeclaration */ }
       TypedAstNodeKind.TypeDeclaration => { /* todo: TypedAstNodeKind.TypeDeclaration */ }
       TypedAstNodeKind.EnumDeclaration => { /* todo: TypedAstNodeKind.EnumDeclaration */ }
-      TypedAstNodeKind.Break => self.emit(Instruction(op: Operation.Break))
-      TypedAstNodeKind.Continue => self.emit(Instruction(op: Operation.Continue))
+      TypedAstNodeKind.Break => self.emit(Instruction(op: Operation.Break)),
+      TypedAstNodeKind.Continue => self.emit(Instruction(op: Operation.Continue)),
       TypedAstNodeKind.Return(retValExpr) => {
         val retVal = if retValExpr |expr| {
           Some(self.genExpression(expr, concreteGenerics))
@@ -1692,8 +1692,8 @@ pub type Generator {
 
         self.emit(Instruction(op: Operation.Return(retVal)))
       }
-      TypedAstNodeKind.Placeholder => unreachable("Placeholder nodes should not be emitted from the typechecker")
-      TypedAstNodeKind.Assignment(mode, op, expr) => self.genAssignment(pos, concreteGenerics, mode, op, expr)
+      TypedAstNodeKind.Placeholder => unreachable("Placeholder nodes should not be emitted from the typechecker"),
+      TypedAstNodeKind.Assignment(mode, op, expr) => self.genAssignment(pos, concreteGenerics, mode, op, expr),
       else => self.genExpression(node, concreteGenerics)
     }
   }
@@ -1901,7 +1901,7 @@ pub type Generator {
 
   func genBindingPattern(self, pattern: BindingPattern, variables: Map<String, tc.Variable>, value: (Value, ConcreteType)?, concreteGenerics: Map<String, ConcreteType>) {
     val name = match pattern {
-      BindingPattern.Variable(label) => label.name
+      BindingPattern.Variable(label) => label.name,
       BindingPattern.Tuple(tok, pats) => {
         val (value, valueTy) = try value else return
         for pat, idx in pats {
@@ -2060,11 +2060,11 @@ pub type Generator {
       for case in cases {
         val caseLit = match case.kind { TypedMatchCaseKind.Literal(lit) => lit, else => continue }
         val isMatch = match caseLit {
-          LiteralAstNode.Int(caseVal) => match const { Const.Int(v) => caseVal == v, else => continue }
-          LiteralAstNode.Float(caseVal) => match const { Const.Float(v) => caseVal == v, else => continue }
-          LiteralAstNode.Bool(caseVal) => match const { Const.Bool(v) => caseVal == v, else => continue }
-          LiteralAstNode.Char(caseVal) => match const { Const.Char(v) => caseVal == v, else => continue }
-          LiteralAstNode.String(caseVal) => match const { Const.String(v) => caseVal == v, else => continue }
+          LiteralAstNode.Int(caseVal) => match const { Const.Int(v) => caseVal == v, else => continue },
+          LiteralAstNode.Float(caseVal) => match const { Const.Float(v) => caseVal == v, else => continue },
+          LiteralAstNode.Bool(caseVal) => match const { Const.Bool(v) => caseVal == v, else => continue },
+          LiteralAstNode.Char(caseVal) => match const { Const.Char(v) => caseVal == v, else => continue },
+          LiteralAstNode.String(caseVal) => match const { Const.String(v) => caseVal == v, else => continue },
         }
         if !isMatch continue
 
@@ -2377,13 +2377,13 @@ pub type Generator {
     val pos = node.token.position
 
     match node.kind {
-      TypedAstNodeKind.Literal(lit) => self.genLiteral(pos, lit, dst)
-      TypedAstNodeKind.StringInterpolation(exprs) => self.genStringInterpolation(pos, concreteGenerics, exprs, dst)
-      TypedAstNodeKind.Unary(op, expr) => self.genUnary(pos, concreteGenerics, dst, expr, op)
-      TypedAstNodeKind.Binary(left, op, right) => self.genBinary(pos, concreteGenerics, dst, left, op, right)
-      TypedAstNodeKind.Grouped(inner) => self.genExpression(inner, concreteGenerics, dst)
-      TypedAstNodeKind.Identifier(name, variable, fnAliasTypeHint, varImportModule) => self.genIdentifier(pos, concreteGenerics, dst, name, variable, fnAliasTypeHint, varImportModule)
-      TypedAstNodeKind.Accessor(head, middle, tail) => self.followAccessorPath(head, middle, tail, concreteGenerics, dst)
+      TypedAstNodeKind.Literal(lit) => self.genLiteral(pos, lit, dst),
+      TypedAstNodeKind.StringInterpolation(exprs) => self.genStringInterpolation(pos, concreteGenerics, exprs, dst),
+      TypedAstNodeKind.Unary(op, expr) => self.genUnary(pos, concreteGenerics, dst, expr, op),
+      TypedAstNodeKind.Binary(left, op, right) => self.genBinary(pos, concreteGenerics, dst, left, op, right),
+      TypedAstNodeKind.Grouped(inner) => self.genExpression(inner, concreteGenerics, dst),
+      TypedAstNodeKind.Identifier(name, variable, fnAliasTypeHint, varImportModule) => self.genIdentifier(pos, concreteGenerics, dst, name, variable, fnAliasTypeHint, varImportModule),
+      TypedAstNodeKind.Accessor(head, middle, tail) => self.followAccessorPath(head, middle, tail, concreteGenerics, dst),
       TypedAstNodeKind.Invocation(invokee, args, resolvedGenerics) => {
         val newConcreteGenerics: Map<String, ConcreteType> = {}
         for (name, ty) in resolvedGenerics.entries() {
@@ -2392,9 +2392,9 @@ pub type Generator {
         }
         self.genCall(pos, concreteGenerics, newConcreteGenerics, dst, invokee, args)
       }
-      TypedAstNodeKind.Array(items) => self.genArray(pos, concreteGenerics, dst, node.ty, items)
-      TypedAstNodeKind.Set(items) => self.genSet(pos, concreteGenerics, dst, node.ty, items)
-      TypedAstNodeKind.Map(items) => self.genMap(pos, concreteGenerics, dst, node.ty, items)
+      TypedAstNodeKind.Array(items) => self.genArray(pos, concreteGenerics, dst, node.ty, items),
+      TypedAstNodeKind.Set(items) => self.genSet(pos, concreteGenerics, dst, node.ty, items),
+      TypedAstNodeKind.Map(items) => self.genMap(pos, concreteGenerics, dst, node.ty, items),
       TypedAstNodeKind.Tuple(items) => {
         val tupleStruct = self.tupleStruct(items.length)
         val newConcreteGenerics: Map<String, ConcreteType> = {}
@@ -2409,8 +2409,8 @@ pub type Generator {
 
         self.genCall(pos, concreteGenerics, newConcreteGenerics, dst, invokee, args)
       }
-      TypedAstNodeKind.Indexing(node) => self.genIndexing(pos, concreteGenerics, dst, node)
-      TypedAstNodeKind.Lambda(fn, typeHint) => self.genLambda(concreteGenerics, fn, typeHint, dst)
+      TypedAstNodeKind.Indexing(node) => self.genIndexing(pos, concreteGenerics, dst, node),
+      TypedAstNodeKind.Lambda(fn, typeHint) => self.genLambda(concreteGenerics, fn, typeHint, dst),
       TypedAstNodeKind.If(isStatement, condNode, condBinding, ifBlock, ifBlockTerminator, elseBlock, elseBlockTerminator) => {
         if isStatement unreachable("unexpected if statement (expected expression)")
 
@@ -2477,18 +2477,18 @@ pub type Generator {
       TypedAstNodeKind.Match(isStatement, isExhaustive, subjectNode, cases) => {
         self.genMatch(node, isStatement, isExhaustive, subjectNode, cases, concreteGenerics, dst)
       }
-      TypedAstNodeKind.Try(expr, elseClause) => self.genTry(concreteGenerics, expr, elseClause, dst)
+      TypedAstNodeKind.Try(expr, elseClause) => self.genTry(concreteGenerics, expr, elseClause, dst),
       else => todo("Other expressions (${node.token} : ${self.curCtx.fn.name})")
     }
   }
 
   func genLiteral(self, pos: Position, lit: LiteralAstNode, dst: String?): Value {
     match lit {
-      LiteralAstNode.Int(i) => self.ssaValueComptime(Const.Int(i), dst)
-      LiteralAstNode.Float(f) => self.ssaValueComptime(Const.Float(f), dst)
-      LiteralAstNode.Bool(b) => self.ssaValueComptime(Const.Bool(b), dst)
-      LiteralAstNode.Char(c) => self.ssaValueComptime(Const.Char(c), dst)
-      LiteralAstNode.String(s) => self.ssaValueComptime(Const.String(s), dst)
+      LiteralAstNode.Int(i) => self.ssaValueComptime(Const.Int(i), dst),
+      LiteralAstNode.Float(f) => self.ssaValueComptime(Const.Float(f), dst),
+      LiteralAstNode.Bool(b) => self.ssaValueComptime(Const.Bool(b), dst),
+      LiteralAstNode.Char(c) => self.ssaValueComptime(Const.Char(c), dst),
+      LiteralAstNode.String(s) => self.ssaValueComptime(Const.String(s), dst),
     }
   }
 
@@ -2505,11 +2505,11 @@ pub type Generator {
       if allComptime {
         if self.valueAsCompileTime(exprVal) |exprVal| {
           val str = match exprVal {
-            Const.Int(i) => i.toString()
-            Const.Float(f) => f.toString()
-            Const.Bool(b) => b.toString()
-            Const.Char(c) => Char.fromInt(c).toString()
-            Const.String(s) => s
+            Const.Int(i) => i.toString(),
+            Const.Float(f) => f.toString(),
+            Const.Bool(b) => b.toString(),
+            Const.Char(c) => Char.fromInt(c).toString(),
+            Const.String(s) => s,
           }
           comptimeStrings.push(str)
         } else {
@@ -2562,8 +2562,8 @@ pub type Generator {
       UnaryOp.Minus => {
         if self.valueAsCompileTime(exprVal) |exprVal| {
           return match exprVal {
-            Const.Int(v) => self.ssaValueComptime(Const.Int(-v), dst)
-            Const.Float(v) => self.ssaValueComptime(Const.Float(-v), dst)
+            Const.Int(v) => self.ssaValueComptime(Const.Int(-v), dst),
+            Const.Float(v) => self.ssaValueComptime(Const.Float(-v), dst),
             else => unreachable("[genUnary minus]: unexpected const value ($exprVal)")
           }
         }
@@ -2573,7 +2573,7 @@ pub type Generator {
       UnaryOp.Negate => {
         if self.valueAsCompileTime(exprVal) |exprVal| {
           return match exprVal {
-            Const.Bool(v) => self.ssaValueComptime(Const.Bool(!v), dst)
+            Const.Bool(v) => self.ssaValueComptime(Const.Bool(!v), dst),
             else => unreachable("[genUnary negate]: unexpected const value ($exprVal)")
           }
         }
@@ -2601,16 +2601,16 @@ pub type Generator {
         if lvalTy == strTy || rvalTy == strTy {
           if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
             val constStr = match lval {
-              Const.Int(l) => match rval { Const.String(r) => l + r, else => unreachable() }
-              Const.Float(l) => match rval { Const.String(r) => l + r, else => unreachable() }
-              Const.Bool(l) => match rval { Const.String(r) => l + r, else => unreachable() }
-              Const.Char(l) => match rval { Const.String(r) => l + r, else => unreachable() }
+              Const.Int(l) => match rval { Const.String(r) => l + r, else => unreachable() },
+              Const.Float(l) => match rval { Const.String(r) => l + r, else => unreachable() },
+              Const.Bool(l) => match rval { Const.String(r) => l + r, else => unreachable() },
+              Const.Char(l) => match rval { Const.String(r) => l + r, else => unreachable() },
               Const.String(l) => match rval {
-                Const.Int(r) => l + r
-                Const.Float(r) => l + r
-                Const.Bool(r) => l + r
-                Const.Char(r) => l + r
-                Const.String(r) => l + r
+                Const.Int(r) => l + r,
+                Const.Float(r) => l + r,
+                Const.Bool(r) => l + r,
+                Const.Char(r) => l + r,
+                Const.String(r) => l + r,
               }
             }
 
@@ -2641,15 +2641,15 @@ pub type Generator {
         if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
           val const = match lval {
             Const.Int(l) => match rval {
-              Const.Int(r) => Const.Int(l + r)
-              Const.Float(r) => Const.Float(l + r)
+              Const.Int(r) => Const.Int(l + r),
+              Const.Float(r) => Const.Float(l + r),
               else => unreachable("[genBinary add]: unexpected const value ($rval)")
-            }
+            },
             Const.Float(l) => match rval {
-              Const.Int(r) => Const.Float(l + r)
-              Const.Float(r) => Const.Float(l + r)
+              Const.Int(r) => Const.Float(l + r),
+              Const.Float(r) => Const.Float(l + r),
               else => unreachable("[genBinary add]: unexpected const value ($rval)")
-            }
+            },
             else => unreachable("[genBinary add]: unexpected const value ($lval)")
           }
 
@@ -2666,15 +2666,15 @@ pub type Generator {
         if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
           val const = match lval {
             Const.Int(l) => match rval {
-              Const.Int(r) => Const.Int(l - r)
-              Const.Float(r) => Const.Float(l - r)
+              Const.Int(r) => Const.Int(l - r),
+              Const.Float(r) => Const.Float(l - r),
               else => unreachable("[genBinary sub]: unexpected const value ($rval)")
-            }
+            },
             Const.Float(l) => match rval {
-              Const.Int(r) => Const.Float(l - r)
-              Const.Float(r) => Const.Float(l - r)
+              Const.Int(r) => Const.Float(l - r),
+              Const.Float(r) => Const.Float(l - r),
               else => unreachable("[genBinary sub]: unexpected const value ($rval)")
-            }
+            },
             else => unreachable("[genBinary sub]: unexpected const value ($lval)")
           }
 
@@ -2691,15 +2691,15 @@ pub type Generator {
         if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
           val const = match lval {
             Const.Int(l) => match rval {
-              Const.Int(r) => Const.Int(l * r)
-              Const.Float(r) => Const.Float(l * r)
+              Const.Int(r) => Const.Int(l * r),
+              Const.Float(r) => Const.Float(l * r),
               else => unreachable("[genBinary mul]: unexpected const value ($rval)")
-            }
+            },
             Const.Float(l) => match rval {
-              Const.Int(r) => Const.Float(l * r)
-              Const.Float(r) => Const.Float(l * r)
+              Const.Int(r) => Const.Float(l * r),
+              Const.Float(r) => Const.Float(l * r),
               else => unreachable("[genBinary mul]: unexpected const value ($rval)")
-            }
+            },
             else => unreachable("[genBinary mul]: unexpected const value ($lval)")
           }
 
@@ -2715,8 +2715,8 @@ pub type Generator {
 
         if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
           val float = match lval {
-            Const.Int(l) => match rval { Const.Int(r) => l / r, Const.Float(r) => l / r, else => unreachable("[genBinary div]: unexpected const value ($rval)") }
-            Const.Float(l) => match rval { Const.Int(r) => l / r, Const.Float(r) => l / r, else => unreachable("[genBinary div]: unexpected const value ($rval)") }
+            Const.Int(l) => match rval { Const.Int(r) => l / r, Const.Float(r) => l / r, else => unreachable("[genBinary div]: unexpected const value ($rval)") },
+            Const.Float(l) => match rval { Const.Int(r) => l / r, Const.Float(r) => l / r, else => unreachable("[genBinary div]: unexpected const value ($rval)") },
             else => unreachable("[genBinary div]: unexpected const value ($lval)")
           }
           val const = Const.Float(float)
@@ -2733,15 +2733,15 @@ pub type Generator {
         if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
           val const = match lval {
             Const.Int(l) => match rval {
-              Const.Int(r) => Const.Int(l % r)
-              Const.Float(r) => Const.Float(l % r)
+              Const.Int(r) => Const.Int(l % r),
+              Const.Float(r) => Const.Float(l % r),
               else => unreachable("[genBinary mod]: unexpected const value ($rval)")
-            }
+            },
             Const.Float(l) => match rval {
-              Const.Int(r) => Const.Float(l % r)
-              Const.Float(r) => Const.Float(l % r)
+              Const.Int(r) => Const.Float(l % r),
+              Const.Float(r) => Const.Float(l % r),
               else => unreachable("[genBinary mod]: unexpected const value ($rval)")
-            }
+            },
             else => unreachable("[genBinary mod]: unexpected const value ($lval)")
           }
 
@@ -2757,8 +2757,8 @@ pub type Generator {
 
         if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
           val float = match lval {
-            Const.Int(l) => match rval { Const.Int(r) => l ** r, Const.Float(r) => l ** r, else => unreachable("[genBinary pow]: unexpected const value ($rval)") }
-            Const.Float(l) => match rval { Const.Int(r) => l ** r, Const.Float(r) => l ** r, else => unreachable("[genBinary pow]: unexpected const value ($rval)") }
+            Const.Int(l) => match rval { Const.Int(r) => l ** r, Const.Float(r) => l ** r, else => unreachable("[genBinary pow]: unexpected const value ($rval)") },
+            Const.Float(l) => match rval { Const.Int(r) => l ** r, Const.Float(r) => l ** r, else => unreachable("[genBinary pow]: unexpected const value ($rval)") },
             else => unreachable("[genBinary pow]: unexpected const value ($lval)")
           }
           val const = Const.Float(float)
@@ -2776,8 +2776,8 @@ pub type Generator {
 
         if self.valuesAsCompileTime(lval, rval.result) |(lval, rval)| {
           val const = match lval {
-            Const.Int(l) => match rval { Const.Int(r) => Const.Int(l && r), else => unreachable("[genBinary bit-and]: unexpected const value ($rval)") }
-            Const.Bool(l) => match rval { Const.Bool(r) => Const.Bool(l && r), else => unreachable("[genBinary bool-and]: unexpected const value ($rval)") }
+            Const.Int(l) => match rval { Const.Int(r) => Const.Int(l && r), else => unreachable("[genBinary bit-and]: unexpected const value ($rval)") },
+            Const.Bool(l) => match rval { Const.Bool(r) => Const.Bool(l && r), else => unreachable("[genBinary bool-and]: unexpected const value ($rval)") },
             else => unreachable("[genBinary and]: unexpected const value ($lval)")
           }
 
@@ -2799,8 +2799,8 @@ pub type Generator {
 
         if self.valuesAsCompileTime(lval, rval.result) |(lval, rval)| {
           val const = match lval {
-            Const.Int(l) => match rval { Const.Int(r) => Const.Int(l || r), else => unreachable("[genBinary bit-or]: unexpected const value ($rval)") }
-            Const.Bool(l) => match rval { Const.Bool(r) => Const.Bool(l || r), else => unreachable("[genBinary bool-or]: unexpected const value ($rval)") }
+            Const.Int(l) => match rval { Const.Int(r) => Const.Int(l || r), else => unreachable("[genBinary bit-or]: unexpected const value ($rval)") },
+            Const.Bool(l) => match rval { Const.Bool(r) => Const.Bool(l || r), else => unreachable("[genBinary bool-or]: unexpected const value ($rval)") },
             else => unreachable("[genBinary or]: unexpected const value ($lval)")
           }
 
@@ -2842,8 +2842,8 @@ pub type Generator {
 
         self.ssaValue(innerTy, Operation.If(innerTy, condVal, ifBody, elseBody), dst)
       }
-      BinaryOp.Eq => self.genEq(concreteGenerics, left, right, false, dst)
-      BinaryOp.Neq => self.genEq(concreteGenerics, left, right, true, dst)
+      BinaryOp.Eq => self.genEq(concreteGenerics, left, right, false, dst),
+      BinaryOp.Neq => self.genEq(concreteGenerics, left, right, true, dst),
       BinaryOp.LT => {
         val lval = self.genExpression(left, concreteGenerics)
         val rval = self.genExpression(right, concreteGenerics)
@@ -2851,15 +2851,15 @@ pub type Generator {
         if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
           val const = match lval {
             Const.Int(l) => match rval {
-              Const.Int(r) => Const.Bool(l < r)
-              Const.Float(r) => Const.Bool(l < r)
+              Const.Int(r) => Const.Bool(l < r),
+              Const.Float(r) => Const.Bool(l < r),
               else => unreachable("[genBinary lt]: unexpected const value ($rval)")
-            }
+            },
             Const.Float(l) => match rval {
-              Const.Int(r) => Const.Bool(l < r)
-              Const.Float(r) => Const.Bool(l < r)
+              Const.Int(r) => Const.Bool(l < r),
+              Const.Float(r) => Const.Bool(l < r),
               else => unreachable("[genBinary lt]: unexpected const value ($rval)")
-            }
+            },
             else => unreachable("[genBinary lt]: unexpected const value ($lval)")
           }
 
@@ -2875,15 +2875,15 @@ pub type Generator {
         if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
           val const = match lval {
             Const.Int(l) => match rval {
-              Const.Int(r) => Const.Bool(l <= r)
-              Const.Float(r) => Const.Bool(l <= r)
+              Const.Int(r) => Const.Bool(l <= r),
+              Const.Float(r) => Const.Bool(l <= r),
               else => unreachable("[genBinary lte]: unexpected const value ($rval)")
-            }
+            },
             Const.Float(l) => match rval {
-              Const.Int(r) => Const.Bool(l <= r)
-              Const.Float(r) => Const.Bool(l <= r)
+              Const.Int(r) => Const.Bool(l <= r),
+              Const.Float(r) => Const.Bool(l <= r),
               else => unreachable("[genBinary lte]: unexpected const value ($rval)")
-            }
+            },
             else => unreachable("[genBinary lte]: unexpected const value ($lval)")
           }
 
@@ -2898,7 +2898,7 @@ pub type Generator {
 
         if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
           val const = match lval {
-            Const.Int(l) => match rval { Const.Int(r) => Const.Int(l << r), else => unreachable("[genBinary shl]: unexpected const value ($rval)") }
+            Const.Int(l) => match rval { Const.Int(r) => Const.Int(l << r), else => unreachable("[genBinary shl]: unexpected const value ($rval)") },
             else => unreachable("[genBinary shl]: unexpected const value ($lval)")
           }
 
@@ -2914,15 +2914,15 @@ pub type Generator {
         if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
           val const = match lval {
             Const.Int(l) => match rval {
-              Const.Int(r) => Const.Bool(l > r)
-              Const.Float(r) => Const.Bool(l > r)
+              Const.Int(r) => Const.Bool(l > r),
+              Const.Float(r) => Const.Bool(l > r),
               else => unreachable("[genBinary gt]: unexpected const value ($rval)")
-            }
+            },
             Const.Float(l) => match rval {
-              Const.Int(r) => Const.Bool(l > r)
-              Const.Float(r) => Const.Bool(l > r)
+              Const.Int(r) => Const.Bool(l > r),
+              Const.Float(r) => Const.Bool(l > r),
               else => unreachable("[genBinary gt]: unexpected const value ($rval)")
-            }
+            },
             else => unreachable("[genBinary gt]: unexpected const value ($lval)")
           }
 
@@ -2938,15 +2938,15 @@ pub type Generator {
         if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
           val const = match lval {
             Const.Int(l) => match rval {
-              Const.Int(r) => Const.Bool(l >= r)
-              Const.Float(r) => Const.Bool(l >= r)
+              Const.Int(r) => Const.Bool(l >= r),
+              Const.Float(r) => Const.Bool(l >= r),
               else => unreachable("[genBinary gte]: unexpected const value ($rval)")
-            }
+            },
             Const.Float(l) => match rval {
-              Const.Int(r) => Const.Bool(l >= r)
-              Const.Float(r) => Const.Bool(l >= r)
+              Const.Int(r) => Const.Bool(l >= r),
+              Const.Float(r) => Const.Bool(l >= r),
               else => unreachable("[genBinary gte]: unexpected const value ($rval)")
-            }
+            },
             else => unreachable("[genBinary gte]: unexpected const value ($lval)")
           }
 
@@ -2961,7 +2961,7 @@ pub type Generator {
 
         if self.valuesAsCompileTime(lval, rval) |(lval, rval)| {
           val const = match lval {
-            Const.Int(l) => match rval { Const.Int(r) => Const.Int(l >> r), else => unreachable("[genBinary shr]: unexpected const value ($rval)") }
+            Const.Int(l) => match rval { Const.Int(r) => Const.Int(l >> r), else => unreachable("[genBinary shr]: unexpected const value ($rval)") },
             else => unreachable("[genBinary shr]: unexpected const value ($lval)")
           }
 
@@ -2989,11 +2989,11 @@ pub type Generator {
   func genEqLogic(self, concreteType: ConcreteType, left: Value, right: Value, negate: Bool, dst: String?): Value {
     if self.valuesAsCompileTime(left, right) |(lval, rval)| {
       val eq = match lval {
-        Const.Int(l) => match rval { Const.Int(r) => l == r, else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-        Const.Float(l) => match rval { Const.Float(r) => l == r, else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-        Const.Bool(l) => match rval { Const.Bool(r) => l == r, else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-        Const.Char(l) => match rval { Const.Char(r) => l == r, else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
-        Const.String(l) => match rval { Const.String(r) => l == r, else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") }
+        Const.Int(l) => match rval { Const.Int(r) => l == r, else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") },
+        Const.Float(l) => match rval { Const.Float(r) => l == r, else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") },
+        Const.Bool(l) => match rval { Const.Bool(r) => l == r, else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") },
+        Const.Char(l) => match rval { Const.Char(r) => l == r, else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") },
+        Const.String(l) => match rval { Const.String(r) => l == r, else => unreachable("[genBinary n/eq]: unexpected const value ($rval)") },
       }
       val const = Const.Bool(if negate !eq else eq)
 
@@ -3378,7 +3378,7 @@ pub type Generator {
         }
 
         val fields = match variant.kind {
-          EnumVariantKind.Constant => unreachable("cannot invoke constant enum variant")
+          EnumVariantKind.Constant => unreachable("cannot invoke constant enum variant"),
           EnumVariantKind.Container(fields) => fields
         }
 
@@ -3391,7 +3391,7 @@ pub type Generator {
       TypedInvokee.Expr(e) => {
         val fnVal = self.genExpression(e, concreteGenerics)
         val returnType = match e.ty.kind {
-          TypeKind.Func(_, returnType) => if returnType.kind == tc.TypeKind.PrimitiveUnit None else Some(self.getConcreteTypeFromType(returnType, concreteGenerics))
+          TypeKind.Func(_, returnType) => if returnType.kind == tc.TypeKind.PrimitiveUnit None else Some(self.getConcreteTypeFromType(returnType, concreteGenerics)),
           else => unreachable()
         }
 
@@ -3607,7 +3607,7 @@ pub type Generator {
       }
       else => {
         match head.ty.kind {
-          TypeKind.Type => (Value.Unit, TYPE_STRUCT)
+          TypeKind.Type => (Value.Unit, TYPE_STRUCT),
           else => {
             val concreteType = self.getConcreteTypeFromType(head.ty, concreteGenerics)
             val headVal = self.genExpression(head, concreteGenerics)
@@ -3643,8 +3643,8 @@ pub type Generator {
           }
 
           val (capturedSelf, capturedSelfType) = match fn.kind {
-            FunctionKind.InstanceMethod => (Some(workingVal), Some(concreteType))
-            FunctionKind.StaticMethod => (None, None)
+            FunctionKind.InstanceMethod => (Some(workingVal), Some(concreteType)),
+            FunctionKind.StaticMethod => (None, None),
             else => unreachable()
           }
 
@@ -4115,10 +4115,10 @@ pub type Generator {
   func ssaValueComptime(self, const: Const, name: String?): Value {
     if name |name| {
       val (op, ty) = match const {
-        Const.Int(value) => (Operation.ConstInt(value), IrType.I64)
-        Const.Float(value) => (Operation.ConstFloat(value), IrType.F64)
-        Const.Bool(value) => (Operation.ConstBool(value), IrType.Bool)
-        Const.Char(value) => (Operation.ConstChar(value), IrType.I64)
+        Const.Int(value) => (Operation.ConstInt(value), IrType.I64),
+        Const.Float(value) => (Operation.ConstFloat(value), IrType.F64),
+        Const.Bool(value) => (Operation.ConstBool(value), IrType.Bool),
+        Const.Char(value) => (Operation.ConstChar(value), IrType.I64),
         Const.String(value) => {
           val strTy = IrType.Composite(name: self.knowns.stringType().name, isEnum: false)
           (Operation.ConstString(value), strTy)
@@ -4238,8 +4238,8 @@ pub type Generator {
 
   func typeName(self, ty: ConcreteType, withTypeArgs = true): String {
     val (id, baseName) = match ty.instanceKind {
-      InstanceKind.Struct(s) => (s.moduleId, s.label.name)
-      InstanceKind.Enum(e) => (e.moduleId, e.label.name)
+      InstanceKind.Struct(s) => (s.moduleId, s.label.name),
+      InstanceKind.Enum(e) => (e.moduleId, e.label.name),
     }
 
     val parts = [id.toString(), baseName]
@@ -4289,15 +4289,15 @@ pub type Generator {
 
   func getConcreteTypeFromType(self, ty: tc.Type, concreteGenerics: Map<String, ConcreteType>): ConcreteType {
     match ty.kind {
-      TypeKind.CouldNotDetermine => unreachable("Encountered CouldNotDetermine type")
-      TypeKind.PrimitiveUnit => unreachable("getConcreteTypeFromType: Unit")
-      TypeKind.PrimitiveInt => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeIntStruct), typeArgs: [])
-      TypeKind.PrimitiveFloat => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeFloatStruct), typeArgs: [])
-      TypeKind.PrimitiveBool => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeBoolStruct), typeArgs: [])
-      TypeKind.PrimitiveChar => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeCharStruct), typeArgs: [])
-      TypeKind.PrimitiveString => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct), typeArgs: [])
-      TypeKind.Never => unreachable("Encountered Never type")
-      TypeKind.Generic(name) => try concreteGenerics[name] else unreachable("getConcreteTypeFromType: generic '$name'")
+      TypeKind.CouldNotDetermine => unreachable("Encountered CouldNotDetermine type"),
+      TypeKind.PrimitiveUnit => unreachable("getConcreteTypeFromType: Unit"),
+      TypeKind.PrimitiveInt => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeIntStruct), typeArgs: []),
+      TypeKind.PrimitiveFloat => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeFloatStruct), typeArgs: []),
+      TypeKind.PrimitiveBool => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeBoolStruct), typeArgs: []),
+      TypeKind.PrimitiveChar => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeCharStruct), typeArgs: []),
+      TypeKind.PrimitiveString => ConcreteType(instanceKind: InstanceKind.Struct(self.project.preludeStringStruct), typeArgs: []),
+      TypeKind.Never => unreachable("Encountered Never type"),
+      TypeKind.Generic(name) => try concreteGenerics[name] else unreachable("getConcreteTypeFromType: generic '$name'"),
       TypeKind.Instance(instanceKind, typeArgs) => {
         val concreteTypeArgs = typeArgs.map(t => self.getConcreteTypeFromType(t, concreteGenerics))
         ConcreteType(instanceKind: instanceKind, typeArgs: concreteTypeArgs)
@@ -4315,21 +4315,21 @@ pub type Generator {
 
         ConcreteType(instanceKind: InstanceKind.Struct(struct), typeArgs: concreteTypeArgs)
       }
-      TypeKind.Type(type_) => unreachable("getConcreteTypeFromType: TypeKind.Type")
+      TypeKind.Type(type_) => unreachable("getConcreteTypeFromType: TypeKind.Type"),
       TypeKind.Tuple(types) => {
         val struct = self.tupleStruct(types.length)
         val concreteTypeArgs = types.map(t => self.getConcreteTypeFromType(t, concreteGenerics))
 
         ConcreteType(instanceKind: InstanceKind.Struct(struct), typeArgs: concreteTypeArgs)
       }
-      TypeKind.Hole => todo("TypeKind.Hole")
+      TypeKind.Hole => todo("TypeKind.Hole"),
     }
   }
 
   func extractConcreteGenericsFromConcreteType(self, concreteType: ConcreteType): Map<String, ConcreteType> {
     val typeParams = match concreteType.instanceKind {
-      InstanceKind.Struct(s) => s.typeParams
-      InstanceKind.Enum(e) => e.typeParams
+      InstanceKind.Struct(s) => s.typeParams,
+      InstanceKind.Enum(e) => e.typeParams,
     }
 
     val concreteGenerics: Map<String, ConcreteType> = {}
@@ -4440,8 +4440,8 @@ pub type Generator {
 
   func getMethodByName(self, parent: InstanceKind, name: String, staticMethod = false): tc.Function {
     val (parentName, methods) = match parent {
-      InstanceKind.Struct(s) => (s.label.name, if staticMethod s.staticMethods else s.instanceMethods)
-      InstanceKind.Enum(e) => (e.label.name, if staticMethod e.staticMethods else e.instanceMethods)
+      InstanceKind.Struct(s) => (s.label.name, if staticMethod s.staticMethods else s.instanceMethods),
+      InstanceKind.Enum(e) => (e.label.name, if staticMethod e.staticMethods else e.instanceMethods),
     }
 
     try methods.find(m => m.label.name == name) else {
@@ -4498,10 +4498,10 @@ pub type Generator {
 
     // A value is said to be known at compile time if it's a constant (int, float, bool, char, or string), or if it's an immutable global.
     match value {
-      Value.Unit => None // should be unreachable, but it's ok to return None here
-      Value.Const(const) => Some(const)
-      Value.Ident(ident) => ident.compileTimeValue
-      Value.Global(global) => if global.mutable None else global.initialValue
+      Value.Unit => None, // should be unreachable, but it's ok to return None here
+      Value.Const(const) => Some(const),
+      Value.Ident(ident) => ident.compileTimeValue,
+      Value.Global(global) => if global.mutable None else global.initialValue,
     }
   }
 
@@ -4517,24 +4517,24 @@ pub type Generator {
 
   func getValueTy(self, value: Value): IrType {
     match value {
-      Value.Unit => IrType.Unit
+      Value.Unit => IrType.Unit,
       Value.Const(const) => match const {
-        Const.Int => IrType.I64
-        Const.Float => IrType.F64
-        Const.Bool => IrType.Bool
-        Const.Char => IrType.I64
-        Const.String => IrType.Composite(name: self.knowns.stringType().name, isEnum: false)
-      }
-      Value.Ident(ident) => ident.ty
-      Value.Global(global) => global.ty
+        Const.Int => IrType.I64,
+        Const.Float => IrType.F64,
+        Const.Bool => IrType.Bool,
+        Const.Char => IrType.I64,
+        Const.String => IrType.Composite(name: self.knowns.stringType().name, isEnum: false),
+      },
+      Value.Ident(ident) => ident.ty,
+      Value.Global(global) => global.ty,
     }
   }
 
   func getExternDecName(self, fn: tc.Function): String? {
     if fn.decorators.find(dec => dec.label.name == "external") |dec| {
       match dec.arguments[0] {
-        LiteralAstNode.String(value) => Some(value)
-        _ => unreachable("@external decorator requires 1 string argument for the name")
+        LiteralAstNode.String(value) => Some(value),
+        else => unreachable("@external decorator requires 1 string argument for the name")
       }
     } else {
       None
@@ -4544,8 +4544,8 @@ pub type Generator {
   func getIntrinsicDecName(self, fn: tc.Function): String? {
     if fn.decorators.find(dec => dec.label.name == "intrinsic") |dec| {
       match dec.arguments[0] {
-        LiteralAstNode.String(value) => Some(value)
-        _ => unreachable("@external decorator requires 1 string argument for the name")
+        LiteralAstNode.String(value) => Some(value),
+        else => unreachable("@external decorator requires 1 string argument for the name")
       }
     } else {
       None

@@ -1,5 +1,5 @@
 val wildcard = match 123 {
-  _ => "abcd"
+  else => "abcd"
 }
 val _: String = wildcard
 
@@ -7,21 +7,21 @@ val arr = [1, 2, 3]
 val item = arr[0]
 
 val res1 = match item {
-  None => 0
-  _ s => s + 1
+  None => 0,
+  else s => s + 1
 }
 val _: Int = res1
 
 val res2 = match item {
-  None => 0
-  1 a => a + 1
-  _ s => s + 1
+  None => 0,
+  1 a => a + 1,
+  else s => s + 1
 }
 val _: Int = res2
 
 val res3 = match item {
-  1 a => a + 1
-  _ => 0
+  1 a => a + 1,
+  else => 0
 }
 val _: Int = res3
 
@@ -30,9 +30,9 @@ val colors = [Color.Red, Color.Green, Color.Blue]
 val col = colors[0]
 
 val res4 = match col {
-  Color.Red c => c
-  Color.Green c => c
-  _ => Color.Blue
+  Color.Red c => c,
+  Color.Green c => c,
+  else => Color.Blue
 }
 val _: Color = res4
 

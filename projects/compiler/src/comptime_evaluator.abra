@@ -52,20 +52,20 @@ pub type ComptimeFunctionEvaluator {
 func stringifyTypedNode(node: TypedAstNode): String {
   match node.kind {
     TypedAstNodeKind.Literal(lit) => match lit {
-      LiteralAstNode.Int(i) => "$i"
-      LiteralAstNode.Float(f) => "$f"
-      LiteralAstNode.Bool(b) => "$b"
+      LiteralAstNode.Int(i) => "$i",
+      LiteralAstNode.Float(f) => "$f",
+      LiteralAstNode.Bool(b) => "$b",
       LiteralAstNode.Char(code) => {
         // TODO: extract out into a new `Char#escaped(self):String` method
         val ch = match Char.fromInt(code) {
-          '\0' => "\\0"
-          '\b' => "\\b"
-          '\n' => "\\n"
-          '\f' => "\\f"
-          '\\' => "\\\\"
-          '\r' => "\\r"
-          '\t' => "\\t"
-          '\'' => "\\'"
+          '\0' => "\\0",
+          '\b' => "\\b",
+          '\n' => "\\n",
+          '\f' => "\\f",
+          '\\' => "\\\\",
+          '\r' => "\\r",
+          '\t' => "\\t",
+          '\'' => "\\'",
           else c => "$c"
         }
         "'$ch'"
@@ -80,7 +80,7 @@ func stringifyTypedNode(node: TypedAstNode): String {
           .replaceAll("\t", "\\t")
         "\"$str\""
       }
-    }
+    },
     TypedAstNodeKind.StringInterpolation(chunks) => {
       val chunkStrs = ["\""]
       for chunk in chunks {
@@ -108,7 +108,7 @@ func stringifyTypedNode(node: TypedAstNode): String {
     TypedAstNodeKind.Grouped(inner) => {
       "(${stringifyTypedNode(inner)})"
     }
-    TypedAstNodeKind.Identifier(name, _, _, _) => name
+    TypedAstNodeKind.Identifier(name, _, _, _) => name,
     TypedAstNodeKind.Accessor(head, middle, tail) => {
       val chunks: String[] = []
 
@@ -156,8 +156,8 @@ func stringifyTypedNode(node: TypedAstNode): String {
             FunctionKind.StaticMethod(instanceKind, _) => {
               // todo: this doesn't cover every case (eg. mod.Type.fn())
               match instanceKind {
-                InstanceKind.Struct(struct) => chunks.push(struct.label.name)
-                InstanceKind.Enum(enum_) => chunks.push(enum_.label.name)
+                InstanceKind.Struct(struct) => chunks.push(struct.label.name),
+                InstanceKind.Enum(enum_) => chunks.push(enum_.label.name),
               }
               chunks.push(".")
             }
@@ -169,7 +169,7 @@ func stringifyTypedNode(node: TypedAstNode): String {
           chunks.push(struct.label.name)
           argLabels = Some(struct.fields.map(f => f.name.name))
         }
-        TypedInvokee.Expr(expr) => chunks.push(stringifyTypedNode(expr))
+        TypedInvokee.Expr(expr) => chunks.push(stringifyTypedNode(expr)),
         TypedInvokee.EnumVariant(enum_, variant) => {
           // todo: this doesn't cover every case (eg. mod.Enum.Variant)
           val enumName = enum_.label.name
@@ -239,10 +239,10 @@ func stringifyTypedNode(node: TypedAstNode): String {
 
       for (key, value), idx in items {
         val surroundWithParens = match key.kind {
-          TypedAstNodeKind.Identifier => false
-          TypedAstNodeKind.Literal(lit) => match lit { LiteralAstNode.String => false, else => true }
-          TypedAstNodeKind.StringInterpolation => false
-          else => true
+          TypedAstNodeKind.Identifier => false,
+          TypedAstNodeKind.Literal(lit) => match lit { LiteralAstNode.String => false, else => true },
+          TypedAstNodeKind.StringInterpolation => false,
+          else => true,
         }
         val keyStr = if surroundWithParens {
           "(${stringifyTypedNode(key)})"
@@ -277,7 +277,7 @@ func stringifyTypedNode(node: TypedAstNode): String {
         TypedIndexingNode.ArrayLike(expr, indexingMode) => {
           val exprStr = stringifyTypedNode(expr)
           val idxStr = match indexingMode {
-            IndexingMode.Single(expr) => stringifyTypedNode(expr)
+            IndexingMode.Single(expr) => stringifyTypedNode(expr),
             IndexingMode.Range(start, end) => {
               val startStr = if start |s| stringifyTypedNode(s) else ""
               val endStr = if end |e| stringifyTypedNode(e) else ""
@@ -326,7 +326,7 @@ func stringifyTypedNode(node: TypedAstNode): String {
 
       chunks.join()
     }
-    TypedAstNodeKind.Assignment => todo("stringifyTypedNode: Assignment")
+    TypedAstNodeKind.Assignment => todo("stringifyTypedNode: Assignment"),
     TypedAstNodeKind.If(_, cond, binding, ifBlock, _, elseBlock, _) => {
       val chunks = ["if ", stringifyTypedNode(cond)]
 
@@ -369,10 +369,10 @@ func stringifyTypedNode(node: TypedAstNode): String {
 
       chunks.join()
     }
-    TypedAstNodeKind.Match => todo("stringifyTypedNode: Match")
-    TypedAstNodeKind.Try => todo("stringifyTypedNode: Try")
-    TypedAstNodeKind.While => todo("stringifyTypedNode: While")
-    TypedAstNodeKind.For => todo("stringifyTypedNode: For")
+    TypedAstNodeKind.Match => todo("stringifyTypedNode: Match"),
+    TypedAstNodeKind.Try => todo("stringifyTypedNode: Try"),
+    TypedAstNodeKind.While => todo("stringifyTypedNode: While"),
+    TypedAstNodeKind.For => todo("stringifyTypedNode: For"),
     TypedAstNodeKind.BindingDeclaration(node) => {
       val v = try node.variables[0] else unreachable("binding decl must contain at least 1 variable")
       val chunks = [if v.mutable "var " else "val "]
@@ -385,19 +385,19 @@ func stringifyTypedNode(node: TypedAstNode): String {
 
       chunks.join()
     }
-    TypedAstNodeKind.FunctionDeclaration => todo("stringifyTypedNode: FunctionDeclaration")
-    TypedAstNodeKind.TypeDeclaration => todo("stringifyTypedNode: TypeDeclaration")
-    TypedAstNodeKind.EnumDeclaration => todo("stringifyTypedNode: EnumDeclaration")
-    TypedAstNodeKind.Break => todo("stringifyTypedNode: Break")
-    TypedAstNodeKind.Continue => todo("stringifyTypedNode: Continue")
-    TypedAstNodeKind.Return => todo("stringifyTypedNode: Return")
-    TypedAstNodeKind.Placeholder => unreachable("stringifyTypedNode: Placeholder")
+    TypedAstNodeKind.FunctionDeclaration => todo("stringifyTypedNode: FunctionDeclaration"),
+    TypedAstNodeKind.TypeDeclaration => todo("stringifyTypedNode: TypeDeclaration"),
+    TypedAstNodeKind.EnumDeclaration => todo("stringifyTypedNode: EnumDeclaration"),
+    TypedAstNodeKind.Break => todo("stringifyTypedNode: Break"),
+    TypedAstNodeKind.Continue => todo("stringifyTypedNode: Continue"),
+    TypedAstNodeKind.Return => todo("stringifyTypedNode: Return"),
+    TypedAstNodeKind.Placeholder => unreachable("stringifyTypedNode: Placeholder"),
   }
 }
 
 func stringifyBindingPattern(pat: BindingPattern, chunks: String[]) {
   match pat {
-    BindingPattern.Variable(v) => chunks.push(v.name)
+    BindingPattern.Variable(v) => chunks.push(v.name),
     BindingPattern.Tuple(_, pats) => {
       chunks.push("(")
       for p, idx in pats {

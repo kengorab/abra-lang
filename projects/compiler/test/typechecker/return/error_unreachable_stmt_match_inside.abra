@@ -1,6 +1,6 @@
 func foo(): Int {
   match 123 {
-    _ => {
+    else => {
       return 123
       val x = 123
     }

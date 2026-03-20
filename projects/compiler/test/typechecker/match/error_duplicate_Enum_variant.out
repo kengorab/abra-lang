@@ -1,4 +1,4 @@
-Error at %FILE_NAME%:7:3
+Error at %TEST_DIR%/typechecker/match/error_duplicate_Enum_variant.abra:7:3
 Duplicate match case
-  |    Color.Red => 3
+  |    Color.Red => 3,
        ^

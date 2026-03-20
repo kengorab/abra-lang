@@ -1,4 +1,4 @@
 val x = match 123 {
-  _ => "abcd"
-  _ => "efgh"
+  else => "abcd",
+  else => "efgh"
 }

@@ -1,5 +1,5 @@
-Error at %FILE_NAME%:5:3
+Error at %TEST_DIR%/typechecker/match/error_exhaustive_Bool_literal.abra:5:3
 Unreachable match case
-  |    _ => 3
+  |    else => 3
        ^
 The previous case(s) cover all possibilities for match target type 'Bool'

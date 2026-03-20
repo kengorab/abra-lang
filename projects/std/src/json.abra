@@ -8,13 +8,13 @@ pub enum JsonValue {
 
   pub func encode(self): String {
     match self {
-      JsonValue.Null => "null"
+      JsonValue.Null => "null",
       JsonValue.Number(value) => match value {
-        Either.Left(int) => int.toString()
-        Either.Right(float) => float.toString()
-      }
-      JsonValue.String(value) => "\"$value\""
-      JsonValue.Boolean(value) => value.toString()
+        Either.Left(int) => int.toString(),
+        Either.Right(float) => float.toString(),
+      },
+      JsonValue.String(value) => "\"$value\"",
+      JsonValue.Boolean(value) => value.toString(),
       JsonValue.Array(items) => {
         val itemStrs: String[] = Array.withCapacity(items.length)
         for item in items {
@@ -33,36 +33,36 @@ pub enum JsonValue {
   }
 
   func kind(self): JsonValueKind = match self {
-    JsonValue.Null => JsonValueKind.Null
-    JsonValue.Number => JsonValueKind.Number
-    JsonValue.String => JsonValueKind.String
-    JsonValue.Boolean => JsonValueKind.Boolean
-    JsonValue.Array => JsonValueKind.Array
-    JsonValue.Object => JsonValueKind.Object
+    JsonValue.Null => JsonValueKind.Null,
+    JsonValue.Number => JsonValueKind.Number,
+    JsonValue.String => JsonValueKind.String,
+    JsonValue.Boolean => JsonValueKind.Boolean,
+    JsonValue.Array => JsonValueKind.Array,
+    JsonValue.Object => JsonValueKind.Object,
   }
 
   func asNumber(self): Result<Either<Int, Float>, JsonError> = match self {
-    JsonValue.Number(v) => Ok(v)
+    JsonValue.Number(v) => Ok(v),
     else => Err(JsonError.TypeMismatch(expected: JsonValueKind.Number, actual: self.kind()))
   }
 
   func asString(self): Result<String, JsonError> = match self {
-    JsonValue.String(v) => Ok(v)
+    JsonValue.String(v) => Ok(v),
     else => Err(JsonError.TypeMismatch(expected: JsonValueKind.String, actual: self.kind()))
   }
 
   func asBoolean(self): Result<Bool, JsonError> = match self {
-    JsonValue.Boolean(v) => Ok(v)
+    JsonValue.Boolean(v) => Ok(v),
     else => Err(JsonError.TypeMismatch(expected: JsonValueKind.Boolean, actual: self.kind()))
   }
 
   func asArray(self): Result<JsonValue[], JsonError> = match self {
-    JsonValue.Array(v) => Ok(v)
+    JsonValue.Array(v) => Ok(v),
     else => Err(JsonError.TypeMismatch(expected: JsonValueKind.Array, actual: self.kind()))
   }
 
   pub func asObject(self): Result<JsonObject, JsonError> = match self {
-    JsonValue.Object(v) => Ok(v)
+    JsonValue.Object(v) => Ok(v),
     else => Err(JsonError.TypeMismatch(expected: JsonValueKind.Object, actual: self.kind()))
   }
 }
@@ -90,8 +90,8 @@ pub type JsonObject {
 
   pub func getNumberRequired(self, key: String): Result<Either<Int, Float>, JsonError> {
     match self._map[key] {
-      None => Err(JsonError.NoSuchKey(key))
-      JsonValue.Number(v) => Ok(v)
+      None => Err(JsonError.NoSuchKey(key)),
+      JsonValue.Number(v) => Ok(v),
       else v => Err(JsonError.TypeMismatch(expected: JsonValueKind.Number, actual: v.kind()))
     }
   }
@@ -100,8 +100,8 @@ pub type JsonObject {
 
   pub func getStringRequired(self, key: String): Result<String, JsonError> {
     match self._map[key] {
-      None => Err(JsonError.NoSuchKey(key))
-      JsonValue.String(v) => Ok(v)
+      None => Err(JsonError.NoSuchKey(key)),
+      JsonValue.String(v) => Ok(v),
       else v => Err(JsonError.TypeMismatch(expected: JsonValueKind.String, actual: v.kind()))
     }
   }
@@ -110,8 +110,8 @@ pub type JsonObject {
 
   pub func getBooleanRequired(self, key: String): Result<Bool, JsonError> {
     match self._map[key] {
-      None => Err(JsonError.NoSuchKey(key))
-      JsonValue.Boolean(v) => Ok(v)
+      None => Err(JsonError.NoSuchKey(key)),
+      JsonValue.Boolean(v) => Ok(v),
       else v => Err(JsonError.TypeMismatch(expected: JsonValueKind.Boolean, actual: v.kind()))
     }
   }
@@ -120,8 +120,8 @@ pub type JsonObject {
 
   pub func getArrayRequired(self, key: String): Result<JsonValue[], JsonError> {
     match self._map[key] {
-      None => Err(JsonError.NoSuchKey(key))
-      JsonValue.Array(v) => Ok(v)
+      None => Err(JsonError.NoSuchKey(key)),
+      JsonValue.Array(v) => Ok(v),
       else v => Err(JsonError.TypeMismatch(expected: JsonValueKind.Array, actual: v.kind()))
     }
   }
@@ -130,8 +130,8 @@ pub type JsonObject {
 
   pub func getObjectRequired(self, key: String): Result<JsonObject, JsonError> {
     match self._map[key] {
-      None => Err(JsonError.NoSuchKey(key))
-      JsonValue.Object(v) => Ok(v)
+      None => Err(JsonError.NoSuchKey(key)),
+      JsonValue.Object(v) => Ok(v),
       else v => Err(JsonError.TypeMismatch(expected: JsonValueKind.Object, actual: v.kind()))
     }
   }
@@ -178,14 +178,14 @@ pub type JsonParser {
     self._skipWhitespace()
 
     val jsonValue = match self._chars.peek() {
-      None => return Err(JsonParseError.UnexpectedEof)
+      None => return Err(JsonParseError.UnexpectedEof),
       '"' => {
         val str = try self._parseJsonString()
         JsonValue.String(str)
       }
-      '[' => try self._parseJsonArray()
-      '{' => try self._parseJsonObject()
-      _ ch => {
+      '[' => try self._parseJsonArray(),
+      '{' => try self._parseJsonObject(),
+      else ch => {
         if ch == '-' || ch.isDigit() {
           try self._parseJsonNumber(ch)
         } else if ch == 'n' {
@@ -253,19 +253,19 @@ pub type JsonParser {
     while self._chars.peek() {
       self._skipWhitespace()
       val key = match self._chars.peek() {
-        '"' => try self._parseJsonString()
+        '"' => try self._parseJsonString(),
         '}' => {
           closed = true
           self._chars.next() // Consume '}'
           break
         }
-        _ => return Err(JsonParseError.ObjectPropertyExpected)
+        else => return Err(JsonParseError.ObjectPropertyExpected)
       }
       self._skipWhitespace()
 
       match self._chars.peek() {
-        ':' => self._chars.next() // consume ':'
-        _ => return Err(JsonParseError.ColonExpected)
+        ':' => self._chars.next(), // consume ':'
+        else => return Err(JsonParseError.ColonExpected)
       }
 
       val value = try self._parseJsonValue()
@@ -307,14 +307,14 @@ pub type JsonParser {
       val char = if ch == '\\' {
         val ch = try self._chars.next() else return Err(JsonParseError.UnterminatedString)
         match ch {
-          '"' => '"'
-          '\\' => '\\'
-          'b' => '\b'
-          'f' => '\f'
-          'n' => '\n'
-          'r' => '\r'
-          't' => '\t'
-          '/' => '/'
+          '"' => '"',
+          '\\' => '\\',
+          'b' => '\b',
+          'f' => '\f',
+          'n' => '\n',
+          'r' => '\r',
+          't' => '\t',
+          '/' => '/',
           'u' => {
             var num = 0
             // byte 1
@@ -428,9 +428,9 @@ pub type JsonParser {
         val fracPart = try self._parseFracPart()
         integerPart + fracPart
       }
-      'e' => integerPart.asFloat()
-      'E' => integerPart.asFloat()
-      _ => return Ok(JsonValue.Number(Either.Left(sign * integerPart)))
+      'e' => integerPart.asFloat(),
+      'E' => integerPart.asFloat(),
+      else => return Ok(JsonValue.Number(Either.Left(sign * integerPart)))
     }
 
     val res = match self._chars.peek() {
@@ -444,7 +444,7 @@ pub type JsonParser {
         val exp = try self._parseExpPart()
         sign * float * (10**exp)
       }
-      _ => sign * float
+      else => sign * float
     }
 
     Ok(JsonValue.Number(Either.Right(res)))

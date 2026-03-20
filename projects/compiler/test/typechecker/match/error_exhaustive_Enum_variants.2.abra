@@ -2,9 +2,9 @@ enum Color { Red, Green, Blue }
 
 val c = Some(Color.Green)
 val x = match c {
-  Color.Red => 1
-  Color.Green => 2
-  Color.Blue => 3
-  None => 4
-  _ => 5
+  Color.Red => 1,
+  Color.Green => 2,
+  Color.Blue => 3,
+  None => 4,
+  else => 5
 }

@@ -209,13 +209,11 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
   match kind {
     AstNodeKind.Literal(literal) => {
       val (kind, value) = match literal {
-        LiteralAstNode.Int(value) => ("int", value.toString())
-        LiteralAstNode.Float(value) => ("float", value.toString())
-        LiteralAstNode.Bool(value) => ("bool", value.toString())
-        LiteralAstNode.Char(value) => {
-          ("char", "\"${value.hex()}\"")
-        }
-        LiteralAstNode.String(value) => ("string", "\"$value\"")
+        LiteralAstNode.Int(value) => ("int", value.toString()),
+        LiteralAstNode.Float(value) => ("float", value.toString()),
+        LiteralAstNode.Bool(value) => ("bool", value.toString()),
+        LiteralAstNode.Char(value) => ("char", "\"${value.hex()}\""),
+        LiteralAstNode.String(value) => ("string", "\"$value\""),
       }
 
       stdoutWriteln("$fieldsIndent\"name\": \"literal\",")
@@ -262,22 +260,22 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
       stdoutWriteln("$fieldsIndent\"name\": \"identifier\",")
       stdoutWrite("$fieldsIndent\"ident\": ")
       match kind {
-        IdentifierKind.Named(name) => stdoutWriteln("\"$name\"")
-        IdentifierKind.None_ => stdoutWriteln("\"None\"")
-        IdentifierKind.Self => stdoutWriteln("\"self\"")
-        IdentifierKind.Discard => stdoutWriteln("\"_\"")
+        IdentifierKind.Named(name) => stdoutWriteln("\"$name\""),
+        IdentifierKind.None_ => stdoutWriteln("\"None\""),
+        IdentifierKind.Self => stdoutWriteln("\"self\""),
+        IdentifierKind.Discard => stdoutWriteln("\"_\""),
       }
     }
     AstNodeKind.SpecialIdentifier(kind) => {
       stdoutWriteln("$fieldsIndent\"name\": \"specialIdentifier\",")
       stdoutWrite("$fieldsIndent\"kind\": ")
       val str = match kind {
-        SpecialIdentifierKind.Line => "\"line\""
-        SpecialIdentifierKind.File => "\"file\""
-        SpecialIdentifierKind.Import(moduleName) => "\"import\",\n$fieldsIndent\"module\": \"$moduleName\""
-        SpecialIdentifierKind.OS => "\"os\""
-        SpecialIdentifierKind.Embed(fileName) => "\"embed\",\n$fieldsIndent\"fileName\": \"$fileName\""
-        SpecialIdentifierKind.Unknown(name) => "\"unknown\",\n$fieldsIndent\"ident\": \"$name\""
+        SpecialIdentifierKind.Line => "\"line\"",
+        SpecialIdentifierKind.File => "\"file\"",
+        SpecialIdentifierKind.Import(moduleName) => "\"import\",\n$fieldsIndent\"module\": \"$moduleName\"",
+        SpecialIdentifierKind.OS => "\"os\"",
+        SpecialIdentifierKind.Embed(fileName) => "\"embed\",\n$fieldsIndent\"fileName\": \"$fileName\"",
+        SpecialIdentifierKind.Unknown(name) => "\"unknown\",\n$fieldsIndent\"ident\": \"$name\"",
       }
       stdoutWriteln(str)
     }
@@ -548,13 +546,11 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
             MatchCaseKind.Literal(literal) => {
               stdoutWriteln("$fieldsIndent      \"kind\": \"literal\",")
               val (kind, value) = match literal {
-                LiteralAstNode.Int(value) => ("int", value.toString())
-                LiteralAstNode.Float(value) => ("float", value.toString())
-                LiteralAstNode.Bool(value) => ("bool", value.toString())
-                LiteralAstNode.Char(value) => {
-                  ("char", "\"${value.hex()}\"")
-                }
-                LiteralAstNode.String(value) => ("string", "\"$value\"")
+                LiteralAstNode.Int(value) => ("int", value.toString()),
+                LiteralAstNode.Float(value) => ("float", value.toString()),
+                LiteralAstNode.Bool(value) => ("bool", value.toString()),
+                LiteralAstNode.Char(value) => ("char", "\"${value.hex()}\""),
+                LiteralAstNode.String(value) => ("string", "\"$value\""),
               }
 
               stdoutWriteln("$fieldsIndent      \"type\": \"$kind\",")
@@ -1019,8 +1015,8 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         stdoutWriteln("$fieldsIndent]")
       }
     }
-    AstNodeKind.Break => stdoutWriteln("$fieldsIndent\"name\": \"break\"")
-    AstNodeKind.Continue => stdoutWriteln("$fieldsIndent\"name\": \"continue\"")
+    AstNodeKind.Break => stdoutWriteln("$fieldsIndent\"name\": \"break\""),
+    AstNodeKind.Continue => stdoutWriteln("$fieldsIndent\"name\": \"continue\""),
     AstNodeKind.Return(expr) => {
       stdoutWriteln("$fieldsIndent\"name\": \"return\",")
 

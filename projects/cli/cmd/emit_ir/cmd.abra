@@ -24,10 +24,10 @@ pub enum EmitIrMode {
 
 pub func run(cmd: EmitIrCmd) {
   match cmd.mode {
-    EmitIrMode.TokensOnly => emitTokens(cmd.inputFile)
-    EmitIrMode.Ast => emitAst(cmd.inputFile)
-    EmitIrMode.TypedAst => emitTypedAst(cmd.inputFile, cmd.ignoreErrors)
-    EmitIrMode.Ir => emitIr(cmd.inputFile)
+    EmitIrMode.TokensOnly => emitTokens(cmd.inputFile),
+    EmitIrMode.Ast => emitAst(cmd.inputFile),
+    EmitIrMode.TypedAst => emitTypedAst(cmd.inputFile, cmd.ignoreErrors),
+    EmitIrMode.Ir => emitIr(cmd.inputFile),
   }
 }
 

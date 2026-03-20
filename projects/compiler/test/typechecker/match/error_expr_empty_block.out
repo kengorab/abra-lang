@@ -1,5 +1,5 @@
-Error at %FILE_NAME%:2:3
+Error at %TEST_DIR%/typechecker/match/error_expr_empty_block.abra:2:3
 Empty block for match case
-  |    _ => {}
+  |    else => {}
        ^
 Each case in a match expression must result in a value
