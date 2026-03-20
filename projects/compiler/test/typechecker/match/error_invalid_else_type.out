@@ -1,5 +1,5 @@
-Error at %FILE_NAME%:7:12
+Error at %TEST_DIR%/typechecker/match/error_invalid_else_type.abra:7:15
 Illegal operator
-  |    _ s => s + 1
-                ^
+  |    else s => s + 1
+                   ^
 No operator '+' exists between types Int? and Int

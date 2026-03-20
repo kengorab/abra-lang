@@ -44,9 +44,9 @@ pub enum AccessMode {
   ReadWrite
 
   func _toUnderlying(self): Int = match self {
-    AccessMode.ReadOnly => libc.O_RDONLY
-    AccessMode.WriteOnly => libc.O_WRONLY
-    AccessMode.ReadWrite => libc.O_RDWR
+    AccessMode.ReadOnly => libc.O_RDONLY,
+    AccessMode.WriteOnly => libc.O_WRONLY,
+    AccessMode.ReadWrite => libc.O_RDWR,
   }
 }
 

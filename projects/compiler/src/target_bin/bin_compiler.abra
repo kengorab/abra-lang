@@ -157,13 +157,13 @@ pub type Compiler {
         val qbeTy = self.irTypeToQbeType(ty)
         val slot = if captured {
           val size = match qbeTy {
-            QbeType.U8 => 8      // 'b'
-            QbeType.U16 => 4     // 'h' (should be unreachable)
-            QbeType.U32 => 4     // 'w' (should be unreachable)
-            QbeType.U64 => 8     // 'l'
-            QbeType.Pointer => 8 // 'l'
-            QbeType.F32 => 4     // 's' (should be unreachable)
-            QbeType.F64 => 8     // 'd'
+            QbeType.U8 => 8,      // 'b'
+            QbeType.U16 => 4,     // 'h' (should be unreachable)
+            QbeType.U32 => 4,     // 'w' (should be unreachable)
+            QbeType.U64 => 8,     // 'l'
+            QbeType.Pointer => 8, // 'l'
+            QbeType.F32 => 4,     // 's' (should be unreachable)
+            QbeType.F64 => 8,     // 'd'
           }
           val mem = self.callMalloc(qbe.Value.Int(size), Some(self.nextTemp()))
           val slot = self.currentFn.block.buildAlloc8(1, dst)
@@ -171,13 +171,13 @@ pub type Compiler {
           mem
         } else {
           match qbeTy {
-            QbeType.U8 => self.currentFn.block.buildAlloc8(1, dst)      // 'b'
-            QbeType.U16 => self.currentFn.block.buildAlloc4(1, dst)     // 'h' (should be unreachable)
-            QbeType.U32 => self.currentFn.block.buildAlloc4(1, dst)     // 'w' (should be unreachable)
-            QbeType.U64 => self.currentFn.block.buildAlloc8(1, dst)     // 'l'
-            QbeType.Pointer => self.currentFn.block.buildAlloc8(1, dst) // 'l'
-            QbeType.F32 => self.currentFn.block.buildAlloc4(1, dst)     // 's' (should be unreachable)
-            QbeType.F64 => self.currentFn.block.buildAlloc8(1, dst)     // 'd'
+            QbeType.U8 => self.currentFn.block.buildAlloc8(1, dst),      // 'b'
+            QbeType.U16 => self.currentFn.block.buildAlloc4(1, dst),     // 'h' (should be unreachable)
+            QbeType.U32 => self.currentFn.block.buildAlloc4(1, dst),     // 'w' (should be unreachable)
+            QbeType.U64 => self.currentFn.block.buildAlloc8(1, dst),     // 'l'
+            QbeType.Pointer => self.currentFn.block.buildAlloc8(1, dst), // 'l'
+            QbeType.F32 => self.currentFn.block.buildAlloc4(1, dst),     // 's' (should be unreachable)
+            QbeType.F64 => self.currentFn.block.buildAlloc8(1, dst),     // 'd'
           }
         }
 
@@ -748,7 +748,7 @@ pub type Compiler {
       }
       Operation.Call(ret, fnName, args, envLocation) => {
         val env = match envLocation {
-          None => None
+          None => None,
           ClosureEnvLocation.Passthrough => {
             val env = try self.currentFn.env else unreachable("fn '$fnName' defined with passthrough closure env location, but no env declared in scope")
             Some(env)
@@ -899,16 +899,16 @@ pub type Compiler {
           self.currentFn.block.buildCopy(qbeVal, dst)
         }
       }
-      Operation.StructuredToString(prefix, lenVal, fields) => self.compileStructuredToString(prefix, lenVal, fields, dst)
+      Operation.StructuredToString(prefix, lenVal, fields) => self.compileStructuredToString(prefix, lenVal, fields, dst),
       Operation.Builtin(_, builtin) => {
         val sizeOfType = (irType: IrType) => match irType {
-          IrType.Unit => unreachable("values cannot be of type unit")
-          IrType.I64 => (8, QbeType.U64)
-          IrType.F64 => (8, QbeType.F64)
-          IrType.Bool => (8, QbeType.U64)
-          IrType.Byte => (1, QbeType.U8)
-          IrType.Composite => (8, QbeType.U64)
-          IrType.Ptr => (8, QbeType.U64)
+          IrType.Unit => unreachable("values cannot be of type unit"),
+          IrType.I64 => (8, QbeType.U64),
+          IrType.F64 => (8, QbeType.F64),
+          IrType.Bool => (8, QbeType.U64),
+          IrType.Byte => (1, QbeType.U8),
+          IrType.Composite => (8, QbeType.U64),
+          IrType.Ptr => (8, QbeType.U64),
         }
 
         match builtin {
@@ -1103,10 +1103,10 @@ pub type Compiler {
             self.currentFn.block.buildCopy(qbe.Value.Int(0), dst)
           }
           Builtin.Errno => {
-            val errnoFnName = match process.uname().sysname {
-              "Linux" => "__errno_location"
-              "Darwin" => "__error"
-              else sysname => todo("[errno] unsupported system $sysname")
+            val errnoFnName = match #os {
+              "Darwin" => "__error",
+              "Linux" => "__errno_location",
+              else sys => todo("[errno] unsupported system '$sys'")
             }
             val errnoPtr = self.currentFn.block.buildCallRaw(errnoFnName, QbeType.Pointer, [], Some(self.nextTemp()))
             val errnoVal = self.currentFn.block.buildLoadW(errnoPtr, Some(self.nextTemp()))
@@ -1286,30 +1286,30 @@ pub type Compiler {
 
   func irTypeToQbeType(self, irType: IrType): qbe.QbeType {
     match irType {
-      IrType.I64 => QbeType.U64
-      IrType.F64 => QbeType.F64
-      IrType.Bool => QbeType.U64
-      IrType.Composite => QbeType.U64 // pointer to GC'd object
-      IrType.Ptr => QbeType.U64 // raw pointer
-      IrType.Unit => unreachable("values cannot be of type Unit")
-      IrType.Byte => QbeType.U64 // treat bytes as longs when they're ordinary values; but use `loadb`/`storeb`
+      IrType.I64 => QbeType.U64,
+      IrType.F64 => QbeType.F64,
+      IrType.Bool => QbeType.U64,
+      IrType.Composite => QbeType.U64, // pointer to GC'd object
+      IrType.Ptr => QbeType.U64, // raw pointer
+      IrType.Unit => unreachable("values cannot be of type Unit"),
+      IrType.Byte => QbeType.U64, // treat bytes as longs when they're ordinary values; but use `loadb`/`storeb`
     }
   }
 
   func irTypeToQbeReturnType(self, irType: IrType): qbe.QbeType? = match irType { IrType.Unit => None, else t => Some(self.irTypeToQbeType(t)) }
 
   func irConstToQbeValue(self, const: Const): qbe.Value = match const {
-    Const.Int(i) => qbe.Value.Int(i)
-    Const.Float(f) => qbe.Value.Float(f)
-    Const.Bool(b) => qbe.Value.Int(if b 1 else 0)
-    Const.Char(c) => qbe.Value.Int(c)
-    Const.String(s) => self.makeConstString(s)
+    Const.Int(i) => qbe.Value.Int(i),
+    Const.Float(f) => qbe.Value.Float(f),
+    Const.Bool(b) => qbe.Value.Int(if b 1 else 0),
+    Const.Char(c) => qbe.Value.Int(c),
+    Const.String(s) => self.makeConstString(s),
   }
 
   func irValueToQbeValue(self, v: Value): qbe.Value {
     match v {
-      Value.Unit => unreachable("values cannot be of type unit")
-      Value.Const(const) => self.irConstToQbeValue(const)
+      Value.Unit => unreachable("values cannot be of type unit"),
+      Value.Const(const) => self.irConstToQbeValue(const),
       Value.Ident(i) => {
         val ty = self.irTypeToQbeType(i.ty)
         qbe.Value.Ident(name: i.kind.name(), ty: ty)

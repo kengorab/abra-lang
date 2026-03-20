@@ -1,5 +1,5 @@
-Error at %FILE_NAME%:9:3
+Error at %TEST_DIR%/typechecker/match/error_exhaustive_Enum_variants.2.abra:9:3
 Unreachable match case
-  |    _ => 5
+  |    else => 5
        ^
 The previous case(s) cover all possibilities for match target type 'Color?'

@@ -73,8 +73,8 @@ enum Subcommand {
 
     val subcommand = try args.next() else return Err(SubcommandParseError.NoCommand)
     match subcommand {
-      "help" => Ok(Subcommand.Help)
-      "-h" => Ok(Subcommand.Help)
+      "help" => Ok(Subcommand.Help),
+      "-h" => Ok(Subcommand.Help),
       "build" => {
         var outputFile: String? = None
         var inputFileArg: String? = None
@@ -85,9 +85,9 @@ enum Subcommand {
           if arg == "-t" || arg == "--target" {
             val modeStr = try args.next() else return Err(SubcommandParseError.MissingRequiredValue(arg, Some("build")))
             buildTarget = match modeStr {
-              "bin" => cmdBuild.BuildTarget.NativeBin
-              "js" => cmdBuild.BuildTarget.JavaScript
-              else => return Err(SubcommandParseError.InvalidArgumentValue(arg, modeStr, ["bin", "js"]))
+              "bin" => cmdBuild.BuildTarget.NativeBin,
+              "js" => cmdBuild.BuildTarget.JavaScript,
+              else => return Err(SubcommandParseError.InvalidArgumentValue(arg, modeStr, ["bin", "js"])),
             }
             continue
           }
@@ -116,10 +116,10 @@ enum Subcommand {
           if arg == "-m" || arg == "--mode" {
             val modeStr = try args.next() else return Err(SubcommandParseError.MissingRequiredValue(arg, Some("emit-ir")))
             mode = match modeStr {
-              "TOKENS_ONLY" => cmdEmitIr.EmitIrMode.TokensOnly
-              "AST" => cmdEmitIr.EmitIrMode.Ast
-              "TYPED_AST" => cmdEmitIr.EmitIrMode.TypedAst
-              "IR" => cmdEmitIr.EmitIrMode.Ir
+              "TOKENS_ONLY" => cmdEmitIr.EmitIrMode.TokensOnly,
+              "AST" => cmdEmitIr.EmitIrMode.Ast,
+              "TYPED_AST" => cmdEmitIr.EmitIrMode.TypedAst,
+              "IR" => cmdEmitIr.EmitIrMode.Ir,
               else => return Err(SubcommandParseError.InvalidArgumentValue(arg, modeStr, ["TOKENS_ONLY", "AST", "TYPED_AST", "IR"]))
             }
             continue
@@ -154,7 +154,7 @@ enum Subcommand {
 func main() {
   val cmd = try Subcommand.parse(process.args()) else |err| {
     var msg = match err {
-      SubcommandParseError.NoCommand => "no command given"
+      SubcommandParseError.NoCommand => "no command given",
       SubcommandParseError.MissingRequiredValue(name, cmd) => {
         val suffix = if cmd |cmd| " for command '$cmd'" else ""
         "value required for option '$name'$suffix"
@@ -185,10 +185,10 @@ func main() {
   }
 
   match cmd {
-    Subcommand.Help => Subcommand.printUsage()
-    Subcommand.Build(cmd) => cmdBuild.runBuild(cmd)
-    Subcommand.BuildAndRun(cmd) => cmdBuildAndRun.buildAndRun(cmd)
-    Subcommand.EmitIr(cmd) => cmdEmitIr.run(cmd)
+    Subcommand.Help => Subcommand.printUsage(),
+    Subcommand.Build(cmd) => cmdBuild.runBuild(cmd),
+    Subcommand.BuildAndRun(cmd) => cmdBuildAndRun.buildAndRun(cmd),
+    Subcommand.EmitIr(cmd) => cmdEmitIr.run(cmd),
   }
 }
 main()

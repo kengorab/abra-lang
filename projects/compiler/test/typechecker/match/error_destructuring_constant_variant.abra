@@ -2,6 +2,6 @@ enum Color { Red, Green, Blue }
 
 val c = Color.Green
 val x = match c {
-  Color.Red(r) => 1
-  _ => 4
+  Color.Red(r) => 1,
+  else => 4
 }

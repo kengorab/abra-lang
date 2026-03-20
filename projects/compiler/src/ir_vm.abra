@@ -73,13 +73,13 @@ func pointerValueFromString(str: String): VmValue {
 
 pub func unmarshallString(value: VmValue): Result<String, String> {
   match value {
-    VmValue.Undefined => Err("Could not unmarshall value of undefined to String")
-    VmValue.OptionNone => Err("Could not unmarshall value of None to String")
-    VmValue.Int => Err("Could not unmarshall value of int to String")
-    VmValue.Float => Err("Could not unmarshall value of float to String")
-    VmValue.Bool => Err("Could not unmarshall value of bool to String")
-    VmValue.ConstString(str) => Ok(str)
-    VmValue.Pointer => Err("Could not unmarshall value of raw pointer to String")
+    VmValue.Undefined => Err("Could not unmarshall value of undefined to String"),
+    VmValue.OptionNone => Err("Could not unmarshall value of None to String"),
+    VmValue.Int => Err("Could not unmarshall value of int to String"),
+    VmValue.Float => Err("Could not unmarshall value of float to String"),
+    VmValue.Bool => Err("Could not unmarshall value of bool to String"),
+    VmValue.ConstString(str) => Ok(str),
+    VmValue.Pointer => Err("Could not unmarshall value of raw pointer to String"),
     VmValue.Instance(i) => {
       if !i.name.endsWith("_String") return Err("Could not unmarshall instance of '${i.name}' as String")
 
@@ -87,8 +87,8 @@ pub func unmarshallString(value: VmValue): Result<String, String> {
       if isNull return Err("Cannot unmarshall String with null buffer")
       Ok(pointerValueToString(buffer))
     }
-    VmValue.Function => Err("Could not unmarshall value of function to String")
-    VmValue.Capture => Err("Could not unmarshall captured value to String")
+    VmValue.Function => Err("Could not unmarshall value of function to String"),
+    VmValue.Capture => Err("Could not unmarshall captured value to String"),
   }
 }
 
@@ -165,34 +165,34 @@ pub type VM {
 
   func store(self, ident: ir.Ident, value: VmValue) {
     match ident.kind {
-      IdentKind.Named(_, idx) => self.locals[idx] = value
-      IdentKind.Anon(idx) => self.locals[idx] = value
+      IdentKind.Named(_, idx) => self.locals[idx] = value,
+      IdentKind.Anon(idx) => self.locals[idx] = value,
     }
   }
 
   func load(self, ident: ir.Ident): VmValue {
     val v = match ident.kind {
-      IdentKind.Named(_, idx) => self.locals[idx]
-      IdentKind.Anon(idx) => self.locals[idx]
+      IdentKind.Named(_, idx) => self.locals[idx],
+      IdentKind.Anon(idx) => self.locals[idx],
     }
     try v else unreachable("${self.curFnName}: expected value for ident '$ident'")
   }
 
   func irConstToVmValue(self, const: ir.Const): VmValue {
     match const {
-      Const.Int(i) => VmValue.Int(i)
-      Const.Float(f) => VmValue.Float(f)
-      Const.Bool(b) => VmValue.Bool(b)
-      Const.Char(i) => VmValue.Int(i) // char is represented as its i64 value
-      Const.String(s) => VmValue.ConstString(s)
+      Const.Int(i) => VmValue.Int(i),
+      Const.Float(f) => VmValue.Float(f),
+      Const.Bool(b) => VmValue.Bool(b),
+      Const.Char(i) => VmValue.Int(i), // char is represented as its i64 value
+      Const.String(s) => VmValue.ConstString(s),
     }
   }
 
   func irValueToVmValue(self, value: ir.Value): VmValue {
     match value {
-      Value.Unit => unreachable("unit is invalid value")
-      Value.Const(const) => self.irConstToVmValue(const)
-      Value.Ident(ident) => self.load(ident)
+      Value.Unit => unreachable("unit is invalid value"),
+      Value.Const(const) => self.irConstToVmValue(const),
+      Value.Ident(ident) => self.load(ident),
       Value.Global(g) => {
         try self.globals[g.name] else unreachable("${self.curFnName}: expected value for global '${g.name}'")
       }
@@ -213,8 +213,8 @@ pub type VM {
     val l = self.irValueToVmValue(left)
     val r = self.irValueToVmValue(right)
     match l {
-      VmValue.Int(l) => match r { VmValue.Int(r) => iifn(l, r), VmValue.Float(r) => iffn(l, r), else v => unreachable("unexpected right value: $v") }
-      VmValue.Float(l) => match r { VmValue.Int(r) => fifn(l, r), VmValue.Float(r) => fffn(l, r), else v => unreachable("unexpected right value: $v") }
+      VmValue.Int(l) => match r { VmValue.Int(r) => iifn(l, r), VmValue.Float(r) => iffn(l, r), else v => unreachable("unexpected right value: $v") },
+      VmValue.Float(l) => match r { VmValue.Int(r) => fifn(l, r), VmValue.Float(r) => fffn(l, r), else v => unreachable("unexpected right value: $v") },
       else v => unreachable("unexpected left value: $v")
     }
   }
@@ -241,11 +241,11 @@ pub type VM {
           self.store(self.expectAssignee(inst), value)
         }
       }
-      Operation.ConstInt(int) => self.store(self.expectAssignee(inst), VmValue.Int(int))
-      Operation.ConstFloat(float) => self.store(self.expectAssignee(inst), VmValue.Float(float))
-      Operation.ConstBool(bool) => self.store(self.expectAssignee(inst), VmValue.Bool(bool))
-      Operation.ConstChar(intVal) => todo("Operation.ConstChar")
-      Operation.ConstString(str) => self.store(self.expectAssignee(inst), VmValue.ConstString(str))
+      Operation.ConstInt(int) => self.store(self.expectAssignee(inst), VmValue.Int(int)),
+      Operation.ConstFloat(float) => self.store(self.expectAssignee(inst), VmValue.Float(float)),
+      Operation.ConstBool(bool) => self.store(self.expectAssignee(inst), VmValue.Bool(bool)),
+      Operation.ConstChar(intVal) => todo("Operation.ConstChar"),
+      Operation.ConstString(str) => self.store(self.expectAssignee(inst), VmValue.ConstString(str)),
       Operation.Minus(value) => {
         val v = self.irValueToVmValue(value)
         val res = match v { VmValue.Int(i) => VmValue.Int(-i), VmValue.Float(f) => VmValue.Float(-f), else v => unreachable("unexpected left value: $v") }
@@ -320,8 +320,8 @@ pub type VM {
         val r = self.irValueToVmValue(right)
 
         val res = match l {
-          VmValue.Int(l) => match r { VmValue.Int(r) => VmValue.Int(l ^ r), else v => unreachable("unexpected right value: $v") }
-          VmValue.Bool(l) => match r { VmValue.Bool(r) => VmValue.Bool(l ^ r), else v => unreachable("unexpected right value: $v") }
+          VmValue.Int(l) => match r { VmValue.Int(r) => VmValue.Int(l ^ r), else v => unreachable("unexpected right value: $v") },
+          VmValue.Bool(l) => match r { VmValue.Bool(r) => VmValue.Bool(l ^ r), else v => unreachable("unexpected right value: $v") },
           else v => unreachable("unexpected left value: $v")
         }
         self.store(self.expectAssignee(inst), res)
@@ -331,9 +331,9 @@ pub type VM {
         val r = self.irValueToVmValue(right)
 
         val res = match l {
-          VmValue.Int(l) => match r { VmValue.Int(r) => VmValue.Bool(if negate l != r else l == r), else v => unreachable("unexpected right value: $v") }
-          VmValue.Bool(l) => match r { VmValue.Bool(r) => VmValue.Bool(if negate l != r else l == r), else v => unreachable("unexpected right value: $v") }
-          VmValue.Float(l) => match r { VmValue.Float(r) => VmValue.Bool(if negate l != r else l == r), else v => unreachable("unexpected right value: $v") }
+          VmValue.Int(l) => match r { VmValue.Int(r) => VmValue.Bool(if negate l != r else l == r), else v => unreachable("unexpected right value: $v") },
+          VmValue.Bool(l) => match r { VmValue.Bool(r) => VmValue.Bool(if negate l != r else l == r), else v => unreachable("unexpected right value: $v") },
+          VmValue.Float(l) => match r { VmValue.Float(r) => VmValue.Bool(if negate l != r else l == r), else v => unreachable("unexpected right value: $v") },
           VmValue.Instance(i) => {
             // todo: assert instance is an enum instance
 
@@ -404,20 +404,20 @@ pub type VM {
       }
       Operation.LoadField(ty, mem, name, offsetBytes) => {
         val value = match self.irValueToVmValue(mem) {
-          VmValue.Undefined => unreachable("subject of loadfield undefined")
-          VmValue.OptionNone => unreachable("cannot load field '$name' of None")
-          VmValue.Int => unreachable("cannot load field '$name' of int")
-          VmValue.Float => unreachable("cannot load field '$name' of float")
-          VmValue.Bool => unreachable("cannot load field '$name' of bool")
+          VmValue.Undefined => unreachable("subject of loadfield undefined"),
+          VmValue.OptionNone => unreachable("cannot load field '$name' of None"),
+          VmValue.Int => unreachable("cannot load field '$name' of int"),
+          VmValue.Float => unreachable("cannot load field '$name' of float"),
+          VmValue.Bool => unreachable("cannot load field '$name' of bool"),
           VmValue.ConstString(s) => match name {
-            "length" => VmValue.Int(s.length)
-            "_buffer" => pointerValueFromString(s)
+            "length" => VmValue.Int(s.length),
+            "_buffer" => pointerValueFromString(s),
             else => unreachable("no other fields for strings")
-          }
-          VmValue.Pointer => unreachable("cannot load field '$name' of pointer")
-          VmValue.Instance(instance) => instance.expectField(offsetBytes >> 3)
-          VmValue.Function => todo("Operation.LoadField: Function")
-          VmValue.Capture => todo("cannot load field '$name' from captured value (must deref first)")
+          },
+          VmValue.Pointer => unreachable("cannot load field '$name' of pointer"),
+          VmValue.Instance(instance) => instance.expectField(offsetBytes >> 3),
+          VmValue.Function => todo("Operation.LoadField: Function"),
+          VmValue.Capture => todo("cannot load field '$name' from captured value (must deref first)"),
         }
         self.store(self.expectAssignee(inst), value)
       }
@@ -462,7 +462,7 @@ pub type VM {
           }
         }
       }
-      Operation.WhileLoopStart => self.whileLoopCond = Some([])
+      Operation.WhileLoopStart => self.whileLoopCond = Some([]),
       Operation.While(cond, body) => {
         val condInstrs = try self.whileLoopCond else unreachable("reached While operation without preceeding WhileLoopStart")
         self.whileLoopCond = None // reset
@@ -482,7 +482,9 @@ pub type VM {
               // no-op
               ControlFlag.Empty => {}
               // return out of `evalInstruction` and keep the flag set; `evalFunctionCall` will then bail too
-              ControlFlag.Return => return
+              ControlFlag.Return => {
+                return
+              }
               // reset the control flag and return out of `evalInstruction`
               ControlFlag.Break => {
                 self.flag = ControlFlag.Empty
@@ -524,7 +526,9 @@ pub type VM {
               // no-op
               ControlFlag.Empty => {}
               // return out of `evalInstruction` and keep the flag set; `evalFunctionCall` will then bail too
-              ControlFlag.Return => return
+              ControlFlag.Return => {
+                return
+              }
               // reset the control flag and return out of `evalInstruction`
               ControlFlag.Break => {
                 self.flag = ControlFlag.Empty
@@ -567,8 +571,8 @@ pub type VM {
         }
 
         val res = match envLocation {
-          None => self.evalFunctionCall(fn, callArgs)
-          ClosureEnvLocation.Passthrough => self.evalFunctionCall(fn, callArgs, self.captures)
+          None => self.evalFunctionCall(fn, callArgs),
+          ClosureEnvLocation.Passthrough => self.evalFunctionCall(fn, callArgs, self.captures),
         }
         if inst.assignee |assignee| {
           self.store(assignee, res)
@@ -603,8 +607,8 @@ pub type VM {
           self.store(assignee, res)
         }
       }
-      Operation.Break => self.flag = ControlFlag.Break
-      Operation.Continue => self.flag = ControlFlag.Continue
+      Operation.Break => self.flag = ControlFlag.Break,
+      Operation.Continue => self.flag = ControlFlag.Continue,
       Operation.Return(value) => {
         self.returnValue = if value |value| self.irValueToVmValue(value) else VmValue.Undefined
         self.flag = ControlFlag.Return
@@ -615,12 +619,12 @@ pub type VM {
       Operation.GetEnumVariantIdx(value, _) => {
         val v = self.irValueToVmValue(value)
         val idx = match v {
-          VmValue.Int(i) => i
+          VmValue.Int(i) => i,
           VmValue.Instance(i) => {
             val variantIdxField = try i.fields[0] else unreachable("enum container instance must have variant idx as first field")
             variantIdxField.expectInt("enum variant idx")
           }
-          else => unreachable("unexpected value for GetEnumVariantIdx '$v'")
+          else => unreachable("unexpected value for GetEnumVariantIdx '$v'"),
         }
         self.store(self.expectAssignee(inst), VmValue.Int(idx))
       }
@@ -637,8 +641,8 @@ pub type VM {
       }
       Operation.OptionUnwrap(_, value) => {
         match self.irValueToVmValue(value) {
-          VmValue.OptionNone => unreachable("unwrapped None")
-          else v => self.store(self.expectAssignee(inst), v)
+          VmValue.OptionNone => unreachable("unwrapped None"),
+          else v => self.store(self.expectAssignee(inst), v),
         }
       }
       Operation.StructuredToString(prefix, _, fields) => {
@@ -770,13 +774,13 @@ pub type VM {
             val floatVal = self.irValueToVmValue(float).expectFloat("FloatRound")
             self.store(self.expectAssignee(inst), VmValue.Int(floatVal.round()))
           }
-          Builtin.Uninitialized => self.store(self.expectAssignee(inst), VmValue.Int(0))
+          Builtin.Uninitialized => self.store(self.expectAssignee(inst), VmValue.Int(0)),
           // TODO: real implementations for callstack, modulenames, and functionnames
-          Builtin.Callstack => self.store(self.expectAssignee(inst), VmValue.Int(0))
-          Builtin.CallstackPtr => self.store(self.expectAssignee(inst), VmValue.Int(0))
-          Builtin.ModuleNames => self.store(self.expectAssignee(inst), VmValue.Int(0))
-          Builtin.FunctionNames => self.store(self.expectAssignee(inst), VmValue.Int(0))
-          Builtin.Errno => self.store(self.expectAssignee(inst), VmValue.Int(libc.errno()))
+          Builtin.Callstack => self.store(self.expectAssignee(inst), VmValue.Int(0)),
+          Builtin.CallstackPtr => self.store(self.expectAssignee(inst), VmValue.Int(0)),
+          Builtin.ModuleNames => self.store(self.expectAssignee(inst), VmValue.Int(0)),
+          Builtin.FunctionNames => self.store(self.expectAssignee(inst), VmValue.Int(0)),
+          Builtin.Errno => self.store(self.expectAssignee(inst), VmValue.Int(libc.errno())),
         }
       }
     }
@@ -784,11 +788,11 @@ pub type VM {
 
   func callExtern(self, name: String, args: VmValue[]) {
     match name {
-      "write" => self.externWrite(args)
-      "rand" => self.externRand(args)
-      "strlen" => self.externStrlen(args)
-      "getenv" => self.externGetenv(args)
-      "uname" => self.externUname(args)
+      "write" => self.externWrite(args),
+      "rand" => self.externRand(args),
+      "strlen" => self.externStrlen(args),
+      "getenv" => self.externGetenv(args),
+      "uname" => self.externUname(args),
       else => {
         if self.externs[name] |fn| {
           self.returnValue = fn(args)

@@ -55,9 +55,9 @@ type Jsonifier {
         self.indentInc()
 
         match exp {
-          Export.Variable => self.println("\"kind\": \"variable\",")
-          Export.Function => self.println("\"kind\": \"function\",")
-          Export.Type => self.println("\"kind\": \"type\",")
+          Export.Variable => self.println("\"kind\": \"variable\","),
+          Export.Function => self.println("\"kind\": \"function\","),
+          Export.Type => self.println("\"kind\": \"type\","),
         }
         self.println("\"name\": \"$name\"")
 
@@ -338,11 +338,11 @@ type Jsonifier {
       TypedAstNodeKind.Literal(value) => {
         self.println("\"kind\": \"literal\",")
         match value {
-          LiteralAstNode.Int(value) => self.println("\"value\": $value")
-          LiteralAstNode.Float(value) => self.println("\"value\": $value")
-          LiteralAstNode.Bool(value) => self.println("\"value\": $value")
-          LiteralAstNode.Char(value) => self.println("\"value\": \"${value.hex()}\"")
-          LiteralAstNode.String(value) => self.println("\"value\": \"$value\"")
+          LiteralAstNode.Int(value) => self.println("\"value\": $value"),
+          LiteralAstNode.Float(value) => self.println("\"value\": $value"),
+          LiteralAstNode.Bool(value) => self.println("\"value\": $value"),
+          LiteralAstNode.Char(value) => self.println("\"value\": \"${value.hex()}\""),
+          LiteralAstNode.String(value) => self.println("\"value\": \"$value\""),
         }
       }
       TypedAstNodeKind.StringInterpolation(exprs) => {
@@ -490,9 +490,9 @@ type Jsonifier {
             self.indentDec()
             self.print("}")
           }
-          TypedInvokee.Struct(struct) => self.printStruct(struct: struct, abridged: true)
-          TypedInvokee.Expr(expr) => self.printNode(expr)
-          TypedInvokee.EnumVariant(enum_, variant) => stdoutWrite("\"${enum_.label.name}.${variant.label.name}\"")
+          TypedInvokee.Struct(struct) => self.printStruct(struct: struct, abridged: true),
+          TypedInvokee.Expr(expr) => self.printNode(expr),
+          TypedInvokee.EnumVariant(enum_, variant) => stdoutWrite("\"${enum_.label.name}.${variant.label.name}\""),
         }
         stdoutWriteln(",")
 
@@ -661,17 +661,17 @@ type Jsonifier {
 
               self.println("\"kind\": \"literal\",")
               match value {
-                LiteralAstNode.Int(value) => self.println("\"value\": $value")
-                LiteralAstNode.Float(value) => self.println("\"value\": $value")
-                LiteralAstNode.Bool(value) => self.println("\"value\": $value")
-                LiteralAstNode.String(value) => self.println("\"value\": \"$value\"")
+                LiteralAstNode.Int(value) => self.println("\"value\": $value"),
+                LiteralAstNode.Float(value) => self.println("\"value\": $value"),
+                LiteralAstNode.Bool(value) => self.println("\"value\": $value"),
+                LiteralAstNode.String(value) => self.println("\"value\": \"$value\""),
               }
 
               self.indentDec()
               self.print("}")
             }
-            TypedMatchCaseKind.None_ => stdoutWrite("\"None\"")
-            TypedMatchCaseKind.Else => stdoutWrite("\"else\"")
+            TypedMatchCaseKind.None_ => stdoutWrite("\"None\""),
+            TypedMatchCaseKind.Else => stdoutWrite("\"else\""),
           }
           stdoutWriteln(",")
 
@@ -757,7 +757,7 @@ type Jsonifier {
 
         self.print("\"iterator\": ")
         match typedForIterKind {
-          TypedForIterKind.Expr(iterator) => self.printNode(iterator)
+          TypedForIterKind.Expr(iterator) => self.printNode(iterator),
           TypedForIterKind.Range(start, end) => {
             stdoutWriteln("{")
             self.indentInc()
@@ -767,7 +767,6 @@ type Jsonifier {
             self.print("\"end\": ")
             self.printNode(end)
             stdoutWriteln()
-            // self.println(",")
             self.indentDec()
             self.print("}")
           }
@@ -891,7 +890,7 @@ type Jsonifier {
 
     self.print("\"kind\": ")
     match function.kind {
-      FunctionKind.Standalone => stdoutWrite("\"FunctionKind.Standalone\"")
+      FunctionKind.Standalone => stdoutWrite("\"FunctionKind.Standalone\""),
       FunctionKind.InstanceMethod(_, isPublic) => {
         stdoutWrite("\"FunctionKind.InstanceMethod\"")
         stdoutWriteln(",")

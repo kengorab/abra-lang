@@ -67,7 +67,7 @@
                 "body": [
                   {
                     "token": {
-                      "position": [2, 8],
+                      "position": [2, 11],
                       "kind": {
                         "name": "String",
                         "value": "abcd"
@@ -434,7 +434,7 @@
               {
                 "kind": "else",
                 "binding": {
-                  "label": { "name": "s", "position": [11, 5] },
+                  "label": { "name": "s", "position": [11, 8] },
                   "mutable": false,
                   "type": {
                     "kind": "primitive",
@@ -444,7 +444,7 @@
                 "body": [
                   {
                     "token": {
-                      "position": [11, 12],
+                      "position": [11, 15],
                       "kind": {
                         "name": "Plus"
                       }
@@ -458,7 +458,7 @@
                       "op": "BinaryOp.Add",
                       "left": {
                         "token": {
-                          "position": [11, 10],
+                          "position": [11, 13],
                           "kind": {
                             "name": "Ident",
                             "value": "s"
@@ -475,7 +475,7 @@
                       },
                       "right": {
                         "token": {
-                          "position": [11, 14],
+                          "position": [11, 17],
                           "kind": {
                             "name": "Int",
                             "value": 1
@@ -702,7 +702,7 @@
               {
                 "kind": "else",
                 "binding": {
-                  "label": { "name": "s", "position": [18, 5] },
+                  "label": { "name": "s", "position": [18, 8] },
                   "mutable": false,
                   "type": {
                     "kind": "primitive",
@@ -712,7 +712,7 @@
                 "body": [
                   {
                     "token": {
-                      "position": [18, 12],
+                      "position": [18, 15],
                       "kind": {
                         "name": "Plus"
                       }
@@ -726,7 +726,7 @@
                       "op": "BinaryOp.Add",
                       "left": {
                         "token": {
-                          "position": [18, 10],
+                          "position": [18, 13],
                           "kind": {
                             "name": "Ident",
                             "value": "s"
@@ -743,7 +743,7 @@
                       },
                       "right": {
                         "token": {
-                          "position": [18, 14],
+                          "position": [18, 17],
                           "kind": {
                             "name": "Int",
                             "value": 1
@@ -950,7 +950,7 @@
                 "body": [
                   {
                     "token": {
-                      "position": [24, 8],
+                      "position": [24, 11],
                       "kind": {
                         "name": "Int",
                         "value": 0
@@ -1553,7 +1553,7 @@
                 "body": [
                   {
                     "token": {
-                      "position": [35, 13],
+                      "position": [35, 16],
                       "kind": {
                         "name": "Dot"
                       }
@@ -1567,7 +1567,7 @@
                       "kind": "accessor",
                       "head": {
                         "token": {
-                          "position": [35, 8],
+                          "position": [35, 11],
                           "kind": {
                             "name": "Ident",
                             "value": "Color"

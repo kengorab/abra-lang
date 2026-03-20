@@ -105,8 +105,8 @@ func compileSsa(ssaPath: String, objOutPath: String, abraRoot: String, execOutPa
   //  1. Ignore linker warnings (-Wl,-w); libgc.a has warnings on macOS.
   //  2. On macOS, libgc.a needs to be first (this is not the case on linux).
   val clangCmdArgs = match #os {
-    "Darwin" => ["$abraRoot/include/libgc.a", objOutPath, "-o", execOutPath, "-lm", "-Wno-override-module", "-Wl,-w"]
-    else =>     [objOutPath, "$abraRoot/include/libgc.a", "-o", execOutPath, "-lm", "-Wno-override-module"]
+    "Darwin" => ["$abraRoot/include/libgc.a", objOutPath, "-o", execOutPath, "-lm", "-Wno-override-module", "-Wl,-w"],
+    else =>     [objOutPath, "$abraRoot/include/libgc.a", "-o", execOutPath, "-lm", "-Wno-override-module"],
   }
   // todo: switch to gcc?
   val clangCmd = process.Command(program: "clang", arguments: clangCmdArgs)

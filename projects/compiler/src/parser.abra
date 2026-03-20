@@ -36,8 +36,8 @@ pub enum UnaryOp {
   Negate
 
   pub func repr(self): String = match self {
-    UnaryOp.Minus => "-"
-    UnaryOp.Negate => "!"
+    UnaryOp.Minus => "-",
+    UnaryOp.Negate => "!",
   }
 }
 
@@ -67,24 +67,24 @@ pub enum BinaryOp {
   Shr
 
   pub func repr(self): String = match self {
-    BinaryOp.Add => "+"
-    BinaryOp.Sub => "-"
-    BinaryOp.Mul => "*"
-    BinaryOp.Div => "/"
-    BinaryOp.Mod => "%"
-    BinaryOp.Pow => "**"
-    BinaryOp.And => "&&"
-    BinaryOp.Or => "||"
-    BinaryOp.Xor => "^"
-    BinaryOp.Coalesce => "?:"
-    BinaryOp.Eq => "=="
-    BinaryOp.Neq => "!="
-    BinaryOp.LT => "<"
-    BinaryOp.LTE => "<="
-    BinaryOp.Shl => "<<"
-    BinaryOp.GT => ">"
-    BinaryOp.GTE => ">="
-    BinaryOp.Shr => ">>"
+    BinaryOp.Add => "+",
+    BinaryOp.Sub => "-",
+    BinaryOp.Mul => "*",
+    BinaryOp.Div => "/",
+    BinaryOp.Mod => "%",
+    BinaryOp.Pow => "**",
+    BinaryOp.And => "&&",
+    BinaryOp.Or => "||",
+    BinaryOp.Xor => "^",
+    BinaryOp.Coalesce => "?:",
+    BinaryOp.Eq => "==",
+    BinaryOp.Neq => "!=",
+    BinaryOp.LT => "<",
+    BinaryOp.LTE => "<=",
+    BinaryOp.Shl => "<<",
+    BinaryOp.GT => ">",
+    BinaryOp.GTE => ">=",
+    BinaryOp.Shr => ">>",
   }
 }
 
@@ -100,15 +100,15 @@ pub enum AssignOp {
   CoalesceEq
 
   func repr(self): String = match self {
-    AssignOp.Assign => "="
-    AssignOp.AddEq => "+="
-    AssignOp.SubEq => "-="
-    AssignOp.MulEq => "*="
-    AssignOp.DivEq => "/="
-    AssignOp.ModEq => "%="
-    AssignOp.AndEq => "&&="
-    AssignOp.OrEq => "||="
-    AssignOp.CoalesceEq => "?:="
+    AssignOp.Assign => "=",
+    AssignOp.AddEq => "+=",
+    AssignOp.SubEq => "-=",
+    AssignOp.MulEq => "*=",
+    AssignOp.DivEq => "/=",
+    AssignOp.ModEq => "%=",
+    AssignOp.AndEq => "&&=",
+    AssignOp.OrEq => "||=",
+    AssignOp.CoalesceEq => "?:=",
   }
 }
 
@@ -134,12 +134,12 @@ pub enum SpecialIdentifierKind {
   Unknown(name: String)
 
   pub func name(self): String = match self {
-    SpecialIdentifierKind.Line => "line"
-    SpecialIdentifierKind.File => "file"
-    SpecialIdentifierKind.Import => "import"
-    SpecialIdentifierKind.OS => "os"
-    SpecialIdentifierKind.Embed => "embed"
-    SpecialIdentifierKind.Unknown(name) => name
+    SpecialIdentifierKind.Line => "line",
+    SpecialIdentifierKind.File => "file",
+    SpecialIdentifierKind.Import => "import",
+    SpecialIdentifierKind.OS => "os",
+    SpecialIdentifierKind.Embed => "embed",
+    SpecialIdentifierKind.Unknown(name) => name,
   }
 }
 
@@ -205,8 +205,8 @@ pub enum BindingPattern {
 
   pub func position(self): Position {
     match self {
-      BindingPattern.Variable(label) => label.position
-      BindingPattern.Tuple(lParenTok, _) => lParenTok.position
+      BindingPattern.Variable(label) => label.position,
+      BindingPattern.Tuple(lParenTok, _) => lParenTok.position,
     }
   }
 }
@@ -318,9 +318,9 @@ pub enum AstNodeKind {
 
   func isAssignmentExpression(self): Bool {
     match self {
-      AstNodeKind.Grouped(inner) => inner.kind.isAssignmentExpression()
-      AstNodeKind.Assignment => true
-      _ => false
+      AstNodeKind.Grouped(inner) => inner.kind.isAssignmentExpression(),
+      AstNodeKind.Assignment => true,
+      else => false,
     }
   }
 }
@@ -432,8 +432,8 @@ pub type Parser {
   func _expectNextLabel(self): Result<Label, ParseError> {
     val token = try self._expectNext()
     match token.kind {
-      TokenKind.Ident(name) => Ok(Label(name: name, position: token.position))
-      _ => Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
+      TokenKind.Ident(name) => Ok(Label(name: name, position: token.position)),
+      else => Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
     }
   }
 
@@ -441,19 +441,19 @@ pub type Parser {
     val token = try self._expectNext()
 
     val nextTokenMatches = match kind {
-      TokenKind.Int => match token.kind { TokenKind.Int => true, _ => false }
-      TokenKind.Float => match token.kind { TokenKind.Float => true, _ => false }
-      TokenKind.Bool => match token.kind { TokenKind.Bool => true, _ => false }
+      TokenKind.Int => match token.kind { TokenKind.Int => true, else => false },
+      TokenKind.Float => match token.kind { TokenKind.Float => true, else => false },
+      TokenKind.Bool => match token.kind { TokenKind.Bool => true, else => false },
       TokenKind.String => match token.kind {
-        TokenKind.String => true
-        TokenKind.StringInterpolation => true
-        _ => false
-      }
-      TokenKind.StringInterpolation => unreachable("no reason to ever explicitly expect a StringInterpolation token")
-      TokenKind.Ident => match token.kind { TokenKind.Ident => true, _ => false }
-      TokenKind.LParen => match token.kind { TokenKind.LParen => true, _ => false }
-      TokenKind.LBrack=> match token.kind { TokenKind.LBrack => true, _ => false }
-      _ => token.kind == kind
+        TokenKind.String => true,
+        TokenKind.StringInterpolation => true,
+        else => false
+      },
+      TokenKind.StringInterpolation => unreachable("no reason to ever explicitly expect a StringInterpolation token"),
+      TokenKind.Ident => match token.kind { TokenKind.Ident => true, else => false },
+      TokenKind.LParen => match token.kind { TokenKind.LParen => true, else => false },
+      TokenKind.LBrack=> match token.kind { TokenKind.LBrack => true, else => false },
+      else => token.kind == kind
     }
 
     if nextTokenMatches {
@@ -496,13 +496,13 @@ pub type Parser {
 
         val nextToken = try self._expectNext()
         val moduleName = match nextToken.kind {
-          TokenKind.String(name) => Label(name: name, position: nextToken.position)
-          _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String("")], nextToken.kind)))
+          TokenKind.String(name) => Label(name: name, position: nextToken.position),
+          else => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String("")], nextToken.kind)))
         }
 
         ImportNode(token: token, kind: kind, moduleName: moduleName)
       }
-      _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String(""), TokenKind.Ident("")], nextToken.kind)))
+      else => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String(""), TokenKind.Ident("")], nextToken.kind)))
     }
 
     Ok(importNode)
@@ -534,18 +534,18 @@ pub type Parser {
 
         self._parseStatement()
       }
-      TokenKind.Val => self._parseBindingDeclaration(mutable: false)
-      TokenKind.Var => self._parseBindingDeclaration(mutable: true)
-      TokenKind.Func => self._parseFunctionDeclaration()
-      TokenKind.Type => self._parseTypeDeclaration(isDecorator: false)
-      TokenKind.Enum => self._parseEnumDeclaration()
-      TokenKind.Decorator => self._parseTypeDeclaration(isDecorator: true)
-      TokenKind.While => self._parseWhileLoop()
-      TokenKind.For => self._parseForLoop()
-      TokenKind.Break => self._parseBreak()
-      TokenKind.Continue => self._parseContinue()
-      TokenKind.Return(hasNewline) => self._parseReturn(hasNewline)
-      _ => self._parseExpressionStatement()
+      TokenKind.Val => self._parseBindingDeclaration(mutable: false),
+      TokenKind.Var => self._parseBindingDeclaration(mutable: true),
+      TokenKind.Func => self._parseFunctionDeclaration(),
+      TokenKind.Type => self._parseTypeDeclaration(isDecorator: false),
+      TokenKind.Enum => self._parseEnumDeclaration(),
+      TokenKind.Decorator => self._parseTypeDeclaration(isDecorator: true),
+      TokenKind.While => self._parseWhileLoop(),
+      TokenKind.For => self._parseForLoop(),
+      TokenKind.Break => self._parseBreak(),
+      TokenKind.Continue => self._parseContinue(),
+      TokenKind.Return(hasNewline) => self._parseReturn(hasNewline),
+      else => self._parseExpressionStatement()
     }
   }
 
@@ -560,13 +560,13 @@ pub type Parser {
         self._advance() // consume '(' token
         try self._parseInvocationArguments()
       }
-      _ => []
+      else => []
     }
 
     for arg in arguments {
       match arg.value.kind {
         AstNodeKind.Literal => {}
-        _ => {
+        else => {
           val expected = [TokenKind.Int(0), TokenKind.Float(0.0), TokenKind.Bool(true), TokenKind.String("")]
           return Err(ParseError(position: arg.value.token.position, kind: ParseErrorKind.ExpectedToken(expected, arg.value.token.kind)))
         }
@@ -596,7 +596,7 @@ pub type Parser {
 
         BindingPattern.Tuple(lParenTok, items)
       }
-      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
+      else => return Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
     }
 
     Ok(pat)
@@ -675,8 +675,8 @@ pub type Parser {
         self._advance() // consume '<' token
         try self._parseTypeParameters()
       }
-      TokenKind.LParen => []
-      _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
+      TokenKind.LParen => [],
+      else => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
     }
 
     // The `true` in LParen is disregarded within _expectNextTokenKind
@@ -707,7 +707,8 @@ pub type Parser {
         val expr = try self._parseExpression()
         [expr]
       } else {
-        try self._parseBlockOrSingleExpression()
+        val (body, _) = try self.parseBlockOrSingleExpression()
+        body
       }
     }
 
@@ -739,8 +740,8 @@ pub type Parser {
         self._advance() // consume '<' token
         try self._parseTypeParameters()
       }
-      TokenKind.LBrace => []
-      _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
+      TokenKind.LBrace => [],
+      else => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
     }
 
     try self._expectNextTokenKind(TokenKind.LBrace)
@@ -765,13 +766,13 @@ pub type Parser {
 
           // If the token after 'pub' is an identifier, consume 'pub'. Otherwise leave it and it'll be picked up while parsing inner decls
           match self._peek(ahead: 1)?.kind {
-            TokenKind.Ident => self._advance()
+            TokenKind.Ident => self._advance(),
             else => break
           }
 
           fieldPubToken = Some(nextToken)
         }
-        _ => break
+        else => break
       }
     }
 
@@ -809,8 +810,8 @@ pub type Parser {
         self._advance() // consume '<' token
         try self._parseTypeParameters()
       }
-      TokenKind.LBrace => []
-      _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
+      TokenKind.LBrace => [],
+      else => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.LParen(true)], nextToken.kind)))
     }
 
     try self._expectNextTokenKind(TokenKind.LBrace)
@@ -825,7 +826,7 @@ pub type Parser {
           self._advance() // consume 'None' token
           Label(name: "None", position: identTok.position)
         }
-        _ => break
+        else => break
       }
 
       var nextToken = try self._expectPeek()
@@ -841,7 +842,7 @@ pub type Parser {
           }
           EnumVariant.Container(name, params)
         }
-        _ => EnumVariant.Constant(name)
+        else => EnumVariant.Constant(name)
       }
 
       nextToken = try self._expectPeek()
@@ -891,20 +892,20 @@ pub type Parser {
     while self._peek() |nextToken| {
       if nextToken.kind == TokenKind.RBrace break
       val node = match nextToken.kind {
-        TokenKind.RBrace => break
-        TokenKind.At => try self._parseStatement()
-        TokenKind.Pub => try self._parseStatement()
-        TokenKind.Func => try self._parseStatement()
-        TokenKind.Type => try self._parseStatement()
-        TokenKind.Enum => try self._parseStatement()
-        _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.UnexpectedToken(nextToken)))
+        TokenKind.RBrace => break,
+        TokenKind.At => try self._parseStatement(),
+        TokenKind.Pub => try self._parseStatement(),
+        TokenKind.Func => try self._parseStatement(),
+        TokenKind.Type => try self._parseStatement(),
+        TokenKind.Enum => try self._parseStatement(),
+        else => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.UnexpectedToken(nextToken)))
       }
 
       match node.kind {
-        AstNodeKind.FunctionDeclaration(node) => methods.push(node)
-        AstNodeKind.TypeDeclaration(node) => types.push(node)
-        AstNodeKind.EnumDeclaration(node) => enums.push(node)
-        _ => unreachable()
+        AstNodeKind.FunctionDeclaration(node) => methods.push(node),
+        AstNodeKind.TypeDeclaration(node) => types.push(node),
+        AstNodeKind.EnumDeclaration(node) => enums.push(node),
+        else => unreachable()
       }
     }
 
@@ -939,10 +940,10 @@ pub type Parser {
                   path.push(label)
                   label = Label(name: name, position: nextToken.position)
                 }
-                _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], nextToken.kind)))
+                else => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], nextToken.kind)))
               }
             }
-            _ => break
+            else => break
           }
         }
 
@@ -969,7 +970,7 @@ pub type Parser {
           return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Arrow], nextToken.kind)))
         }
       }
-      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
+      else => return Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
     }
 
     while self._peek() |nextToken| {
@@ -981,12 +982,12 @@ pub type Parser {
           try self._expectNextTokenKind(TokenKind.RBrack)
 
           typeIdent = TypeIdentifier.Array(inner: typeIdent)
-        }
+        },
         TokenKind.Question => {
           self._advance() // consume '?' token
           typeIdent = TypeIdentifier.Option(inner: typeIdent)
         }
-        _ => break
+        else => break
       }
     }
 
@@ -1006,15 +1007,15 @@ pub type Parser {
       }
 
       val label = match token.kind {
-        TokenKind.Ident(name) => Label(name: name, position: token.position)
+        TokenKind.Ident(name) => Label(name: name, position: token.position),
         TokenKind.Self => if allowSelf && paramIdx == 0 {
           if starToken |token| return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
 
           Label(name: "self", position: token.position)
         } else {
           return Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
-        }
-        _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
+        },
+        else => return Err(ParseError(position: token.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], token.kind)))
       }
 
       if label.name == "self" {
@@ -1053,8 +1054,9 @@ pub type Parser {
     }
   }
 
-  func _parseBlockOrSingleExpression(self, allowTerminators = false): Result<AstNode[], ParseError> {
+  func parseBlockOrSingleExpression(self, allowTerminators = false): Result<(AstNode[], Bool), ParseError> {
     val token = try self._expectPeek()
+    var isBlock = false
     val nodes = match token.kind {
       TokenKind.LBrace => {
         self._advance() // consume '{' token
@@ -1069,6 +1071,8 @@ pub type Parser {
           val node = try self._parseStatement()
           nodes.push(node)
         }
+
+        isBlock = true
         nodes
       }
       TokenKind.Break => if allowTerminators {
@@ -1076,26 +1080,26 @@ pub type Parser {
         [node]
       } else {
         return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
-      }
+      },
       TokenKind.Continue => if allowTerminators {
         val node = try self._parseStatement()
         [node]
       } else {
         return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
-      }
+      },
       TokenKind.Return => if allowTerminators {
         val node = try self._parseStatement()
         [node]
       } else {
         return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
-      }
-      _ => {
+      },
+      else => {
         val node = try self._parsePrecedence(prec: 0)
         [node]
       }
     }
 
-    Ok(nodes)
+    Ok((nodes, isBlock))
   }
 
   func _parseExpressionStatement(self): Result<AstNode, ParseError> = self._parsePrecedence(prec: 0)
@@ -1126,54 +1130,54 @@ pub type Parser {
 
   func _prefixRule(self, token: Token): Result<AstNode, ParseError> {
     match token.kind {
-      TokenKind.Int => self._parseLiteral()
-      TokenKind.Float => self._parseLiteral()
-      TokenKind.Bool => self._parseLiteral()
-      TokenKind.Char => self._parseLiteral()
-      TokenKind.String => self._parseLiteral()
-      TokenKind.StringInterpolation => self._parseStringInterpolation()
-      TokenKind.LParen => self._parseGroupedOrTupleOrLambda()
-      TokenKind.Minus => self._parseUnary()
-      TokenKind.Bang => self._parseUnary()
-      TokenKind.Ident(name) => self._parseIdentifier(kind: if name == "_" IdentifierKind.Discard else IdentifierKind.Named(name))
-      TokenKind.SpecialIdent(name) => self._parseSpecialIdentifier(name)
-      TokenKind.None_ => self._parseIdentifier(kind: IdentifierKind.None_)
-      TokenKind.Self => self._parseIdentifier(kind: IdentifierKind.Self)
-      TokenKind.LBrack => self._parseArray()
-      TokenKind.HashBrace => self._parseSet()
-      TokenKind.LBrace => self._parseMap()
-      TokenKind.If => self._parseIf()
-      TokenKind.Match => self._parseMatch()
-      TokenKind.Try => self._parseTry()
-      _ => Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      TokenKind.Int => self._parseLiteral(),
+      TokenKind.Float => self._parseLiteral(),
+      TokenKind.Bool => self._parseLiteral(),
+      TokenKind.Char => self._parseLiteral(),
+      TokenKind.String => self._parseLiteral(),
+      TokenKind.StringInterpolation => self._parseStringInterpolation(),
+      TokenKind.LParen => self._parseGroupedOrTupleOrLambda(),
+      TokenKind.Minus => self._parseUnary(),
+      TokenKind.Bang => self._parseUnary(),
+      TokenKind.Ident(name) => self._parseIdentifier(kind: if name == "_" IdentifierKind.Discard else IdentifierKind.Named(name)),
+      TokenKind.SpecialIdent(name) => self._parseSpecialIdentifier(name),
+      TokenKind.None_ => self._parseIdentifier(kind: IdentifierKind.None_),
+      TokenKind.Self => self._parseIdentifier(kind: IdentifierKind.Self),
+      TokenKind.LBrack => self._parseArray(),
+      TokenKind.HashBrace => self._parseSet(),
+      TokenKind.LBrace => self._parseMap(),
+      TokenKind.If => self._parseIf(),
+      TokenKind.Match => self._parseMatch(),
+      TokenKind.Try => self._parseTry(),
+      else => Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
     }
   }
 
   func _infixRule(self, left: AstNode): Result<AstNode, ParseError> {
     val infixToken = try self._expectNext()
     match infixToken.kind {
-      TokenKind.Dot => self._parseAccessor(infixToken, left)
-      TokenKind.QuestionDot => self._parseAccessor(infixToken, left)
-      TokenKind.LParen => self._parseInvocation(infixToken, left)
-      TokenKind.LBrack => self._parseIndexing(infixToken, left)
-      TokenKind.Arrow => self._parseLambda(infixToken, left)
-      TokenKind.Eq => self._parseAssignment(infixToken, left)
-      _ => self._parseBinary(infixToken, left)
+      TokenKind.Dot => self._parseAccessor(infixToken, left),
+      TokenKind.QuestionDot => self._parseAccessor(infixToken, left),
+      TokenKind.LParen => self._parseInvocation(infixToken, left),
+      TokenKind.LBrack => self._parseIndexing(infixToken, left),
+      TokenKind.Arrow => self._parseLambda(infixToken, left),
+      TokenKind.Eq => self._parseAssignment(infixToken, left),
+      else => self._parseBinary(infixToken, left)
     }
   }
 
   func _parseLiteral(self): Result<AstNode, ParseError> {
     val token = try self._expectNext()
     val literal = match token.kind {
-      TokenKind.Int(value) => LiteralAstNode.Int(value)
-      TokenKind.Float(value) => LiteralAstNode.Float(value)
-      TokenKind.Bool(value) => LiteralAstNode.Bool(value)
-      TokenKind.Char(value) => LiteralAstNode.Char(value)
-      TokenKind.String(value) => LiteralAstNode.String(value)
+      TokenKind.Int(value) => LiteralAstNode.Int(value),
+      TokenKind.Float(value) => LiteralAstNode.Float(value),
+      TokenKind.Bool(value) => LiteralAstNode.Bool(value),
+      TokenKind.Char(value) => LiteralAstNode.Char(value),
+      TokenKind.String(value) => LiteralAstNode.String(value),
       TokenKind.StringInterpolation => {
         return Err(ParseError(position: token.position, kind: ParseErrorKind.NotYetImplemented))
       }
-      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      else => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
     }
 
     Ok(AstNode(token: token, kind: AstNodeKind.Literal(literal)))
@@ -1182,8 +1186,8 @@ pub type Parser {
   func _parseStringInterpolation(self): Result<AstNode, ParseError> {
     val token = try self._expectNext()
     val chunks = match token.kind {
-      TokenKind.StringInterpolation(chunks) => chunks
-      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      TokenKind.StringInterpolation(chunks) => chunks,
+      else => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
     }
 
     val nodes: AstNode[] = []
@@ -1197,13 +1201,13 @@ pub type Parser {
           val subParser = Parser(_tokens: tokens)
           // TODO: try/else
           val node = match subParser._parseExpression() {
-            Ok(v) => v
+            Ok(v) => v,
             Err(e) => {
               // If the subparser encounters an unexpected end of input (eg. when parsing the interpolation "${-}"), it'll ordinarily return an UnexpectedEof
               // error. Return a different error in this case, to more accurately communicate the error.
               val err = match e.kind {
-                ParseErrorKind.UnexpectedEof => ParseError(position: e.position, kind: ParseErrorKind.UnexpectedToken(Token(position: e.position, kind: TokenKind.RBrace)))
-                _ => e
+                ParseErrorKind.UnexpectedEof => ParseError(position: e.position, kind: ParseErrorKind.UnexpectedToken(Token(position: e.position, kind: TokenKind.RBrace))),
+                else => e
               }
               return Err(err)
             }
@@ -1222,9 +1226,9 @@ pub type Parser {
   func _parseUnary(self): Result<AstNode, ParseError> {
     val token = try self._expectNext()
     val op = match token.kind {
-      TokenKind.Minus => UnaryOp.Minus
-      TokenKind.Bang => UnaryOp.Negate
-      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.NotYetImplemented))
+      TokenKind.Minus => UnaryOp.Minus,
+      TokenKind.Bang => UnaryOp.Negate,
+      else => return Err(ParseError(position: token.position, kind: ParseErrorKind.NotYetImplemented))
     }
 
     val expr = try self._parsePrecedence(prec: Precedence.unary())
@@ -1240,7 +1244,7 @@ pub type Parser {
       TokenKind.RParen => {
         self._advance() // consume ')' token
         val arrowToken = try self._expectNextTokenKind(TokenKind.Arrow)
-        val body = try self._parseBlockOrSingleExpression()
+        val (body, _) = try self.parseBlockOrSingleExpression()
 
         return Ok(AstNode(token: arrowToken, kind: AstNodeKind.Lambda(LambdaNode(params: [], body: body))))
       }
@@ -1256,7 +1260,7 @@ pub type Parser {
           Ok(params) => {
             match self._expectNextTokenKind(TokenKind.Arrow) {
               Ok(arrowToken) => {
-                val body = try self._parseBlockOrSingleExpression()
+                val (body, _) = try self.parseBlockOrSingleExpression()
 
                 return Ok(AstNode(token: arrowToken, kind: AstNodeKind.Lambda(LambdaNode(params: params, body: body))))
               }
@@ -1269,11 +1273,11 @@ pub type Parser {
       TokenKind.Star => { // a variadic parameter could be first
         val params = try self._parseFunctionParameters(allowSelf: false)
         val arrowToken = try self._expectNextTokenKind(TokenKind.Arrow)
-        val body = try self._parseBlockOrSingleExpression()
+        val (body, _) = try self.parseBlockOrSingleExpression()
 
         return Ok(AstNode(token: arrowToken, kind: AstNodeKind.Lambda(LambdaNode(params: params, body: body))))
       }
-      _ => {}
+      else => {}
     }
 
     val exprs = try self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: () => self._parseExpression())
@@ -1338,16 +1342,16 @@ pub type Parser {
     val token = try self._expectNext()
 
     val kind = match name {
-      "line" => SpecialIdentifierKind.Line
-      "file" => SpecialIdentifierKind.File
+      "line" => SpecialIdentifierKind.Line,
+      "file" => SpecialIdentifierKind.File,
       "import" => {
         // The `true` in LParen is disregarded within _expectNextTokenKind
         try self._expectNextTokenKind(TokenKind.LParen(true))
 
         val nextToken = try self._expectNext()
         val mod = match nextToken.kind {
-          TokenKind.String(name) => Label(name: name, position: nextToken.position)
-          _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String("")], nextToken.kind)))
+          TokenKind.String(name) => Label(name: name, position: nextToken.position),
+          else => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String("")], nextToken.kind)))
         }
         self._imports.push(ImportNode(token: nextToken, kind: ImportKind.Bare, moduleName: mod))
 
@@ -1355,15 +1359,15 @@ pub type Parser {
 
         SpecialIdentifierKind.Import(mod.name)
       }
-      "os" => SpecialIdentifierKind.OS
+      "os" => SpecialIdentifierKind.OS,
       "embed" => {
         // The `true` in LParen is disregarded within _expectNextTokenKind
         try self._expectNextTokenKind(TokenKind.LParen(true))
 
         val nextToken = try self._expectNext()
         val filePath = match nextToken.kind {
-          TokenKind.String(filePath) => filePath
-          _ => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String("")], nextToken.kind)))
+          TokenKind.String(filePath) => filePath,
+          else => return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String("")], nextToken.kind)))
         }
 
         try self._expectNextTokenKind(TokenKind.RParen)
@@ -1395,16 +1399,16 @@ pub type Parser {
     val items = try self._commaSeparated(end: TokenKind.RBrace, consumeFinal: true, fn: () => {
       val keyToken = try self._expectPeek()
       val key = match keyToken.kind {
-        TokenKind.Char => try self._parseExpression()
-        TokenKind.String => try self._parseExpression()
-        TokenKind.Ident => try self._parseExpression()
+        TokenKind.Char => try self._parseExpression(),
+        TokenKind.String => try self._parseExpression(),
+        TokenKind.Ident => try self._parseExpression(),
         TokenKind.LParen => {
           self._advance() // consume '(' token
           val key = try self._parseExpression()
           try self._expectNextTokenKind(TokenKind.RParen)
           key
         }
-        _ => return Err(ParseError(position: keyToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String(""), TokenKind.Ident(""), TokenKind.LParen(false)], keyToken.kind)))
+        else => return Err(ParseError(position: keyToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.String(""), TokenKind.Ident(""), TokenKind.LParen(false)], keyToken.kind)))
       }
 
       try self._expectNextTokenKind(TokenKind.Colon)
@@ -1431,11 +1435,11 @@ pub type Parser {
       None
     }
 
-    val ifBlock = try self._parseBlockOrSingleExpression(allowTerminators: true)
+    val (ifBlock, _) = try self.parseBlockOrSingleExpression(allowTerminators: true)
     val elseBlock = if self._peek() |nextToken| {
       if nextToken.kind == TokenKind.Else {
         self._advance() // consume 'else' token
-        val elseBlock = try self._parseBlockOrSingleExpression(allowTerminators: true)
+        val (elseBlock, _) = try self.parseBlockOrSingleExpression(allowTerminators: true)
         Some(elseBlock)
       } else {
         None
@@ -1457,7 +1461,7 @@ pub type Parser {
     while self._peek() |next| {
       val casePos = next.position
       val caseKind = match next.kind {
-        TokenKind.RBrace => break
+        TokenKind.RBrace => break,
         TokenKind.None_ => {
           self._advance() // consume 'None' token
           MatchCaseKind.None_
@@ -1483,55 +1487,49 @@ pub type Parser {
           MatchCaseKind.Literal(LiteralAstNode.String(value))
         }
         TokenKind.Ident(name) => {
-          if name == "_" {
-            // todo: fully replace with `else`, after requiring commas between non-block cases
-            self._advance() // consume '_' token
-            MatchCaseKind.Else
-          } else {
+          val label = try self._expectNextLabel()
+          var last = label
+          val path: Label[] = []
+          while self._peek() |nextToken| {
+            if nextToken.kind != TokenKind.Dot {
+              // todo: this business of "smartly" substituting "Ok"/"Err" is pretty clunky
+              if path.isEmpty() && !(last.name == "Ok" || last.name == "Err") {
+                return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Dot], nextToken.kind)))
+              }
+              break
+            }
+            self._advance() // consume '.' token
             val label = try self._expectNextLabel()
-            var last = label
-            val path: Label[] = []
-            while self._peek() |nextToken| {
-              if nextToken.kind != TokenKind.Dot {
-                // todo: this business of "smartly" substituting "Ok"/"Err" is pretty clunky
-                if path.isEmpty() && !(last.name == "Ok" || last.name == "Err") {
-                  return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Dot], nextToken.kind)))
-                }
-                break
+            path.push(last)
+            last = label
+          }
+
+          val nextToken = try self._expectPeek()
+          val args = match nextToken.kind {
+            TokenKind.LParen => {
+              self._advance() // consume '(' token
+
+              val next = try self._expectPeek()
+              if next.kind == TokenKind.RParen {
+                return Err(ParseError(position: next.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], next.kind)))
               }
-              self._advance() // consume '.' token
-              val label = try self._expectNextLabel()
-              path.push(last)
-              last = label
+
+              try self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: () => self._expectNextLabel())
             }
+            else => []
+          }
 
-            val nextToken = try self._expectPeek()
-            val args = match nextToken.kind {
-              TokenKind.LParen => {
-                self._advance() // consume '(' token
-
-                val next = try self._expectPeek()
-                if next.kind == TokenKind.RParen {
-                  return Err(ParseError(position: next.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], next.kind)))
-                }
-
-                try self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: () => self._expectNextLabel())
-              }
-              _ => []
-            }
-
-            if path.isEmpty() && (last.name == "Ok" || last.name == "Err") {
-              MatchCaseKind.Type([Label(name: "Result", position: Position.bogus())], last, args)
-            } else {
-              MatchCaseKind.Type(path, last, args)
-            }
+          if path.isEmpty() && (last.name == "Ok" || last.name == "Err") {
+            MatchCaseKind.Type([Label(name: "Result", position: Position.bogus())], last, args)
+          } else {
+            MatchCaseKind.Type(path, last, args)
           }
         }
         TokenKind.Else => {
           self._advance() // consume 'else' token
           MatchCaseKind.Else
         }
-        _ => {
+        else => {
           val expected = [TokenKind.RBrace, TokenKind.Int(0), TokenKind.Float(0.0), TokenKind.Bool(true), TokenKind.String(""), TokenKind.Ident(""), TokenKind.Else]
           return Err(ParseError(position: next.position, kind: ParseErrorKind.ExpectedToken(expected, next.kind)))
         }
@@ -1539,8 +1537,8 @@ pub type Parser {
 
       var nextToken = try self._expectPeek()
       val binding = match nextToken.kind {
-        TokenKind.Ident => Some(try self._expectNextLabel())
-        _ => None
+        TokenKind.Ident => Some(try self._expectNextLabel()),
+        else => None
       }
 
       nextToken = try self._expectNext()
@@ -1549,9 +1547,11 @@ pub type Parser {
         return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken(expected, nextToken.kind)))
       }
 
-      val body = try self._parseBlockOrSingleExpression(allowTerminators: true)
+      val (body, isBlock) = try self.parseBlockOrSingleExpression(allowTerminators: true)
       nextToken = try self._expectPeek()
-      if nextToken.kind == TokenKind.Comma {
+      if !isBlock && nextToken.kind != TokenKind.RBrace {
+        try self._expectNextTokenKind(TokenKind.Comma)
+      } else if nextToken.kind == TokenKind.Comma {
         self._advance() // consume ',' token
       }
 
@@ -1579,7 +1579,7 @@ pub type Parser {
           None
         }
 
-        val elseBlock = try self._parseBlockOrSingleExpression(allowTerminators: true)
+        val (elseBlock, _) = try self.parseBlockOrSingleExpression(allowTerminators: true)
 
         Some((elseToken, binding, elseBlock))
       } else None
@@ -1602,7 +1602,7 @@ pub type Parser {
       None
     }
 
-    val block = try self._parseBlockOrSingleExpression(allowTerminators: true)
+    val (block, _) = try self.parseBlockOrSingleExpression(allowTerminators: true)
 
     Ok(AstNode(token: token, kind: AstNodeKind.While(condition, conditionBinding, block)))
   }
@@ -1632,7 +1632,7 @@ pub type Parser {
       ForIterKind.Expr(itExpr)
     }
 
-    val block = try self._parseBlockOrSingleExpression(allowTerminators: true)
+    val (block, _) = try self.parseBlockOrSingleExpression(allowTerminators: true)
 
     Ok(AstNode(token: token, kind: AstNodeKind.For(itemPattern, indexPattern, iterKind, block)))
   }
@@ -1658,26 +1658,26 @@ pub type Parser {
   func _parseBinary(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
     val prec = Precedence.forToken(token)
     val op = match token.kind {
-      TokenKind.Plus => BinaryOp.Add
-      TokenKind.PlusEq => return self._parseAssignment(token, left, AssignOp.AddEq)
-      TokenKind.Minus => BinaryOp.Sub
-      TokenKind.MinusEq => return self._parseAssignment(token, left, AssignOp.SubEq)
-      TokenKind.Star => BinaryOp.Mul
-      TokenKind.StarEq => return self._parseAssignment(token, left, AssignOp.MulEq)
-      TokenKind.Slash => BinaryOp.Div
-      TokenKind.SlashEq => return self._parseAssignment(token, left, AssignOp.DivEq)
-      TokenKind.Percent => BinaryOp.Mod
-      TokenKind.PercentEq => return self._parseAssignment(token, left, AssignOp.ModEq)
-      TokenKind.StarStar => BinaryOp.Pow
-      TokenKind.And => BinaryOp.And
-      TokenKind.AndEq => return self._parseAssignment(token, left, AssignOp.AndEq)
-      TokenKind.Or => BinaryOp.Or
-      TokenKind.OrEq => return self._parseAssignment(token, left, AssignOp.OrEq)
-      TokenKind.Caret => BinaryOp.Xor
-      TokenKind.Elvis => BinaryOp.Coalesce
-      TokenKind.ElvisEq => return self._parseAssignment(token, left, AssignOp.CoalesceEq)
-      TokenKind.EqEq => BinaryOp.Eq
-      TokenKind.Neq => BinaryOp.Neq
+      TokenKind.Plus => BinaryOp.Add,
+      TokenKind.PlusEq => return self._parseAssignment(token, left, AssignOp.AddEq),
+      TokenKind.Minus => BinaryOp.Sub,
+      TokenKind.MinusEq => return self._parseAssignment(token, left, AssignOp.SubEq),
+      TokenKind.Star => BinaryOp.Mul,
+      TokenKind.StarEq => return self._parseAssignment(token, left, AssignOp.MulEq),
+      TokenKind.Slash => BinaryOp.Div,
+      TokenKind.SlashEq => return self._parseAssignment(token, left, AssignOp.DivEq),
+      TokenKind.Percent => BinaryOp.Mod,
+      TokenKind.PercentEq => return self._parseAssignment(token, left, AssignOp.ModEq),
+      TokenKind.StarStar => BinaryOp.Pow,
+      TokenKind.And => BinaryOp.And,
+      TokenKind.AndEq => return self._parseAssignment(token, left, AssignOp.AndEq),
+      TokenKind.Or => BinaryOp.Or,
+      TokenKind.OrEq => return self._parseAssignment(token, left, AssignOp.OrEq),
+      TokenKind.Caret => BinaryOp.Xor,
+      TokenKind.Elvis => BinaryOp.Coalesce,
+      TokenKind.ElvisEq => return self._parseAssignment(token, left, AssignOp.CoalesceEq),
+      TokenKind.EqEq => BinaryOp.Eq,
+      TokenKind.Neq => BinaryOp.Neq,
       TokenKind.LT => {
         val nextToken = try self._expectPeek()
         if nextToken.kind == TokenKind.LT {
@@ -1687,7 +1687,7 @@ pub type Parser {
           BinaryOp.LT
         }
       }
-      TokenKind.LTE => BinaryOp.LTE
+      TokenKind.LTE => BinaryOp.LTE,
       TokenKind.GT => {
         val nextToken = try self._expectPeek()
         if nextToken.kind == TokenKind.GT {
@@ -1697,8 +1697,8 @@ pub type Parser {
           BinaryOp.GT
         }
       }
-      TokenKind.GTE => BinaryOp.GTE
-      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      TokenKind.GTE => BinaryOp.GTE,
+      else => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
     }
 
     val right = try self._parsePrecedence(prec: prec)
@@ -1709,8 +1709,8 @@ pub type Parser {
     val label = try self._expectNextLabel()
 
     val accessorNode = match left.kind {
-      AstNodeKind.Accessor(accessorNode) => accessorNode
-      _ => AccessorAstNode(root: left, path: [])
+      AstNodeKind.Accessor(accessorNode) => accessorNode,
+      else => AccessorAstNode(root: left, path: [])
     }
     accessorNode.path.push((token, label))
 
@@ -1763,8 +1763,8 @@ pub type Parser {
             self._advance() // consume ':' token
 
             val label = match identifierKind {
-              IdentifierKind.Named(name) => Label(name: name, position: expr.token.position)
-              _ => {
+              IdentifierKind.Named(name) => Label(name: name, position: expr.token.position),
+              else => {
                 val kind = ParseErrorKind.ExpectedToken(expected: [TokenKind.Ident("")], received: expr.token.kind)
                 return Err(ParseError(position: expr.token.position, kind: kind))
               }
@@ -1777,7 +1777,7 @@ pub type Parser {
           }
           arg
         }
-        _ => InvocationArgument(label: None, value: expr)
+        else => InvocationArgument(label: None, value: expr)
       }
 
       Ok(arg)
@@ -1789,10 +1789,10 @@ pub type Parser {
 
     val isSome = match left.kind {
       AstNodeKind.Identifier(identKind) => match identKind {
-        IdentifierKind.Named(name) => name == "Some"
-        _ => false
-      }
-      _ => false
+        IdentifierKind.Named(name) => name == "Some",
+        else => false
+      },
+      else => false
     }
     val invokee = if isSome {
       AstNode(
@@ -1846,16 +1846,16 @@ pub type Parser {
   func _parseLambda(self, token: Token, left: AstNode): Result<AstNode, ParseError> {
     val params = match left.kind {
       AstNodeKind.Identifier(identifier) => match identifier {
-        IdentifierKind.Named(name) => [FunctionParam(label: Label(name: name, position: left.token.position))]
-        _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
-      }
+        IdentifierKind.Named(name) => [FunctionParam(label: Label(name: name, position: left.token.position))],
+        else => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      },
       AstNodeKind.Grouped(inner) => {
         match inner.kind {
           AstNodeKind.Identifier(identifier) => match identifier {
-            IdentifierKind.Named(name) => [FunctionParam(label: Label(name: name, position: inner.token.position))]
-            _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
-          }
-          _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+            IdentifierKind.Named(name) => [FunctionParam(label: Label(name: name, position: inner.token.position))],
+            else => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+          },
+          else => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
         }
       }
       AstNodeKind.Tuple(items) => {
@@ -1867,17 +1867,17 @@ pub type Parser {
                 params.push(FunctionParam(label: Label(name: name, position: item.token.position)))
                 0 // <- awkward; this is needed because of an outstanding bug with Unit-returning `match`es (even though this is a statement so it shouldn't matter)
               }
-              _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
-            }
-            _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+              else => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+            },
+            else => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
           }
         }
         params
       }
-      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      else => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
     }
 
-    val body = try self._parseBlockOrSingleExpression()
+    val (body, _) = try self.parseBlockOrSingleExpression()
 
     Ok(AstNode(token: token, kind: AstNodeKind.Lambda(LambdaNode(params: params, body: body))))
   }
@@ -1885,29 +1885,29 @@ pub type Parser {
   func _parseAssignment(self, token: Token, left: AstNode, assignOp: AssignOp = AssignOp.Assign): Result<AstNode, ParseError> {
     val mode = match left.kind {
       AstNodeKind.Identifier(identKind) => match identKind {
-        IdentifierKind.Named(name) => AssignmentMode.Variable(name, left.token)
-        _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
-      }
-      AstNodeKind.Accessor(node) => AssignmentMode.Accessor(node)
+        IdentifierKind.Named(name) => AssignmentMode.Variable(name, left.token),
+        else => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      },
+      AstNodeKind.Accessor(node) => AssignmentMode.Accessor(node),
       AstNodeKind.Indexing(expr, indexMode) => match indexMode {
-        IndexingMode.Single(indexExpr) => AssignmentMode.Indexing(expr, indexExpr)
-        _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
-      }
-      _ => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+        IndexingMode.Single(indexExpr) => AssignmentMode.Indexing(expr, indexExpr),
+        else => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
+      },
+      else => return Err(ParseError(position: token.position, kind: ParseErrorKind.UnexpectedToken(token)))
     }
 
     val rhs = try self._parseExpression()
 
     val expr = match assignOp {
-      AssignOp.Assign => rhs
-      AssignOp.AddEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Add, right: rhs)))
-      AssignOp.SubEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Sub, right: rhs)))
-      AssignOp.MulEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Mul, right: rhs)))
-      AssignOp.DivEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Div, right: rhs)))
-      AssignOp.ModEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Mod, right: rhs)))
-      AssignOp.AndEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.And, right: rhs)))
-      AssignOp.OrEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Or, right: rhs)))
-      AssignOp.CoalesceEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Coalesce, right: rhs)))
+      AssignOp.Assign => rhs,
+      AssignOp.AddEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Add, right: rhs))),
+      AssignOp.SubEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Sub, right: rhs))),
+      AssignOp.MulEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Mul, right: rhs))),
+      AssignOp.DivEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Div, right: rhs))),
+      AssignOp.ModEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Mod, right: rhs))),
+      AssignOp.AndEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.And, right: rhs))),
+      AssignOp.OrEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Or, right: rhs))),
+      AssignOp.CoalesceEq => AstNode(token: token, kind: AstNodeKind.Binary(BinaryAstNode(left: left, op: BinaryOp.Coalesce, right: rhs))),
     }
 
     Ok(AstNode(token: token, kind: AstNodeKind.Assignment(expr: expr, op: assignOp, mode: mode)))
@@ -1932,37 +1932,37 @@ type Precedence {
 
   func forToken(token: Token): Int {
     match token.kind {
-      TokenKind.Or => Precedence.or()
-      TokenKind.Caret => Precedence.or()
-      TokenKind.And => Precedence.and()
-      TokenKind.EqEq => Precedence.equality()
-      TokenKind.Neq => Precedence.equality()
-      TokenKind.LT => Precedence.comparison()
-      TokenKind.LTE => Precedence.comparison()
-      TokenKind.GT => Precedence.comparison()
-      TokenKind.GTE => Precedence.comparison()
-      TokenKind.Plus => Precedence.addition()
-      TokenKind.Minus => Precedence.addition()
-      TokenKind.Star => Precedence.multiplication()
-      TokenKind.Slash => Precedence.multiplication()
-      TokenKind.Percent => Precedence.multiplication()
-      TokenKind.Dot => Precedence.call()
-      TokenKind.QuestionDot => Precedence.call()
-      TokenKind.Arrow => Precedence.call()
-      TokenKind.LParen(sawNewline) => if sawNewline Precedence.none() else Precedence.call()
-      TokenKind.LBrack(sawNewline) => if sawNewline Precedence.none() else Precedence.call()
-      TokenKind.PlusEq => Precedence.addMulAssign()
-      TokenKind.MinusEq => Precedence.addMulAssign()
-      TokenKind.StarEq => Precedence.addMulAssign()
-      TokenKind.SlashEq => Precedence.addMulAssign()
-      TokenKind.PercentEq => Precedence.addMulAssign()
-      TokenKind.OrEq => Precedence.orAndAssign()
-      TokenKind.AndEq => Precedence.orAndAssign()
-      TokenKind.Eq => Precedence.assignment()
-      TokenKind.Elvis => Precedence.coalesce()
-      TokenKind.ElvisEq => Precedence.coalesce()
-      TokenKind.StarStar => Precedence.multiplication()
-      _ => Precedence.none()
+      TokenKind.Or => Precedence.or(),
+      TokenKind.Caret => Precedence.or(),
+      TokenKind.And => Precedence.and(),
+      TokenKind.EqEq => Precedence.equality(),
+      TokenKind.Neq => Precedence.equality(),
+      TokenKind.LT => Precedence.comparison(),
+      TokenKind.LTE => Precedence.comparison(),
+      TokenKind.GT => Precedence.comparison(),
+      TokenKind.GTE => Precedence.comparison(),
+      TokenKind.Plus => Precedence.addition(),
+      TokenKind.Minus => Precedence.addition(),
+      TokenKind.Star => Precedence.multiplication(),
+      TokenKind.Slash => Precedence.multiplication(),
+      TokenKind.Percent => Precedence.multiplication(),
+      TokenKind.Dot => Precedence.call(),
+      TokenKind.QuestionDot => Precedence.call(),
+      TokenKind.Arrow => Precedence.call(),
+      TokenKind.LParen(sawNewline) => if sawNewline Precedence.none() else Precedence.call(),
+      TokenKind.LBrack(sawNewline) => if sawNewline Precedence.none() else Precedence.call(),
+      TokenKind.PlusEq => Precedence.addMulAssign(),
+      TokenKind.MinusEq => Precedence.addMulAssign(),
+      TokenKind.StarEq => Precedence.addMulAssign(),
+      TokenKind.SlashEq => Precedence.addMulAssign(),
+      TokenKind.PercentEq => Precedence.addMulAssign(),
+      TokenKind.OrEq => Precedence.orAndAssign(),
+      TokenKind.AndEq => Precedence.orAndAssign(),
+      TokenKind.Eq => Precedence.assignment(),
+      TokenKind.Elvis => Precedence.coalesce(),
+      TokenKind.ElvisEq => Precedence.coalesce(),
+      TokenKind.StarStar => Precedence.multiplication(),
+      else => Precedence.none()
     }
   }
 }

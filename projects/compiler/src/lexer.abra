@@ -92,78 +92,78 @@ pub enum TokenKind {
   At
 
   pub func repr(self): String = match self {
-    TokenKind.Int => "int"
-    TokenKind.Float => "float"
-    TokenKind.Bool(value) => value.toString()
-    TokenKind.String => "string"
-    TokenKind.StringInterpolation => "string"
-    TokenKind.Char => "char"
-    TokenKind.Ident(name) => if name == "_" { "_" } else "identifier"
-    TokenKind.SpecialIdent(name) => "identifier"
-    TokenKind.If => "if"
-    TokenKind.Else => "else"
-    TokenKind.Val => "val"
-    TokenKind.Var => "var"
-    TokenKind.Func => "func"
-    TokenKind.Self => "self"
-    TokenKind.While => "while"
-    TokenKind.Break => "break"
-    TokenKind.Continue => "continue"
-    TokenKind.For => "for"
-    TokenKind.In => "in"
-    TokenKind.Match => "match"
-    TokenKind.Type => "type"
-    TokenKind.Enum => "enum"
-    TokenKind.Decorator => "decorator"
-    TokenKind.Return => "return"
-    TokenKind.Readonly => "readonly"
-    TokenKind.Import => "import"
-    TokenKind.From => "from"
-    TokenKind.As => "as"
-    TokenKind.Try => "try"
-    TokenKind.None_ => "None"
-    TokenKind.Pub => "pub"
-    TokenKind.Plus => "+"
-    TokenKind.PlusEq => "+="
-    TokenKind.Minus => "-"
-    TokenKind.MinusEq => "-="
-    TokenKind.Star => "*"
-    TokenKind.StarEq => "*="
-    TokenKind.StarStar => "**"
-    TokenKind.Slash => "/"
-    TokenKind.SlashEq => "/="
-    TokenKind.Percent => "%"
-    TokenKind.PercentEq => "%="
-    TokenKind.LT => "<"
-    TokenKind.LTE => "<="
-    TokenKind.GT => ">"
-    TokenKind.GTE => ">="
-    TokenKind.Bang => "!"
-    TokenKind.Neq => "!="
-    TokenKind.Eq => "="
-    TokenKind.EqEq => "=="
-    TokenKind.Arrow => "=>"
-    TokenKind.And => "&&"
-    TokenKind.AndEq => "&&="
-    TokenKind.Or => "||"
-    TokenKind.OrEq => "||="
-    TokenKind.Dot => "."
-    TokenKind.Caret => "^"
-    TokenKind.LParen => "("
-    TokenKind.RParen => ")"
-    TokenKind.LBrack => "["
-    TokenKind.RBrack => "]"
-    TokenKind.LBrace => "{"
-    TokenKind.RBrace => "}"
-    TokenKind.HashBrace => "#{"
-    TokenKind.Pipe => "|"
-    TokenKind.Comma => ","
-    TokenKind.Colon => ":"
-    TokenKind.Question => "?"
-    TokenKind.Elvis => "?:"
-    TokenKind.ElvisEq => "?:="
-    TokenKind.QuestionDot => "?."
-    TokenKind.At => "@"
+    TokenKind.Int => "int",
+    TokenKind.Float => "float",
+    TokenKind.Bool(value) => value.toString(),
+    TokenKind.String => "string",
+    TokenKind.StringInterpolation => "string",
+    TokenKind.Char => "char",
+    TokenKind.Ident(name) => if name == "_" { "_" } else "identifier",
+    TokenKind.SpecialIdent(name) => "identifier",
+    TokenKind.If => "if",
+    TokenKind.Else => "else",
+    TokenKind.Val => "val",
+    TokenKind.Var => "var",
+    TokenKind.Func => "func",
+    TokenKind.Self => "self",
+    TokenKind.While => "while",
+    TokenKind.Break => "break",
+    TokenKind.Continue => "continue",
+    TokenKind.For => "for",
+    TokenKind.In => "in",
+    TokenKind.Match => "match",
+    TokenKind.Type => "type",
+    TokenKind.Enum => "enum",
+    TokenKind.Decorator => "decorator",
+    TokenKind.Return => "return",
+    TokenKind.Readonly => "readonly",
+    TokenKind.Import => "import",
+    TokenKind.From => "from",
+    TokenKind.As => "as",
+    TokenKind.Try => "try",
+    TokenKind.None_ => "None",
+    TokenKind.Pub => "pub",
+    TokenKind.Plus => "+",
+    TokenKind.PlusEq => "+=",
+    TokenKind.Minus => "-",
+    TokenKind.MinusEq => "-=",
+    TokenKind.Star => "*",
+    TokenKind.StarEq => "*=",
+    TokenKind.StarStar => "**",
+    TokenKind.Slash => "/",
+    TokenKind.SlashEq => "/=",
+    TokenKind.Percent => "%",
+    TokenKind.PercentEq => "%=",
+    TokenKind.LT => "<",
+    TokenKind.LTE => "<=",
+    TokenKind.GT => ">",
+    TokenKind.GTE => ">=",
+    TokenKind.Bang => "!",
+    TokenKind.Neq => "!=",
+    TokenKind.Eq => "=",
+    TokenKind.EqEq => "==",
+    TokenKind.Arrow => "=>",
+    TokenKind.And => "&&",
+    TokenKind.AndEq => "&&=",
+    TokenKind.Or => "||",
+    TokenKind.OrEq => "||=",
+    TokenKind.Dot => ".",
+    TokenKind.Caret => "^",
+    TokenKind.LParen => "(",
+    TokenKind.RParen => ")",
+    TokenKind.LBrack => "[",
+    TokenKind.RBrack => "]",
+    TokenKind.LBrace => "{",
+    TokenKind.RBrace => "}",
+    TokenKind.HashBrace => "#{",
+    TokenKind.Pipe => "|",
+    TokenKind.Comma => ",",
+    TokenKind.Colon => ":",
+    TokenKind.Question => "?",
+    TokenKind.Elvis => "?:",
+    TokenKind.ElvisEq => "?:=",
+    TokenKind.QuestionDot => "?.",
+    TokenKind.At => "@",
   }
 }
 
@@ -444,19 +444,19 @@ pub type Lexer {
       ch = self._input[self._cursor]
 
       match ch {
-        "0" => 0
-        "b" => 8
-        "n" => 10
-        "f" => 12
-        "\\" => 92
-        "r" => 13
-        "t" => 9
-        "'" => 39
+        "0" => 0,
+        "b" => 8,
+        "n" => 10,
+        "f" => 12,
+        "\\" => 92,
+        "r" => 13,
+        "t" => 9,
+        "'" => 39,
         "u" => {
           val ch = try self._parseUnicodeEscape(pos)
           ch.asInt()
         }
-        _ => return Err(LexerError(position: pos, kind: LexerErrorKind.UnsupportedEscapeSequence(seq: "\\$ch", isUnicode: false)))
+        else => return Err(LexerError(position: pos, kind: LexerErrorKind.UnsupportedEscapeSequence(seq: "\\$ch", isUnicode: false)))
       }
     } else {
       // TODO: once characters are supported, there should be no need for low-level byte manipulation like this
@@ -495,20 +495,20 @@ pub type Lexer {
 
         val ch = self._input[self._cursor]
         val escapedCh = match ch {
-          "n" => "\n"
-          "b" => "\b"
-          "\n" => "\n"
-          "f" => "\f"
-          "\\" => "\\"
-          "r" => "\r"
-          "t" => "\t"
-          "\"" => "\""
-          "$" => "$"
+          "n" => "\n",
+          "b" => "\b",
+          "\n" => "\n",
+          "f" => "\f",
+          "\\" => "\\",
+          "r" => "\r",
+          "t" => "\t",
+          "\"" => "\"",
+          "$" => "$",
           "u" => {
             val ch = try self._parseUnicodeEscape(pos)
             ch.toString()
           }
-          _ => return Err(LexerError(position: pos, kind: LexerErrorKind.UnsupportedEscapeSequence(seq: "\\$ch", isUnicode: false)))
+          else => return Err(LexerError(position: pos, kind: LexerErrorKind.UnsupportedEscapeSequence(seq: "\\$ch", isUnicode: false)))
         }
 
         if !seenEscape {
@@ -636,45 +636,34 @@ pub type Lexer {
   }
 
   func _tokenizeIdentifier(self, startPos: Position): Token {
-    // val identStart = self._cursor
-    // var ch = self._input[self._cursor]
-
-    // while ch.isAlphanumeric() || ch == "_" {
-    //   self._advance()
-    //   ch = self._input[self._cursor]
-    // }
-
-    val ident = self.tokenizeWord() // self._input[identStart:self._cursor]
+    val ident = self.tokenizeWord()
     val tokenKind = match ident {
-      "true" => TokenKind.Bool(true)
-      "false" => TokenKind.Bool(false)
-      "if" => TokenKind.If
-      "else" => TokenKind.Else
-      "val" => TokenKind.Val
-      "var" => TokenKind.Var
-      "func" => TokenKind.Func
-      "self" => TokenKind.Self
-      "while" => TokenKind.While
-      "break" => TokenKind.Break
-      "continue" => TokenKind.Continue
-      "for" => TokenKind.For
-      "in" => TokenKind.In
-      "match" => TokenKind.Match
-      "type" => TokenKind.Type
-      "enum" => TokenKind.Enum
-      "decorator" => TokenKind.Decorator
-      "return" => {
-        val sawNewline = self._skipWhitespace()
-        TokenKind.Return(sawNewline)
-      }
-      "readonly" => TokenKind.Readonly
-      "import" => TokenKind.Import
-      "from" => TokenKind.From
-      "as" => TokenKind.As
-      "try" => TokenKind.Try
-      "None" => TokenKind.None_
-      "pub" => TokenKind.Pub
-      _ => TokenKind.Ident(ident)
+      "true" => TokenKind.Bool(true),
+      "false" => TokenKind.Bool(false),
+      "if" => TokenKind.If,
+      "else" => TokenKind.Else,
+      "val" => TokenKind.Val,
+      "var" => TokenKind.Var,
+      "func" => TokenKind.Func,
+      "self" => TokenKind.Self,
+      "while" => TokenKind.While,
+      "break" => TokenKind.Break,
+      "continue" => TokenKind.Continue,
+      "for" => TokenKind.For,
+      "in" => TokenKind.In,
+      "match" => TokenKind.Match,
+      "type" => TokenKind.Type,
+      "enum" => TokenKind.Enum,
+      "decorator" => TokenKind.Decorator,
+      "return" => TokenKind.Return(subsequentNewline: self._skipWhitespace()),
+      "readonly" => TokenKind.Readonly,
+      "import" => TokenKind.Import,
+      "from" => TokenKind.From,
+      "as" => TokenKind.As,
+      "try" => TokenKind.Try,
+      "None" => TokenKind.None_,
+      "pub" => TokenKind.Pub,
+      else => TokenKind.Ident(ident)
     }
     Token(position: startPos, kind: tokenKind)
   }
@@ -683,23 +672,23 @@ pub type Lexer {
     val ch = self._input[self._cursor]
 
     val tokenKind = match ch {
-      "+" => self._multiCharToken(TokenKind.Plus, [("=", TokenKind.PlusEq)])
-      "-" => self._multiCharToken(TokenKind.Minus, [("=", TokenKind.MinusEq)])
-      "*" => self._multiCharToken(TokenKind.Star, [("=", TokenKind.StarEq), ("*", TokenKind.StarStar)])
-      "/" => self._multiCharToken(TokenKind.Slash, [("=", TokenKind.SlashEq)])
-      "%" => self._multiCharToken(TokenKind.Percent, [("=", TokenKind.PercentEq)])
-      "<" => self._multiCharToken(TokenKind.LT, [("=", TokenKind.LTE)])
-      ">" => self._multiCharToken(TokenKind.GT, [("=", TokenKind.GTE)])
-      "!" => self._multiCharToken(TokenKind.Bang, [("=", TokenKind.Neq)])
-      "=" => self._multiCharToken(TokenKind.Eq, [("=", TokenKind.EqEq), (">", TokenKind.Arrow)])
-      "." => TokenKind.Dot
-      "^" => TokenKind.Caret
-      "(" => TokenKind.LParen(preceedingNewline: sawPreceedingNewline)
-      ")" => TokenKind.RParen
-      "[" => TokenKind.LBrack(preceedingNewline: sawPreceedingNewline)
-      "]" => TokenKind.RBrack
-      "{" => TokenKind.LBrace
-      "}" => TokenKind.RBrace
+      "+" => self._multiCharToken(TokenKind.Plus, [("=", TokenKind.PlusEq)]),
+      "-" => self._multiCharToken(TokenKind.Minus, [("=", TokenKind.MinusEq)]),
+      "*" => self._multiCharToken(TokenKind.Star, [("=", TokenKind.StarEq), ("*", TokenKind.StarStar)]),
+      "/" => self._multiCharToken(TokenKind.Slash, [("=", TokenKind.SlashEq)]),
+      "%" => self._multiCharToken(TokenKind.Percent, [("=", TokenKind.PercentEq)]),
+      "<" => self._multiCharToken(TokenKind.LT, [("=", TokenKind.LTE)]),
+      ">" => self._multiCharToken(TokenKind.GT, [("=", TokenKind.GTE)]),
+      "!" => self._multiCharToken(TokenKind.Bang, [("=", TokenKind.Neq)]),
+      "=" => self._multiCharToken(TokenKind.Eq, [("=", TokenKind.EqEq), (">", TokenKind.Arrow)]),
+      "." => TokenKind.Dot,
+      "^" => TokenKind.Caret,
+      "(" => TokenKind.LParen(preceedingNewline: sawPreceedingNewline),
+      ")" => TokenKind.RParen,
+      "[" => TokenKind.LBrack(preceedingNewline: sawPreceedingNewline),
+      "]" => TokenKind.RBrack,
+      "{" => TokenKind.LBrace,
+      "}" => TokenKind.RBrace,
       "&" => {
         self._advance() // consume first '&'
         if self._cursor >= self._input.length {
@@ -718,10 +707,10 @@ pub type Lexer {
           TokenKind.And
         }
       }
-      "|" => self._multiCharToken(TokenKind.Pipe, [("|=", TokenKind.OrEq), ("|", TokenKind.Or)])
-      "," => TokenKind.Comma
-      ":" => TokenKind.Colon
-      "?" => self._multiCharToken(TokenKind.Question, [(":=", TokenKind.ElvisEq), (":", TokenKind.Elvis), (".", TokenKind.QuestionDot)])
+      "|" => self._multiCharToken(TokenKind.Pipe, [("|=", TokenKind.OrEq), ("|", TokenKind.Or)]),
+      "," => TokenKind.Comma,
+      ":" => TokenKind.Colon,
+      "?" => self._multiCharToken(TokenKind.Question, [(":=", TokenKind.ElvisEq), (":", TokenKind.Elvis), (".", TokenKind.QuestionDot)]),
       "#" => {
         self._advance() // consume '#'
         if self._cursor >= self._input.length {
@@ -737,8 +726,8 @@ pub type Lexer {
           return Err(LexerError(position: self._curPos(), kind: LexerErrorKind.UnexpectedChar(ch)))
         }
       }
-      "@" => TokenKind.At
-      _ => return Err(LexerError(position: startPos, kind: LexerErrorKind.UnexpectedChar(ch)))
+      "@" => TokenKind.At,
+      else => return Err(LexerError(position: startPos, kind: LexerErrorKind.UnexpectedChar(ch)))
     }
 
     self._advance()

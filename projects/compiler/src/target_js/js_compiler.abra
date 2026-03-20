@@ -143,11 +143,11 @@ pub type Compiler {
         }
         self.writer.writeln(";")
       }
-      Operation.ConstInt(int) => self.genConst(dst, Const.Int(int))
-      Operation.ConstFloat(float) => self.genConst(dst, Const.Float(float))
-      Operation.ConstBool(bool) => self.genConst(dst, Const.Bool(bool))
-      Operation.ConstChar(char) => self.genConst(dst, Const.Char(char))
-      Operation.ConstString(str) => self.genConst(dst, Const.String(str))
+      Operation.ConstInt(int) => self.genConst(dst, Const.Int(int)),
+      Operation.ConstFloat(float) => self.genConst(dst, Const.Float(float)),
+      Operation.ConstBool(bool) => self.genConst(dst, Const.Bool(bool)),
+      Operation.ConstChar(char) => self.genConst(dst, Const.Char(char)),
+      Operation.ConstString(str) => self.genConst(dst, Const.String(str)),
       Operation.Minus(v) => {
         self.writer.write("const $dst = -")
         self.emitIrValueToJsValue(v)
@@ -158,13 +158,13 @@ pub type Compiler {
         self.emitIrValueToJsValue(v)
         self.writer.writeln(";")
       }
-      Operation.Add(l, r) => self.genBinary(dst, "+", l, r)
-      Operation.Sub(l, r) => self.genBinary(dst, "-", l, r)
-      Operation.Mul(l, r) => self.genBinary(dst, "*", l, r)
-      Operation.Div(l, r) => self.genBinary(dst, "/", l, r)
-      Operation.Mod(l, r) => self.genBinary(dst, "%", l, r)
-      Operation.Pow(l, r) => self.genBinary(dst, "**", l, r)
-      Operation.BitAnd(l, r) => self.genBinary(dst, "&", l, r)
+      Operation.Add(l, r) => self.genBinary(dst, "+", l, r),
+      Operation.Sub(l, r) => self.genBinary(dst, "-", l, r),
+      Operation.Mul(l, r) => self.genBinary(dst, "*", l, r),
+      Operation.Div(l, r) => self.genBinary(dst, "/", l, r),
+      Operation.Mod(l, r) => self.genBinary(dst, "%", l, r),
+      Operation.Pow(l, r) => self.genBinary(dst, "**", l, r),
+      Operation.BitAnd(l, r) => self.genBinary(dst, "&", l, r),
       Operation.BoolAnd(l, r) => {
         self.writer.writeln("let $dst;")
 
@@ -191,7 +191,7 @@ pub type Compiler {
         self.writer.writeln("}")
 
       }
-      Operation.BitOr(l, r) => self.genBinary(dst, "|", l, r)
+      Operation.BitOr(l, r) => self.genBinary(dst, "|", l, r),
       Operation.BoolOr(l, r) => {
         self.writer.writeln("let $dst;")
 
@@ -228,13 +228,13 @@ pub type Compiler {
         self.emitIrValueToJsValue(r)
         self.writer.writeln(");")
       }
-      Operation.Eq(negate, l, r) => self.genBinary(dst, if negate "!==" else "===", l, r)
-      Operation.Lt(l, r) => self.genBinary(dst, "<", l, r)
-      Operation.Lte(l, r) => self.genBinary(dst, "<=", l, r)
-      Operation.Shl(l, r) => self.genBinary(dst, "<<", l, r)
-      Operation.Gt(l, r) => self.genBinary(dst, ">", l, r)
-      Operation.Gte(l, r) => self.genBinary(dst, ">=", l, r)
-      Operation.Shr(l, r) => self.genBinary(dst, ">>", l, r)
+      Operation.Eq(negate, l, r) => self.genBinary(dst, if negate "!==" else "===", l, r),
+      Operation.Lt(l, r) => self.genBinary(dst, "<", l, r),
+      Operation.Lte(l, r) => self.genBinary(dst, "<=", l, r),
+      Operation.Shl(l, r) => self.genBinary(dst, "<<", l, r),
+      Operation.Gt(l, r) => self.genBinary(dst, ">", l, r),
+      Operation.Gte(l, r) => self.genBinary(dst, ">=", l, r),
+      Operation.Shr(l, r) => self.genBinary(dst, ">>", l, r),
       Operation.LoadVar(ty, ident) => {
         val identName = jsIdentName(ident.kind.name())
         self.writer.writeln("const $dst = $identName;")
@@ -275,8 +275,8 @@ pub type Compiler {
       }
       Operation.StoreCapturedVar(ty, value, src) => {
         val name = match src {
-          CaptureSource.WithinCapturingFn(idx, _, _) => "__env__[$idx]"
-          CaptureSource.OutsideFn(ident) => jsIdentName(ident.kind.name())
+          CaptureSource.WithinCapturingFn(idx, _, _) => "__env__[$idx]",
+          CaptureSource.OutsideFn(ident) => jsIdentName(ident.kind.name()),
         }
         self.writer.write("$name.\$ = ")
         self.emitIrValueToJsValue(value)
@@ -447,8 +447,8 @@ pub type Compiler {
         }
         self.writer.writeln(");")
       }
-      Operation.Break => self.writer.writeln("break;")
-      Operation.Continue => self.writer.writeln("continue;")
+      Operation.Break => self.writer.writeln("break;"),
+      Operation.Continue => self.writer.writeln("continue;"),
       Operation.Return(value) => {
         self.writer.write("return")
         if value |v| {
@@ -682,13 +682,13 @@ pub type Compiler {
 
             self.writer.writeln("const $dst = $intArray[0];")
           }
-          Builtin.Uninitialized => self.writer.writeln("const $dst = undefined;")
+          Builtin.Uninitialized => self.writer.writeln("const $dst = undefined;"),
           // TODO: real implementations for callstack, modulenames, and functionnames
-          Builtin.Callstack => self.writer.writeln("const $dst = undefined;")
-          Builtin.CallstackPtr => self.writer.writeln("const $dst = 0;")
-          Builtin.ModuleNames => self.writer.writeln("const $dst = undefined;")
-          Builtin.FunctionNames => self.writer.writeln("const $dst = undefined;")
-          Builtin.Errno => self.writer.writeln("const $dst = externs.errno();")
+          Builtin.Callstack => self.writer.writeln("const $dst = undefined;"),
+          Builtin.CallstackPtr => self.writer.writeln("const $dst = 0;"),
+          Builtin.ModuleNames => self.writer.writeln("const $dst = undefined;"),
+          Builtin.FunctionNames => self.writer.writeln("const $dst = undefined;"),
+          Builtin.Errno => self.writer.writeln("const $dst = externs.errno();"),
         }
       }
     }
@@ -716,10 +716,10 @@ pub type Compiler {
         i.toString()
       }
     }
-    Const.Float(f) => f.toString()
-    Const.Bool(b) => b.toString()
-    Const.Char(c) => c.toString()
-    Const.String(s) => self.makeConstString(s)
+    Const.Float(f) => f.toString(),
+    Const.Bool(b) => b.toString(),
+    Const.Char(c) => c.toString(),
+    Const.String(s) => self.makeConstString(s),
   }
 
   func makeConstString(self, s: String): String {
@@ -731,10 +731,10 @@ pub type Compiler {
 
   func irValueToJsValue(self, v: Value): String {
     match v {
-      Value.Unit => unreachable("values cannot be of type unit")
-      Value.Const(const) => self.irConstToJsValue(const)
-      Value.Ident(i) => jsIdentName(i.kind.name())
-      Value.Global(g) => jsIdentName(g.name)
+      Value.Unit => unreachable("values cannot be of type unit"),
+      Value.Const(const) => self.irConstToJsValue(const),
+      Value.Ident(i) => jsIdentName(i.kind.name()),
+      Value.Global(g) => jsIdentName(g.name),
     }
   }
 }

@@ -203,7 +203,7 @@
                           "enum": { "moduleId": 5, "name": "Result" },
                           "destructuredVariables": [
                             {
-                              "label": { "name": "e", "position": [2, 38] },
+                              "label": { "name": "e", "position": [2, 39] },
                               "mutable": false,
                               "type": {
                                 "kind": "primitive",
@@ -216,7 +216,7 @@
                         "body": [
                           {
                             "token": {
-                              "position": [2, 44],
+                              "position": [2, 45],
                               "kind": {
                                 "name": "Return"
                               }
@@ -228,7 +228,7 @@
                               "kind": "return",
                               "expr": {
                                 "token": {
-                                  "position": [2, 54],
+                                  "position": [2, 55],
                                   "kind": {
                                     "name": "LParen"
                                   }
@@ -291,7 +291,7 @@
                                   "arguments": [
                                     {
                                       "token": {
-                                        "position": [2, 55],
+                                        "position": [2, 56],
                                         "kind": {
                                           "name": "Ident",
                                           "value": "e"
