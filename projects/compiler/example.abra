@@ -1,4 +1,15 @@
-import "process" as process
+enum Foo {
+  Bar
+  Baz
+}
 
-val foo = #embed("./.gitignore")
-println(foo)
+val x = Foo.Bar
+val y = Foo.Baz
+
+val n = match (x, y) {
+  (Foo.Bar, Foo.Bar) => 1
+  (Foo.Bar, Foo.Baz) => 2
+  (Foo.Baz, Foo.Bar) => 3
+  (Foo.Baz, Foo.Baz) => 4
+}
+println(n)
