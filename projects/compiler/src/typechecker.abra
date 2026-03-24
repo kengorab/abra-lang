@@ -1017,20 +1017,11 @@ pub type TypedMatchCase {
 
 enum MatchCasesContextKind {
   Init
-  Single(inner: MatchCasesContextKindSingle)
-  Tuple(inner: MatchCasesContextKindTuple[])
-}
-
-type MatchCasesContextKindSingle {
-  seenLiteralCases: Set<LiteralAstNode> = #{}
-  seenEnumVariants: Map<Enum, Set<Int>> = {}
-}
-
-type MatchCasesContextKindTuple {
-  seenElseCase: Bool = false
-  seenNoneCase: Bool = false
-  seenLiteralCases: Set<LiteralAstNode> = #{}
-  seenEnumVariants: Map<Enum, Set<Int>> = {}
+  Single(
+    seenLiteralCases: Set<LiteralAstNode> = #{},
+    seenEnumVariants: Map<Enum, Set<Int>> = {},
+  )
+  Tuple(inner: MatchCasesContext[])
 }
 
 type MatchCasesContext {
@@ -1041,68 +1032,61 @@ type MatchCasesContext {
   func initialized(self): Bool = self.kind != MatchCasesContextKind.Init
 
   func initializeAsSingle(self) {
-    self.kind = MatchCasesContextKind.Single(MatchCasesContextKindSingle())
+    self.kind = MatchCasesContextKind.Single()
   }
 
   func initializeAsTuple(self, size: Int) {
-    val items = Array.fillBy(size, () => MatchCasesContextKindTuple())
+    val items = Array.fillBy(size, () => MatchCasesContext())
     self.kind = MatchCasesContextKind.Tuple(items)
   }
 
   func registerEnumVariant(self, enum_: Enum, variantIdx: Int, tupleIdx = -1): Bool {
     match self.kind {
       MatchCasesContextKind.Init => unreachable("cannot register enum variant in uninitialized match context"),
-      MatchCasesContextKind.Single(inner) => {
+      MatchCasesContextKind.Single(_, seenEnumVariants) => {
         if tupleIdx >= 0 unreachable("cannot register enum variant for tuple index $tupleIdx in single-class match context")
 
-        if inner.seenEnumVariants[enum_] |seenVariants| {
+        if seenEnumVariants[enum_] |seenVariants| {
           if seenVariants.contains(variantIdx) return false
           seenVariants.insert(variantIdx)
         } else {
-          inner.seenEnumVariants[enum_] = #{variantIdx}
+          seenEnumVariants[enum_] = #{variantIdx}
         }
+
+        true
       }
       MatchCasesContextKind.Tuple(inners) => {
         if tupleIdx < 0 unreachable("cannot register enum variant for non-tuple index $tupleIdx in tuple-class match context")
         val tupleItemCtx = try inners[tupleIdx] else unreachable("tuple index out of bounds $tupleIdx for tuple-class match context of size ${inners.length}")
 
-        if tupleItemCtx.seenEnumVariants[enum_] |seenVariants| {
-          if seenVariants.contains(variantIdx) return false
-          seenVariants.insert(variantIdx)
-        } else {
-          tupleItemCtx.seenEnumVariants[enum_] = #{variantIdx}
-        }
+        tupleItemCtx.registerEnumVariant(enum_, variantIdx)
       }
     }
-
-    true
   }
 
   func registerLiteral(self, value: LiteralAstNode, tupleIdx = -1): Bool {
     match self.kind {
       MatchCasesContextKind.Init => unreachable("cannot register literal in uninitialized match context"),
-      MatchCasesContextKind.Single(inner) => {
+      MatchCasesContextKind.Single(seenLiteralCases, _) => {
         if tupleIdx >= 0 unreachable("cannot register literal for tuple index $tupleIdx in single-class match context")
 
-        if inner.seenLiteralCases.contains(value) return false
-        inner.seenLiteralCases.insert(value)
+        if seenLiteralCases.contains(value) return false
+        seenLiteralCases.insert(value)
+        true
       }
       MatchCasesContextKind.Tuple(inners) => {
         if tupleIdx < 0 unreachable("cannot register literal for non-tuple index $tupleIdx in tuple-class match context")
         val tupleItemCtx = try inners[tupleIdx] else unreachable("tuple index out of bounds $tupleIdx for tuple-class match context of size ${inners.length}")
 
-        if tupleItemCtx.seenLiteralCases.contains(value) return false
-        tupleItemCtx.seenLiteralCases.insert(value)
+        tupleItemCtx.registerLiteral(value)
       }
     }
-
-    true
   }
 
   func registerNone(self, tupleIdx = -1): Bool {
     match self.kind {
       MatchCasesContextKind.Init => unreachable("cannot register None in uninitialized match context"),
-      MatchCasesContextKind.Single(inner) => {
+      MatchCasesContextKind.Single => {
         if tupleIdx >= 0 unreachable("cannot register None for tuple index $tupleIdx in single-class match context")
 
         if self.seenNoneCase return false
@@ -1123,7 +1107,7 @@ type MatchCasesContext {
   func registerElse(self, tupleIdx = -1) {
     match self.kind {
       MatchCasesContextKind.Init => unreachable("cannot register else in uninitialized match context"),
-      MatchCasesContextKind.Single(inner) => {
+      MatchCasesContextKind.Single => {
         if tupleIdx >= 0 unreachable("cannot register else for tuple index $tupleIdx in single-class match context")
 
         self.seenElseCase = true
@@ -4645,8 +4629,8 @@ pub type Typechecker {
 
     match ctx.kind {
       MatchCasesContextKind.Init => return false,
-      MatchCasesContextKind.Single(inner) => {
-        for (enum_, seenVariantIdxs) in inner.seenEnumVariants {
+      MatchCasesContextKind.Single(seenLiteralCases, seenEnumVariants) => {
+        for (enum_, seenVariantIdxs) in seenEnumVariants {
           val enumVariantIdxs = enum_.variants.map((_, i) => i).asSet()
           if seenVariantIdxs == enumVariantIdxs {
             if self.project.typeIsOption(subjType) {
@@ -4658,7 +4642,7 @@ pub type Typechecker {
         }
 
         if self.project.typesAreEquivalent(ty: Type(kind: TypeKind.PrimitiveBool), other: subjType) {
-          if inner.seenLiteralCases == #{LiteralAstNode.Bool(true), LiteralAstNode.Bool(false)} return true
+          if seenLiteralCases == #{LiteralAstNode.Bool(true), LiteralAstNode.Bool(false)} return true
         }
       }
       MatchCasesContextKind.Tuple(inner) => {
@@ -4670,30 +4654,7 @@ pub type Typechecker {
         for itemCtx, idx in inner {
           val itemTy = try innerTypes[idx] else unreachable("verified above to be same size")
 
-          var tupleItemHandled = false
-          if itemCtx.seenElseCase {
-            tupleItemHandled = true
-          } else {
-            for (enum_, seenVariantIdxs) in itemCtx.seenEnumVariants {
-              val enumVariantIdxs = enum_.variants.map((_, i) => i).asSet()
-              if seenVariantIdxs == enumVariantIdxs {
-                if self.project.typeIsOption(subjType) {
-                  if ctx.seenNoneCase {
-                    tupleItemHandled = true
-                  }
-                } else {
-                  tupleItemHandled = true
-                }
-              }
-            }
-
-            if self.project.typesAreEquivalent(ty: Type(kind: TypeKind.PrimitiveBool), other: subjType) {
-              if itemCtx.seenLiteralCases == #{LiteralAstNode.Bool(true), LiteralAstNode.Bool(false)} {
-                tupleItemHandled = true
-              }
-            }
-          }
-
+          val tupleItemHandled = self.allMatchCasesHandled(itemCtx, itemTy)
           allTupleItemsHandled = allTupleItemsHandled && tupleItemHandled
           if !allTupleItemsHandled break // short circuit
         }
