@@ -539,48 +539,8 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
         for case, idx in cases {
           stdoutWriteln("$fieldsIndent  {")
           stdoutWriteln("$fieldsIndent    \"caseKind\": {")
-          match case.kind {
-            MatchCaseKind.None_ => {
-              stdoutWriteln("$fieldsIndent      \"kind\": \"none\"")
-            }
-            MatchCaseKind.Literal(literal) => {
-              stdoutWriteln("$fieldsIndent      \"kind\": \"literal\",")
-              val (kind, value) = match literal {
-                LiteralAstNode.Int(value) => ("int", value.toString()),
-                LiteralAstNode.Float(value) => ("float", value.toString()),
-                LiteralAstNode.Bool(value) => ("bool", value.toString()),
-                LiteralAstNode.Char(value) => ("char", "\"${value.hex()}\""),
-                LiteralAstNode.String(value) => ("string", "\"$value\""),
-              }
-
-              stdoutWriteln("$fieldsIndent      \"type\": \"$kind\",")
-              stdoutWriteln("$fieldsIndent      \"value\": $value")
-            }
-            MatchCaseKind.Type(path, last, args) => {
-              stdoutWriteln("$fieldsIndent      \"kind\": \"type\",")
-              stdoutWriteln("$fieldsIndent      \"path\": [")
-              val fullPath = path.concat([last])
-              for label, idx in fullPath {
-                stdoutWrite("$fieldsIndent        ")
-                printLabelAsJson(label)
-                val comma = if idx != fullPath.length - 1 "," else ""
-                stdoutWriteln("$comma")
-              }
-              stdoutWriteln("$fieldsIndent      ],")
-              stdoutWriteln("$fieldsIndent      \"arguments\": [")
-              for label, idx in args {
-                stdoutWrite("$fieldsIndent        ")
-                printLabelAsJson(label)
-                val comma = if idx != args.length - 1 "," else ""
-                stdoutWriteln("$comma")
-              }
-              stdoutWriteln("$fieldsIndent      ]")
-            }
-            MatchCaseKind.Else => {
-              stdoutWriteln("$fieldsIndent      \"kind\": \"else\"")
-            }
-          }
-          stdoutWriteln("$fieldsIndent    },")
+          printMatchCaseKind(case.kind, currentIndentLevel + 1)
+          stdoutWriteln(",")
           if case.binding |binding| {
             stdoutWrite("$fieldsIndent    \"caseBinding\": ")
             printLabelAsJson(binding)
@@ -1030,4 +990,66 @@ func printAstNodeKindAsJson(kind: AstNodeKind, indentLevelStart: Int, currentInd
     }
   }
   stdoutWrite("$endIndent}")
+}
+
+func printMatchCaseKind(caseKind: MatchCaseKind, currentIndentLevel: Int) {
+  val fieldsIndent = "  ".repeat(currentIndentLevel + 1)
+
+  match caseKind {
+    MatchCaseKind.None_ => {
+      stdoutWriteln("$fieldsIndent    \"kind\": \"none\"")
+    }
+    MatchCaseKind.Literal(literal) => {
+      stdoutWriteln("$fieldsIndent    \"kind\": \"literal\",")
+      val (kind, value) = match literal {
+        LiteralAstNode.Int(value) => ("int", value.toString()),
+        LiteralAstNode.Float(value) => ("float", value.toString()),
+        LiteralAstNode.Bool(value) => ("bool", value.toString()),
+        LiteralAstNode.Char(value) => ("char", "\"${value.hex()}\""),
+        LiteralAstNode.String(value) => ("string", "\"$value\""),
+      }
+
+      stdoutWriteln("$fieldsIndent    \"type\": \"$kind\",")
+      stdoutWriteln("$fieldsIndent    \"value\": $value")
+    }
+    MatchCaseKind.Type(path, last, args) => {
+      stdoutWriteln("$fieldsIndent    \"kind\": \"type\",")
+      stdoutWriteln("$fieldsIndent    \"path\": [")
+      val fullPath = path.concat([last])
+      for label, idx in fullPath {
+        stdoutWrite("$fieldsIndent      ")
+        printLabelAsJson(label)
+        val comma = if idx != fullPath.length - 1 "," else ""
+        stdoutWriteln("$comma")
+      }
+      stdoutWriteln("$fieldsIndent    ],")
+      if args.isEmpty() {
+        stdoutWriteln("$fieldsIndent    \"arguments\": []")
+      } else {
+        stdoutWriteln("$fieldsIndent    \"arguments\": [")
+        for label, idx in args {
+          stdoutWrite("$fieldsIndent      ")
+          printLabelAsJson(label)
+          val comma = if idx != args.length - 1 "," else ""
+          stdoutWriteln("$comma")
+        }
+        stdoutWriteln("$fieldsIndent    ]")
+      }
+    }
+    MatchCaseKind.Else => {
+      stdoutWriteln("$fieldsIndent    \"kind\": \"else\"")
+    }
+    MatchCaseKind.Tuple(innerKinds) => {
+      stdoutWriteln("$fieldsIndent    \"kind\": \"tuple\",")
+      stdoutWriteln("$fieldsIndent    \"innerKinds\": [")
+      for kind, idx in innerKinds {
+        stdoutWriteln("$fieldsIndent      {")
+        printMatchCaseKind(kind, currentIndentLevel + 2)
+        val comma = if idx != innerKinds.length - 1 "," else ""
+        stdoutWriteln("$comma")
+      }
+      stdoutWriteln("$fieldsIndent    ]")
+    }
+  }
+  stdoutWrite("$fieldsIndent  }")
 }

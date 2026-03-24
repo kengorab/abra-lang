@@ -182,6 +182,7 @@ pub enum MatchCaseKind {
   Literal(value: LiteralAstNode)
   Type(path: Label[], last: Label, args: Label[])
   Else
+  Tuple(kinds: MatchCaseKind[])
 }
 
 pub type MatchCase {
@@ -1451,6 +1452,89 @@ pub type Parser {
     Ok(AstNode(token: token, kind: AstNodeKind.If(condition, conditionBinding, ifBlock, elseBlock)))
   }
 
+  func parseMatchCaseKind(self): Result<MatchCaseKind, ParseError> {
+    val currentToken = try self._expectPeek()
+
+    val matchCaseKind = match currentToken.kind {
+      TokenKind.None_ => {
+        self._advance() // consume 'None' token
+        MatchCaseKind.None_
+      }
+      TokenKind.Int(value) => {
+        self._advance() // consume int token
+        MatchCaseKind.Literal(LiteralAstNode.Int(value))
+      }
+      TokenKind.Float(value) => {
+        self._advance() // consume float token
+        MatchCaseKind.Literal(LiteralAstNode.Float(value))
+      }
+      TokenKind.Bool(value) => {
+        self._advance() // consume bool token
+        MatchCaseKind.Literal(LiteralAstNode.Bool(value))
+      }
+      TokenKind.Char(value) => {
+        self._advance() // consume char token
+        MatchCaseKind.Literal(LiteralAstNode.Char(value))
+      }
+      TokenKind.String(value) => {
+        self._advance() // consume string token
+        MatchCaseKind.Literal(LiteralAstNode.String(value))
+      }
+      TokenKind.Ident(name) => {
+        val label = try self._expectNextLabel()
+        var last = label
+        val labels: Label[] = []
+        while self._peek() |nextToken| {
+          if nextToken.kind != TokenKind.Dot {
+            // todo: this business of "smartly" substituting "Ok"/"Err" is pretty clunky
+            if labels.isEmpty() && !(last.name == "Ok" || last.name == "Err") {
+              return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Dot], nextToken.kind)))
+            }
+            break
+          }
+          self._advance() // consume '.' token
+          val label = try self._expectNextLabel()
+          labels.push(last)
+          last = label
+        }
+
+        val nextToken = try self._expectPeek()
+        val args = match nextToken.kind {
+          TokenKind.LParen => {
+            self._advance() // consume '(' token
+
+            val next = try self._expectPeek()
+            if next.kind == TokenKind.RParen {
+              return Err(ParseError(position: next.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], next.kind)))
+            }
+
+            try self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: self._expectNextLabel)
+          }
+          else => []
+        }
+
+        val path = if labels.isEmpty() && (last.name == "Ok" || last.name == "Err") { [Label(name: "Result", position: Position.bogus())] } else labels
+        MatchCaseKind.Type(path, last, args)
+      }
+      TokenKind.Else => {
+        self._advance() // consume 'else' token
+        MatchCaseKind.Else
+      }
+      TokenKind.LParen => {
+        self._advance() // consume '(' token
+
+        val innerKinds = try self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: self.parseMatchCaseKind)
+        MatchCaseKind.Tuple(innerKinds)
+      }
+      else => {
+        val expected = [TokenKind.RBrace, TokenKind.Int(0), TokenKind.Float(0.0), TokenKind.Bool(true), TokenKind.String(""), TokenKind.Ident(""), TokenKind.LParen(true), TokenKind.Else]
+        return Err(ParseError(position: currentToken.position, kind: ParseErrorKind.ExpectedToken(expected, currentToken.kind)))
+      }
+    }
+
+    Ok(matchCaseKind)
+  }
+
   func _parseMatch(self): Result<AstNode, ParseError> {
     val token = try self._expectNext()
     val expr = try self._parseExpression()
@@ -1458,83 +1542,12 @@ pub type Parser {
     try self._expectNextTokenKind(TokenKind.LBrace)
 
     val cases: MatchCase[] = []
-    while self._peek() |next| {
+    while true {
+      val next = try self._expectPeek()
+      if next.kind == TokenKind.RBrace break
+
       val casePos = next.position
-      val caseKind = match next.kind {
-        TokenKind.RBrace => break,
-        TokenKind.None_ => {
-          self._advance() // consume 'None' token
-          MatchCaseKind.None_
-        }
-        TokenKind.Int(value) => {
-          self._advance() // consume int token
-          MatchCaseKind.Literal(LiteralAstNode.Int(value))
-        }
-        TokenKind.Float(value) => {
-          self._advance() // consume float token
-          MatchCaseKind.Literal(LiteralAstNode.Float(value))
-        }
-        TokenKind.Bool(value) => {
-          self._advance() // consume bool token
-          MatchCaseKind.Literal(LiteralAstNode.Bool(value))
-        }
-        TokenKind.Char(value) => {
-          self._advance() // consume char token
-          MatchCaseKind.Literal(LiteralAstNode.Char(value))
-        }
-        TokenKind.String(value) => {
-          self._advance() // consume string token
-          MatchCaseKind.Literal(LiteralAstNode.String(value))
-        }
-        TokenKind.Ident(name) => {
-          val label = try self._expectNextLabel()
-          var last = label
-          val path: Label[] = []
-          while self._peek() |nextToken| {
-            if nextToken.kind != TokenKind.Dot {
-              // todo: this business of "smartly" substituting "Ok"/"Err" is pretty clunky
-              if path.isEmpty() && !(last.name == "Ok" || last.name == "Err") {
-                return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Dot], nextToken.kind)))
-              }
-              break
-            }
-            self._advance() // consume '.' token
-            val label = try self._expectNextLabel()
-            path.push(last)
-            last = label
-          }
-
-          val nextToken = try self._expectPeek()
-          val args = match nextToken.kind {
-            TokenKind.LParen => {
-              self._advance() // consume '(' token
-
-              val next = try self._expectPeek()
-              if next.kind == TokenKind.RParen {
-                return Err(ParseError(position: next.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Ident("")], next.kind)))
-              }
-
-              try self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: () => self._expectNextLabel())
-            }
-            else => []
-          }
-
-          if path.isEmpty() && (last.name == "Ok" || last.name == "Err") {
-            MatchCaseKind.Type([Label(name: "Result", position: Position.bogus())], last, args)
-          } else {
-            MatchCaseKind.Type(path, last, args)
-          }
-        }
-        TokenKind.Else => {
-          self._advance() // consume 'else' token
-          MatchCaseKind.Else
-        }
-        else => {
-          val expected = [TokenKind.RBrace, TokenKind.Int(0), TokenKind.Float(0.0), TokenKind.Bool(true), TokenKind.String(""), TokenKind.Ident(""), TokenKind.Else]
-          return Err(ParseError(position: next.position, kind: ParseErrorKind.ExpectedToken(expected, next.kind)))
-        }
-      }
-
+      val caseKind = try self.parseMatchCaseKind()
       var nextToken = try self._expectPeek()
       val binding = match nextToken.kind {
         TokenKind.Ident => Some(try self._expectNextLabel()),

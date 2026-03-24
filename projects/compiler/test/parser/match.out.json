@@ -366,8 +366,7 @@
                     { "name": "Color", "position": [16, 3] },
                     { "name": "Blue", "position": [16, 9] }
                   ],
-                  "arguments": [
-                  ]
+                  "arguments": []
                 },
                 "caseBinding": null,
                 "body": [
@@ -395,8 +394,7 @@
                     { "name": "Color", "position": [17, 10] },
                     { "name": "Blue", "position": [17, 16] }
                   ],
-                  "arguments": [
-                  ]
+                  "arguments": []
                 },
                 "caseBinding": null,
                 "body": [
@@ -501,7 +499,185 @@
     },
     {
       "token": {
-        "position": [23, 1],
+        "position": [22, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "kind": {
+        "name": "bindingDecl",
+        "decorators": [],
+        "pubToken": null,
+        "bindingPattern": {
+          "kind": "variable",
+          "label": { "name": "y", "position": [22, 5] }
+        },
+        "typeAnnotation": null,
+        "expr": {
+          "token": {
+            "position": [22, 9],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "kind": {
+            "name": "match",
+            "expr": {
+              "token": {
+                "position": [22, 15],
+                "kind": {
+                  "name": "LParen"
+                }
+              },
+              "kind": {
+                "name": "tuple",
+                "items": [
+                  {
+                    "token": {
+                      "position": [22, 16],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "a"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "a"
+                    }
+                  },
+                  {
+                    "token": {
+                      "position": [22, 19],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "b"
+                      }
+                    },
+                    "kind": {
+                      "name": "identifier",
+                      "ident": "b"
+                    }
+                  }
+                ]
+              }
+            },
+            "cases": [
+              {
+                "caseKind": {
+                  "kind": "tuple",
+                  "innerKinds": [
+                    {
+                      "kind": "type",
+                      "path": [
+                        { "name": "Foo", "position": [23, 4] },
+                        { "name": "Bar", "position": [23, 8] }
+                      ],
+                      "arguments": []
+                    },
+                    {
+                      "kind": "literal",
+                      "type": "string",
+                      "value": "asdf"
+                    }
+                  ]
+                },
+                "caseBinding": { "name": "t", "position": [23, 21] },
+                "body": [
+                  {
+                    "token": {
+                      "position": [23, 26],
+                      "kind": {
+                        "name": "Int",
+                        "value": 1
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 1
+                    }
+                  }
+                ]
+              },
+              {
+                "caseKind": {
+                  "kind": "tuple",
+                  "innerKinds": [
+                    {
+                      "kind": "none"
+                    },
+                    {
+                      "kind": "type",
+                      "path": [
+                        { "name": "Result", "position": [0, 0] },
+                        { "name": "Ok", "position": [24, 10] }
+                      ],
+                      "arguments": [
+                        { "name": "v", "position": [24, 13] }
+                      ]
+                    }
+                  ]
+                },
+                "caseBinding": { "name": "t", "position": [24, 17] },
+                "body": [
+                  {
+                    "token": {
+                      "position": [24, 22],
+                      "kind": {
+                        "name": "Int",
+                        "value": 2
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 2
+                    }
+                  }
+                ]
+              },
+              {
+                "caseKind": {
+                  "kind": "tuple",
+                  "innerKinds": [
+                    {
+                      "kind": "literal",
+                      "type": "int",
+                      "value": 1
+                    },
+                    {
+                      "kind": "literal",
+                      "type": "float",
+                      "value": 2.3
+                    }
+                  ]
+                },
+                "caseBinding": { "name": "t", "position": [25, 13] },
+                "body": [
+                  {
+                    "token": {
+                      "position": [25, 18],
+                      "kind": {
+                        "name": "Int",
+                        "value": 3
+                      }
+                    },
+                    "kind": {
+                      "name": "literal",
+                      "type": "int",
+                      "value": 3
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [29, 1],
         "kind": {
           "name": "Match"
         }
@@ -510,7 +686,7 @@
         "name": "match",
         "expr": {
           "token": {
-            "position": [23, 10],
+            "position": [29, 10],
             "kind": {
               "name": "LParen"
             }
@@ -519,7 +695,7 @@
             "name": "invocation",
             "invokee": {
               "token": {
-                "position": [23, 7],
+                "position": [29, 7],
                 "kind": {
                   "name": "Ident",
                   "value": "foo"
@@ -540,17 +716,17 @@
               "kind": "type",
               "path": [
                 { "name": "Result", "position": [0, 0] },
-                { "name": "Ok", "position": [24, 3] }
+                { "name": "Ok", "position": [30, 3] }
               ],
               "arguments": [
-                { "name": "v", "position": [24, 6] }
+                { "name": "v", "position": [30, 6] }
               ]
             },
             "caseBinding": null,
             "body": [
               {
                 "token": {
-                  "position": [24, 12],
+                  "position": [30, 12],
                   "kind": {
                     "name": "Ident",
                     "value": "v"
@@ -568,17 +744,17 @@
               "kind": "type",
               "path": [
                 { "name": "Result", "position": [0, 0] },
-                { "name": "Err", "position": [25, 3] }
+                { "name": "Err", "position": [31, 3] }
               ],
               "arguments": [
-                { "name": "e", "position": [25, 7] }
+                { "name": "e", "position": [31, 7] }
               ]
             },
             "caseBinding": null,
             "body": [
               {
                 "token": {
-                  "position": [25, 13],
+                  "position": [31, 13],
                   "kind": {
                     "name": "Ident",
                     "value": "e"
