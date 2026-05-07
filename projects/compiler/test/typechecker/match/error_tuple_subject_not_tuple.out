@@ -1,0 +1,5 @@
+Error at %TEST_DIR%/typechecker/match/error_tuple_subject_not_tuple.abra:2:3
+Unreachable match case
+  |    ("a", "b") => 1,
+       ^
+Cannot match target of non-tuple type 'String' as a tuple pattern

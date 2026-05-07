@@ -445,8 +445,12 @@ const TYPECHECKER_TESTS = [
   { test: "typechecker/match/error_exhaustive_Enum_variants.1.abra", assertions: "typechecker/match/error_exhaustive_Enum_variants.1.out" },
   { test: "typechecker/match/error_exhaustive_Enum_variants.2.abra", assertions: "typechecker/match/error_exhaustive_Enum_variants.2.out" },
   { test: "typechecker/match/error_exhaustive_after_else.abra", assertions: "typechecker/match/error_exhaustive_after_else.out" },
+  { test: "typechecker/match/error_nonexhaustive_enum.abra", assertions: "typechecker/match/error_nonexhaustive_enum.out" },
   { test: "typechecker/match/error_nonexhaustive_literal.1.abra", assertions: "typechecker/match/error_nonexhaustive_literal.1.out" },
   { test: "typechecker/match/error_nonexhaustive_literal.2.abra", assertions: "typechecker/match/error_nonexhaustive_literal.2.out" },
+  { test: "typechecker/match/error_nonexhaustive_literal.3.abra", assertions: "typechecker/match/error_nonexhaustive_literal.3.out" },
+  { test: "typechecker/match/error_nonexhaustive_optional.abra", assertions: "typechecker/match/error_nonexhaustive_optional.out" },
+  { test: "typechecker/match/error_nonexhaustive_tuple.abra", assertions: "typechecker/match/error_nonexhaustive_tuple.out" },
   { test: "typechecker/match/error_nooverlap_Enum.abra", assertions: "typechecker/match/error_nooverlap_Enum.out" },
   { test: "typechecker/match/error_destructuring_constant_variant.abra", assertions: "typechecker/match/error_destructuring_constant_variant.out" },
   { test: "typechecker/match/error_destructuring_variant_duplicate_variable.1.abra", assertions: "typechecker/match/error_destructuring_variant_duplicate_variable.1.out" },
@@ -454,6 +458,8 @@ const TYPECHECKER_TESTS = [
   { test: "typechecker/match/error_destructuring_variant_too_few.abra", assertions: "typechecker/match/error_destructuring_variant_too_few.out" },
   { test: "typechecker/match/error_destructuring_variant_too_many.abra", assertions: "typechecker/match/error_destructuring_variant_too_many.out" },
   { test: "typechecker/match/error_forbidden_type_all_branches_never.abra", assertions: "typechecker/match/error_forbidden_type_all_branches_never.out" },
+  { test: "typechecker/match/error_tuple_subject_not_tuple.abra", assertions: "typechecker/match/error_tuple_subject_not_tuple.out" },
+  { test: "typechecker/match/error_tuple_subject_tuple_size_mismatch.abra", assertions: "typechecker/match/error_tuple_subject_tuple_size_mismatch.out" },
 
   // Invocation
   { test: "typechecker/invocation/invocation.1.abra", assertions: "typechecker/invocation/invocation.1.out.json" },

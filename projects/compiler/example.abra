@@ -3,13 +3,11 @@ enum Foo {
   Baz
 }
 
-val x = Foo.Bar
-val y = Foo.Baz
+val arr = [(Foo.Bar, Foo.Bar), (Foo.Baz, Foo.Bar)]
 
-val n = match (x, y) {
-  (Foo.Bar, Foo.Bar) => 1
-  (Foo.Bar, Foo.Baz) => 2
-  (Foo.Baz, Foo.Bar) => 3
-  (Foo.Baz, Foo.Baz) => 4
+val n = match arr[0] {
+  None => 0,
+  (a, b) => {
+    1
+  },
 }
-println(n)

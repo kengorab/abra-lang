@@ -1,0 +1,35 @@
+val a = match (true, true) {
+  (true, true) => 0,
+  (false, false) => 1,
+}
+
+val b = match (true, Some(false)) {
+  (false, true) => 0
+}
+
+val c = match (true, Some("asdf")) {
+  (false, None) => 0,
+  (true, None) => 1,
+}
+val d = match (true, Some("asdf")) {
+  (false, None) => 0,
+  (true, "foo") => 1,
+}
+val e = match (true, Some("asdf")) {
+  (false, None) => 0,
+  (true, "foo") => 1,
+  (true, None) => 2,
+}
+
+enum Color { Red, Green, Blue }
+
+val f = match (Color.Red, Color.Green) {
+  (Color.Red, Color.Red) => 1,
+  (Color.Red, Color.Green) => 2,
+  (Color.Red, Color.Blue) => 3,
+}
+
+val arr = [(Color.Red, Color.Green, Color.Blue)]
+val g = match arr[0] {
+  (Color.Red, Color.Red, Color.Red) => 1
+}

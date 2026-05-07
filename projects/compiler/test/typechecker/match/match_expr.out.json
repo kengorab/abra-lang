@@ -2238,6 +2238,2190 @@
           }
         }
       }
+    },
+    {
+      "token": {
+        "position": [52, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "x", "position": [52, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "x", "position": [52, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [52, 9],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "match",
+            "isStatement": false,
+            "subject": {
+              "token": {
+                "position": [52, 15],
+                "kind": {
+                  "name": "LParen"
+                }
+              },
+              "type": {
+                "kind": "tuple",
+                "types": [
+                  {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 6, "name": "Color" },
+                    "typeParams": []
+                  },
+                  {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 6, "name": "Color" },
+                    "typeParams": []
+                  }
+                ]
+              },
+              "node": {
+                "kind": "tuple",
+                "items": [
+                  {
+                    "token": {
+                      "position": [52, 21],
+                      "kind": {
+                        "name": "Dot"
+                      }
+                    },
+                    "type": {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "typeParams": []
+                    },
+                    "node": {
+                      "kind": "accessor",
+                      "head": {
+                        "token": {
+                          "position": [52, 16],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "Color"
+                          }
+                        },
+                        "type": {
+                          "kind": "enum",
+                          "enum": { "moduleId": 6, "name": "Color" }
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "Color"
+                        }
+                      },
+                      "middle": [],
+                      "tail": {
+                        "kind": "enumVariant",
+                        "name": "Color.Red"
+                      }
+                    }
+                  },
+                  {
+                    "token": {
+                      "position": [52, 32],
+                      "kind": {
+                        "name": "Dot"
+                      }
+                    },
+                    "type": {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "typeParams": []
+                    },
+                    "node": {
+                      "kind": "accessor",
+                      "head": {
+                        "token": {
+                          "position": [52, 27],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "Color"
+                          }
+                        },
+                        "type": {
+                          "kind": "enum",
+                          "enum": { "moduleId": 6, "name": "Color" }
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "Color"
+                        }
+                      },
+                      "middle": [],
+                      "tail": {
+                        "kind": "enumVariant",
+                        "name": "Color.Green"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "cases": [
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 0,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 0,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [53, 29],
+                      "kind": {
+                        "name": "Int",
+                        "value": 1
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 1
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 0,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 1,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [54, 31],
+                      "kind": {
+                        "name": "Int",
+                        "value": 2
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 2
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 0,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 2,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [55, 30],
+                      "kind": {
+                        "name": "Int",
+                        "value": 3
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 3
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 1,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 0,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [56, 31],
+                      "kind": {
+                        "name": "Int",
+                        "value": 4
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 4
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 1,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 1,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [57, 33],
+                      "kind": {
+                        "name": "Int",
+                        "value": 5
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 5
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 1,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 2,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [58, 32],
+                      "kind": {
+                        "name": "Int",
+                        "value": 6
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 6
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 2,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 0,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [59, 30],
+                      "kind": {
+                        "name": "Int",
+                        "value": 7
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 7
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 2,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 1,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [60, 32],
+                      "kind": {
+                        "name": "Int",
+                        "value": 8
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 8
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 2,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 2,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [61, 31],
+                      "kind": {
+                        "name": "Int",
+                        "value": 9
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 9
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [64, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "colorArr", "position": [64, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "colorArr", "position": [64, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "instance",
+              "struct": { "moduleId": 5, "name": "Array" },
+              "typeParams": [
+                {
+                  "kind": "tuple",
+                  "types": [
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "typeParams": []
+                    },
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "typeParams": []
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [64, 16],
+            "kind": {
+              "name": "LBrack"
+            }
+          },
+          "type": {
+            "kind": "instance",
+            "struct": { "moduleId": 5, "name": "Array" },
+            "typeParams": [
+              {
+                "kind": "tuple",
+                "types": [
+                  {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 6, "name": "Color" },
+                    "typeParams": []
+                  },
+                  {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 6, "name": "Color" },
+                    "typeParams": []
+                  }
+                ]
+              }
+            ]
+          },
+          "node": {
+            "kind": "array",
+            "items": [
+              {
+                "token": {
+                  "position": [64, 17],
+                  "kind": {
+                    "name": "LParen"
+                  }
+                },
+                "type": {
+                  "kind": "tuple",
+                  "types": [
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "typeParams": []
+                    },
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "typeParams": []
+                    }
+                  ]
+                },
+                "node": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "token": {
+                        "position": [64, 23],
+                        "kind": {
+                          "name": "Dot"
+                        }
+                      },
+                      "type": {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Color" },
+                        "typeParams": []
+                      },
+                      "node": {
+                        "kind": "accessor",
+                        "head": {
+                          "token": {
+                            "position": [64, 18],
+                            "kind": {
+                              "name": "Ident",
+                              "value": "Color"
+                            }
+                          },
+                          "type": {
+                            "kind": "enum",
+                            "enum": { "moduleId": 6, "name": "Color" }
+                          },
+                          "node": {
+                            "kind": "identifier",
+                            "name": "Color"
+                          }
+                        },
+                        "middle": [],
+                        "tail": {
+                          "kind": "enumVariant",
+                          "name": "Color.Red"
+                        }
+                      }
+                    },
+                    {
+                      "token": {
+                        "position": [64, 34],
+                        "kind": {
+                          "name": "Dot"
+                        }
+                      },
+                      "type": {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Color" },
+                        "typeParams": []
+                      },
+                      "node": {
+                        "kind": "accessor",
+                        "head": {
+                          "token": {
+                            "position": [64, 29],
+                            "kind": {
+                              "name": "Ident",
+                              "value": "Color"
+                            }
+                          },
+                          "type": {
+                            "kind": "enum",
+                            "enum": { "moduleId": 6, "name": "Color" }
+                          },
+                          "node": {
+                            "kind": "identifier",
+                            "name": "Color"
+                          }
+                        },
+                        "middle": [],
+                        "tail": {
+                          "kind": "enumVariant",
+                          "name": "Color.Green"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [65, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "y", "position": [65, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "y", "position": [65, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [65, 9],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "match",
+            "isStatement": false,
+            "subject": {
+              "token": {
+                "position": [65, 23],
+                "kind": {
+                  "name": "LBrack"
+                }
+              },
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 5, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "tuple",
+                    "types": [
+                      {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Color" },
+                        "typeParams": []
+                      },
+                      {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Color" },
+                        "typeParams": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              "node": {
+                "kind": "indexing",
+                "node": {
+                  "kind": "arraylike",
+                  "expr": {
+                    "token": {
+                      "position": [65, 15],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "colorArr"
+                      }
+                    },
+                    "type": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 5, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "tuple",
+                          "types": [
+                            {
+                              "kind": "enumInstance",
+                              "enum": { "moduleId": 6, "name": "Color" },
+                              "typeParams": []
+                            },
+                            {
+                              "kind": "enumInstance",
+                              "enum": { "moduleId": 6, "name": "Color" },
+                              "typeParams": []
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "colorArr"
+                    }
+                  },
+                  "index": {
+                    "token": {
+                      "position": [65, 24],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                }
+              }
+            },
+            "cases": [
+              {
+                "kind": "None",
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [66, 11],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 0,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 0,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [67, 29],
+                      "kind": {
+                        "name": "Int",
+                        "value": 1
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 1
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 0,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 1,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [68, 31],
+                      "kind": {
+                        "name": "Int",
+                        "value": 2
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 2
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 0,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 2,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [69, 30],
+                      "kind": {
+                        "name": "Int",
+                        "value": 3
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 3
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 1,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 0,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [70, 31],
+                      "kind": {
+                        "name": "Int",
+                        "value": 4
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 4
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 1,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 1,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [71, 33],
+                      "kind": {
+                        "name": "Int",
+                        "value": 5
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 5
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 1,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 2,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [72, 32],
+                      "kind": {
+                        "name": "Int",
+                        "value": 6
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 6
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 2,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 0,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [73, 30],
+                      "kind": {
+                        "name": "Int",
+                        "value": 7
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 7
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 2,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 1,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [74, 32],
+                      "kind": {
+                        "name": "Int",
+                        "value": 8
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 8
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 2,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 2,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [75, 31],
+                      "kind": {
+                        "name": "Int",
+                        "value": 9
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 9
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [78, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "z", "position": [78, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "z", "position": [78, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [78, 9],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "match",
+            "isStatement": false,
+            "subject": {
+              "token": {
+                "position": [78, 23],
+                "kind": {
+                  "name": "LBrack"
+                }
+              },
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 5, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "tuple",
+                    "types": [
+                      {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Color" },
+                        "typeParams": []
+                      },
+                      {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Color" },
+                        "typeParams": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              "node": {
+                "kind": "indexing",
+                "node": {
+                  "kind": "arraylike",
+                  "expr": {
+                    "token": {
+                      "position": [78, 15],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "colorArr"
+                      }
+                    },
+                    "type": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 5, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "tuple",
+                          "types": [
+                            {
+                              "kind": "enumInstance",
+                              "enum": { "moduleId": 6, "name": "Color" },
+                              "typeParams": []
+                            },
+                            {
+                              "kind": "enumInstance",
+                              "enum": { "moduleId": 6, "name": "Color" },
+                              "typeParams": []
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "colorArr"
+                    }
+                  },
+                  "index": {
+                    "token": {
+                      "position": [78, 24],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                }
+              }
+            },
+            "cases": [
+              {
+                "kind": "None",
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [79, 11],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": "else",
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [80, 11],
+                      "kind": {
+                        "name": "Int",
+                        "value": 1
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 1
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [83, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "colorArr2", "position": [83, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "colorArr2", "position": [83, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "instance",
+              "struct": { "moduleId": 5, "name": "Array" },
+              "typeParams": [
+                {
+                  "kind": "tuple",
+                  "types": [
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "typeParams": []
+                    },
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 5, "name": "Option" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Bool"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [83, 17],
+            "kind": {
+              "name": "LBrack"
+            }
+          },
+          "type": {
+            "kind": "instance",
+            "struct": { "moduleId": 5, "name": "Array" },
+            "typeParams": [
+              {
+                "kind": "tuple",
+                "types": [
+                  {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 6, "name": "Color" },
+                    "typeParams": []
+                  },
+                  {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 5, "name": "Option" },
+                    "typeParams": [
+                      {
+                        "kind": "primitive",
+                        "primitive": "Bool"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "node": {
+            "kind": "array",
+            "items": [
+              {
+                "token": {
+                  "position": [83, 18],
+                  "kind": {
+                    "name": "LParen"
+                  }
+                },
+                "type": {
+                  "kind": "tuple",
+                  "types": [
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "typeParams": []
+                    },
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 5, "name": "Option" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Bool"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "node": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "token": {
+                        "position": [83, 24],
+                        "kind": {
+                          "name": "Dot"
+                        }
+                      },
+                      "type": {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Color" },
+                        "typeParams": []
+                      },
+                      "node": {
+                        "kind": "accessor",
+                        "head": {
+                          "token": {
+                            "position": [83, 19],
+                            "kind": {
+                              "name": "Ident",
+                              "value": "Color"
+                            }
+                          },
+                          "type": {
+                            "kind": "enum",
+                            "enum": { "moduleId": 6, "name": "Color" }
+                          },
+                          "node": {
+                            "kind": "identifier",
+                            "name": "Color"
+                          }
+                        },
+                        "middle": [],
+                        "tail": {
+                          "kind": "enumVariant",
+                          "name": "Color.Red"
+                        }
+                      }
+                    },
+                    {
+                      "token": {
+                        "position": [83, 34],
+                        "kind": {
+                          "name": "LParen"
+                        }
+                      },
+                      "type": {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 5, "name": "Option" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Bool"
+                          }
+                        ]
+                      },
+                      "node": {
+                        "kind": "invocation",
+                        "resolvedGenerics": {
+                          "V": {
+                            "kind": "primitive",
+                            "primitive": "Bool"
+                          }
+                        },
+                        "invokee": "Option.Some",
+                        "arguments": [
+                          {
+                            "token": {
+                              "position": [83, 35],
+                              "kind": {
+                                "name": "Bool",
+                                "value": true
+                              }
+                            },
+                            "type": {
+                              "kind": "primitive",
+                              "primitive": "Bool"
+                            },
+                            "node": {
+                              "kind": "literal",
+                              "value": true
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "token": {
+                  "position": [83, 43],
+                  "kind": {
+                    "name": "LParen"
+                  }
+                },
+                "type": {
+                  "kind": "tuple",
+                  "types": [
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "typeParams": []
+                    },
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 5, "name": "Option" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Bool"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "node": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "token": {
+                        "position": [83, 49],
+                        "kind": {
+                          "name": "Dot"
+                        }
+                      },
+                      "type": {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Color" },
+                        "typeParams": []
+                      },
+                      "node": {
+                        "kind": "accessor",
+                        "head": {
+                          "token": {
+                            "position": [83, 44],
+                            "kind": {
+                              "name": "Ident",
+                              "value": "Color"
+                            }
+                          },
+                          "type": {
+                            "kind": "enum",
+                            "enum": { "moduleId": 6, "name": "Color" }
+                          },
+                          "node": {
+                            "kind": "identifier",
+                            "name": "Color"
+                          }
+                        },
+                        "middle": [],
+                        "tail": {
+                          "kind": "enumVariant",
+                          "name": "Color.Blue"
+                        }
+                      }
+                    },
+                    {
+                      "token": {
+                        "position": [83, 56],
+                        "kind": {
+                          "name": "None"
+                        }
+                      },
+                      "type": {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 5, "name": "Option" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Bool"
+                          }
+                        ]
+                      },
+                      "node": {
+                        "kind": "accessor",
+                        "head": {
+                          "token": {
+                            "position": [0, 0],
+                            "kind": {
+                              "name": "Ident",
+                              "value": "Option"
+                            }
+                          },
+                          "type": {
+                            "kind": "enum",
+                            "enum": { "moduleId": 5, "name": "Option" }
+                          },
+                          "node": {
+                            "kind": "identifier",
+                            "name": "Option"
+                          }
+                        },
+                        "middle": [],
+                        "tail": {
+                          "kind": "enumVariant",
+                          "name": "Option.None"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [84, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "w", "position": [84, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "w", "position": [84, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [84, 9],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "match",
+            "isStatement": false,
+            "subject": {
+              "token": {
+                "position": [84, 24],
+                "kind": {
+                  "name": "LBrack"
+                }
+              },
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 5, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "tuple",
+                    "types": [
+                      {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Color" },
+                        "typeParams": []
+                      },
+                      {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 5, "name": "Option" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Bool"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "node": {
+                "kind": "indexing",
+                "node": {
+                  "kind": "arraylike",
+                  "expr": {
+                    "token": {
+                      "position": [84, 15],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "colorArr2"
+                      }
+                    },
+                    "type": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 5, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "tuple",
+                          "types": [
+                            {
+                              "kind": "enumInstance",
+                              "enum": { "moduleId": 6, "name": "Color" },
+                              "typeParams": []
+                            },
+                            {
+                              "kind": "enumInstance",
+                              "enum": { "moduleId": 5, "name": "Option" },
+                              "typeParams": [
+                                {
+                                  "kind": "primitive",
+                                  "primitive": "Bool"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "colorArr2"
+                    }
+                  },
+                  "index": {
+                    "token": {
+                      "position": [84, 25],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                }
+              }
+            },
+            "cases": [
+              {
+                "kind": "None",
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [85, 11],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 0,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    "None"
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [86, 24],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 0,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "literal",
+                      "value": false
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [87, 25],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 0,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "literal",
+                      "value": true
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [88, 24],
+                      "kind": {
+                        "name": "Int",
+                        "value": 1
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 1
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 1,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    "None"
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [89, 26],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 1,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "literal",
+                      "value": false
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [90, 27],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 1,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "literal",
+                      "value": true
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [91, 26],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 2,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    "None"
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [92, 25],
+                      "kind": {
+                        "name": "Int",
+                        "value": 1
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 1
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 2,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "literal",
+                      "value": false
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [93, 26],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 2,
+                      "enum": { "moduleId": 6, "name": "Color" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "literal",
+                      "value": true
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [94, 25],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
     }
   ]
 }

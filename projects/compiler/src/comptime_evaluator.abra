@@ -15,10 +15,10 @@ pub type ComptimeFunctionEvaluator {
     ComptimeFunctionEvaluator(project: project, gen: gen)
   }
 
-  pub func eval(self, fn: Function, arguments: TypedAstNode?[], resolvedGenerics: Map<String, Type>): Result<InjectedCode, String> {
+  pub func eval(self, fn: Function, arguments: TypedAstNode?[], resolvedGenerics: Map<String, Type>): Result<InjectedCode?, String> {
     for mod in self.project.modules.values() {
       if mod.readFileError || !mod.lexParseErrors.isEmpty() || !mod.typeErrors.isEmpty() {
-        return Err("Module '${mod.name}' has error, cannot proceed with eval")
+        return Ok(None)
       }
     }
 
@@ -45,7 +45,8 @@ pub type ComptimeFunctionEvaluator {
     }
     val res = vm.evalFunctionCall(irFn, marshalledArgs)
 
-    unmarshallInjectedCode(res)
+    val injectedCode = try unmarshallInjectedCode(res)
+    Ok(Some(injectedCode))
   }
 }
 

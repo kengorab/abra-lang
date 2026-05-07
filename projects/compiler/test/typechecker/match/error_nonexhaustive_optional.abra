@@ -1,0 +1,28 @@
+val arr = [false]
+
+val a = match arr[0] {
+  true => 1,
+  false => 0,
+}
+
+val b = match arr[0] {
+  None => 0,
+  true => 1,
+}
+
+enum Color { Red, Green, Blue }
+
+val color = Some(Color.Blue)
+
+val c = match color {
+  None => 0,
+  Color.Red => 1,
+}
+
+val d = match color {
+  Color.Red => 0,
+}
+
+// val x = match Color.Red {
+//   Color.Red => 1
+// }

@@ -1,0 +1,3 @@
+val x = match true {
+  true => 1,
+}

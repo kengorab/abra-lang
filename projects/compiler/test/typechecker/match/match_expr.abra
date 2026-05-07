@@ -48,3 +48,48 @@ val wildcard2 = match 123 {
   else => "abcd"
 }
 val _: String = wildcard2
+
+val x = match (Color.Red, Color.Green) {
+  (Color.Red, Color.Red) => 1,
+  (Color.Red, Color.Green) => 2,
+  (Color.Red, Color.Blue) => 3,
+  (Color.Green, Color.Red) => 4,
+  (Color.Green, Color.Green) => 5,
+  (Color.Green, Color.Blue) => 6,
+  (Color.Blue, Color.Red) => 7,
+  (Color.Blue, Color.Green) => 8,
+  (Color.Blue, Color.Blue) => 9,
+}
+
+val colorArr = [(Color.Red, Color.Green)]
+val y = match colorArr[0] {
+  None => 0,
+  (Color.Red, Color.Red) => 1,
+  (Color.Red, Color.Green) => 2,
+  (Color.Red, Color.Blue) => 3,
+  (Color.Green, Color.Red) => 4,
+  (Color.Green, Color.Green) => 5,
+  (Color.Green, Color.Blue) => 6,
+  (Color.Blue, Color.Red) => 7,
+  (Color.Blue, Color.Green) => 8,
+  (Color.Blue, Color.Blue) => 9,
+}
+
+val z = match colorArr[0] {
+  None => 0,
+  else => 1,
+}
+
+val colorArr2 = [(Color.Red, Some(true)), (Color.Blue, None)]
+val w = match colorArr2[0] {
+  None => 0,
+  (Color.Red, None) => 0,
+  (Color.Red, false) => 0,
+  (Color.Red, true) => 1,
+  (Color.Green, None) => 0,
+  (Color.Green, false) => 0,
+  (Color.Green, true) => 0,
+  (Color.Blue, None) => 1,
+  (Color.Blue, false) => 0,
+  (Color.Blue, true) => 0,
+}
