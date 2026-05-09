@@ -183,6 +183,7 @@ pub enum MatchCaseKind {
   Type(path: Label[], last: Label, args: Label[])
   Else
   Tuple(kinds: MatchCaseKind[])
+  Binding(label: Label)
 }
 
 pub type MatchCase {
@@ -1452,7 +1453,7 @@ pub type Parser {
     Ok(AstNode(token: token, kind: AstNodeKind.If(condition, conditionBinding, ifBlock, elseBlock)))
   }
 
-  func parseMatchCaseKind(self): Result<MatchCaseKind, ParseError> {
+  func parseMatchCaseKind(self, isWithinTuple = false): Result<MatchCaseKind, ParseError> {
     val currentToken = try self._expectPeek()
 
     val matchCaseKind = match currentToken.kind {
@@ -1486,10 +1487,14 @@ pub type Parser {
         val labels: Label[] = []
         while self._peek() |nextToken| {
           if nextToken.kind != TokenKind.Dot {
-            // todo: this business of "smartly" substituting "Ok"/"Err" is pretty clunky
-            if labels.isEmpty() && !(last.name == "Ok" || last.name == "Err") {
+            if labels.isEmpty() {
+              // todo: this business of "smartly" substituting "Ok"/"Err" is pretty clunky
+              if last.name == "Ok" || last.name == "Err" break
+              if isWithinTuple return Ok(MatchCaseKind.Binding(last))
+
               return Err(ParseError(position: nextToken.position, kind: ParseErrorKind.ExpectedToken([TokenKind.Dot], nextToken.kind)))
             }
+
             break
           }
           self._advance() // consume '.' token
@@ -1523,7 +1528,7 @@ pub type Parser {
       TokenKind.LParen => {
         self._advance() // consume '(' token
 
-        val innerKinds = try self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: self.parseMatchCaseKind)
+        val innerKinds = try self._commaSeparated(end: TokenKind.RParen, consumeFinal: true, fn: () => self.parseMatchCaseKind(isWithinTuple: true))
         MatchCaseKind.Tuple(innerKinds)
       }
       else => {

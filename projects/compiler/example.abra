@@ -1,13 +1,14 @@
-enum Foo {
-  Bar
+enum Foo<T> {
+  Bar(t: T)
   Baz
 }
 
-val arr = [(Foo.Bar, Foo.Bar), (Foo.Baz, Foo.Bar)]
+val arr = [(Foo.Bar(t: 1), Foo.Bar(t: 2)), (Foo.Baz, Foo.Bar(t: 3))]
 
 val n = match arr[0] {
   None => 0,
   (a, b) => {
     1
   },
+  (Foo.Baz, Foo.Baz) => 3
 }

@@ -444,6 +444,7 @@ const TYPECHECKER_TESTS = [
   { test: "typechecker/match/error_exhaustive_Bool_literal.abra", assertions: "typechecker/match/error_exhaustive_Bool_literal.out" },
   { test: "typechecker/match/error_exhaustive_Enum_variants.1.abra", assertions: "typechecker/match/error_exhaustive_Enum_variants.1.out" },
   { test: "typechecker/match/error_exhaustive_Enum_variants.2.abra", assertions: "typechecker/match/error_exhaustive_Enum_variants.2.out" },
+  { test: "typechecker/match/error_exhaustive_tuple.abra", assertions: "typechecker/match/error_exhaustive_tuple.out" },
   { test: "typechecker/match/error_exhaustive_after_else.abra", assertions: "typechecker/match/error_exhaustive_after_else.out" },
   { test: "typechecker/match/error_nonexhaustive_enum.abra", assertions: "typechecker/match/error_nonexhaustive_enum.out" },
   { test: "typechecker/match/error_nonexhaustive_literal.1.abra", assertions: "typechecker/match/error_nonexhaustive_literal.1.out" },

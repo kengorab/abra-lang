@@ -93,3 +93,36 @@ val w = match colorArr2[0] {
   (Color.Blue, false) => 0,
   (Color.Blue, true) => 0,
 }
+
+val _ = match colorArr2[0] {
+  None => 0,
+  (_, None) => 0,
+  (a, b) => {
+    val _: Color = a
+
+    // TODO: this could potentially be narrowed more, since b _must_ be non-None here
+    val _: Bool? = b
+
+    2
+  }
+}
+
+enum Foo<T> { Bar(t: T), Baz }
+val fooArr = [(Foo.Bar(t: 1), Foo.Bar(t: 2)), (Foo.Baz, Foo.Bar(t: 3))]
+val _ = match fooArr[0] {
+  None => 0,
+  (a, b) => {
+    1
+  }
+}
+val _ = match fooArr[0] {
+  (a, b) => {
+    1
+  }
+  else => 0
+}
+val _ = match fooArr[0] {
+  None => 0,
+  (Foo.Baz, a) => 1,
+  (Foo.Bar, a) => 2,
+}

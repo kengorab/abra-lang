@@ -4422,6 +4422,1604 @@
           }
         }
       }
+    },
+    {
+      "token": {
+        "position": [97, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [97, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [97, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [97, 9],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "match",
+            "isStatement": false,
+            "subject": {
+              "token": {
+                "position": [97, 24],
+                "kind": {
+                  "name": "LBrack"
+                }
+              },
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 5, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "tuple",
+                    "types": [
+                      {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Color" },
+                        "typeParams": []
+                      },
+                      {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 5, "name": "Option" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Bool"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "node": {
+                "kind": "indexing",
+                "node": {
+                  "kind": "arraylike",
+                  "expr": {
+                    "token": {
+                      "position": [97, 15],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "colorArr2"
+                      }
+                    },
+                    "type": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 5, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "tuple",
+                          "types": [
+                            {
+                              "kind": "enumInstance",
+                              "enum": { "moduleId": 6, "name": "Color" },
+                              "typeParams": []
+                            },
+                            {
+                              "kind": "enumInstance",
+                              "enum": { "moduleId": 5, "name": "Option" },
+                              "typeParams": [
+                                {
+                                  "kind": "primitive",
+                                  "primitive": "Bool"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "colorArr2"
+                    }
+                  },
+                  "index": {
+                    "token": {
+                      "position": [97, 25],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                }
+              }
+            },
+            "cases": [
+              {
+                "kind": "None",
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [98, 11],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "tupleItemBinding",
+                      "variable": {
+                        "label": { "name": "_", "position": [99, 4] },
+                        "mutable": false,
+                        "type": {
+                          "kind": "enumInstance",
+                          "enum": { "moduleId": 6, "name": "Color" },
+                          "typeParams": []
+                        }
+                      }
+                    },
+                    "None"
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [99, 16],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "tupleItemBinding",
+                      "variable": {
+                        "label": { "name": "a", "position": [100, 4] },
+                        "mutable": false,
+                        "type": {
+                          "kind": "enumInstance",
+                          "enum": { "moduleId": 6, "name": "Color" },
+                          "typeParams": []
+                        }
+                      }
+                    },
+                    {
+                      "kind": "tupleItemBinding",
+                      "variable": {
+                        "label": { "name": "b", "position": [100, 7] },
+                        "mutable": false,
+                        "type": {
+                          "kind": "enumInstance",
+                          "enum": { "moduleId": 5, "name": "Option" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Bool"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [101, 5],
+                      "kind": {
+                        "name": "Val"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Unit"
+                    },
+                    "node": {
+                      "kind": "bindingDeclaration",
+                      "pattern": {
+                        "kind": "variable",
+                        "label": { "name": "_", "position": [101, 9] }
+                      },
+                      "variables": [
+                        {
+                          "label": { "name": "_", "position": [101, 9] },
+                          "mutable": false,
+                          "type": {
+                            "kind": "enumInstance",
+                            "enum": { "moduleId": 6, "name": "Color" },
+                            "typeParams": []
+                          }
+                        }
+                      ],
+                      "expr": {
+                        "token": {
+                          "position": [101, 20],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "a"
+                          }
+                        },
+                        "type": {
+                          "kind": "enumInstance",
+                          "enum": { "moduleId": 6, "name": "Color" },
+                          "typeParams": []
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "a"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "token": {
+                      "position": [104, 5],
+                      "kind": {
+                        "name": "Val"
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Unit"
+                    },
+                    "node": {
+                      "kind": "bindingDeclaration",
+                      "pattern": {
+                        "kind": "variable",
+                        "label": { "name": "_", "position": [104, 9] }
+                      },
+                      "variables": [
+                        {
+                          "label": { "name": "_", "position": [104, 9] },
+                          "mutable": false,
+                          "type": {
+                            "kind": "enumInstance",
+                            "enum": { "moduleId": 5, "name": "Option" },
+                            "typeParams": [
+                              {
+                                "kind": "primitive",
+                                "primitive": "Bool"
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "expr": {
+                        "token": {
+                          "position": [104, 20],
+                          "kind": {
+                            "name": "Ident",
+                            "value": "b"
+                          }
+                        },
+                        "type": {
+                          "kind": "enumInstance",
+                          "enum": { "moduleId": 5, "name": "Option" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Bool"
+                            }
+                          ]
+                        },
+                        "node": {
+                          "kind": "identifier",
+                          "name": "b"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "token": {
+                      "position": [106, 5],
+                      "kind": {
+                        "name": "Int",
+                        "value": 2
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 2
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [110, 1],
+        "kind": {
+          "name": "Enum"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "enumDeclaration",
+        "enum": {
+          "moduleId": 6,
+          "name": { "name": "Foo", "position": [110, 6] },
+          "typeParams": [
+            "T"
+          ],
+          "variants": [
+            {
+              "label": { "name": "Bar", "position": [110, 15] },
+              "kind": "container",
+              "fields": [
+                {
+                  "name": { "name": "t", "position": [110, 19] },
+                  "type": {
+                    "kind": "generic",
+                    "name": "T"
+                  },
+                  "initializer": null,
+                  "isPublic": true
+                }
+              ]
+            },
+            {
+              "label": { "name": "Baz", "position": [110, 26] },
+              "kind": "constant"
+            }
+          ],
+          "instanceMethods": [
+            {
+              "label": { "name": "toString", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_6::Foo::toString",
+                "variables": [],
+                "functions": [],
+                "structs": [],
+                "enums": [],
+                "generics": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "isPublic": true,
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "String"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "hash", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_6::Foo::hash",
+                "variables": [],
+                "functions": [],
+                "structs": [],
+                "enums": [],
+                "generics": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "isPublic": true,
+              "typeParameters": [],
+              "parameters": [],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Int"
+              },
+              "body": []
+            },
+            {
+              "label": { "name": "eq", "position": [0, 0] },
+              "scope": {
+                "name": "$root::module_6::Foo::eq",
+                "variables": [],
+                "functions": [],
+                "structs": [],
+                "enums": [],
+                "generics": []
+              },
+              "isGenerated": true,
+              "kind": "FunctionKind.InstanceMethod",
+              "isPublic": true,
+              "typeParameters": [],
+              "parameters": [
+                {
+                  "label": { "name": "other", "position": [0, 0] },
+                  "type": {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 6, "name": "Foo" },
+                    "typeParams": []
+                  },
+                  "defaultValue": null,
+                  "isVariadic": false
+                }
+              ],
+              "returnType": {
+                "kind": "primitive",
+                "primitive": "Bool"
+              },
+              "body": []
+            }
+          ],
+          "staticMethods": []
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [111, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "fooArr", "position": [111, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "fooArr", "position": [111, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "instance",
+              "struct": { "moduleId": 5, "name": "Array" },
+              "typeParams": [
+                {
+                  "kind": "tuple",
+                  "types": [
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 6, "name": "Foo" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 6, "name": "Foo" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [111, 14],
+            "kind": {
+              "name": "LBrack"
+            }
+          },
+          "type": {
+            "kind": "instance",
+            "struct": { "moduleId": 5, "name": "Array" },
+            "typeParams": [
+              {
+                "kind": "tuple",
+                "types": [
+                  {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 6, "name": "Foo" },
+                    "typeParams": [
+                      {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "enumInstance",
+                    "enum": { "moduleId": 6, "name": "Foo" },
+                    "typeParams": [
+                      {
+                        "kind": "primitive",
+                        "primitive": "Int"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "node": {
+            "kind": "array",
+            "items": [
+              {
+                "token": {
+                  "position": [111, 15],
+                  "kind": {
+                    "name": "LParen"
+                  }
+                },
+                "type": {
+                  "kind": "tuple",
+                  "types": [
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 6, "name": "Foo" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 6, "name": "Foo" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "node": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "token": {
+                        "position": [111, 23],
+                        "kind": {
+                          "name": "LParen"
+                        }
+                      },
+                      "type": {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Foo" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
+                      },
+                      "node": {
+                        "kind": "invocation",
+                        "resolvedGenerics": {
+                          "T": {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        },
+                        "invokee": "Foo.Bar",
+                        "arguments": [
+                          {
+                            "token": {
+                              "position": [111, 27],
+                              "kind": {
+                                "name": "Int",
+                                "value": 1
+                              }
+                            },
+                            "type": {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            },
+                            "node": {
+                              "kind": "literal",
+                              "value": 1
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "token": {
+                        "position": [111, 38],
+                        "kind": {
+                          "name": "LParen"
+                        }
+                      },
+                      "type": {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Foo" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
+                      },
+                      "node": {
+                        "kind": "invocation",
+                        "resolvedGenerics": {
+                          "T": {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        },
+                        "invokee": "Foo.Bar",
+                        "arguments": [
+                          {
+                            "token": {
+                              "position": [111, 42],
+                              "kind": {
+                                "name": "Int",
+                                "value": 2
+                              }
+                            },
+                            "type": {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            },
+                            "node": {
+                              "kind": "literal",
+                              "value": 2
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "token": {
+                  "position": [111, 47],
+                  "kind": {
+                    "name": "LParen"
+                  }
+                },
+                "type": {
+                  "kind": "tuple",
+                  "types": [
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 6, "name": "Foo" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "enumInstance",
+                      "enum": { "moduleId": 6, "name": "Foo" },
+                      "typeParams": [
+                        {
+                          "kind": "primitive",
+                          "primitive": "Int"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "node": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "token": {
+                        "position": [111, 51],
+                        "kind": {
+                          "name": "Dot"
+                        }
+                      },
+                      "type": {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Foo" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
+                      },
+                      "node": {
+                        "kind": "accessor",
+                        "head": {
+                          "token": {
+                            "position": [111, 48],
+                            "kind": {
+                              "name": "Ident",
+                              "value": "Foo"
+                            }
+                          },
+                          "type": {
+                            "kind": "enum",
+                            "enum": { "moduleId": 6, "name": "Foo" }
+                          },
+                          "node": {
+                            "kind": "identifier",
+                            "name": "Foo"
+                          }
+                        },
+                        "middle": [],
+                        "tail": {
+                          "kind": "enumVariant",
+                          "name": "Foo.Baz"
+                        }
+                      }
+                    },
+                    {
+                      "token": {
+                        "position": [111, 64],
+                        "kind": {
+                          "name": "LParen"
+                        }
+                      },
+                      "type": {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Foo" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
+                      },
+                      "node": {
+                        "kind": "invocation",
+                        "resolvedGenerics": {
+                          "T": {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        },
+                        "invokee": "Foo.Bar",
+                        "arguments": [
+                          {
+                            "token": {
+                              "position": [111, 68],
+                              "kind": {
+                                "name": "Int",
+                                "value": 3
+                              }
+                            },
+                            "type": {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            },
+                            "node": {
+                              "kind": "literal",
+                              "value": 3
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [112, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [112, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [112, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [112, 9],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "match",
+            "isStatement": false,
+            "subject": {
+              "token": {
+                "position": [112, 21],
+                "kind": {
+                  "name": "LBrack"
+                }
+              },
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 5, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "tuple",
+                    "types": [
+                      {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Foo" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Foo" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "node": {
+                "kind": "indexing",
+                "node": {
+                  "kind": "arraylike",
+                  "expr": {
+                    "token": {
+                      "position": [112, 15],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "fooArr"
+                      }
+                    },
+                    "type": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 5, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "tuple",
+                          "types": [
+                            {
+                              "kind": "enumInstance",
+                              "enum": { "moduleId": 6, "name": "Foo" },
+                              "typeParams": [
+                                {
+                                  "kind": "primitive",
+                                  "primitive": "Int"
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "enumInstance",
+                              "enum": { "moduleId": 6, "name": "Foo" },
+                              "typeParams": [
+                                {
+                                  "kind": "primitive",
+                                  "primitive": "Int"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "fooArr"
+                    }
+                  },
+                  "index": {
+                    "token": {
+                      "position": [112, 22],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                }
+              }
+            },
+            "cases": [
+              {
+                "kind": "None",
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [113, 11],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "tupleItemBinding",
+                      "variable": {
+                        "label": { "name": "a", "position": [114, 4] },
+                        "mutable": false,
+                        "type": {
+                          "kind": "enumInstance",
+                          "enum": { "moduleId": 6, "name": "Foo" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "kind": "tupleItemBinding",
+                      "variable": {
+                        "label": { "name": "b", "position": [114, 7] },
+                        "mutable": false,
+                        "type": {
+                          "kind": "enumInstance",
+                          "enum": { "moduleId": 6, "name": "Foo" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [115, 5],
+                      "kind": {
+                        "name": "Int",
+                        "value": 1
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 1
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [118, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [118, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [118, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [118, 9],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "match",
+            "isStatement": false,
+            "subject": {
+              "token": {
+                "position": [118, 21],
+                "kind": {
+                  "name": "LBrack"
+                }
+              },
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 5, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "tuple",
+                    "types": [
+                      {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Foo" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Foo" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "node": {
+                "kind": "indexing",
+                "node": {
+                  "kind": "arraylike",
+                  "expr": {
+                    "token": {
+                      "position": [118, 15],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "fooArr"
+                      }
+                    },
+                    "type": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 5, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "tuple",
+                          "types": [
+                            {
+                              "kind": "enumInstance",
+                              "enum": { "moduleId": 6, "name": "Foo" },
+                              "typeParams": [
+                                {
+                                  "kind": "primitive",
+                                  "primitive": "Int"
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "enumInstance",
+                              "enum": { "moduleId": 6, "name": "Foo" },
+                              "typeParams": [
+                                {
+                                  "kind": "primitive",
+                                  "primitive": "Int"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "fooArr"
+                    }
+                  },
+                  "index": {
+                    "token": {
+                      "position": [118, 22],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                }
+              }
+            },
+            "cases": [
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "tupleItemBinding",
+                      "variable": {
+                        "label": { "name": "a", "position": [119, 4] },
+                        "mutable": false,
+                        "type": {
+                          "kind": "enumInstance",
+                          "enum": { "moduleId": 6, "name": "Foo" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "kind": "tupleItemBinding",
+                      "variable": {
+                        "label": { "name": "b", "position": [119, 7] },
+                        "mutable": false,
+                        "type": {
+                          "kind": "enumInstance",
+                          "enum": { "moduleId": 6, "name": "Foo" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [120, 5],
+                      "kind": {
+                        "name": "Int",
+                        "value": 1
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 1
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": "else",
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [122, 11],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "token": {
+        "position": [124, 1],
+        "kind": {
+          "name": "Val"
+        }
+      },
+      "type": {
+        "kind": "primitive",
+        "primitive": "Unit"
+      },
+      "node": {
+        "kind": "bindingDeclaration",
+        "pattern": {
+          "kind": "variable",
+          "label": { "name": "_", "position": [124, 5] }
+        },
+        "variables": [
+          {
+            "label": { "name": "_", "position": [124, 5] },
+            "mutable": false,
+            "type": {
+              "kind": "primitive",
+              "primitive": "Int"
+            }
+          }
+        ],
+        "expr": {
+          "token": {
+            "position": [124, 9],
+            "kind": {
+              "name": "Match"
+            }
+          },
+          "type": {
+            "kind": "primitive",
+            "primitive": "Int"
+          },
+          "node": {
+            "kind": "match",
+            "isStatement": false,
+            "subject": {
+              "token": {
+                "position": [124, 21],
+                "kind": {
+                  "name": "LBrack"
+                }
+              },
+              "type": {
+                "kind": "enumInstance",
+                "enum": { "moduleId": 5, "name": "Option" },
+                "typeParams": [
+                  {
+                    "kind": "tuple",
+                    "types": [
+                      {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Foo" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "enumInstance",
+                        "enum": { "moduleId": 6, "name": "Foo" },
+                        "typeParams": [
+                          {
+                            "kind": "primitive",
+                            "primitive": "Int"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "node": {
+                "kind": "indexing",
+                "node": {
+                  "kind": "arraylike",
+                  "expr": {
+                    "token": {
+                      "position": [124, 15],
+                      "kind": {
+                        "name": "Ident",
+                        "value": "fooArr"
+                      }
+                    },
+                    "type": {
+                      "kind": "instance",
+                      "struct": { "moduleId": 5, "name": "Array" },
+                      "typeParams": [
+                        {
+                          "kind": "tuple",
+                          "types": [
+                            {
+                              "kind": "enumInstance",
+                              "enum": { "moduleId": 6, "name": "Foo" },
+                              "typeParams": [
+                                {
+                                  "kind": "primitive",
+                                  "primitive": "Int"
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "enumInstance",
+                              "enum": { "moduleId": 6, "name": "Foo" },
+                              "typeParams": [
+                                {
+                                  "kind": "primitive",
+                                  "primitive": "Int"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "node": {
+                      "kind": "identifier",
+                      "name": "fooArr"
+                    }
+                  },
+                  "index": {
+                    "token": {
+                      "position": [124, 22],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                }
+              }
+            },
+            "cases": [
+              {
+                "kind": "None",
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [125, 11],
+                      "kind": {
+                        "name": "Int",
+                        "value": 0
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 1,
+                      "enum": { "moduleId": 6, "name": "Foo" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "tupleItemBinding",
+                      "variable": {
+                        "label": { "name": "a", "position": [126, 13] },
+                        "mutable": false,
+                        "type": {
+                          "kind": "enumInstance",
+                          "enum": { "moduleId": 6, "name": "Foo" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [126, 19],
+                      "kind": {
+                        "name": "Int",
+                        "value": 1
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 1
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": {
+                  "kind": "tuple",
+                  "items": [
+                    {
+                      "kind": "enumVariant",
+                      "variantIdx": 0,
+                      "enum": { "moduleId": 6, "name": "Foo" },
+                      "destructuredVariables": []
+                    },
+                    {
+                      "kind": "tupleItemBinding",
+                      "variable": {
+                        "label": { "name": "a", "position": [127, 13] },
+                        "mutable": false,
+                        "type": {
+                          "kind": "enumInstance",
+                          "enum": { "moduleId": 6, "name": "Foo" },
+                          "typeParams": [
+                            {
+                              "kind": "primitive",
+                              "primitive": "Int"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "binding": null,
+                "body": [
+                  {
+                    "token": {
+                      "position": [127, 19],
+                      "kind": {
+                        "name": "Int",
+                        "value": 2
+                      }
+                    },
+                    "type": {
+                      "kind": "primitive",
+                      "primitive": "Int"
+                    },
+                    "node": {
+                      "kind": "literal",
+                      "value": 2
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
     }
   ]
 }

@@ -1006,7 +1006,7 @@ pub enum TypedMatchCaseKind {
   EnumVariant(enum_: Enum, variant: TypedEnumVariant, variantIdx: Int, destructuredVariables: Variable[])
   None_
   Else
-  Tuple(items: TypedMatchCaseKind[])
+  Tuple(items: TypedMatchCaseKind[], destructuredVariables: Map<Int, Variable>)
 }
 
 enum MatchCasePossibility {
@@ -1034,6 +1034,27 @@ enum MatchCasePossibility {
       MatchCasePossibility.Tuple(items) => todo("MatchCasePossibility.Tuple"),
       MatchCasePossibility.None_ => "None",
       MatchCasePossibility.Else => "else",
+    }
+  }
+
+  pub func covers(self, other: MatchCasePossibility): Bool {
+    match self {
+      MatchCasePossibility.Tuple(coverageItems) => {
+        match other {
+          MatchCasePossibility.Tuple(possibilityItems) => {
+            if coverageItems.length != possibilityItems.length return false
+            for cov, idx in coverageItems {
+              val poss = try possibilityItems[idx] else unreachable("lengths are equal")
+              if !cov.covers(poss) return false
+            }
+
+            true
+          }
+          else => false,
+        }
+      }
+      MatchCasePossibility.Else => true,
+      else => self == other
     }
   }
 }
@@ -1113,7 +1134,13 @@ type MatchCasesContext {
       }
       MatchCasePossibilities.Tuple(_, possibilities) => {
         match possibility {
-          MatchCasePossibility.Tuple(possibility) => possibilities.contains(possibility),
+          MatchCasePossibility.Tuple(possibility) => {
+            for p in possibilities {
+              if p == possibility || p.all(p => p == MatchCasePossibility.Else) return true
+            }
+
+            false
+          }
           else => false
         }
       }
@@ -4660,12 +4687,40 @@ pub type Typechecker {
 
         val typedTupleItemKinds: TypedMatchCaseKind[] = []
         val tupleItemPossibilities: MatchCasePossibility[] = []
+        val variables: Map<Int, Variable> = {}
         for tupleCaseKind, idx in kinds {
           val tupleItemTy = try innerTypes[idx] else unreachable("verified above to be same size")
 
-          val (_, typedTupleItemKind, _, possibility) = try self.typecheckMatchCaseKind(matchCaseCtx, tupleItemTy, tupleItemTy, tupleCaseKind, casePos, isWithinTuple: true)
-          typedTupleItemKinds.push(typedTupleItemKind)
-          tupleItemPossibilities.push(possibility)
+          match tupleCaseKind {
+            MatchCaseKind.Binding(name) => {
+              // val variableTy = if tupleItemTy.containsGenerics() {
+              //   tupleItemTy.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
+              // } else {
+              //   tupleItemTy
+              // }
+              val variableTy = tupleItemTy
+              self.beginChildScope("matchcase_tuple_item_$idx", ScopeKind.MatchCase)
+              val variable = try self.addVariableToScope(Variable(label: name, scope: self.currentScope, mutable: false, ty: variableTy))
+              variables[idx] = variable
+
+              if self.lspMode {
+                val ident = IdentifierMeta(
+                  name: name.name,
+                  kind: IdentifierKindMeta.Variable(mutable: false, typeRepr: variableTy.repr()),
+                  definitionPosition: Some((IdentifierMetaModule.Module(self.currentModule.name), name.position)),
+                )
+                self._addLSPIdent(name.position, ident)
+              }
+
+              typedTupleItemKinds.push(TypedMatchCaseKind.Else)
+              tupleItemPossibilities.push(MatchCasePossibility.Else)
+            }
+            else => {
+              val (_, typedTupleItemKind, _, possibility) = try self.typecheckMatchCaseKind(matchCaseCtx, tupleItemTy, tupleItemTy, tupleCaseKind, casePos, isWithinTuple: true)
+              typedTupleItemKinds.push(typedTupleItemKind)
+              tupleItemPossibilities.push(possibility)
+            }
+          }
         }
         val possibility = MatchCasePossibility.Tuple(tupleItemPossibilities)
 
@@ -4673,7 +4728,10 @@ pub type Typechecker {
           return Err(TypeError(position: casePos, kind: TypeErrorKind.DuplicateMatchCase))
         }
 
-        Ok((workingSubjectTy, TypedMatchCaseKind.Tuple(typedTupleItemKinds), None, possibility))
+        Ok((workingSubjectTy, TypedMatchCaseKind.Tuple(typedTupleItemKinds, variables), None, possibility))
+      }
+      MatchCaseKind.Binding(name) => {
+        unreachable("Encountered MatchCaseKind.Binding outside of a tuple")
       }
     }
   }
@@ -4718,7 +4776,22 @@ pub type Typechecker {
         match possibilities {
           MatchCasePossibilities.Single => (false, None),
           MatchCasePossibilities.Tuple(isOptionType, possibilities) => {
-            val missedCases = possibilities.difference(coverage)
+            // Given the known possibilities and the coverage, find all of the known possible cases that are covered.
+            // Any missed (aka non-covered) cases will be reported from this method.
+            //
+            // TODO: this would be MUCH more efficient to do progressively in MatchCasesContext#addCoverage
+            val covered: Set<MatchCasePossibility[]> = #{}
+            for covItems in coverage {
+              for possItems in possibilities {
+                if covered.contains(possItems) continue
+
+                if MatchCasePossibility.Tuple(covItems).covers(MatchCasePossibility.Tuple(possItems)) {
+                  covered.insert(possItems)
+                }
+              }
+            }
+            val missedCases = possibilities.difference(covered)
+
             if missedCases.isEmpty() {
               val isEnumerable = self.matchCaseTypeIsEnumerable(subjType)
 

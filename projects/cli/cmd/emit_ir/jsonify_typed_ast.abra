@@ -1054,15 +1054,42 @@ type Jsonifier {
       }
       TypedMatchCaseKind.None_ => stdoutWrite("\"None\""),
       TypedMatchCaseKind.Else => stdoutWrite("\"else\""),
-      TypedMatchCaseKind.Tuple(cases) => {
+      TypedMatchCaseKind.Tuple(cases, variables) => {
         stdoutWriteln("{")
         self.indentInc()
 
         self.println("\"kind\": \"tuple\",")
 
-        self.print("\"items\": ")
-        self.array(cases, case => self.printTypedMatchCaseKind(case))
-        stdoutWriteln()
+        if cases.isEmpty() {
+          self.println("\"items\": []")
+        } else {
+          self.println("\"items\": [")
+          self.indentInc()
+
+          for case, idx in cases {
+            self.indent()
+            if variables[idx] |v| {
+              stdoutWriteln("{")
+              self.indentInc()
+
+              self.println("\"kind\": \"tupleItemBinding\",")
+              self.print("\"variable\": ")
+              self.printVariable(v)
+              stdoutWriteln()
+
+              self.indentDec()
+              self.print("}")
+            } else {
+              self.printTypedMatchCaseKind(case)
+            }
+
+            val comma = if idx != cases.length - 1 "," else ""
+            stdoutWriteln(comma)
+          }
+
+          self.indentDec()
+          self.println("]")
+        }
 
         self.indentDec()
         self.print("}")

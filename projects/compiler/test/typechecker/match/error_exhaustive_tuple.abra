@@ -1,0 +1,14 @@
+enum Color { Red, Green, Blue }
+
+val colorArr = [(Color.Red, Some(true)), (Color.Blue, None)]
+
+val _ = match colorArr[0] {
+  None => 0,
+  (a, b) => 1,
+  else => 2,
+}
+
+val _ = match colorArr[0] {
+  (a, b) => 1,
+}
+
