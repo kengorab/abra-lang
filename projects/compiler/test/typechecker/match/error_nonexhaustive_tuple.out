@@ -23,22 +23,21 @@ Error at %TEST_DIR%/typechecker/match/error_nonexhaustive_tuple.abra:10:9
 Non-exhaustive match expression
   |  val c = match (true, Some("asdf")) {
              ^
-Match target type '(Bool, String?)' is not covered by all cases
+Match target type '(Bool, String?)' is not covered by all cases.
 (You can use a wildcard to capture remaining cases)
 
 Error at %TEST_DIR%/typechecker/match/error_nonexhaustive_tuple.abra:14:9
 Non-exhaustive match expression
   |  val d = match (true, Some("asdf")) {
              ^
-Match target type '(Bool, String?)' is not covered by all cases. Remaining cases:
-  (true, None)
+Match target type '(Bool, String?)' is not covered by all cases.
 (You can use a wildcard to capture remaining cases)
 
 Error at %TEST_DIR%/typechecker/match/error_nonexhaustive_tuple.abra:18:9
 Non-exhaustive match expression
   |  val e = match (true, Some("asdf")) {
              ^
-Match target type '(Bool, String?)' is not covered by all cases
+Match target type '(Bool, String?)' is not covered by all cases.
 (You can use a wildcard to capture remaining cases)
 
 Error at %TEST_DIR%/typechecker/match/error_nonexhaustive_tuple.abra:26:9

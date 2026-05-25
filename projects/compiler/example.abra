@@ -1,22 +1,7 @@
-func foo(a: Int): Int = a
+enum Color { Red, Green, Blue }
 
-val s = Some(foo(1, 3))
-
-val x = match s {
-  None => 1
+val _ = match (Color.Blue, "asdf") {
+  (Color.Red, a) => 0,
+  (Color.Blue, a) => 0,
+  (Color.Red, a) => 0,
 }
-
-// enum Foo<T> {
-//   Bar(t: T)
-//   Baz
-// }
-
-// val arr = [(Foo.Bar(t: 1), Foo.Bar(t: 2)), (Foo.Baz, Foo.Bar(t: 3))]
-
-// val n = match arr[0] {
-//   None => 0,
-//   (a, b) => {
-//     1
-//   },
-//   (Foo.Baz, Foo.Baz) => 3
-// }

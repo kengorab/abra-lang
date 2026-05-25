@@ -436,6 +436,7 @@ const TYPECHECKER_TESTS = [
   { test: "typechecker/match/error_unfilled_holes.2.abra", assertions: "typechecker/match/error_unfilled_holes.2.out" },
   { test: "typechecker/match/error_alreadycovered_None.abra", assertions: "typechecker/match/error_alreadycovered_None.out" },
   { test: "typechecker/match/error_duplicate_literal.abra", assertions: "typechecker/match/error_duplicate_literal.out" },
+  { test: "typechecker/match/error_duplicate_tuple_binding.abra", assertions: "typechecker/match/error_duplicate_tuple_binding.out" },
   { test: "typechecker/match/error_invalid_else_type.abra", assertions: "typechecker/match/error_invalid_else_type.out" },
   { test: "typechecker/match/error_nooverlap_None.abra", assertions: "typechecker/match/error_nooverlap_None.out" },
   { test: "typechecker/match/error_nooverlap_literal.1.abra", assertions: "typechecker/match/error_nooverlap_literal.1.out" },

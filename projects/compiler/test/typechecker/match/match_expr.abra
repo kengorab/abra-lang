@@ -107,6 +107,16 @@ val _ = match colorArr2[0] {
   }
 }
 
+val _ = match (true, "asdf") {
+  (true, a) => 0,
+  (false, a) => 1,
+}
+val _ = match (Color.Blue, "asdf") {
+  (Color.Red, a) => 0,
+  (Color.Blue, a) => 0,
+  (Color.Green, a) => 0,
+}
+
 enum Foo<T> { Bar(t: T), Baz }
 val fooArr = [(Foo.Bar(t: 1), Foo.Bar(t: 2)), (Foo.Baz, Foo.Bar(t: 3))]
 val _ = match fooArr[0] {
@@ -125,4 +135,8 @@ val _ = match fooArr[0] {
   None => 0,
   (Foo.Baz, a) => 1,
   (Foo.Bar, a) => 2,
+}
+val _ = match fooArr[0] {
+  (Foo.Bar(a), Foo.Bar(b)) => a + b,
+  else => 0
 }

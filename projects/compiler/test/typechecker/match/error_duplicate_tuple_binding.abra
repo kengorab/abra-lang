@@ -1,0 +1,16 @@
+enum Foo {
+  Bar(a: Int)
+  Baz(b: String)
+}
+
+val f = (Foo.Bar(1), Foo.Baz("asdf"))
+
+val _ = match f {
+  (a, a) => "",
+  else => ""
+}
+
+val _ = match f {
+  (Foo.Bar(a), Foo.Baz(a)) => a + a,
+  else => ""
+}

@@ -12,3 +12,13 @@ val _ = match colorArr[0] {
   (a, b) => 1,
 }
 
+val _ = match (Color.Blue, "asdf") {
+  (Color.Red, a) => 0,
+  (Color.Blue, a) => 0,
+  (Color.Red, a) => 0,
+}
+
+val _ = match (Color.Blue, Color.Red) {
+  (Color.Red, a) => 0,
+  (Color.Red, Color.Blue) => 0,
+}

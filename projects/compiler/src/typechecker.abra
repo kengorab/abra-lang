@@ -1019,6 +1019,7 @@ enum MatchCasePossibility {
   Tuple(items: MatchCasePossibility[])
   None_
   Else
+  Unbounded
 
   pub func repr(self): String {
     match self {
@@ -1034,6 +1035,7 @@ enum MatchCasePossibility {
       MatchCasePossibility.Tuple(items) => todo("MatchCasePossibility.Tuple"),
       MatchCasePossibility.None_ => "None",
       MatchCasePossibility.Else => "else",
+      MatchCasePossibility.Unbounded => "...",
     }
   }
 
@@ -1073,7 +1075,6 @@ enum MatchCasePossibilities {
 
 type MatchCasesContext {
   isOptionType: Bool
-  isEnumerable: Bool
   seenPossibilities: MatchCasePossibilities
   remainingPossibilities: MatchCasePossibilities
   seenElseCase: Bool = false
@@ -1126,8 +1127,6 @@ type MatchCasesContext {
     if self.seenElseCase return true
     if possibility == MatchCasePossibility.None_ && self.seenNoneCase return true
     if possibility == MatchCasePossibility.Else {
-      if !self.isEnumerable return false
-
       return match self.remainingPossibilities {
         MatchCasePossibilities.Single(remaining) => remaining.isEmpty(),
         MatchCasePossibilities.Tuple(remaining) => {
@@ -1164,17 +1163,15 @@ type MatchCasesContext {
   func allMatchCasesHandled(self): Bool {
     if self.seenElseCase return true
 
-    val noRemaining = match self.remainingPossibilities {
-      MatchCasePossibilities.Single(remaining) => remaining.isEmpty(),
-      MatchCasePossibilities.Tuple(remaining) => remaining.isEmpty(),
+    val hasRemaining = match self.remainingPossibilities {
+      MatchCasePossibilities.Single(remaining) => !remaining.isEmpty(),
+      MatchCasePossibilities.Tuple(remaining) => !remaining.isEmpty(),
     }
 
-    if !noRemaining return false
-
-    if self.isOptionType && !self.seenNoneCase {
+    if hasRemaining || (self.isOptionType && !self.seenNoneCase) {
       false
     } else {
-      self.isEnumerable
+      true
     }
   }
 
@@ -1194,6 +1191,33 @@ type MatchCasesContext {
         }
 
         reprs
+      }
+    }
+  }
+
+  func isRemainingUnbounded(self): Bool {
+    match self.remainingPossibilities {
+      MatchCasePossibilities.Single(possibilities) => {
+        for poss in possibilities {
+          match poss {
+            MatchCasePossibility.Unbounded => return true,
+            else => continue
+          }
+        }
+
+        false
+      }
+      MatchCasePossibilities.Tuple(possibilities) => {
+        for poss in possibilities {
+          for p in poss {
+            match p {
+              MatchCasePossibility.Unbounded => return true,
+              else => continue
+            }
+          }
+        }
+
+        false
       }
     }
   }
@@ -1719,10 +1743,13 @@ type TypeError {
         lines.push("Non-exhaustive match expression")
         lines.push(getCursorLine(self.position.line, self.position.col, contents))
 
-        val msg = "Match target type '${subjectTy.repr()}' is not covered by all cases"
-        val reprs = matchCasesCtx.getRemainingCaseReprs()
-        if !reprs.isEmpty() {
-          lines.push(msg + ". Remaining cases:")
+        val msg = "Match target type '${subjectTy.repr()}' is not covered by all cases."
+        val isRemainingUnbounded = matchCasesCtx.isRemainingUnbounded()
+        if isRemainingUnbounded {
+          lines.push(msg)
+        } else {
+          val reprs = matchCasesCtx.getRemainingCaseReprs()
+          lines.push(msg + " Remaining cases:")
 
           val limit = 6
           for c in reprs[:limit] {
@@ -1731,8 +1758,6 @@ type TypeError {
           if reprs.length > limit {
             lines.push("  ... and ${reprs.length - limit} more")
           }
-        } else {
-          lines.push(msg)
         }
         lines.push("(You can use a wildcard to capture remaining cases)")
       }
@@ -4643,8 +4668,6 @@ pub type Typechecker {
           return Err(TypeError(position: casePos, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: Some(caseTy)), origSubjectTy)))
         }
 
-        self.beginChildScope("matchcase_${enum_.label.name}_$variantIdx", ScopeKind.MatchCase)
-
         val variables: Variable[] = []
         if args[0] |firstArg| {
           val fields = match variant.kind {
@@ -4696,8 +4719,6 @@ pub type Typechecker {
           return Err(TypeError(position: casePos, kind: TypeErrorKind.DuplicateMatchCase))
         }
 
-        self.beginChildScope("matchcase_$value", ScopeKind.MatchCase)
-
         val subjectTy = self.project.typeIsOption(workingSubjectTy) ?: workingSubjectTy
         if !self._typeSatisfiesRequired(ty: literalTy, required: subjectTy) {
           return Err(TypeError(position: casePos, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: Some(literalTy)), origSubjectTy)))
@@ -4711,8 +4732,6 @@ pub type Typechecker {
           return Err(TypeError(position: casePos, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.AlreadyCovered(exhaustive: false), origSubjectTy)))
         }
 
-        self.beginChildScope("matchcase_None", ScopeKind.MatchCase)
-
         val unwrappedSubjectTy = try self.project.typeIsOption(workingSubjectTy) else {
           return Err(TypeError(position: casePos, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: None), origSubjectTy)))
         }
@@ -4724,8 +4743,6 @@ pub type Typechecker {
         if !isWithinTuple && matchCaseCtx.alreadyCovered(possibility) {
           return Err(TypeError(position: casePos, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.AlreadyCovered(exhaustive: true), origSubjectTy)))
         }
-
-        self.beginChildScope("matchcase_else", ScopeKind.MatchCase)
 
         Ok((workingSubjectTy, TypedMatchCaseKind.Else, None, possibility))
       }
@@ -4754,7 +4771,6 @@ pub type Typechecker {
               //   tupleItemTy
               // }
               val variableTy = tupleItemTy
-              self.beginChildScope("matchcase_tuple_item_$idx", ScopeKind.MatchCase)
               val variable = try self.addVariableToScope(Variable(label: name, scope: self.currentScope, mutable: false, ty: variableTy))
               variables[idx] = variable
 
@@ -4820,10 +4836,12 @@ pub type Typechecker {
     }
 
     match itemTy.kind {
+      TypeKind.PrimitiveInt => possibilities.insert(MatchCasePossibility.Unbounded),
       TypeKind.PrimitiveBool => {
         possibilities.insert(MatchCasePossibility.BoolLit(true))
         possibilities.insert(MatchCasePossibility.BoolLit(false))
       }
+      TypeKind.PrimitiveChar => possibilities.insert(MatchCasePossibility.Unbounded),
       TypeKind.Instance(inst, _) => {
         match inst {
           InstanceKind.Enum(e) => {
@@ -4831,33 +4849,15 @@ pub type Typechecker {
               possibilities.insert(MatchCasePossibility.EnumVariant(enum_: e, variantIdx: i))
             }
           }
+          InstanceKind.Struct => {
+            possibilities.insert(MatchCasePossibility.Unbounded)
+          }
         }
       }
+      else => possibilities.insert(MatchCasePossibility.Unbounded),
     }
 
     possibilities
-  }
-
-  func matchCaseTypeIsEnumerable(self, ty: Type): Bool {
-    if self.project.typeIsOption(ty) |innerTy| {
-      return self.matchCaseTypeIsEnumerable(innerTy)
-    }
-
-    match ty.kind {
-      TypeKind.PrimitiveBool => true,
-      TypeKind.Instance(instanceKind, _) => match instanceKind {
-        InstanceKind.Struct => false,
-        InstanceKind.Enum => true,
-      },
-      TypeKind.Tuple(types) => {
-        for t in types {
-          if !self.matchCaseTypeIsEnumerable(t) return false
-        }
-
-        true
-      },
-      else => false,
-    }
   }
 
   func typecheckMatch(self, token: Token, expr: AstNode, cases: MatchCase[], typeHint: Type?): Result<TypedAstNode, TypeError> {
@@ -4870,7 +4870,6 @@ pub type Typechecker {
     var resultTy: Type? = None
 
     val (subjIsOptionType, subjTypeUnwrapped) = if self.project.typeIsOption(typedExpr.ty) |innerTy| { (true, innerTy) } else { (false, typedExpr.ty) }
-    val isEnumerable = self.matchCaseTypeIsEnumerable(typedExpr.ty)
     val (seenPossibilities, remainingPossibilities) = match subjTypeUnwrapped.kind {
       TypeKind.Tuple(innerTypes) => {
         val possibilities = self.deriveMatchCasePossibilitiesForTuple(innerTypes)
@@ -4883,7 +4882,6 @@ pub type Typechecker {
     }
     val matchCaseCtx = MatchCasesContext(
       isOptionType: subjIsOptionType,
-      isEnumerable: isEnumerable,
       seenPossibilities: seenPossibilities,
       remainingPossibilities: remainingPossibilities,
     )
@@ -4897,6 +4895,7 @@ pub type Typechecker {
       val typedBody: TypedAstNode[] = []
       var prevScope = self.currentScope
 
+      self.beginChildScope("matchcase_${token.position.line}_case$idx", ScopeKind.MatchCase)
       val (caseVarTy, typedMatchCaseKind, newSubjectType, caseCoverage) = try self.typecheckMatchCaseKind(matchCaseCtx, subjectTyOrig, subjectTy, case.kind, case.position)
       if newSubjectType |ty| {
         subjectTy = ty
