@@ -1,0 +1,4 @@
+val x = match "asdf" {
+  ("a", "b") => 1,
+  else => 2
+}

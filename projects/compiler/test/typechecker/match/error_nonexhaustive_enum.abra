@@ -1,0 +1,5 @@
+enum Color { Red, Green, Blue }
+
+val x = match Color.Red {
+  Color.Red => 1
+}

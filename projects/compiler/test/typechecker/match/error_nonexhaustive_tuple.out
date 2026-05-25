@@ -1,0 +1,68 @@
+Error at %TEST_DIR%/typechecker/match/error_nonexhaustive_tuple.abra:1:9
+Non-exhaustive match expression
+  |  val a = match (true, true) {
+             ^
+Match target type '(Bool, Bool)' is not covered by all cases. Remaining cases:
+  (true, false)
+  (false, true)
+(You can use a wildcard to capture remaining cases)
+
+Error at %TEST_DIR%/typechecker/match/error_nonexhaustive_tuple.abra:6:9
+Non-exhaustive match expression
+  |  val b = match (true, Some(false)) {
+             ^
+Match target type '(Bool, Bool?)' is not covered by all cases. Remaining cases:
+  (false, None)
+  (true, None)
+  (false, false)
+  (true, false)
+  (true, true)
+(You can use a wildcard to capture remaining cases)
+
+Error at %TEST_DIR%/typechecker/match/error_nonexhaustive_tuple.abra:10:9
+Non-exhaustive match expression
+  |  val c = match (true, Some("asdf")) {
+             ^
+Match target type '(Bool, String?)' is not covered by all cases.
+(You can use a wildcard to capture remaining cases)
+
+Error at %TEST_DIR%/typechecker/match/error_nonexhaustive_tuple.abra:14:9
+Non-exhaustive match expression
+  |  val d = match (true, Some("asdf")) {
+             ^
+Match target type '(Bool, String?)' is not covered by all cases.
+(You can use a wildcard to capture remaining cases)
+
+Error at %TEST_DIR%/typechecker/match/error_nonexhaustive_tuple.abra:18:9
+Non-exhaustive match expression
+  |  val e = match (true, Some("asdf")) {
+             ^
+Match target type '(Bool, String?)' is not covered by all cases.
+(You can use a wildcard to capture remaining cases)
+
+Error at %TEST_DIR%/typechecker/match/error_nonexhaustive_tuple.abra:26:9
+Non-exhaustive match expression
+  |  val f = match (Color.Red, Color.Green) {
+             ^
+Match target type '(Color, Color)' is not covered by all cases. Remaining cases:
+  (Color.Green, Color.Red)
+  (Color.Blue, Color.Red)
+  (Color.Green, Color.Green)
+  (Color.Blue, Color.Green)
+  (Color.Green, Color.Blue)
+  (Color.Blue, Color.Blue)
+(You can use a wildcard to capture remaining cases)
+
+Error at %TEST_DIR%/typechecker/match/error_nonexhaustive_tuple.abra:33:9
+Non-exhaustive match expression
+  |  val g = match arr[0] {
+             ^
+Match target type '(Color, Color, Color)?' is not covered by all cases. Remaining cases:
+  None
+  (Color.Green, Color.Red, Color.Red)
+  (Color.Red, Color.Green, Color.Red)
+  (Color.Red, Color.Red, Color.Green)
+  (Color.Blue, Color.Red, Color.Red)
+  (Color.Green, Color.Green, Color.Red)
+  ... and 21 more
+(You can use a wildcard to capture remaining cases)

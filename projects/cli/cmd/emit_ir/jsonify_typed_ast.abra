@@ -1,5 +1,5 @@
 import LiteralAstNode, IndexingMode from "../../../compiler/src/parser"
-import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, FunctionKind, Scope, Struct, Enum, InstanceKind, AccessorPathSegment, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export, TypedMatchCaseKind, TypedForIterKind from "../../../compiler/src/typechecker"
+import Type, TypeKind, TypedModule, TypedAstNode, TypedAstNodeKind, Variable, Function, FunctionKind, Scope, Struct, Enum, InstanceKind, AccessorPathSegment, TypedInvokee, TypedIndexingNode, TypedAssignmentMode, Field, EnumVariantKind, Export, TypedMatchCaseKind, TypedForIterKind, TypedMatchCase from "../../../compiler/src/typechecker"
 import printTokenAsJson from "./jsonify_token"
 import printLabelAsJson, printBindingPatternAsJson from "./jsonify_ast"
 
@@ -638,41 +638,7 @@ type Jsonifier {
           self.indentInc()
 
           self.print("\"kind\": ")
-          match case.kind {
-            TypedMatchCaseKind.EnumVariant(enum_, _, variantIdx, destructuredVariables) => {
-              stdoutWriteln("{")
-              self.indentInc()
-
-              self.println("\"kind\": \"enumVariant\",")
-              self.println("\"variantIdx\": $variantIdx,")
-              self.print("\"enum\": ")
-              self.printEnum(enum_: enum_, abridged: true)
-              stdoutWriteln(",")
-              self.print("\"destructuredVariables\": ")
-              self.array(destructuredVariables, v => self.printVariable(v))
-              stdoutWriteln()
-
-              self.indentDec()
-              self.print("}")
-            }
-            TypedMatchCaseKind.Literal(value) => {
-              stdoutWriteln("{")
-              self.indentInc()
-
-              self.println("\"kind\": \"literal\",")
-              match value {
-                LiteralAstNode.Int(value) => self.println("\"value\": $value"),
-                LiteralAstNode.Float(value) => self.println("\"value\": $value"),
-                LiteralAstNode.Bool(value) => self.println("\"value\": $value"),
-                LiteralAstNode.String(value) => self.println("\"value\": \"$value\""),
-              }
-
-              self.indentDec()
-              self.print("}")
-            }
-            TypedMatchCaseKind.None_ => stdoutWrite("\"None\""),
-            TypedMatchCaseKind.Else => stdoutWrite("\"else\""),
-          }
+          self.printTypedMatchCaseKind(case.kind)
           stdoutWriteln(",")
 
           self.print("\"binding\": ")
@@ -1051,6 +1017,84 @@ type Jsonifier {
 
     self.indentDec()
     self.print("}")
+  }
+
+  func printTypedMatchCaseKind(self, caseKind: TypedMatchCaseKind) {
+    match caseKind {
+      TypedMatchCaseKind.EnumVariant(enum_, _, variantIdx, destructuredVariables) => {
+        stdoutWriteln("{")
+        self.indentInc()
+
+        self.println("\"kind\": \"enumVariant\",")
+        self.println("\"variantIdx\": $variantIdx,")
+        self.print("\"enum\": ")
+        self.printEnum(enum_: enum_, abridged: true)
+        stdoutWriteln(",")
+        self.print("\"destructuredVariables\": ")
+        self.array(destructuredVariables, v => self.printVariable(v))
+        stdoutWriteln()
+
+        self.indentDec()
+        self.print("}")
+      }
+      TypedMatchCaseKind.Literal(value) => {
+        stdoutWriteln("{")
+        self.indentInc()
+
+        self.println("\"kind\": \"literal\",")
+        match value {
+          LiteralAstNode.Int(value) => self.println("\"value\": $value"),
+          LiteralAstNode.Float(value) => self.println("\"value\": $value"),
+          LiteralAstNode.Bool(value) => self.println("\"value\": $value"),
+          LiteralAstNode.String(value) => self.println("\"value\": \"$value\""),
+        }
+
+        self.indentDec()
+        self.print("}")
+      }
+      TypedMatchCaseKind.None_ => stdoutWrite("\"None\""),
+      TypedMatchCaseKind.Else => stdoutWrite("\"else\""),
+      TypedMatchCaseKind.Tuple(cases, variables) => {
+        stdoutWriteln("{")
+        self.indentInc()
+
+        self.println("\"kind\": \"tuple\",")
+
+        if cases.isEmpty() {
+          self.println("\"items\": []")
+        } else {
+          self.println("\"items\": [")
+          self.indentInc()
+
+          for case, idx in cases {
+            self.indent()
+            if variables[idx] |v| {
+              stdoutWriteln("{")
+              self.indentInc()
+
+              self.println("\"kind\": \"tupleItemBinding\",")
+              self.print("\"variable\": ")
+              self.printVariable(v)
+              stdoutWriteln()
+
+              self.indentDec()
+              self.print("}")
+            } else {
+              self.printTypedMatchCaseKind(case)
+            }
+
+            val comma = if idx != cases.length - 1 "," else ""
+            stdoutWriteln(comma)
+          }
+
+          self.indentDec()
+          self.println("]")
+        }
+
+        self.indentDec()
+        self.print("}")
+      }
+    }
   }
 
   func indent(self) = stdoutWrite("  ".repeat(self.indentLevel))

@@ -1101,7 +1101,10 @@ type Set<T> {
     self._map.forEach(key => fn(key))
   }
 
-  func remove(self, item: T): T? = todo("Set#remove")
+  pub func remove(self, item: T) {
+    self._map.remove(item)
+    self.size -= 1
+  }
 
   pub func map<U>(self, fn: (T) => U): U[] {
     val arr: U[] = Array.withCapacity(self.size)

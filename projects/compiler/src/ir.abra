@@ -2212,6 +2212,7 @@ pub type Generator {
           wildcardBlock = Some(caseBlockFn)
           () => Value.Const(Const.Bool(true))
         }
+        TypedMatchCaseKind.Tuple => todo("TypedMatchCaseKind.Tuple")
       }
 
       blocks.push((caseCond, caseBlockFn, case.binding, case.kind == TypedMatchCaseKind.Else))

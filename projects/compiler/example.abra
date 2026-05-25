@@ -1,4 +1,7 @@
-import "process" as process
+enum Color { Red, Green, Blue }
 
-val foo = #embed("./.gitignore")
-println(foo)
+val _ = match (Color.Blue, "asdf") {
+  (Color.Red, a) => 0,
+  (Color.Blue, a) => 0,
+  (Color.Red, a) => 0,
+}

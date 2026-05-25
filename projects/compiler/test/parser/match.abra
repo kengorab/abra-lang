@@ -19,6 +19,12 @@ val x = match foo() {
   else f => f - 1,
 }
 
+val y = match (a, b) {
+  (Foo.Bar, "asdf") t => 1,
+  (None, Ok(v)) t => 2,
+  (1, 2.3,) t => 3,
+}
+
 // special cases
 match foo() {
   Ok(v) => v,

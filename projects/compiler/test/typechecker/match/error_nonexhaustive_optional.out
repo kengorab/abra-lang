@@ -1,0 +1,34 @@
+Error at %TEST_DIR%/typechecker/match/error_nonexhaustive_optional.abra:3:9
+Non-exhaustive match expression
+  |  val a = match arr[0] {
+             ^
+Match target type 'Bool?' is not covered by all cases. Remaining cases:
+  None
+(You can use a wildcard to capture remaining cases)
+
+Error at %TEST_DIR%/typechecker/match/error_nonexhaustive_optional.abra:8:9
+Non-exhaustive match expression
+  |  val b = match arr[0] {
+             ^
+Match target type 'Bool?' is not covered by all cases. Remaining cases:
+  false
+(You can use a wildcard to capture remaining cases)
+
+Error at %TEST_DIR%/typechecker/match/error_nonexhaustive_optional.abra:17:9
+Non-exhaustive match expression
+  |  val c = match color {
+             ^
+Match target type 'Color?' is not covered by all cases. Remaining cases:
+  Color.Blue
+  Color.Green
+(You can use a wildcard to capture remaining cases)
+
+Error at %TEST_DIR%/typechecker/match/error_nonexhaustive_optional.abra:22:9
+Non-exhaustive match expression
+  |  val d = match color {
+             ^
+Match target type 'Color?' is not covered by all cases. Remaining cases:
+  None
+  Color.Blue
+  Color.Green
+(You can use a wildcard to capture remaining cases)

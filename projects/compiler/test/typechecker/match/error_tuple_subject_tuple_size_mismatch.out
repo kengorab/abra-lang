@@ -1,0 +1,5 @@
+Error at %TEST_DIR%/typechecker/match/error_tuple_subject_tuple_size_mismatch.abra:2:3
+Unreachable match case
+  |    (1, "b", "c") => 1,
+       ^
+Tuple pattern has size 3, but match target type '(Int, String)' as size 2

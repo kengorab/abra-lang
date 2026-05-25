@@ -1006,6 +1006,59 @@ pub enum TypedMatchCaseKind {
   EnumVariant(enum_: Enum, variant: TypedEnumVariant, variantIdx: Int, destructuredVariables: Variable[])
   None_
   Else
+  Tuple(items: TypedMatchCaseKind[], destructuredVariables: Map<Int, Variable>)
+}
+
+enum MatchCasePossibility {
+  IntLit(i: Int)
+  FloatLit(f: Float)
+  BoolLit(b: Bool)
+  CharLit(c: Int)
+  StringLit(s: String)
+  EnumVariant(enum_: Enum, variantIdx: Int)
+  Tuple(items: MatchCasePossibility[])
+  None_
+  Else
+  Unbounded
+
+  pub func repr(self): String {
+    match self {
+      MatchCasePossibility.IntLit(i) => i.toString(),
+      MatchCasePossibility.FloatLit(f) => f.toString(),
+      MatchCasePossibility.BoolLit(b) => b.toString(),
+      MatchCasePossibility.CharLit(c) => Char.fromInt(c).toString(),
+      MatchCasePossibility.StringLit(s) => s,
+      MatchCasePossibility.EnumVariant(enum_, variantIdx) => {
+        val variant = try enum_.variants[variantIdx] else unreachable("invalid variant index $variantIdx for enum ${enum_.label.name}")
+        "${enum_.label.name}.${variant.label.name}"
+      },
+      MatchCasePossibility.Tuple(items) => todo("MatchCasePossibility.Tuple"),
+      MatchCasePossibility.None_ => "None",
+      MatchCasePossibility.Else => "else",
+      MatchCasePossibility.Unbounded => "...",
+    }
+  }
+
+  pub func covers(self, other: MatchCasePossibility): Bool {
+    match self {
+      MatchCasePossibility.Tuple(coverageItems) => {
+        match other {
+          MatchCasePossibility.Tuple(possibilityItems) => {
+            if coverageItems.length != possibilityItems.length return false
+            for cov, idx in coverageItems {
+              val poss = try possibilityItems[idx] else unreachable("lengths are equal")
+              if !cov.covers(poss) return false
+            }
+
+            true
+          }
+          else => false,
+        }
+      }
+      MatchCasePossibility.Else => true,
+      else => self == other
+    }
+  }
 }
 
 pub type TypedMatchCase {
@@ -1013,6 +1066,161 @@ pub type TypedMatchCase {
   pub binding: Variable?
   pub body: TypedAstNode[]
   pub terminator: Terminator?
+}
+
+enum MatchCasePossibilities {
+  Single(possibilities: Set<MatchCasePossibility>)
+  Tuple(possibilities: Set<MatchCasePossibility[]>)
+}
+
+type MatchCasesContext {
+  isOptionType: Bool
+  seenPossibilities: MatchCasePossibilities
+  remainingPossibilities: MatchCasePossibilities
+  seenElseCase: Bool = false
+  seenNoneCase: Bool = false
+
+  func addCoverage(self, coverage: MatchCasePossibility) {
+    match coverage {
+      MatchCasePossibility.None_ => self.seenNoneCase = true,
+      MatchCasePossibility.Else => self.seenElseCase = true,
+    }
+
+    match self.seenPossibilities {
+      MatchCasePossibilities.Single(possibilities) => {
+        possibilities.insert(coverage)
+      }
+      MatchCasePossibilities.Tuple(possibilities) => {
+        match coverage {
+          MatchCasePossibility.Tuple(tupleItemCoverages) => {
+            possibilities.insert(tupleItemCoverages)
+          }
+        }
+      }
+    }
+
+    match self.remainingPossibilities {
+      MatchCasePossibilities.Single(remainingPossibilities) => {
+        for poss in remainingPossibilities.asArray() {
+          if coverage.covers(poss) {
+            remainingPossibilities.remove(poss)
+          }
+        }
+      }
+      MatchCasePossibilities.Tuple(remainingPossibilities) => {
+        val tupleItemCoverages = match coverage {
+          MatchCasePossibility.Tuple(tupleItemCoverages) => tupleItemCoverages,
+          else => return
+        }
+        val coverage = MatchCasePossibility.Tuple(tupleItemCoverages)
+        for poss in remainingPossibilities.asArray() {
+          if coverage.covers(MatchCasePossibility.Tuple(poss)) {
+            remainingPossibilities.remove(poss)
+          }
+        }
+      }
+    }
+  }
+
+  func alreadyCovered(self, possibility: MatchCasePossibility): Bool {
+    // Shortcut for special circumstances
+    if self.seenElseCase return true
+    if possibility == MatchCasePossibility.None_ && self.seenNoneCase return true
+    if possibility == MatchCasePossibility.Else {
+      return match self.remainingPossibilities {
+        MatchCasePossibilities.Single(remaining) => remaining.isEmpty(),
+        MatchCasePossibilities.Tuple(remaining) => {
+          if self.isOptionType && !self.seenNoneCase return false
+          remaining.isEmpty()
+        }
+      }
+    }
+
+    match self.seenPossibilities {
+      MatchCasePossibilities.Single(coverage) => {
+        match possibility {
+          MatchCasePossibility.Tuple => false,
+          else => coverage.contains(possibility),
+        }
+      }
+      MatchCasePossibilities.Tuple(coverage) => {
+        match possibility {
+          MatchCasePossibility.Tuple => {
+            for cov in coverage {
+              if MatchCasePossibility.Tuple(cov).covers(possibility) {
+                return true
+              }
+            }
+
+            false
+          }
+          else => false
+        }
+      }
+    }
+  }
+
+  func allMatchCasesHandled(self): Bool {
+    if self.seenElseCase return true
+
+    val hasRemaining = match self.remainingPossibilities {
+      MatchCasePossibilities.Single(remaining) => !remaining.isEmpty(),
+      MatchCasePossibilities.Tuple(remaining) => !remaining.isEmpty(),
+    }
+
+    if hasRemaining || (self.isOptionType && !self.seenNoneCase) {
+      false
+    } else {
+      true
+    }
+  }
+
+  func getRemainingCaseReprs(self): String[] {
+    match self.remainingPossibilities {
+      MatchCasePossibilities.Single(possibilities) => possibilities.map(p => p.repr()),
+      MatchCasePossibilities.Tuple(possibilities) => {
+        val reprs = if self.isOptionType {
+          [MatchCasePossibility.None_.repr()]
+        } else {
+          []
+        }
+
+        for tupleItems in possibilities {
+          val tuple = tupleItems.map(p => p.repr()).join(", ")
+          reprs.push("($tuple)")
+        }
+
+        reprs
+      }
+    }
+  }
+
+  func isRemainingUnbounded(self): Bool {
+    match self.remainingPossibilities {
+      MatchCasePossibilities.Single(possibilities) => {
+        for poss in possibilities {
+          match poss {
+            MatchCasePossibility.Unbounded => return true,
+            else => continue
+          }
+        }
+
+        false
+      }
+      MatchCasePossibilities.Tuple(possibilities) => {
+        for poss in possibilities {
+          for p in poss {
+            match p {
+              MatchCasePossibility.Unbounded => return true,
+              else => continue
+            }
+          }
+        }
+
+        false
+      }
+    }
+  }
 }
 
 pub type TypedTryElseClause {
@@ -1518,6 +1726,12 @@ type TypeError {
               lines.push("This case has already been covered by a previous case")
             }
           }
+          UnreachableMatchCaseReason.SubjectNotTuple => {
+            lines.push("Cannot match target of non-tuple type '${subjectTy.repr()}' as a tuple pattern")
+          }
+          UnreachableMatchCaseReason.SubjectTupleArityMismatch(patternSize, actualSize) => {
+            lines.push("Tuple pattern has size $patternSize, but match target type '${subjectTy.repr()}' as size $actualSize")
+          }
         }
       }
       TypeErrorKind.EmptyMatchBlock => {
@@ -1525,10 +1739,26 @@ type TypeError {
         lines.push(getCursorLine(self.position.line, self.position.col, contents))
         lines.push("Each case in a match expression must result in a value")
       }
-      TypeErrorKind.NonExhaustiveMatch(subjectTy) => {
+      TypeErrorKind.NonExhaustiveMatch(subjectTy, matchCasesCtx) => {
         lines.push("Non-exhaustive match expression")
         lines.push(getCursorLine(self.position.line, self.position.col, contents))
-        lines.push("Match target type '${subjectTy.repr()}' is not covered by all cases")
+
+        val msg = "Match target type '${subjectTy.repr()}' is not covered by all cases."
+        val isRemainingUnbounded = matchCasesCtx.isRemainingUnbounded()
+        if isRemainingUnbounded {
+          lines.push(msg)
+        } else {
+          val reprs = matchCasesCtx.getRemainingCaseReprs()
+          lines.push(msg + " Remaining cases:")
+
+          val limit = 6
+          for c in reprs[:limit] {
+            lines.push("  $c")
+          }
+          if reprs.length > limit {
+            lines.push("  ... and ${reprs.length - limit} more")
+          }
+        }
         lines.push("(You can use a wildcard to capture remaining cases)")
       }
       TypeErrorKind.InvalidMatchCaseDestructuring(reason) => {
@@ -1685,6 +1915,8 @@ enum IllegalAssignmentReason {
 enum UnreachableMatchCaseReason {
   NoOverlap(caseTy: Type?)
   AlreadyCovered(exhaustive: Bool)
+  SubjectNotTuple
+  SubjectTupleArityMismatch(patternSize: Int, actualSize: Int)
 }
 
 enum InvalidMatchCaseDestructuringReason {
@@ -1760,7 +1992,7 @@ enum TypeErrorKind {
   DuplicateMatchCase
   UnreachableMatchCase(reason: UnreachableMatchCaseReason, subjectTy: Type)
   EmptyMatchBlock
-  NonExhaustiveMatch(subjectTy: Type)
+  NonExhaustiveMatch(subjectTy: Type, matchCasesCtx: MatchCasesContext)
   InvalidMatchCaseDestructuring(reason: InvalidMatchCaseDestructuringReason)
   InvalidDestructuring(reason: InvalidDestructuringReason)
   InvalidTryLocation(reason: InvalidTryLocationReason)
@@ -1784,7 +2016,7 @@ type ExprInfoCaptor {
 pub type Typechecker {
   pub moduleLoader: ModuleLoader
   pub project: Project
-  pub comptimeFuncEvaluator: (Function, TypedAstNode?[], Map<String, Type>) => Result<meta.InjectedCode, String>
+  pub comptimeFuncEvaluator: (Function, TypedAstNode?[], Map<String, Type>) => Result<meta.InjectedCode?, String>
   currentModule: TypedModule = TypedModule.bogus()
   currentScope: Scope = Scope(name: "\$root")
   currentTypeDecl: InstanceKind? = None
@@ -1879,13 +2111,13 @@ pub type Typechecker {
     None
   }
 
-  func addVariableToScope(self, variable: Variable, scope = self.currentScope): Result<Int, TypeError> {
-    if variable.label.name == "_" return Ok(0) // <- unnecessary 0
+  func addVariableToScope(self, variable: Variable, scope = self.currentScope): Result<Variable, TypeError> {
+    if variable.label.name == "_" return Ok(variable)
 
     if self._verifyNameUniqueInScope(variable.label, scope) |e| return Err(e)
     scope.variables.push(variable)
 
-    Ok(0) // <- unnecessary 0
+    Ok(variable)
   }
 
   func addFunctionToScope(self, fn: Function, scope = self.currentScope): Result<Int, TypeError> {
@@ -2706,8 +2938,7 @@ pub type Typechecker {
       if self.currentTypeDecl |instanceKind| {
         val ty = instanceKind.asInstanceType()
 
-        val variable = Variable(label: param.label, scope: self.currentScope, mutable: false, ty: ty, isParameter: true)
-        try self.addVariableToScope(variable)
+        val variable = try self.addVariableToScope(Variable(label: param.label, scope: self.currentScope, mutable: false, ty: ty, isParameter: true))
 
         val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: None, isVariadic: false, variable: variable)
         return Ok((typedParam, None))
@@ -2758,8 +2989,7 @@ pub type Typechecker {
 
         if ctx.containsFunctionCall {
           val ty = paramType ?: expr.ty
-          val variable = Variable(label: param.label, scope: self.currentScope, mutable: false, ty: ty, isParameter: true)
-          try self.addVariableToScope(variable)
+          val variable = try self.addVariableToScope(Variable(label: param.label, scope: self.currentScope, mutable: false, ty: ty, isParameter: true))
 
           val typedParam = TypedFunctionParam(label: param.label, ty: ty, defaultValue: Some(expr), isVariadic: param.isVariadic, variable: variable)
           return Ok((typedParam, Some(variable)))
@@ -2795,9 +3025,7 @@ pub type Typechecker {
       v.ty = ty
       v
     } else {
-      val v = Variable(label: param.label, scope: self.currentScope, mutable: false, ty: ty, isParameter: true)
-      try self.addVariableToScope(v)
-      v
+      try self.addVariableToScope(Variable(label: param.label, scope: self.currentScope, mutable: false, ty: ty, isParameter: true))
     }
 
     if param.isVariadic {
@@ -3406,9 +3634,8 @@ pub type Typechecker {
   func visitBindingPatternPass1(self, mutable: Bool, pattern: BindingPattern, ty: Type): Variable[] {
     match pattern {
       BindingPattern.Variable(label) => {
-        val variable = Variable(label: label, scope: self.currentScope, mutable: mutable, ty: ty)
-        match self.addVariableToScope(variable) {
-          Ok => [variable],
+        match self.addVariableToScope(Variable(label: label, scope: self.currentScope, mutable: mutable, ty: ty)) {
+          Ok(variable) => [variable],
           Err(e) => {
             self.addTypeError(e)
             []
@@ -3909,9 +4136,8 @@ pub type Typechecker {
   func typecheckBindingPattern(self, mutable: Bool, pattern: BindingPattern, ty: Type): Variable[] {
     match pattern {
       BindingPattern.Variable(label) => {
-        val variable = Variable(label: label, scope: self.currentScope, mutable: mutable, ty: ty)
-        val variables = match self.addVariableToScope(variable) {
-          Ok => [variable],
+        val variables = match self.addVariableToScope(Variable(label: label, scope: self.currentScope, mutable: mutable, ty: ty)) {
+          Ok(variable) => [variable],
           Err(err) => {
             self.addTypeError(err)
             []
@@ -4389,28 +4615,21 @@ pub type Typechecker {
     self.currentScope.terminator = Terminator.combine(ifBlockTerminator, elseBlockTerminator)
 
     val ty = if !isStatement {
-      if ifType |ifType| {
-        if typedElseBlock[-1] |lastElseNode| {
-          val elseType = lastElseNode.ty
+      val ifType = try ifType else return Err(TypeError(position: token.position, kind: TypeErrorKind.MissingRequiredBlock(exprKind: "if-else", clause: "if", missing: false)))
+      val lastElseNode = try typedElseBlock[-1] else return Err(TypeError(position: token.position, kind: TypeErrorKind.MissingRequiredBlock(exprKind: "if-else", clause: "else", missing: !hasElseBlock)))
 
-          if elseType.kind != TypeKind.Never && ifType.hasUnfilledHoles() {
-            typedIfBlock[-1]?.fillTypeHoles(elseType)
-          }
-          if ifType.kind != TypeKind.Never && elseType.hasUnfilledHoles() {
-            lastElseNode.fillTypeHoles(ifType)
-          }
-
-          if !self._typeSatisfiesRequired(ty: elseType, required: ifType) {
-            return Err(TypeError(position: lastElseNode.token.position, kind: TypeErrorKind.TypeMismatch([ifType], elseType)))
-          }
-
-          if ifType.kind == TypeKind.Never { elseType } else { ifType }
-        } else {
-          return Err(TypeError(position: token.position, kind: TypeErrorKind.MissingRequiredBlock(exprKind: "if-else", clause: "else", missing: !hasElseBlock)))
-        }
-      } else {
-        return Err(TypeError(position: token.position, kind: TypeErrorKind.MissingRequiredBlock(exprKind: "if-else", clause: "if", missing: false)))
+      val elseType = lastElseNode.ty
+      if elseType.kind != TypeKind.Never && ifType.hasUnfilledHoles() {
+        typedIfBlock[-1]?.fillTypeHoles(elseType)
       }
+      if ifType.kind != TypeKind.Never && elseType.hasUnfilledHoles() {
+        lastElseNode.fillTypeHoles(ifType)
+      }
+      if !self._typeSatisfiesRequired(ty: elseType, required: ifType) {
+        return Err(TypeError(position: lastElseNode.token.position, kind: TypeErrorKind.TypeMismatch([ifType], elseType)))
+      }
+
+      if ifType.kind == TypeKind.Never { elseType } else { ifType }
     } else {
       Type(kind: TypeKind.PrimitiveUnit)
     }
@@ -4419,177 +4638,273 @@ pub type Typechecker {
     Ok(TypedAstNode(token: token, ty: ty, kind: kind))
   }
 
+  func typecheckMatchCaseKind(
+    self,
+    matchCaseCtx: MatchCasesContext,
+    origSubjectTy: Type,
+    workingSubjectTy: Type,
+    caseKind: MatchCaseKind,
+    casePos: Position,
+    isWithinTuple = false,
+  ): Result<(Type, TypedMatchCaseKind, Type?, MatchCasePossibility), TypeError> {
+    match caseKind {
+      MatchCaseKind.Type(path, last, args) => {
+        val (enum_, variant, variantIdx) = try self.resolveEnumVariant(path, last)
+        val possibility = MatchCasePossibility.EnumVariant(enum_: enum_, variantIdx: variantIdx)
+        if !isWithinTuple && matchCaseCtx.alreadyCovered(possibility) {
+          return Err(TypeError(position: casePos, kind: TypeErrorKind.DuplicateMatchCase))
+        }
+
+        val subjectTy = self.project.typeIsOption(workingSubjectTy) ?: workingSubjectTy
+        val template = Type(kind: TypeKind.Instance(InstanceKind.Enum(enum_), enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
+        val extractedGenerics = subjectTy.extractGenerics(template)
+        val resolvedGenerics: Map<String, Type> = {}
+        for (name, ty) in extractedGenerics {
+          resolvedGenerics[name] = ty
+        }
+
+        val caseTy = template.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
+        if !self._typeSatisfiesRequired(ty: caseTy, required: subjectTy) {
+          return Err(TypeError(position: casePos, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: Some(caseTy)), origSubjectTy)))
+        }
+
+        val variables: Variable[] = []
+        if args[0] |firstArg| {
+          val fields = match variant.kind {
+            EnumVariantKind.Container(fields) => fields,
+            else => return Err(TypeError(position: firstArg.position, kind: TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.NonEnumContainer))),
+          }
+
+          if args[fields.length] |invalidArg| {
+            val kind = TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.InvalidArity(expected: fields.length, given: args.length))
+            return Err(TypeError(position: invalidArg.position, kind: kind))
+          }
+
+          for field, idx in fields {
+            val arg = try args[idx] else {
+              val kind = TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.InvalidArity(expected: fields.length, given: args.length))
+              return Err(TypeError(position: casePos, kind: kind))
+            }
+            val variableTy = if field.ty.containsGenerics() {
+              field.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
+            } else {
+              field.ty
+            }
+            val variable = try self.addVariableToScope(Variable(label: arg, scope: self.currentScope, mutable: false, ty: variableTy))
+            variables.push(variable)
+
+            if self.lspMode {
+              val ident = IdentifierMeta(
+                name: arg.name,
+                kind: IdentifierKindMeta.Variable(mutable: false, typeRepr: variableTy.repr()),
+                definitionPosition: Some((IdentifierMetaModule.Module(self.currentModule.name), arg.position)),
+              )
+              self._addLSPIdent(arg.position, ident)
+            }
+          }
+        }
+
+        Ok((caseTy, TypedMatchCaseKind.EnumVariant(enum_, variant, variantIdx, variables), None, possibility))
+      }
+      MatchCaseKind.Literal(value) => {
+        val (literalTy, possibility) = match value {
+          LiteralAstNode.Int(v) => (Type(kind: TypeKind.PrimitiveInt), MatchCasePossibility.IntLit(v)),
+          LiteralAstNode.Float(v) => (Type(kind: TypeKind.PrimitiveFloat), MatchCasePossibility.FloatLit(v)),
+          LiteralAstNode.Bool(v) => (Type(kind: TypeKind.PrimitiveBool), MatchCasePossibility.BoolLit(v)),
+          LiteralAstNode.Char(v) => (Type(kind: TypeKind.PrimitiveChar), MatchCasePossibility.CharLit(v)),
+          LiteralAstNode.String(v) => (Type(kind: TypeKind.PrimitiveString), MatchCasePossibility.StringLit(v)),
+        }
+
+        if !isWithinTuple && matchCaseCtx.alreadyCovered(possibility) {
+          return Err(TypeError(position: casePos, kind: TypeErrorKind.DuplicateMatchCase))
+        }
+
+        val subjectTy = self.project.typeIsOption(workingSubjectTy) ?: workingSubjectTy
+        if !self._typeSatisfiesRequired(ty: literalTy, required: subjectTy) {
+          return Err(TypeError(position: casePos, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: Some(literalTy)), origSubjectTy)))
+        }
+
+        Ok((literalTy, TypedMatchCaseKind.Literal(value), None, possibility))
+      }
+      MatchCaseKind.None_ => {
+        val possibility = MatchCasePossibility.None_
+        if !isWithinTuple && matchCaseCtx.alreadyCovered(possibility) {
+          return Err(TypeError(position: casePos, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.AlreadyCovered(exhaustive: false), origSubjectTy)))
+        }
+
+        val unwrappedSubjectTy = try self.project.typeIsOption(workingSubjectTy) else {
+          return Err(TypeError(position: casePos, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: None), origSubjectTy)))
+        }
+
+        Ok((workingSubjectTy, TypedMatchCaseKind.None_, Some(unwrappedSubjectTy), possibility))
+      }
+      MatchCaseKind.Else => {
+        val possibility = MatchCasePossibility.Else
+        if !isWithinTuple && matchCaseCtx.alreadyCovered(possibility) {
+          return Err(TypeError(position: casePos, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.AlreadyCovered(exhaustive: true), origSubjectTy)))
+        }
+
+        Ok((workingSubjectTy, TypedMatchCaseKind.Else, None, possibility))
+      }
+      MatchCaseKind.Tuple(kinds) => {
+        val workingSubjectTyKind = (self.project.typeIsOption(workingSubjectTy) ?: workingSubjectTy).kind
+        val innerTypes = match workingSubjectTyKind {
+          TypeKind.Tuple(types) => types,
+          else => return Err(TypeError(position: casePos, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.SubjectNotTuple, origSubjectTy)))
+        }
+        if kinds.length != innerTypes.length {
+          val kind = TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.SubjectTupleArityMismatch(patternSize: kinds.length, actualSize: innerTypes.length), origSubjectTy)
+          return Err(TypeError(position: casePos, kind: kind))
+        }
+
+        val typedTupleItemKinds: TypedMatchCaseKind[] = []
+        val tupleItemPossibilities: MatchCasePossibility[] = []
+        val variables: Map<Int, Variable> = {}
+        for tupleCaseKind, idx in kinds {
+          val tupleItemTy = try innerTypes[idx] else unreachable("verified above to be same size")
+
+          match tupleCaseKind {
+            MatchCaseKind.Binding(name) => {
+              // val variableTy = if tupleItemTy.containsGenerics() {
+              //   tupleItemTy.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
+              // } else {
+              //   tupleItemTy
+              // }
+              val variableTy = tupleItemTy
+              val variable = try self.addVariableToScope(Variable(label: name, scope: self.currentScope, mutable: false, ty: variableTy))
+              variables[idx] = variable
+
+              if self.lspMode {
+                val ident = IdentifierMeta(
+                  name: name.name,
+                  kind: IdentifierKindMeta.Variable(mutable: false, typeRepr: variableTy.repr()),
+                  definitionPosition: Some((IdentifierMetaModule.Module(self.currentModule.name), name.position)),
+                )
+                self._addLSPIdent(name.position, ident)
+              }
+
+              typedTupleItemKinds.push(TypedMatchCaseKind.Else)
+              tupleItemPossibilities.push(MatchCasePossibility.Else)
+            }
+            else => {
+              val (_, typedTupleItemKind, _, possibility) = try self.typecheckMatchCaseKind(matchCaseCtx, tupleItemTy, tupleItemTy, tupleCaseKind, casePos, isWithinTuple: true)
+              typedTupleItemKinds.push(typedTupleItemKind)
+              tupleItemPossibilities.push(possibility)
+            }
+          }
+        }
+        val possibility = MatchCasePossibility.Tuple(tupleItemPossibilities)
+
+        if matchCaseCtx.alreadyCovered(possibility) {
+          return Err(TypeError(position: casePos, kind: TypeErrorKind.DuplicateMatchCase))
+        }
+
+        Ok((workingSubjectTy, TypedMatchCaseKind.Tuple(typedTupleItemKinds, variables), None, possibility))
+      }
+      MatchCaseKind.Binding(name) => {
+        unreachable("Encountered MatchCaseKind.Binding outside of a tuple")
+      }
+    }
+  }
+
+  func deriveMatchCasePossibilitiesForTuple(self, innerTypes: Type[], results: Set<MatchCasePossibility[]> = #{}, startingIdx = 0, current: MatchCasePossibility[] = []): Set<MatchCasePossibility[]> {
+    if startingIdx == innerTypes.length {
+      val copy = current.map(i => i)
+      results.insert(copy)
+      return results
+    }
+
+    val ty = try innerTypes[startingIdx] else unreachable("idx $startingIdx out of range")
+    val possibilities = self.deriveMatchCasePossibilities(ty)
+
+    for p in possibilities {
+      current.push(p)
+      self.deriveMatchCasePossibilitiesForTuple(innerTypes, results, startingIdx + 1, current)
+      current.pop()
+    }
+
+    results
+  }
+
+  func deriveMatchCasePossibilities(self, ty: Type): Set<MatchCasePossibility> {
+    val possibilities: Set<MatchCasePossibility> = #{}
+    val itemTy = if self.project.typeIsOption(ty) |itemTy| {
+      possibilities.insert(MatchCasePossibility.None_)
+      itemTy
+    } else {
+      ty
+    }
+
+    match itemTy.kind {
+      TypeKind.PrimitiveInt => possibilities.insert(MatchCasePossibility.Unbounded),
+      TypeKind.PrimitiveBool => {
+        possibilities.insert(MatchCasePossibility.BoolLit(true))
+        possibilities.insert(MatchCasePossibility.BoolLit(false))
+      }
+      TypeKind.PrimitiveChar => possibilities.insert(MatchCasePossibility.Unbounded),
+      TypeKind.Instance(inst, _) => {
+        match inst {
+          InstanceKind.Enum(e) => {
+            for _, i in e.variants {
+              possibilities.insert(MatchCasePossibility.EnumVariant(enum_: e, variantIdx: i))
+            }
+          }
+          InstanceKind.Struct => {
+            possibilities.insert(MatchCasePossibility.Unbounded)
+          }
+        }
+      }
+      else => possibilities.insert(MatchCasePossibility.Unbounded),
+    }
+
+    possibilities
+  }
+
   func typecheckMatch(self, token: Token, expr: AstNode, cases: MatchCase[], typeHint: Type?): Result<TypedAstNode, TypeError> {
     val isStatement = if typeHint |hint| hint.kind == TypeKind.PrimitiveUnit else false
     val typedExpr = try self._typecheckExpression(expr, None)
 
-    var subjectTy = typedExpr.ty
+    val subjectTyOrig = typedExpr.ty
+    var subjectTy = subjectTyOrig
     val typedCases: TypedMatchCase[] = []
     var resultTy: Type? = None
-    var seenElseCase = false
-    var seenNoneCase = false
-    var seenLiteralCases: Set<LiteralAstNode> = #{}
-    val seenEnumVariants: Map<Enum, Set<Int>> = {}
-    val seenTypes: Set<Type> = #{}
 
-    val allCasesHandled: () => Bool = () => {
-      if seenElseCase return true
-
-      for (enum_, seenVariantIdxs) in seenEnumVariants {
-        val enumVariantIdxs = enum_.variants.map((_, i) => i).asSet()
-        if seenVariantIdxs == enumVariantIdxs {
-          if self.project.typeIsOption(typedExpr.ty) {
-            if seenNoneCase return true
-          } else return true
-        }
+    val (subjIsOptionType, subjTypeUnwrapped) = if self.project.typeIsOption(typedExpr.ty) |innerTy| { (true, innerTy) } else { (false, typedExpr.ty) }
+    val (seenPossibilities, remainingPossibilities) = match subjTypeUnwrapped.kind {
+      TypeKind.Tuple(innerTypes) => {
+        val possibilities = self.deriveMatchCasePossibilitiesForTuple(innerTypes)
+        (MatchCasePossibilities.Tuple(#{}), MatchCasePossibilities.Tuple(possibilities))
       }
-
-      if self.project.typesAreEquivalent(ty: Type(kind: TypeKind.PrimitiveBool), other: typedExpr.ty) {
-        if seenLiteralCases == #{LiteralAstNode.Bool(true), LiteralAstNode.Bool(false)} return true
+      else => {
+        val possibilities = self.deriveMatchCasePossibilities(typedExpr.ty)
+        (MatchCasePossibilities.Single(#{}), MatchCasePossibilities.Single(possibilities))
       }
-
-      if !seenTypes.isEmpty() {
-        if self.project.typeIsOption(typedExpr.ty) {
-          if seenNoneCase return true
-        } else return true
-      }
-
-      false
     }
+    val matchCaseCtx = MatchCasesContext(
+      isOptionType: subjIsOptionType,
+      seenPossibilities: seenPossibilities,
+      remainingPossibilities: remainingPossibilities,
+    )
 
     var terminator: Terminator? = None
     for case, idx in cases {
-      if allCasesHandled() {
-        return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.AlreadyCovered(exhaustive: true), typedExpr.ty)))
+      if matchCaseCtx.allMatchCasesHandled() {
+        return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.AlreadyCovered(exhaustive: true), subjectTyOrig)))
       }
 
       val typedBody: TypedAstNode[] = []
       var prevScope = self.currentScope
 
-      var caseVar: Variable? = None
-      val typedMatchCaseKind = match case.kind {
-        MatchCaseKind.Type(path, last, args) => {
-          val (enum_, variant, variantIdx) = try self.resolveEnumVariant(path, last)
-          if seenEnumVariants[enum_] |seenVariants| {
-            if seenVariants.contains(variantIdx) return Err(TypeError(position: case.position, kind: TypeErrorKind.DuplicateMatchCase))
-            seenVariants.insert(variantIdx)
-          } else {
-            seenEnumVariants[enum_] = #{variantIdx}
-          }
-
-          val subjectTy = self.project.typeIsOption(subjectTy) ?: subjectTy
-          val template = Type(kind: TypeKind.Instance(InstanceKind.Enum(enum_), enum_.typeParams.map(name => Type(kind: TypeKind.Generic(name)))))
-          val extractedGenerics = subjectTy.extractGenerics(template)
-          val resolvedGenerics: Map<String, Type> = {}
-          for (name, ty) in extractedGenerics {
-            resolvedGenerics[name] = ty
-          }
-
-          val caseTy = template.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
-          if !self._typeSatisfiesRequired(ty: caseTy, required: subjectTy) {
-            return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: Some(caseTy)), typedExpr.ty)))
-          }
-
-          self.beginChildScope("matchcase_${enum_.label.name}_$variantIdx", ScopeKind.MatchCase)
-
-          val variables: Variable[] = []
-          if args[0] |firstArg| {
-            match variant.kind {
-              EnumVariantKind.Constant => return Err(TypeError(position: firstArg.position, kind: TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.NonEnumContainer))),
-              EnumVariantKind.Container(fields) => {
-                if args[fields.length] |invalidArg| {
-                  val kind = TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.InvalidArity(expected: fields.length, given: args.length))
-                  return Err(TypeError(position: invalidArg.position, kind: kind))
-                }
-
-                for field, idx in fields {
-                  val arg = try args[idx] else {
-                    val kind = TypeErrorKind.InvalidMatchCaseDestructuring(InvalidMatchCaseDestructuringReason.InvalidArity(expected: fields.length, given: args.length))
-                    return Err(TypeError(position: case.position, kind: kind))
-                  }
-                  val variableTy = if field.ty.containsGenerics() {
-                    field.ty.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
-                  } else {
-                    field.ty
-                  }
-                  val variable = Variable(label: arg, scope: self.currentScope, mutable: false, ty: variableTy)
-                  try self.addVariableToScope(variable)
-                  variables.push(variable)
-
-                  if self.lspMode {
-                    val ident = IdentifierMeta(
-                      name: arg.name,
-                      kind: IdentifierKindMeta.Variable(mutable: false, typeRepr: variableTy.repr()),
-                      definitionPosition: Some((IdentifierMetaModule.Module(self.currentModule.name), arg.position)),
-                    )
-                    self._addLSPIdent(arg.position, ident)
-                  }
-                }
-              }
-            }
-          }
-
-          if case.binding |binding| {
-            caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: caseTy))
-          }
-
-          TypedMatchCaseKind.EnumVariant(enum_, variant, variantIdx, variables)
-        }
-        MatchCaseKind.Literal(value) => {
-          if seenLiteralCases.contains(value) return Err(TypeError(position: case.position, kind: TypeErrorKind.DuplicateMatchCase))
-          seenLiteralCases.insert(value)
-
-          val literalTy = match value {
-            LiteralAstNode.Int => Type(kind: TypeKind.PrimitiveInt),
-            LiteralAstNode.Float => Type(kind: TypeKind.PrimitiveFloat),
-            LiteralAstNode.Bool => Type(kind: TypeKind.PrimitiveBool),
-            LiteralAstNode.Char => Type(kind: TypeKind.PrimitiveChar),
-            LiteralAstNode.String => Type(kind: TypeKind.PrimitiveString),
-          }
-
-          self.beginChildScope("matchcase_$value", ScopeKind.MatchCase)
-          if case.binding |binding| {
-            caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: literalTy))
-          }
-
-          val subjectTy = self.project.typeIsOption(subjectTy) ?: subjectTy
-          if !self._typeSatisfiesRequired(ty: literalTy, required: subjectTy) {
-            return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: Some(literalTy)), typedExpr.ty)))
-          }
-
-          if seenTypes.contains(literalTy) return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.AlreadyCovered(exhaustive: false), typedExpr.ty)))
-
-          TypedMatchCaseKind.Literal(value)
-        }
-        MatchCaseKind.None_ => {
-          if seenNoneCase return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.AlreadyCovered(exhaustive: false), typedExpr.ty)))
-          seenNoneCase = true
-
-          self.beginChildScope("matchcase_None", ScopeKind.MatchCase)
-          if case.binding |binding| {
-            caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: subjectTy))
-          }
-
-          subjectTy = try self.project.typeIsOption(subjectTy) else {
-            return Err(TypeError(position: case.position, kind: TypeErrorKind.UnreachableMatchCase(UnreachableMatchCaseReason.NoOverlap(caseTy: None), typedExpr.ty)))
-          }
-
-          TypedMatchCaseKind.None_
-        }
-        MatchCaseKind.Else => {
-          seenElseCase = true
-
-          self.beginChildScope("matchcase_else", ScopeKind.MatchCase)
-          if case.binding |binding| {
-            caseVar = Some(Variable(label: binding, scope: self.currentScope, mutable: false, ty: subjectTy))
-          }
-
-          TypedMatchCaseKind.Else
-        }
+      self.beginChildScope("matchcase_${token.position.line}_case$idx", ScopeKind.MatchCase)
+      val (caseVarTy, typedMatchCaseKind, newSubjectType, caseCoverage) = try self.typecheckMatchCaseKind(matchCaseCtx, subjectTyOrig, subjectTy, case.kind, case.position)
+      if newSubjectType |ty| {
+        subjectTy = ty
       }
+      matchCaseCtx.addCoverage(caseCoverage)
 
-      if caseVar |v| {
-        try self.addVariableToScope(v)
+      var caseVar: Variable? = None
+      if case.binding |binding| {
+        caseVar = Some(try self.addVariableToScope(Variable(label: binding, scope: self.currentScope, mutable: false, ty: caseVarTy)))
       }
 
       for node, idx in case.body {
@@ -4645,7 +4960,7 @@ pub type Typechecker {
       typedCases.push(TypedMatchCase(kind: typedMatchCaseKind, binding: caseVar, body: typedBody, terminator: caseTerminator))
     }
 
-    val isExhaustive = allCasesHandled()
+    val isExhaustive = matchCaseCtx.allMatchCasesHandled()
     self.currentScope.terminator = if isExhaustive terminator else None
 
     val ty = try resultTy else {
@@ -4655,7 +4970,7 @@ pub type Typechecker {
     // If the resulting type is Unit or Never after visiting all the cases' blocks, then treat this as a statement
     val isStmt = isStatement || ty.kind == TypeKind.PrimitiveUnit || ty.kind == TypeKind.Never
     if !isStmt && !isExhaustive {
-      return Err(TypeError(position: token.position, kind: TypeErrorKind.NonExhaustiveMatch(typedExpr.ty)))
+      return Err(TypeError(position: token.position, kind: TypeErrorKind.NonExhaustiveMatch(subjectTyOrig, matchCaseCtx)))
     }
     if !isStmt && ty.hasUnfilledHoles() {
       return Err(TypeError(position: token.position, kind: TypeErrorKind.IllegalValueType(ty: ty, purpose: "match expression result")))
@@ -5651,19 +5966,48 @@ pub type Typechecker {
     }
 
     if self.exprInfoCaptor |ctx| {
-      ctx.containsFunctionCall = true
-
       val returnType = if fn.returnType.containsGenerics() {
         fn.returnType.withSubstitutedGenerics(resolvedGenerics: resolvedGenerics, retainUnknown: false, genericsInScope: #{})
       } else {
         fn.returnType
       }
-      return Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Placeholder))
+
+      // TODO: fix this, this is terrible (#650)
+      // When typechecking bindings pass 1, we bail early if a function call was found since at that time functions aren't fully discovered.
+      // For example, functions can have default parameter values, which may reference other bindings whose types aren't yet known. As a result,
+      // those functions' parameters would have unknowable types; therefore we typecheck in two passes and in this first pass an invocation node simply
+      // results in the function's return type (other typechecking is deferred until a later pass, when everything is known).
+      // However, it's very convenient to do things like `val a = Some("asdf")` at the top level, and instantiatable things (structs and enum container
+      // variants) are not subject to the same rule as functions since all of their fields' type information is known at the time bindings pass 1 occurs.
+      // For now, this is hardcoded to allow special cases to bypass the 2-pass binding typechecking (by virtue of containsFunctionCall not being set),
+      // but this should be extended to all instantiatable values. A notable corner case here is a generic type whose instance methods are captured in a
+      // variable (eg. `val fn = myGenericFoo.someFn`) - the Function that gets created is incomplete since it's copied from an earlier function pass. At
+      // the time of binding pass 1, structs'/enums' methods have only gone through function pass 1, and only their return type is known (their parameters
+      // are empty).
+      //
+      // This could be solved by requiring functions' default parameters to have the type explicitly defined* so that bindings wouldn't have to be typed in
+      // order to fully type a function's signature. This is a pretty elegant solution to this problem, and it eliminates a lot of the pain that this multi-pass
+      // solution has introduced. And it could be done in such a way so as to not change things too too much.
+      //
+      //   * Constants (literals, instantiations, calls to functions with non-generic return types, and probably more). Honestly, this doesn't feel like too much
+      //     of a concession. Potentially a small price to pay to clean up the wonky two-pass binding typechecking and likely a whole host of other issues that I'm
+      //     forgetting about at the moment.
+      val canProceedAnyway = match instantiationOf {
+        Instantiatable.EnumContainerVariant(enum_, _, _) => enum_ == self.project.preludeOptionEnum,
+        Instantiatable.Struct(s) => s.typeParams.isEmpty(),
+        else => false,
+      }
+      if !canProceedAnyway {
+        ctx.containsFunctionCall = true
+        return Ok(TypedAstNode(token: token, ty: returnType, kind: TypedAstNodeKind.Placeholder))
+      }
     }
 
     val genericsInScope: Set<String> = #{}
     self.currentScope.walkAncestry(s => {
-      for g in s.generics genericsInScope.insert(g)
+      for g in s.generics {
+        genericsInScope.insert(g)
+      }
     })
 
     var hasBegunOptionalParams = false
@@ -5877,8 +6221,11 @@ pub type Typechecker {
       return TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
     }
 
-    val injectedCode = try self.comptimeFuncEvaluator(fn, typedArguments, resolvedGenerics) else |e| {
+    val injectedCodeOpt = try self.comptimeFuncEvaluator(fn, typedArguments, resolvedGenerics) else |e| {
       self.addTypeError(self.internalError(token.position, "comptimeFuncEvaluator: $e"))
+      return TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
+    }
+    val injectedCode = try injectedCodeOpt else {
       return TypedAstNode(token: token, ty: Type(kind: TypeKind.CouldNotDetermine), kind: TypedAstNodeKind.Placeholder)
     }
     val contents = injectedCode.chunks.join()
